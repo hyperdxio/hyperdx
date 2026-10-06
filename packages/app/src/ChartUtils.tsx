@@ -133,6 +133,7 @@ function getAlignedRangeAndGranularity(
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
+    config.minGranularitySeconds,
   );
   return {
     granularity,
@@ -147,21 +148,39 @@ function getAlignedRangeAndGranularity(
 }
 
 /**
- * A PromQL number tile's queried config, shared by the value and the sparkline
- * drawn behind it.
+ * Converts the given config into one that is suitable for a tile that shows
+ * 1 value per series (number, pie, and bar tiles). The reducer defaults to
+ * the last value.
  */
-export function convertToPromqlNumberChartConfig(
+export function convertToReducedPromqlChartConfig(
   config: PromqlChartConfig & DateRange,
-  { withReducer }: { withReducer: boolean },
 ): PromqlChartConfig & DateRange {
   return {
     ...config,
     ...getAlignedRangeAndGranularity(config),
     promqlExpression: getQueriedPromqlSeries(config).map(series => ({
       ...series,
-      reducer: withReducer
-        ? (series.reducer ?? DEFAULT_PROMQL_REDUCER)
-        : undefined,
+      reducer: series.reducer ?? DEFAULT_PROMQL_REDUCER,
+    })),
+  };
+}
+
+/**
+ * The config for the sparkline behind a PromQL number tile: the tile's query
+ * with no reducer, so the buckets are plotted rather than collapsed.
+ *
+ * Intentionally matches convertToReducedPromqlChartConfig except for the reducer,
+ * so that react-query keys remain consistent between the reduced and sparkline versions.
+ */
+export function convertToPromqlSparklineChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  const reduced = convertToReducedPromqlChartConfig(config);
+  return {
+    ...reduced,
+    promqlExpression: getQueriedPromqlSeries(reduced).map(series => ({
+      ...series,
+      reducer: undefined,
     })),
   };
 }
@@ -531,6 +550,7 @@ export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
   applyDefaultOrder: boolean = true,
+  maxGroups: number = DEFAULT_MAX_CATEGORICAL_GROUPS,
 ): Array<{ label: string; value: number; color: string }> {
   if (data.meta == null) {
     throw new Error('No meta data found in response');
@@ -568,7 +588,7 @@ export function formatResponseForCategoricalChart(
   }
 
   return labelsAndValues
-    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .slice(0, Math.min(maxGroups, DEFAULT_MAX_CATEGORICAL_GROUPS))
     .map((entry, index) => ({
       ...entry,
       color: getColor(index, entry.label),

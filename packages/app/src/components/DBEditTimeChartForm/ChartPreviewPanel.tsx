@@ -25,8 +25,9 @@ import { DBBarChart } from '@/components/DBBarChart';
 import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
+  buildHeatmapSeriesConfig,
   HEATMAP_N_BUCKETS,
-  toHeatmapChartConfig,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
@@ -36,10 +37,12 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
 import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
   isSingleExpression,
+  useSource,
 } from '@/source';
 import {
   orderByStringToSortingState,
@@ -62,12 +65,10 @@ function HeatmapPreview({
 }: {
   config: BuilderChartConfigWithDateRange;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(config);
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={toHeatmapQuery(config)}
         showLegend
         errorVariant="inline"
       />
@@ -79,7 +80,8 @@ function HeatmapPreview({
  * Heatmap renders via two sequential ClickHouse queries — bounds first, then
  * the bucketed-counts query that uses the resolved min/max.  Show both,
  * labeled, with placeholder tokens for the bucket-array literals (which only
- * exist at runtime once the bounds query returns).
+ * exist at runtime once the bounds query returns). A series heatmap runs a
+ * single time-chart query instead.
  */
 function HeatmapSQLPreview({
   config,
@@ -96,9 +98,21 @@ function HeatmapSQLPreview({
     ...config,
     timestampValueExpression,
   };
-  const { heatmapConfig, scaleType } =
-    toHeatmapChartConfig(configWithTimestamp);
+  const query = toHeatmapQuery(configWithTimestamp);
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
+
+  if (query.mode === 'series') {
+    return (
+      <ChartSQLPreview
+        config={buildHeatmapSeriesConfig(
+          { ...query.config, dateRange },
+          granularity,
+        )}
+        enableCopy
+      />
+    );
+  }
+  const { config: heatmapConfig, scaleType } = query;
 
   const boundsConfig = buildHeatmapBoundsConfig({
     config: heatmapConfig,
@@ -171,9 +185,11 @@ export function ChartPreviewPanel({
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
+  const { data: queriedSource } = useSource({ id: queriedConfig?.source });
+  const minGranularitySeconds = getMinGranularitySeconds(queriedSource);
   const renderedPromql = useMemo(
-    () => buildRenderedPromqlExpression(queriedConfig),
-    [queriedConfig],
+    () => buildRenderedPromqlExpression(queriedConfig, minGranularitySeconds),
+    [queriedConfig, minGranularitySeconds],
   );
 
   const blockingFilterNames = missingRequiredFilterNames ?? [];

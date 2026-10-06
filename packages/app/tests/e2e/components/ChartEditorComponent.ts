@@ -71,6 +71,29 @@ export class ChartEditorComponent {
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
+  /** Pick the builder heatmap's mode in its segmented control. */
+  async setHeatmapMode(mode: 'Distribution' | 'Series') {
+    await this.editorForm()
+      .getByTestId('heatmap-mode-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${mode}$`) })
+      .click();
+  }
+
+  /** The distribution heatmap's "Value" (y axis) SQL input. */
+  get heatmapValueInput(): Locator {
+    return this.editorForm()
+      .getByTestId('heatmap-value-input')
+      .locator('.cm-content');
+  }
+
+  /** A heatmap mode's (visually hidden) radio, for checking the selection. */
+  heatmapModeOption(mode: 'Distribution' | 'Series'): Locator {
+    return this.editorForm()
+      .getByTestId('heatmap-mode-control')
+      .getByRole('radio', { name: mode, exact: true });
+  }
+
   /**
    * Set group by expression
    */
@@ -544,7 +567,8 @@ export class ChartEditorComponent {
     if ((await control.getAttribute('aria-expanded')) !== 'true') {
       await control.click();
     }
-    await this.generatedSqlContent().waitFor({
+    // Distribution heatmaps render two previews (bounds, then buckets).
+    await this.generatedSqlContent().first().waitFor({
       state: 'visible',
       timeout: 10000,
     });
@@ -626,6 +650,12 @@ export class ChartEditorComponent {
   async getGeneratedSqlText(): Promise<string> {
     const text = await this.generatedSqlContent().innerText();
     return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /** Every generated SQL preview, whitespace-collapsed and joined. */
+  async getAllGeneratedSqlText(): Promise<string> {
+    const texts = await this.generatedSqlContent().allInnerTexts();
+    return texts.join(' ').replace(/\s+/g, ' ').trim();
   }
 
   /**
@@ -1133,14 +1163,36 @@ export class ChartEditorComponent {
 
   /**
    * Set the "Series Limit" value in the Display Settings drawer. On pie/bar
-   * builder charts this caps the number of slices/bars displayed. Opens the
-   * drawer, fills the input, then applies and closes.
+   * builder charts this caps the number of slices/bars displayed; on time
+   * charts it caps the number of series. Opens the drawer, fills the input,
+   * then applies and closes.
    */
   async setSeriesLimit(limit: number) {
     await this.openDisplaySettings();
     const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
     await drawer.getByLabel('Series Limit').fill(String(limit));
     await this.applyDisplaySettings();
+  }
+
+  /**
+   * Set a heatmap's "Y axis scale" in the Display Settings drawer. Opens the
+   * drawer, picks the scale, then applies and closes.
+   */
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.openDisplaySettings();
+    await this.page
+      .getByTestId('heatmap-scale-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${scale}$`) })
+      .click();
+    await this.applyDisplaySettings();
+  }
+
+  /** A "Y axis scale" option's (visually hidden) radio in the open drawer. */
+  heatmapScaleOption(scale: 'Log' | 'Linear'): Locator {
+    return this.page
+      .getByTestId('heatmap-scale-control')
+      .getByRole('radio', { name: scale, exact: true });
   }
 
   /**
@@ -1157,7 +1209,7 @@ export class ChartEditorComponent {
   /**
    * Choose how a PromQL expression is evaluated, from the toggle under the
    * expression editor. `reducer` is the visible label (e.g. "Max"), and only
-   * applies to a range query.
+   * applies to display types that reduce each series to one value.
    */
   async setPromqlQueryType(
     queryType: 'Instant' | 'Range',
@@ -1170,9 +1222,7 @@ export class ChartEditorComponent {
     await group.getByText(queryType, { exact: true }).click();
 
     if (reducer) {
-      await this.page
-        .getByRole('combobox', { name: 'PromQL range reducer' })
-        .click();
+      await this.page.getByRole('combobox', { name: 'PromQL reducer' }).click();
       await this.page
         .getByRole('option', { name: reducer, exact: true })
         .click();

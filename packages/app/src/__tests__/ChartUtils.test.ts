@@ -10,8 +10,9 @@ import {
 import {
   ChartKeyJoiner,
   convertToNumberChartConfig,
-  convertToPromqlNumberChartConfig,
+  convertToPromqlSparklineChartConfig,
   convertToPromqlTableChartConfig,
+  convertToReducedPromqlChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   findNearestSeriesKey,
@@ -1316,9 +1317,32 @@ describe('ChartUtils', () => {
 
       expect(result.dateRange).toEqual(promqlConfig.dateRange);
     });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
   });
 
-  describe('convertToPromqlNumberChartConfig', () => {
+  describe('convertToReducedPromqlChartConfig and convertToPromqlSparklineChartConfig', () => {
     const promqlConfig = {
       configType: 'promql' as const,
       displayType: DisplayType.Number,
@@ -1337,9 +1361,7 @@ describe('ChartUtils', () => {
     // unresolved step puts the samples between the buckets the sparkline plots
     // on -- which the empty-bucket filler then fills with zeros.
     it('aligns the date range and resolves the granularity', () => {
-      const result = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: true,
-      });
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
 
       expect(result.dateRange).toEqual([
         new Date('2025-11-26T00:00:00Z'),
@@ -1349,17 +1371,14 @@ describe('ChartUtils', () => {
     });
 
     it('leaves the date range unaligned for an instant query', () => {
-      const result = convertToPromqlNumberChartConfig(
-        {
-          ...promqlConfig,
-          promqlExpression: [{ expression: 'up', queryType: 'instant' }],
-          dateRange: [
-            new Date('2025-11-26T00:00:14.076Z'),
-            new Date('2025-11-27T00:00:14.076Z'),
-          ],
-        },
-        { withReducer: true },
-      );
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+        dateRange: [
+          new Date('2025-11-26T00:00:14.076Z'),
+          new Date('2025-11-27T00:00:14.076Z'),
+        ],
+      });
 
       expect(result.dateRange).toEqual([
         new Date('2025-11-26T00:00:14.076Z'),
@@ -1368,10 +1387,31 @@ describe('ChartUtils', () => {
       expect(result.granularity).toBe('30 minute');
     });
 
-    it('names the reducer, defaulting it, and queries one expression', () => {
-      const result = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: true,
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
       });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
+
+    it('names the reducer, defaulting it, and queries one expression', () => {
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -1387,19 +1427,16 @@ describe('ChartUtils', () => {
     });
 
     it('keeps a chosen reducer', () => {
-      const result = convertToPromqlNumberChartConfig(
-        {
-          ...promqlConfig,
-          promqlExpression: [
-            {
-              expression: 'up',
-              queryType: 'range' as const,
-              reducer: PromqlReducer.Max,
-            },
-          ],
-        },
-        { withReducer: true },
-      );
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [
+          {
+            expression: 'up',
+            queryType: 'range' as const,
+            reducer: PromqlReducer.Max,
+          },
+        ],
+      });
 
       expect(result).toEqual(
         expect.objectContaining({
@@ -1417,12 +1454,8 @@ describe('ChartUtils', () => {
     // Without a reducer named, the hook leaves the buckets alone -- which is
     // how the sparkline reads the same response as the value.
     it('names no reducer for the sparkline, otherwise matching the value', () => {
-      const value = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: true,
-      });
-      const sparkline = convertToPromqlNumberChartConfig(promqlConfig, {
-        withReducer: false,
-      });
+      const value = convertToReducedPromqlChartConfig(promqlConfig);
+      const sparkline = convertToPromqlSparklineChartConfig(promqlConfig);
 
       expect(sparkline).toEqual({
         ...value,
@@ -1691,6 +1724,47 @@ describe('ChartUtils', () => {
       expect(result).toEqual([
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
+    });
+
+    describe('maxGroups', () => {
+      const manyGroups = (count: number) => ({
+        data: Array.from({ length: count }, (_, i) => ({
+          value: i,
+          series_name: `s${i}`,
+        })),
+        meta: [
+          { name: 'value', type: 'Float64' },
+          { name: 'series_name', type: 'String' },
+        ],
+      });
+
+      it('keeps the largest maxGroups groups', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(5),
+          getColor,
+          true,
+          2,
+        );
+        expect(result.map(e => e.label)).toEqual(['s4', 's3']);
+      });
+
+      it('caps at 500 groups by default', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+        );
+        expect(result).toHaveLength(500);
+      });
+
+      it('cannot raise the 500-group cap', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+          true,
+          1000,
+        );
+        expect(result).toHaveLength(500);
+      });
     });
   });
 

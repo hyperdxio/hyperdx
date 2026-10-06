@@ -60,10 +60,6 @@ export const isValidUrl = (input: string) => {
   }
 };
 
-export const capitalizeFirstLetter = (input: string) => {
-  return input.charAt(0).toUpperCase() + input.slice(1);
-};
-
 export const getShortUrl = (url: string) => {
   try {
     const parsedUrl = new URL(url);

@@ -156,6 +156,85 @@ describe('DBHistogramChart', () => {
     // Verify DateRangeIndicator was not called
     expect(jest.mocked(DateRangeIndicator)).not.toHaveBeenCalled();
   });
+
+  describe('refresh', () => {
+    const buckets = { data: [{ data: [[0, 10, 5]] }], meta: [] };
+    const chart = () =>
+      document.querySelector('.recharts-responsive-container');
+
+    it('keeps the previous histogram on screen and pulses it while a refresh loads', () => {
+      // The new range is still loading behind the previous buckets.
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: buckets,
+        isLoading: true,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBHistogramChart config={baseTestConfig} />);
+
+      expect(
+        screen.queryByText('Loading Chart Data...'),
+      ).not.toBeInTheDocument();
+      expect(chart()).toHaveClass('effect-pulse');
+    });
+
+    it('does not pulse once fresh buckets load', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: buckets,
+        isLoading: false,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBHistogramChart config={baseTestConfig} />);
+
+      expect(chart()).not.toHaveClass('effect-pulse');
+    });
+
+    it('pulses the empty state while a refresh loads', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [], meta: [] },
+        isLoading: false,
+        isPlaceholderData: true,
+        isError: false,
+      });
+
+      renderWithMantine(<DBHistogramChart config={baseTestConfig} />);
+
+      expect(screen.getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
+    });
+
+    it('does not pulse a fresh empty result', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [], meta: [] },
+        isLoading: false,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBHistogramChart config={baseTestConfig} />);
+
+      expect(
+        screen.getByText('No data found within time range.'),
+      ).not.toHaveClass('effect-pulse');
+    });
+
+    it('shows the loading state before the first buckets arrive', () => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: undefined,
+        isLoading: true,
+        isPlaceholderData: false,
+        isError: false,
+      });
+
+      renderWithMantine(<DBHistogramChart config={baseTestConfig} />);
+
+      expect(screen.getByText('Loading Chart Data...')).toBeInTheDocument();
+    });
+  });
 });
 
 describe('HISTOGRAM_BAR_COLOR', () => {

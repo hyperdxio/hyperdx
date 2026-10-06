@@ -54,7 +54,7 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
@@ -479,6 +479,9 @@ const ServicesDashboardPageDynamic = dynamic(
 );
 
 // @ts-expect-error Next.js layout typing
-ServicesDashboardPageDynamic.getLayout = withAppNav;
+ServicesDashboardPageDynamic.getLayout = withAppNavForSurface(
+  'service-dashboard',
+  'services',
+);
 
 export default ServicesDashboardPageDynamic;
