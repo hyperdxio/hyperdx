@@ -1257,6 +1257,9 @@ export function tryExpandConfigVariables<
   }
 }
 
+const NO_LOG_SOURCE_WARNING_DISMISSED_KEY =
+  'drilldown-metric-correlated-log-warning';
+
 /**
  * Build search URL for viewing events based on group-by values
  * Used by both chart clicks and table row clicks
@@ -1292,9 +1295,22 @@ export function buildEventsSearchUrl({
         ? source.logSourceId
         : undefined;
     if (logSourceId == null) {
+      if (localStorage.getItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY) === 'true')
+        return null;
       notifications.show({
         color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
+        message:
+          'Drill-down is unavailable for metric sources that lack correlated log sources',
+        id: 'no-log-source-associated',
+        closeButtonProps: {
+          onClick: () => {
+            try {
+              localStorage.setItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY, 'true');
+            } catch {
+              // don't do anything
+            }
+          },
+        },
       });
       return null;
     }
