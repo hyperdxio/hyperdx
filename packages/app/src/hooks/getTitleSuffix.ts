@@ -1,8 +1,7 @@
 import { INSTANCE_LABEL } from '@/config';
 
-// Collapsed defensively (not just relying on config.ts) since document.title
-// collapses whitespace runs, so the displayed suffix should match what the
-// browser would store even if a caller passes a messier value some other way.
+// Collapsed defensively (not just relying on config.ts) so the suffix looks
+// clean even if a caller passes a messier value some other way.
 const LABEL = INSTANCE_LABEL.replace(/\s+/g, ' ');
 const SUFFIX = LABEL ? ` ${LABEL}` : '';
 

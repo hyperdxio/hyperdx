@@ -14,6 +14,8 @@ import {
 } from '@mantine/core';
 import { IconAt, IconLock } from '@tabler/icons-react';
 
+import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+
 import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
 import * as config from './config';
@@ -57,7 +59,8 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
 
   const verificationSent = msg === 'verify';
 
-  const title = `${brandName} - ${isRegister ? 'Sign up' : 'Login'}`;
+  const suffix = getTitleSuffix();
+  const title = `${brandName} - ${isRegister ? 'Sign up' : 'Login'}${suffix}`;
 
   useEffect(() => {
     // If an OSS user accidentally lands on /register after already creating a team

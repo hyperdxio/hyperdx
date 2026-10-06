@@ -85,8 +85,7 @@ export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
 // Suffix for the tab title/sidebar pill. Shown in full in the page title;
 // only truncated visually (via CSS ellipsis) in the sidebar, where space is
 // constrained. Internal whitespace is collapsed so it displays consistently
-// and so the tab-title suffix (which compares against document.title, where
-// the browser collapses whitespace runs) can reliably detect its own suffix.
+// wherever it's shown.
 export const INSTANCE_LABEL = (env('NEXT_PUBLIC_INSTANCE_LABEL') ?? '')
   .trim()
   .replace(/\s+/g, ' ');
