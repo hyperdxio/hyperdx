@@ -23,7 +23,8 @@ import {
 } from './useHeatmapView';
 
 /**
- * Query a heatmap and shape it into a `HeatmapGrid`. While a refresh is in
+ * Query a distribution heatmap: a bounds query, then a server-side
+ * `widthBucket` query over the value expression. While a refresh is in
  * flight, `view` stays on the last settled result.
  */
 export function useHeatmapData({
@@ -110,7 +111,13 @@ export function useHeatmapData({
   }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
   const currentView = useMemo<HeatmapView>(
-    () => ({ grid, generatedTsBuckets, effectiveMin, scaleType }),
+    () => ({
+      grid,
+      generatedTsBuckets,
+      effectiveMin,
+      scaleType,
+      hiddenSeriesCount: 0,
+    }),
     [grid, generatedTsBuckets, effectiveMin, scaleType],
   );
 

@@ -550,6 +550,7 @@ export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
   applyDefaultOrder: boolean = true,
+  maxGroups: number = DEFAULT_MAX_CATEGORICAL_GROUPS,
 ): Array<{ label: string; value: number; color: string }> {
   if (data.meta == null) {
     throw new Error('No meta data found in response');
@@ -587,7 +588,7 @@ export function formatResponseForCategoricalChart(
   }
 
   return labelsAndValues
-    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .slice(0, Math.min(maxGroups, DEFAULT_MAX_CATEGORICAL_GROUPS))
     .map((entry, index) => ({
       ...entry,
       color: getColor(index, entry.label),

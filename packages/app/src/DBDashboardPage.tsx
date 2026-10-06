@@ -250,6 +250,7 @@ function HeatmapTile({
   enabled?: boolean;
 }) {
   const heatmapQuery = toHeatmapQuery(queriedConfig);
+  const { mode } = heatmapQuery;
 
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(
     null,
@@ -257,7 +258,9 @@ function HeatmapTile({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const eventDeltasUrl = useMemo(() => {
-    if (!source) return null;
+    // Search page event deltas only supports trace sources and distribution mode
+    if (!source || !isTraceSource(source) || mode !== 'distribution')
+      return null;
     const url = buildEventsSearchUrl({
       source,
       config: queriedConfig,
@@ -266,7 +269,7 @@ function HeatmapTile({
     if (!url) return null;
     const separator = url.includes('?') ? '&' : '?';
     return `${url}${separator}mode=delta`;
-  }, [source, queriedConfig, dateRange]);
+  }, [source, mode, queriedConfig, dateRange]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {

@@ -25,15 +25,27 @@ export type HeatmapGrid = {
   yAxis: HeatmapYAxis;
   /** Row-major: `cells[timeIdx * rowCount + rowIdx]`. */
   cells: number[];
-  cellKind: 'count' | 'value';
 };
+
+/**
+ * Numeric-axis cells are counts, empty at 0. Series-axis cells are values
+ * that may be zero or negative, empty when NaN.
+ */
+export type HeatmapCellKind = 'count' | 'value';
+
+export function heatmapCellKind(yAxis: HeatmapYAxis): HeatmapCellKind {
+  return yAxis.type === 'series' ? 'value' : 'count';
+}
+
+export function isEmptyHeatmapCell(value: number, kind: HeatmapCellKind) {
+  return kind === 'value' ? !Number.isFinite(value) : !(value > 0);
+}
 
 export const EMPTY_HEATMAP_GRID: HeatmapGrid = {
   times: [],
   stepMs: 0,
   yAxis: { type: 'numeric', scale: 'linear', edges: [] },
   cells: [],
-  cellKind: 'count',
 };
 
 export function heatmapRowCount(yAxis: HeatmapYAxis) {
@@ -180,7 +192,6 @@ export function gridFromBucketRows({
     stepMs: times.length > 1 ? times[1] - times[0] : 0,
     yAxis: { type: 'numeric', scale: isLog ? 'log' : 'linear', edges },
     cells,
-    cellKind: 'count',
   };
 }
 

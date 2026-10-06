@@ -1,5 +1,6 @@
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  DisplayType,
   MetricsDataType,
   OnboardingTaskId,
   SourceKind,
@@ -2877,6 +2878,39 @@ describe('External API v2 Dashboards - new format', () => {
       expect(response.body.message).toContain(
         'Heatmap tiles require a Trace source',
       );
+    });
+
+    it('skips series-mode heatmap tiles on GET', async () => {
+      // Series-mode heatmaps have no external representation yet; emitting
+      // them as distribution tiles would corrupt them on GET -> PUT.
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: new ObjectId().toString(),
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Series heatmap',
+              displayType: DisplayType.Heatmap,
+              source: traceSource._id.toString(),
+              select: [
+                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              ],
+              groupBy: 'ServiceName',
+              where: '',
+              heatmap: { mode: 'series' },
+            },
+          },
+        ],
+      });
+
+      const response = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(response.body.data.tiles).toEqual([]);
     });
 
     it('round-trips a heatmap tile with only required fields', async () => {

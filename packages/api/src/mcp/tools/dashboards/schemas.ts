@@ -928,7 +928,7 @@ const mcpHeatmapSelectItemSchema = z.object({
 });
 
 // Heatmap tiles are builder-only and currently restricted to Trace sources
-// (see HEATMAP_ALLOWED_SOURCE_KINDS in `packages/common-utils/src/guards.ts`).
+// (see HEATMAP_DISTRIBUTION_SOURCE_KINDS in `packages/common-utils/src/guards.ts`).
 // The save path runs `getHeatmapTilesWithIncompatibleSources` after schema
 // validation to enforce that, mirroring the REST handler.
 const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
