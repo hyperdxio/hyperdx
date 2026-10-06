@@ -144,6 +144,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import FullscreenPanelModal from '@/components/FullscreenPanelModal';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
+import { InlineNameInput } from '@/components/InlineNameInput/InlineNameInput';
 import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
@@ -198,7 +199,6 @@ import {
 import { useConnections } from './connection';
 import { useDashboard } from './dashboard';
 import DashboardFilters from './DashboardFilters';
-import { EditablePageName } from './EditablePageName';
 import {
   GranularityPicker,
   GranularityPickerControlled,
@@ -2906,16 +2906,21 @@ function DBDashboardPage({
   );
 
   const dashboardName = (
-    <EditablePageName
+    <InlineNameInput
       key={`${dashboardHash}`}
-      name={dashboard?.name ?? ''}
-      onSave={editedName => {
-        if (dashboard != null) {
-          setDashboard({
-            ...dashboard,
-            name: editedName,
-          });
-        }
+      value={dashboard?.name ?? ''}
+      placeholder="Untitled dashboard"
+      aria-label="Dashboard name"
+      size="md"
+      headingLevel={3}
+      data-testid="dashboard-name-input"
+      onCommit={editedName => {
+        if (dashboard == null) return;
+        return new Promise<void>((resolve, reject) => {
+          setDashboard({ ...dashboard, name: editedName }, resolve, () =>
+            reject(new Error('Unable to save dashboard')),
+          );
+        });
       }}
     />
   );

@@ -25,6 +25,11 @@ module.exports = {
     '^ky$': '<rootDir>/src/__mocks__/ky-universal.ts',
     '^react-markdown$': '<rootDir>/src/__mocks__/react-markdown.tsx',
     '^remark-gfm$': '<rootDir>/src/__mocks__/remark-gfm.ts',
+    '^react-syntax-highlighter$':
+      '<rootDir>/src/__mocks__/react-syntax-highlighter.tsx',
+    // @clickhouse/click-ui depends on ESM-only lodash-es; lodash has the same API.
+    '^lodash-es$': 'lodash',
+    '^lodash-es/(.*)$': 'lodash/$1',
   },
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.tsx'],
   // Coverage floors are scoped to hooks/ and utils/ only — the genuinely
