@@ -4,8 +4,10 @@ import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DBTableChart from '@/components/DBTableChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { Table } from '@/HDXMultiSeriesTableChart';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useSource } from '@/source';
 
 // Mock dependencies
@@ -16,6 +18,11 @@ jest.mock('@/hooks/useOffsetPaginatedQuery', () => ({
 
 jest.mock('next/router', () => ({
   useRouter: jest.fn(),
+}));
+
+jest.mock('@/hooks/useChartConfig', () => ({
+  ...jest.requireActual('@/hooks/useChartConfig'),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -168,6 +175,88 @@ describe('DBTableChart', () => {
       alignedEndDate,
     ]);
     expect(dateRangeIndicatorCall.mvGranularity).toBe('1 minute');
+  });
+
+  describe('refresh indicator', () => {
+    it('asks the query to keep the previous rows during a refetch', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+
+      const options = jest.mocked(useOffsetPaginatedQuery).mock.calls[0][1];
+      expect(options?.keepPreviousData).toBe(true);
+    });
+
+    it('pulses while a refetch is showing the previous rows', () => {
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+        isPlaceholderData: true,
+      });
+
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(jest.mocked(Table).mock.calls.at(-1)![0].className).toBe(
+        'effect-pulse',
+      );
+    });
+
+    it('does not pulse once fresh rows have loaded', () => {
+      renderWithMantine(<DBTableChart config={baseTestConfig} />);
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].className,
+      ).toBeUndefined();
+    });
+
+    it('pulses the empty state while a refetch is running', () => {
+      const current = jest.mocked(useOffsetPaginatedQuery)(baseTestConfig);
+      jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+        ...current,
+        data: { ...current.data!, data: [] },
+        isPlaceholderData: true,
+      });
+
+      const { getByText } = renderWithMantine(
+        <DBTableChart config={baseTestConfig} />,
+      );
+      expect(getByText('No data found within time range.')).toHaveClass(
+        'effect-pulse',
+      );
+    });
+
+    describe('row links', () => {
+      const getRowSearchLink = jest.fn(() => '/search');
+      const rowAction = jest.fn();
+
+      afterEach(() => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(null);
+      });
+
+      const renderTable = (isPlaceholderData: boolean) => {
+        jest.mocked(useOffsetPaginatedQuery).mockReturnValue({
+          ...jest.mocked(useOffsetPaginatedQuery)(baseTestConfig),
+          isPlaceholderData,
+        });
+        renderWithMantine(
+          <DBTableChart
+            config={baseTestConfig}
+            getRowSearchLink={getRowSearchLink}
+          />,
+        );
+        return jest.mocked(Table).mock.calls.at(-1)![0];
+      };
+
+      it('disables search links on rows kept from the previous query', () => {
+        expect(renderTable(true).getRowSearchLink).toBeUndefined();
+      });
+
+      it('enables search links once fresh rows have loaded', () => {
+        expect(renderTable(false).getRowSearchLink).toBe(getRowSearchLink);
+      });
+
+      it('disables the configured row action on rows kept from the previous query', () => {
+        jest.mocked(useOnClickLinkBuilder).mockReturnValue(rowAction);
+
+        expect(renderTable(true).getRowAction).toBeUndefined();
+        expect(renderTable(false).getRowAction).toBe(rowAction);
+      });
+    });
   });
 
   describe('groupByColumnsOnLeft', () => {
@@ -404,6 +493,123 @@ describe('DBTableChart', () => {
       expect(
         jest.mocked(Table).mock.calls.at(-1)![0].alternateRowBackground,
       ).toBe(false);
+    });
+  });
+
+  describe('PromQL configs', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      dateRange: [new Date(), new Date()] as [Date, Date],
+      connection: 'test-connection',
+      promqlExpression: [{ expression: 'up' }],
+      numberFormat: { output: 'number' as const },
+    };
+
+    const queryResult = (valueType: string) => ({
+      data: {
+        data: [{ Time: '2023-11-14T22:13:20.000Z', service: 'web', Value: 1 }],
+        meta: [
+          { name: 'Time', type: 'DateTime64(3)' },
+          { name: 'service', type: 'String' },
+          { name: 'Value', type: valueType },
+        ],
+        chSql: { sql: '', params: {} },
+        window: {
+          startTime: new Date(),
+          endTime: new Date(),
+          windowIndex: 0,
+          direction: 'DESC' as const,
+        },
+      },
+      fetchNextPage: jest.fn(),
+      hasNextPage: false,
+      isLoading: false,
+      isFetching: false,
+      isError: false,
+      isPlaceholderData: false,
+      error: null,
+    });
+
+    beforeEach(() => {
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(queryResult('Float64'));
+    });
+
+    it('queries a range aligned to a resolved granularity', () => {
+      renderWithMantine(
+        <DBTableChart
+          config={{
+            ...promqlConfig,
+            dateRange: [
+              new Date('2025-11-26T00:00:14.076Z'),
+              new Date('2025-11-26T01:00:14.076Z'),
+            ],
+          }}
+        />,
+      );
+
+      const queried = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+      expect(queried.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(queried.granularity).toBe('1 minute');
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(300);
+
+      renderWithMantine(
+        <DBTableChart
+          config={{
+            ...promqlConfig,
+            dateRange: [
+              new Date('2025-11-26T00:00:14.076Z'),
+              new Date('2025-11-26T01:00:14.076Z'),
+            ],
+          }}
+        />,
+      );
+
+      const queried = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+      expect(queried.granularity).toBe('5 minute');
+    });
+
+    it('sorts client-side, since the query cannot be re-ordered server-side', () => {
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      expect(
+        jest.mocked(Table).mock.calls.at(-1)![0].enableClientSideSorting,
+      ).toBe(true);
+    });
+
+    it('formats only the value column, leaving the label columns alone', () => {
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.map(c => [c.dataKey, c.numberFormat?.output])).toEqual([
+        ['Time', undefined],
+        ['service', undefined],
+        ['Value', 'number'],
+      ]);
+    });
+
+    it('formats a value column of any numeric type', () => {
+      jest
+        .mocked(useOffsetPaginatedQuery)
+        .mockReturnValue(queryResult('Nullable(Float64)'));
+
+      renderWithMantine(<DBTableChart config={promqlConfig} />);
+
+      const columns = jest.mocked(Table).mock.calls.at(-1)![0].columns;
+      expect(columns.find(c => c.dataKey === 'Value')?.numberFormat).toEqual({
+        output: 'number',
+      });
     });
   });
 

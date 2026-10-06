@@ -4,6 +4,8 @@
  */
 import { Locator, Page } from '@playwright/test';
 
+import { WhereInputComponent } from './WhereInputComponent';
+
 export class SidePanelComponent {
   readonly page: Page;
   private readonly panelContainer: Locator;
@@ -190,6 +192,11 @@ export class SidePanelComponent {
 
   get traceLogsFilter() {
     return this.page.getByTestId('trace-logs-filter');
+  }
+
+  /** The spans filter's WHERE control. Call `toggleTraceFilters` first. */
+  get traceSpansWhereInput() {
+    return new WhereInputComponent(this.page, this.traceSpansFilter);
   }
 
   /** Expand or collapse the trace waterfall's filter inputs. */

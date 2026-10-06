@@ -159,6 +159,7 @@ jest.mock('@/hooks/useChartConfig', () => ({
 jest.mock('@/layout', () => ({
   __esModule: true,
   withAppNav: (page: unknown) => page,
+  withAppNavForSurface: () => (page: unknown) => page,
 }));
 
 jest.mock('@/theme/ThemeProvider', () => ({

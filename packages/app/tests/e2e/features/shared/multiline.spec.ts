@@ -1,139 +1,87 @@
-import { DashboardsListPage } from 'tests/e2e/page-objects/DashboardsListPage';
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 
+import {
+  QueryLanguage,
+  WhereInputComponent,
+} from '../../components/WhereInputComponent';
+import { DashboardsListPage } from '../../page-objects/DashboardsListPage';
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
+import {
+  expectExpandsAndStaysExpanded,
+  expectStaysOneRow,
+} from '../../utils/multiline-input';
 
 test.describe('Multiline Input', { tag: '@search' }, () => {
-  const testInputExpansion = async (
-    page: Page,
-    editor: Locator,
-    /** For CodeMirror, pass the content element that grows (e.g. .cm-content); for textarea, omit to use editor. */
-    measureLocator?: Locator,
-  ): Promise<void> => {
-    const measureEl = measureLocator ?? editor;
-    // Scroll into view then focus (more reliable than click for textarea/input in CI)
-    await editor.scrollIntoViewIfNeeded();
-    await editor.focus();
-    await page.keyboard.type('first line');
-
-    // Get initial single line height from the element that reflects content height
-    const singleLineBox = await measureEl.boundingBox();
-    const singleLineHeight = singleLineBox?.height || 0;
-
-    // Add a line break and type second line
-    await page.keyboard.press('Shift+Enter');
-    await page.keyboard.type('second line');
-
-    // Verify newline was inserted: CodeMirror has .cm-line per line; textarea value contains newline
-    const isCodeMirror = (await editor.locator('.cm-line').count()) > 0;
-    if (isCodeMirror) {
-      await expect(editor.locator('.cm-line')).toHaveCount(2, {
-        timeout: 2000,
-      });
-    } else {
-      await expect(editor).toHaveValue(/first line[\r\n]+second line/, {
-        timeout: 2000,
-      });
-    }
-
-    // Verify height did not shrink (may stay same on some layouts e.g. scrollable area)
-    const multiLineBox = await measureEl.boundingBox();
-    const multiLineHeight = multiLineBox?.height || 0;
-    expect(multiLineHeight).toBeGreaterThanOrEqual(singleLineHeight);
-  };
-
-  const getEditor = (
-    page: Page,
-    mode: 'SQL' | 'Lucene',
-    formSelector?: string,
-    whereText = 'WHERE',
-  ): Locator => {
-    if (mode === 'SQL') {
-      const container = formSelector ? page.locator(formSelector) : page;
-      const whereContainer = container.locator(
-        `div:has(div.mantine-Text-root:has-text("${whereText}"))`,
-      );
-      return whereContainer.locator('.cm-editor').first();
-    }
-    // Target the textarea so the click hits the typing area, not the Query language Select in the right section
-    return page
-      .locator('[data-testid="search-input"] textarea')
-      .or(page.locator('textarea[data-testid="search-input"]'))
-      .first();
-  };
-
-  // Test configurations
-  const tests = [
+  /** Pages that render a WHERE input, and how to get to one. */
+  const pages = [
     {
-      path: '/search',
       name: 'Search Page',
-      formSelector: '[data-testid="search-form"]',
-      whereText: 'WHERE',
+      openWhereInput: async (page: Page) => {
+        const searchPage = new SearchPage(page);
+        await searchPage.goto();
+        return searchPage.whereInput;
+      },
     },
     {
-      path: '/dashboards',
       name: 'Dashboard Page',
-      formSelector: undefined,
-      whereText: 'WHERE',
+      openWhereInput: async (page: Page) => {
+        const dashboardsListPage = new DashboardsListPage(page);
+        await dashboardsListPage.goto();
+        await dashboardsListPage.createNewDashboard();
+        return new WhereInputComponent(page);
+      },
     },
   ];
 
-  tests.forEach(({ path, name, formSelector, whereText }) => {
-    test(`should expand SQL input on line break on ${name}`, async ({
-      page,
-    }) => {
-      // Navigate using page object
-      // eslint-disable-next-line playwright/no-conditional-in-test
-      if (path === '/search') {
-        const searchPage = new SearchPage(page);
-        await searchPage.goto();
-        await searchPage.switchToSQLMode();
-      } else {
-        const dashboardsListPage = new DashboardsListPage(page);
-        await dashboardsListPage.goto();
-        await dashboardsListPage.createNewDashboard();
-        // Dashboard uses Controller + SQL/SearchInputV2 directly (no where-language-switch wrapper)
-        await page.getByRole('combobox', { name: 'Query language' }).click();
-        await page.getByRole('option', { name: 'SQL', exact: true }).click();
-        // Wait for dropdown to close so the WHERE input is not covered
-        await page
-          .getByRole('option', { name: 'SQL', exact: true })
-          .waitFor({ state: 'hidden', timeout: 5000 });
-      }
+  const languages: QueryLanguage[] = ['SQL', 'Lucene'];
 
-      const editor = getEditor(page, 'SQL', formSelector, whereText);
-      await expect(editor).toBeVisible();
-      // CodeMirror: .cm-editor can stay fixed; .cm-content height reflects line count
-      const measureEl = editor.locator('.cm-content').first();
-      await testInputExpansion(page, editor, measureEl);
+  pages.forEach(({ name, openWhereInput }) => {
+    languages.forEach(language => {
+      test(`should expand ${language} input on line break on ${name}`, async ({
+        page,
+      }) => {
+        const whereInput = await openWhereInput(page);
+        await whereInput.selectLanguage(language);
+
+        const field = whereInput.field(language);
+        await expect(field.focusTarget).toBeVisible();
+
+        await expectExpandsAndStaysExpanded(page, field, {
+          onSingleLine: () => whereInput.expectSeamFlush(),
+        });
+      });
     });
+  });
 
-    test(`should expand Lucene input on line break on ${name}`, async ({
-      page,
-    }) => {
-      // Navigate using page object
-      // eslint-disable-next-line playwright/no-conditional-in-test
-      if (path === '/search') {
-        const searchPage = new SearchPage(page);
-        await searchPage.goto();
-        await searchPage.switchToLuceneMode();
-      } else {
-        const dashboardsListPage = new DashboardsListPage(page);
-        await dashboardsListPage.goto();
-        await dashboardsListPage.createNewDashboard();
-        // Dashboard has no where-language-switch wrapper; use Query language textbox directly
-        await page.getByRole('combobox', { name: 'Query language' }).click();
-        await page.getByRole('option', { name: 'Lucene', exact: true }).click();
-        // Wait for dropdown to close so the search input is not covered
-        await page
-          .getByRole('option', { name: 'Lucene', exact: true })
-          .waitFor({ state: 'hidden', timeout: 5000 });
-      }
+  test('should keep SELECT and ORDER BY expanded after blur', async ({
+    page,
+  }) => {
+    const searchPage = new SearchPage(page);
+    await searchPage.goto();
 
-      const editor = getEditor(page, 'Lucene', formSelector, whereText);
-      await expect(editor).toBeVisible();
-      await testInputExpansion(page, editor);
-    });
+    for (const field of [
+      searchPage.selectClauseField(),
+      searchPage.orderByClauseField(),
+    ]) {
+      await expect(field.focusTarget).toBeVisible();
+      await searchPage.clearClause(field);
+      await expectExpandsAndStaysExpanded(page, field);
+    }
+  });
+
+  test('should keep a single-line WHERE one row after blur', async ({
+    page,
+  }) => {
+    const searchPage = new SearchPage(page);
+    await searchPage.goto();
+    const whereInput = await searchPage.openTraceSpansFilter();
+
+    for (const language of languages) {
+      await whereInput.selectLanguage(language);
+      const field = whereInput.field(language);
+      await expect(field.focusTarget).toBeVisible();
+      await expectStaysOneRow(page, field);
+    }
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.38.0",
+  "version": "2.40.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -26,6 +26,7 @@
     "storybook:build": "storybook build"
   },
   "dependencies": {
+    "@clickhouse/click-ui": "^0.12.0",
     "@codemirror/autocomplete": "^6.0.0",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-sql": "^6.7.0",
@@ -38,7 +39,7 @@
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/api": "workspace:*",
     "@hyperdx/browser": "^0.22.1",
-    "@hyperdx/common-utils": "^0.28.1",
+    "@hyperdx/common-utils": "^0.30.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@mantine/core": "^9.0.0",
     "@mantine/dates": "^9.0.0",

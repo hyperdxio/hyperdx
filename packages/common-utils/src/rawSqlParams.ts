@@ -16,7 +16,11 @@ const getIntervalSeconds = (config: RawSqlChartConfig & Partial<DateRange>) => {
 
   const effectiveGranularity =
     granularity === 'auto' && config.dateRange
-      ? convertDateRangeToGranularityString(config.dateRange)
+      ? convertDateRangeToGranularityString(
+          config.dateRange,
+          undefined,
+          config.minGranularitySeconds,
+        )
       : granularity;
 
   return convertGranularityToSeconds(effectiveGranularity);

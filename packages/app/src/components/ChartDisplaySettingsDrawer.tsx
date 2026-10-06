@@ -9,6 +9,7 @@ import {
   DisplayType,
   MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -27,6 +28,7 @@ import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
 import { FormatTime } from '@/useFormatTime';
 
+import { HeatmapScaleControl } from './DBHeatmapChart/HeatmapScaleControl';
 import { BackgroundChartInput } from './BackgroundChartInput';
 import {
   attachLocalIds,
@@ -35,8 +37,10 @@ import {
   stripLocalIds,
 } from './ColorRulesEditor';
 import { ColorSwatchInput } from './ColorSwatchInput';
+import type { HeatmapScaleType } from './DBHeatmapChart';
 import { CheckBoxControlled, TextInputControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
+import { SourceSelectControlled } from './SourceSelect';
 
 export type ChartConfigDisplaySettings = Pick<
   ChartConfigWithDateRange,
@@ -48,6 +52,8 @@ export type ChartConfigDisplaySettings = Pick<
   | 'color'
   | 'colorRules'
   | 'backgroundChart'
+  | 'enableExemplars'
+  | 'exemplarTraceSourceId'
 > & {
   groupByColumnsOnLeft?: boolean;
   alternateRowBackground?: boolean;
@@ -61,6 +67,8 @@ export type ChartConfigDisplaySettings = Pick<
   // PromQL-only: Handlebars template over each series' Prometheus label set
   // that renders the legend/tooltip name.
   legendTemplate?: string;
+  // Heatmaps only; stored on the heatmap's select[0].
+  heatmapScaleType?: HeatmapScaleType;
 };
 
 /**
@@ -80,10 +88,23 @@ interface ChartDisplaySettingsDrawerProps {
   displayType: DisplayType;
   /** 'sql' for raw SQL chart configs; anything else is treated as a builder config. */
   configType?: 'sql' | 'builder' | 'promql';
+  /** Whether a PromQL tile's queried expression runs over a range. */
+  promqlUsesRange?: boolean;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
+  /**
+   * Whether the exemplar overlay applies to this chart at all: the deployment
+   * flag is on and the source can carry exemplars (metric or PromQL).
+   */
+  showExemplars?: boolean;
+  /**
+   * Why the overlay can't be switched on for the chart as currently configured
+   * (e.g. more than one series). Set means the toggle renders disabled with this
+   * as its description, so the option stays discoverable.
+   */
+  exemplarIneligibleReason?: string;
 }
 
 function applyDefaultSettings(
@@ -106,11 +127,16 @@ function applyDefaultSettings(
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
     legendTemplate: settings.legendTemplate ?? '',
+    enableExemplars: settings.enableExemplars ?? false,
+    // '' rather than undefined so `reset` clears the picker; normalized back to
+    // undefined on apply, since the config schema only accepts a string.
+    exemplarTraceSourceId: settings.exemplarTraceSourceId ?? '',
     color: settings.color,
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
       : undefined,
     backgroundChart: settings.backgroundChart,
+    heatmapScaleType: settings.heatmapScaleType ?? 'log',
   };
 }
 
@@ -119,11 +145,14 @@ export default function ChartDisplaySettingsDrawer({
   opened,
   displayType,
   configType,
+  promqlUsesRange = false,
   defaultNumberFormat,
   onChange,
   onClose,
   previousDateRange,
   isPerSeriesNumberFormatAllowed = false,
+  showExemplars = false,
+  exemplarIneligibleReason,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
@@ -146,6 +175,7 @@ export default function ChartDisplaySettingsDrawer({
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
   const isFillNullsEnabled = shouldFillNullsWithZero(fillNulls);
+  const enableExemplars = useWatch({ control, name: 'enableExemplars' });
 
   const handleClose = useCallback(() => {
     reset(appliedDefaults);
@@ -170,6 +200,9 @@ export default function ChartDisplaySettingsDrawer({
           numberFormat: numberFormatExplicit
             ? formValues.numberFormat
             : undefined,
+          // Empty picker means "fall back to the chart source's linked trace
+          // source"; the config schema takes a string or nothing, not ''.
+          exemplarTraceSourceId: rest.exemplarTraceSourceId || undefined,
           colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
         },
         hasDirtyFields,
@@ -199,9 +232,12 @@ export default function ChartDisplaySettingsDrawer({
   const showSeriesLimit = isTimeChart && configType !== 'promql';
   const isRawSqlTimeChart = showSeriesLimit && configType === 'sql';
 
-  // Every PromQL display except Number surfaces the series name
+  // Every PromQL display that surfaces a series name. A number tile shows one
+  // value and a table gives each label its own column, so neither has a legend.
   const showLegendTemplate =
-    configType === 'promql' && displayType !== DisplayType.Number;
+    configType === 'promql' &&
+    displayType !== DisplayType.Number &&
+    displayType !== DisplayType.Table;
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; raw SQL configs author their own LIMIT directly.
@@ -215,20 +251,29 @@ export default function ChartDisplaySettingsDrawer({
   // column ordering needs the builder `select` structure to know which columns
   // are group-by keys, so it stays builder-only.
   const showTableOptions = displayType === DisplayType.Table;
-  const showGroupByColumnsOnLeft = showTableOptions && configType !== 'sql';
+  const showGroupByColumnsOnLeft =
+    showTableOptions && configType !== 'sql' && configType !== 'promql';
 
   // Tile-level color is only meaningful for number tiles today.
   // Per-series colors on line / bar / pie ship in a follow-up PR via
   // `select[i].color`.
   const showTileColor = displayType === DisplayType.Number;
 
-  // The background sparkline is derived from a time-bucketed version of the
-  // tile's query, so it only applies to builder number tiles: raw SQL number
-  // tiles return a single value with no time dimension to bucket. On a SQL
-  // number tile the control is shown disabled with a hint rather than hidden,
-  // so the option stays discoverable.
+  // The sparkline needs buckets. A builder tile derives them from a
+  // time-bucketed version of its query; a PromQL tile reuses the buckets its
+  // range query fetches, so an instant one has none. Raw SQL returns a
+  // single value with no time dimension at all. Where it cannot apply the
+  // control is shown disabled with a hint rather than hidden, so the option
+  // stays discoverable.
   const showBackgroundChart = displayType === DisplayType.Number;
-  const isBackgroundChartDisabled = configType === 'sql';
+  const isBackgroundChartDisabled =
+    configType === 'sql' || (configType === 'promql' && !promqlUsesRange);
+  const backgroundChartDisabledHint =
+    configType === 'promql'
+      ? 'Available on PromQL range queries.'
+      : 'Available on query-builder number tiles.';
+
+  const showHeatmapScale = displayType === DisplayType.Heatmap;
 
   return (
     <Drawer
@@ -279,6 +324,39 @@ export default function ChartDisplaySettingsDrawer({
               label="Fit Y-Axis to Data"
               description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
+            {showExemplars && (
+              <>
+                <CheckBoxControlled
+                  control={control}
+                  name="enableExemplars"
+                  size="xs"
+                  label="Show exemplars"
+                  // Still switchable off once a chart has become ineligible;
+                  // otherwise the setting is one-way and the chart keeps
+                  // reporting a suppressed overlay the user can't withdraw.
+                  disabled={
+                    exemplarIneligibleReason != null && !enableExemplars
+                  }
+                  description={
+                    exemplarIneligibleReason ??
+                    'Overlay markers for individual traces at their own measured value, with a link to the trace.'
+                  }
+                />
+                {enableExemplars && !exemplarIneligibleReason && (
+                  <Box>
+                    <SourceSelectControlled
+                      size="xs"
+                      control={control}
+                      name="exemplarTraceSourceId"
+                      allowedSourceKinds={[SourceKind.Trace]}
+                      label="Exemplar trace source"
+                      description="Where a marker's trace id is looked up. Leave empty to use the chart source's linked trace source."
+                      clearable
+                    />
+                  </Box>
+                )}
+              </>
+            )}
             {showSeriesLimit && (
               <Box>
                 <Controller
@@ -305,6 +383,22 @@ export default function ChartDisplaySettingsDrawer({
                 />
               </Box>
             )}
+            <Divider />
+          </>
+        )}
+
+        {showHeatmapScale && (
+          <>
+            <Controller
+              control={control}
+              name="heatmapScaleType"
+              render={({ field: { onChange, value } }) => (
+                <HeatmapScaleControl
+                  value={value ?? 'log'}
+                  onChange={onChange}
+                />
+              )}
+            />
             <Divider />
           </>
         )}
@@ -430,6 +524,7 @@ export default function ChartDisplaySettingsDrawer({
                   value={value}
                   onChange={onChange}
                   disabled={isBackgroundChartDisabled}
+                  disabledHint={backgroundChartDisabledHint}
                 />
               )}
             />

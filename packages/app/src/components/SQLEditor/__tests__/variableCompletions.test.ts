@@ -53,6 +53,10 @@ describe('buildSqlVariableCompletions', () => {
     );
   });
 
+  it('withholds the markdown format, which only applies to markdown tiles', () => {
+    expect(labels([SERVICE])).not.toContain('${service:markdown}');
+  });
+
   it('withholds the macros that a chart builder input never expands', () => {
     // Only the variable macros are substituted into builder expressions, so
     // offering $__timeFilter and friends here would suggest SQL that reaches

@@ -42,6 +42,7 @@ jest.mock('@/hooks/useChartConfig', () => ({
     isPlaceholderData: false,
     isSuccess: true,
   })),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/source', () => ({

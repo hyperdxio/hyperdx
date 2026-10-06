@@ -10,22 +10,10 @@ import {
 
 import { type PositionedExemplar } from '@/components/Exemplars';
 import { useExemplars, useExemplarTraceMeta } from '@/hooks/useExemplars';
+// Past the barrel deliberately: several chart tests jest.mock the exemplar hooks
+// index wholesale, and this pure helper must survive that.
+import { exemplarTraceWindow } from '@/hooks/useExemplars/traceWindow';
 import { useSource } from '@/source';
-
-/**
- * Half-width of the window the Inspect deep link opens around an exemplar. Wide
- * enough to absorb clock skew between the metric pipeline and the trace store,
- * narrow enough that the trace is not buried among unrelated ones.
- */
-const EXEMPLAR_TRACE_WINDOW_MS = 5 * 60 * 1000;
-
-/** Epoch-ms [from, to] bracketing an exemplar, for the search page's range. */
-function exemplarTraceWindow(timestampMs: number): [number, number] {
-  return [
-    timestampMs - EXEMPLAR_TRACE_WINDOW_MS,
-    timestampMs + EXEMPLAR_TRACE_WINDOW_MS,
-  ];
-}
 
 /**
  * Owns the exemplar overlay's data and its hover/pin card state for one chart.
@@ -64,9 +52,10 @@ export function useExemplarCard({
   /** Series the chart actually draws; see useExemplars for why it matters. */
   plottedSeriesCount?: number;
 }) {
-  // Exemplar overlay is configured per-chart via `enableExemplars` (set in the
-  // chart editor next to "As Ratio"), not a runtime toolbar toggle. The hook is
-  // a no-op unless the flag is set and the source kind supports exemplars.
+  // Exemplar overlay is configured per-chart via `enableExemplars` (the "Show
+  // exemplars" toggle in the chart editor's Display Settings drawer), not a
+  // runtime toolbar toggle. The hook is a no-op unless the flag is set and the
+  // source kind supports exemplars.
   const {
     exemplars,
     isError: isExemplarsError,
@@ -208,6 +197,7 @@ export function useExemplarCard({
   } = useExemplarTraceMeta(
     activeExemplar?.exemplar.traceId,
     exemplarTraceSource,
+    activeExemplar?.exemplar.timestamp,
   );
 
   // A configured trace source that isn't actually a Trace kind never runs a query,

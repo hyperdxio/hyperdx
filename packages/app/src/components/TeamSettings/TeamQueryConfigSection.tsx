@@ -19,8 +19,10 @@ import { IconHelpCircle, IconPencil } from '@tabler/icons-react';
 
 import api from '@/api';
 import SelectControlled from '@/components/SelectControlled';
+import { IS_EXEMPLARS_ENABLED } from '@/config';
 import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
+  DEFAULT_MAX_EXEMPLARS,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
@@ -328,6 +330,19 @@ export default function TeamQueryConfigSection() {
             displayValue={displayValueWithUnit('keys')}
             description={`Default is ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}
           />
+          {IS_EXEMPLARS_ENABLED && (
+            <ClickhouseSettingForm
+              settingKey="maxExemplars"
+              label="Max exemplars per chart"
+              tooltip="How many exemplar markers a time chart draws. Markers are sampled to this many, keeping the slowest trace in each time bucket"
+              type="number"
+              defaultValue={DEFAULT_MAX_EXEMPLARS}
+              placeholder={`default = ${DEFAULT_MAX_EXEMPLARS}, 0 = unlimited`}
+              min={0}
+              max={1000}
+              displayValue={displayValueWithUnit('markers')}
+            />
+          )}
           <ClickhouseSettingForm
             settingKey="fieldMetadataDisabled"
             label="Field Metadata Queries"

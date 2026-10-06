@@ -41,11 +41,11 @@ import type { NumberFormat } from '@/types';
 import { useFormatTime } from '@/useFormatTime';
 import { COLORS } from '@/utils';
 
+import { formatAxisTick } from './axisTicks';
 import {
   type ActiveClickPayload,
   buildActiveClickSeries,
   type ChartMouseState,
-  formatAxisTick,
   getActiveLabel,
   getSelectedLineData,
   getSeriesDisplayName,
@@ -74,6 +74,10 @@ import styles from '@styles/HDXLineChart.module.scss';
 // cycle can keep the chart (and the form controls around it in the tile
 // editor) from ever settling.
 const RESPONSIVE_CONTAINER_DEBOUNCE_MS = 50;
+
+// Stable identity for the referenceLineValues default - a fresh `[]` literal
+// as a default prop value defeats memoization and can loop React's compiler.
+const EMPTY_REFERENCE_LINE_VALUES: number[] = [];
 
 /**
  * Compute the unique set of hexes referenced by `<linearGradient>` defs
@@ -109,6 +113,7 @@ export const MemoChart = memo(function MemoChart({
   dateRange,
   lineData,
   referenceLines,
+  referenceLineValues = EMPTY_REFERENCE_LINE_VALUES,
   annotations,
   logReferenceTimestamp,
   displayType = DisplayType.Line,
@@ -150,6 +155,9 @@ export const MemoChart = memo(function MemoChart({
   dateRange: [Date, Date] | Readonly<[Date, Date]>;
   lineData: LineData[];
   referenceLines?: React.ReactNode;
+  // Raw numeric value(s) backing referenceLines (pre-rendered JSX the axis
+  // math can't read), used to size the Y-axis domain around them.
+  referenceLineValues?: number[];
   /**
    * Event markers (alerts, releases, …) drawn as dashed vertical lines with a
    * label above. Passed as data rather than pre-rendered elements so the chart
@@ -317,7 +325,7 @@ export const MemoChart = memo(function MemoChart({
   // Axis domains, the exemplar clamp range, and annotation elements — see
   // useChartScales.
   const {
-    yAxisDomain,
+    yAxisBounds,
     exemplarYBounds,
     xAxisDomain,
     annotationElements,
@@ -332,9 +340,13 @@ export const MemoChart = memo(function MemoChart({
     fitYAxisToData,
     graphResults,
     lineData,
+    visibleLineData,
     selectedSeriesNames,
+    referenceLineValues,
+    axisNumberFormat,
     hasExemplars: !!exemplars?.length,
   });
+  const yAxisDomain = yAxisBounds.domain;
 
   // The chart's outer positioned container. Used to convert a pointer's
   // viewport clientX into a stable container-relative X for measuring
@@ -449,6 +461,10 @@ export const MemoChart = memo(function MemoChart({
     (value: number) => formatAxisTick(value, axisNumberFormat),
     [axisNumberFormat],
   );
+
+  const yAxisTicks = yAxisBounds.ticks;
+  // computeYAxisBounds already resolves ticks+formatter together per domain.
+  const yAxisTickFormatter = yAxisBounds.tickFormatter ?? tickFormatter;
 
   const [highlightStart, setHighlightStart] = useState<string | undefined>();
   const [highlightEnd, setHighlightEnd] = useState<string | undefined>();
@@ -862,9 +878,10 @@ export const MemoChart = memo(function MemoChart({
           <YAxis
             width={Y_AXIS_WIDTH}
             minTickGap={25}
-            tickFormatter={tickFormatter}
+            tickFormatter={yAxisTickFormatter}
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
             domain={yAxisDomain}
+            ticks={yAxisTicks}
           />
           {lines}
           {/* HOVER tooltip (also drives cross-chart shadow tooltips via syncId).

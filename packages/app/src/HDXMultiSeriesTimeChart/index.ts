@@ -5,10 +5,15 @@
  * file layout stays free to change.
  */
 export {
+  formatAxisTick,
+  getExpandableYAxisTicks,
+  getNiceYAxisTicks,
+  getYAxisTicks,
+} from './axisTicks';
+export {
   type ActiveClickPayload,
   type ActiveClickSeries,
   buildActiveClickSeries,
-  formatAxisTick,
   getSelectedLineData,
   getVisibleLineData,
   getVisibleTooltipRows,
@@ -18,3 +23,4 @@ export {
 export { MAX_TOOLTIP_ROWS, TOOLTIP_POINT_OFFSET_PX } from './constants';
 export { collectMemoChartGradientHexes, MemoChart } from './MemoChart';
 export { TooltipItem } from './TooltipItem';
+export { computeYAxisBounds, scanYAxisValueRange } from './useChartScales';

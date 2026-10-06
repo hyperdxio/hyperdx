@@ -518,9 +518,7 @@ describe('alerts router', () => {
     });
   });
 
-  // Documents written before the fields existed have neither, and the startup
-  // backfill has not necessarily run yet.
-  it('resolves displayName and tags for a document stored without them', async () => {
+  it('Derives name and tags from the saved search for a document stored without them', async () => {
     const savedSearch = await SavedSearch.create({
       name: 'Legacy search',
       source: new mongoose.Types.ObjectId(),
@@ -543,6 +541,12 @@ describe('alerts router', () => {
       .get(`/alerts/${alert._id.toString()}`)
       .expect(200);
     expect(single.body.data).toMatchObject({
+      displayName: 'Legacy search',
+      tags: ['legacy'],
+    });
+
+    const list = await agent.get('/alerts').expect(200);
+    expect(list.body.data[0]).toMatchObject({
       displayName: 'Legacy search',
       tags: ['legacy'],
     });

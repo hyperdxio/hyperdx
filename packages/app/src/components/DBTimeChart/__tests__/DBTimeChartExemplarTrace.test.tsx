@@ -39,6 +39,7 @@ jest.mock('@/components/Exemplars', () => ({
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: (...args: unknown[]) =>
     mockUseQueriedChartConfig(...args),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -86,6 +87,7 @@ function lastProps<P>(calls: [P][], what: string): P {
   return calls[calls.length - 1][0];
 }
 const cardProps = () => lastProps(mockCard.mock.calls, 'ExemplarHoverCard');
+const chartProps = () => lastProps(mockChart.mock.calls, 'MemoChart');
 
 describe('DBTimeChart exemplar trace wiring', () => {
   const baseConfig = {
@@ -161,6 +163,31 @@ describe('DBTimeChart exemplar trace wiring', () => {
       );
 
       expect(mockUseSource).toHaveBeenCalledWith({ id: 'linked-traces' });
+    });
+
+    it('looks the hovered trace up within a window around its exemplar', () => {
+      mockUseSource.mockReturnValue({
+        data: { id: 'explicit-traces', kind: 'trace' },
+        isLoading: false,
+      });
+
+      renderWithMantine(
+        <DBTimeChart
+          config={{ ...baseConfig, exemplarTraceSourceId: 'explicit-traces' }}
+        />,
+      );
+
+      act(() => {
+        chartProps().onExemplarHover?.(exemplar, 10, 20);
+      });
+
+      // The timestamp is what bounds the lookup's scan; without it the query
+      // reads every partition of the traces table on each new marker hover.
+      expect(mockUseExemplarTraceMeta).toHaveBeenLastCalledWith(
+        exemplar.traceId,
+        expect.objectContaining({ id: 'explicit-traces' }),
+        exemplar.timestamp,
+      );
     });
 
     it('reports an unconfigured trace source to the hover card', () => {

@@ -10,12 +10,15 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Divider, Stack, Text } from '@mantine/core';
+import { Accordion, Box, Divider, Stack, Text } from '@mantine/core';
 import { IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
 import { buildTableRowSearchUrl } from '@/ChartUtils';
-import { getAlertReferenceLines } from '@/components/Alerts';
+import {
+  getAlertReferenceLines,
+  getAlertReferenceLineValues,
+} from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import { DBBarChart } from '@/components/DBBarChart';
@@ -23,7 +26,7 @@ import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
   HEATMAP_N_BUCKETS,
-  toHeatmapChartConfig,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
@@ -33,10 +36,12 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
 import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
   isSingleExpression,
+  useSource,
 } from '@/source';
 import {
   orderByStringToSortingState,
@@ -59,12 +64,10 @@ function HeatmapPreview({
 }: {
   config: BuilderChartConfigWithDateRange;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(config);
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={toHeatmapQuery(config)}
         showLegend
         errorVariant="inline"
       />
@@ -93,8 +96,8 @@ function HeatmapSQLPreview({
     ...config,
     timestampValueExpression,
   };
-  const { heatmapConfig, scaleType } =
-    toHeatmapChartConfig(configWithTimestamp);
+  const { config: heatmapConfig, scaleType } =
+    toHeatmapQuery(configWithTimestamp);
   const granularity = convertDateRangeToGranularityString(dateRange, 245);
 
   const boundsConfig = buildHeatmapBoundsConfig({
@@ -168,9 +171,11 @@ export function ChartPreviewPanel({
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
+  const { data: queriedSource } = useSource({ id: queriedConfig?.source });
+  const minGranularitySeconds = getMinGranularitySeconds(queriedSource);
   const renderedPromql = useMemo(
-    () => buildRenderedPromqlExpression(queriedConfig),
-    [queriedConfig],
+    () => buildRenderedPromqlExpression(queriedConfig, minGranularitySeconds),
+    [queriedConfig, minGranularitySeconds],
   );
 
   const blockingFilterNames = missingRequiredFilterNames ?? [];
@@ -209,6 +214,18 @@ export function ChartPreviewPanel({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
+  const referenceLineValues = useMemo(
+    () =>
+      alert
+        ? getAlertReferenceLineValues({
+            threshold: alert.threshold,
+            thresholdMax: alert.thresholdMax,
+            thresholdType: alert.thresholdType,
+          })
+        : undefined,
+    [alert],
+  );
+
   return (
     <>
       {isBlockedByRequiredFilters ? (
@@ -242,7 +259,11 @@ export function ChartPreviewPanel({
                     })
                 : undefined
             }
-            onSortingChange={onTableSortingChange}
+            onSortingChange={
+              isBuilderChartConfig(queriedConfig)
+                ? onTableSortingChange
+                : undefined
+            }
             sort={tableSortState}
             showMVOptimizationIndicator={false}
             errorVariant="inline"
@@ -263,6 +284,7 @@ export function ChartPreviewPanel({
                 thresholdType: alert.thresholdType,
               })
             }
+            referenceLineValues={referenceLineValues}
             errorVariant="inline"
             showMVOptimizationIndicator={false}
             // Preview doesn't need the MV indicators; disabling both lets
@@ -475,7 +497,18 @@ export function ChartPreviewPanel({
               renderedPromql == null ? RUN_TO_PREVIEW : renderedPromql.error
             }
           >
-            <PromQLPreview expression={renderedPromql?.expression ?? ''} />
+            <Stack gap="xs">
+              {(renderedPromql?.expressions ?? []).map((entry, index, all) => (
+                <Box key={entry.id}>
+                  {all.length > 1 && (
+                    <Text size="xxs" c="dimmed" mb={2}>
+                      {entry.alias ?? `Expression ${index + 1}`}
+                    </Text>
+                  )}
+                  <PromQLPreview expression={entry.expression} />
+                </Box>
+              ))}
+            </Stack>
           </QueryPreviewAccordion>
         </>
       )}

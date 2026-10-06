@@ -7,12 +7,13 @@
 feat: exemplar overlay for metric and PromQL time charts
 
 Time charts on metric and PromQL sources can overlay exemplars — individual
-trace-linked data points — via the "Exemplars" toggle in the chart editor.
-Hovering a marker shows the exemplar's own value and time plus trace metadata
+trace-linked data points — via the "Show exemplars" toggle in the chart
+editor's display settings. Hovering a marker shows the exemplar's own value and time plus trace metadata
 from a configurable trace source, with a button to open the trace.
 
 Off by default for the whole deployment behind `NEXT_PUBLIC_ENABLE_EXEMPLARS`,
-and per-chart behind `enableExemplars`.
+and per-chart behind the toggle. How many markers a chart draws is a team
+setting, Max Exemplars per Chart.
 
 Markers are sampled the way Grafana samples them: bucketed at the chart's
 granularity, keeping the slowest trace in each bucket plus any further trace more

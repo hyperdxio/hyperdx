@@ -8,3 +8,4 @@ export {
   type ExemplarYBounds,
   type PositionedExemplar,
 } from './exemplarPoints';
+export { getExemplarToggleState } from './exemplarToggle';

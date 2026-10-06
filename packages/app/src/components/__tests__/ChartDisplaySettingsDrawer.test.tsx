@@ -17,6 +17,14 @@ jest.mock('@/useFormatTime', () => ({
   FormatTime: jest.fn(() => null),
 }));
 
+// The trace-source picker reads the sources query; the drawer renders outside a
+// QueryClientProvider here.
+jest.mock('@/components/SourceSelect', () => ({
+  SourceSelectControlled: jest.fn(() => (
+    <div data-testid="exemplar-trace-source-select" />
+  )),
+}));
+
 describe('ChartDisplaySettingsDrawer', () => {
   const baseProps = {
     opened: true,
@@ -28,6 +36,51 @@ describe('ChartDisplaySettingsDrawer', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('heatmap y axis scale', () => {
+    it('shows the scale only for heatmaps', () => {
+      const { unmount } = renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Line}
+        />,
+      );
+      expect(
+        screen.queryByTestId('heatmap-scale-control'),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+        />,
+      );
+      expect(screen.getByTestId('heatmap-scale-control')).toBeInTheDocument();
+    });
+
+    it('applies the chosen scale', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByText('Linear'));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        heatmapScaleType: 'linear',
+      });
+    });
   });
 
   describe('color picker section', () => {
@@ -176,6 +229,89 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange.mock.calls[0][0]).toMatchObject({
         fitYAxisToData: true,
+      });
+    });
+  });
+
+  describe('exemplar overlay settings', () => {
+    const lineProps = {
+      ...baseProps,
+      configType: 'builder' as const,
+      displayType: DisplayType.Line,
+    };
+
+    it('hides the toggle on a chart that cannot carry exemplars', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...lineProps} />);
+
+      expect(
+        screen.queryByRole('checkbox', { name: /show exemplars/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('disables the toggle and gives the reason when the chart is ineligible', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...lineProps}
+          showExemplars
+          exemplarIneligibleReason="Available on a single non-ratio histogram series."
+        />,
+      );
+
+      expect(
+        screen.getByRole('checkbox', { name: /show exemplars/i }),
+      ).toBeDisabled();
+      expect(
+        screen.getByText(/single non-ratio histogram series/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByTestId('exemplar-trace-source-select'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('leaves an already-enabled toggle switchable once the chart turns ineligible', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...lineProps}
+          settings={{ enableExemplars: true } as ChartConfigDisplaySettings}
+          showExemplars
+          exemplarIneligibleReason="Available on a single non-ratio histogram series."
+        />,
+      );
+
+      // Otherwise the setting is one-way: the chart keeps reporting a suppressed
+      // overlay the user has no way to withdraw.
+      const checkbox = screen.getByRole('checkbox', {
+        name: /show exemplars/i,
+      });
+      expect(checkbox).toBeChecked();
+      expect(checkbox).toBeEnabled();
+    });
+
+    it('calls onChange with enableExemplars = true and no trace source override', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...lineProps}
+          showExemplars
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(
+        screen.getByRole('checkbox', { name: /show exemplars/i }),
+      );
+      expect(
+        screen.getByTestId('exemplar-trace-source-select'),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        enableExemplars: true,
+        exemplarTraceSourceId: undefined,
       });
     });
   });
@@ -486,6 +622,24 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('display group by columns on left setting (PromQL)', () => {
+    it('does not show the toggle for PromQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="promql"
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as
@@ -577,6 +731,25 @@ describe('ChartDisplaySettingsDrawer', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Line,
     };
+
+    it('is offered on a PromQL time series chart', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...promqlProps} />);
+
+      expect(screen.getByTestId('legend-template-input')).toBeInTheDocument();
+    });
+
+    it('is hidden on a PromQL table chart', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('legend-template-input'),
+      ).not.toBeInTheDocument();
+    });
 
     it('blocks Apply when the template exceeds the persisted length cap', async () => {
       const onChange = jest.fn();

@@ -1,3 +1,4 @@
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { Types } from 'mongoose';
 
 import * as config from '@/config';
@@ -10,9 +11,18 @@ import {
   seedTimeSeriesTagsTable,
 } from '@/fixtures';
 import Connection from '@/models/connection';
-import { PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC } from '@/routers/api/prometheus';
+import {
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
+  clickhousePrometheusUpstream,
+  joinPrometheusUpstreamUrl,
+  PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC,
+} from '@/routers/api/prometheus';
 
 const mockFetch = jest.mocked(global.fetch);
+
+// Set by jest.setup.ts before it stubs `fetch`, for tests that must reach a
+// live service.
+const { realFetch } = globalThis as unknown as { realFetch: typeof fetch };
 
 const matchQueryString = (selectors: string[]) =>
   selectors.map(s => `match[]=${encodeURIComponent(s)}`).join('&');
@@ -42,6 +52,12 @@ function fakeUpstreamResponse(
     json: jest.fn().mockResolvedValue(payload),
   } as unknown as Response;
 }
+
+// What ClickHouse's prometheus_api_v1 handler answers the router's
+// `format_query` probe with. Queue this before the real upstream response in any
+// test that expects a ClickHouse connection to be proxied.
+const handlerProbeResponse = () =>
+  fakeUpstreamResponse({ status: 'success', data: 'up' });
 
 describe('prometheus router', () => {
   const server = getServer();
@@ -685,20 +701,390 @@ describe('prometheus router', () => {
       expect(requested.searchParams.get('step')).toBe('15s');
     });
 
-    it('does NOT proxy to Prometheus when connection is not isPrometheusEndpoint', async () => {
+    it('proxies a ClickHouse connection to its prometheus_api_v1 handler with db/table and credentials', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+      const promResponse = {
+        status: 'success',
+        data: { resultType: 'matrix', result: [] },
+      };
+      mockFetch
+        .mockResolvedValueOnce(handlerProbeResponse())
+        .mockResolvedValueOnce(fakeUpstreamResponse(promResponse));
+
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          database: 'otel',
+          table: 'metrics_ts',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      expect(res.body).toEqual(promResponse);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      const [probeUrl, probeInit] = mockFetch.mock.calls[0];
+      expect(String(probeUrl)).toContain(
+        `${config.CLICKHOUSE_HOST}/prometheus/api/v1/format_query?query=up`,
+      );
+      expect(probeInit?.headers).toMatchObject({
+        'X-ClickHouse-User': config.CLICKHOUSE_USER,
+      });
+      const [calledUrl, init] = mockFetch.mock.calls[1];
+      expect(calledUrl).toContain(
+        `${config.CLICKHOUSE_HOST}/prometheus/api/v1/query_range`,
+      );
+      expect(calledUrl).toContain('database=otel');
+      expect(calledUrl).toContain('table=metrics_ts');
+      expect(calledUrl).toContain('max_execution_time=30');
+      expect(calledUrl).toContain('max_result_rows=100000');
+      expect(calledUrl).not.toContain('connectionId');
+      expect(init?.headers).toMatchObject({
+        'X-ClickHouse-User': config.CLICKHOUSE_USER,
+        'X-ClickHouse-Key': config.CLICKHOUSE_PASSWORD,
+      });
+    });
+
+    it('does not let the request loosen the pinned ClickHouse limits', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+      mockFetch.mockResolvedValueOnce(handlerProbeResponse());
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          table: 'metrics_ts',
+          max_execution_time: '9999',
+          max_result_rows: '0',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const calledUrl = new URL(String(mockFetch.mock.calls[1][0]));
+      expect(calledUrl.searchParams.getAll('max_execution_time')).toEqual([
+        '30',
+      ]);
+      expect(calledUrl.searchParams.getAll('max_result_rows')).toEqual([
+        '100000',
+      ]);
+    });
+
+    it('falls back to prometheusQueryRange() when the server has no prometheus_api_v1 handler', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+      // A stock ClickHouse answers the probe with a plain-text 404.
+      mockFetch.mockResolvedValueOnce({
+        status: 404,
+        text: jest
+          .fn()
+          .mockResolvedValue(
+            'There is no handle /prometheus/api/v1/format_query',
+          ),
+      } as unknown as Response);
+
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '60s',
+          table: 'no_such_table_for_fallback',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      // The table function ran (and failed on the missing table); the
+      // upstream was never asked to evaluate the query.
+      expect(res.body.error).toMatch(/no_such_table_for_fallback/);
+    });
+
+    // The one place the proxy meets a real prometheus_api_v1 handler: the CI
+    // ClickHouse (26.8, docker/clickhouse/local/config.xml) serves it, so the
+    // stubbed fetch is swapped for the real one and the answer has to be
+    // Prometheus-shaped data from a seeded table. Every other proxy test only
+    // pins the request shape.
+    describe('against the CI ClickHouse prometheus_api_v1 handler', () => {
+      const TABLE = 'prom_http_api_live';
+      const START = 1700000000;
+
+      beforeAll(async () => {
+        await seedTimeSeriesTagsTable({
+          table: TABLE,
+          series: [
+            {
+              metricName: 'live_up',
+              tags: { job: 'api' },
+              startSec: START,
+              endSec: START + 60,
+            },
+            {
+              metricName: 'live_up',
+              tags: { job: 'web' },
+              startSec: START,
+              endSec: START + 60,
+            },
+          ],
+          withSamples: true,
+        });
+      });
+
+      afterAll(async () => {
+        await dropTimeSeriesTable({ table: TABLE });
+      });
+
+      beforeEach(() => {
+        mockFetch.mockImplementation(realFetch);
+      });
+
+      it('answers a range query with the series from the requested table', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query_range')
+          .query({
+            query: 'sum by (job) (live_up)',
+            start: String(START),
+            end: String(START + 60),
+            step: '60s',
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(200);
+
+        expect(res.headers['content-type']).toMatch(/application\/json/);
+        expect(res.body.status).toBe('success');
+        expect(res.body.data.resultType).toBe('matrix');
+        const byJob = Object.fromEntries(
+          res.body.data.result.map((r: any) => [r.metric.job, r.values]),
+        );
+        expect(Object.keys(byJob).sort()).toEqual(['api', 'web']);
+        expect(byJob.api).toEqual(
+          expect.arrayContaining([
+            [START, '1'],
+            [START + 60, '1'],
+          ]),
+        );
+      });
+
+      it('answers an instant query', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query')
+          .query({
+            query: 'count(live_up)',
+            time: String(START + 60),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(200);
+
+        expect(res.body).toEqual({
+          status: 'success',
+          data: {
+            resultType: 'vector',
+            result: [{ metric: {}, value: [START + 60, '2'] }],
+          },
+        });
+      });
+
+      // The router's limits are compile-time constants far above anything a
+      // test can exceed, so the same URL builder is driven at tiny values
+      // straight at the handler. This pins the property the router relies on:
+      // settings in the URL are applied to the PromQL evaluation and a breach
+      // comes back as a Prometheus 400, not as a truncated 200.
+      const liveRangeQuery = async (limits: {
+        maxExecutionSec?: number;
+        maxResultRows?: number;
+      }) => {
+        const url = joinPrometheusUpstreamUrl(
+          clickhousePrometheusUpstream(config.CLICKHOUSE_HOST, limits),
+          `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
+        );
+        for (const [k, v] of Object.entries({
+          query: 'live_up',
+          start: String(START),
+          end: String(START + 60),
+          step: '60',
+          database: DEFAULT_DATABASE,
+          table: TABLE,
+        })) {
+          url.searchParams.set(k, v);
+        }
+        const resp = await realFetch(url, {
+          headers: {
+            'X-ClickHouse-User': config.CLICKHOUSE_USER,
+            'X-ClickHouse-Key': config.CLICKHOUSE_PASSWORD,
+          },
+        });
+        return { status: resp.status, body: await resp.json() };
+      };
+
+      it('enforces max_result_rows pinned on the upstream URL', async () => {
+        const { status, body } = await liveRangeQuery({ maxResultRows: 1 });
+        expect(status).toBe(400);
+        expect(body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: expect.stringMatching(/Limit for result exceeded/),
+        });
+      });
+
+      it('enforces max_execution_time pinned on the upstream URL', async () => {
+        const { status, body } = await liveRangeQuery({
+          maxExecutionSec: 0.0001,
+        });
+        expect(status).toBe(400);
+        expect(body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: expect.stringMatching(/Timeout exceeded/),
+        });
+      });
+
+      it('answers in full at the limits the router pins', async () => {
+        const { status, body } = await liveRangeQuery({});
+        expect(status).toBe(200);
+        expect(body.data.result).toHaveLength(2);
+      });
+
+      it('relays a PromQL parse error as a Prometheus 400', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query')
+          .query({
+            query: 'live_up(',
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(400);
+
+        expect(res.body).toMatchObject({
+          status: 'error',
+          errorType: 'bad_data',
+          error: expect.stringContaining('PromQL'),
+        });
+      });
+    });
+
+    describe('on ClickHouse without the Prometheus HTTP API (< 26.6)', () => {
+      const TABLE = 'prom_query_range_fallback';
+      const START = 1700000000;
+
+      beforeAll(async () => {
+        await seedTimeSeriesTagsTable({
+          table: TABLE,
+          series: [
+            {
+              metricName: 'fallback_up',
+              tags: { job: 'api' },
+              startSec: START,
+              endSec: START + 60,
+            },
+          ],
+          withSamples: true,
+        });
+      });
+
+      afterAll(async () => {
+        await dropTimeSeriesTable({ table: TABLE });
+      });
+
+      beforeEach(() => {
+        jest
+          .spyOn(Metadata.prototype, 'getServerVersion')
+          .mockResolvedValue([26, 5, 0, 0]);
+      });
+
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      it('evaluates through prometheusQueryRange() instead of proxying', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query_range')
+          .query({
+            query: 'fallback_up',
+            start: String(START),
+            end: String(START + 60),
+            step: '60s',
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(200);
+
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(res.body.status).toBe('success');
+        expect(res.body.data.resultType).toBe('matrix');
+        expect(res.body.data.result).toEqual([
+          {
+            metric: { __name__: 'fallback_up', job: 'api' },
+            values: expect.arrayContaining([[START, '1']]),
+          },
+        ]);
+      });
+
+      it('evaluates an instant query through prometheusQuery()', async () => {
+        const { agent, team } = await getLoggedInAgent(server);
+        const conn = await seedClickHouseConnection(team._id);
+
+        const res = await agent
+          .get('/v1/prometheus/query')
+          .query({
+            query: 'fallback_up',
+            time: String(START + 60),
+            database: DEFAULT_DATABASE,
+            table: TABLE,
+            connectionId: conn._id.toString(),
+          })
+          .expect(200);
+
+        expect(mockFetch).not.toHaveBeenCalled();
+        expect(res.body.data.resultType).toBe('vector');
+        expect(res.body.data.result).toEqual([
+          {
+            metric: { __name__: 'fallback_up', job: 'api' },
+            value: [START + 60, '1'],
+          },
+        ]);
+      });
+    });
+
+    it('returns 400 before proxying when a ClickHouse connection has no table', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const conn = await seedClickHouseConnection(team._id);
 
-      // ClickHouse path: will likely fail with 400 because metrics_ts
-      // is not seeded in the test CH, but the routing decision is what we
-      // care about — fetch must not be called.
-      await agent.get('/v1/prometheus/query_range').query({
-        query: 'up',
-        start: '1700000000',
-        end: '1700000060',
-        connectionId: conn._id.toString(),
-      });
+      const res = await agent
+        .get('/v1/prometheus/query_range')
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          connectionId: conn._id.toString(),
+        })
+        .expect(400);
 
+      expect(res.body.error).toContain('table parameter required');
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
@@ -774,6 +1160,39 @@ describe('prometheus router', () => {
       const calledUrl = mockFetch.mock.calls[0][0];
       expect(calledUrl).toContain('/api/v1/query');
       expect(calledUrl).not.toContain('/api/v1/query_range');
+    });
+
+    it('proxies a ClickHouse connection to its prometheus_api_v1 handler', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+      mockFetch
+        .mockResolvedValueOnce(handlerProbeResponse())
+        .mockResolvedValueOnce(
+          fakeUpstreamResponse({
+            status: 'success',
+            data: { resultType: 'vector', result: [] },
+          }),
+        );
+
+      await agent
+        .get('/v1/prometheus/query')
+        .query({
+          query: 'up',
+          table: 'metrics_ts',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const [calledUrl, init] = mockFetch.mock.calls[1];
+      expect(calledUrl).toContain(
+        `${config.CLICKHOUSE_HOST}/prometheus/api/v1/query?`,
+      );
+      expect(calledUrl).toContain('table=metrics_ts');
+      expect(calledUrl).toContain('max_execution_time=30');
+      expect(calledUrl).toContain('max_result_rows=100000');
+      expect(init?.headers).toMatchObject({
+        'X-ClickHouse-User': config.CLICKHOUSE_USER,
+      });
     });
   });
 

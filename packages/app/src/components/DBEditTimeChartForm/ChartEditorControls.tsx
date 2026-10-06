@@ -9,10 +9,7 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  HEATMAP_ALLOWED_SOURCE_KINDS,
-  isBuilderChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
@@ -34,6 +31,7 @@ import {
   isFormulaDisplayType,
   isFormulaSourceKind,
 } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SourceSchemaPreview, {
@@ -64,6 +62,7 @@ type ChartEditorControlsProps = {
   duplicateSeries: (index: number) => void;
   tableSource?: TSource;
   tableConnection: TableConnection;
+  allowedSourceKinds: SourceKind[];
   databaseName?: string;
   tableName?: string;
   dateRange: [Date, Date];
@@ -84,7 +83,6 @@ type ChartEditorControlsProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
-  openHeatmapSettings: () => void;
 };
 
 export function ChartEditorControls({
@@ -99,6 +97,7 @@ export function ChartEditorControls({
   duplicateSeries,
   tableSource,
   tableConnection,
+  allowedSourceKinds,
   databaseName,
   tableName,
   dateRange,
@@ -117,7 +116,6 @@ export function ChartEditorControls({
   chartConfigForExplanations,
   onSubmit,
   openDisplaySettings,
-  openHeatmapSettings,
 }: ChartEditorControlsProps) {
   // Formulas (HDX-5080): derived series computed from the chart's series via
   // letter-ref arithmetic expressions. Metric and event (log/trace) sources,
@@ -197,11 +195,7 @@ export function ChartEditorControls({
             control={control}
             name="source"
             data-testid="source-selector"
-            allowedSourceKinds={
-              displayType === DisplayType.Heatmap
-                ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
-                : undefined
-            }
+            allowedSourceKinds={allowedSourceKinds}
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
           />
@@ -228,17 +222,22 @@ export function ChartEditorControls({
       </Flex>
       {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
         <HeatmapSeriesEditor
+          key={fields[0]?.id}
           control={control}
           setValue={setValue}
+          errors={errors}
           tableSource={tableSource}
           dateRange={dateRange}
+          parentRef={parentRef}
           onSubmit={onSubmit}
-          onOpenDisplaySettings={openHeatmapSettings}
+          onOpenDisplaySettings={openDisplaySettings}
         />
       ) : displayType === DisplayType.EventPatterns ? (
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
@@ -269,7 +268,6 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
             enableVariables
           />
         </Flex>
@@ -325,13 +323,14 @@ export function ChartEditorControls({
             <>
               <Divider mt="md" mb="sm" />
               <div
-                className="gap-2 align-items-center"
+                className="gap-2"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  alignItems: 'start',
                 }}
               >
-                <div>
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                   <Text
                     me="sm"
                     size="sm"
@@ -341,10 +340,12 @@ export function ChartEditorControls({
                   >
                     Group By
                   </Text>
-                </div>
+                </Flex>
                 <div>
                   <SQLInlineEditorControlled
                     {...groupByConnectionProps}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -355,7 +356,7 @@ export function ChartEditorControls({
                 </div>
                 {displayType === DisplayType.Table && (
                   <>
-                    <div>
+                    <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                       <Text
                         me="sm"
                         size="sm"
@@ -365,10 +366,12 @@ export function ChartEditorControls({
                       >
                         Having
                       </Text>
-                    </div>
+                    </Flex>
                     <div>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
@@ -532,6 +535,8 @@ export function ChartEditorControls({
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
@@ -560,7 +565,6 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
             enableVariables
           />
         </Flex>

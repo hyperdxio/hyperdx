@@ -11,6 +11,7 @@ import type {
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 
+import { stripTypeWrappers } from '@/core/eventDeltas';
 import {
   getMetadata,
   Metadata,
@@ -32,6 +33,13 @@ import {
 import { isBuilderChartConfig } from '@/guards';
 import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
 
+import {
+  buildLogComment,
+  buildQueryId,
+  mergeQueryAttribution,
+  QueryAttribution,
+} from './attribution';
+
 // export @clickhouse/client-common types
 export type {
   BaseResultSet,
@@ -41,6 +49,17 @@ export type {
   ResponseJSON,
   Row,
 };
+
+// Re-exported so callers get these from the same place as the client.
+export {
+  buildLogComment,
+  buildQueryId,
+  mergeQueryAttribution,
+  QUERY_ATTRIBUTION_VERSION,
+  QUERY_SURFACES,
+  type QueryAttribution,
+  type QuerySurface,
+} from './attribution';
 
 export enum JSDataType {
   Array = 'array',
@@ -124,6 +143,19 @@ export const convertCHDataTypeToJSType = (
   return null;
 };
 
+/**
+ * True when the ClickHouse type is FixedString, including Nullable and
+ * LowCardinality wrappers.
+ *
+ * convertCHDataTypeToJSType maps FixedString to JSDataType.String, which is
+ * right for search semantics (ILIKE, equality). hasToken rejects a FixedString
+ * haystack, so that fallback has to CAST the column to String. hasAllTokens
+ * accepts FixedString and must keep the original column so a text index matches.
+ */
+export const isCHFixedStringType = (dataType: string): boolean => {
+  return stripTypeWrappers(dataType).startsWith('FixedString');
+};
+
 export const isJSDataTypeJSONStringifiable = (
   dataType: JSDataType | null | undefined,
 ) => {
@@ -202,7 +234,6 @@ export const chSql = (
       // if (typeof value === 'string') {
       //   console.error('Unsafe string detected', value, 'in', strings, values);
       // }
-
       return (
         str +
         (value == null
@@ -335,6 +366,18 @@ export function isMissingColumnError(error: unknown): boolean {
   );
 }
 
+/** ClickHouse ACCESS_DENIED (497), e.g. a row policy blocking mergeTreeTextIndex. */
+export function isAccessDeniedError(error: unknown): boolean {
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (cause != null && typeof cause === 'object') {
+    const type = 'type' in cause ? cause.type : undefined;
+    const code = 'code' in cause ? cause.code : undefined;
+    if (type === 'ACCESS_DENIED' || String(code) === '497') return true;
+  }
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  return /ACCESS_DENIED|Code: 497\b|row policy is applied/i.test(msg);
+}
+
 /**
  * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
  * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
@@ -424,6 +467,8 @@ export interface QueryInputs<Format extends DataFormat> {
   connectionId?: string;
   queryId?: string;
   shouldSkipApplySettings?: boolean;
+  /** Tags just this query. Added on top of the client's default. */
+  attribution?: QueryAttribution;
 }
 
 export type ClickhouseClientOptions = {
@@ -437,6 +482,8 @@ export type ClickhouseClientOptions = {
   requestTimeout?: number;
   /** Logger for per-query SQL debug output. When omitted, query logging is silent. */
   customLogger?: Logger;
+  /** Tags every query this client issues. */
+  attribution?: QueryAttribution;
 };
 
 export abstract class BaseClickhouseClient {
@@ -454,6 +501,7 @@ export abstract class BaseClickhouseClient {
   protected maxRowReadOnly: boolean;
   protected requestTimeout: number = 3600000;
   protected readonly customLogger?: Logger;
+  protected readonly attribution?: QueryAttribution;
 
   constructor({
     host,
@@ -463,6 +511,7 @@ export abstract class BaseClickhouseClient {
     application,
     requestTimeout,
     customLogger,
+    attribution,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
@@ -471,6 +520,7 @@ export abstract class BaseClickhouseClient {
     this.maxRowReadOnly = false;
     this.application = application;
     this.customLogger = customLogger;
+    this.attribution = attribution;
     if (requestTimeout != null && requestTimeout >= 0) {
       this.requestTimeout = requestTimeout;
     }
@@ -598,9 +648,39 @@ export abstract class BaseClickhouseClient {
     };
   }
 
-  async query<Format extends DataFormat>(
+  /**
+   * Done here, not in each subclass, so the browser, node and CLI clients all
+   * get it, along with every query `Metadata` makes. A caller's own
+   * `log_comment` or `queryId` is left alone.
+   */
+  protected applyAttribution<Format extends DataFormat>(
     props: QueryInputs<Format>,
+  ): QueryInputs<Format> {
+    const attribution = mergeQueryAttribution(
+      this.attribution,
+      props.attribution,
+    );
+
+    const logComment = buildLogComment(attribution);
+    const clickhouse_settings =
+      logComment && props.clickhouse_settings?.log_comment === undefined
+        ? { ...props.clickhouse_settings, log_comment: logComment }
+        : props.clickhouse_settings;
+
+    return {
+      ...props,
+      clickhouse_settings,
+      queryId: props.queryId ?? buildQueryId(attribution),
+    };
+  }
+
+  async query<Format extends DataFormat>(
+    inputs: QueryInputs<Format>,
   ): Promise<BaseResultSet<ReadableStream, Format>> {
+    // Once, outside the loop, so a retry keeps the same query_id. Safe
+    // because the only thing we retry is a rejected setting, which means
+    // nothing is still running under that id.
+    const props = this.applyAttribution(inputs);
     let attempts = 0;
     // retry query if fails
     while (attempts < 2) {
@@ -680,6 +760,7 @@ export abstract class BaseClickhouseClient {
       abort_signal: opts?.abort_signal,
       connectionId: config.connection,
       clickhouse_settings: opts?.clickhouse_settings,
+      attribution: { source: config.source },
     });
     return resp.json<any>();
   }
@@ -717,6 +798,9 @@ export abstract class BaseClickhouseClient {
         abort_signal: opts?.abort_signal,
         connectionId: config.connection,
         clickhouse_settings: opts?.clickhouse_settings,
+        // No label: it would overwrite the one naming who asked, and an
+        // EXPLAIN is recognisable from the query text anyway.
+        attribution: { source: config.source },
       });
 
       const jsonResult = await result.json<{ rows: string | number }>();
