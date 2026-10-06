@@ -215,6 +215,19 @@ function resolveGitRoot(dir) {
   return root;
 }
 
+// The UI groups cards by this path, so it must come out the same for every
+// stack of one checkout: slot files record $PWD (which may go through a
+// symlink), and compose working_dir can be a subdirectory.
+function canonicalWorktreePath(dir) {
+  if (!dir) return '';
+  const root = resolveGitRoot(dir) || dir;
+  try {
+    return fs.realpathSync(root);
+  } catch {
+    return root;
+  }
+}
+
 // Resolve git branch for a working directory. Cached per request cycle via
 // the branchCache map passed in from the caller.
 function resolveGitBranch(workingDir, branchCache) {
@@ -281,13 +294,12 @@ async function buildDashboardData() {
     }
 
     // For all envTypes: fall back to compose working_dir when missing.
-    // The working_dir may be a subdirectory (e.g. packages/app/tests/e2e
-    // for E2E containers), so resolve up to the git repo root.
     const workingDir = labels['com.docker.compose.project.working_dir'] || '';
+    if (workingDir && !stack.worktreePath) {
+      stack.worktreePath = canonicalWorktreePath(workingDir);
+    }
     if (workingDir && stack.worktree === 'unknown') {
-      const repoRoot = resolveGitRoot(workingDir) || workingDir;
-      stack.worktree = path.basename(repoRoot);
-      stack.worktreePath = repoRoot;
+      stack.worktree = path.basename(stack.worktreePath);
     }
     if (workingDir && stack.branch === 'unknown') {
       stack.branch = resolveGitBranch(workingDir, branchCache);
@@ -325,7 +337,9 @@ async function buildDashboardData() {
     if (stack.worktree === 'unknown' && data.worktree) {
       stack.worktree = data.worktree;
     }
-    stack.worktreePath = data.worktreePath || '';
+    if (data.worktreePath) {
+      stack.worktreePath = canonicalWorktreePath(data.worktreePath);
+    }
 
     // Add API and App as services (probe their ports)
     const apiUp = await probePort(data.apiPort);
@@ -723,12 +737,14 @@ function discoverHistory() {
 
       // Resolve slot-level worktree/branch from the JSON file (if still alive)
       let slotWorktree = null;
+      let slotWorktreePath = null;
       let slotBranch = null;
       const slotFile = path.join(SLOTS_DIR, `${slot}.json`);
       try {
         if (fs.existsSync(slotFile)) {
           const data = JSON.parse(fs.readFileSync(slotFile, 'utf-8'));
           slotWorktree = data.worktree || null;
+          slotWorktreePath = data.worktreePath || null;
           slotBranch = data.branch || null;
           if (!slotWorktree && data.worktreePath) {
             slotWorktree = path.basename(data.worktreePath);
@@ -741,6 +757,7 @@ function discoverHistory() {
       // Collect entries for this slot, reading meta.json where available
       const slotEntries = [];
       let metaWorktree = null;
+      let metaWorktreePath = null;
       let metaBranch = null;
 
       for (const runDir of fs.readdirSync(histDir)) {
@@ -764,16 +781,19 @@ function discoverHistory() {
 
         // Read per-run meta.json
         let runWorktree = null;
+        let runWorktreePath = null;
         let runBranch = null;
         const metaPath = path.join(runPath, 'meta.json');
         try {
           if (fs.existsSync(metaPath)) {
             const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
             runWorktree = meta.worktree || null;
+            runWorktreePath = meta.worktreePath || null;
             runBranch = meta.branch || null;
             // Remember the first valid meta as a fallback for siblings
             if (runWorktree && !metaWorktree) {
               metaWorktree = runWorktree;
+              metaWorktreePath = runWorktreePath;
               metaBranch = runBranch;
             }
           }
@@ -789,6 +809,7 @@ function discoverHistory() {
           files,
           totalSize,
           worktree: runWorktree,
+          worktreePath: runWorktreePath,
           branch: runBranch,
         });
       }
@@ -797,12 +818,16 @@ function discoverHistory() {
       // priority: 1) sibling meta.json, 2) slot JSON file, 3) process.cwd()
       // (only if this is the local slot).
       let fallbackWorktree = metaWorktree || slotWorktree || null;
+      let fallbackWorktreePath = metaWorktree
+        ? metaWorktreePath
+        : slotWorktreePath;
       let fallbackBranch = metaBranch || slotBranch || null;
       if (!fallbackWorktree && slot === localSlot) {
         const cwd = process.cwd();
         const repoRoot = resolveGitRoot(cwd);
         if (repoRoot) {
           fallbackWorktree = path.basename(repoRoot);
+          fallbackWorktreePath = repoRoot;
           fallbackBranch = resolveGitBranch(cwd, new Map());
         }
       }
@@ -810,7 +835,9 @@ function discoverHistory() {
       for (const entry of slotEntries) {
         if (!entry.worktree) {
           entry.worktree = fallbackWorktree || `slot-${slot}`;
+          entry.worktreePath = fallbackWorktreePath;
         }
+        entry.worktreePath = canonicalWorktreePath(entry.worktreePath);
         if (!entry.branch) {
           entry.branch = fallbackBranch || 'unknown';
         }
