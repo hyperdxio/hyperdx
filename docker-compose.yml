@@ -82,6 +82,7 @@ services:
       # 32-byte base64 or hex key. Setting it encrypts stored Slack and OAuth
       # tokens; unset means they are stored in plain text.
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY:-}
+      EXPRESS_SESSION_SECRET: ${EXPRESS_SESSION_SECRET:-}
       # Uncomment the next two lines to enable PromQL (Prometheus-compatible metrics)
       # ENABLE_PROMQL: 'true'
       # NEXT_PUBLIC_ENABLE_PROMQL: 'true'

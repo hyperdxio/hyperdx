@@ -1,3 +1,4 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Connection } from '@hyperdx/common-utils/dist/types';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
@@ -6,6 +7,7 @@ import * as config from '@/config';
 import { findUserByAccessKey } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import {
+  getActiveTraceId,
   getStaticFeatureFlags,
   setBusinessContext,
 } from '@/utils/instrumentation';
@@ -109,7 +111,23 @@ export async function validateUserAccessKey(
     ...getStaticFeatureFlags(),
   });
 
-  next();
+  nextWithQueryAttribution(req, next);
+}
+
+/**
+ * Continue the request with its route recorded on any ClickHouse queries it
+ * makes. Here because every authenticated route passes through this point.
+ */
+function nextWithQueryAttribution(req: Request, next: NextFunction): void {
+  withQueryAttribution(
+    {
+      surface: 'api',
+      // Mount path, not the full URL, to keep request ids out of the log.
+      label: req.baseUrl || undefined,
+      trace: getActiveTraceId(),
+    },
+    () => next(),
+  );
 }
 
 export function isUserAuthenticated(
@@ -133,7 +151,7 @@ export function isUserAuthenticated(
       'hyperdx.local_mode': true,
       ...getStaticFeatureFlags(),
     });
-    return next();
+    return nextWithQueryAttribution(req, next);
   }
 
   if (req.isAuthenticated()) {
@@ -145,7 +163,7 @@ export function isUserAuthenticated(
       ...getStaticFeatureFlags(),
     });
 
-    return next();
+    return nextWithQueryAttribution(req, next);
   }
   res.sendStatus(401);
 }

@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.39.1",
+  "version": "2.40.0",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -16,12 +16,13 @@
     }
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.58",
-    "@ai-sdk/openai": "^3.0.47",
+    "@ai-sdk/anthropic": "^4.0.65",
+    "@ai-sdk/openai": "^4.0.78",
+    "@ai-sdk/otel": "^1.0.116",
     "@braintree/sanitize-url": "^7.1.1",
     "@clickhouse/client-common": "1.23.0-head.fae5998.1",
     "@esm2cjs/p-queue": "^7.3.0",
-    "@hyperdx/common-utils": "^0.29.0",
+    "@hyperdx/common-utils": "^0.30.0",
     "@hyperdx/node-opentelemetry": "^0.9.0",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
@@ -30,7 +31,7 @@
     "@opentelemetry/sdk-metrics": "^1.30.1",
     "@slack/webhook": "^7.0.0",
     "@types/node": "^22.15.18",
-    "ai": "^6.0.116",
+    "ai": "^7.0.116",
     "aws4": "^1.13.2",
     "chrono-node": "^2.9.0",
     "compression": "^1.7.4",
@@ -45,7 +46,7 @@
     "handlebars": "^4.7.9",
     "http-graceful-shutdown": "^3.1.13",
     "http-proxy-middleware": "^4.0.0",
-    "ip-address": "^10.5.1",
+    "ip-address": "^10.7.1",
     "lodash": "^4.18.1",
     "minimist": "^1.2.7",
     "mongodb": "^6.15.0",
@@ -65,6 +66,7 @@
     "zod-express-middleware": "^1.4.0"
   },
   "devDependencies": {
+    "@opentelemetry/sdk-trace-base": "^1.30.1",
     "@stoplight/spectral-cli": "^6.15.0",
     "@types/compression": "^1.7.3",
     "@types/cors": "^2.8.14",

@@ -6,6 +6,243 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.40.0 — 2026-10-01
+
+<!-- hyperdx-release-notes version=2.40.0 inputs=b95c34cd6847 -->
+
+**Trace logs tab and multi-expression PromQL**
+
+The event side panel now has a "Trace logs" tab, listing a trace's logs as a flat
+chronological table instead of leaving you to hunt for them among the spans in
+the waterfall. A PromQL chart can now hold more than one expression, so you can
+compare related series on the same axes instead of spreading them across
+separate tiles. A metric source can also set a minimum auto granularity, so a
+short date range no longer auto-infers buckets smaller than the interval your
+metrics arrive on and leaves you with a sparse, steppy series. Search gets a
+tidier bar and a toolbar that stays put as a long query wraps, the dashboards
+list gains tabs, sorting and tag filtering, and the `hdx chart` command picks up
+the compact duration axis labels the web app already uses, so a tick reads "13m"
+instead of "13.33min". The bundled OTel collector also ships with the StatsD
+receiver compiled in, ready for a custom pipeline to ingest StatsD and
+DogStatsD metrics directly.
+
+### ✨ New Features
+
+- **A "Trace logs" tab in the event side panel**: any row carrying a trace id
+  that resolves a log source — a span, through the trace source's correlated log
+  source, or a log through its own — now gets a tab listing the trace's logs as
+  a flat chronological table over the same window the waterfall uses, so a
+  log-heavy trace no longer buries them among the green rows interleaved in the
+  waterfall. The tab lists the trace unfiltered and sorts ascending, which inside
+  a trace is execution order; "Open in search" hands the same query — same
+  source, same trace, same window — to the search page for anything narrower,
+  and picking a log opens it in the panel (#3127, thanks @MikeShi42!).
+- **Choose what a click on a search result does**: a new Preferences → Search
+  results → Row click setting keeps `Open side panel`, the existing behaviour,
+  by default, or can be set to `Expand inline` so a row click expands the row
+  where it sits — the chevron's 16px hit target is hard to aim at while scanning
+  logs. With inline expansion on, the side panel moves to a hover button on the
+  row, stays one click away from an expanded row, and keeps taking row clicks
+  while it is open (#3117, thanks @MikeShi42!).
+- **`MATERIALIZED` and `ALIAS` columns in the row details panel**: ClickHouse
+  leaves those columns out of `SELECT *`, so the row details panel never showed
+  them. A new "Show materialized and alias columns" item in the properties view
+  options menu, off by default, asks for them along with the rest of the row. It
+  has no effect on a source with a Known Columns List, and a value the source's
+  own query settings give for either setting wins; if a row fails to load while
+  the option is on — a `readonly = 1` connection user, say, or an `ALIAS` column
+  that cannot be evaluated — the error state offers to turn it back off (#3231,
+  thanks @BilalAtique!).
+- **Plot several PromQL expressions on one chart**: a PromQL chart is no longer
+  limited to a single expression, so related queries can share one set of axes
+  rather than one tile each (#3146, thanks @pulpdrew!).
+- **PromQL number tiles take instant queries and reductions**: a number tile
+  backed by PromQL can now run an instant query, or reduce a range query down to
+  the single value the tile shows, so a PromQL expression fits a number tile as
+  readily as it fits a time series (#3169, thanks @pulpdrew!).
+- **Sparklines behind PromQL number tiles**: a number tile backed by a PromQL
+  range query can now draw that range as a sparkline behind the value, so the
+  tile shows where the number came from as well as what it currently is (#3178,
+  thanks @pulpdrew!).
+- **Table tiles on PromQL sources**: a tile backed by a PromQL source can now be
+  displayed as a table, so a query's series can be read as rows and values
+  rather than only as a chart (#3238, thanks @pulpdrew!).
+- **Pie and bar tiles on PromQL sources**: a tile backed by a PromQL source can
+  also be displayed as a pie or a bar chart, so a query's series can be compared
+  as shares of a whole or side by side rather than only over time (#3253, thanks
+  @pulpdrew!).
+- **Macros in PromQL charts**: a PromQL chart now expands macros in its
+  expression, so the same templating the rest of your charts are built with is
+  available to PromQL queries too (#3244, thanks @pulpdrew!).
+- **Markdown tiles pick up dashboard variables**: a dashboard's variables are now
+  substituted into its markdown tiles, so a tile's text can name the service,
+  environment or whatever else the dashboard is currently scoped to instead of
+  going stale the moment you change a filter (#3246, thanks @pulpdrew!).
+- **A per-source floor for auto granularity**: a metric source can now set a
+  "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so
+  that auto-inferred time buckets never go below it. That helps when the
+  underlying metric is reported on a fixed interval — a 60s scrape, say — where
+  a short date range could otherwise infer a smaller bucket than the interval
+  and render a sparse, steppy series that alternates real samples with empty
+  buckets, much like Grafana's per-datasource "Min interval". Left unset, the
+  default, nothing changes, and an explicit granularity chosen on a tile is
+  never affected (#3149, thanks @arj22!).
+- **StatsD metrics from your own collector pipeline**: the OTel collector now
+  has the `statsdreceiver` compiled in, ready to reference from a custom
+  pipeline supplied via `CUSTOM_OTELCOL_CONFIG_FILE` to ingest StatsD and
+  DogStatsD metrics directly, without a separate StatsD-to-OTLP bridge. The
+  change is purely additive: no default pipeline or behaviour changes on its own
+  (#3100, thanks @arj22!).
+
+### 🔧 Improvements
+
+- **Search row-selection checkboxes appear on hover**: the multi-select checkbox
+  now fades in when you hover a row or move keyboard focus to it, and is a little
+  smaller, so its column costs less horizontal room. Selecting any row reveals
+  every checkbox so shift-click ranges stay aimable, touch devices keep them
+  visible, and the cell holds its width in every state so nothing reflows under
+  the cursor (#3164, thanks @MikeShi42!).
+- **A less cluttered search bar**: the `WHERE` label duplicated the SQL
+  placeholder already in the input, and the `/` keycap overlay sat on top of long
+  queries and clipped them, so both are gone. Pressing `/` or `s` still focuses
+  the search input (#3168, thanks @elizabetdev!).
+- **A reworked dashboards list**: a tagged dashboard is now listed once in the
+  grid rather than repeated under every tag it carries, and tags became a filter
+  behind a Tags button with a count badge, showing only dashboards that carry
+  every tag you select. Favourites moved out of a pinned row of cards into an
+  "All / Favorites / My dashboards" tab strip, a sort control offers last updated
+  (the default), name and recently created, and Import and New dashboard now sit
+  in the page header (#3199, thanks @elizabetdev!).
+- **Live tail time presets reach 6h**: the time picker capped live tail at 1h,
+  even though longer ranges already worked when set from the URL — 3h and 6h are
+  now offered. Anything above that stays disabled, and now says why with a "Not
+  available for Live Tail" tooltip, since each refresh tick re-queries the whole
+  window and a 12–24h scan every 10 seconds is more than it is worth. The toggle
+  beside the presets is also renamed from "Relative Time" to "Live tail ranges",
+  which is what it actually controls — which intervals are on offer, not whether
+  live tail is running (#3219, thanks @krishs01!).
+- **The external API's rate limit is configurable**: the cap on `/api/v2/*`
+  requests can now be set with `EXTERNAL_API_RATE_LIMIT_MAX`, so a busy
+  integration or an export job no longer has to live within a fixed ceiling. It
+  defaults to 100 requests per minute, the value that was previously hardcoded,
+  so nothing changes unless you set it (#3200, thanks @vinzee!).
+- **Map attribute columns are labelled by their key**: adding a Map attribute
+  such as `ResourceAttributes['service.name']` as a column from the filters
+  sidebar or the row side panel now writes it into the SELECT as
+  `ResourceAttributes['service.name'] AS "service.name"`, so the results column
+  reads `service.name` rather than
+  `arrayElement(ResourceAttributes, 'service.name')`. The alias is visible and
+  editable in the SELECT, queries you type by hand are left alone, and a key
+  named like a table column, or already used as a name in the SELECT, is added
+  without an alias (#3163, thanks @DevShoaib78!).
+- **Map key autocomplete stops scanning whole tables**: discovering the keys in
+  a `Map` column only applied a time predicate when the caller had both a date
+  range and a timestamp expression to hand, so otherwise its sampling query ran
+  without a `WHERE` clause and touched every part of the table. It now falls
+  back to the last 24 hours when no date range is given, and skips the raw scan
+  altogether when there is no timestamp expression to filter on; the chart,
+  alert and dashboard-filter editors pass the source and date range they already
+  have, so keys keep autocompleting there (#3082, thanks @niladrix719!).
+
+### 🐛 Bug Fixes
+
+- **Search results no longer go blank after expanding and collapsing rows**: a
+  row and its inline expansion share one virtual index, and the expansion left
+  its own height cached against that index once it collapsed, so every
+  expand/collapse shrank the render window a little further until scrolling
+  showed a handful of rows above empty space. The two are now measured as a
+  single unit (#3171, thanks @MikeShi42!).
+- **The Search page stops growing in memory with Live Tail on**: every refresh
+  added CSS rules for the SELECT and ORDER BY editors that were never cleaned
+  up, so a Search tab left open on Live Tail could grow by gigabytes of browser
+  memory. The rules are now removed with the editors (#3193, thanks
+  @jordan-simonovski!).
+- **Filter distribution percentages say only what the sample backs**: the "Show
+  distribution" labels read `<1%` both when the sample genuinely found a value
+  rare and when it turned up no matching rows at all, so the two were
+  indistinguishable. A `<1%` label now means the former, and a value that its
+  field's own filter has narrowed the results down to reads 100% (#3230, thanks
+  @jordan-simonovski!).
+- **Event deltas no longer fail on Distributed tables**: making a selection in
+  event deltas failed when the source's table is a `Distributed` table. It now
+  works there as it does against a local one (#3235, thanks @karl-power!).
+- **Toolbar controls stay level with a growing query field**: the date pickers,
+  Run button and nearby row actions now stay aligned with the first line of a SQL
+  or Lucene field as it wraps onto several lines, instead of sliding down with it.
+  Sessions also leaves room for a taller search bar (#3151, thanks
+  @elizabetdev!).
+- **Dashboard tiles show when they are refreshing**: during a dashboard refresh
+  the number, bar and pie tiles held the previous result on screen with nothing
+  to say new data was on its way, so a stale value looked current, while the
+  table and heatmap tiles went further and cleared what they were showing for a
+  loading message until the new result arrived. All five now keep what they are
+  showing and pulse while the refetch runs, as line and stacked-bar time charts
+  already did (#3211, #3212, #3221, thanks @Harshul1484!).
+- **Axis ticks keep their decimals on large values**: a tick at or above 1k was
+  rounded to a whole number whatever the chart's Number Format asked for, so
+  nearby values such as 950 and 1080 could both read `1k`. Ticks now carry as
+  much precision as the width of the axis allows, in the web app and in the
+  CLI's terminal charts, and a tightly fitted Y axis no longer shows two ticks
+  with the identical label (#3162, thanks @arj22!).
+- **Y-axis ticks stay evenly spaced and cleanly rounded**: a chart's Y axis could
+  space its ticks unevenly or land them on fractional values — `0, 300, 1k` where
+  `0, 250, 500, 750, 1k` reads far better — and could repeat a label across two
+  of them. Ticks now round to clean, evenly spaced, always-distinct values
+  (#3172, thanks @arj22!).
+- **Terminal charts use compact duration labels**: duration-formatted charts in
+  `hdx chart` fell through to the wide duration formatter for their axis ticks,
+  so they rendered "13.33min" where the web app renders "13m". The CLI now
+  matches the web app's formatting (#3158, thanks @arj22!).
+- **Gauge and sum metric charts group by `MATERIALIZED` and `ALIAS` columns**:
+  grouping or selecting one of those columns on a gauge or sum metric chart
+  failed with `Unknown expression identifier`, because the intermediate query
+  did not carry the column through. Both now work as any other column does
+  (#3191, thanks @jordan-simonovski!).
+- **A metric or column named like "settings" no longer corrupts a query**: a
+  query was split at the first "settings" found anywhere in it, including inside
+  a string or an identifier, so a multi-series metric chart on a metric such as
+  `app.settings.reloads` produced SQL with an unterminated string, and a SQL
+  filter on a column such as `AppSettings` was rewritten to reference `App`. The
+  `SETTINGS` keyword now has to stand alone outside quotes to be treated as one
+  (#3216, thanks @breken-ai!).
+- **The chart editor offers only PromQL sources in PromQL mode**: the source
+  picker listed every source, including ones a PromQL query cannot be run
+  against, so a chart switched to PromQL could be pointed at a source that was
+  never going to answer it. It now offers only the sources that support PromQL
+  (#3185, thanks @pulpdrew!).
+- **The row side panel honours its source's query settings**: the lookup that
+  fetches a row for the side panel now runs with the query settings configured
+  on that source, as the rest of the queries against it already do (#3234,
+  thanks @pulpdrew!).
+- **Trace waterfalls over MCP stop scanning the whole retention window**: the
+  `clickstack_trace_waterfall` tool now carries the search window into its span
+  and correlated-log queries so ClickHouse can prune partitions, and puts a
+  `max_execution_time` ceiling over them. It first probes the trace's span
+  extent, so a trace older than the default window — or one that ran for longer
+  than an hour — still resolves in full rather than as a partial tree, while the
+  fetch window stays clamped to the recent tail so a reused or all-zero
+  `traceId` from an uninstrumented emitter cannot widen the scan back towards
+  the retention edge or stitch unrelated occurrences into one tree. An empty
+  result now names the action that would fix it, passing an explicit
+  `startTime`, instead of suggesting you widen the window, a failed probe is
+  surfaced rather than swallowed, and a ClickHouse query timeout is reported as
+  a server error rather than a user one (#3116).
+- **Mobile browsers no longer open the app zoomed out**: the page's viewport
+  initial scale is now 1, so the app loads at full size on a phone or tablet
+  instead of at 75% (#3249, thanks @elizabetdev!).
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.39.1 → 2.40.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2400)
+- `@hyperdx/app` 2.39.1 → 2.40.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2400)
+- `@hyperdx/cli` 0.6.3 → 0.6.4 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/cli/CHANGELOG.md#064)
+- `@hyperdx/common-utils` 0.29.0 → 0.30.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0300)
+- `@hyperdx/otel-collector` 2.39.1 → 2.40.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2400)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.39.1 — 2026-09-19
 
 <!-- hyperdx-release-notes version=2.39.1 inputs=75536f4ab390 -->

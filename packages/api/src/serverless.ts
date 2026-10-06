@@ -28,6 +28,7 @@ import app from './api-app';
 import * as config from './config';
 import { connectDB } from './models';
 import logger from './utils/logger';
+import { verifySessionSecret } from './utils/sessionSecret';
 
 // Guard against misconfigured Vercel previews. The serverless entrypoint only
 // supports the `api` app type — OPAMP runs as its own long-lived server and
@@ -76,6 +77,7 @@ export async function serverlessHandler(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
+  verifySessionSecret();
   try {
     await ensureDb();
   } catch {

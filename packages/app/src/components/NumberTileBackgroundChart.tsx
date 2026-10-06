@@ -14,7 +14,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 
 import {
-  convertToPromqlNumberChartConfig,
+  convertToPromqlSparklineChartConfig,
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   shouldFillNullsWithZero,
@@ -69,7 +69,7 @@ export function buildSparklineQueryConfig(
   // A PromQL tile shares the same (range) query as the number chart, without a reducer.
   // This ensures that the sparkline can re-use the same react-query cache entry.
   if (isPromqlChartConfig(config)) {
-    return convertToPromqlNumberChartConfig(config, { withReducer: false });
+    return convertToPromqlSparklineChartConfig(config);
   }
 
   // Display-only fields are dropped to avoid refetching identical time-series
@@ -105,17 +105,13 @@ function NumberTileBackgroundChartInner({
   enabled?: boolean;
 }) {
   // useTimeChartSettings/convertToTimeChartConfig below resolve 'auto', so
-  // the minimum has to be applied before that happens.
+  // the minimum has to be applied before that happens. A PromQL tile applies
+  // it the same way DBNumberChart does, so the two share a cache entry.
   const { data: source } = useSource({ id: config.source });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const queriedConfig = useMemo(
-    () =>
-      buildSparklineQueryConfig(
-        isPromqlChartConfig(config)
-          ? config
-          : { ...config, minGranularitySeconds },
-      ),
+    () => buildSparklineQueryConfig({ ...config, minGranularitySeconds }),
     [config, minGranularitySeconds],
   );
 

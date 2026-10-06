@@ -71,6 +71,13 @@ export class ChartEditorComponent {
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
+  /** The heatmap's "Value" (y axis) SQL input. */
+  get heatmapValueInput(): Locator {
+    return this.editorForm()
+      .getByTestId('heatmap-value-input')
+      .locator('.cm-content');
+  }
+
   /**
    * Set group by expression
    */
@@ -1144,6 +1151,27 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set a heatmap's "Y axis scale" in the Display Settings drawer. Opens the
+   * drawer, picks the scale, then applies and closes.
+   */
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.openDisplaySettings();
+    await this.page
+      .getByTestId('heatmap-scale-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${scale}$`) })
+      .click();
+    await this.applyDisplaySettings();
+  }
+
+  /** A "Y axis scale" option's (visually hidden) radio in the open drawer. */
+  heatmapScaleOption(scale: 'Log' | 'Linear'): Locator {
+    return this.page
+      .getByTestId('heatmap-scale-control')
+      .getByRole('radio', { name: scale, exact: true });
+  }
+
+  /**
    * Set the "Legend template" value in the Display Settings drawer (PromQL
    * charts only). Opens the drawer, fills the input, then applies and closes.
    */
@@ -1157,7 +1185,7 @@ export class ChartEditorComponent {
   /**
    * Choose how a PromQL expression is evaluated, from the toggle under the
    * expression editor. `reducer` is the visible label (e.g. "Max"), and only
-   * applies to a range query.
+   * applies to display types that reduce each series to one value.
    */
   async setPromqlQueryType(
     queryType: 'Instant' | 'Range',
@@ -1170,9 +1198,7 @@ export class ChartEditorComponent {
     await group.getByText(queryType, { exact: true }).click();
 
     if (reducer) {
-      await this.page
-        .getByRole('combobox', { name: 'PromQL range reducer' })
-        .click();
+      await this.page.getByRole('combobox', { name: 'PromQL reducer' }).click();
       await this.page
         .getByRole('option', { name: reducer, exact: true })
         .click();
