@@ -30,6 +30,7 @@ import {
   DashboardContainer,
   DashboardContainerSchema,
   DisplayType,
+  HeatmapMode,
   isLogSource,
   isOnClickDashboardById,
   isOnClickSearchById,
@@ -93,6 +94,23 @@ export function isRawSqlExternalTileConfig(
   config: ExternalDashboardTileConfig,
 ): config is ExternalDashboardRawSqlTileConfig {
   return 'configType' in config && config.configType === 'sql';
+}
+
+type ExternalHeatmapTileConfig = Extract<
+  ExternalDashboardTileConfig,
+  { displayType: 'heatmap' }
+>;
+
+function isSeriesHeatmapExternalConfig(
+  config: ExternalHeatmapTileConfig,
+): config is Extract<ExternalHeatmapTileConfig, { heatmapMode: 'series' }> {
+  return config.heatmapMode === 'series';
+}
+
+function getExternalHeatmapMode(
+  config: ExternalHeatmapTileConfig,
+): HeatmapMode {
+  return getHeatmapMode({ heatmap: { mode: config.heatmapMode } });
 }
 
 export function isConfigTile(
@@ -459,6 +477,21 @@ export const convertToExternalTileChartConfig = (
         markdown: stringValueOrDefault(config.markdown, ''),
       };
     case DisplayType.Heatmap: {
+      if (getHeatmapMode(config) === 'series') {
+        return {
+          displayType: DisplayType.Heatmap,
+          heatmapMode: 'series',
+          sourceId,
+          select: Array.isArray(config.select)
+            ? config.select.slice(0, 1).map(convertToExternalSelectItem)
+            : [DEFAULT_SELECT_ITEM],
+          groupBy: stringValueOrDefault(config.groupBy, undefined),
+          numberFormat: config.numberFormat,
+        };
+      }
+      const heatmapField = config.heatmap
+        ? { heatmapMode: 'distribution' as const }
+        : {};
       // The internal heatmap schema requires `select[0]` to be a builder
       // item with a non-empty `valueExpression`. Legacy/corrupted Mongo
       // docs that lack one would otherwise produce a tile that violates
@@ -487,6 +520,7 @@ export const convertToExternalTileChartConfig = (
         };
         return {
           displayType: DisplayType.Heatmap,
+          ...heatmapField,
           sourceId,
           select: [placeholderItem],
           where: stringValueOrDefault(config.where, ''),
@@ -496,6 +530,7 @@ export const convertToExternalTileChartConfig = (
       }
       return {
         displayType: DisplayType.Heatmap,
+        ...heatmapField,
         sourceId,
         select: [convertToExternalHeatmapSelectItem(item)],
         where: stringValueOrDefault(config.where, ''),
@@ -535,20 +570,6 @@ function convertTileToExternalChart(
     logger.warn(
       { dashboardId, tileId: tile.id },
       'Skipping PromQL tile in external API response (not yet supported)',
-    );
-    return undefined;
-  }
-
-  // Series-mode heatmaps have no external schema yet. Emitting them as
-  // distribution tiles would corrupt them on a GET -> PUT round-trip.
-  if (
-    isBuilderSavedChartConfig(tile.config) &&
-    tile.config.displayType === DisplayType.Heatmap &&
-    getHeatmapMode(tile.config) === 'series'
-  ) {
-    logger.warn(
-      { dashboardId, tileId: tile.id },
-      'Skipping series-mode heatmap tile in external API response (not yet supported)',
     );
     return undefined;
   }
@@ -863,6 +884,20 @@ export function convertToInternalTileConfig(
         } satisfies BuilderSavedChartConfig;
         break;
       case 'heatmap': {
+        if (isSeriesHeatmapExternalConfig(externalConfig)) {
+          // Matches the editor's `normalizeHeatmapFields`: series heatmaps
+          // have no chart-level where, so it is saved empty.
+          internalConfig = {
+            ...pick(externalConfig, ['groupBy', 'numberFormat']),
+            displayType: DisplayType.Heatmap,
+            heatmap: { mode: 'series' },
+            select: [convertToInternalSelectItem(externalConfig.select[0])],
+            source: externalConfig.sourceId,
+            where: '',
+            name,
+          } satisfies BuilderSavedChartConfig;
+          break;
+        }
         // Heatmap is builder-only and uses a single select item with
         // its own shape: aggFn is the literal 'heatmap' on the external
         // surface, mapped to the internal 'count' aggFn that the editor
@@ -873,6 +908,9 @@ export function convertToInternalTileConfig(
         const item = externalConfig.select[0];
         internalConfig = {
           ...pick(externalConfig, ['numberFormat']),
+          ...(externalConfig.heatmapMode
+            ? { heatmap: { mode: externalConfig.heatmapMode } }
+            : {}),
           displayType: DisplayType.Heatmap,
           // Match the editor's `applyHeatmapDefaults` (in
           // `packages/app/src/components/DBEditTimeChartForm/EditTimeChartForm.tsx`,
@@ -1065,33 +1103,34 @@ function getMissingSources(
 
 /**
  * Returns source IDs referenced by heatmap tiles that exist but are not
- * compatible with heatmap rendering. The heatmap UI gates the source picker
- * via the same `HEATMAP_DISTRIBUTION_SOURCE_KINDS` set used here (see
- * `packages/common-utils/src/guards.ts` and `ChartEditorControls.tsx`), so
- * UI and API gates move together.
+ * compatible with heatmap rendering in the tile's mode, grouped by mode. The
+ * heatmap UI gates the source picker via the same `getHeatmapSourceKinds`
+ * sets used here (see `packages/common-utils/src/guards.ts` and
+ * `ChartEditorControls.tsx`), so UI and API gates move together.
  */
 function getHeatmapTilesWithIncompatibleSources(
   sources: SourceForValidation[],
   tiles: ExternalDashboardTileWithId[],
-): string[] {
-  const heatmapSourceIds = new Set<string>();
+): Record<HeatmapMode, string[]> {
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  const distribution = new Set<string>();
+  const series = new Set<string>();
   for (const tile of tiles) {
     if (
-      isConfigTile(tile) &&
-      !isRawSqlExternalTileConfig(tile.config) &&
-      tile.config.displayType === 'heatmap' &&
-      tile.config.sourceId
+      !isConfigTile(tile) ||
+      isRawSqlExternalTileConfig(tile.config) ||
+      tile.config.displayType !== 'heatmap' ||
+      !tile.config.sourceId
     ) {
-      heatmapSourceIds.add(tile.config.sourceId);
+      continue;
+    }
+    const mode = getExternalHeatmapMode(tile.config);
+    const source = sourceById.get(tile.config.sourceId);
+    if (source !== undefined && !isHeatmapCompatibleSource(source, mode)) {
+      (mode === 'series' ? series : distribution).add(tile.config.sourceId);
     }
   }
-  if (heatmapSourceIds.size === 0) return [];
-
-  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
-  return [...heatmapSourceIds].filter(id => {
-    const source = sourceById.get(id);
-    return source !== undefined && !isHeatmapCompatibleSource(source);
-  });
+  return { distribution: [...distribution], series: [...series] };
 }
 
 /**
@@ -1201,7 +1240,7 @@ function filterChangedFormulaTiles(
  * without being blocked when the underlying source's `kind` was
  * changed after the heatmap was originally accepted. New heatmap
  * tiles, tiles whose displayType just changed to heatmap, and tiles
- * whose `sourceId` changed all flow through the check.
+ * whose `sourceId` or heatmap mode changed all flow through the check.
  */
 function filterChangedHeatmapTiles(
   requestTiles: ExternalDashboardTileWithId[],
@@ -1224,8 +1263,8 @@ function filterChangedHeatmapTiles(
       return true;
     }
     const existingConfig = existing.config;
-    if (isRawSqlSavedChartConfig(existingConfig)) {
-      // Existing tile was raw-SQL; user is converting to a heatmap.
+    if (!isBuilderSavedChartConfig(existingConfig)) {
+      // Existing tile was raw-SQL or PromQL; user is converting to a heatmap.
       return true;
     }
     if (existingConfig.displayType !== DisplayType.Heatmap) {
@@ -1233,8 +1272,11 @@ function filterChangedHeatmapTiles(
       return true;
     }
     // Existing tile was already a heatmap. Re-check only when the
-    // source changed.
-    return existingConfig.source?.toString() !== tile.config.sourceId;
+    // source or mode changed.
+    return (
+      existingConfig.source?.toString() !== tile.config.sourceId ||
+      getHeatmapMode(existingConfig) !== getExternalHeatmapMode(tile.config)
+    );
   });
 }
 
@@ -1497,12 +1539,15 @@ export async function validateDashboardTiles(
   const heatmapTilesToCheck = existingTiles
     ? filterChangedHeatmapTiles(tiles, existingTiles)
     : tiles;
-  const heatmapNonTraceSources = getHeatmapTilesWithIncompatibleSources(
+  const heatmapIncompatibleSources = getHeatmapTilesWithIncompatibleSources(
     sources,
     heatmapTilesToCheck,
   );
-  if (heatmapNonTraceSources.length > 0) {
-    return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapNonTraceSources.join(', ')}`;
+  if (heatmapIncompatibleSources.distribution.length > 0) {
+    return `Heatmap tiles require a Trace source. The following source IDs are not Trace sources: ${heatmapIncompatibleSources.distribution.join(', ')}`;
+  }
+  if (heatmapIncompatibleSources.series.length > 0) {
+    return `Series heatmap tiles require a Trace, Log, or Metric source. The following source IDs are not Trace, Log, or Metric sources: ${heatmapIncompatibleSources.series.join(', ')}`;
   }
 
   // Formula source-kind gate. On create (no existingTiles), validate all
