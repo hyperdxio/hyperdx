@@ -16,6 +16,7 @@ import {
   MetricsDataType,
   NumberTileColorConditionSchema,
   SearchConditionTrimmedLanguageSchema,
+  SeriesLimitRankingRangeSchema,
   StaticListDashboardFilterSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -103,12 +104,23 @@ const sqlOnlyVariableMacroDescription =
 
 const timeChartSeriesLimitDescription =
   'Maximum number of series to fetch (the "Series Limit" display setting). ' +
-  'Keeps the top-N groups by aggregated value over the queried range and ' +
-  'drops the rest. Requires `groupBy`; ignored on a chart without one. ' +
-  'Three-state: omit to apply the default render cap, 0 for unlimited, or a ' +
-  'positive N to keep the top N.';
+  'Keeps the top-N groups by aggregated value and drops the rest. The ' +
+  'ranking covers the range set by `seriesLimitRankingRange`, which defaults ' +
+  'to the most recent part of the queried range. Requires `groupBy`; ignored ' +
+  'on a chart without one. Three-state: omit to apply the default render ' +
+  'cap, 0 for unlimited, or a positive N to keep the top N.';
 
 const seriesLimitSchema = z.number().int().nonnegative().optional();
+
+const seriesLimitRankingRangeSchema =
+  SeriesLimitRankingRangeSchema.optional().describe(
+    'Range the top-N ranking for `seriesLimit` covers (the "Rank series ' +
+      'over" display setting). "recent" (default) ranks over the newest ' +
+      'chunk of the queried range only, so a group with no recent events is ' +
+      'dropped even if it is the largest overall. "full" ranks over the ' +
+      'whole queried range, which is accurate but scans more data. Ignored ' +
+      'without a positive `seriesLimit` and a `groupBy`.',
+  );
 
 const numberTileColorDescription =
   'Static color for the displayed number, as a palette token such as ' +
@@ -705,6 +717,7 @@ export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
         'Scale the y-axis to the data range instead of starting at zero.',
       ),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    seriesLimitRankingRange: seriesLimitRankingRangeSchema,
     formulas: mcpTileFormulasSchema,
     showOperandSeries: mcpShowOperandSeriesSchema,
   }),
@@ -726,6 +739,7 @@ export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
       .optional()
       .describe(tileLevelNumberFormatDescription),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+    seriesLimitRankingRange: seriesLimitRankingRangeSchema,
     formulas: mcpTileFormulasSchema,
     showOperandSeries: mcpShowOperandSeriesSchema,
   }),

@@ -203,11 +203,18 @@ async function* fetchDataInChunks({
 
   // Every chunk must rank the __hdx_series_limit CTE over the same fixed
   // range, or each window keeps its own top-N and the union across chunks
-  // exceeds seriesLimit. The newest window is used (rather than the full
-  // chart range) to bound the ranking scan; the trade-off is that series
-  // are picked by recent activity, so groups with no events in the newest
-  // window are dropped from the chart.
-  const rankingDateRange = windows[0]?.dateRange;
+  // exceeds seriesLimit. By default the newest window is used (rather than
+  // the full chart range) to bound the ranking scan; the trade-off is that
+  // series are picked by recent activity, so groups with no events in the
+  // newest window are dropped from the chart. A tile can opt into ranking
+  // over the full chart range with `seriesLimitRankingRange: 'full'`.
+  const fullDateRange = config.dateRange;
+  const rankOverFullRange =
+    isBuilderChartConfig(config) && config.seriesLimitRankingRange === 'full';
+  const rankingDateRange =
+    rankOverFullRange && fullDateRange != null
+      ? fullDateRange
+      : windows[0]?.dateRange;
   // Only a positive seriesLimit emits the __hdx_series_limit CTE (0 = unlimited,
   // null = default), so only then does the ranking need a pinned date range.
   const seriesLimit =

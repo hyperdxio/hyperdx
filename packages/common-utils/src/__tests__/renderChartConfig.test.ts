@@ -771,6 +771,74 @@ describe('renderChartConfig', () => {
       );
     });
 
+    it('ranks over the full chart range from every chunk when the caller pins it', async () => {
+      // seriesLimitRankingRange: 'full' pins the ranking to the whole chart
+      // range. A group that is only active in the oldest chunk is then inside
+      // the ranking scan of every chunk, the newest one included.
+      const chartRange: [Date, Date] = [
+        new Date('2025-02-12T00:00:00Z'),
+        new Date('2025-02-13T00:00:00Z'),
+      ];
+      const newestWindow: [Date, Date] = [
+        new Date('2025-02-12T18:00:00Z'),
+        chartRange[1],
+      ];
+      const oldestWindow: [Date, Date] = [
+        chartRange[0],
+        new Date('2025-02-12T06:00:00Z'),
+      ];
+      const render = async (
+        dateRange: [Date, Date],
+        dateRangeEndInclusive: boolean,
+        seriesLimitDateRange: [Date, Date],
+      ) =>
+        parameterizedQueryToSql(
+          await renderChartConfig(
+            {
+              ...baseLogsConfig,
+              seriesLimit: 1,
+              dateRange,
+              dateRangeEndInclusive,
+              seriesLimitDateRange,
+            },
+            mockMetadata,
+            querySettings,
+          ),
+        );
+      const cteOf = (sql: string) => {
+        const start = sql.indexOf('`__hdx_series_limit` AS (');
+        const end = sql.indexOf(') SELECT ');
+        expect(start).toBeGreaterThanOrEqual(0);
+        expect(end).toBeGreaterThan(start);
+        return sql.slice(start, end);
+      };
+      const outerOf = (sql: string) => sql.slice(sql.indexOf(') SELECT '));
+      const chartStart = String(chartRange[0].getTime());
+      const chartEnd = String(chartRange[1].getTime());
+      const newestStart = String(newestWindow[0].getTime());
+
+      const newestFull = await render(newestWindow, true, chartRange);
+      const oldestFull = await render(oldestWindow, false, chartRange);
+
+      // Both chunks rank over the whole chart range and keep the same top N.
+      expect(cteOf(newestFull)).toBe(cteOf(oldestFull));
+      expect(cteOf(newestFull)).toContain(chartStart);
+      expect(cteOf(newestFull)).toContain(chartEnd);
+      // The ranking scan is not narrowed to the newest window.
+      expect(cteOf(newestFull)).not.toContain(newestStart);
+      // The outer query still reads only its own chunk.
+      expect(outerOf(newestFull)).toContain(newestStart);
+      expect(outerOf(oldestFull)).not.toContain(chartEnd);
+      // The limit applies to the ranking, so the union across chunks is N.
+      expect(cteOf(newestFull)).toMatch(/LIMIT 1\b/);
+
+      // Contrast: pinned to the newest window, the ranking scan starts at
+      // that window and cannot see the oldest chunk's groups.
+      const newestRecent = await render(newestWindow, true, newestWindow);
+      expect(cteOf(newestRecent)).toContain(newestStart);
+      expect(cteOf(newestRecent)).not.toContain(chartStart);
+    });
+
     it('does not emit a series-limit CTE without a group-by', async () => {
       const sql = parameterizedQueryToSql(
         await renderChartConfig(

@@ -339,6 +339,7 @@ export default function EditTimeChartForm({
     groupByColumnsOnLeft,
     alternateRowBackground,
     seriesLimit,
+    seriesLimitRankingRange,
     color,
     colorRules,
     backgroundChart,
@@ -355,6 +356,7 @@ export default function EditTimeChartForm({
       'groupByColumnsOnLeft',
       'alternateRowBackground',
       'seriesLimit',
+      'seriesLimitRankingRange',
       'color',
       'colorRules',
       'backgroundChart',
@@ -387,6 +389,7 @@ export default function EditTimeChartForm({
       groupByColumnsOnLeft,
       alternateRowBackground,
       seriesLimit,
+      seriesLimitRankingRange,
       color,
       colorRules,
       backgroundChart,
@@ -402,6 +405,7 @@ export default function EditTimeChartForm({
       groupByColumnsOnLeft,
       alternateRowBackground,
       seriesLimit,
+      seriesLimitRankingRange,
       color,
       colorRules,
       backgroundChart,
@@ -879,6 +883,7 @@ export default function EditTimeChartForm({
         groupByColumnsOnLeft,
         alternateRowBackground,
         seriesLimit,
+        seriesLimitRankingRange,
         color,
         colorRules,
         backgroundChart,
@@ -903,6 +908,8 @@ export default function EditTimeChartForm({
       // survives JSON round-tripping through the URL query state; otherwise
       // the dropped key lets RHF's `values` sync restore the stale value.
       setValue('seriesLimit', seriesLimit ?? null);
+      // Same null-not-undefined rule as seriesLimit above.
+      setValue('seriesLimitRankingRange', seriesLimitRankingRange ?? null);
       setValue('color', color);
       setValue('colorRules', colorRules);
       setValue('backgroundChart', backgroundChart);
