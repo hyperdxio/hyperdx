@@ -24,11 +24,10 @@ const renderTooltip = (
   renderWithMantine(
     <HeatmapTooltip
       point={point}
+      cell={{ kind: 'distribution', formattedY: 'y=2', percentile: undefined }}
       width={400}
       height={300}
       showDragHint={false}
-      formatY={v => `y=${v}`}
-      percentile={undefined}
       {...props}
     />,
   );
@@ -43,9 +42,22 @@ describe('HeatmapTooltip', () => {
   });
 
   it('appends the percentile when known', () => {
-    renderTooltip({ percentile: 95.25 });
+    renderTooltip({
+      cell: { kind: 'distribution', formattedY: 'y=2', percentile: 95.25 },
+    });
 
     expect(screen.getByText(/y=2 \(p95\.3\)/)).toBeInTheDocument();
+  });
+
+  it('shows the series name and value instead of the y value and count', () => {
+    renderTooltip({
+      cell: { kind: 'series', name: 'checkout', formattedValue: '12 ms' },
+    });
+
+    expect(screen.getByText('checkout')).toBeInTheDocument();
+    expect(screen.getByText('12 ms')).toBeInTheDocument();
+    expect(screen.queryByText('y=2')).not.toBeInTheDocument();
+    expect(screen.queryByText('1,234')).not.toBeInTheDocument();
   });
 
   it('centers the cell highlight on the hovered cell', () => {

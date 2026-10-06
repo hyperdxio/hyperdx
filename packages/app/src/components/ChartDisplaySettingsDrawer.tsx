@@ -7,6 +7,7 @@ import {
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  HeatmapMode,
   MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
 } from '@hyperdx/common-utils/dist/types';
@@ -63,7 +64,7 @@ export type ChartConfigDisplaySettings = Pick<
   // PromQL-only: Handlebars template over each series' Prometheus label set
   // that renders the legend/tooltip name.
   legendTemplate?: string;
-  // Heatmaps only; stored on the heatmap's select[0].
+  // Distribution heatmaps only; stored on the heatmap's select[0].
   heatmapScaleType?: HeatmapScaleType;
 };
 
@@ -86,6 +87,8 @@ interface ChartDisplaySettingsDrawerProps {
   configType?: 'sql' | 'builder' | 'promql';
   /** Whether a PromQL tile's queried expression runs over a range. */
   promqlUsesRange?: boolean;
+  /** A builder heatmap's mode; only distribution heatmaps have a numeric y axis to scale. */
+  heatmapMode?: HeatmapMode;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
@@ -127,6 +130,7 @@ export default function ChartDisplaySettingsDrawer({
   displayType,
   configType,
   promqlUsesRange = false,
+  heatmapMode,
   defaultNumberFormat,
   onChange,
   onClose,
@@ -248,7 +252,9 @@ export default function ChartDisplaySettingsDrawer({
       ? 'Available on PromQL range queries.'
       : 'Available on query-builder number tiles.';
 
-  const showHeatmapScale = displayType === DisplayType.Heatmap;
+  // Log scale only means something on a numeric (distribution mode) y axis
+  const showHeatmapScale =
+    displayType === DisplayType.Heatmap && heatmapMode === 'distribution';
 
   return (
     <Drawer
