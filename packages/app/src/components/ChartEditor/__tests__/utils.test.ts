@@ -156,6 +156,36 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
+  it.each([0, 5])(
+    'persists seriesLimit=%s for a promql+line config',
+    seriesLimit => {
+      const form: ChartEditorFormState = {
+        configType: 'promql',
+        displayType: DisplayType.Line,
+        promqlExpression: 'up',
+        connection: 'conn-1',
+        seriesLimit,
+        series: [],
+      };
+      const result = convertFormStateToSavedChartConfig(form, undefined);
+      expect(result).toMatchObject({ seriesLimit });
+    },
+  );
+
+  it('carries seriesLimit into the queried config for a promql+line config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Line,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      seriesLimit: 5,
+      series: [],
+    };
+    const dateRange: [Date, Date] = [new Date(0), new Date(1000)];
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toMatchObject({ configType: 'promql', seriesLimit: 5 });
+  });
+
   it('returns a raw SQL config for Line displayType', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
