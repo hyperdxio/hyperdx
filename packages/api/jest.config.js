@@ -5,6 +5,9 @@ const tsJestTransformCfg = createJsWithTsPreset({
     // TypeScript 6 requires an explicit rootDir when compiling a subset of
     // files (ts-jest compiles per-file), otherwise it errors with TS5011.
     rootDir: './src',
+    // The AI SDK (v7+) ships ESM-only builds that Jest's CJS loader can't
+    // parse, so they are transpiled like source (see transformIgnorePatterns).
+    allowJs: true,
   },
 });
 
@@ -22,4 +25,6 @@ module.exports = {
   moduleNameMapper: {
     '@/(.*)$': '<rootDir>/$1',
   },
+  // Keep in sync with jest.int.config.js.
+  transformIgnorePatterns: ['/node_modules/(?!(ai|@ai-sdk|@workflow/serde)/)'],
 };

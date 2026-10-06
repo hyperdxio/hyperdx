@@ -1,0 +1,80 @@
+// The input and a hidden copy of its text share one grid cell, so the field
+// grows with its content instead of reserving a fixed width.
+.root {
+  display: inline-grid;
+  width: max-content;
+  min-width: 80px;
+  max-width: 100%;
+  margin: 0;
+  vertical-align: middle;
+
+  &::after {
+    content: attr(data-value) ' ';
+    grid-area: 1 / 1;
+    visibility: hidden;
+    white-space: pre;
+    overflow: hidden;
+  }
+}
+
+.input,
+.root::after {
+  font: inherit;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--mantine-radius-sm);
+}
+
+.input {
+  grid-area: 1 / 1;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--color-text);
+  background: transparent;
+  text-overflow: ellipsis;
+  transition:
+    background-color 100ms ease,
+    border-color 100ms ease;
+
+  &::placeholder {
+    color: var(--mantine-color-placeholder);
+  }
+
+  &:hover {
+    border-color: var(--color-border);
+  }
+
+  &:focus {
+    outline: none;
+    border-color: var(--color-outline-focus);
+    background-color: var(--color-bg-field);
+  }
+
+  &[aria-invalid='true'] {
+    border-color: var(--color-text-danger);
+  }
+}
+
+.xs,
+.sm,
+.md {
+  font-weight: 500;
+  line-height: var(--mantine-line-height-sm);
+
+  // Aligns the text with content around it, so only the hover border sits
+  // outside the column. Equals the input's padding plus border.
+  margin-inline-start: -7px;
+}
+
+.xs {
+  font-size: var(--mantine-font-size-sm);
+}
+
+.sm {
+  font-size: var(--mantine-font-size-md);
+}
+
+.md {
+  font-size: var(--mantine-font-size-xl);
+}

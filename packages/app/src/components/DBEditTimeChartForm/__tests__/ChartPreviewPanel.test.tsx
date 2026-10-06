@@ -66,8 +66,10 @@ jest.mock('@/components/DBHeatmapChart', () => ({
   HEATMAP_N_BUCKETS: 80,
 }));
 
+const mockUseSource = jest.fn();
 jest.mock('@/source', () => ({
   getFirstTimestampValueExpression: jest.fn().mockReturnValue('Timestamp'),
+  useSource: (opts: { id?: string }) => mockUseSource(opts),
 }));
 
 const dateRange: [Date, Date] = [
@@ -118,6 +120,7 @@ const renderPanel = (
 describe('ChartPreviewPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockUseSource.mockReturnValue({ data: undefined });
   });
 
   describe('when no query has been run', () => {
@@ -294,6 +297,8 @@ describe('ChartPreviewPanel', () => {
       overrides: {
         promqlExpression?: PromqlExpressionList;
         displayType?: DisplayType;
+        source?: string;
+        granularity?: string;
         variables?: ChartVariable[];
       } = {},
     ): ChartConfigWithDateRange => ({
@@ -437,6 +442,44 @@ describe('ChartPreviewPanel', () => {
       expect(
         screen.queryByTestId('chart-promql-preview'),
       ).not.toBeInTheDocument();
+    });
+
+    // Selecting another source doesn't rerun the query, and the chart reads the
+    // floor from the source it ran with, so the preview has to as well.
+    it("expands macros with the queried source's floor, not the selected one's", async () => {
+      const promqlSource = (
+        id: string,
+        minAutoGranularity?: string,
+      ): TSource => ({
+        id,
+        kind: SourceKind.Promql,
+        name: id,
+        connection: 'default',
+        from: { databaseName: 'default', tableName: 'metrics_ts' },
+        timestampValueExpression: 'timestamp',
+        minAutoGranularity,
+      });
+      mockUseSource.mockImplementation(({ id }: { id?: string }) => ({
+        data:
+          id === 'queried' ? promqlSource('queried', '1 minute') : undefined,
+      }));
+
+      renderPanel({
+        queriedConfig: promqlConfig({
+          promqlExpression: 'rate(up[$__rate_interval])',
+          source: 'queried',
+          granularity: '15 second',
+        }),
+        tableSource: promqlSource('selected'),
+        showGeneratedPromql: true,
+      });
+      await openGeneratedPromql();
+
+      // max(15 + 60, 4 * 60). The selected source has no floor, which would
+      // give max(15 + 15, 4 * 15) = 60s.
+      expect(screen.getByTestId('chart-promql-preview')).toHaveTextContent(
+        'rate(up[240s])',
+      );
     });
 
     it('shows one preview per expression, labelled by alias', async () => {

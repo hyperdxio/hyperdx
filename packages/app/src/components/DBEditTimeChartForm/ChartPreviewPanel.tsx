@@ -37,10 +37,12 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
 import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
   isSingleExpression,
+  useSource,
 } from '@/source';
 import {
   orderByStringToSortingState,
@@ -183,9 +185,11 @@ export function ChartPreviewPanel({
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
+  const { data: queriedSource } = useSource({ id: queriedConfig?.source });
+  const minGranularitySeconds = getMinGranularitySeconds(queriedSource);
   const renderedPromql = useMemo(
-    () => buildRenderedPromqlExpression(queriedConfig),
-    [queriedConfig],
+    () => buildRenderedPromqlExpression(queriedConfig, minGranularitySeconds),
+    [queriedConfig, minGranularitySeconds],
   );
 
   const blockingFilterNames = missingRequiredFilterNames ?? [];

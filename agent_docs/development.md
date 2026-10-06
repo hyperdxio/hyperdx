@@ -323,7 +323,7 @@ serves both the app and the API.
 | -------------------------------------------- | ----------------------------------------------------------------- |
 | `HDX_PREVIEW_INLINE_API`                     | `true` — turns on the inline path                                 |
 | `MONGO_URI`                                  | Preview MongoDB connection string                                 |
-| `EXPRESS_SESSION_SECRET`                     | Random 32+ char string                                            |
+| `EXPRESS_SESSION_SECRET`                     | Random 32+ char string shared by all instances; unset generates one per process, invalidating sessions on restart and between instances |
 | `DISABLED_AUTH_METHODS`                      | `google,saml` (avoids per-preview OAuth callback URL config)      |
 | `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL_NAME` | Optional, only if AI features should work                         |
 | `FRONTEND_URL`                               | Optional. Leave unset to use host-only cookies on the preview URL |
