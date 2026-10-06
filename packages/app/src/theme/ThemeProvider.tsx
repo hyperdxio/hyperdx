@@ -247,7 +247,7 @@ export function useBrandDisplayName(): string {
 /**
  * Hook to build a `<title>`/`<NextSeo title>` value: brand name plus the
  * configured instance label, with an optional page name prepended.
- * e.g. usePageTitle('Search') => "Search - HyperDX - USA"
+ * e.g. usePageTitle('Search') => "Search - HyperDX USA"
  */
 export function usePageTitle(page?: string): string {
   const brandName = useBrandDisplayName();
