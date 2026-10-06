@@ -308,12 +308,7 @@ describe('ChartDisplaySettingsDrawer', () => {
         expect(screen.queryByText(/fetched/i)).not.toBeInTheDocument();
       });
 
-      it.each([
-        DisplayType.Pie,
-        DisplayType.Bar,
-        DisplayType.Number,
-        DisplayType.Table,
-      ])(
+      it.each([DisplayType.Number, DisplayType.Table])(
         'does not show the Series Limit input for PromQL %s charts',
         displayType => {
           renderWithMantine(
@@ -414,6 +409,23 @@ describe('ChartDisplaySettingsDrawer', () => {
         expect(
           screen.getByRole('textbox', { name: /series limit/i }),
         ).toBeInTheDocument();
+      },
+    );
+
+    it.each([DisplayType.Pie, DisplayType.Bar])(
+      'shows the Series Limit input for PromQL %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.getByRole('textbox', { name: /series limit/i }),
+        ).toHaveAttribute('placeholder', 'Disabled (e.g. 10)');
       },
     );
 

@@ -1725,6 +1725,47 @@ describe('ChartUtils', () => {
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
     });
+
+    describe('maxGroups', () => {
+      const manyGroups = (count: number) => ({
+        data: Array.from({ length: count }, (_, i) => ({
+          value: i,
+          series_name: `s${i}`,
+        })),
+        meta: [
+          { name: 'value', type: 'Float64' },
+          { name: 'series_name', type: 'String' },
+        ],
+      });
+
+      it('keeps the largest maxGroups groups', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(5),
+          getColor,
+          true,
+          2,
+        );
+        expect(result.map(e => e.label)).toEqual(['s4', 's3']);
+      });
+
+      it('caps at 500 groups by default', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+        );
+        expect(result).toHaveLength(500);
+      });
+
+      it('cannot raise the 500-group cap', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+          true,
+          1000,
+        );
+        expect(result).toHaveLength(500);
+      });
+    });
   });
 
   describe('findNearestSeriesKey', () => {

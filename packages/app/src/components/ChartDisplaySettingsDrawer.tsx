@@ -220,11 +220,11 @@ export default function ChartDisplaySettingsDrawer({
     displayType !== DisplayType.Table;
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
-  // number of slices/bars; raw SQL configs author their own LIMIT directly.
+  // number of slices/bars; on PromQL it trims the reduced series client-side
+  // in `useCategoricalChart`. Raw SQL configs author their own LIMIT directly.
   const isCategoricalChart =
     displayType === DisplayType.Pie || displayType === DisplayType.Bar;
-  const showCategoricalLimit =
-    isCategoricalChart && configType !== 'sql' && configType !== 'promql';
+  const showCategoricalLimit = isCategoricalChart && configType !== 'sql';
 
   // Table display options. Alternate Row Background is purely presentational
   // (it stripes rendered rows), so it applies to any table tile. Group By
