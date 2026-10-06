@@ -47,7 +47,6 @@ describe('gridFromBucketRows', () => {
       edges: [-0.5, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5],
     });
     expect(grid.cells).toEqual(Array(2 * CELLS_PER_TS).fill(0));
-    expect(grid.cellKind).toBe('count');
   });
 
   it('places each row count into its (time, x_bucket) cell', () => {
@@ -133,7 +132,6 @@ const grid = (overrides: Partial<HeatmapGrid>): HeatmapGrid => ({
   stepMs: 1000,
   yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 3] },
   cells: [1, 2, 3, 4],
-  cellKind: 'count',
   ...overrides,
 });
 

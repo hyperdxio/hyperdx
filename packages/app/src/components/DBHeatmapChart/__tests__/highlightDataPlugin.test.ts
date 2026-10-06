@@ -1,6 +1,9 @@
 import type uPlot from 'uplot';
 
-import { gridToPlotData } from '@/components/DBHeatmapChart/heatmapGrid';
+import {
+  gridToPlotData,
+  HeatmapCellKind,
+} from '@/components/DBHeatmapChart/heatmapGrid';
 import { highlightDataPlugin } from '@/components/DBHeatmapChart/highlightDataPlugin';
 
 // Identity x positions; y pixels grow downward (pixel = 100 - 10 * value).
@@ -9,9 +12,17 @@ const valToPos = (v: number, axis: 'x' | 'y') =>
 const posToVal = (p: number, axis: 'x' | 'y') =>
   axis === 'x' ? p : (100 - p) / 10;
 
-function hover(cursor: { left: number; top: number }, cells = [2, 6]) {
+function hover(
+  cursor: { left: number; top: number },
+  cells = [2, 6],
+  cellKind: HeatmapCellKind = 'count',
+) {
   const onPointHighlight = jest.fn();
-  const plugin = highlightDataPlugin({ margin: 20, onPointHighlight });
+  const plugin = highlightDataPlugin({
+    margin: 20,
+    cellKind,
+    onPointHighlight,
+  });
   const u = {
     cursor,
     over: { offsetLeft: 5, offsetTop: 7 },
@@ -24,7 +35,6 @@ function hover(cursor: { left: number; top: number }, cells = [2, 6]) {
         stepMs: 10,
         yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 3] },
         cells,
-        cellKind: 'count',
       }),
     ],
   };
@@ -73,6 +83,21 @@ describe('highlightDataPlugin', () => {
       closestIndex: 1,
       closestDistance: 5,
     });
+  });
+
+  it('reports zero and negative value cells', () => {
+    expect(
+      reported(hover({ left: 100, top: 95 }, [0, -6], 'value')),
+    ).toMatchObject({ closestIndex: 0, closestDistance: 0, countVal: 0 });
+    expect(
+      reported(hover({ left: 100, top: 80 }, [0, -6], 'value')),
+    ).toMatchObject({ closestIndex: 1, countVal: -6 });
+  });
+
+  it('reaches past a value cell with no data', () => {
+    expect(
+      reported(hover({ left: 100, top: 95 }, [NaN, 6], 'value')),
+    ).toMatchObject({ closestIndex: 1, closestDistance: 5 });
   });
 
   it('reports nothing when no cell is within the margin', () => {

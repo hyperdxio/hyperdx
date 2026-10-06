@@ -1,9 +1,12 @@
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import {
   BuilderChartConfigWithDateRange,
+  ChartConfigWithDateRange,
   DisplayType,
+  SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 
-import { isAggregateFunction } from '@/ChartUtils';
+import { convertToTimeChartConfig, isAggregateFunction } from '@/ChartUtils';
 
 import { heatmapLowQuantile } from './heatmapBounds';
 import type { HeatmapScaleType } from './heatmapGrid';
@@ -28,16 +31,29 @@ export type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
-/** What a heatmap queries. */
-export type HeatmapQuery = {
-  mode: 'distribution';
-  config: HeatmapChartConfig;
-  scaleType: HeatmapScaleType;
-};
+/**
+ * What a heatmap queries, by mode. Distribution heatmaps bucket a value
+ * expression server-side; series heatmaps query one builder series per time
+ * bucket and draw a row per series.
+ */
+export type HeatmapQuery =
+  | {
+      mode: 'distribution';
+      config: HeatmapChartConfig;
+      scaleType: HeatmapScaleType;
+    }
+  | {
+      mode: 'series';
+      config: BuilderChartConfigWithDateRange;
+    };
 
 export function toHeatmapQuery(
   config: BuilderChartConfigWithDateRange,
 ): HeatmapQuery {
+  if (getHeatmapMode(config) === 'series') {
+    return { mode: 'series', config };
+  }
+
   const firstSelect = Array.isArray(config.select)
     ? config.select[0]
     : undefined;
@@ -58,6 +74,25 @@ export function toHeatmapQuery(
     },
     scaleType: firstSelect?.heatmapScaleType ?? 'log',
   };
+}
+
+/**
+ * The time-chart query behind a series-mode heatmap: `select[0]` and the
+ * group by, bucketed at the heatmap's granularity.
+ */
+export function buildHeatmapSeriesConfig(
+  config: BuilderChartConfigWithDateRange,
+  granularity: SQLInterval,
+): ChartConfigWithDateRange {
+  return convertToTimeChartConfig({
+    ...config,
+    select: Array.isArray(config.select)
+      ? config.select.slice(0, 1)
+      : config.select,
+    granularity,
+    // Heatmaps have no series limit control, a default is applied automatically
+    seriesLimit: undefined,
+  });
 }
 
 /**
