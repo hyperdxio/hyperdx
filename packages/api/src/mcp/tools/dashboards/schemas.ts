@@ -707,6 +707,25 @@ export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
     formulas: mcpTileFormulasSchema,
     showOperandSeries: mcpShowOperandSeriesSchema,
+    enableExemplars: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay exemplars: markers for individual trace-linked data points. ' +
+          'Only renders on an exemplar-eligible tile — a single non-ratio ' +
+          'histogram metric series with no groupBy, aggregated with avg, min, ' +
+          'max, quantile or last_value. Not count or sum: a counted point is ' +
+          'not attributable to any one trace, so the overlay stays inert with ' +
+          'no error.',
+      ),
+    exemplarTraceSourceId: objectIdSchema
+      .optional()
+      .describe(
+        'Trace source an exemplar marker links to. Must be an existing Trace ' +
+          'source — use clickstack_list_sources and pick one whose kind is ' +
+          '"trace"; anything else is rejected on save. Defaults to the chart ' +
+          "source's linked trace source when omitted.",
+      ),
   }),
 });
 
@@ -728,6 +747,25 @@ export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
     formulas: mcpTileFormulasSchema,
     showOperandSeries: mcpShowOperandSeriesSchema,
+    enableExemplars: z
+      .boolean()
+      .optional()
+      .describe(
+        'Overlay exemplars: markers for individual trace-linked data points. ' +
+          'Only renders on an exemplar-eligible tile — a single non-ratio ' +
+          'histogram metric series with no groupBy, aggregated with avg, min, ' +
+          'max, quantile or last_value. Not count or sum: a counted point is ' +
+          'not attributable to any one trace, so the overlay stays inert with ' +
+          'no error.',
+      ),
+    exemplarTraceSourceId: objectIdSchema
+      .optional()
+      .describe(
+        'Trace source an exemplar marker links to. Must be an existing Trace ' +
+          'source — use clickstack_list_sources and pick one whose kind is ' +
+          '"trace"; anything else is rejected on save. Defaults to the chart ' +
+          "source's linked trace source when omitted.",
+      ),
   }),
 });
 
