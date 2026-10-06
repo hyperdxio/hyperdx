@@ -28,6 +28,19 @@ export function getPromqlSeries(config: {
 }
 
 /**
+ * The one expression exemplars can be drawn for. Undefined when a chart plots
+ * several, since a marker could not say which line it belongs to.
+ */
+export function getExemplarPromqlExpression(
+  promqlExpression: PromqlExpressionList | undefined,
+): string | undefined {
+  const series = getPromqlSeries({ promqlExpression }).filter(
+    ({ expression }) => expression.trim(),
+  );
+  return series.length === 1 ? series[0].expression : undefined;
+}
+
+/**
  * The expressions a PromQL config actually queries. Blank rows are skipped so
  * an unfinished one the editor is still holding never reaches Prometheus. Only
  * time series charts plot several result sets.

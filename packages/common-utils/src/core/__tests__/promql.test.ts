@@ -2,6 +2,7 @@ import {
   appliesPromqlReducer,
   displayTypeSupportsInstantQuery,
   displayTypeSupportsReducer,
+  getExemplarPromqlExpression,
   getPromqlMacroInputs,
   getPromqlSeries,
   getQueriedPromqlSeries,
@@ -12,6 +13,22 @@ import {
   reducePromqlSamples,
 } from '@/core/promql';
 import { DisplayType, PromqlReducer } from '@/types';
+
+describe('getExemplarPromqlExpression', () => {
+  it('returns the only expression, in either saved shape', () => {
+    expect(getExemplarPromqlExpression('up')).toBe('up');
+    expect(
+      getExemplarPromqlExpression([{ expression: 'up' }, { expression: ' ' }]),
+    ).toBe('up');
+  });
+
+  it('returns undefined for several expressions or none', () => {
+    expect(
+      getExemplarPromqlExpression([{ expression: 'a' }, { expression: 'b' }]),
+    ).toBeUndefined();
+    expect(getExemplarPromqlExpression(undefined)).toBeUndefined();
+  });
+});
 
 describe('getPromqlSeries', () => {
   it('returns the expression list as-is', () => {

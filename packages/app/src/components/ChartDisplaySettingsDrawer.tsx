@@ -9,6 +9,7 @@ import {
   DisplayType,
   MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -39,6 +40,7 @@ import { ColorSwatchInput } from './ColorSwatchInput';
 import type { HeatmapScaleType } from './DBHeatmapChart';
 import { CheckBoxControlled, TextInputControlled } from './InputControlled';
 import { DEFAULT_NUMBER_FORMAT, NumberFormatForm } from './NumberFormat';
+import { SourceSelectControlled } from './SourceSelect';
 
 export type ChartConfigDisplaySettings = Pick<
   ChartConfigWithDateRange,
@@ -50,6 +52,8 @@ export type ChartConfigDisplaySettings = Pick<
   | 'color'
   | 'colorRules'
   | 'backgroundChart'
+  | 'enableExemplars'
+  | 'exemplarTraceSourceId'
 > & {
   groupByColumnsOnLeft?: boolean;
   alternateRowBackground?: boolean;
@@ -90,6 +94,17 @@ interface ChartDisplaySettingsDrawerProps {
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
+  /**
+   * Whether the exemplar overlay applies to this chart at all: the deployment
+   * flag is on and the source can carry exemplars (metric or PromQL).
+   */
+  showExemplars?: boolean;
+  /**
+   * Why the overlay can't be switched on for the chart as currently configured
+   * (e.g. more than one series). Set means the toggle renders disabled with this
+   * as its description, so the option stays discoverable.
+   */
+  exemplarIneligibleReason?: string;
 }
 
 function applyDefaultSettings(
@@ -112,6 +127,10 @@ function applyDefaultSettings(
     // previously registered field value in place.
     seriesLimit: settings.seriesLimit ?? null,
     legendTemplate: settings.legendTemplate ?? '',
+    enableExemplars: settings.enableExemplars ?? false,
+    // '' rather than undefined so `reset` clears the picker; normalized back to
+    // undefined on apply, since the config schema only accepts a string.
+    exemplarTraceSourceId: settings.exemplarTraceSourceId ?? '',
     color: settings.color,
     colorRules: settings.colorRules
       ? attachLocalIds(settings.colorRules)
@@ -132,6 +151,8 @@ export default function ChartDisplaySettingsDrawer({
   onClose,
   previousDateRange,
   isPerSeriesNumberFormatAllowed = false,
+  showExemplars = false,
+  exemplarIneligibleReason,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
@@ -154,6 +175,7 @@ export default function ChartDisplaySettingsDrawer({
 
   const fillNulls = useWatch({ control, name: 'fillNulls' });
   const isFillNullsEnabled = shouldFillNullsWithZero(fillNulls);
+  const enableExemplars = useWatch({ control, name: 'enableExemplars' });
 
   const handleClose = useCallback(() => {
     reset(appliedDefaults);
@@ -178,6 +200,9 @@ export default function ChartDisplaySettingsDrawer({
           numberFormat: numberFormatExplicit
             ? formValues.numberFormat
             : undefined,
+          // Empty picker means "fall back to the chart source's linked trace
+          // source"; the config schema takes a string or nothing, not ''.
+          exemplarTraceSourceId: rest.exemplarTraceSourceId || undefined,
           colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
         },
         hasDirtyFields,
@@ -299,6 +324,39 @@ export default function ChartDisplaySettingsDrawer({
               label="Fit Y-Axis to Data"
               description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
+            {showExemplars && (
+              <>
+                <CheckBoxControlled
+                  control={control}
+                  name="enableExemplars"
+                  size="xs"
+                  label="Show exemplars"
+                  // Still switchable off once a chart has become ineligible;
+                  // otherwise the setting is one-way and the chart keeps
+                  // reporting a suppressed overlay the user can't withdraw.
+                  disabled={
+                    exemplarIneligibleReason != null && !enableExemplars
+                  }
+                  description={
+                    exemplarIneligibleReason ??
+                    'Overlay markers for individual traces at their own measured value, with a link to the trace.'
+                  }
+                />
+                {enableExemplars && !exemplarIneligibleReason && (
+                  <Box>
+                    <SourceSelectControlled
+                      size="xs"
+                      control={control}
+                      name="exemplarTraceSourceId"
+                      allowedSourceKinds={[SourceKind.Trace]}
+                      label="Exemplar trace source"
+                      description="Where a marker's trace id is looked up. Leave empty to use the chart source's linked trace source."
+                      clearable
+                    />
+                  </Box>
+                )}
+              </>
+            )}
             {showSeriesLimit && (
               <Box>
                 <Controller
