@@ -1,5 +1,6 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SERVICES } from '../seed-clickhouse';
 import { getApiUrl, getSources } from '../utils/api-helpers';
@@ -265,6 +266,107 @@ test.describe('Heatmap modes', { tag: ['@full-stack', '@dashboard'] }, () => {
       await expect(link).toBeVisible();
       await link.click();
       await expect(page).toHaveURL(/\/search\?.*mode=delta/);
+    });
+  });
+
+  test('live dashboard heatmaps keep their auto granularity', async ({
+    page,
+  }) => {
+    test.setTimeout(120000);
+    const dashboardPage = new DashboardPage(page);
+    const ts = Date.now();
+
+    const traceSource = (await getSources(page, 'trace')).find(
+      s => s.name === DEFAULT_TRACES_SOURCE_NAME,
+    );
+    expect(traceSource).toBeDefined();
+    const heatmapTile = (index: number, valueExpression: string) => ({
+      id: `live-heatmap-${index}-${ts}`,
+      x: index * 12,
+      y: 0,
+      w: 12,
+      h: 10,
+      config: {
+        name: `Live heatmap ${valueExpression}`,
+        displayType: DisplayType.Heatmap,
+        source: traceSource._id,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            aggConditionLanguage: 'lucene',
+            valueExpression,
+            countExpression: 'count()',
+            heatmapScaleType: 'log',
+          },
+        ],
+        where: '',
+        whereLanguage: 'lucene',
+      },
+    });
+    const response = await page.request.post(`${getApiUrl()}/dashboards`, {
+      data: {
+        name: `E2E Live Heatmap ${ts}`,
+        tags: [],
+        tiles: [
+          heatmapTile(0, '(Duration)/1e6'),
+          // An aggregate value runs its bounds query over a time-bucketed CTE.
+          heatmapTile(1, 'sum(Duration)/1e6'),
+        ],
+      },
+    });
+    expect(response.ok()).toBe(true);
+    const { id: dashboardId } = await response.json();
+
+    const queries: string[] = [];
+    page.on('request', request => {
+      if (request.url().includes('/clickhouse-proxy')) {
+        queries.push(request.postData() ?? '');
+      }
+    });
+    // Past 1h: auto heatmap granularity (245 buckets) is 15 seconds; the live
+    // refresh interval (60 buckets) is 1 minute.
+    const expectQueriesAt = async (interval: string) => {
+      await expect.poll(() => queries.join('\n')).toContain(interval);
+      expect(queries.join('\n')).not.toContain('INTERVAL 1 minute');
+    };
+    const assertTileRenders = async (index: number) => {
+      const heatmap = dashboardPage.getTileHeatmap(index);
+      await expect(heatmap.canvas.first()).toBeVisible({ timeout: 20000 });
+      await expect(dashboardPage.getTileError(index)).toHaveCount(0);
+      await expect(heatmap.notEnoughDataText).toHaveCount(0);
+      await heatmap.hoverPopulatedCell();
+    };
+
+    await test.step('Both tiles render in live mode', async () => {
+      // An explicit dashboard granularity makes turning live on re-query.
+      await page.goto(`/dashboards/${dashboardId}?granularity=5+minute`);
+      await expectQueriesAt('INTERVAL 5 minute');
+      await assertTileRenders(0);
+      await assertTileRenders(1);
+      queries.length = 0;
+      await dashboardPage.toggleLiveMode();
+      await expectQueriesAt('INTERVAL 15 second');
+      await assertTileRenders(0);
+      await assertTileRenders(1);
+    });
+
+    await test.step('Fullscreen matches the tile granularity', async () => {
+      queries.length = 0;
+      // openFullscreenForTile always clicks the first tile's button.
+      await dashboardPage.hoverOverTile(1);
+      await dashboardPage
+        .getTile(1)
+        .locator('[data-testid^="tile-fullscreen-button-"]')
+        .click();
+      const heatmap = new HeatmapComponent(
+        page,
+        dashboardPage.fullscreenModalBody,
+      );
+      await expect(heatmap.canvas.first()).toBeVisible({ timeout: 20000 });
+      await expect(heatmap.notEnoughDataText).toHaveCount(0);
+      await expectQueriesAt('INTERVAL 15 second');
+      await dashboardPage.closeFullscreen();
     });
   });
 });

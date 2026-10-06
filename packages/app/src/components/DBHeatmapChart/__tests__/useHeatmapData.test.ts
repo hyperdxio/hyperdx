@@ -37,10 +37,15 @@ function renderDistributionHeatmap(config: BuilderChartConfigWithDateRange) {
       enabled: true,
     }),
   );
-  const bucketQuery = mockUseQueriedChartConfig.mock.calls
-    .filter(([, options]) => options?.queryKey?.[0] === 'heatmap_bucket')
-    .at(-1)?.[0];
-  return { view: result.current.view, bucketQuery };
+  const lastQuery = (key: string) =>
+    mockUseQueriedChartConfig.mock.calls
+      .filter(([, options]) => options?.queryKey?.[0] === key)
+      .at(-1)?.[0];
+  return {
+    view: result.current.view,
+    boundsQuery: lastQuery('heatmap'),
+    bucketQuery: lastQuery('heatmap_bucket'),
+  };
 }
 
 describe('useHeatmapData', () => {
@@ -72,4 +77,24 @@ describe('useHeatmapData', () => {
 
     expect(bucketQuery.granularity).toBe('30 second');
   });
+
+  it.each([undefined, 'auto' as const])(
+    'buckets the inner bounds query of an aggregate value when granularity is %s',
+    granularity => {
+      const { boundsQuery } = renderDistributionHeatmap({
+        ...traceConfig,
+        select: [
+          {
+            aggFn: 'count',
+            aggCondition: '',
+            valueExpression: 'sum(Duration)',
+          },
+        ],
+        granularity,
+      });
+
+      expect(boundsQuery.timestampValueExpression).toBe('__hdx_time_bucket');
+      expect(boundsQuery.with[0].chartConfig.granularity).toBe('30 second');
+    },
+  );
 });

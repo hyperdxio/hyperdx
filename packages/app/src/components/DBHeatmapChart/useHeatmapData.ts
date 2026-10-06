@@ -44,7 +44,11 @@ export function useHeatmapData({
 
   // Future: #1914 adds overflow-bucket indicators for smarter range
   // clamping without hiding spikes.
-  const minMaxConfig = buildHeatmapBoundsConfig({ config, scaleType });
+  const minMaxConfig = buildHeatmapBoundsConfig({
+    config,
+    scaleType,
+    granularity,
+  });
 
   const {
     data: minMaxData,

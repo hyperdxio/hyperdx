@@ -1,5 +1,4 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
@@ -7,7 +6,11 @@ import {
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 
-import { convertToTimeChartConfig, isAggregateFunction } from '@/ChartUtils';
+import {
+  convertToTimeChartConfig,
+  getTimeChartGranularity,
+  isAggregateFunction,
+} from '@/ChartUtils';
 
 import { heatmapLowQuantile } from './heatmapBounds';
 import type { HeatmapScaleType } from './heatmapGrid';
@@ -62,13 +65,12 @@ export function resolveHeatmapGranularity({
   BuilderChartConfigWithDateRange,
   'granularity' | 'dateRange' | 'minGranularitySeconds'
 >): SQLInterval {
-  return granularity == null || granularity === 'auto'
-    ? convertDateRangeToGranularityString(
-        dateRange,
-        HEATMAP_AUTO_GRANULARITY_BUCKETS,
-        minGranularitySeconds,
-      )
-    : granularity;
+  return getTimeChartGranularity(
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+    HEATMAP_AUTO_GRANULARITY_BUCKETS,
+  );
 }
 
 export function toHeatmapQuery(
@@ -126,9 +128,11 @@ export function buildHeatmapSeriesConfig(
 export function buildHeatmapBoundsConfig({
   config,
   scaleType,
+  granularity,
 }: {
   config: HeatmapChartConfig;
   scaleType: HeatmapScaleType;
+  granularity: SQLInterval;
 }): BuilderChartConfigWithDateRange {
   const valueExpression = config.select[0].valueExpression;
   const isAggregateExpression = isAggregateFunction(valueExpression);
@@ -162,6 +166,8 @@ export function buildHeatmapBoundsConfig({
               ...config,
               select: [{ valueExpression, alias: 'value_calc' }],
               orderBy: undefined,
+              // Emits the __hdx_time_bucket column the outer query filters on.
+              granularity,
             },
           },
         ],

@@ -100,13 +100,18 @@ export const DEFAULT_CHART_CONFIG: Omit<
   alignDateRangeToGranularity: true,
 };
 
-function getTimeChartGranularity(
-  granularity: string | undefined,
+export function getTimeChartGranularity<T extends string>(
+  granularity: T | 'auto' | undefined,
   dateRange: [Date, Date],
   minGranularitySeconds?: number,
+  maxBuckets = 80,
 ) {
   return granularity === 'auto' || granularity == null
-    ? convertDateRangeToGranularityString(dateRange, 80, minGranularitySeconds)
+    ? convertDateRangeToGranularityString(
+        dateRange,
+        maxBuckets,
+        minGranularitySeconds,
+      )
     : granularity;
 }
 
