@@ -1260,6 +1260,20 @@ export function tryExpandConfigVariables<
 const NO_LOG_SOURCE_WARNING_DISMISSED_KEY =
   'drilldown-metric-correlated-log-warning';
 
+// Called while rendering (chart tooltips), so it must not throw when storage is
+// blocked (sandboxed iframe, disabled cookies) or missing (SSR).
+function isNoLogSourceWarningDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.localStorage.getItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY) ===
+      'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Build search URL for viewing events based on group-by values
  * Used by both chart clicks and table row clicks
@@ -1295,8 +1309,7 @@ export function buildEventsSearchUrl({
         ? source.logSourceId
         : undefined;
     if (logSourceId == null) {
-      if (localStorage.getItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY) === 'true')
-        return null;
+      if (isNoLogSourceWarningDismissed()) return null;
       notifications.show({
         color: 'yellow',
         message:
