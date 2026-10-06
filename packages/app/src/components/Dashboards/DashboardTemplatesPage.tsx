@@ -14,11 +14,13 @@ import {
 import { IconUpload } from '@tabler/icons-react';
 
 import { DASHBOARD_TEMPLATES } from '@/dashboardTemplates';
+import { getTitleSuffix } from '@/hooks/getTitleSuffix';
 import { withAppNav } from '@/layout';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 export default function DashboardTemplatesPage() {
   const brandName = useBrandDisplayName();
+  const suffix = getTitleSuffix();
 
   const templatesByTag = useMemo(() => {
     const groups = new Map<string, typeof DASHBOARD_TEMPLATES>();
@@ -44,7 +46,7 @@ export default function DashboardTemplatesPage() {
   return (
     <div data-testid="dashboard-templates-page">
       <Head>
-        <title>Dashboard Templates - {brandName}</title>
+        <title>{`Dashboard Templates - ${brandName}${suffix}`}</title>
       </Head>
       <Breadcrumbs my="lg" ms="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">

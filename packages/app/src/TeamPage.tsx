@@ -24,6 +24,8 @@ import {
   IconUsers,
 } from '@tabler/icons-react';
 
+import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+
 import { PageHeader } from './components/PageHeader';
 import ApiKeysSection from './components/TeamSettings/ApiKeysSection';
 import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
@@ -74,6 +76,7 @@ function TeamTabContent({
 
 export default function TeamPage() {
   const brandName = useBrandDisplayName();
+  const suffix = getTitleSuffix();
   const router = useRouter();
   const { data: team, refetch: refetchTeam, isLoading } = api.useTeam();
   const setTeamName = api.useSetTeamName();
@@ -269,7 +272,7 @@ export default function TeamPage() {
   return (
     <div className="TeamPage" data-testid="team-page">
       <Head>
-        <title>My Team - {brandName}</title>
+        <title>{`My Team - ${brandName}${suffix}`}</title>
       </Head>
       <PageHeader>
         <div data-testid="team-name-section">

@@ -35,6 +35,7 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import { IS_LOCAL_MODE } from '@/config';
+import { getTitleSuffix } from '@/hooks/getTitleSuffix';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
@@ -87,6 +88,7 @@ const searchQueryStateMap = {
 function DBServiceMapPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
+  const suffix = getTitleSuffix();
 
   const { data: sources } = useSources();
   // `?source=` accepts a source name as well as a source ID.
@@ -224,12 +226,12 @@ function DBServiceMapPage() {
     () => (
       <>
         <Head>
-          <title>Service Map - {brandName}</title>
+          <title>{`Service Map - ${brandName}${suffix}`}</title>
         </Head>
         <OnboardingModal />
       </>
     ),
-    [brandName],
+    [brandName, suffix],
   );
 
   const sourceSelect = source ? (

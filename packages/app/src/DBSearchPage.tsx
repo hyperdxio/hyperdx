@@ -109,6 +109,7 @@ import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEdito
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
+import { getTitleSuffix } from '@/hooks/getTitleSuffix';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
@@ -1007,6 +1008,7 @@ export function useSearchTelemetry({
 
 export function DBSearchPage() {
   const brandName = useBrandDisplayName();
+  const suffix = getTitleSuffix();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
 
   // Next router is laggy behind window.location, which causes race
@@ -2188,9 +2190,7 @@ export function DBSearchPage() {
       data-testid="search-page"
     >
       <Head>
-        <title>
-          {savedSearch ? `${savedSearch.name} Search` : 'Search'} - {brandName}
-        </title>
+        <title>{`${savedSearch ? `${savedSearch.name} Search` : 'Search'} - ${brandName}${suffix}`}</title>
       </Head>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal
