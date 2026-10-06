@@ -62,6 +62,7 @@ Use BUILDER tiles (with sourceId) for most cases:
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
   bar          Categorical comparisons (request counts by service, errors by endpoint). One bar per group value; not a time series (use stacked_bar for that).
   heatmap      Distribution of a numeric value over time (latency buckets, payload size). Trace sources only. Requires non-empty valueExpression.
+               With heatmapMode: "series": one row per groupBy value, colored by a normal select item. Trace, Log, or Metric sources.
   search       Browse raw log/event rows (error logs, recent traces).
   markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, size it to fit the text (h: 2-3 for a line or two; h: 1 clips it), use plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
 
@@ -88,7 +89,7 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 1. ONE QUESTION PER DASHBOARD. A dashboard answers a single observability question well. Split if the request mixes traces, logs, and metrics into unrelated views.
 
-2. ALIAS EVERY SELECT ITEM. Every entry in select MUST carry an alias. Tables, lines, stacked_bars, pies, AND number tiles. The number-tile case is the one most often missed because the rendered UI uses the tile's name (not the column alias), so the absence looks invisible; the underlying query still emits a raw-expression column name (count(), quantile(0.95)(Duration)), which breaks orderBy references, CSV export, and any downstream onClick template that references the column by name. Treat "no alias" as a save-time bug, not a style nit. Heatmap is the only exception: heatmap select items take a valueExpression and no alias.
+2. ALIAS EVERY SELECT ITEM. Every entry in select MUST carry an alias. Tables, lines, stacked_bars, pies, AND number tiles. The number-tile case is the one most often missed because the rendered UI uses the tile's name (not the column alias), so the absence looks invisible; the underlying query still emits a raw-expression column name (count(), quantile(0.95)(Duration)), which breaks orderBy references, CSV export, and any downstream onClick template that references the column by name. Treat "no alias" as a save-time bug, not a style nit. Distribution heatmaps are the only exception: their select items take a valueExpression and no alias.
 
    Number tile, correct:    select: [{ aggFn: "count", alias: "Server Requests" }]
    Number tile, wrong:      select: [{ aggFn: "count" }]
@@ -139,7 +140,7 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 14. SIZE TILES TO FIT THEIR CONTENT. The layout w/h are not one-size-fits-all; a tile that is too short clips its content (a table loses rows below the fold, a number tile crops its label) and one that is too wide wastes the row. Match the size to the displayType: number tiles stay small (w 6-8, h 3-4) so three or four KPIs share a row; line / stacked_bar / pie / bar want w 8-12 and h 4-6; tables and search lists want the full row (w 24) and h 6-10 so rows are not cut off; heatmaps want w 12 and h 5-6; a markdown note wants h 2-3 (never h 1, which clips the text). The per-field w/h descriptions on the tile schema carry the same per-displayType ranges; reach for them instead of leaving every tile at the 12x4 default.
 
-15. FILTER A BUILDER TILE ON THE SELECT ITEM, NOT THE TILE. To scope a table / line / stacked_bar / number / pie / bar tile to a subset of rows (a service, an error status), put the filter on EACH select item's where: select: [{ aggFn: "count", where: "ServiceName:payment", whereLanguage: "lucene", alias: "..." }]. The chart editor renders that per-series where as the tile's visible "Where" box, so the user can see and edit it. Do NOT put a filter at the tile config's top level for these types: the editor does not show it, so it is ignored. For a whole-dashboard scope use a dashboard-level filter (gotcha 9). The only display types with a tile-level where are search, heatmap, and event_patterns, where the editor does render it.
+15. FILTER A BUILDER TILE ON THE SELECT ITEM, NOT THE TILE. To scope a table / line / stacked_bar / number / pie / bar tile to a subset of rows (a service, an error status), put the filter on EACH select item's where: select: [{ aggFn: "count", where: "ServiceName:payment", whereLanguage: "lucene", alias: "..." }]. The chart editor renders that per-series where as the tile's visible "Where" box, so the user can see and edit it. Do NOT put a filter at the tile config's top level for these types: the editor does not show it, so it is ignored. For a whole-dashboard scope use a dashboard-level filter (gotcha 9). The only display types with a tile-level where are search, distribution heatmap, and event_patterns, where the editor does render it. Series heatmaps filter on the select item like the other builder types.
 
 == ADAPT, DO NOT COPY ==
 
@@ -165,7 +166,7 @@ Dashboards open with a 15-minute default window. There is no dashboard-level fie
 - Multiple select items on number / pie / bar / heatmap tiles (each takes exactly one).
 - Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
 - Assuming StatusCode or SeverityText values (always inspect lowCardinalityValues from clickstack_describe_source).
-- Heatmap on a non-Trace source (heatmap is Trace-only today).
+- Distribution heatmap on a non-Trace source, or series heatmap on a source that is not Trace, Log, or Metric.
 - Hardcoding a focus dimension into every tile's where clause (use a dashboard-level filter instead).
 - Putting a filter at the tile-config top level on a table / line / stacked_bar / number / pie / bar tile (ignored for these types; put the where on each select item instead, see gotcha 15).
 - Enabling both isBroadcastEnabled and isVariableEnabled on one filter (the picked value is then applied twice; set isBroadcastEnabled: false when you add a variable). The exception is rule 9c: a variable read only by another filter's where never reaches a tile, so that filter can keep broadcasting.
