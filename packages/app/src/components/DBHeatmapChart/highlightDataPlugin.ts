@@ -1,7 +1,11 @@
 import type { Plugin } from 'uplot';
 import type uPlot from 'uplot';
 
-import type { HeatmapPlotData } from './heatmapGrid';
+import {
+  type HeatmapCellKind,
+  type HeatmapPlotData,
+  isEmptyHeatmapCell,
+} from './heatmapGrid';
 
 export type HighlightedPoint = {
   // data point values
@@ -38,9 +42,11 @@ function distanceToRect(
  */
 export function highlightDataPlugin({
   margin,
+  cellKind,
   onPointHighlight,
 }: {
   margin: number;
+  cellKind: HeatmapCellKind;
   onPointHighlight: (point: HighlightedPoint | undefined) => void;
 }): Plugin {
   return {
@@ -70,7 +76,7 @@ export function highlightDataPlugin({
         let ySize = 0;
 
         for (let i = 0; i < xs.length && closestDistance > 0; i++) {
-          if (!(counts[i] > 0)) continue;
+          if (isEmptyHeatmapCell(counts[i], cellKind)) continue;
           if (x1s[i] < xLo || x0s[i] > xHi || y1s[i] < yLo || y0s[i] > yHi) {
             continue;
           }

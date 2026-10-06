@@ -9,9 +9,11 @@ import type { HeatmapGrid, HeatmapScaleType } from './heatmapGrid';
 export type HeatmapView = {
   grid: HeatmapGrid;
   generatedTsBuckets: Date[];
-  /** The scale and lower bound the grid was bucketed with. */
+  /** The scale and lower bound the grid was bucketed with (Distribution mode only) */
   scaleType: HeatmapScaleType;
   effectiveMin: number;
+  /** Series dropped by the row cap of a series-mode heatmap. */
+  hiddenSeriesCount: number;
 };
 
 /** What a heatmap data hook returns for the chart to render. */

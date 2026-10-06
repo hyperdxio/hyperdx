@@ -1667,7 +1667,13 @@ export type RatioMode = z.infer<typeof RatioModeSchema>;
 export const SearchScopeSchema = z.enum(['span', 'trace']);
 export type SearchScope = z.infer<typeof SearchScopeSchema>;
 
+// Heatmap y-axis may be a numeric distribution or series/groups.
+export const HeatmapModeSchema = z.enum(['distribution', 'series']);
+export type HeatmapMode = z.infer<typeof HeatmapModeSchema>;
+
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
+  // Heatmap tiles only; an absent mode is 'distribution' (see getHeatmapMode).
+  heatmap: z.object({ mode: HeatmapModeSchema.optional() }).optional(),
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   // Fallback expression for bare-text Lucene search when no implicit column is

@@ -71,11 +71,27 @@ export class ChartEditorComponent {
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
-  /** The heatmap's "Value" (y axis) SQL input. */
+  /** Pick the builder heatmap's mode in its segmented control. */
+  async setHeatmapMode(mode: 'Distribution' | 'Series') {
+    await this.editorForm()
+      .getByTestId('heatmap-mode-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${mode}$`) })
+      .click();
+  }
+
+  /** The distribution heatmap's "Value" (y axis) SQL input. */
   get heatmapValueInput(): Locator {
     return this.editorForm()
       .getByTestId('heatmap-value-input')
       .locator('.cm-content');
+  }
+
+  /** A heatmap mode's (visually hidden) radio, for checking the selection. */
+  heatmapModeOption(mode: 'Distribution' | 'Series'): Locator {
+    return this.editorForm()
+      .getByTestId('heatmap-mode-control')
+      .getByRole('radio', { name: mode, exact: true });
   }
 
   /**
@@ -551,7 +567,8 @@ export class ChartEditorComponent {
     if ((await control.getAttribute('aria-expanded')) !== 'true') {
       await control.click();
     }
-    await this.generatedSqlContent().waitFor({
+    // Distribution heatmaps render two previews (bounds, then buckets).
+    await this.generatedSqlContent().first().waitFor({
       state: 'visible',
       timeout: 10000,
     });
@@ -633,6 +650,12 @@ export class ChartEditorComponent {
   async getGeneratedSqlText(): Promise<string> {
     const text = await this.generatedSqlContent().innerText();
     return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /** Every generated SQL preview, whitespace-collapsed and joined. */
+  async getAllGeneratedSqlText(): Promise<string> {
+    const texts = await this.generatedSqlContent().allInnerTexts();
+    return texts.join(' ').replace(/\s+/g, ' ').trim();
   }
 
   /**

@@ -9,7 +9,11 @@ import type { HighlightedPoint } from '@/components/DBHeatmapChart/highlightData
 
 type PlotOptions = {
   cursor?: { drag?: { x?: boolean; y?: boolean } };
-  axes?: { splits?: unknown }[];
+  axes?: {
+    splits?: (...args: unknown[]) => number[];
+    values?: (u: unknown, vals: number[]) => string[];
+  }[];
+  scales?: { y?: { range?: unknown } };
 };
 
 const mockPlot = jest.fn();
@@ -42,7 +46,6 @@ const grid: HeatmapGrid = {
   stepMs: 1000,
   yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 2] },
   cells: [1, 2, 3, 4],
-  cellKind: 'count',
 };
 
 const lastData = () => mockPlot.mock.calls.at(-1)?.[0];
@@ -75,6 +78,28 @@ describe('HeatmapPlot', () => {
 
     renderPlot({ onFilter: jest.fn() });
     expect(lastOptions().cursor?.drag).toMatchObject({ x: true, y: true });
+  });
+
+  it('labels a series axis with one tick centered on each row', () => {
+    renderPlot({
+      grid: {
+        ...grid,
+        yAxis: {
+          type: 'series',
+          labels: ['api', 'a-very-long-service-name-that-is-truncated'],
+        },
+      },
+      scaleType: 'log',
+    });
+
+    const yAxis = lastOptions().axes?.[1];
+    const splits = yAxis?.splits?.();
+    expect(splits).toEqual([0.5, 1.5]);
+    expect(yAxis?.values?.(undefined, splits ?? [])).toEqual([
+      'api',
+      'a-very-long..s-truncated',
+    ]);
+    expect(lastOptions().scales?.y?.range).toEqual([0, 2]);
   });
 
   it('places log-scale ticks at powers of 10', () => {

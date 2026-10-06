@@ -31,12 +31,13 @@ describe('ChartDisplaySettingsDrawer', () => {
   });
 
   describe('heatmap y axis scale', () => {
-    it('shows the scale only for heatmaps', () => {
+    it('shows the scale only for distribution heatmaps', () => {
       const { unmount } = renderWithMantine(
         <ChartDisplaySettingsDrawer
           {...baseProps}
           configType="builder"
-          displayType={DisplayType.Line}
+          displayType={DisplayType.Heatmap}
+          heatmapMode="series"
         />,
       );
       expect(
@@ -49,6 +50,7 @@ describe('ChartDisplaySettingsDrawer', () => {
           {...baseProps}
           configType="builder"
           displayType={DisplayType.Heatmap}
+          heatmapMode="distribution"
         />,
       );
       expect(screen.getByTestId('heatmap-scale-control')).toBeInTheDocument();
@@ -62,6 +64,7 @@ describe('ChartDisplaySettingsDrawer', () => {
           {...baseProps}
           configType="builder"
           displayType={DisplayType.Heatmap}
+          heatmapMode="distribution"
           onChange={onChange}
         />,
       );

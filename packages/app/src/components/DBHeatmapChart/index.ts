@@ -6,6 +6,7 @@ export type { HeatmapScaleType } from './heatmapGrid';
 export {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
+  buildHeatmapSeriesConfig,
   toHeatmapQuery,
 } from './heatmapQueries';
 export { darkPalette, lightPalette } from './palette';

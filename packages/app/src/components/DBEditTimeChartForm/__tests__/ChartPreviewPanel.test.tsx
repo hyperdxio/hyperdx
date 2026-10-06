@@ -56,13 +56,13 @@ jest.mock('@/components/DBSqlRowTableWithSidebar', () => ({
 jest.mock('@/components/DBHeatmapChart', () => ({
   __esModule: true,
   default: () => <div data-testid="db-heatmap-chart">Heatmap Chart</div>,
-  toHeatmapQuery: (config: unknown) => ({
-    mode: 'distribution',
-    config,
-    scaleType: 'log',
-  }),
+  toHeatmapQuery: (config: { heatmap?: { mode?: string } }) =>
+    config.heatmap?.mode === 'series'
+      ? { mode: 'series', config }
+      : { mode: 'distribution', config, scaleType: 'log' },
   buildHeatmapBoundsConfig: ({ config }: { config: unknown }) => config,
   buildHeatmapBucketConfig: ({ config }: { config: unknown }) => config,
+  buildHeatmapSeriesConfig: (config: unknown) => config,
   HEATMAP_N_BUCKETS: 80,
 }));
 
@@ -268,6 +268,22 @@ describe('ChartPreviewPanel', () => {
       // queries (bounds first, then bucketed counts).
       expect(screen.getByText(/Bounds query/i)).toBeInTheDocument();
       expect(screen.getByText(/Heatmap query/i)).toBeInTheDocument();
+    });
+
+    it('should show the single time-chart query of a series heatmap', () => {
+      const seriesConfig = {
+        ...baseBuilderConfig,
+        heatmap: { mode: 'series' as const },
+      };
+      renderPanel({
+        queriedConfig: seriesConfig,
+        chartConfigForExplanations: seriesConfig,
+        showGeneratedSql: true,
+        activeTab: 'heatmap',
+      });
+
+      expect(screen.queryByText(/Bounds query/i)).not.toBeInTheDocument();
+      expect(screen.getAllByTestId('chart-sql-preview')).toHaveLength(1);
     });
   });
 

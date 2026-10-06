@@ -107,6 +107,8 @@ export const EVALUATION_INERT_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'fitYAxisToData',
   'onClick',
   'alternateRowBackground',
+  // Heatmap tiles carry no alerts; alert display types ignore it.
+  'heatmap',
   // Client-side null-bucket rendering; the alert task ignores it.
   'fillNulls',
   // Evaluation-relevant only with a groupBy, which (on variants whose shape

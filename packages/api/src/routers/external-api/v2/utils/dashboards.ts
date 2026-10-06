@@ -1,3 +1,4 @@
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
@@ -538,6 +539,20 @@ function convertTileToExternalChart(
     return undefined;
   }
 
+  // Series-mode heatmaps have no external schema yet. Emitting them as
+  // distribution tiles would corrupt them on a GET -> PUT round-trip.
+  if (
+    isBuilderSavedChartConfig(tile.config) &&
+    tile.config.displayType === DisplayType.Heatmap &&
+    getHeatmapMode(tile.config) === 'series'
+  ) {
+    logger.warn(
+      { dashboardId, tileId: tile.id },
+      'Skipping series-mode heatmap tile in external API response (not yet supported)',
+    );
+    return undefined;
+  }
+
   // Returned in case of a failure converting the saved chart config
   const defaultTileConfig: ExternalDashboardTileConfig =
     isRawSqlSavedChartConfig(tile.config)
@@ -1051,7 +1066,7 @@ function getMissingSources(
 /**
  * Returns source IDs referenced by heatmap tiles that exist but are not
  * compatible with heatmap rendering. The heatmap UI gates the source picker
- * via the same `HEATMAP_ALLOWED_SOURCE_KINDS` set used here (see
+ * via the same `HEATMAP_DISTRIBUTION_SOURCE_KINDS` set used here (see
  * `packages/common-utils/src/guards.ts` and `ChartEditorControls.tsx`), so
  * UI and API gates move together.
  */
