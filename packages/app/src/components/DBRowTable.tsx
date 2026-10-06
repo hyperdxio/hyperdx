@@ -77,6 +77,7 @@ import {
   useAliasMapFromChartConfig,
   useRenderedSqlChartConfig,
 } from '@/hooks/useChartConfig';
+import { useConfigWithSelectAliases } from '@/hooks/useConfigWithSelectAliases';
 import { CsvColumn, useCsvExport } from '@/hooks/useCsvExport';
 import { useColumns, useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
@@ -1831,14 +1832,16 @@ function DBSqlRowTableComponent({
   }, [data?.meta, onResolvedColumnsChange]);
 
   const { data: source } = useSource({ id: sourceId });
+  const { config: patternConfig, isLoading: isLoadingPatternAliases } =
+    useConfigWithSelectAliases(config);
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
-    config,
+    config: patternConfig,
     samples: DENOISE_SAMPLE_SIZE,
     bodyValueExpression: patternColumn ?? '',
     levelExpression: getLevelExpression(source),
     totalCount: undefined,
-    enabled: denoiseResults,
+    enabled: denoiseResults && !isLoadingPatternAliases,
   });
   const noisyPatterns = useQuery({
     queryKey: ['noisy-patterns', config],
