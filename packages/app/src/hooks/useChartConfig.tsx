@@ -32,6 +32,7 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   isMetricSource,
+  isPromqlSource,
   QuerySettings,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -121,7 +122,11 @@ const shouldUseChunking = (
 export function getMinGranularitySeconds(
   source: TSource | undefined,
 ): number | undefined {
-  if (!source || !isMetricSource(source) || !source.minAutoGranularity) {
+  if (
+    !source ||
+    !(isMetricSource(source) || isPromqlSource(source)) ||
+    !source.minAutoGranularity
+  ) {
     return undefined;
   }
   return convertGranularityToSeconds(source.minAutoGranularity);
@@ -408,7 +413,13 @@ export function useQueriedChartConfig(
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
-        return queryPromqlChartConfig(config, config.dateRange, context.signal);
+        // Macros read the floor as the source's scrape interval, so it has to
+        // reach them even when the caller didn't put it on the config.
+        return queryPromqlChartConfig(
+          { ...config, minGranularitySeconds },
+          config.dateRange,
+          context.signal,
+        );
       }
 
       const optimizedConfig = {

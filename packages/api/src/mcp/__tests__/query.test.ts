@@ -309,6 +309,17 @@ describe('errorHint', () => {
     expect(hint).toContain('Narrow the time range');
   });
 
+  it('should match the client-side request timeout', () => {
+    const error = new Error('Timeout error.');
+    expect(errorHint(error.message, error)).toContain('execution-time limit');
+  });
+
+  it('should not give query-tuning advice for a socket timeout', () => {
+    const error: NodeJS.ErrnoException = new Error('connect ETIMEDOUT');
+    error.code = 'ETIMEDOUT';
+    expect(errorHint(error.message, error)).toBeNull();
+  });
+
   it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
     const hint = errorHint(
       "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",

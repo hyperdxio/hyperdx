@@ -6,9 +6,11 @@ import ChartContainer from '@/components/charts/ChartContainer';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from '@/components/charts/ChartErrorState';
+import HiddenSeriesIndicator from '@/components/charts/HiddenSeriesIndicator';
 import { NumberFormat } from '@/types';
 
 import { ColorLegend } from './ColorLegend';
+import { heatmapRowCount } from './heatmapGrid';
 import { HeatmapPlot } from './HeatmapPlot';
 import { darkPalette, lightPalette } from './palette';
 import type { SelectionBounds } from './selection';
@@ -47,12 +49,25 @@ export function HeatmapChartView({
   const { colorScheme } = useMantineColorScheme();
   const palette = colorScheme === 'light' ? lightPalette : darkPalette;
 
+  const { hiddenSeriesCount } = view;
+  const renderedSeriesCount = heatmapRowCount(view.grid.yAxis);
+
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
 
     if (showLegend) {
       allToolbarItems.push(
         <ColorLegend key="heatmap-legend" colors={palette} />,
+      );
+    }
+
+    if (hiddenSeriesCount > 0) {
+      allToolbarItems.push(
+        <HiddenSeriesIndicator
+          key="heatmap-hidden-series-indicator"
+          hiddenSeriesCount={hiddenSeriesCount}
+          renderedSeriesCount={renderedSeriesCount}
+        />,
       );
     }
 
@@ -65,7 +80,14 @@ export function HeatmapChartView({
     }
 
     return allToolbarItems;
-  }, [showLegend, palette, toolbarPrefix, toolbarSuffix]);
+  }, [
+    showLegend,
+    palette,
+    hiddenSeriesCount,
+    renderedSeriesCount,
+    toolbarPrefix,
+    toolbarSuffix,
+  ]);
 
   return (
     <ChartContainer

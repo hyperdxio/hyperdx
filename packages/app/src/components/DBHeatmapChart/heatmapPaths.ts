@@ -1,7 +1,7 @@
 import uPlot from 'uplot';
 
-import type { HeatmapPlotData } from './heatmapGrid';
-import { makeCountsToFills } from './palette';
+import type { HeatmapCellKind, HeatmapPlotData } from './heatmapGrid';
+import { makeCellsToFills } from './palette';
 
 // Adapted from: https://github.com/leeoniya/uPlot/blob/a4edb297a9b80baf781f4d05a40fb52fae737bff/demos/latency-heatmap.html#L436
 // Each cell is drawn from its own extent (x0..x1, y0..y1) rather than from a
@@ -34,7 +34,7 @@ export function heatmapPaths(opts: {
       ) => {
         // mode 2 data format is not supported in types properly
         const d = u.data[seriesIdx] as unknown as HeatmapPlotData;
-        const [xs, ys, counts, x0s, x1s, y0s, y1s] = d;
+        const [xs, ys, , x0s, x1s, y0s, y1s] = d;
 
         // fill colors are mapped from interpolating densities / counts along some gradient
         // (should be quantized to 64 colors/levels max. e.g. 16)
@@ -43,9 +43,9 @@ export function heatmapPaths(opts: {
         const fillPaths = fillPalette.map(() => new Path2D());
 
         for (let i = 0; i < xs.length; i++) {
-          // filter out 0 counts and out of view
+          // filter out empty cells (no palette index) and out of view
           if (
-            counts[i] > 0 &&
+            fills[i] >= 0 &&
             xs[i] >= (scaleX.min ?? -Infinity) &&
             xs[i] <= (scaleX.max ?? Infinity) &&
             ys[i] >= (scaleY.min ?? -Infinity) &&
@@ -148,13 +148,16 @@ export const baseHeatmapOptions: uPlot.Options = {
 };
 
 /** Build the series[1] overrides for a given palette. */
-export function buildSeriesForPalette(colors: string[]): Partial<uPlot.Series> {
+export function buildSeriesForPalette(
+  colors: string[],
+  cellKind: HeatmapCellKind,
+): Partial<uPlot.Series> {
   return {
     paths: heatmapPaths({
       disp: {
         fill: {
           lookup: colors,
-          values: makeCountsToFills(colors),
+          values: makeCellsToFills(colors, cellKind),
         },
       },
     }),

@@ -62,6 +62,9 @@ import DisplaySwitcher from './charts/DisplaySwitcher';
 import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
 
+const PROMQL_REDUCE_CARDINALITY_HINT =
+  'Narrow the label matchers, aggregate with sum by (...), or set a series limit to reduce the number of series.';
+
 /** A single group column / value pair decoded from a chart series key. */
 export type SeriesGroupFilter = { column: string; value: string };
 
@@ -953,6 +956,11 @@ function DBTimeChartComponent({
           // raise the cap (loadAllHandler is undefined otherwise), so the
           // notice never advertises a no-op click.
           onLoadAll={loadAllHandler}
+          reduceCardinalityHint={
+            isPromqlChartConfig(config)
+              ? PROMQL_REDUCE_CARDINALITY_HINT
+              : undefined
+          }
         />,
       );
     }
