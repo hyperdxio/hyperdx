@@ -686,10 +686,12 @@ describe('substitutePromqlChartConfigTemplates macros', () => {
       variables,
       granularity = '5 minute',
       dateRange = PROMQL_DATE_RANGE,
+      minGranularitySeconds,
     }: {
       variables?: ChartVariable[];
       granularity?: string;
       dateRange?: [Date, Date];
+      minGranularitySeconds?: number;
     } = {},
   ) =>
     substitutePromqlChartConfigTemplates({
@@ -699,6 +701,7 @@ describe('substitutePromqlChartConfigTemplates macros', () => {
       variables,
       granularity,
       dateRange,
+      minGranularitySeconds,
     }).promqlExpression;
 
   it('expands macros without a variable context', () => {
@@ -715,6 +718,32 @@ describe('substitutePromqlChartConfigTemplates macros', () => {
         variables: [SERVICE],
       }),
     ).toBe('rate(up{service=~"(api|web)"}[315s])');
+  });
+
+  it("sizes `$__rate_interval` from the source's minimum auto granularity", () => {
+    // max(15 + 60, 4 * 60): without the floor this would be 60s, a window that
+    // holds a single sample of data scraped every 60s.
+    expect(
+      substitute('rate(a[$__rate_interval])', {
+        granularity: '15 second',
+        minGranularitySeconds: 60,
+      }),
+    ).toBe('rate(a[240s])');
+  });
+
+  it('floors `$__interval` only while the granularity is auto', () => {
+    expect(
+      substitute('avg_over_time(a[$__interval])', {
+        granularity: 'auto',
+        minGranularitySeconds: 300,
+      }),
+    ).toBe('avg_over_time(a[300s])');
+    expect(
+      substitute('avg_over_time(a[$__interval])', {
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      }),
+    ).toBe('avg_over_time(a[15s])');
   });
 
   it('expands every expression of a multi-expression config', () => {

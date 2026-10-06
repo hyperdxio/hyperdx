@@ -3,7 +3,10 @@ import {
   TableConnection,
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { getQueriedPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
+import {
+  displayTypeSupportsReducer,
+  getQueriedPromqlSeries,
+} from '@hyperdx/common-utils/dist/core/promql';
 import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   configConsumesBroadcastFilters,
@@ -38,8 +41,8 @@ import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables'
 import {
   convertToCategoricalChartConfig,
   convertToNumberChartConfig,
-  convertToPromqlNumberChartConfig,
   convertToPromqlTableChartConfig,
+  convertToReducedPromqlChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   tryExpandConfigVariables,
@@ -274,8 +277,8 @@ export type RenderedPromqlExpression =
 function toQueriedPromqlConfig(
   config: PromqlChartConfig & DateRange,
 ): PromqlChartConfig & DateRange {
-  if (config.displayType === DisplayType.Number) {
-    return convertToPromqlNumberChartConfig(config, { withReducer: false });
+  if (displayTypeSupportsReducer(config)) {
+    return convertToReducedPromqlChartConfig(config);
   }
   if (config.displayType === DisplayType.Table) {
     return convertToPromqlTableChartConfig(config);
@@ -287,9 +290,14 @@ function toQueriedPromqlConfig(
   return config;
 }
 
-/** The expressions a PromQL tile is queried with, with macros and variables substituted. */
+/**
+ * The expressions a PromQL tile is queried with, with macros and variables
+ * substituted. `minGranularitySeconds` is the PromQL source's floor, which the
+ * chart applies to `auto` granularity and `$__rate_interval`.
+ */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
+  minGranularitySeconds?: number,
 ): RenderedPromqlExpression | undefined {
   if (queriedConfig == null || !isPromqlChartConfig(queriedConfig)) {
     return undefined;
@@ -297,7 +305,7 @@ export function buildRenderedPromqlExpression(
 
   try {
     const substituted = substitutePromqlChartConfigTemplates(
-      toQueriedPromqlConfig(queriedConfig),
+      toQueriedPromqlConfig({ ...queriedConfig, minGranularitySeconds }),
     );
     return {
       expressions: getQueriedPromqlSeries(substituted).map((series, index) => ({

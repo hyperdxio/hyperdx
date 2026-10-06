@@ -1,5 +1,67 @@
 # @hyperdx/api
 
+## 2.40.0
+
+### Minor Changes
+
+- d91e66b8: Make the external API v2 rate limit (`/api/v2/*`) configurable via `EXTERNAL_API_RATE_LIMIT_MAX`. Defaults to 100 requests/minute, matching the previous hardcoded value.
+
+### Patch Changes
+
+- 1e355ac4: fix: don't scan the whole table to discover Map keys
+
+  `getMapKeys` only applied a time predicate when the caller passed both a date
+  range and a timestamp expression; otherwise the raw `sampledKeys` scan ran with
+  no `WHERE` and touched every part of the table. It now defaults a missing date
+  range to the last 24 hours and skips the raw scan entirely when there is no
+  timestamp expression to filter on. The chart, alert and dashboard-filter
+  editors pass the source and date range they already have so Map keys keep
+  autocompleting there.
+
+- 793fe19e: feat: Substitute dashboard variables in markdown tiles
+- ec4f5087: fix: allow grouping gauge and sum metric charts by materialized and alias columns
+
+  Grouping or selecting a MATERIALIZED or ALIAS column on a gauge or sum metric chart failed with `Unknown expression identifier`, because the intermediate query didn't carry those columns through.
+
+- 08d9a908: feat: Plot several PromQL expressions on one chart
+- 19182e7e: fix: only split a query at a standalone SETTINGS keyword
+
+  `extractSettingsClauseFromEnd` cut the query at the first "settings" anywhere in
+  it, including inside a string or an identifier. A multi-series metric chart with
+  a metric such as `app.settings.reloads` produced SQL with an unterminated
+  string, and a SQL filter on a column such as `AppSettings` was rewritten to
+  reference `App`. The keyword now has to stand alone outside quotes.
+
+- d9e2c58b: Add a per-source floor for auto granularity. A metric source can now set "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so that auto-inferred time buckets never go below it — useful when the underlying metric is reported on a fixed interval (e.g. a 60s scrape), since a short selected date range can otherwise auto-infer a smaller bucket than that interval and render a sparse/steppy series (alternating real-sample/empty buckets). Mirrors Grafana's per-datasource "Min interval" setting. Unset (the default) preserves the existing unfloored behavior, and an explicit (non-auto) granularity chosen on a tile is never affected.
+- a5e7841c: fix(mcp): time-bound the trace waterfall span/log fetches so they prune
+  partitions instead of scanning the full retention window. The
+  `clickstack_trace_waterfall` tool now threads the search window into its span
+  and correlated-log queries, adds a `max_execution_time` ceiling, and probes a
+  trace's `[min, max]` span extent so an explicit `traceId` older than the
+  default window — or a trace that ran longer than an hour — still resolves in
+  full. The probe also runs for auto-picked traces, so a picked trace whose root
+  predates the window is no longer truncated into a partial tree. The fetch window
+  is width-clamped to the recent tail so a reused or sentinel `traceId` (e.g. an
+  all-zero id from an uninstrumented emitter) can't widen the scan back toward the
+  retention edge or stitch unrelated occurrences into one tree. Empty-result hints
+  now name the recoverable action (pass an explicit `startTime`) instead of the
+  misleading "widen the window", and a probe that fails is surfaced rather than
+  silently swallowed. ClickHouse query timeouts are also reclassified from `user`
+  to `server` errors.
+- Updated dependencies [1e355ac4]
+- Updated dependencies [793fe19e]
+- Updated dependencies [ec4f5087]
+- Updated dependencies [8a9fcd2f]
+- Updated dependencies [08d9a908]
+- Updated dependencies [a8a72c11]
+- Updated dependencies [8cfb2672]
+- Updated dependencies [4570d5ee]
+- Updated dependencies [78ed5921]
+- Updated dependencies [23423c13]
+- Updated dependencies [19182e7e]
+- Updated dependencies [d9e2c58b]
+  - @hyperdx/common-utils@0.30.0
+
 ## 2.39.1
 
 ## 2.39.0

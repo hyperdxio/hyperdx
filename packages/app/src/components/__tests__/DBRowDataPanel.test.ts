@@ -1,3 +1,4 @@
+import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
 
@@ -13,6 +14,8 @@ jest.mock('@/hooks/useChartConfig', () => ({
 }));
 
 const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
+const showMaterializedAliasColumns = () =>
+  localStorage.setItem('hdx-row-show-materialized-alias-columns', 'true');
 
 describe('DBRowDataPanel', () => {
   const source: TLogSource = {
@@ -28,6 +31,7 @@ describe('DBRowDataPanel', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    localStorage.clear();
     mockUseQueriedChartConfig.mockReturnValue({
       data: {
         data: [],
@@ -91,6 +95,114 @@ describe('DBRowDataPanel', () => {
       valueExpression: 'Timestamp, Body, ServiceName',
     });
     expect(config.select).not.toContainEqual({ valueExpression: '*' });
+  });
+
+  it('adds no query settings while the viewer option is off', () => {
+    renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+
+    const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
+    for (const [, options] of [bounded, fallback]) {
+      expect(options.additionalQuerySettings).toBeUndefined();
+      expect(options.retry).toBeUndefined();
+    }
+  });
+
+  it('includes MATERIALIZED and ALIAS columns when the viewer option is on', () => {
+    showMaterializedAliasColumns();
+    renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
+
+    const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
+    for (const [, options] of [bounded, fallback]) {
+      expect(options.additionalQuerySettings).toEqual([
+        { setting: 'asterisk_include_materialized_columns', value: '1' },
+        { setting: 'asterisk_include_alias_columns', value: '1' },
+      ]);
+    }
+  });
+
+  it('adds only the settings that the source does not set itself', () => {
+    showMaterializedAliasColumns();
+    const sourceWithSetting: TLogSource = {
+      ...source,
+      querySettings: [
+        { setting: 'asterisk_include_alias_columns', value: '0' },
+      ],
+    };
+
+    renderHook(() =>
+      useRowData({ source: sourceWithSetting, rowId: "id='abc123'" }),
+    );
+
+    const [[, options]] = mockUseQueriedChartConfig.mock.calls;
+    expect(options.additionalQuerySettings).toEqual([
+      { setting: 'asterisk_include_materialized_columns', value: '1' },
+    ]);
+  });
+
+  it('adds no query settings when the source sets both itself', () => {
+    showMaterializedAliasColumns();
+    const sourceWithSettings: TLogSource = {
+      ...source,
+      querySettings: [
+        { setting: 'asterisk_include_materialized_columns', value: '0' },
+        { setting: 'asterisk_include_alias_columns', value: '0' },
+      ],
+    };
+
+    renderHook(() =>
+      useRowData({ source: sourceWithSettings, rowId: "id='abc123'" }),
+    );
+
+    const [[, options]] = mockUseQueriedChartConfig.mock.calls;
+    expect(options.additionalQuerySettings).toBeUndefined();
+  });
+
+  it('adds no query settings when the source has a Known Columns List', () => {
+    showMaterializedAliasColumns();
+    const sourceWithKnownColumns: TLogSource = {
+      ...source,
+      knownColumnsListExpression: 'Timestamp, Body, ServiceName',
+    };
+
+    renderHook(() =>
+      useRowData({ source: sourceWithKnownColumns, rowId: "id='abc123'" }),
+    );
+
+    const [bounded, fallback] = mockUseQueriedChartConfig.mock.calls;
+    for (const [, options] of [bounded, fallback]) {
+      expect(options.additionalQuerySettings).toBeUndefined();
+    }
+  });
+
+  it('reports the error and does not drop the settings when the connection rejects them', () => {
+    showMaterializedAliasColumns();
+    // The client's parsed error, wrapped the way the row query sees it.
+    const message =
+      "Cannot modify 'asterisk_include_materialized_columns' setting in readonly mode. ";
+    const readonlyError = new ClickHouseQueryError(message, 'SELECT * LIMIT 1');
+    readonlyError.cause = Object.assign(new Error(message), {
+      code: '164',
+      type: 'READONLY',
+    });
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: undefined,
+      error: readonlyError,
+      isLoading: false,
+      isPending: false,
+      isError: true,
+      isSuccess: false,
+    });
+
+    const { result } = renderHook(() =>
+      useRowData({ source, rowId: "id='abc123'" }),
+    );
+
+    expect(result.current.isError).toBe(true);
+    expect(result.current.error).toBe(readonlyError);
+    expect(result.current.isLoading).toBe(false);
+    for (const [, options] of mockUseQueriedChartConfig.mock.calls) {
+      expect(options.additionalQuerySettings).toBeDefined();
+    }
   });
 
   describe('time filtering', () => {

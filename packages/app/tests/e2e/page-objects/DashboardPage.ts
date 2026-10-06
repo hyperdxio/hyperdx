@@ -6,6 +6,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import {
   dismissSqlAutocomplete,
@@ -31,7 +32,7 @@ export type FilterRequirementOptions = {
  * Used with verifyTileFormFromConfig
  */
 export type TileConfig = {
-  displayType: Exclude<DisplayType, 'heatmap'>;
+  displayType: DisplayType;
   sourceId?: string;
   select?:
     | {
@@ -55,7 +56,8 @@ type SeriesType =
   | 'markdown'
   | 'pie'
   | 'event_patterns'
-  | 'bar';
+  | 'bar'
+  | 'heatmap';
 
 /**
  * Series data structure for chart verification
@@ -91,7 +93,6 @@ export class DashboardPage {
   private readonly addDropdownButton: Locator;
   private readonly addTileMenuItem: Locator;
   private readonly addGroupMenuItem: Locator;
-  private readonly dashboardNameHeading: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
   private readonly tempDashboardBanner: Locator;
@@ -147,7 +148,6 @@ export class DashboardPage {
       '[data-testid="search-submit-button"]',
     );
     this.liveButton = page.locator('button:has-text("Live")');
-    this.dashboardNameHeading = page.getByRole('heading', { level: 3 });
     this.granularityPicker = page.getByTestId('granularity-picker');
     this.tempDashboardBanner = page.locator(
       '[data-testid="temporary-dashboard-banner"]',
@@ -257,27 +257,7 @@ export class DashboardPage {
    * Edit dashboard name
    */
   async editDashboardName(newName: string) {
-    // Wait for initial dashboard name to load
-    const defaultNameHeading = this.page.getByRole('heading', {
-      name: 'My Dashboard',
-      level: 3,
-    });
-    await defaultNameHeading.waitFor({ state: 'visible', timeout: 5000 });
-
-    // Double-click to enter edit mode
-    await defaultNameHeading.dblclick();
-
-    // Fill in new name
-    const nameInput = this.page.locator('input[placeholder="Name"]');
-    await nameInput.fill(newName);
-    await this.page.keyboard.press('Enter');
-
-    // Wait for the name to be saved
-    const updatedHeading = this.page.getByRole('heading', {
-      name: newName,
-      level: 3,
-    });
-    await updatedHeading.waitFor({ state: 'visible', timeout: 10000 });
+    await this.renameDashboard('My Dashboard', newName);
   }
 
   /**
@@ -286,23 +266,18 @@ export class DashboardPage {
    * earlier in the same test).
    */
   async renameDashboard(currentName: string, newName: string) {
-    const currentHeading = this.page.getByRole('heading', {
-      name: currentName,
-      level: 3,
-    });
-    await currentHeading.waitFor({ state: 'visible', timeout: 10000 });
+    const nameInput = this.page.getByTestId('dashboard-name-input');
+    await expect(nameInput).toHaveValue(currentName, { timeout: 10000 });
 
-    await currentHeading.dblclick();
-
-    const nameInput = this.page.locator('input[placeholder="Name"]');
     await nameInput.fill(newName);
-    await this.page.keyboard.press('Enter');
+    await nameInput.press('Enter');
 
-    const updatedHeading = this.page.getByRole('heading', {
-      name: newName,
-      level: 3,
+    // The document title comes from the saved dashboard, so it only changes
+    // once the rename has persisted.
+    const escaped = newName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} – `), {
+      timeout: 10000,
     });
-    await updatedHeading.waitFor({ state: 'visible', timeout: 10000 });
   }
 
   /**
@@ -647,6 +622,10 @@ export class DashboardPage {
    */
   getTile(index: number) {
     return this.getTiles().nth(index);
+  }
+
+  getTileHeatmap(tileIndex = 0) {
+    return new HeatmapComponent(this.page, this.getTile(tileIndex));
   }
 
   /**
@@ -1985,7 +1964,7 @@ export class DashboardPage {
   }
 
   get dashboardName() {
-    return this.dashboardNameHeading;
+    return this.page.getByTestId('dashboard-name-input');
   }
 
   get filterInput() {

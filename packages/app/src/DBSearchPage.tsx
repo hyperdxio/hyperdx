@@ -96,6 +96,7 @@ import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { FavoriteButton } from '@/components/FavoriteButton';
 import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover';
+import { InlineNameInput } from '@/components/InlineNameInput/InlineNameInput';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
@@ -115,6 +116,7 @@ import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNav } from '@/layout';
 import { isNonTrivialSearch } from '@/OnboardingChecklist/onboardingTasks';
+import { QueryAttributionProvider } from '@/queryAttribution';
 import {
   useCreateSavedSearch,
   useDeleteSavedSearch,
@@ -169,7 +171,6 @@ import {
 } from './utils/queryParsers';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
-import { EditablePageName } from './EditablePageName';
 import { SearchConfig } from './types';
 import { FormatTime } from './useFormatTime';
 
@@ -1006,15 +1007,41 @@ export function useSearchTelemetry({
   return { searchElapsedMs: completedSearch?.latency_ms ?? null };
 }
 
+/**
+ * The saved search being shown, or null for an ad-hoc one.
+ *
+ * Read from the URL directly because the Next router lags window.location,
+ * which races with useQueryStates.
+ */
+function getSavedSearchIdFromPath(): string | null {
+  const paths = window.location.pathname.split('/');
+  return paths.length === 3 ? paths[2] : null;
+}
+
+/**
+ * Tags the page's ClickHouse queries with the saved search they belong to.
+ * A wrapper so the page component's own JSX stays where it is.
+ */
 export function DBSearchPage() {
+  return (
+    <QueryAttributionProvider
+      attribution={{
+        surface: 'search',
+        search: getSavedSearchIdFromPath() ?? undefined,
+      }}
+    >
+      <DBSearchPageContent />
+    </QueryAttributionProvider>
+  );
+}
+
+function DBSearchPageContent() {
+  // Read again here, not passed down: this component re-renders from its own
+  // query-state hooks without the wrapper, and must see the current path.
+  const savedSearchId = getSavedSearchIdFromPath();
   const brandName = useBrandDisplayName();
   const suffix = getTitleSuffix();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
-
-  // Next router is laggy behind window.location, which causes race
-  // conditions with useQueryStates, so we'll parse it directly
-  const paths = window.location.pathname.split('/');
-  const savedSearchId = paths.length === 3 ? paths[2] : null;
 
   const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
 
@@ -2202,7 +2229,7 @@ export function DBSearchPage() {
       )}
       <OnboardingModal />
       {savedSearch && (
-        <Stack mt="lg" mx="xs">
+        <Stack mt="xs" mx="xs" gap="xs">
           <Group justify="space-between">
             <Breadcrumbs fz="sm">
               <Anchor component={Link} href="/search/list" fz="sm" c="dimmed">
@@ -2212,7 +2239,7 @@ export function DBSearchPage() {
                 {savedSearch.name}
               </Text>
             </Breadcrumbs>
-            <Text size="xs" c="dimmed" lh={1}>
+            <Text size="xs" c="dimmed">
               {savedSearch.createdBy && (
                 <span>
                   Created by{' '}
@@ -2239,18 +2266,33 @@ export function DBSearchPage() {
             </Text>
           </Group>
           <Group justify="space-between" align="flex-end">
-            <div data-testid="saved-search-name">
-              <EditablePageName
-                key={savedSearch.id}
-                name={savedSearch?.name ?? 'Untitled Search'}
-                onSave={editedName => {
-                  updateSavedSearch.mutate({
+            <InlineNameInput
+              key={savedSearch.id}
+              value={savedSearch.name ?? ''}
+              placeholder="Untitled search"
+              aria-label="Saved search name"
+              size="md"
+              headingLevel={3}
+              data-testid="saved-search-name"
+              onCommit={editedName =>
+                updateSavedSearch
+                  .mutateAsync({
                     id: savedSearch.id,
                     name: editedName,
-                  });
-                }}
-              />
-            </div>
+                  })
+                  .catch(error => {
+                    notifications.show({
+                      color: 'red',
+                      title: 'Unable to save search',
+                      message:
+                        error instanceof Error
+                          ? error.message.slice(0, 100)
+                          : 'An error occurred while renaming your saved search.',
+                    });
+                    throw error;
+                  })
+              }
+            />
 
             <Group gap="xs">
               <FavoriteButton

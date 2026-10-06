@@ -5,6 +5,7 @@
 import { expect, Locator, Page } from '@playwright/test';
 
 import { FilterComponent } from '../components/FilterComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { PatternSidePanelComponent } from '../components/PatternSidePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
@@ -28,9 +29,10 @@ export class SearchPage {
   readonly patternSidePanel: PatternSidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
+  readonly heatmap: HeatmapComponent;
   readonly whereInput: WhereInputComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
-  readonly savedSearchNameTitle: Locator;
+  readonly savedSearchNameInput: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   private readonly alertsButtonLocator: Locator;
@@ -56,12 +58,11 @@ export class SearchPage {
     this.patternSidePanel = new PatternSidePanelComponent(page);
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
+    this.heatmap = new HeatmapComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
-    this.savedSearchNameTitle = page.locator(
-      '[data-testid="saved-search-name"]',
-    );
+    this.savedSearchNameInput = page.getByTestId('saved-search-name');
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
@@ -112,6 +113,56 @@ export class SearchPage {
   /** The "Event Patterns" analysis-mode tab in the filters sidebar. */
   get eventPatternsTab() {
     return this.page.getByRole('tab', { name: 'Event Patterns' });
+  }
+
+  /** The "Event Deltas" analysis-mode tab, shown only for trace sources. */
+  get eventDeltasTab() {
+    return this.page.getByRole('tab', { name: 'Event Deltas' });
+  }
+
+  async switchToEventDeltas() {
+    await this.eventDeltasTab.click();
+    await expect(this.page).toHaveURL(/[?&]mode=delta/);
+  }
+
+  get chartErrorState() {
+    return this.page.getByTestId('chart-error-state');
+  }
+
+  /** DBDeltaChart legend entries shown only while a selection is compared. */
+  get deltaSelectionLegend() {
+    return this.page.getByText('Selection', { exact: true });
+  }
+
+  get deltaBackgroundLegend() {
+    return this.page.getByText('Background', { exact: true });
+  }
+
+  /** DBDeltaChart hint shown while there is no selection to compare. */
+  get deltaNoSelectionHint() {
+    return this.page.getByText(
+      'Select an area on the chart above to enable comparisons',
+    );
+  }
+
+  get heatmapSettingsDrawer() {
+    return this.page.getByRole('dialog', { name: 'Display Settings' });
+  }
+
+  async openHeatmapSettings() {
+    await this.page.getByTestId('heatmap-settings-button').click();
+    await expect(this.heatmapSettingsDrawer).toBeVisible();
+  }
+
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.heatmapSettingsDrawer.getByText(scale, { exact: true }).click();
+  }
+
+  async applyHeatmapSettings() {
+    await this.heatmapSettingsDrawer
+      .getByRole('button', { name: 'Apply' })
+      .click();
+    await expect(this.heatmapSettingsDrawer).toBeHidden();
   }
 
   /**

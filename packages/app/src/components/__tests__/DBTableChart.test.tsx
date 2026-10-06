@@ -4,6 +4,7 @@ import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import DBTableChart from '@/components/DBTableChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { Table } from '@/HDXMultiSeriesTableChart';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
@@ -17,6 +18,11 @@ jest.mock('@/hooks/useOffsetPaginatedQuery', () => ({
 
 jest.mock('next/router', () => ({
   useRouter: jest.fn(),
+}));
+
+jest.mock('@/hooks/useChartConfig', () => ({
+  ...jest.requireActual('@/hooks/useChartConfig'),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -551,6 +557,27 @@ describe('DBTableChart', () => {
         new Date('2025-11-26T01:01:00Z'),
       ]);
       expect(queried.granularity).toBe('1 minute');
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(300);
+
+      renderWithMantine(
+        <DBTableChart
+          config={{
+            ...promqlConfig,
+            dateRange: [
+              new Date('2025-11-26T00:00:14.076Z'),
+              new Date('2025-11-26T01:00:14.076Z'),
+            ],
+          }}
+        />,
+      );
+
+      const queried = jest
+        .mocked(useOffsetPaginatedQuery)
+        .mock.calls.at(-1)![0];
+      expect(queried.granularity).toBe('5 minute');
     });
 
     it('sorts client-side, since the query cannot be re-ordered server-side', () => {
