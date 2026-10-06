@@ -1,4 +1,7 @@
-jest.mock('next-runtime-env', () => ({ env: () => undefined }));
+jest.mock('next-runtime-env', () => ({
+  env: (key: string) =>
+    key === 'NEXT_PUBLIC_INSTANCE_LABEL' ? undefined : 'unexpected',
+}));
 
 import { INSTANCE_TITLE_SUFFIX } from '@/config';
 

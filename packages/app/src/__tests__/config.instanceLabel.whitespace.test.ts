@@ -1,4 +1,7 @@
-jest.mock('next-runtime-env', () => ({ env: () => 'EU   West' }));
+jest.mock('next-runtime-env', () => ({
+  env: (key: string) =>
+    key === 'NEXT_PUBLIC_INSTANCE_LABEL' ? 'EU   West' : undefined,
+}));
 
 import { INSTANCE_LABEL } from '@/config';
 

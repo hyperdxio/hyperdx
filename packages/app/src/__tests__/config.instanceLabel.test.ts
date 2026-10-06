@@ -1,4 +1,7 @@
-jest.mock('next-runtime-env', () => ({ env: () => '  ExtraLongLabel  ' }));
+jest.mock('next-runtime-env', () => ({
+  env: (key: string) =>
+    key === 'NEXT_PUBLIC_INSTANCE_LABEL' ? '  ExtraLongLabel  ' : undefined,
+}));
 
 import { INSTANCE_LABEL } from '@/config';
 
