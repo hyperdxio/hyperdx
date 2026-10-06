@@ -1061,15 +1061,15 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Scale type used to bucket values on the y-axis.
  *           example: "log"
  *
- *     HeatmapChartConfig:
+ *     HeatmapDistributionChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
  *       description: >
- *         Builder configuration for a heatmap tile. Heatmap is builder-only
- *         (no Raw SQL variant) and currently supports trace sources. The
+ *         Builder configuration for a distribution-mode heatmap tile, which
+ *         buckets a numeric value on the y-axis. Requires a trace source. The
  *         row-level filter lives at the chart-config level (where /
  *         whereLanguage), matching the HeatmapSeriesEditor in the UI.
  *       properties:
@@ -1078,6 +1078,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           enum: [heatmap]
  *           description: Display type discriminator. Must be "heatmap" for heatmap tiles.
  *           example: "heatmap"
+ *         heatmapMode:
+ *           type: string
+ *           enum: [distribution]
+ *           description: Heatmap mode. "distribution" is the default when omitted.
+ *           example: "distribution"
  *         sourceId:
  *           type: string
  *           description: ID of the data source to query.
@@ -1102,6 +1107,58 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *
+ *     HeatmapSeriesChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - heatmapMode
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a series-mode heatmap tile, which shows
+ *         one aggregated series per groupBy value as a row on the y-axis.
+ *         Requires a trace, log, or metric source. Any filter lives
+ *         on the select item (where / whereLanguage).
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [heatmap]
+ *           description: Display type discriminator. Must be "heatmap" for heatmap tiles.
+ *           example: "heatmap"
+ *         heatmapMode:
+ *           type: string
+ *           enum: [series]
+ *           description: Heatmap mode. Must be "series" for series heatmaps.
+ *           example: "series"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one aggregated value used to color each cell.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Field expression to group results by (one row per group value).
+ *           example: "ServiceName"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
+ *     HeatmapChartConfig:
+ *       description: >
+ *         Heatmap tile. Heatmap is builder-only (no Raw SQL variant). Omit
+ *         heatmapMode (or set it to "distribution") for the distribution
+ *         variant; set heatmapMode to "series" for the series variant.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/HeatmapDistributionChartConfig'
+ *         - $ref: '#/components/schemas/HeatmapSeriesChartConfig'
  *
  *     SearchChartConfig:
  *       type: object
