@@ -49,6 +49,21 @@ describe('prometheusApi.labelValues', () => {
     expect(params.get('end')).toBe('200');
   });
 
+  it('sends the attribution as a header', async () => {
+    await prometheusApi.labelValues({
+      label: 'pod',
+      connectionId: 'conn',
+      attribution: { surface: 'metadata', dashboard: 'd1' },
+    });
+
+    const { headers } = get.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'metadata',
+      dashboard: 'd1',
+    });
+  });
+
   it('omits the selector when there is none', async () => {
     await prometheusApi.labelValues({ label: 'pod', connectionId: 'conn' });
 
@@ -88,6 +103,23 @@ describe('prometheusApi.labels', () => {
     const resp = await prometheusApi.labels({ connectionId: 'conn' });
 
     expect(resp.data).toEqual(['byoc', 'instance']);
+  });
+
+  it('sends the attribution as a header', async () => {
+    get.mockReturnValue({
+      json: () => Promise.resolve({ status: 'success', data: [] }),
+    });
+
+    await prometheusApi.labels({
+      connectionId: 'conn',
+      attribution: { surface: 'metadata' },
+    });
+
+    const { headers } = get.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'metadata',
+    });
   });
 
   it('leaves a response without data alone', async () => {
