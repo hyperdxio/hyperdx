@@ -68,7 +68,7 @@ import {
   IconX,
 } from '@tabler/icons-react';
 
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 
 import SelectControlled from './components/SelectControlled';
 import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
@@ -1192,7 +1192,6 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
 
 function DBDashboardImportPage() {
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const router = useRouter();
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -1212,7 +1211,7 @@ function DBDashboardImportPage() {
   return (
     <div>
       <Head>
-        <title>{`Import Dashboard - ${brandName}${suffix}`}</title>
+        <title>{`Import Dashboard - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       <Breadcrumbs my="lg" ms="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">

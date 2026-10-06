@@ -109,8 +109,7 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_LOCAL_MODE } from '@/config';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+import { INSTANCE_TITLE_SUFFIX, IS_LOCAL_MODE } from '@/config';
 import { useAliasMapFromChartConfig } from '@/hooks/useChartConfig';
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
@@ -1040,7 +1039,6 @@ function DBSearchPageContent() {
   // query-state hooks without the wrapper, and must see the current path.
   const savedSearchId = getSavedSearchIdFromPath();
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
 
   const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
@@ -2217,7 +2215,7 @@ function DBSearchPageContent() {
       data-testid="search-page"
     >
       <Head>
-        <title>{`${savedSearch ? `${savedSearch.name} Search` : 'Search'} - ${brandName}${suffix}`}</title>
+        <title>{`${savedSearch ? `${savedSearch.name} Search` : 'Search'} - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal

@@ -43,7 +43,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { useVirtualList } from '@/hooks/useVirtualList';
 
@@ -1051,7 +1051,6 @@ const DEFAULT_INTERVAL = 'Past 1h';
 function KubernetesDashboardPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const { data: sources } = useSources();
 
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
@@ -1380,7 +1379,7 @@ function KubernetesDashboardPage() {
   const dashboardBody = (
     <>
       <Head>
-        <title>{`Kubernetes Dashboard – ${brandName}${suffix}`}</title>
+        <title>{`Kubernetes Dashboard – ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (

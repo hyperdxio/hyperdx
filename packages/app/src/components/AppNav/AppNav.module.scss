@@ -109,8 +109,10 @@ $transition-slow: 0.2s ease;
   align-items: center;
   justify-content: center;
   color: var(--color-text);
+  // Shrinkable (not growable) so a long label can still ellipsis when the
+  // sidebar is narrow, without stretching this link to fill the empty
+  // header space next to it (that space shouldn't be part of the link).
   min-width: 0;
-  flex: 1;
 }
 
 .logoIconWrapper {

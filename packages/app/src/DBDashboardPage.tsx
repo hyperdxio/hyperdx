@@ -153,6 +153,7 @@ import {
   parseTimeRangeInput,
   timeRangeInputToSeconds,
 } from '@/components/TimePicker/utils';
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import {
   Dashboard,
   type Tile,
@@ -160,7 +161,6 @@ import {
   useDashboards,
   useDeleteDashboard,
 } from '@/dashboard';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
 import useDashboardContainers, {
   TabDeleteAction,
@@ -1889,7 +1889,6 @@ function DBDashboardPage({
     isSetting: isSavingDashboard,
   } = dashboardProps;
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const confirm = useConfirm();
   const {
     userPreferences: { isUTC },
@@ -3225,7 +3224,7 @@ function DBDashboardPage({
   const dashboardBody = (
     <>
       <Head>
-        <title>{`${dashboard?.name ? dashboard.name : 'Dashboard'} – ${brandName}${suffix}`}</title>
+        <title>{`${dashboard?.name ? dashboard.name : 'Dashboard'} – ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       {!isKioskMode && <OnboardingModal />}
       {!isKioskMode && (

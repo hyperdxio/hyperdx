@@ -45,7 +45,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
@@ -242,7 +242,6 @@ const DEFAULT_INTERVAL = 'Past 1h';
 function SessionsPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
   // `?sessionSource=` accepts a source name as well as a source ID. The form
   // holds the resolved ID, so nothing downstream ever sees a name.
@@ -399,7 +398,7 @@ function SessionsPage() {
   return (
     <>
       <Head>
-        <title>{`Client Sessions - ${brandName}${suffix}`}</title>
+        <title>{`Client Sessions - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       <OnboardingModal />
       {selectedSession != null &&

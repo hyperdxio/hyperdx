@@ -369,7 +369,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   gap="xs"
                   align="center"
                   wrap="nowrap"
-                  style={{ minWidth: 0, flex: 1 }}
+                  style={{ minWidth: 0 }}
                 >
                   {wordmark}
                   {/* Label and UTC badge are mutually exclusive - showing both

@@ -36,7 +36,7 @@ import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { PageLayout } from '@/components/PageLayout';
 import { TimePicker } from '@/components/TimePicker';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import { withAppNavForSurface } from '@/layout';
 
 import { ChartCard } from './components/charts/ChartCard';
@@ -493,7 +493,6 @@ const DEFAULT_INTERVAL = 'Past 1h';
 function ClickhousePage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const { colorScheme } = useMantineColorScheme();
   const { data: connections } = useConnections();
   const [_connection, setConnection] = useQueryState('connection');
@@ -646,7 +645,7 @@ function ClickhousePage() {
       content={
         <>
           <Head>
-            <title>{`ClickHouse Dashboard – ${brandName}${suffix}`}</title>
+            <title>{`ClickHouse Dashboard – ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
           </Head>
           <OnboardingModal requireSource={false} />
           <Tabs

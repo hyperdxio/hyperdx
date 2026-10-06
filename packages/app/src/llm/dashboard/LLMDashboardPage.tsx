@@ -32,7 +32,7 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 import { withAppNavForSurface } from '@/layout';
 import {
   useLLMDashboardExpressions,
@@ -78,7 +78,6 @@ const queryParamMap = {
 function LLMDashboardPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
 
   const [rawTab, setTab] = useQueryState(
     'tab',
@@ -214,7 +213,7 @@ function LLMDashboardPage() {
   return (
     <Box p="sm" data-testid="llm-dashboard-page">
       <Head>
-        <title>{`LLM Dashboard – ${brandName}${suffix}`}</title>
+        <title>{`LLM Dashboard – ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">

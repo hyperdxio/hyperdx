@@ -33,9 +33,8 @@ import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { IS_ALERT_DETAILS_ENABLED } from '@/config';
+import { INSTANCE_TITLE_SUFFIX, IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { useChartAssistant } from '@/hooks/ai';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
 import { useAlertSeededChartConfig } from '@/hooks/useAlertSeededChartConfig';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNavForSurface } from '@/layout';
@@ -213,7 +212,6 @@ const DEFAULT_INTERVAL = 'Past 1h';
 function DBChartExplorerPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const {
     searchedTimeRange,
     displayedTimeInputValue,
@@ -318,7 +316,7 @@ function DBChartExplorerPage() {
   return (
     <Box data-testid="chart-explorer-page" p="sm">
       <Head>
-        <title>{`Chart Explorer - ${brandName}${suffix}`}</title>
+        <title>{`Chart Explorer - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       <OnboardingModal />
       <AIAssistant

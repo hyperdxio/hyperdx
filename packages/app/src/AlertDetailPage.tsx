@@ -27,8 +27,7 @@ import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
-import { IS_ALERT_DETAILS_ENABLED } from '@/config';
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
+import { INSTANCE_TITLE_SUFFIX, IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 
 import { useBrandDisplayName } from './theme/ThemeProvider';
@@ -225,7 +224,6 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
 
 export default function AlertDetailPage() {
   const brandName = useBrandDisplayName();
-  const suffix = getTitleSuffix();
   const router = useRouter();
   const alertId =
     typeof router.query.alertId === 'string' ? router.query.alertId : undefined;
@@ -251,7 +249,7 @@ export default function AlertDetailPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>{`${alert ? `${alert.displayName} - Alerts` : 'Alerts'} - ${brandName}${suffix}`}</title>
+        <title>{`${alert ? `${alert.displayName} - Alerts` : 'Alerts'} - ${brandName}${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       {isLoading && (
         <Container size="xl" py="md" w="100%">

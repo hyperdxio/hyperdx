@@ -13,8 +13,7 @@ import {
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 
-import { getTitleSuffix } from '@/hooks/getTitleSuffix';
-
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 interface GreenhouseJob {
   id: number;
   title: string;
@@ -82,7 +81,6 @@ function useGreenhouseJobs() {
 }
 
 export default function CareersPage() {
-  const suffix = getTitleSuffix();
   const { data: commitsData, isLoading: commitsLoading } = useRecentCommits();
   const { data, isLoading, isError } = useGreenhouseJobs();
 
@@ -94,7 +92,7 @@ export default function CareersPage() {
   return (
     <Container size="md" py="xl">
       <Head>
-        <title>{`Careers | HyperDX${suffix}`}</title>
+        <title>{`Careers | HyperDX${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       <Stack gap="lg">
         <Title order={1}>

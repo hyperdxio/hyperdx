@@ -89,6 +89,10 @@ export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
 export const INSTANCE_LABEL = (env('NEXT_PUBLIC_INSTANCE_LABEL') ?? '')
   .trim()
   .replace(/\s+/g, ' ');
+// Leading-space-prefixed, ready to append directly to a title string; empty
+// when INSTANCE_LABEL is unset, so `${brandName}${INSTANCE_TITLE_SUFFIX}` is
+// always safe to write regardless of whether a label is configured.
+export const INSTANCE_TITLE_SUFFIX = INSTANCE_LABEL ? ` ${INSTANCE_LABEL}` : '';
 // Alert detail page (/alerts/:id). Default off — currently enabled only in
 // dev (.env.development) and CI (e2e webserver) while the feature bakes.
 export const IS_ALERT_DETAILS_ENABLED =
