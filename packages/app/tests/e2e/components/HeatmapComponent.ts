@@ -29,9 +29,12 @@ export class HeatmapComponent {
     return this.root.getByText('Not enough data points to render heatmap');
   }
 
-  /** The hover tooltip, which only appears for a cell with a non-zero count. */
+  /**
+   * The hover tooltip, which only appears for a cell with a non-zero count.
+   * Series-axis heatmaps label the cell's series instead of its count.
+   */
   get tooltip() {
-    return this.container.getByText('Count Value:');
+    return this.container.getByText(/^(Count Value|Series):$/);
   }
 
   /**
@@ -63,6 +66,31 @@ export class HeatmapComponent {
       }
     }
     await expect(this.tooltip).toBeVisible();
+  }
+
+  /** The series named by the open cell tooltip of a series-axis heatmap. */
+  async hoveredSeriesName() {
+    const row = this.container
+      .getByText('Series:', { exact: true })
+      .locator('..');
+    await expect(row).toBeVisible();
+    return ((await row.textContent()) ?? '').replace(/^Series:\s*/, '').trim();
+  }
+
+  /**
+   * Hover the top series-axis label, which the canvas draws, so its DOM
+   * tooltip opens. Returns that tooltip.
+   */
+  async hoverSeriesAxisLabel() {
+    const box = await this.container.locator('.u-over').boundingBox();
+    if (!box) {
+      throw new Error('Heatmap plot area not found');
+    }
+    await this.page.mouse.move(box.x - 10, box.y + 2);
+    await expect(
+      this.container.getByTestId('heatmap-series-axis-tooltip-target'),
+    ).toBeAttached();
+    return this.page.locator('.mantine-Tooltip-tooltip');
   }
 
   /**

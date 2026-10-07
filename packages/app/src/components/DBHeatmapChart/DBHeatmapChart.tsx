@@ -4,10 +4,13 @@ import { HeatmapChartView, HeatmapChartViewProps } from './HeatmapChartView';
 import type { HeatmapQuery } from './heatmapQueries';
 import type { SelectionBounds } from './selection';
 import { useHeatmapData } from './useHeatmapData';
+import { useSeriesHeatmapData } from './useSeriesHeatmapData';
 
-type DBHeatmapChartProps = HeatmapChartViewProps & {
-  query: HeatmapQuery;
-  enabled?: boolean;
+type DistributionQuery = Extract<HeatmapQuery, { mode: 'distribution' }>;
+type SeriesQuery = Extract<HeatmapQuery, { mode: 'series' }>;
+
+type DistributionOnlyProps = {
+  /** Drag-select on a distribution heatmap reports time and value bounds. */
   onFilter?: (xMin: number, xMax: number, yMin: number, yMax: number) => void;
   onClearFilter?: () => void;
   /**
@@ -20,12 +23,19 @@ type DBHeatmapChartProps = HeatmapChartViewProps & {
   selectionBounds?: SelectionBounds | null;
 };
 
-function DBHeatmapChart({
+type DBHeatmapChartProps = HeatmapChartViewProps &
+  DistributionOnlyProps & {
+    query: HeatmapQuery;
+    enabled?: boolean;
+  };
+
+function DistributionHeatmapChart({
   query,
-  enabled = true,
+  enabled,
   onFilter,
   ...viewProps
-}: DBHeatmapChartProps) {
+}: HeatmapChartViewProps &
+  DistributionOnlyProps & { query: DistributionQuery; enabled: boolean }) {
   const data = useHeatmapData({
     config: query.config,
     scaleType: query.scaleType,
@@ -56,6 +66,48 @@ function DBHeatmapChart({
             }
           : undefined
       }
+    />
+  );
+}
+
+function SeriesHeatmapChart({
+  query,
+  enabled,
+  ...viewProps
+}: HeatmapChartViewProps & { query: SeriesQuery; enabled: boolean }) {
+  const data = useSeriesHeatmapData({
+    config: query.config,
+    enabled,
+  });
+
+  return (
+    <HeatmapChartView
+      {...viewProps}
+      data={data}
+      plotKey={JSON.stringify(query.config)}
+      numberFormat={query.config.numberFormat}
+    />
+  );
+}
+
+function DBHeatmapChart({
+  query,
+  enabled = true,
+  onFilter,
+  onClearFilter,
+  selectionBounds,
+  ...viewProps
+}: DBHeatmapChartProps) {
+  return query.mode === 'series' ? (
+    <SeriesHeatmapChart {...viewProps} query={query} enabled={enabled} />
+  ) : (
+    <DistributionHeatmapChart
+      {...viewProps}
+      query={query}
+      enabled={enabled}
+      onFilter={onFilter}
+      onClearFilter={onClearFilter}
+      selectionBounds={selectionBounds}
     />
   );
 }

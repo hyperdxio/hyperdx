@@ -2,10 +2,12 @@ import {
   ClickHouseError,
   type ClickHouseSettings,
 } from '@clickhouse/client-common';
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
+  isTimeSeriesDisplayType,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -553,11 +555,15 @@ export async function runConfigTile(
     // collapses to one row per group. Default to "auto" so the renderer
     // picks a bucket, mirroring the REST charts path
     // (packages/api/src/routers/external-api/v2/charts.ts:289).
-    // Search tiles intentionally have no granularity (handled above).
+    // Series heatmaps bucket by time like line charts; distribution heatmaps
+    // compute their own buckets. Search tiles intentionally have no
+    // granularity (handled above).
+    const isSeriesHeatmap =
+      builderConfig.displayType === DisplayType.Heatmap &&
+      getHeatmapMode(builderConfig) === 'series';
     const granularityOverride =
       !isSearch &&
-      (builderConfig.displayType === DisplayType.Line ||
-        builderConfig.displayType === DisplayType.StackedBar)
+      (isTimeSeriesDisplayType(builderConfig.displayType) || isSeriesHeatmap)
         ? { granularity: options?.granularity ?? 'auto' }
         : {};
 

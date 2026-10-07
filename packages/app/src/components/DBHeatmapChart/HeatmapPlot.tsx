@@ -6,10 +6,15 @@ import { useElementSize } from '@mantine/hooks';
 
 import { NumberFormat } from '@/types';
 
-import { formatHeatmapTick, heatmapYAxisOptions } from './heatmapAxis';
+import {
+  formatHeatmapTick,
+  formatHeatmapValue,
+  heatmapYAxisOptions,
+} from './heatmapAxis';
 import {
   computeBucketPercentiles,
   gridToPlotData,
+  heatmapCellKind,
   HeatmapGrid,
   heatmapRowCount,
   HeatmapScaleType,
@@ -19,9 +24,10 @@ import {
   buildSeriesForPalette,
   HEATMAP_AXIS_FONT,
 } from './heatmapPaths';
-import { HeatmapTooltip } from './HeatmapTooltip';
+import { HeatmapTooltip, HeatmapTooltipCell } from './HeatmapTooltip';
 import { highlightDataPlugin, HighlightedPoint } from './highlightDataPlugin';
 import { applySelectionToChart, SelectionBounds } from './selection';
+import { SeriesAxisTooltip, useSeriesAxisHover } from './SeriesAxisTooltip';
 
 const isSameRenderedPoint = (
   a: HighlightedPoint | undefined,
@@ -146,16 +152,35 @@ export function HeatmapPlot({
 
   const plotData = useMemo(() => gridToPlotData(grid), [grid]);
   const rowCount = heatmapRowCount(grid.yAxis);
+  const cellKind = heatmapCellKind(grid.yAxis);
+
+  // Key on label content: every refresh builds a fresh labels array, and new
+  // options make uplot-react recreate the chart instead of updating its data.
+  const seriesLabelsKey =
+    grid.yAxis.type === 'series'
+      ? JSON.stringify(grid.yAxis.labels)
+      : undefined;
+  const seriesLabels = useMemo<string[] | undefined>(
+    () =>
+      seriesLabelsKey === undefined ? undefined : JSON.parse(seriesLabelsKey),
+    [seriesLabelsKey],
+  );
+
   const bucketPercentiles = useMemo(
-    () => computeBucketPercentiles(grid),
+    () =>
+      grid.yAxis.type === 'numeric' ? computeBucketPercentiles(grid) : null,
     [grid],
   );
 
   const options: uPlot.Options = useMemo(() => {
     const opt = baseHeatmapOptions;
-    const themedSeries = buildSeriesForPalette(palette);
+    const themedSeries = buildSeriesForPalette(palette, cellKind);
+    const yAxis = heatmapYAxisOptions(seriesLabels, scaleType, tickFormatter);
     return {
       ...opt,
+      ...(yAxis.scale != null
+        ? { scales: { ...opt.scales, y: yAxis.scale } }
+        : {}),
       series: [opt.series[0], { ...opt.series[1], ...themedSeries }],
       ...(opt != null && opt.axes != null
         ? {
@@ -163,7 +188,7 @@ export function HeatmapPlot({
               opt.axes[0],
               {
                 ...opt.axes[1],
-                ...heatmapYAxisOptions(scaleType, tickFormatter),
+                ...yAxis.axis,
                 // Override the static size fn so it measures the actual
                 // formatted labels (from tickFormatter) rather than
                 // whatever raw values uPlot passes in a prior cycle.
@@ -201,6 +226,7 @@ export function HeatmapPlot({
       plugins: [
         highlightDataPlugin({
           margin: 20,
+          cellKind,
           onPointHighlight: point => {
             // Only show tooltip after the user has actually hovered the chart.
             // uPlot fires setCursor on init which would trigger this on page load.
@@ -253,12 +279,40 @@ export function HeatmapPlot({
         },
       ],
     };
-  }, [width, height, tickFormatter, scaleType, palette, hasFilter]);
+  }, [
+    width,
+    height,
+    tickFormatter,
+    scaleType,
+    palette,
+    hasFilter,
+    seriesLabels,
+    cellKind,
+  ]);
 
-  const highlightedPercentile =
+  const seriesAxisHover = useSeriesAxisHover(uplotRef, seriesLabels);
+
+  const highlightedRow =
     highlightedPoint && rowCount > 0
-      ? bucketPercentiles.get(highlightedPoint.closestIndex % rowCount)
-      : undefined;
+      ? highlightedPoint.closestIndex % rowCount
+      : 0;
+  const highlightedCell: HeatmapTooltipCell | undefined =
+    highlightedPoint == null
+      ? undefined
+      : seriesLabels != null
+        ? {
+            kind: 'series',
+            name: seriesLabels[highlightedRow] ?? '',
+            formattedValue: formatHeatmapValue(
+              highlightedPoint.countVal,
+              numberFormat,
+            ),
+          }
+        : {
+            kind: 'distribution',
+            formattedY: tickFormatter(highlightedPoint.yVal),
+            percentile: bucketPercentiles?.get(highlightedRow),
+          };
 
   return (
     <div
@@ -283,9 +337,11 @@ export function HeatmapPlot({
       onMouseMoveCapture={() => {
         mouseInsideRef.current = true;
       }}
+      onMouseMove={seriesAxisHover.onMouseMove}
       onMouseLeave={() => {
         mouseInsideRef.current = false;
         setHighlightedPoint(undefined);
+        seriesAxisHover.clear();
       }}
     >
       <UplotReact
@@ -300,14 +356,14 @@ export function HeatmapPlot({
           uplotRef.current = null;
         }}
       />
-      {highlightedPoint != null && (
+      <SeriesAxisTooltip hover={seriesAxisHover.hover} />
+      {highlightedPoint != null && highlightedCell != null && (
         <HeatmapTooltip
           point={highlightedPoint}
+          cell={highlightedCell}
           width={width}
           height={height}
           showDragHint={!!onFilter}
-          formatY={tickFormatter}
-          percentile={highlightedPercentile}
         />
       )}
     </div>

@@ -108,7 +108,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       description: Metric data type, only for metrics data sources.
  *     TimeSeriesDisplayType:
  *       type: string
- *       enum: [stacked_bar, line]
+ *       enum: [stacked_bar, stacked_line, line]
  *       description: Visual representation type for the time series.
  *     QuantileLevel:
  *       type: number
@@ -791,6 +791,76 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             series are returned; the raw operand series are hidden.
  *           default: true
  *
+ *     StackedLineBuilderChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - sourceId
+ *         - select
+ *       description: Builder configuration for a stacked-line time-series chart.
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [stacked_line]
+ *           description: Display type discriminator. Must be "stacked_line" for stacked-line charts.
+ *           example: "stacked_line"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 20
+ *           description: >
+ *             One or more aggregated values to plot. When asRatio is true,
+ *             exactly two select items are required.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           description: Field expression to group results by (creates separate stacked bands per group value).
+ *           example: "service"
+ *           maxLength: 10000
+ *         asRatio:
+ *           type: boolean
+ *           description: Plot select[0] / select[1] as a ratio. Requires exactly two select items.
+ *           default: false
+ *         alignDateRangeToGranularity:
+ *           type: boolean
+ *           description: Align the date range boundaries to the query granularity interval.
+ *           default: true
+ *         fillNulls:
+ *           type: boolean
+ *           description: Fill missing time buckets with zero instead of leaving gaps.
+ *           default: true
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *         seriesLimit:
+ *           type: integer
+ *           minimum: 0
+ *           description: >-
+ *             Maximum number of series rendered (top-N by value). Omit to use
+ *             the default render cap, set 0 for unlimited, or a positive N to
+ *             keep the top N series.
+ *           example: 5
+ *         formulas:
+ *           type: array
+ *           maxItems: 10
+ *           description: >
+ *             Derived series computed from the select items via letter-ref
+ *             arithmetic ("A" = select[0], "B" = select[1], ...). Metric,
+ *             log, and trace sources only. Cannot be combined with asRatio.
+ *           items:
+ *             $ref: '#/components/schemas/Formula'
+ *         showOperandSeries:
+ *           type: boolean
+ *           description: >
+ *             Only meaningful with formulas. When false, only the formula
+ *             series are returned; the raw operand series are hidden.
+ *           default: true
+ *
  *     TableBuilderChartConfig:
  *       type: object
  *       required:
@@ -1061,15 +1131,15 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           description: Scale type used to bucket values on the y-axis.
  *           example: "log"
  *
- *     HeatmapChartConfig:
+ *     HeatmapDistributionChartConfig:
  *       type: object
  *       required:
  *         - displayType
  *         - sourceId
  *         - select
  *       description: >
- *         Builder configuration for a heatmap tile. Heatmap is builder-only
- *         (no Raw SQL variant) and currently supports trace sources. The
+ *         Builder configuration for a distribution-mode heatmap tile, which
+ *         buckets a numeric value on the y-axis. Requires a trace source. The
  *         row-level filter lives at the chart-config level (where /
  *         whereLanguage), matching the HeatmapSeriesEditor in the UI.
  *       properties:
@@ -1078,6 +1148,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           enum: [heatmap]
  *           description: Display type discriminator. Must be "heatmap" for heatmap tiles.
  *           example: "heatmap"
+ *         heatmapMode:
+ *           type: string
+ *           enum: [distribution]
+ *           description: Heatmap mode. "distribution" is the default when omitted.
+ *           example: "distribution"
  *         sourceId:
  *           type: string
  *           description: ID of the data source to query.
@@ -1102,6 +1177,58 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
+ *
+ *     HeatmapSeriesChartConfig:
+ *       type: object
+ *       required:
+ *         - displayType
+ *         - heatmapMode
+ *         - sourceId
+ *         - select
+ *       description: >
+ *         Builder configuration for a series-mode heatmap tile, which shows
+ *         one aggregated series per groupBy value as a row on the y-axis.
+ *         Requires a trace, log, or metric source. Any filter lives
+ *         on the select item (where / whereLanguage).
+ *       properties:
+ *         displayType:
+ *           type: string
+ *           enum: [heatmap]
+ *           description: Display type discriminator. Must be "heatmap" for heatmap tiles.
+ *           example: "heatmap"
+ *         heatmapMode:
+ *           type: string
+ *           enum: [series]
+ *           description: Heatmap mode. Must be "series" for series heatmaps.
+ *           example: "series"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the data source to query.
+ *           example: "65f5e4a3b9e77c001a111111"
+ *         select:
+ *           type: array
+ *           minItems: 1
+ *           maxItems: 1
+ *           description: Exactly one aggregated value used to color each cell.
+ *           items:
+ *             $ref: '#/components/schemas/SelectItem'
+ *         groupBy:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Field expression to group results by (one row per group value).
+ *           example: "ServiceName"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
+ *     HeatmapChartConfig:
+ *       description: >
+ *         Heatmap tile. Heatmap is builder-only (no Raw SQL variant). Omit
+ *         heatmapMode (or set it to "distribution") for the distribution
+ *         variant; set heatmapMode to "series" for the series variant.
+ *       oneOf:
+ *         - $ref: '#/components/schemas/HeatmapDistributionChartConfig'
+ *         - $ref: '#/components/schemas/HeatmapSeriesChartConfig'
  *
  *     SearchChartConfig:
  *       type: object
@@ -1270,6 +1397,28 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               description: Expand date range boundaries to the query granularity interval.
  *               default: true
  *
+ *     StackedLineRawSqlChartConfig:
+ *       description: Raw SQL configuration for a stacked-line time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/RawSqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [stacked_line]
+ *               description: Display as a stacked-line time-series chart.
+ *               example: "stacked_line"
+ *             fillNulls:
+ *               type: boolean
+ *               description: Fill missing time buckets with zero instead of leaving gaps.
+ *               default: true
+ *             alignDateRangeToGranularity:
+ *               type: boolean
+ *               description: Expand date range boundaries to the query granularity interval.
+ *               default: true
+ *
  *     TableRawSqlChartConfig:
  *       description: Raw SQL configuration for a table chart.
  *       allOf:
@@ -1366,6 +1515,19 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/BarRawSqlChartConfig'
+ *
+ *     StackedLineChartConfig:
+ *       description: >
+ *         Stacked-line chart. Omit configType for the builder variant (requires
+ *         sourceId and select). Set configType to "sql" for the Raw SQL variant
+ *         (requires connectionId and sqlTemplate).
+ *       oneOf:
+ *         - $ref: '#/components/schemas/StackedLineBuilderChartConfig'
+ *         - $ref: '#/components/schemas/StackedLineRawSqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           sql: '#/components/schemas/StackedLineRawSqlChartConfig'
  *
  *     OnClickFilterTemplate:
  *       type: object
@@ -1577,13 +1739,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       description: >
  *         Tile chart configuration. displayType is the primary discriminant and
  *         determines which variant group applies. For displayTypes that support
- *         both builder and Raw SQL modes (line, stacked_bar, table, number, pie,
- *         bar), configType is the secondary discriminant: omit it for the builder
- *         variant or set it to "sql" for the Raw SQL variant. The heatmap,
+ *         both builder and Raw SQL modes (line, stacked_bar, stacked_line, table,
+ *         number, pie, bar), configType is the secondary discriminant: omit it for
+ *         the builder variant or set it to "sql" for the Raw SQL variant. The heatmap,
  *         search, event_patterns, and markdown displayTypes only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
+ *         - $ref: '#/components/schemas/StackedLineChartConfig'
  *         - $ref: '#/components/schemas/TableChartConfig'
  *         - $ref: '#/components/schemas/NumberChartConfig'
  *         - $ref: '#/components/schemas/PieChartConfig'
@@ -1597,6 +1760,7 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         mapping:
  *           line: '#/components/schemas/LineChartConfig'
  *           stacked_bar: '#/components/schemas/BarChartConfig'
+ *           stacked_line: '#/components/schemas/StackedLineChartConfig'
  *           table: '#/components/schemas/TableChartConfig'
  *           number: '#/components/schemas/NumberChartConfig'
  *           pie: '#/components/schemas/PieChartConfig'
@@ -1891,6 +2055,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             referencing its variableName, and those its broadcast applies to.
  *             Ignored unless minSelections is 1.
  *           example: true
+ *         maxSelections:
+ *           type: integer
+ *           enum: [1]
+ *           description: |
+ *             Maximum number of values that can be selected at once. Set to 1 to make
+ *             the filter single-select. Omit the field for the default multi-select
+ *             behavior.
+ *           example: 1
  *
  *     StaticListFilterInput:
  *       type: object
@@ -1977,6 +2149,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             referencing its variableName, and those its broadcast applies to.
  *             Ignored unless minSelections is 1.
  *           example: true
+ *         maxSelections:
+ *           type: integer
+ *           enum: [1]
+ *           description: |
+ *             Maximum number of values that can be selected at once. Set to 1 to make
+ *             the filter single-select. Omit the field for the default multi-select
+ *             behavior.
+ *           example: 1
  *
  *     PrometheusLabelFilterInput:
  *       type: object
@@ -2064,6 +2244,14 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             referencing its variableName, and those its broadcast applies to.
  *             Ignored unless minSelections is 1.
  *           example: true
+ *         maxSelections:
+ *           type: integer
+ *           enum: [1]
+ *           description: |
+ *             Maximum number of values that can be selected at once. Set to 1 to make
+ *             the filter single-select. Omit the field for the default multi-select
+ *             behavior.
+ *           example: 1
  *
  *     Filter:
  *       allOf:

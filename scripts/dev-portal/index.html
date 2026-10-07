@@ -448,21 +448,49 @@
         `;
         }
 
-        // Group stacks by worktree name so all envs for the same
-        // worktree appear in a single card.
-        const groups = new Map();
-        for (const stack of stacks) {
-          const key = stack.worktree || 'unknown';
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key).push(stack);
-        }
+        // All envs for the same worktree appear in a single card.
+        const groups = [...groupByWorktree(stacks).values()];
+        const dupNames = duplicateNames(
+          groups.map(group => cardHeader(group).worktree),
+        );
 
-        return `<div class="stacks">${[...groups.values()].map(renderWorktreeCard).join('')}</div>`;
+        return `<div class="stacks">${groups.map(group => renderWorktreeCard(group, dupNames)).join('')}</div>`;
       }
 
-      function renderWorktreeCard(stacks) {
-        // Use the dev stack for the header since it has the richest metadata.
-        const header = stacks.find(s => s.envType === 'dev') || stacks[0];
+      // Group by full path so checkouts that share a folder name (a/hyperdx,
+      // b/hyperdx) get separate cards. Items with no known path fall back to
+      // their folder name.
+      function groupByWorktree(items) {
+        const groups = new Map();
+        for (const item of items) {
+          const key = item.worktreePath || item.worktree || 'unknown';
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(item);
+        }
+        return groups;
+      }
+
+      function duplicateNames(names) {
+        const seen = new Set();
+        const dups = new Set();
+        for (const name of names) (seen.has(name) ? dups : seen).add(name);
+        return dups;
+      }
+
+      // The folder name, or the full path when another card has the same name.
+      function worktreeLabel(name, worktreePath, dupNames) {
+        return dupNames.has(name) && worktreePath ? worktreePath : name;
+      }
+
+      // Use the dev stack for the header since it has the richest metadata.
+      function cardHeader(stacks) {
+        return stacks.find(s => s.envType === 'dev') || stacks[0];
+      }
+
+      function renderWorktreeCard(stacks, dupNames) {
+        const header = cardHeader(stacks);
+        const worktreePath =
+          (stacks.find(s => s.worktreePath) || {}).worktreePath || '';
         const devStack = stacks.find(s => s.envType === 'dev');
         const appService =
           devStack &&
@@ -506,7 +534,7 @@
               <div style="display:flex;align-items:center">
                 <span class="branch">${escapeHtml(header.branch)}</span>
               </div>
-              <div class="worktree">${escapeHtml(header.worktree)}</div>
+              <div class="worktree" title="${escapeHtml(worktreePath)}">${escapeHtml(worktreeLabel(header.worktree, worktreePath, dupNames))}</div>
             </div>
             <div class="stack-actions">
               ${chUrl ? `<a href="${chUrl}" target="_blank" class="open-btn open-btn-secondary">Open ClickHouse</a>` : ''}
@@ -652,7 +680,11 @@
       function filterHistoryEntries(entries, query) {
         if (!query) return entries;
         return entries.filter(entry =>
-          fuzzyMatch(query, [entry.worktree || '', entry.branch || '']),
+          fuzzyMatch(query, [
+            entry.worktree || '',
+            entry.worktreePath || '',
+            entry.branch || '',
+          ]),
         );
       }
 
@@ -678,13 +710,10 @@
 
         const filtered = filterHistoryEntries(entries, historySearchQuery);
 
-        // Group filtered entries by worktree
-        const groups = new Map();
-        for (const entry of filtered) {
-          const key = entry.worktree || 'unknown';
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key).push(entry);
-        }
+        const groups = groupByWorktree(filtered);
+        const dupNames = duplicateNames(
+          [...groups.values()].map(group => group[0].worktree),
+        );
 
         const noResults = filtered.length === 0;
 
@@ -698,29 +727,30 @@
             noResults
               ? `<div class="empty-state"><p>No runs matching "${escapeHtml(historySearchQuery)}"</p></div>`
               : `<div class="stacks">
-                ${[...groups.entries()].map(([worktree, group]) => renderHistoryWorktreeCard(worktree, group)).join('')}
+                ${[...groups.entries()].map(([key, group]) => renderHistoryWorktreeCard(key, group, dupNames)).join('')}
               </div>`
           }
         `;
       }
 
-      // Track which history cards are expanded (by worktree name).
+      // Track which history cards are expanded (by groupByWorktree key).
       // All cards are collapsed by default.
       const historyExpanded = new Set();
 
-      function toggleHistoryCard(worktree) {
-        if (historyExpanded.has(worktree)) {
-          historyExpanded.delete(worktree);
+      function toggleHistoryCard(key) {
+        if (historyExpanded.has(key)) {
+          historyExpanded.delete(key);
         } else {
-          historyExpanded.add(worktree);
+          historyExpanded.add(key);
         }
         refreshHistory();
       }
 
-      function renderHistoryWorktreeCard(worktree, entries) {
-        // Use the first entry for branch info
+      function renderHistoryWorktreeCard(key, entries, dupNames) {
+        // Use the first entry for branch and worktree info
+        const { worktree, worktreePath = '' } = entries[0];
         const branch = entries[0].branch || 'unknown';
-        const collapsed = !historyExpanded.has(worktree);
+        const collapsed = !historyExpanded.has(key);
         const chevron = collapsed ? '\u25b6' : '\u25bc';
         const count = entries.length;
 
@@ -732,10 +762,10 @@
                   <span class="branch">${escapeHtml(branch)}</span>
                   <span style="color:var(--text-muted);font-size:12px;margin-left:8px">${count} run${count !== 1 ? 's' : ''}</span>
                 </div>
-                <div class="worktree">${escapeHtml(worktree)}</div>
+                <div class="worktree" title="${escapeHtml(worktreePath)}">${escapeHtml(worktreeLabel(worktree, worktreePath, dupNames))}</div>
               </div>
               <div class="stack-actions">
-                <button class="history-toggle-btn" onclick="toggleHistoryCard('${escapeHtml(worktree)}')">${chevron}</button>
+                <button class="history-toggle-btn" onclick="toggleHistoryCard(${escapeHtml(JSON.stringify(key))})">${chevron}</button>
               </div>
             </div>
             <div class="history-card-body${collapsed ? ' collapsed' : ''}" style="max-height:${collapsed ? 0 : entries.length * 200}px">
