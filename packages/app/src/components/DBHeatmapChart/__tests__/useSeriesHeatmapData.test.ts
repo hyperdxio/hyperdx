@@ -114,6 +114,32 @@ describe('useSeriesHeatmapData', () => {
     expect(queried.granularity).toBe(`${stepSeconds} second`);
   });
 
+  it('buckets at an explicit granularity', () => {
+    mockSeriesQuery();
+    const { result } = renderHook(() =>
+      useSeriesHeatmapData({
+        config: { ...seriesConfig, granularity: '15 minute' },
+        enabled: true,
+      }),
+    );
+
+    expect(optionsFor('heatmap_series')![0].granularity).toBe('15 minute');
+    expect(result.current.view.generatedTsBuckets).toHaveLength(8);
+  });
+
+  it("floors auto granularity at the source's minimum", () => {
+    mockSeriesQuery();
+    const { result } = renderHook(() =>
+      useSeriesHeatmapData({
+        config: { ...seriesConfig, minGranularitySeconds: 300 },
+        enabled: true,
+      }),
+    );
+
+    expect(optionsFor('heatmap_series')![0].granularity).toBe('5 minute');
+    expect(result.current.view.generatedTsBuckets).toHaveLength(24);
+  });
+
   it('keeps the 50 series with the largest peaks', () => {
     mockSeriesQuery({
       ...seriesResponse,

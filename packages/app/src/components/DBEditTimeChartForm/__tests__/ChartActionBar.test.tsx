@@ -220,11 +220,14 @@ describe('ChartActionBar', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it('should render granularity picker for time tab', () => {
-    renderActionBar({ activeTab: 'time' });
+  it.each(['time', 'heatmap'])(
+    'should render granularity picker for %s tab',
+    activeTab => {
+      renderActionBar({ activeTab });
 
-    expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
-  });
+      expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
+    },
+  );
 
   it('should not render granularity picker for non-time tabs', () => {
     renderActionBar({ activeTab: 'table' });

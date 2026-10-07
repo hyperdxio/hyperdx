@@ -39,7 +39,7 @@ import {
 } from '@/llm/hooks/useLLMDashboardExpressions';
 import { getEffectiveTraceSourceId } from '@/ServicesDashboardPage';
 import { useSource, useSources } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { usePageTitle } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import { AgentToolCharts } from './AgentToolCharts';
@@ -76,7 +76,7 @@ const queryParamMap = {
  */
 function LLMDashboardPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('LLM Dashboard');
 
   const [rawTab, setTab] = useQueryState(
     'tab',
@@ -212,7 +212,7 @@ function LLMDashboardPage() {
   return (
     <Box p="sm" data-testid="llm-dashboard-page">
       <Head>
-        <title>LLM Dashboard – {brandName}</title>
+        <title>{title}</title>
       </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">

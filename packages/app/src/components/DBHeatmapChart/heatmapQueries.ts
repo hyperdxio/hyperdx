@@ -1,4 +1,5 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
+import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
@@ -6,7 +7,11 @@ import {
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 
-import { convertToTimeChartConfig, isAggregateFunction } from '@/ChartUtils';
+import {
+  convertToTimeChartConfig,
+  getTimeChartGranularity,
+  isAggregateFunction,
+} from '@/ChartUtils';
 
 import { heatmapLowQuantile } from './heatmapBounds';
 import type { HeatmapScaleType } from './heatmapGrid';
@@ -47,6 +52,28 @@ export type HeatmapQuery =
       config: BuilderChartConfigWithDateRange;
     };
 
+const HEATMAP_AUTO_GRANULARITY_BUCKETS = 245;
+
+/**
+ * `minGranularitySeconds` floors only auto granularity: an explicit
+ * granularity is the user's choice and is kept as-is.
+ */
+export function resolveHeatmapGranularity({
+  granularity,
+  dateRange,
+  minGranularitySeconds,
+}: Pick<
+  BuilderChartConfigWithDateRange,
+  'granularity' | 'dateRange' | 'minGranularitySeconds'
+>): SQLInterval {
+  return getTimeChartGranularity(
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+    HEATMAP_AUTO_GRANULARITY_BUCKETS,
+  );
+}
+
 export function toHeatmapQuery(
   config: BuilderChartConfigWithDateRange,
 ): HeatmapQuery {
@@ -69,7 +96,7 @@ export function toHeatmapQuery(
           countExpression: firstSelect?.countExpression,
         },
       ],
-      granularity: 'auto',
+      granularity: config.granularity,
       numberFormat: config.numberFormat,
     },
     scaleType: firstSelect?.heatmapScaleType ?? 'log',
@@ -102,9 +129,11 @@ export function buildHeatmapSeriesConfig(
 export function buildHeatmapBoundsConfig({
   config,
   scaleType,
+  granularity,
 }: {
   config: HeatmapChartConfig;
   scaleType: HeatmapScaleType;
+  granularity: SQLInterval;
 }): BuilderChartConfigWithDateRange {
   const valueExpression = config.select[0].valueExpression;
   const isAggregateExpression = isAggregateFunction(valueExpression);
@@ -138,10 +167,16 @@ export function buildHeatmapBoundsConfig({
               ...config,
               select: [{ valueExpression, alias: 'value_calc' }],
               orderBy: undefined,
+              // Emits the __hdx_time_bucket column the outer query filters on.
+              granularity,
             },
           },
         ],
         timestampValueExpression: '__hdx_time_bucket',
+        // The first bucket is labelled before an unaligned start, so align
+        // this filter on bucket labels. The inner query keeps the original
+        // range so no events outside it are counted.
+        dateRange: getAlignedDateRange(config.dateRange, granularity),
         from: { databaseName: '', tableName: 'min_max_calc' },
       }
     : {
@@ -184,7 +219,7 @@ export function buildHeatmapBucketConfig({
   scaleType: HeatmapScaleType;
   effectiveMin: string | number;
   max: string | number;
-  granularity: string;
+  granularity: SQLInterval;
   nBuckets: number;
 }): BuilderChartConfigWithDateRange {
   const valueExpression = config.select[0].valueExpression;
@@ -235,6 +270,7 @@ export function buildHeatmapBucketConfig({
           },
         ],
         timestampValueExpression: '__hdx_time_bucket',
+        dateRange: getAlignedDateRange(config.dateRange, granularity),
         from: { databaseName: '', tableName: 'bucket_calc' },
         orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
         granularity,

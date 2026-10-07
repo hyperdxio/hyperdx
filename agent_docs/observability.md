@@ -294,6 +294,22 @@ everything below it, including the materialized-view `EXPLAIN` probes.
 Order of precedence: the client's default, then the scope around the current
 request or job, then anything passed with an individual query.
 
+**Browser to API route** — for requests that reach ClickHouse through an API
+route instead of a ClickHouse client. PromQL is the case today: the browser
+calls `/api/v1/prometheus/query{,_range}`, and `/labels` and
+`/label/:name/values` for autocomplete and dashboard filters (tagged with
+`useMetadataQueryAttribution()`), over fetch. The caller sends
+`buildLogComment(attribution)` in the `x-hyperdx-query-attribution` header
+(`QUERY_ATTRIBUTION_HEADER`), and the router parses it with `parseLogComment`
+into a `withQueryAttribution` scope layered over the auth middleware's `api`
+scope. The browser's surface and ids win; `trace` and `label` stay the
+server's. Queries the route runs through a ClickHouse client (label lookups,
+and the `prometheusQuery()`/`prometheusQueryRange()` fallback) pick the scope
+up as usual. Requests proxied to ClickHouse's Prometheus HTTP API on 26.6+ are tagged
+by `clickhousePrometheusRequest`: `log_comment` as a URL setting, `query_id` as
+the `X-ClickHouse-Query-Id` header, because the handler rejects `query_id` as an
+unknown setting in the URL.
+
 ### Rules
 
 - **Values from the browser are hints, not proof.** The client controls them.

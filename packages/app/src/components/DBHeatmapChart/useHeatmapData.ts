@@ -36,14 +36,19 @@ export function useHeatmapData({
   scaleType: HeatmapScaleType;
   enabled: boolean;
 }): HeatmapData {
-  const { granularity, generatedTsBuckets } = useHeatmapTimeBuckets(
-    config.dateRange,
-  );
+  const { granularity, generatedTsBuckets } = useHeatmapTimeBuckets({
+    dateRange: config.dateRange,
+    granularity: config.granularity,
+  });
   const nBuckets = HEATMAP_N_BUCKETS;
 
   // Future: #1914 adds overflow-bucket indicators for smarter range
   // clamping without hiding spikes.
-  const minMaxConfig = buildHeatmapBoundsConfig({ config, scaleType });
+  const minMaxConfig = buildHeatmapBoundsConfig({
+    config,
+    scaleType,
+    granularity,
+  });
 
   const {
     data: minMaxData,

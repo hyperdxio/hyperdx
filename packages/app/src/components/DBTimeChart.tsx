@@ -23,7 +23,11 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
-import { IconChartBar, IconChartLine } from '@tabler/icons-react';
+import {
+  IconChartAreaLine,
+  IconChartBar,
+  IconChartLine,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -930,15 +934,23 @@ function DBTimeChartComponent({
           options={[
             {
               value: DisplayType.Line,
-              label: 'Display as Line Chart',
+              label: 'Display as line chart',
               icon: <IconChartLine />,
             },
             {
               value: DisplayType.StackedBar,
               label: config.compareToPreviousPeriod
-                ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                : 'Display as Bar Chart',
+                ? 'Stacked bar chart unavailable when comparing to previous period'
+                : 'Display as stacked bar chart',
               icon: <IconChartBar />,
+              disabled: config.compareToPreviousPeriod,
+            },
+            {
+              value: DisplayType.StackedLine,
+              label: config.compareToPreviousPeriod
+                ? 'Stacked line chart unavailable when comparing to previous period'
+                : 'Display as stacked line chart',
+              icon: <IconChartAreaLine />,
               disabled: config.compareToPreviousPeriod,
             },
           ]}

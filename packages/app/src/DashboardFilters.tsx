@@ -6,6 +6,7 @@ import {
   getPendingFilterValuesVariables,
   isFilterGlobalRequirement,
   isFilterRequired,
+  isFilterSingleSelect,
   isFilterVariableEnabled,
   isQueryExpressionFilter,
   isStaticListFilter,
@@ -186,6 +187,7 @@ const DashboardFilterSelect = ({
           loading={isLoading}
           // A static list renders in the order its author wrote it.
           sort={!isStaticListFilter(filter)}
+          isMultiSelect={!isFilterSingleSelect(filter)}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />
