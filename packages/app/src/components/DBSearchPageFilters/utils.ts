@@ -9,10 +9,18 @@ import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import { mergePath } from '@/utils';
 
+// A key that begins with `identifier(` is a raw SQL function call (e.g.
+// `toString(...)`, `JSONExtractString(...)`), not a column name or a dot-form
+// Map sub-key, so it is already a valid ClickHouse expression.
+const isSqlFunctionCallExpression = (key: string): boolean =>
+  /^[A-Za-z_]\w*\(/.test(key);
+
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
   // Remove toString() wrapper if present
   let cleanKey = key.replace(/^toString\((.+)\)$/, '$1');
+  // Quoting inside a SQL function belongs to the expression, not the field key.
+  if (isSqlFunctionCallExpression(cleanKey)) return key;
 
   // Convert backtick dot notation to clean dot notation
   // e.g., `host`.`arch` -> host.arch
@@ -146,12 +154,6 @@ export function getFilterStateEntry(
     filterState[`${parsed.baseName}['${parsed.propertyPath}']`]
   );
 }
-
-// A key that begins with `identifier(` is a raw SQL function call (e.g.
-// `toString(...)`, `JSONExtractString(...)`), not a column name or a dot-form
-// Map sub-key, so it is already a valid ClickHouse expression.
-const isSqlFunctionCallExpression = (key: string): boolean =>
-  /^[A-Za-z_]\w*\(/.test(key);
 
 // Coerce a filterState key into a ClickHouse expression suitable for raw SQL.
 // A dot-form Map sub-key like `LogAttributes.host.name` is rewritten to bracket
