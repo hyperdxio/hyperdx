@@ -15,6 +15,7 @@ import {
 } from '@tanstack/react-query';
 
 import { prometheusApi } from '@/api';
+import { useMetadataQueryAttribution } from '@/queryAttribution';
 import { useSources } from '@/source';
 import { mapKeyBy } from '@/utils';
 
@@ -87,6 +88,7 @@ export function usePromqlLabelFilterValues({
   }, [filters, sourcesById, isLoadingSources, resolvedByFilterId]);
 
   const queryClient = useQueryClient();
+  const attribution = useMetadataQueryAttribution();
 
   const results: UseQueryResult<string[]>[] = useQueries({
     queries: calls.map(call => {
@@ -126,6 +128,7 @@ export function usePromqlLabelFilterValues({
             start: startSec,
             end: endSec,
             match: call.match,
+            attribution,
           });
           if (resp.status === 'error') {
             throw new Error(resp.error ?? 'Label values query failed');

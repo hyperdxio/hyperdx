@@ -298,3 +298,41 @@ describe('isGlobalRequirement', () => {
     },
   );
 });
+
+describe('maxSelections', () => {
+  it.each(variants)(
+    'round-trips single-select on a %s filter',
+    (_type, filter) => {
+      const saved = toSavedFilter(
+        formValues({ ...filter, isSingleSelect: true }),
+      );
+
+      expect(saved.maxSelections).toBe(1);
+      expect(saved).not.toHaveProperty('isSingleSelect');
+      expect(toFormValues(saved).isSingleSelect).toBe(true);
+    },
+  );
+
+  it.each(variants)(
+    'emits no key at all for a multi-select %s filter',
+    (_type, filter) => {
+      const saved = toSavedFilter(
+        formValues({ ...filter, isSingleSelect: false }),
+      );
+
+      expect(saved).not.toHaveProperty('maxSelections');
+      expect(toFormValues(saved).isSingleSelect).toBe(false);
+    },
+  );
+  it('keeps both limits on a filter that is single-select and required', () => {
+    const saved = toSavedFilter(
+      formValues({
+        ...byType.STATIC_LIST,
+        isSingleSelect: true,
+        isRequired: true,
+      }),
+    );
+
+    expect(saved).toMatchObject({ minSelections: 1, maxSelections: 1 });
+  });
+});

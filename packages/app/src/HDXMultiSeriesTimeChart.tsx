@@ -1153,7 +1153,10 @@ export function computeYAxisBounds(
   referenceLineValues: number[],
   axisNumberFormat?: NumberFormat,
 ): YAxisBounds {
-  if (displayType === DisplayType.StackedBar) {
+  if (
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.StackedLine
+  ) {
     return DEFAULT_Y_AXIS_BOUNDS;
   }
   const shouldFitYAxis = fitYAxisToData;
@@ -1396,6 +1399,7 @@ export const MemoChart = memo(function MemoChart({
   );
 
   const lines = useMemo(() => {
+    const isStackedLine = displayType === DisplayType.StackedLine;
     return visibleLineData.map(ld => {
       const key = ld.dataKey;
       const color = ld.color;
@@ -1418,18 +1422,28 @@ export const MemoChart = memo(function MemoChart({
         <Area
           key={key}
           dataKey={key}
-          type="monotone"
+          // Monotone curves fit each stacked edge independently, so adjacent
+          // edges can cross between points and the bands overlap; linear
+          // segments stay ordered wherever the points are.
+          type={isStackedLine ? 'linear' : 'monotone'}
           stroke={color}
-          fillOpacity={1}
+          fillOpacity={isStackedLine ? 0.35 : 1}
+          stackId={isStackedLine ? '1' : undefined}
           // Stable per-series class so the nearest-cursor emphasis can be
           // applied via CSS (see nearestSeriesStyle) rather than by changing
           // these props — a prop change here rebuilds every <Area> on hover.
           className={seriesClassName(id, key)}
           activeDot={<CaptureActiveDot onCapture={captureActivePointY} />}
-          // Fill is always the gradient. Hiding it on hover is a CSS class
-          // toggle (styles.chartHovered), not a prop swap — swapping it here
+          // Stacked bands get a flat fill; the gradient fades out within the
+          // top 10% of the chart, which leaves stacked bands looking like
+          // bare lines. Hiding the fill on hover is a CSS class toggle
+          // (styles.chartHovered), not a prop swap — swapping it here
           // re-created every <Area> on each hover enter/leave (hover churn).
-          fill={`url(#time-chart-lin-grad-${id}-${color?.replace('#', '').toLowerCase()})`}
+          fill={
+            isStackedLine
+              ? color
+              : `url(#time-chart-lin-grad-${id}-${color?.replace('#', '').toLowerCase()})`
+          }
           strokeDasharray={strokeDasharray}
           name={seriesName}
           isAnimationActive={false}
@@ -1956,6 +1970,11 @@ export const MemoChart = memo(function MemoChart({
       )}
       // Scopes nearestSeriesStyle to this chart instance.
       data-chart-id={id}
+      // Stacked lines are read by their filled bands, so keep the fill on
+      // hover; the chartHovered fill-hiding rule opts out via this attribute.
+      data-stacked-fill={
+        displayType === DisplayType.StackedLine ? 'true' : undefined
+      }
       style={{ position: 'relative', width: '100%', height: '100%' }}
     >
       {nearestSeriesStyle}

@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from 'react';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
@@ -27,6 +26,7 @@ import DBHeatmapChart, {
   buildHeatmapBucketConfig,
   buildHeatmapSeriesConfig,
   HEATMAP_N_BUCKETS,
+  resolveHeatmapGranularity,
   toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
@@ -62,13 +62,15 @@ const RUN_TO_PREVIEW = 'Run the query to see the preview';
 
 function HeatmapPreview({
   config,
+  minGranularitySeconds,
 }: {
   config: BuilderChartConfigWithDateRange;
+  minGranularitySeconds: number | undefined;
 }) {
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        query={toHeatmapQuery(config)}
+        query={toHeatmapQuery({ ...config, minGranularitySeconds })}
         showLegend
         errorVariant="inline"
       />
@@ -99,24 +101,29 @@ function HeatmapSQLPreview({
     timestampValueExpression,
   };
   const query = toHeatmapQuery(configWithTimestamp);
-  const granularity = convertDateRangeToGranularityString(dateRange, 245);
 
   if (query.mode === 'series') {
+    const seriesConfig = { ...query.config, dateRange };
     return (
       <ChartSQLPreview
         config={buildHeatmapSeriesConfig(
-          { ...query.config, dateRange },
-          granularity,
+          seriesConfig,
+          resolveHeatmapGranularity(seriesConfig),
         )}
         enableCopy
       />
     );
   }
   const { config: heatmapConfig, scaleType } = query;
+  const granularity = resolveHeatmapGranularity({
+    granularity: heatmapConfig.granularity,
+    dateRange,
+  });
 
   const boundsConfig = buildHeatmapBoundsConfig({
     config: heatmapConfig,
     scaleType,
+    granularity,
   });
 
   const bucketConfig = buildHeatmapBucketConfig({
@@ -338,7 +345,12 @@ export function ChartPreviewPanel({
       {queryReady &&
         queriedConfig != null &&
         isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'heatmap' && <HeatmapPreview config={queriedConfig} />}
+        activeTab === 'heatmap' && (
+          <HeatmapPreview
+            config={queriedConfig}
+            minGranularitySeconds={minGranularitySeconds}
+          />
+        )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&

@@ -72,7 +72,7 @@ export type SeriesData = {
   whereLanguage?: 'sql' | 'lucene';
   groupBy?: string[];
   alias?: string;
-  displayType?: 'line' | 'stacked_bar';
+  displayType?: 'line' | 'stacked_bar' | 'stacked_line';
   sortOrder?: 'desc' | 'asc';
   fields?: string[]; // For search type
   content?: string; // For markdown type
@@ -107,6 +107,7 @@ export class DashboardPage {
   readonly variableEnabledCheckbox: Locator;
   readonly requiredFilterCheckbox: Locator;
   readonly globalRequirementCheckbox: Locator;
+  readonly singleSelectCheckbox: Locator;
   readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
@@ -172,6 +173,9 @@ export class DashboardPage {
     this.requiredFilterCheckbox = page.getByTestId('filter-required-checkbox');
     this.globalRequirementCheckbox = page.getByTestId(
       'filter-global-requirement-checkbox',
+    );
+    this.singleSelectCheckbox = page.getByTestId(
+      'filter-single-select-checkbox',
     );
     this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
@@ -275,7 +279,7 @@ export class DashboardPage {
     // The document title comes from the saved dashboard, so it only changes
     // once the rename has persisted.
     const escaped = newName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} – `), {
+    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} - `), {
       timeout: 10000,
     });
   }
@@ -806,6 +810,16 @@ export class DashboardPage {
    */
   getChartContainers() {
     return this.page.locator('.recharts-responsive-container');
+  }
+
+  /** A time-chart display-switcher option in a tile's toolbar. */
+  getTileDisplaySwitcherOption(
+    displayType: 'line' | 'stacked_bar' | 'stacked_line',
+    tileIndex = 0,
+  ) {
+    return this.getTile(tileIndex).getByTestId(
+      `display-switcher-${displayType}`,
+    );
   }
 
   /**
@@ -1406,7 +1420,10 @@ export class DashboardPage {
   async addStaticListFilterToDashboard(
     name: string,
     options: string[],
-    variableOptions?: { variableName?: string } & FilterRequirementOptions,
+    variableOptions?: {
+      variableName?: string;
+      singleSelect?: boolean;
+    } & FilterRequirementOptions,
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('Static values');
@@ -1416,6 +1433,9 @@ export class DashboardPage {
     await this.fillFilterOptions(options);
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    if (variableOptions?.singleSelect !== undefined) {
+      await this.singleSelectCheckbox.setChecked(variableOptions.singleSelect);
     }
     await this.setFilterRequirement(variableOptions);
     await this.page.getByTestId('save-filter-button').click();
@@ -1581,7 +1601,9 @@ export class DashboardPage {
     }
 
     const type: SeriesData['type'] =
-      config.displayType === 'line' || config.displayType === 'stacked_bar'
+      config.displayType === 'line' ||
+      config.displayType === 'stacked_bar' ||
+      config.displayType === 'stacked_line'
         ? 'time'
         : config.displayType;
 

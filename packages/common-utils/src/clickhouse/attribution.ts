@@ -16,6 +16,8 @@
  * check) get a `query_id` but an empty `log_comment`.
  */
 
+import { z } from 'zod';
+
 /**
  * Which part of the product sent the query.
  */
@@ -78,20 +80,22 @@ const MAX_FIELD_LENGTH = 128;
  * spare, so the next field added will need this.
  *
  * Pairs rather than a list of key names, so nothing below has to read a field
- * out of the attribution through a variable key.
+ * out of the attribution through a variable key. Built from an object literal
+ * so the `satisfies` fails to compile until a new id field is listed here;
+ * `Object.entries` keeps the insertion order.
  */
 function idFields(
   attribution: QueryAttribution,
 ): readonly (readonly [string, string | undefined])[] {
-  return [
-    ['dashboard', attribution.dashboard],
-    ['tile', attribution.tile],
-    ['search', attribution.search],
-    ['alert', attribution.alert],
-    ['source', attribution.source],
-    ['trace', attribution.trace],
-    ['label', attribution.label],
-  ];
+  return Object.entries({
+    dashboard: attribution.dashboard,
+    tile: attribution.tile,
+    search: attribution.search,
+    alert: attribution.alert,
+    source: attribution.source,
+    trace: attribution.trace,
+    label: attribution.label,
+  } satisfies Record<Exclude<keyof QueryAttribution, 'surface'>, unknown>);
 }
 
 /**
@@ -151,19 +155,22 @@ function isQuerySurface(value: unknown): value is QuerySurface {
 export function mergeQueryAttribution(
   ...layers: (QueryAttribution | undefined)[]
 ): QueryAttribution {
-  const merged: QueryAttribution = {};
+  let merged: QueryAttribution = {};
   for (const layer of layers) {
     if (!layer) continue;
 
     // Field by field: a spread would copy an `undefined` over a real value.
-    if (layer.surface) merged.surface = layer.surface;
-    if (layer.dashboard) merged.dashboard = layer.dashboard;
-    if (layer.tile) merged.tile = layer.tile;
-    if (layer.search) merged.search = layer.search;
-    if (layer.alert) merged.alert = layer.alert;
-    if (layer.source) merged.source = layer.source;
-    if (layer.trace) merged.trace = layer.trace;
-    if (layer.label) merged.label = layer.label;
+    // The `satisfies` fails to compile until a new field is merged here.
+    merged = {
+      surface: layer.surface || merged.surface,
+      dashboard: layer.dashboard || merged.dashboard,
+      tile: layer.tile || merged.tile,
+      search: layer.search || merged.search,
+      alert: layer.alert || merged.alert,
+      source: layer.source || merged.source,
+      trace: layer.trace || merged.trace,
+      label: layer.label || merged.label,
+    } satisfies Record<keyof QueryAttribution, unknown>;
   }
   return merged;
 }
@@ -205,6 +212,52 @@ export function buildLogComment(
 
   // Only the version survived, so there is nothing to say.
   return payload.size > 1 ? serialized : undefined;
+}
+
+/**
+ * Carries a `buildLogComment` payload on requests that reach ClickHouse through
+ * an API route rather than a ClickHouse client, such as PromQL.
+ */
+export const QUERY_ATTRIBUTION_HEADER = 'x-hyperdx-query-attribution';
+
+// `.catch` per field, so one bad value drops that field rather than the lot.
+// The `satisfies` fails to compile when this and `QueryAttribution` disagree on
+// a key: zod strips keys it doesn't know, so a field missing here would vanish
+// from the header without an error.
+const optionalString = z.string().optional().catch(undefined);
+const wireAttributionSchema = z.object({
+  surface: z.enum(QUERY_SURFACES).optional().catch(undefined),
+  dashboard: optionalString,
+  tile: optionalString,
+  search: optionalString,
+  alert: optionalString,
+  source: optionalString,
+  trace: optionalString,
+  label: optionalString,
+} satisfies Record<keyof QueryAttribution, z.ZodTypeAny>);
+
+/**
+ * The inverse of `buildLogComment`, for a payload that arrived over the wire.
+ * Unknown keys and non-string values are dropped. Values are not sanitized
+ * here: they go back through `buildLogComment` before reaching ClickHouse.
+ */
+export function parseLogComment(
+  value: string | undefined,
+): QueryAttribution | undefined {
+  if (!value || value.length > MAX_LOG_COMMENT_BYTES) return undefined;
+
+  let json: unknown;
+  try {
+    json = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  const parsed = wireAttributionSchema.safeParse(json);
+  if (!parsed.success) return undefined;
+
+  const attribution = mergeQueryAttribution(parsed.data);
+  // Every key is present after a merge, so check for a value instead.
+  return Object.values(attribution).some(Boolean) ? attribution : undefined;
 }
 
 function stringify(payload: Map<string, string | number>): string {

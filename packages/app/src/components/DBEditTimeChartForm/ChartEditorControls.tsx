@@ -9,6 +9,7 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { displayTypeSupportsBuilderAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
@@ -498,9 +499,7 @@ export function ChartEditorControls({
                     checked={ratioMode === 'share_of_total'}
                   />
                 )}
-              {(displayType === DisplayType.Line ||
-                displayType === DisplayType.StackedBar ||
-                displayType === DisplayType.Number) &&
+              {displayTypeSupportsBuilderAlerts(displayType) &&
                 alertsEnabled &&
                 !alert &&
                 !IS_LOCAL_MODE && (
