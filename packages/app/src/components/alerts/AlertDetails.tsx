@@ -1,7 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
-import { AlertSource, AlertState } from '@hyperdx/common-utils/dist/types';
+import { AlertSource } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
   Collapse,
@@ -26,6 +26,7 @@ import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import { AlertRowMenu } from '@/components/alerts/AlertRowMenu';
+import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import type { AlertsPageItem } from '@/types';
 import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
@@ -152,22 +153,7 @@ export const AlertDetails = React.memo(function AlertDetails({
   return (
     <div data-testid={`alert-card-${alert._id}`} className={styles.alertRow}>
       <Group>
-        {alert.state === AlertState.ALERT && (
-          <Badge variant="light" color="red">
-            Alert
-          </Badge>
-        )}
-        {alert.state === AlertState.PENDING && (
-          <Badge variant="light" color="orange">
-            Pending
-          </Badge>
-        )}
-        {alert.state === AlertState.OK && <Badge variant="light">Ok</Badge>}
-        {alert.state === AlertState.DISABLED && (
-          <Badge variant="light" color="gray">
-            Disabled
-          </Badge>
-        )}
+        {alert.state && <AlertStateBadge state={alert.state} />}
 
         <Stack gap={2}>
           <div>

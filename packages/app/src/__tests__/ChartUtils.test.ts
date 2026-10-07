@@ -1,5 +1,8 @@
+import { DEFAULT_PROMQL_REDUCER } from '@hyperdx/common-utils/dist/core/promql';
 import {
   BuilderChartConfigWithDateRange,
+  DisplayType,
+  PromqlReducer,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -7,6 +10,9 @@ import {
 import {
   ChartKeyJoiner,
   convertToNumberChartConfig,
+  convertToPromqlSparklineChartConfig,
+  convertToPromqlTableChartConfig,
+  convertToReducedPromqlChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   findNearestSeriesKey,
@@ -20,6 +26,7 @@ import {
   resolveRenderedSeriesCap,
 } from '@/defaults';
 import { COLORS } from '@/utils';
+import { stripClientSideConfigFields } from '@/utils/chartConfig';
 
 // Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
 // `getChartColorError()` so a regression that breaks the helpers can't
@@ -1279,6 +1286,189 @@ describe('ChartUtils', () => {
     });
   });
 
+  describe('convertToPromqlTableChartConfig', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Table,
+      connection: 'conn',
+      promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
+      dateRange: [
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-26T01:00:14.076Z'),
+      ] as [Date, Date],
+    };
+
+    it('aligns a range query to its granularity, keeping every expression', () => {
+      const result = convertToPromqlTableChartConfig(promqlConfig);
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(result.granularity).toBe('1 minute');
+      expect(result.promqlExpression).toEqual(promqlConfig.promqlExpression);
+    });
+
+    it('leaves the date range unaligned for an instant query', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+      });
+
+      expect(result.dateRange).toEqual(promqlConfig.dateRange);
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
+  });
+
+  describe('convertToReducedPromqlChartConfig and convertToPromqlSparklineChartConfig', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Number,
+      connection: 'conn',
+      promqlExpression: [
+        { expression: 'up', queryType: 'range' as const },
+        { expression: 'down', queryType: 'range' as const },
+      ],
+      dateRange: [
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-26T01:00:14.076Z'),
+      ] as [Date, Date],
+    };
+
+    // Prometheus answers at `start + k * step`, so an unaligned start or an
+    // unresolved step puts the samples between the buckets the sparkline plots
+    // on -- which the empty-bucket filler then fills with zeros.
+    it('aligns the date range and resolves the granularity', () => {
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(result.granularity).toBe('1 minute');
+    });
+
+    it('leaves the date range unaligned for an instant query', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+        dateRange: [
+          new Date('2025-11-26T00:00:14.076Z'),
+          new Date('2025-11-27T00:00:14.076Z'),
+        ],
+      });
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-27T00:00:14.076Z'),
+      ]);
+      expect(result.granularity).toBe('30 minute');
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
+
+    it('names the reducer, defaulting it, and queries one expression', () => {
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          promqlExpression: [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: DEFAULT_PROMQL_REDUCER,
+            },
+          ],
+        }),
+      );
+    });
+
+    it('keeps a chosen reducer', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [
+          {
+            expression: 'up',
+            queryType: 'range' as const,
+            reducer: PromqlReducer.Max,
+          },
+        ],
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          promqlExpression: [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+        }),
+      );
+    });
+
+    // Without a reducer named, the hook leaves the buckets alone -- which is
+    // how the sparkline reads the same response as the value.
+    it('names no reducer for the sparkline, otherwise matching the value', () => {
+      const value = convertToReducedPromqlChartConfig(promqlConfig);
+      const sparkline = convertToPromqlSparklineChartConfig(promqlConfig);
+
+      expect(sparkline).toEqual({
+        ...value,
+        promqlExpression: [
+          { expression: 'up', queryType: 'range', reducer: undefined },
+        ],
+      });
+      expect(stripClientSideConfigFields(sparkline)).toEqual(
+        stripClientSideConfigFields(value),
+      );
+    });
+  });
+
   describe('convertToTableChartConfig', () => {
     it('should remove granularity from the config', () => {
       const config = {
@@ -1534,6 +1724,47 @@ describe('ChartUtils', () => {
       expect(result).toEqual([
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
+    });
+
+    describe('maxGroups', () => {
+      const manyGroups = (count: number) => ({
+        data: Array.from({ length: count }, (_, i) => ({
+          value: i,
+          series_name: `s${i}`,
+        })),
+        meta: [
+          { name: 'value', type: 'Float64' },
+          { name: 'series_name', type: 'String' },
+        ],
+      });
+
+      it('keeps the largest maxGroups groups', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(5),
+          getColor,
+          true,
+          2,
+        );
+        expect(result.map(e => e.label)).toEqual(['s4', 's3']);
+      });
+
+      it('caps at 500 groups by default', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+        );
+        expect(result).toHaveLength(500);
+      });
+
+      it('cannot raise the 500-group cap', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+          true,
+          1000,
+        );
+        expect(result).toHaveLength(500);
+      });
     });
   });
 

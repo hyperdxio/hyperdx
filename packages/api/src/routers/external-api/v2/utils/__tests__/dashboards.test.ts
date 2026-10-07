@@ -3,7 +3,7 @@ import {
   validateDashboardTileContainerRefs,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { z } from 'zod';
 
@@ -407,47 +407,46 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
   // default cap, 0 = unlimited, positive N = top-N. All three must survive a
   // GET->PUT round-trip: 0 and N pass through, null maps to absent (the
   // default-cap state).
-  describe.each([DisplayType.Line, DisplayType.StackedBar])(
-    'seriesLimit serialization for %s tiles',
-    displayType => {
-      function readSeriesLimit(seriesLimit: number | null): unknown {
-        const doc = makeDoc({
-          tiles: [
-            makeTile({
-              id: 'series-limit-tile',
-              config: {
-                displayType,
-                source: new mongoose.Types.ObjectId().toString(),
-                name: 'Series limit tile',
-                select: [{ aggFn: 'count', valueExpression: '' }],
-                where: '',
-                seriesLimit,
-              },
-            }),
-          ],
-        });
-        // Round-trip through JSON to observe what the wire body actually
-        // carries: `undefined` fields are dropped, so an omitted seriesLimit
-        // reads back as `undefined` here.
-        const wire = JSON.parse(
-          JSON.stringify(convertToExternalDashboard(doc)),
-        );
-        return wire.tiles[0].config.seriesLimit;
-      }
-
-      it('round-trips 0 (unlimited) rather than dropping it', () => {
-        expect(readSeriesLimit(0)).toBe(0);
+  describe.each([
+    DisplayType.Line,
+    DisplayType.StackedBar,
+    DisplayType.StackedLine,
+  ])('seriesLimit serialization for %s tiles', displayType => {
+    function readSeriesLimit(seriesLimit: number | null): unknown {
+      const doc = makeDoc({
+        tiles: [
+          makeTile({
+            id: 'series-limit-tile',
+            config: {
+              displayType,
+              source: new mongoose.Types.ObjectId().toString(),
+              name: 'Series limit tile',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              seriesLimit,
+            },
+          }),
+        ],
       });
+      // Round-trip through JSON to observe what the wire body actually
+      // carries: `undefined` fields are dropped, so an omitted seriesLimit
+      // reads back as `undefined` here.
+      const wire = JSON.parse(JSON.stringify(convertToExternalDashboard(doc)));
+      return wire.tiles[0].config.seriesLimit;
+    }
 
-      it('emits seriesLimit as absent when stored as null (default cap)', () => {
-        expect(readSeriesLimit(null)).toBeUndefined();
-      });
+    it('round-trips 0 (unlimited) rather than dropping it', () => {
+      expect(readSeriesLimit(0)).toBe(0);
+    });
 
-      it('passes a positive seriesLimit through unchanged', () => {
-        expect(readSeriesLimit(25)).toBe(25);
-      });
-    },
-  );
+    it('emits seriesLimit as absent when stored as null (default cap)', () => {
+      expect(readSeriesLimit(null)).toBeUndefined();
+    });
+
+    it('passes a positive seriesLimit through unchanged', () => {
+      expect(readSeriesLimit(25)).toBe(25);
+    });
+  });
 });
 
 describe('convertToExternalDashboard stale aggregation params', () => {
@@ -539,5 +538,93 @@ describe('convertToExternalDashboard stale aggregation params', () => {
       alias: 'errors',
       where: "ServiceName = 'api'",
     });
+  });
+});
+
+describe('externalDashboardSelectItemSchema metric selects', () => {
+  // A metric select names its value with metricName; renderChartConfig builds
+  // the aggregate from that, and never reads valueExpression. Requiring one
+  // rejected dashboards the editor itself writes.
+  const metricSelect = {
+    aggFn: 'avg',
+    metricName: 'nodejs.eventloop.delay.p99',
+    metricType: MetricsDataType.Gauge,
+    where: '',
+    whereLanguage: 'lucene',
+  };
+
+  it('accepts a metric select whose valueExpression is empty', () => {
+    const res = externalDashboardSelectItemSchema.safeParse({
+      ...metricSelect,
+      valueExpression: '',
+    });
+    expect(res.success).toBe(true);
+  });
+
+  it('accepts a metric select with no valueExpression at all', () => {
+    expect(
+      externalDashboardSelectItemSchema.safeParse(metricSelect).success,
+    ).toBe(true);
+  });
+
+  it('still requires a valueExpression when metricType is missing', () => {
+    // renderChartConfig dispatches on metricType and throws without it, so a
+    // bare metricName is not enough to earn the exemption.
+    expect(
+      externalDashboardSelectItemSchema.safeParse({
+        ...metricSelect,
+        metricType: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('accepts the select convertToExternalDashboard emits for a metric tile', () => {
+    // The round trip this fix exists for: what GET returns has to pass
+    // /validate. Parsing a hand-built select cannot catch
+    // convertToExternalSelectItem dropping the metric fields on the way out.
+    const doc = makeDoc({
+      tiles: [
+        makeTile({
+          config: {
+            displayType: DisplayType.Line,
+            source: new mongoose.Types.ObjectId().toString(),
+            where: '',
+            name: 'Metric tile',
+            select: [
+              {
+                aggFn: 'avg',
+                metricName: 'nodejs.eventloop.delay.p99',
+                metricType: MetricsDataType.Gauge,
+                valueExpression: '',
+                aggCondition: '',
+              },
+            ],
+          },
+        }),
+      ],
+    });
+    const config = convertToExternalDashboard(doc).tiles[0].config;
+    if (config == null || !('select' in config) || config.select == null) {
+      throw new Error('expected a select on the converted tile');
+    }
+    expect(config.select[0]).toMatchObject({
+      metricName: 'nodejs.eventloop.delay.p99',
+      metricType: MetricsDataType.Gauge,
+    });
+    expect(
+      externalDashboardSelectItemSchema.safeParse(config.select[0]).success,
+    ).toBe(true);
+  });
+
+  it('still requires a valueExpression on a non-count select with no metric', () => {
+    const res = externalDashboardSelectItemSchema.safeParse({
+      aggFn: 'avg',
+      valueExpression: '',
+      where: '',
+    });
+    expect(res.success).toBe(false);
+    expect(res.error?.issues[0].message).toBe(
+      'Value expression is required for non-count aggregation functions',
+    );
   });
 });

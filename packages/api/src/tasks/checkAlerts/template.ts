@@ -1,6 +1,8 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
@@ -11,10 +13,8 @@ import {
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
-  DisplayType,
   Filter,
   isRangeThresholdType,
-  pickSampleWeightExpressionProps,
   SavedChartConfig,
   SourceKind,
   zAlertChannelType,
@@ -143,7 +143,7 @@ const describeChartConfigQuery = (config: SavedChartConfig): string => {
   // because a tile's config is the full union, and this guard is what narrows
   // the builder case below.
   if (isPromqlSavedChartConfig(config)) {
-    return config.promqlExpression;
+    return getPromqlSeries(config).at(-1)?.expression ?? '';
   }
   const select = typeof config.select === 'string' ? [] : (config.select ?? []);
   // Only the last series drives the value -- parseAlertData keeps the last
@@ -346,7 +346,18 @@ export const buildAlertMessageTemplateTitle = ({
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
   // `alert.name` is an optional Handlebars template for the notification title.
-  const template = alert.name;
+  let renderedTemplate: string | null = null;
+  if (alert.name) {
+    try {
+      renderedTemplate = handlebars.compile(alert.name)(view);
+    } catch (e) {
+      logger.error(
+        { err: e, alertId: alert.id, template: alert.name },
+        'Failed to render alert title template, using it verbatim',
+      );
+      renderedTemplate = alert.name;
+    }
+  }
   const { displayName } = resolveAlertDisplayFields(alert, {
     savedSearch,
     dashboard,
@@ -360,9 +371,8 @@ export const buildAlertMessageTemplateTitle = ({
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
     // TODO: using template engine to render the title
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${displayName}" - ${value} lines found`;
+    const baseTitle =
+      renderedTemplate ?? `Alert for "${displayName}" - ${value} lines found`;
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
@@ -375,26 +385,26 @@ export const buildAlertMessageTemplateTitle = ({
       );
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${displayName}" - ${formattedValue} ${
-          doesExceedThreshold(alert, value)
-            ? describeThresholdViolation(alert.thresholdType)
-            : describeThresholdResolution(alert.thresholdType)
-        } ${describeThreshold(alert)}`;
+    const baseTitle =
+      renderedTemplate ??
+      `Alert for "${displayName}" - ${formattedValue} ${
+        doesExceedThreshold(alert, value)
+          ? describeThresholdViolation(alert.thresholdType)
+          : describeThresholdResolution(alert.thresholdType)
+      } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
   } else if (alert.source === AlertSource.INLINE) {
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     // Inline alerts have no saved search/tile to name them; the alert's `name`
     // doubles as the title template, so the default falls back to the resolved
     // display name (itself derived from the chart config's name).
-    const baseTitle = template
-      ? handlebars.compile(template)(view)
-      : `Alert for "${displayName}" - ${formattedValue} ${
-          doesExceedThreshold(alert, value)
-            ? describeThresholdViolation(alert.thresholdType)
-            : describeThresholdResolution(alert.thresholdType)
-        } ${describeThreshold(alert)}`;
+    const baseTitle =
+      renderedTemplate ??
+      `Alert for "${displayName}" - ${formattedValue} ${
+        doesExceedThreshold(alert, value)
+          ? describeThresholdViolation(alert.thresholdType)
+          : describeThresholdResolution(alert.thresholdType)
+      } ${describeThreshold(alert)}`;
     return `${emoji}${baseTitle}`;
   }
 
@@ -503,6 +513,8 @@ export type RenderedAlert = {
    * time — so this is not the complement of `failures`.
    */
   timings: NotificationTiming[];
+  /** Wall time of the concurrent dispatch phase (ms) — the evaluation's delivery time. */
+  dispatchDurationMs: number;
 };
 
 /**
@@ -529,33 +541,23 @@ export const fetchSampleLines = async ({
   metadata: Metadata;
   savedSearch: Pick<
     ISavedSearch,
-    'id' | 'select' | 'where' | 'whereLanguage' | 'orderBy'
+    'id' | 'select' | 'where' | 'whereLanguage' | 'orderBy' | 'filters'
   >;
   source: ISource;
   startTime: Date;
 }): Promise<string> => {
-  const isEventSource =
-    source.kind === SourceKind.Log || source.kind === SourceKind.Trace;
   const chartConfig: ChartConfigWithOptDateRange = {
-    connection: '', // no need for the connection id since clickhouse client is already initialized
-    displayType: DisplayType.Search,
-    dateRange: [startTime, endTime],
-    from: source.from,
-    select:
-      savedSearch.select ||
-      (isEventSource && source.defaultTableSelectExpression) ||
-      '',
-    where: savedSearch.where,
-    whereLanguage: savedSearch.whereLanguage,
-    implicitColumnExpression: isEventSource
-      ? source.implicitColumnExpression
-      : undefined,
-    useTextIndexForImplicitColumn: isEventSource
-      ? source.useTextIndexForImplicitColumn
-      : undefined,
-    ...pickSampleWeightExpressionProps(source),
-    timestampValueExpression: source.timestampValueExpression,
-    orderBy: savedSearch.orderBy,
+    ...buildSearchChartConfig(source, {
+      connection: '', // no need for the connection id since clickhouse client is already initialized
+      dateRange: [startTime, endTime],
+      select: savedSearch.select,
+      where: savedSearch.where,
+      whereLanguage: savedSearch.whereLanguage,
+      filters: savedSearch.filters,
+      orderBy: savedSearch.orderBy,
+      dateRangeStartInclusive: true,
+      dateRangeEndInclusive: false,
+    }),
     limit: {
       limit: 5,
       offset: 0,
@@ -967,6 +969,7 @@ ${targetTemplate}`;
     // reports delivery outcomes through its own logs/metrics instead (see
     // agent_docs/observability.md).
     const timings: NotificationTiming[] = [];
+    const dispatchStartedAt = performance.now();
     await Promise.all(
       jobs.map(async job => {
         // Per-job, not around the Promise.all: the whole point is attributing
@@ -1001,7 +1004,12 @@ ${targetTemplate}`;
       }),
     );
 
-    return { body, failures, timings };
+    return {
+      body,
+      failures,
+      timings,
+      dispatchDurationMs: Math.round(performance.now() - dispatchStartedAt),
+    };
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);

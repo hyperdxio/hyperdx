@@ -57,16 +57,18 @@ Recommended pattern:
 Use BUILDER tiles (with sourceId) for most cases:
   line         Time-series trends (error rate, request volume, latency over time).
   stacked_bar  Compare categories over time (requests by service, errors by status code).
+  stacked_line Same as stacked_bar but as filled area bands (smooth cumulative totals).
   number       Single KPI metric (total requests, current error rate, p99 latency).
   table        Ranked lists (top endpoints by latency, error counts by service). Tables can wire row-click navigation via config.onClick to the /search page or another dashboard. See "TABLE TILE LINKING" below.
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
   bar          Categorical comparisons (request counts by service, errors by endpoint). One bar per group value; not a time series (use stacked_bar for that).
   heatmap      Distribution of a numeric value over time (latency buckets, payload size). Trace sources only. Requires non-empty valueExpression.
+               With heatmapMode: "series": one row per groupBy value, colored by a normal select item. Trace, Log, or Metric sources.
   search       Browse raw log/event rows (error logs, recent traces).
   markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, size it to fit the text (h: 2-3 for a line or two; h: 1 clips it), use plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
 
 Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
-  Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie, bar).
+  Requires configType: "sql" plus a displayType (line, stacked_bar, stacked_line, table, number, pie, bar).
   Use when you need JOINs, sub-queries, CTEs, or expressions the builder does not generate.
   ALWAYS set sourceId on a raw SQL tile (in addition to connectionId) UNLESS the query reads
   from multiple tables (e.g. JOINs across sources). sourceId enables the $__filters and 
@@ -88,7 +90,7 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 1. ONE QUESTION PER DASHBOARD. A dashboard answers a single observability question well. Split if the request mixes traces, logs, and metrics into unrelated views.
 
-2. ALIAS EVERY SELECT ITEM. Every entry in select MUST carry an alias. Tables, lines, stacked_bars, pies, AND number tiles. The number-tile case is the one most often missed because the rendered UI uses the tile's name (not the column alias), so the absence looks invisible; the underlying query still emits a raw-expression column name (count(), quantile(0.95)(Duration)), which breaks orderBy references, CSV export, and any downstream onClick template that references the column by name. Treat "no alias" as a save-time bug, not a style nit. Heatmap is the only exception: heatmap select items take a valueExpression and no alias.
+2. ALIAS EVERY SELECT ITEM. Every entry in select MUST carry an alias. Tables, lines, stacked_bars, pies, AND number tiles. The number-tile case is the one most often missed because the rendered UI uses the tile's name (not the column alias), so the absence looks invisible; the underlying query still emits a raw-expression column name (count(), quantile(0.95)(Duration)), which breaks orderBy references, CSV export, and any downstream onClick template that references the column by name. Treat "no alias" as a save-time bug, not a style nit. Distribution heatmaps are the only exception: their select items take a valueExpression and no alias.
 
    Number tile, correct:    select: [{ aggFn: "count", alias: "Server Requests" }]
    Number tile, wrong:      select: [{ aggFn: "count" }]
@@ -116,6 +118,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 9e. MAKE A FILTER REQUIRED ONLY WHEN AN UNSCOPED VIEW IS MEANINGLESS. minSelections: 1 blocks the tiles that read the filter - the ones referencing its $variableName, and the ones its broadcast applies to - until the user picks a value. isGlobalRequirement: true widens that to every tile on the dashboard. Consider pairing either form with savedFilterValues so the dashboard opens on a sensible default rather than blocked.
 
+9f. MAKE A FILTER SINGLE-SELECT WHEN A TILE ONLY MAKES SENSE FOR ONE VALUE. maxSelections: 1 limits the dropdown to one value at a time, for example a host picker feeding a per-host detail view.
+
 10. UPDATE IS REPLACE, NOT MERGE. clickstack_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call clickstack_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
 11. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
@@ -139,7 +143,7 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 14. SIZE TILES TO FIT THEIR CONTENT. The layout w/h are not one-size-fits-all; a tile that is too short clips its content (a table loses rows below the fold, a number tile crops its label) and one that is too wide wastes the row. Match the size to the displayType: number tiles stay small (w 6-8, h 3-4) so three or four KPIs share a row; line / stacked_bar / pie / bar want w 8-12 and h 4-6; tables and search lists want the full row (w 24) and h 6-10 so rows are not cut off; heatmaps want w 12 and h 5-6; a markdown note wants h 2-3 (never h 1, which clips the text). The per-field w/h descriptions on the tile schema carry the same per-displayType ranges; reach for them instead of leaving every tile at the 12x4 default.
 
-15. FILTER A BUILDER TILE ON THE SELECT ITEM, NOT THE TILE. To scope a table / line / stacked_bar / number / pie / bar tile to a subset of rows (a service, an error status), put the filter on EACH select item's where: select: [{ aggFn: "count", where: "ServiceName:payment", whereLanguage: "lucene", alias: "..." }]. The chart editor renders that per-series where as the tile's visible "Where" box, so the user can see and edit it. Do NOT put a filter at the tile config's top level for these types: the editor does not show it, so it is ignored. For a whole-dashboard scope use a dashboard-level filter (gotcha 9). The only display types with a tile-level where are search, heatmap, and event_patterns, where the editor does render it.
+15. FILTER A BUILDER TILE ON THE SELECT ITEM, NOT THE TILE. To scope a table / line / stacked_bar / number / pie / bar tile to a subset of rows (a service, an error status), put the filter on EACH select item's where: select: [{ aggFn: "count", where: "ServiceName:payment", whereLanguage: "lucene", alias: "..." }]. The chart editor renders that per-series where as the tile's visible "Where" box, so the user can see and edit it. Do NOT put a filter at the tile config's top level for these types: the editor does not show it, so it is ignored. For a whole-dashboard scope use a dashboard-level filter (gotcha 9). The only display types with a tile-level where are search, distribution heatmap, and event_patterns, where the editor does render it. Series heatmaps filter on the select item like the other builder types.
 
 == ADAPT, DO NOT COPY ==
 
@@ -165,7 +169,7 @@ Dashboards open with a 15-minute default window. There is no dashboard-level fie
 - Multiple select items on number / pie / bar / heatmap tiles (each takes exactly one).
 - Missing level on aggFn "quantile" (must specify 0.5, 0.9, 0.95, or 0.99).
 - Assuming StatusCode or SeverityText values (always inspect lowCardinalityValues from clickstack_describe_source).
-- Heatmap on a non-Trace source (heatmap is Trace-only today).
+- Distribution heatmap on a non-Trace source, or series heatmap on a source that is not Trace, Log, or Metric.
 - Hardcoding a focus dimension into every tile's where clause (use a dashboard-level filter instead).
 - Putting a filter at the tile-config top level on a table / line / stacked_bar / number / pie / bar tile (ignored for these types; put the where on each select item instead, see gotcha 15).
 - Enabling both isBroadcastEnabled and isVariableEnabled on one filter (the picked value is then applied twice; set isBroadcastEnabled: false when you add a variable). The exception is rule 9c: a variable read only by another filter's where never reaches a tile, so that filter can keep broadcasting.
@@ -991,7 +995,7 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
   table        1 to 20 select items. Optional groupBy defines row groups. Per-series numberFormat lets one column render as a duration while a sibling count column stays a plain number.
   heatmap      Exactly 1 select item with a non-empty valueExpression. No aggFn or alias on the select item (the chart-level displayType: "heatmap" is the discriminator). Trace sources only (no Log/Metric/Session). No groupBy. Optional where filter applied before bucketing.
   search       No select items (select is a column list string). where is the filter.
-  markdown     No select items. Set markdown field with content.
+  markdown     No select items. Set markdown field with content, which may reference dashboard variables (see DASHBOARD VARIABLES).
 
 == METRIC SOURCES ==
 
@@ -1221,6 +1225,7 @@ Only add one when the default is wrong. \${service:sqlstring} is redundant in a 
   lucene     ("a" OR "b")         ("")        the default in Lucene inputs; ("") is a match-all, so no guard is needed
   regex      (a|b)                .*          use with match()
   csv        a,b                  <empty>     use INSIDE a string literal
+  markdown   a, b                 <empty>     the default in markdown tiles; markdown syntax in values is escaped
 
 BUILDER TILES
 
@@ -1233,6 +1238,11 @@ Every expression on a builder tile accepts variable references, in either langua
 In a LUCENE input the macros have no meaning and are matched as literal text. Reference the variable directly instead, which renders in the lucene format and needs no guard: with nothing selected it becomes ServiceName:("") and the translator drops that to a match-all, so the tile returns everything rather than going empty.
   select: [{ aggFn: "count", whereLanguage: "lucene", where: "ServiceName:$service" }]
 When in doubt on a variable-driven tile, set whereLanguage: "sql" and use $__filter.
+
+MARKDOWN TILES
+
+The markdown field substitutes $variableName / \${variableName} / \${variableName:format} with the selected values as plain text, so a note can name what the dashboard is scoped to. Nothing is selected on a freshly-opened dashboard, so the reference renders as nothing until the user picks a value; write the surrounding text so it still reads. The macros have no meaning here and are left as written.
+  markdown: "Latency for the selected services: $service"
 
 RAW SQL TILES (for advanced use-cases only)
 

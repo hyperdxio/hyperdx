@@ -110,6 +110,10 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *       allOf:
  *         - $ref: '#/components/schemas/BarChartConfig'
  *         - $ref: '#/components/schemas/AlertChartConfigOverlay'
+ *     AlertStackedLineChartConfig:
+ *       allOf:
+ *         - $ref: '#/components/schemas/StackedLineChartConfig'
+ *         - $ref: '#/components/schemas/AlertChartConfigOverlay'
  *     AlertNumberChartConfig:
  *       allOf:
  *         - $ref: '#/components/schemas/NumberChartConfig'
@@ -119,14 +123,15 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *         The chart configuration an inline alert evaluates, in the same
  *         dialect as dashboard tile configs plus the alert-only fields in
  *         AlertChartConfigOverlay. Only the display types the alert evaluator
- *         supports are accepted: line, stacked_bar, and number, in both
- *         builder and Raw SQL (configType "sql") variants. Raw SQL templates
- *         must reference the evaluation window via the time-filter and
- *         interval macros (e.g. $__timeFilter and $__timeInterval), and the
+ *         supports are accepted: line, stacked_bar, stacked_line, and number,
+ *         in both builder and Raw SQL (configType "sql") variants. Raw SQL
+ *         templates must reference the evaluation window via the time-filter
+ *         and interval macros (e.g. $__timeFilter and $__timeInterval), and the
  *         referenced source/connection must belong to the team.
  *       oneOf:
  *         - $ref: '#/components/schemas/AlertLineChartConfig'
  *         - $ref: '#/components/schemas/AlertBarChartConfig'
+ *         - $ref: '#/components/schemas/AlertStackedLineChartConfig'
  *         - $ref: '#/components/schemas/AlertNumberChartConfig'
  *     AlertState:
  *       type: string
@@ -850,7 +855,13 @@ router.put(
       const alertInput = toInternalAlertInput(req.body);
       const refs = await validateAlertInput(teamId, alertInput);
 
-      const alert = await updateAlert(id, teamId, alertInput, refs);
+      const alert = await updateAlert(
+        id,
+        teamId,
+        alertInput,
+        refs,
+        req.user?._id,
+      );
 
       if (alert == null) {
         return res.status(404).json({ message: 'Alert not found' });

@@ -16,6 +16,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
+import { useQueryAttribution } from '@/queryAttribution';
 import { usePrevious } from '@/utils';
 
 import useFieldExpressionGenerator, {
@@ -427,6 +428,7 @@ export function useRRWebEventStream(
   const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>(undefined);
 
   const { data: source } = useSource({ id: sourceId });
+  const attribution = useQueryAttribution();
 
   const fetchResults = useCallback(
     async ({
@@ -471,7 +473,7 @@ export function useRRWebEventStream(
 
       const format = 'JSONEachRow';
       const fetchPromise = (async () => {
-        const clickhouseClient = getClickhouseClient();
+        const clickhouseClient = getClickhouseClient({ attribution });
         const resultSet = await clickhouseClient.query({
           query: query.sql,
           query_params: query.params,
@@ -570,6 +572,7 @@ export function useRRWebEventStream(
       resultsKey,
       metadata,
       getSessionSourceFieldExpression,
+      attribution,
     ],
   );
 

@@ -132,6 +132,7 @@ jest.mock('@/hooks/useExplainQuery', () => ({
 jest.mock('@/theme/ThemeProvider', () => ({
   useAppTheme: () => ({ themeName: 'hyperdx' }),
   useBrandDisplayName: () => 'HyperDX',
+  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
 }));
 
 jest.mock('../hooks/useMetadata', () => ({
@@ -244,6 +245,7 @@ jest.mock('../api', () => ({
       isSuccess: true,
     }),
   },
+  useCompleteOnboardingTask: () => ({ mutate: jest.fn() }),
 }));
 
 jest.mock('@/utils', () => ({

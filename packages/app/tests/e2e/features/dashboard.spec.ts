@@ -124,6 +124,44 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test('persists a stacked line display type across a reload', async () => {
+    const uniqueDashboardName = `Stacked Line Dashboard ${Date.now()}`;
+
+    await test.step('Create a dashboard with a time-series tile', async () => {
+      await expect(dashboardPage.createButton).toBeVisible();
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.editDashboardName(uniqueDashboardName);
+
+      await dashboardPage.addTile();
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      await dashboardPage.chartEditor.createBasicChart('Stacked line tile');
+
+      await expect(dashboardPage.getTiles()).toHaveCount(1, { timeout: 10000 });
+      await expect(dashboardPage.getChartContainers()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Switch the tile to stacked line via the switcher', async () => {
+      await expect(
+        dashboardPage.getTileDisplaySwitcherOption('line'),
+      ).toHaveAttribute('data-active', 'true');
+
+      await dashboardPage.getTileDisplaySwitcherOption('stacked_line').click();
+      await expect(
+        dashboardPage.getTileDisplaySwitcherOption('stacked_line'),
+      ).toHaveAttribute('data-active', 'true');
+    });
+
+    await test.step('Reload and confirm the stacked line shape persisted', async () => {
+      await dashboardPage.page.reload();
+      await expect(dashboardPage.getChartContainers().first()).toBeVisible();
+      await expect(
+        dashboardPage.getTileDisplaySwitcherOption('stacked_line'),
+      ).toHaveAttribute('data-active', 'true');
+    });
+  });
+
   test('Comprehensive dashboard workflow - create, add tiles, configure, and test', async () => {
     test.setTimeout(60000);
 
@@ -3095,7 +3133,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           await page
             .getByTestId('formula-expression-input')
             .fill('A / (A + B) * 100');
-          await page.getByTestId('formula-alias-input').fill('CpuShare');
+          await page.getByTestId('series-alias-input').last().fill('CpuShare');
           expect(await dashboardPage.chartEditor.getFormulaError(0)).toBeNull();
           await dashboardPage.chartEditor.runQuery(false);
 
@@ -3153,7 +3191,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             dashboardPage.page.getByTestId('formula-expression-input'),
           ).toHaveValue('A / (A + B) * 100');
           await expect(
-            dashboardPage.page.getByTestId('formula-alias-input'),
+            dashboardPage.page.getByTestId('series-alias-input').last(),
           ).toHaveValue('CpuShare');
           await expect(
             dashboardPage.page.getByRole('switch', {
@@ -3333,7 +3371,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Wait for THIS dashboard's data to land before asserting absence —
         // otherwise the assertion races an unrendered page and passes for the
         // wrong reason.
-        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        await expect(dashboardPage.dashboardName).toHaveValue(uniqueName);
         // Terraform and ProvisionDashboardsTask would both claim ownership of
         // this dashboard, so the popover must not appear.
         await expect(terraformButton).toBeHidden();
@@ -3386,7 +3424,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       await test.step('Verify it is withheld after reload', async () => {
         await dashboardPage.gotoDashboard(dashboardId);
-        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        await expect(dashboardPage.dashboardName).toHaveValue(uniqueName);
         // Importing this dashboard would delete the PromQL tile on the next
         // apply, because the provider reads it back through external API v2.
         await expect(terraformButton).toBeHidden();

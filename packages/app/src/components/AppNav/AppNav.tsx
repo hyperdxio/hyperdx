@@ -30,6 +30,7 @@ import {
 
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
 import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
@@ -364,19 +365,30 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               {isCollapsed ? (
                 <div className={styles.logoIconWrapper}>{logomark}</div>
               ) : (
-                <Group gap="xs" align="center">
+                <Group
+                  gap="xs"
+                  align="center"
+                  wrap="nowrap"
+                  style={{ minWidth: 0 }}
+                >
                   {wordmark}
-                  {isUTC && (
-                    <Badge
-                      size="xs"
-                      color="gray"
-                      variant="light"
-                      fw="normal"
-                      title="Showing time in UTC"
-                    >
-                      UTC
-                    </Badge>
-                  )}
+                  {/* Label and UTC badge are mutually exclusive - showing both
+                      would be redundant and crowd this already-tight row. */}
+                  <InstanceLabel
+                    fallback={
+                      isUTC && (
+                        <Badge
+                          size="xs"
+                          color="gray"
+                          variant="light"
+                          fw="normal"
+                          title="Showing time in UTC"
+                        >
+                          UTC
+                        </Badge>
+                      )
+                    }
+                  />
                 </Group>
               )}
             </Link>

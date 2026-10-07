@@ -257,6 +257,14 @@ export const DashboardFilterEditForm = ({
               <Divider my="xs" />
               <CheckBoxControlled
                 control={control}
+                name="isSingleSelect"
+                size="xs"
+                label="Single select"
+                description="Only one value can be selected at a time."
+                data-testid="filter-single-select-checkbox"
+              />
+              <CheckBoxControlled
+                control={control}
                 name="isRequired"
                 size="xs"
                 label="Required"

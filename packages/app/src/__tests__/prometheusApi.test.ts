@@ -16,6 +16,10 @@ import { prometheusApi } from '@/api';
 const requestedParams = () =>
   new URLSearchParams(get.mock.calls[0][1].searchParams);
 
+/** As `requestedParams`, for the calls this module issues over POST. */
+const postedParams = () =>
+  new URLSearchParams(post.mock.calls[0][1].searchParams);
+
 describe('prometheusApi.labelValues', () => {
   beforeEach(() => {
     get.mockReset();
@@ -43,6 +47,21 @@ describe('prometheusApi.labelValues', () => {
     expect(params.getAll('match[]')).toEqual(['up{job="api"}']);
     expect(params.get('start')).toBe('100');
     expect(params.get('end')).toBe('200');
+  });
+
+  it('sends the attribution as a header', async () => {
+    await prometheusApi.labelValues({
+      label: 'pod',
+      connectionId: 'conn',
+      attribution: { surface: 'metadata', dashboard: 'd1' },
+    });
+
+    const { headers } = get.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'metadata',
+      dashboard: 'd1',
+    });
   });
 
   it('omits the selector when there is none', async () => {
@@ -86,6 +105,23 @@ describe('prometheusApi.labels', () => {
     expect(resp.data).toEqual(['byoc', 'instance']);
   });
 
+  it('sends the attribution as a header', async () => {
+    get.mockReturnValue({
+      json: () => Promise.resolve({ status: 'success', data: [] }),
+    });
+
+    await prometheusApi.labels({
+      connectionId: 'conn',
+      attribution: { surface: 'metadata' },
+    });
+
+    const { headers } = get.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'metadata',
+    });
+  });
+
   it('leaves a response without data alone', async () => {
     get.mockReturnValue({
       json: () => Promise.resolve({ status: 'error', error: 'nope' }),
@@ -94,5 +130,117 @@ describe('prometheusApi.labels', () => {
     const resp = await prometheusApi.labels({ connectionId: 'conn' });
 
     expect(resp).toEqual({ status: 'error', error: 'nope' });
+  });
+});
+
+describe('prometheusApi.query', () => {
+  beforeEach(() => {
+    post.mockReset();
+    post.mockReturnValue({
+      json: () =>
+        Promise.resolve({
+          status: 'success',
+          data: { resultType: 'vector', result: [] },
+        }),
+    });
+  });
+
+  it('asks the instant endpoint for a single evaluation time', async () => {
+    await prometheusApi.query({
+      query: 'sum(up)',
+      time: 1700000000,
+      connectionId: 'conn',
+      database: 'db',
+      table: 'tbl',
+    });
+
+    expect(post).toHaveBeenCalledWith('v1/prometheus/query', expect.anything());
+    const params = postedParams();
+    expect(params.get('query')).toBe('sum(up)');
+    expect(params.get('time')).toBe('1700000000');
+    expect(params.get('connectionId')).toBe('conn');
+    expect(params.get('database')).toBe('db');
+    expect(params.get('table')).toBe('tbl');
+    // The instant endpoint takes no range, and sending one would be forwarded
+    // upstream as an unrecognized param.
+    expect(params.has('start')).toBe(false);
+    expect(params.has('end')).toBe(false);
+    expect(params.has('step')).toBe(false);
+  });
+
+  it('forwards a series limit only when one is given', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      limit: 25,
+    });
+    expect(postedParams().get('limit')).toBe('25');
+
+    post.mockClear();
+    await prometheusApi.query({ query: 'up', time: 1, connectionId: 'conn' });
+    expect(postedParams().has('limit')).toBe(false);
+  });
+
+  it('omits the table params a Prometheus-backed connection has no use for', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+    });
+
+    const params = postedParams();
+    expect(params.has('database')).toBe(false);
+    expect(params.has('table')).toBe(false);
+  });
+
+  it('sends the attribution as a log_comment payload in a header', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      attribution: { surface: 'dashboard', dashboard: 'd1', tile: 't1' },
+    });
+
+    const { headers } = post.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'dashboard',
+      dashboard: 'd1',
+      tile: 't1',
+    });
+  });
+
+  it('sends no attribution header when there is nothing to say', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      attribution: {},
+    });
+    expect(post.mock.calls[0][1].headers).toBeUndefined();
+  });
+
+  it('reports the error a failed instant query carries', async () => {
+    post.mockReturnValue({
+      json: () =>
+        Promise.resolve({
+          status: 'error',
+          errorType: 'bad_data',
+          error: 'parse error',
+        }),
+    });
+
+    const resp = await prometheusApi.query({
+      query: 'sum(',
+      time: 1,
+      connectionId: 'conn',
+    });
+
+    expect(resp).toEqual({
+      status: 'error',
+      errorType: 'bad_data',
+      error: 'parse error',
+    });
   });
 });

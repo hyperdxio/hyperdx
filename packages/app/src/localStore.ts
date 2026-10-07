@@ -89,6 +89,11 @@ export function createEntityStore<T extends EntityWithId>(
   };
 }
 
+/** Unique tags across a local-mode collection. */
+export function collectTags(items: { tags?: string[] }[]): string[] {
+  return Array.from(new Set(items.flatMap(item => item.tags ?? [])));
+}
+
 /**
  * Sources store with env-var default fallback.
  * Keeps the existing "hdx-local-source" key for backward compatibility.

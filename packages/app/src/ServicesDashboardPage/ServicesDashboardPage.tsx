@@ -54,10 +54,10 @@ import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { usePageTitle } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import DatabaseTab from './DatabaseTab';
@@ -166,7 +166,7 @@ const DEFAULT_INTERVAL = 'Past 1h';
 
 function ServicesDashboardPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Services Dashboard');
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -313,7 +313,7 @@ function ServicesDashboardPage() {
   return (
     <Box p="sm" data-testid="services-dashboard-page">
       <Head>
-        <title>Services Dashboard – {brandName}</title>
+        <title>{title}</title>
       </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
@@ -342,7 +342,13 @@ function ServicesDashboardPage() {
         }}
       >
         <Group gap="xs">
-          <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
+          <Group
+            justify="space-between"
+            gap="xs"
+            wrap="nowrap"
+            flex={1}
+            align="flex-start"
+          >
             <SourceSelectControlled
               control={control}
               name="source"
@@ -473,6 +479,9 @@ const ServicesDashboardPageDynamic = dynamic(
 );
 
 // @ts-expect-error Next.js layout typing
-ServicesDashboardPageDynamic.getLayout = withAppNav;
+ServicesDashboardPageDynamic.getLayout = withAppNavForSurface(
+  'service-dashboard',
+  'services',
+);
 
 export default ServicesDashboardPageDynamic;

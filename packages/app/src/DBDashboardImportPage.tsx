@@ -70,7 +70,7 @@ import {
 
 import SelectControlled from './components/SelectControlled';
 import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
 import { useConnections } from './connection';
 import {
@@ -1189,7 +1189,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
 }
 
 function DBDashboardImportPage() {
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Import Dashboard');
   const router = useRouter();
 
   // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -1209,7 +1209,7 @@ function DBDashboardImportPage() {
   return (
     <div>
       <Head>
-        <title>Import Dashboard - {brandName}</title>
+        <title>{title}</title>
       </Head>
       <Breadcrumbs my="lg" ms="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">

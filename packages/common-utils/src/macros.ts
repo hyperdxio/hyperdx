@@ -1,9 +1,17 @@
+import {
+  getPromqlMacroInputs,
+  PROMQL_MACRO_NAMES,
+  PROMQL_MACROS,
+  PromqlMacroName,
+} from './core/promql';
 import { splitAndTrimWithBracket } from './core/utils';
 import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
 import { RawSqlQueryParam, renderQueryParam } from './rawSqlParams';
 import {
+  ChartVariable,
   MetricsDataType,
   MetricsDataTypeSchema,
+  PromqlExpressionList,
   RawSqlChartConfig,
 } from './types';
 import {
@@ -17,7 +25,7 @@ import {
 } from './variables';
 
 function expectArgs(
-  macroName: MacroName,
+  macroName: MacroName | PromqlMacroName,
   args: string[],
   minArgs: number,
   maxArgs: number,
@@ -500,4 +508,78 @@ export function replaceMacros(
     expandReference: token =>
       variableContext ? expandVariableToken(token, variableContext) : token.raw,
   });
+}
+
+/**
+ * Expand the macros (`$__interval`, `$__range`, `$__rate_interval`) and variable
+ * references in a PromQL config's expression(s), returning it with `variables`
+ * consumed. References to names that aren't variables are left as written, so
+ * `$1` in a `label_replace` replacement reaches Prometheus unchanged.
+ *
+ * Macros and variables expand in one pass, so a selected value that looks like
+ * `$__range` stays inert. Dropping `variables` from the result ensures variables
+ * can't be substituted twice.
+ */
+export function substitutePromqlChartConfigTemplates<
+  T extends {
+    promqlExpression: PromqlExpressionList;
+    variables?: ChartVariable[];
+    granularity?: string;
+    dateRange: [Date, Date];
+    minGranularitySeconds?: number;
+  },
+>(config: T): T {
+  const {
+    promqlExpression,
+    variables = [],
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+  } = config;
+  const variableContext: VariableContext = {
+    variables,
+    inputLanguage: 'promql',
+  };
+  const macroInputs = getPromqlMacroInputs(
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+  );
+  const macrosByName = new Map<string, Macro>(
+    PROMQL_MACROS.map(({ name, minArgs, maxArgs, description, expand }) => [
+      name,
+      {
+        name,
+        minArgs,
+        maxArgs,
+        description,
+        replace: args => {
+          expectArgs(name, args, minArgs, maxArgs);
+          return expand(macroInputs);
+        },
+      },
+    ]),
+  );
+
+  const substitute = (expression: string) =>
+    expandTemplate(expression, {
+      // `$__filter` / `$__conditionalAll` are scanned only so a reference in
+      // their arguments isn't expanded; they have no meaning in PromQL.
+      macroNames: [...VARIABLE_MACRO_NAMES, ...PROMQL_MACRO_NAMES],
+      expandMacro: token =>
+        macrosByName.get(token.name)?.replace(token.args) ?? token.raw,
+      expandReference: token => expandVariableToken(token, variableContext),
+    });
+
+  return {
+    ...config,
+    promqlExpression:
+      typeof promqlExpression === 'string'
+        ? substitute(promqlExpression)
+        : promqlExpression.map(series => ({
+            ...series,
+            expression: substitute(series.expression),
+          })),
+    variables: undefined,
+  };
 }

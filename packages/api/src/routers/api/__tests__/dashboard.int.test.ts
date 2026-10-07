@@ -1210,6 +1210,27 @@ describe('dashboard router', () => {
         .expect(400);
     });
 
+    it('persists maxSelections on create', async () => {
+      const filter = makeFilter({ maxSelections: 1 });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+    });
+
+    it.each([0, 2, 1.5, '1'])('rejects maxSelections %s', async value => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeFilter({ maxSelections: value })],
+        })
+        .expect(400);
+    });
+
     it('persists a dashboard-wide requirement', async () => {
       const filter = makeFilter({
         minSelections: 1,

@@ -159,11 +159,13 @@ jest.mock('@/hooks/useChartConfig', () => ({
 jest.mock('@/layout', () => ({
   __esModule: true,
   withAppNav: (page: unknown) => page,
+  withAppNavForSurface: () => (page: unknown) => page,
 }));
 
 jest.mock('@/theme/ThemeProvider', () => ({
   __esModule: true,
   useBrandDisplayName: () => 'HyperDX',
+  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
 }));
 
 import ServicesDashboardPage from '@/ServicesDashboardPage';

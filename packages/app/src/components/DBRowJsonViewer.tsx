@@ -37,8 +37,9 @@ import HyperJson, {
   KeyOrder,
   LineAction,
 } from '@/components/HyperJson';
+import { useMaterializedAliasColumnsOption } from '@/hooks/useMaterializedAliasColumnsOption';
 import { useFormatTime } from '@/useFormatTime';
-import { mergePath } from '@/utils';
+import { isColumnInSelect, mergePath } from '@/utils';
 import {
   CLIPBOARD_ERROR_MESSAGE,
   copyTextToClipboard,
@@ -258,8 +259,16 @@ const viewerOptionsAtom = atomWithStorage<ViewerOptions>(
   viewerOptionsStorage,
 );
 
-function HyperJsonMenu({ rowData }: { rowData: any }) {
+function HyperJsonMenu({
+  rowData,
+  showMaterializedAliasColumnsOption,
+}: {
+  rowData: any;
+  showMaterializedAliasColumnsOption: boolean;
+}) {
   const [jsonOptions, setJsonOptions] = useAtom(viewerOptionsAtom);
+  const [showMaterializedAliasColumns, setShowMaterializedAliasColumns] =
+    useMaterializedAliasColumnsOption();
   const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
   const effectiveKeyOrder = jsonOptions.keyOrder ?? DEFAULT_KEY_ORDER;
 
@@ -367,6 +376,23 @@ function HyperJsonMenu({ rowData }: { rowData: any }) {
           >
             Hide blank values
           </Menu.Item>
+          {showMaterializedAliasColumnsOption && (
+            <Menu.Item
+              lh="1"
+              py={8}
+              data-testid="json-viewer-materialized-alias-toggle"
+              rightSection={
+                showMaterializedAliasColumns ? (
+                  <IconCheck size={14} className="ps-2" />
+                ) : null
+              }
+              onClick={() =>
+                setShowMaterializedAliasColumns(!showMaterializedAliasColumns)
+              }
+            >
+              Show materialized and alias columns
+            </Menu.Item>
+          )}
           <Menu.Divider />
           <Menu.Label lh={1} py={6}>
             Property order
@@ -400,6 +426,7 @@ export function DBRowJsonViewer({
   data,
   jsonColumns,
   mapColumns,
+  showMaterializedAliasColumnsOption = false,
 }: {
   data: any;
   jsonColumns?: string[];
@@ -407,6 +434,9 @@ export function DBRowJsonViewer({
   // `mergePath` so numeric-looking sub-keys on a Map render as
   // `Map['key']` instead of the array `Map[N+1]`. HDX-4369.
   mapColumns?: string[];
+  // Only a viewer of the whole row from `useRowData` is affected by the option,
+  // and only when the source's row query would change.
+  showMaterializedAliasColumnsOption?: boolean;
 }) {
   const formatTime = useFormatTime();
   const {
@@ -639,7 +669,7 @@ export function DBRowJsonViewer({
           }
         }
 
-        const isIncluded = displayedColumns?.includes(columnFieldPath);
+        const isIncluded = isColumnInSelect(displayedColumns, columnFieldPath);
         actions.push({
           key: 'toggle-column',
           label: isIncluded ? <IconMinus size={14} /> : <IconPlus size={14} />,
@@ -754,7 +784,12 @@ export function DBRowJsonViewer({
             </Button>
           )}
           <div className="flex-grow-1" />
-          <HyperJsonMenu rowData={rowData} />
+          <HyperJsonMenu
+            rowData={rowData}
+            showMaterializedAliasColumnsOption={
+              showMaterializedAliasColumnsOption
+            }
+          />
         </Group>
       </Box>
       <Paper bg="transparent" mt="sm">

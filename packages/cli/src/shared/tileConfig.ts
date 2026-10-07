@@ -360,7 +360,7 @@ export function convertToTableChartConfig(
  * Apply the per-displayType config transform the matching web chart
  * component would apply before querying:
  *
- * - line / stacked_bar → DBTimeChart → convertToTimeChartConfig
+ * - line / stacked_bar / stacked_line → DBTimeChart → convertToTimeChartConfig
  * - number → DBNumberChart → convertToNumberChartConfig
  * - table → DBTableChart → convertToTableChartConfig
  * - pie / bar → CategoricalChart → convertToCategoricalChartConfig
@@ -372,6 +372,7 @@ export function convertTileConfigForQuery(
   switch (config.displayType) {
     case DisplayType.Line:
     case DisplayType.StackedBar:
+    case DisplayType.StackedLine:
       return convertToTimeChartConfig(config, maxTimeBuckets);
     case DisplayType.Number:
       return convertToNumberChartConfig(config);
@@ -395,6 +396,7 @@ export function convertTileConfigForQuery(
 export const CLI_SUPPORTED_DISPLAY_TYPES: ReadonlySet<DisplayType> = new Set([
   DisplayType.Line,
   DisplayType.StackedBar,
+  DisplayType.StackedLine,
   DisplayType.Number,
   DisplayType.Table,
   DisplayType.Pie,

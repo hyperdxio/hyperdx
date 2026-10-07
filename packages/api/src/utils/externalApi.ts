@@ -1,3 +1,4 @@
+import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isFilterBroadcastEnabled,
   isFilterRequired,
@@ -74,9 +75,9 @@ export function translateExternalChartToTileConfig(
   switch (firstSeries.type) {
     case 'time': {
       displayType =
-        firstSeries.displayType === 'stacked_bar'
-          ? DisplayType.StackedBar
-          : DisplayType.Line;
+        (firstSeries.displayType &&
+          TIME_SERIES_DISPLAY_TYPE_BY_NAME[firstSeries.displayType]) ??
+        DisplayType.Line;
 
       // Convert time series to select array
       select = series.map(s => {

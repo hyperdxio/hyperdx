@@ -41,7 +41,8 @@ const baseAlert = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-02-01T00:00:00.000Z',
   history: [],
-} as unknown as AlertsPageItem;
+  displayName: 'Alert',
+} satisfies AlertsPageItem;
 
 describe('AlertDetailProperties', () => {
   it('renders all persisted metadata fields when set', () => {
@@ -61,14 +62,8 @@ describe('AlertDetailProperties', () => {
               until: '2099-01-01T00:00:00.000Z',
             },
             tags: ['prod', 'payments'],
-            savedSearch: {
-              _id: 'saved-search-id',
-              name: 'My Search',
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-              tags: ['prod', 'payments'],
-            },
-          } as AlertsPageItem
+            savedSearch: { name: 'My Search' },
+          } satisfies AlertsPageItem
         }
       />,
     );
@@ -98,21 +93,15 @@ describe('AlertDetailProperties', () => {
     expect(screen.getByText(/Team Slack/)).toBeInTheDocument();
   });
 
-  it("renders the alert's own tags, not the saved search's", () => {
+  it("renders the alert's own tags", () => {
     renderWithMantine(
       <AlertDetailProperties
         alert={
           {
             ...baseAlert,
             tags: ['own-tag'],
-            savedSearch: {
-              _id: 'saved-search-id',
-              name: 'My Search',
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-              tags: ['prod'],
-            },
-          } as AlertsPageItem
+            savedSearch: { name: 'My Search' },
+          } satisfies AlertsPageItem
         }
       />,
     );
