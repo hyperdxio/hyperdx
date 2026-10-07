@@ -3,6 +3,7 @@ import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
   isFormulaSourceKind,
+  TIME_SERIES_DISPLAY_TYPE_BY_NAME,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   validateDashboardContainersStructure,
@@ -244,9 +245,9 @@ export const convertToExternalTileChartConfig = (
           seriesLimit: config.seriesLimit ?? undefined,
         };
       case DisplayType.StackedBar:
-        return {
-          configType: 'sql',
-          displayType: config.displayType,
+      case DisplayType.StackedLine: {
+        const stacked = {
+          configType: 'sql' as const,
           connectionId: config.connection,
           sqlTemplate: config.sqlTemplate,
           sourceId: config.source,
@@ -257,6 +258,11 @@ export const convertToExternalTileChartConfig = (
           // null/undefined map to absent (the default-cap state).
           seriesLimit: config.seriesLimit ?? undefined,
         };
+        // A union-typed displayType doesn't narrow to one union member.
+        return config.displayType === DisplayType.StackedLine
+          ? { displayType: DisplayType.StackedLine, ...stacked }
+          : { displayType: DisplayType.StackedBar, ...stacked };
+      }
       case DisplayType.Table:
         return {
           configType: 'sql',
@@ -362,8 +368,8 @@ export const convertToExternalTileChartConfig = (
         ...externalShowOperandSeriesField,
       };
     case DisplayType.StackedBar:
-      return {
-        displayType: DisplayType.StackedBar,
+    case DisplayType.StackedLine: {
+      const stacked = {
         sourceId,
         asRatio:
           config.seriesReturnType === 'ratio' &&
@@ -382,6 +388,10 @@ export const convertToExternalTileChartConfig = (
         ...externalFormulaFields,
         ...externalShowOperandSeriesField,
       };
+      return config.displayType === DisplayType.StackedLine
+        ? { displayType: DisplayType.StackedLine, ...stacked }
+        : { displayType: DisplayType.StackedBar, ...stacked };
+    }
     case DisplayType.Number:
       return {
         displayType: config.displayType,
@@ -723,6 +733,7 @@ export function convertToInternalTileConfig(
     switch (externalConfig.displayType) {
       case 'line':
       case 'stacked_bar':
+      case 'stacked_line':
         internalConfig = {
           configType: 'sql',
           ...pick(externalConfig, [
@@ -734,9 +745,7 @@ export function convertToInternalTileConfig(
             'seriesLimit',
           ]),
           displayType:
-            externalConfig.displayType === 'stacked_bar'
-              ? DisplayType.StackedBar
-              : DisplayType.Line,
+            TIME_SERIES_DISPLAY_TYPE_BY_NAME[externalConfig.displayType],
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           name,
           connection: externalConfig.connectionId,
@@ -789,6 +798,7 @@ export function convertToInternalTileConfig(
     switch (externalConfig.displayType) {
       case 'line':
       case 'stacked_bar':
+      case 'stacked_line':
         internalConfig = {
           ...pick(externalConfig, [
             'groupBy',
@@ -802,9 +812,7 @@ export function convertToInternalTileConfig(
             'showOperandSeries',
           ]),
           displayType:
-            externalConfig.displayType === 'stacked_bar'
-              ? DisplayType.StackedBar
-              : DisplayType.Line,
+            TIME_SERIES_DISPLAY_TYPE_BY_NAME[externalConfig.displayType],
           select: externalConfig.select.map(convertToInternalSelectItem),
           source: externalConfig.sourceId,
           where: '',

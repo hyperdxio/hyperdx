@@ -24,6 +24,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
+  displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -731,11 +732,7 @@ const buildAlertChartConfigFromSavedConfig = ({
     return undefined;
   }
 
-  if (
-    savedConfig.displayType === DisplayType.Line ||
-    savedConfig.displayType === DisplayType.StackedBar ||
-    savedConfig.displayType === DisplayType.Number
-  ) {
+  if (displayTypeSupportsBuilderAlerts(savedConfig.displayType)) {
     // Alerts can use Log, Trace, or Metric sources.
     // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
     // metricTables exists on Metric sources.

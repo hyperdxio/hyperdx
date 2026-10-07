@@ -164,12 +164,14 @@ export const isRawSqlDisplayType = (
   | DisplayType.Table
   | DisplayType.Line
   | DisplayType.StackedBar
+  | DisplayType.StackedLine
   | DisplayType.Pie
   | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
@@ -185,21 +187,7 @@ export const isStringSelectDisplayType = (
   displayType === DisplayType.Search ||
   displayType === DisplayType.EventPatterns;
 
-export const isPromqlDisplayType = (
-  displayType: DisplayType | undefined,
-): displayType is
-  | DisplayType.Table
-  | DisplayType.Line
-  | DisplayType.StackedBar
-  | DisplayType.Pie
-  | DisplayType.Bar
-  | DisplayType.Number =>
-  displayType === DisplayType.Table ||
-  displayType === DisplayType.Line ||
-  displayType === DisplayType.StackedBar ||
-  displayType === DisplayType.Pie ||
-  displayType === DisplayType.Bar ||
-  displayType === DisplayType.Number;
+export const isPromqlDisplayType = isRawSqlDisplayType;
 
 const NON_PROMQL_SOURCE_KINDS = Object.values(SourceKind).filter(
   kind => kind !== SourceKind.Promql,

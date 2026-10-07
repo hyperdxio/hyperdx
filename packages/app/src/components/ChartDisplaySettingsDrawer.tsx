@@ -4,6 +4,7 @@ import {
   UnknownTemplateHelperError,
   validateTemplate,
 } from '@hyperdx/common-utils/dist/core/handlebarsEnv';
+import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -200,8 +201,7 @@ export default function ChartDisplaySettingsDrawer({
     );
   }, [reset, defaultNumberFormat]);
 
-  const isTimeChart =
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
+  const isTimeChart = isTimeSeriesDisplayType(displayType);
 
   // Series Limit applies to every time chart. On builder group-by charts a
   // positive value drives the __hdx_series_limit SQL CTE (trimming what's
