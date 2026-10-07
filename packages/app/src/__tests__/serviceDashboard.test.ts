@@ -1,4 +1,5 @@
 import type { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import { parseQuery } from '@hyperdx/common-utils/dist/filters';
 import type { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
@@ -7,6 +8,7 @@ import * as metadataModule from '@/hooks/useMetadata';
 import {
   getExpressions,
   makeCoalescedFieldsAccessQuery,
+  makeDbStatementCondition,
   useServiceDashboardExpressions,
 } from '@/serviceDashboard';
 
@@ -144,6 +146,145 @@ describe('Service Dashboard', () => {
         "coalesce(nullif(field1, ''), nullif(field2, ''), nullif(field3, ''))",
       );
     });
+  });
+
+  describe('dbStatementIndexHint', () => {
+    const attributesColumn = {
+      name: 'SpanAttributes',
+      type: 'Map(LowCardinality(String), String)',
+    } as ColumnMeta;
+    const itemsColumn = { name: 'SpanAttributeItems' } as ColumnMeta;
+
+    it('should prefer the attribute items column when the table has one', () => {
+      expect(
+        getExpressions(mockSource, [attributesColumn, itemsColumn], [])
+          .dbStatementIndexHint,
+      ).toEqual({ kind: 'items', column: 'SpanAttributeItems' });
+    });
+
+    it('should fall back to the attribute map, which older schemas index by value', () => {
+      expect(
+        getExpressions(mockSource, [attributesColumn], []).dbStatementIndexHint,
+      ).toEqual({ kind: 'mapValues', column: 'SpanAttributes' });
+    });
+
+    it('should be undefined when the attribute field is not a map', () => {
+      expect(
+        getExpressions(
+          mockSource,
+          [{ name: 'SpanAttributes', type: 'String' } as ColumnMeta],
+          [],
+        ).dbStatementIndexHint,
+      ).toBeUndefined();
+    });
+
+    it('should be undefined for JSON attribute columns', () => {
+      expect(
+        getExpressions(
+          mockSource,
+          [attributesColumn, itemsColumn],
+          ['SpanAttributes'],
+        ).dbStatementIndexHint,
+      ).toBeUndefined();
+    });
+
+    it('should not mistake the attribute field itself for an items column', () => {
+      expect(
+        getExpressions(
+          { ...mockSource, eventAttributesExpression: 'Attrs' },
+          [{ name: 'Attrs', type: 'Map(String, String)' } as ColumnMeta],
+          [],
+        ).dbStatementIndexHint,
+      ).toEqual({ kind: 'mapValues', column: 'Attrs' });
+    });
+  });
+
+  describe('makeDbStatementCondition', () => {
+    const dbStatement =
+      "coalesce(nullif(SpanAttributes['db.query.text'], ''), nullif(SpanAttributes['db.statement'], ''))";
+    const equality = `${dbStatement} IN ('SELECT 1')`;
+
+    it('should only compare the statement when nothing is indexed', () => {
+      expect(
+        makeDbStatementCondition({
+          expressions: { dbStatement, dbStatementIndexHint: undefined },
+          statement: 'SELECT 1',
+        }),
+      ).toBe(equality);
+    });
+
+    it('should prefilter on the items column, which newer schemas index', () => {
+      expect(
+        makeDbStatementCondition({
+          expressions: {
+            dbStatement,
+            dbStatementIndexHint: {
+              kind: 'items',
+              column: 'SpanAttributeItems',
+            },
+          },
+          statement: 'SELECT 1',
+        }),
+      ).toBe(
+        "(has(SpanAttributeItems, 'db.query.text=SELECT 1') OR " +
+          "has(SpanAttributeItems, 'db.statement=SELECT 1')) " +
+          `AND ${equality}`,
+      );
+    });
+
+    it('should prefilter on the attribute values, which older schemas index', () => {
+      expect(
+        makeDbStatementCondition({
+          expressions: {
+            dbStatement,
+            dbStatementIndexHint: {
+              kind: 'mapValues',
+              column: 'SpanAttributes',
+            },
+          },
+          statement: 'SELECT 1',
+        }),
+      ).toBe(
+        `(has(mapValues(SpanAttributes), 'SELECT 1')) AND ${equality}`,
+      );
+    });
+
+    it.each([
+      ['items' as const, 'SpanAttributeItems'],
+      ['mapValues' as const, 'SpanAttributes'],
+    ])('should escape quotes in the %s prefilter', (kind, column) => {
+      const condition = makeDbStatementCondition({
+        expressions: { dbStatement, dbStatementIndexHint: { kind, column } },
+        statement: "SELECT 'a'",
+      });
+
+      expect(condition).toContain("SELECT ''a''");
+      expect(condition).not.toContain("SELECT 'a'");
+    });
+
+    it.each([
+      [undefined],
+      [{ kind: 'items' as const, column: 'SpanAttributeItems' }],
+      [{ kind: 'mapValues' as const, column: 'SpanAttributes' }],
+    ])(
+      'should be read back by the search page as the same filter (%p)',
+      dbStatementIndexHint => {
+        const statement = "SELECT 'a' FROM t WHERE b IN (1) AND c = ?";
+
+        const { filters } = parseQuery([
+          {
+            type: 'sql',
+            condition: makeDbStatementCondition({
+              expressions: { dbStatement, dbStatementIndexHint },
+              statement,
+            }),
+          },
+        ]);
+
+        expect(Object.keys(filters)).toEqual([dbStatement]);
+        expect([...filters[dbStatement].included]).toEqual([statement]);
+      },
+    );
   });
 
   describe('useServiceDashboardExpressions', () => {
