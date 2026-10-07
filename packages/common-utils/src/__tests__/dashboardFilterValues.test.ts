@@ -492,6 +492,38 @@ describe('dashboardFilterValues', () => {
     });
   });
 
+  describe('resolveFilterSelection for a single-select filter', () => {
+    it('keeps only the first value of a variable entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ]);
+
+      expect(
+        resolveFilterSelection(staticFilter({ maxSelections: 1 }), parsed),
+      ).toEqual(included('staging'));
+    });
+
+    it('keeps only the first value of an expression entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'sql', condition: "ServiceName IN ('b', 'a')" },
+      ]);
+
+      expect(
+        resolveFilterSelection(filter({ maxSelections: 1 }), parsed),
+      ).toEqual(included('b'));
+    });
+
+    it('leaves a multi-select filter untouched', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ]);
+
+      expect(resolveFilterSelection(staticFilter(), parsed)).toEqual(
+        included('staging', 'prod'),
+      );
+    });
+  });
+
   describe('getUnsatisfiedRequiredFilters', () => {
     const required = (
       overrides: Partial<QueryExpressionDashboardFilter> = {},
