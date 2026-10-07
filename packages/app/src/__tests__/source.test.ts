@@ -14,6 +14,7 @@ import {
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
+  pickTimeSeriesTable,
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
   useSources,
@@ -53,6 +54,43 @@ const TRACE_SOURCE: TTraceSource = {
   spanKindExpression: 'SpanKind',
   defaultTableSelectExpression: 'Timestamp, ServiceName',
 } as TTraceSource;
+
+describe('pickTimeSeriesTable', () => {
+  const table = (databaseName: string, tableName: string) => ({
+    databaseName,
+    tableName,
+  });
+
+  it('prefers metrics_ts in the preferred database', () => {
+    const tables = [
+      table('default', 'metrics_ts'),
+      table('otel', 'metrics_ts'),
+    ];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('otel', 'metrics_ts'),
+    );
+  });
+
+  it('falls back to metrics_ts in any database', () => {
+    const tables = [table('a_db', 'custom_ts'), table('b_db', 'metrics_ts')];
+    expect(pickTimeSeriesTable(tables)).toEqual(table('b_db', 'metrics_ts'));
+  });
+
+  it('picks a sole TimeSeries table without the default name', () => {
+    expect(pickTimeSeriesTable([table('otel', 'prom')])).toEqual(
+      table('otel', 'prom'),
+    );
+  });
+
+  it('picks nothing from several tables without the default name', () => {
+    const tables = [table('otel', 'prom_a'), table('otel', 'prom_b')];
+    expect(pickTimeSeriesTable(tables, 'otel')).toBeUndefined();
+  });
+
+  it('picks nothing from no tables', () => {
+    expect(pickTimeSeriesTable([])).toBeUndefined();
+  });
+});
 
 describe('getEventBody', () => {
   it('returns spanNameExpression for trace kind source when both bodyExpression and spanNameExpression are present', () => {
