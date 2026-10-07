@@ -44,6 +44,13 @@ services:
       #   HYPERDX_OTEL_EXPORTER_LOGS_TTL / _TRACES_TTL / _METRICS_TTL / _SESSIONS_TTL
       # Apply TTL changes to already-existing tables too (default false):
       #   HYPERDX_OTEL_EXPORTER_RECONCILE_TABLE_TTL: 'true'
+      # Create the database with the Replicated engine and seed Replicated* table
+      # engines (default false). The database must not exist yet (or already be
+      # Replicated) and the server needs {shard}/{replica} macros:
+      #   HYPERDX_OTEL_EXPORTER_CLICKHOUSE_REPLICATED: 'true'
+      # Keep using this database instead when HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE
+      # does not exist yet but this one already has ClickStack tables (default off):
+      #   HYPERDX_OTEL_EXPORTER_CLICKHOUSE_FALLBACK_DATABASE: 'default'
       ENABLE_PROMQL: 'true'
     volumes:
       - ./docker/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml

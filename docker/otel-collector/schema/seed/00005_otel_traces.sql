@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_traces
     INDEX idx_duration Duration TYPE minmax GRANULARITY 1,
     INDEX idx_lower_span_name SpanName TYPE text(tokenizer = 'splitByNonAlpha', preprocessor=lower(SpanName))
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(Timestamp)
 ORDER BY (ServiceName, SpanName, toDateTime(Timestamp))
 TTL toDate(Timestamp) + ${TRACES_TTL}

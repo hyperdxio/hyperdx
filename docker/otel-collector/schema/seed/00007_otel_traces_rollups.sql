@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_traces_kv_rollup_15m
     INDEX idx_count_minmax count TYPE minmax GRANULARITY 1,
     INDEX idx_timestamp_minmax Timestamp TYPE minmax GRANULARITY 1
 )
-ENGINE = SummingMergeTree
+ENGINE = ${ENGINE_PREFIX}SummingMergeTree
 PARTITION BY toDate(Timestamp)
 ORDER BY (ColumnIdentifier, Key, Timestamp, Value)
 TTL Timestamp + ${TRACES_TTL}
