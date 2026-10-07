@@ -2809,6 +2809,24 @@ describe('External API v2 Dashboards - new format', () => {
         },
       },
       {
+        label: 'series heatmap tile with multiple select items',
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'series',
+          sourceId: () => traceSource._id.toString(),
+          select: [{ aggFn: 'count' }, { aggFn: 'count' }],
+        },
+      },
+      {
+        label: 'heatmap tile with an unknown mode',
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'bogus',
+          sourceId: () => traceSource._id.toString(),
+          select: [{ valueExpression: 'Duration' }],
+        },
+      },
+      {
         label: 'heatmap tile with multiple select items',
         config: {
           displayType: 'heatmap',
@@ -2880,13 +2898,12 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
-    it('skips series-mode heatmap tiles on GET', async () => {
-      // Series-mode heatmaps have no external representation yet; emitting
-      // them as distribution tiles would corrupt them on GET -> PUT.
+    it('returns series-mode heatmap tiles on GET', async () => {
+      const tileId = new ObjectId().toString();
       const dashboard = await createTestDashboard({
         tiles: [
           {
-            id: new ObjectId().toString(),
+            id: tileId,
             x: 0,
             y: 0,
             w: 6,
@@ -2896,7 +2913,12 @@ describe('External API v2 Dashboards - new format', () => {
               displayType: DisplayType.Heatmap,
               source: traceSource._id.toString(),
               select: [
-                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+                {
+                  aggFn: 'count',
+                  aggCondition: 'StatusCode:Error',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
               ],
               groupBy: 'ServiceName',
               where: '',
@@ -2910,7 +2932,257 @@ describe('External API v2 Dashboards - new format', () => {
         'get',
         `${BASE_URL}/${dashboard._id}`,
       ).expect(200);
-      expect(response.body.data.tiles).toEqual([]);
+      expect(response.body.data.tiles).toEqual([
+        {
+          id: tileId,
+          name: 'Series heatmap',
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 3,
+          config: {
+            displayType: 'heatmap',
+            heatmapMode: 'series',
+            sourceId: traceSource._id.toString(),
+            select: [
+              {
+                aggFn: 'count',
+                valueExpression: '',
+                where: 'StatusCode:Error',
+                whereLanguage: 'lucene',
+              },
+            ],
+            groupBy: 'ServiceName',
+          },
+        },
+      ]);
+    });
+
+    it('round-trips a series-mode heatmap tile on a Log source', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+      const seriesHeatmap: ExternalDashboardTile = {
+        name: 'Errors by service',
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 5,
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'series',
+          sourceId: logSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              valueExpression: '',
+              where: 'SeverityText:error',
+              whereLanguage: 'lucene',
+            },
+          ],
+          groupBy: 'ServiceName',
+          numberFormat: { output: 'number' },
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with series heatmap',
+          tiles: [seriesHeatmap],
+          tags: [],
+        })
+        .expect(200);
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(seriesHeatmap);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${response.body.data.id}`,
+      ).expect(200);
+      expect(omit(get.body.data.tiles[0], ['id'])).toEqual(seriesHeatmap);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb!.tiles[0].config).toMatchObject({
+        displayType: DisplayType.Heatmap,
+        heatmap: { mode: 'series' },
+        groupBy: 'ServiceName',
+        where: '',
+      });
+    });
+
+    it('accepts a series-mode heatmap tile on a Metric source', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with metric series heatmap',
+          tiles: [
+            {
+              name: 'CPU by host',
+              x: 0,
+              y: 0,
+              w: 12,
+              h: 5,
+              config: {
+                displayType: 'heatmap',
+                heatmapMode: 'series',
+                sourceId: metricSource._id.toString(),
+                select: [
+                  {
+                    aggFn: 'avg',
+                    metricType: MetricsDataType.Gauge,
+                    metricName: 'system.cpu.utilization',
+                  },
+                ],
+                groupBy: "ResourceAttributes['host.name']",
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).toMatchObject({
+        heatmapMode: 'series',
+        select: [
+          {
+            aggFn: 'avg',
+            metricType: MetricsDataType.Gauge,
+            metricName: 'system.cpu.utilization',
+          },
+        ],
+      });
+    });
+
+    it('rejects a series-mode heatmap tile on a Session source', async () => {
+      const sessionSource = await Source.create({
+        kind: SourceKind.Session,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'rrweb_events' },
+        timestampValueExpression: 'Timestamp',
+        traceSourceId: traceSource._id.toString(),
+        connection: connection._id,
+        name: 'Sessions',
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with session series heatmap',
+          tiles: [
+            {
+              name: 'Series heatmap',
+              x: 0,
+              y: 0,
+              w: 12,
+              h: 5,
+              config: {
+                displayType: 'heatmap',
+                heatmapMode: 'series',
+                sourceId: sessionSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'Series heatmap tiles require a Trace, Log, or Metric source',
+      );
+    });
+
+    it('re-checks the source when an existing heatmap changes mode', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Series heatmap',
+              displayType: DisplayType.Heatmap,
+              source: logSource._id.toString(),
+              select: [
+                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              ],
+              where: '',
+              heatmap: { mode: 'series' },
+            },
+          },
+        ],
+      });
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Dashboard',
+          tiles: [
+            {
+              id: tileId,
+              name: 'Distribution heatmap',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'heatmap',
+                sourceId: logSource._id.toString(),
+                select: [{ valueExpression: 'Duration' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'Heatmap tiles require a Trace source',
+      );
+    });
+
+    it('round-trips an explicit distribution heatmap mode', async () => {
+      const distributionHeatmap: ExternalDashboardTile = {
+        name: 'Latency',
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 5,
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'distribution',
+          sourceId: traceSource._id.toString(),
+          select: [{ valueExpression: 'Duration' }],
+          where: '',
+          whereLanguage: 'lucene',
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with distribution heatmap',
+          tiles: [distributionHeatmap],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(
+        distributionHeatmap,
+      );
     });
 
     it('round-trips a heatmap tile with only required fields', async () => {

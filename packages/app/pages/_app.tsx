@@ -23,7 +23,11 @@ import {
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { fetchServerVersion, installHdxDebug } from '@/hdxDebug';
-import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
+import {
+  AppThemeProvider,
+  useAppTheme,
+  usePageTitle,
+} from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
@@ -70,11 +74,11 @@ type AppPropsWithLayout = AppProps & {
 // Component that renders Head content requiring user preferences
 // Must be rendered inside AppThemeProvider to avoid hydration mismatch
 function AppHeadContent() {
-  const { theme } = useAppTheme();
+  const title = usePageTitle();
 
   return (
     <Head>
-      <title>{theme.displayName}</title>
+      <title>{title}</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="google" content="notranslate" />
       <SystemColorSchemeScript />

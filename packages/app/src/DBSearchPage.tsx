@@ -129,7 +129,7 @@ import {
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
-import { useAppTheme, useBrandDisplayName } from '@/theme/ThemeProvider';
+import { useAppTheme, usePageTitle } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   useDefaultTimeRange,
@@ -1074,7 +1074,6 @@ function DBSearchPageContent() {
   // Read again here, not passed down: this component re-renders from its own
   // query-state hooks without the wrapper, and must see the current path.
   const savedSearchId = getSavedSearchIdFromPath();
-  const brandName = useBrandDisplayName();
   const defaultTimeRange = useDefaultTimeRange('Past 15m');
 
   const [rawSearchedConfig, setSearchedConfig] = useQueryStates(queryStateMap);
@@ -1102,6 +1101,9 @@ function DBSearchPageContent() {
     {
       enabled: savedSearchId != null,
     },
+  );
+  const title = usePageTitle(
+    savedSearch ? `${savedSearch.name} Search` : 'Search',
   );
 
   const { data: sources } = useSources();
@@ -2279,9 +2281,7 @@ function DBSearchPageContent() {
       data-testid="search-page"
     >
       <Head>
-        <title>
-          {savedSearch ? `${savedSearch.name} Search` : 'Search'} - {brandName}
-        </title>
+        <title>{title}</title>
       </Head>
       {!IS_LOCAL_MODE && isAlertModalOpen && (
         <DBSearchPageAlertModal

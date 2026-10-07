@@ -34,7 +34,7 @@ import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesS
 import SourcesSection from './components/TeamSettings/SourcesSection';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
 import { IS_IAC_EXPORT_ENABLED } from './config';
 import { APP_CONTENT_SCROLL_CONTAINER_ID, withAppNav } from './layout';
@@ -73,7 +73,7 @@ function TeamTabContent({
 }
 
 export default function TeamPage() {
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('My Team');
   const router = useRouter();
   const { data: team, refetch: refetchTeam, isLoading } = api.useTeam();
   const setTeamName = api.useSetTeamName();
@@ -269,7 +269,7 @@ export default function TeamPage() {
   return (
     <div className="TeamPage" data-testid="team-page">
       <Head>
-        <title>My Team - {brandName}</title>
+        <title>{title}</title>
       </Head>
       <PageHeader>
         <div data-testid="team-name-section">
