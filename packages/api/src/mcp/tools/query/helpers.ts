@@ -7,6 +7,7 @@ import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
+  isTimeSeriesDisplayType,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -562,9 +563,7 @@ export async function runConfigTile(
       getHeatmapMode(builderConfig) === 'series';
     const granularityOverride =
       !isSearch &&
-      (builderConfig.displayType === DisplayType.Line ||
-        builderConfig.displayType === DisplayType.StackedBar ||
-        isSeriesHeatmap)
+      (isTimeSeriesDisplayType(builderConfig.displayType) || isSeriesHeatmap)
         ? { granularity: options?.granularity ?? 'auto' }
         : {};
 

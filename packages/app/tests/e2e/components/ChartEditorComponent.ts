@@ -59,11 +59,13 @@ export class ChartEditorComponent {
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    // Line and StackedBar share the "Time Series" tab, and EventPatterns' tab
-    // is labelled just "Patterns"; the rest match their tab label by name
-    // (case-insensitive substring).
+    // Line, StackedBar, and StackedLine share the "Time Series" tab, and
+    // EventPatterns' tab is labelled just "Patterns"; the rest match their tab
+    // label by name (case-insensitive substring).
     const tabName =
-      name === DisplayType.Line || name === DisplayType.StackedBar
+      name === DisplayType.Line ||
+      name === DisplayType.StackedBar ||
+      name === DisplayType.StackedLine
         ? 'Time Series'
         : name === DisplayType.EventPatterns
           ? 'Patterns'

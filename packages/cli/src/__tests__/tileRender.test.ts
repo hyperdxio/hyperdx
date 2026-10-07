@@ -5,6 +5,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { renderTileContent } from '@/shared/tileRender';
 import type { TileQueryResult } from '@/shared/tileQuery';
+import { stripAnsi } from '@/termchart';
 
 const dateRange: [Date, Date] = [
   new Date('2026-07-10T00:00:00Z'),
@@ -37,5 +38,52 @@ describe('renderTileContent', () => {
     expect(() =>
       renderTileContent({ result, source: undefined, width: 80, height: 12 }),
     ).toThrow(/No timestamp column/);
+  });
+
+  it('renders a stacked line as a stacked bar', () => {
+    const render = (displayType: DisplayType) =>
+      stripAnsi(
+        renderTileContent({
+          result: {
+            status: 'ok',
+            queriedConfig: {
+              configType: 'sql',
+              displayType,
+              sqlTemplate: '',
+              connection: '',
+              dateRange,
+              granularity: '1 minute',
+            },
+            data: {
+              meta: [
+                { name: 'ts', type: 'DateTime' },
+                { name: 'ServiceName', type: 'String' },
+                { name: 'count()', type: 'UInt64' },
+              ],
+              data: [0, 1, 2].flatMap(minute => [
+                {
+                  ts: `2026-07-10 00:0${minute}:00`,
+                  ServiceName: 'api',
+                  'count()': 100,
+                },
+                {
+                  ts: `2026-07-10 00:0${minute}:00`,
+                  ServiceName: 'web',
+                  'count()': 200,
+                },
+              ]),
+              rows: 6,
+            },
+          },
+          source: undefined,
+          width: 60,
+          height: 12,
+        }),
+      );
+
+    expect(render(DisplayType.StackedLine)).toBe(
+      render(DisplayType.StackedBar),
+    );
+    expect(render(DisplayType.StackedLine)).not.toBe(render(DisplayType.Line));
   });
 });

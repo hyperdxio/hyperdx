@@ -57,6 +57,7 @@ Recommended pattern:
 Use BUILDER tiles (with sourceId) for most cases:
   line         Time-series trends (error rate, request volume, latency over time).
   stacked_bar  Compare categories over time (requests by service, errors by status code).
+  stacked_line Same as stacked_bar but as filled area bands (smooth cumulative totals).
   number       Single KPI metric (total requests, current error rate, p99 latency).
   table        Ranked lists (top endpoints by latency, error counts by service). Tables can wire row-click navigation via config.onClick to the /search page or another dashboard. See "TABLE TILE LINKING" below.
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
@@ -67,7 +68,7 @@ Use BUILDER tiles (with sourceId) for most cases:
   markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, size it to fit the text (h: 2-3 for a line or two; h: 1 clips it), use plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
 
 Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
-  Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie, bar).
+  Requires configType: "sql" plus a displayType (line, stacked_bar, stacked_line, table, number, pie, bar).
   Use when you need JOINs, sub-queries, CTEs, or expressions the builder does not generate.
   ALWAYS set sourceId on a raw SQL tile (in addition to connectionId) UNLESS the query reads
   from multiple tables (e.g. JOINs across sources). sourceId enables the $__filters and 
