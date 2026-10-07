@@ -71,6 +71,23 @@ describe('pickTimeSeriesTable', () => {
     );
   });
 
+  it('prefers prometheus.metrics over metrics_ts', () => {
+    const tables = [
+      table('otel', 'metrics_ts'),
+      table('prometheus', 'metrics'),
+    ];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('prometheus', 'metrics'),
+    );
+  });
+
+  it('only treats metrics in the prometheus database as the docs table', () => {
+    const tables = [table('default', 'metrics'), table('otel', 'metrics_ts')];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('otel', 'metrics_ts'),
+    );
+  });
+
   it('falls back to metrics_ts in any database', () => {
     const tables = [table('a_db', 'custom_ts'), table('b_db', 'metrics_ts')];
     expect(pickTimeSeriesTable(tables)).toEqual(table('b_db', 'metrics_ts'));

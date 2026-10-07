@@ -480,9 +480,17 @@ export async function inferTableSourceConfig({
   };
 }
 
+// The TimeSeries table the ClickHouse Prometheus docs tell users to create,
+// which is what ClickHouse Cloud PromQL preview services will likely have.
+// https://clickhouse.com/docs/concepts/features/interfaces/prometheus#create-a-timeseries-table
+const DOCS_TIME_SERIES_TABLE = {
+  databaseName: 'prometheus',
+  tableName: 'metrics',
+};
+
 // The TimeSeries table name used by the collector's PromQL schema migration
 // and the dev ClickHouse remote-write handler.
-const DEFAULT_TIME_SERIES_TABLE_NAME = 'metrics_ts';
+const COLLECTOR_TIME_SERIES_TABLE_NAME = 'metrics_ts';
 
 // The time column of a TimeSeries table's data inner table, which every PromQL
 // source uses.
@@ -490,20 +498,25 @@ export const PROMQL_TIMESTAMP_EXPRESSION = 'timestamp';
 
 /**
  * Picks the TimeSeries table to back an auto-provisioned PromQL source. Prefers
- * the default-named table in `preferredDatabase`, the OTel tables' database,
- * where the collector's migration creates it. Without a default-named table, a
- * sole TimeSeries table is still picked.
+ * the docs' `prometheus.metrics`, then the collector's `metrics_ts` in
+ * `preferredDatabase` (the OTel tables' database), then `metrics_ts` anywhere.
+ * Without either name, a sole TimeSeries table is still picked.
  */
 export function pickTimeSeriesTable(
   tables: TPromqlSource['from'][],
   preferredDatabase?: string,
 ): TPromqlSource['from'] | undefined {
-  const defaultNamed = tables.filter(
-    t => t.tableName === DEFAULT_TIME_SERIES_TABLE_NAME,
+  const collectorNamed = tables.filter(
+    t => t.tableName === COLLECTOR_TIME_SERIES_TABLE_NAME,
   );
   return (
-    defaultNamed.find(t => t.databaseName === preferredDatabase) ??
-    defaultNamed[0] ??
+    tables.find(
+      t =>
+        t.databaseName === DOCS_TIME_SERIES_TABLE.databaseName &&
+        t.tableName === DOCS_TIME_SERIES_TABLE.tableName,
+    ) ??
+    collectorNamed.find(t => t.databaseName === preferredDatabase) ??
+    collectorNamed[0] ??
     (tables.length === 1 ? tables[0] : undefined)
   );
 }
