@@ -2709,6 +2709,47 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         }
       });
 
+      it('round-trips a single-select filter through create and get', async () => {
+        const sourceId = ctx.traceSource._id.toString();
+        const createResult = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Single-select filter',
+            tiles: [traceTile(sourceId)],
+            filters: [queryFilter({ maxSelections: 1 })],
+          },
+        );
+        expect(createResult.isError).toBeFalsy();
+        const created = JSON.parse(getFirstText(createResult));
+        expect(created.filters[0].maxSelections).toBe(1);
+
+        const getResult = await callTool(
+          ctx.client!,
+          'clickstack_get_dashboard',
+          { id: created.id },
+        );
+        expect(
+          JSON.parse(getFirstText(getResult)).filters[0].maxSelections,
+        ).toBe(1);
+      });
+
+      it.each([0, 2])('rejects maxSelections %s', async value => {
+        const sourceId = ctx.traceSource._id.toString();
+        const result = await callTool(
+          ctx.client!,
+          'clickstack_save_dashboard',
+          {
+            name: 'Bad maxSelections',
+            tiles: [traceTile(sourceId)],
+            filters: [queryFilter({ maxSelections: value })],
+          },
+        );
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('maxSelections');
+      });
+
       it.each([2, -1, 1.5])('rejects minSelections %s', async value => {
         const sourceId = ctx.traceSource._id.toString();
         const result = await callTool(

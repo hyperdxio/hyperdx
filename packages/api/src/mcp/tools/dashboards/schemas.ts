@@ -1319,6 +1319,16 @@ const mcpDashboardFilterBaseShape = {
       'Widens a REQUIRED filter (minSelections: 1) to block EVERY tile on the dashboard, ' +
         'not just the ones that read it. Ignored unless minSelections is 1.',
     ),
+  maxSelections: z
+    .number()
+    .int()
+    .min(1)
+    .max(1)
+    .optional()
+    .describe(
+      'Set to 1 to make this filter SINGLE-SELECT: the user can pick at most one ' +
+        'value. Omit for the normal multi-select behavior.',
+    ),
 };
 
 const mcpQueryExpressionFilterSchema = z

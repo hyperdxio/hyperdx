@@ -6117,6 +6117,37 @@ describe('External API v2 Dashboards - new format', () => {
       });
     });
 
+    describe('single-select filters', () => {
+      const variants = [
+        ['QUERY_EXPRESSION', filterInput],
+        ['STATIC_LIST', staticFilterInput],
+        ['PROMETHEUS_LABEL', promqlFilterInput],
+      ] as const;
+
+      it.each(variants)(
+        'accepts a single-select %s filter',
+        async (_type, makeFilter) => {
+          const response = await sendFilters([
+            makeFilter({ maxSelections: 1 }),
+          ]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0].maxSelections).toBe(1);
+        },
+      );
+
+      it('omits the key from responses for a multi-select filter', async () => {
+        const response = await sendFilters([filterInput()]);
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).not.toHaveProperty(
+          'maxSelections',
+        );
+      });
+
+      it.each([0, 2, 1.5, '1'])('rejects maxSelections %s', async value => {
+        await expectFilters([filterInput({ maxSelections: value })], 400);
+      });
+    });
+
     describe('static-list filters', () => {
       it('accepts a static-list filter and round-trips it through GET', async () => {
         const response = await sendFilters([staticFilterInput()]);
