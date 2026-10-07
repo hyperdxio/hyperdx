@@ -46,15 +46,24 @@ export type HeatmapSeriesChartConfig =
   | BuilderChartConfigWithDateRange
   | PromqlConfigWithDateRange;
 
+/** Linear, since PromQL samples often include zeros, which log scale drops. */
+export const PROMQL_DEFAULT_HEATMAP_SCALE_TYPE: HeatmapScaleType = 'linear';
+
 /**
  * What a heatmap queries, by mode. Distribution heatmaps bucket a value
- * expression server-side; series heatmaps query one builder series or PromQL
+ * expression server-side; calculated heatmaps bucket the samples of a PromQL
+ * range query client-side; series heatmaps query one builder series or PromQL
  * expression per time bucket and draw a row per series.
  */
 export type HeatmapQuery =
   | {
       mode: 'distribution';
       config: HeatmapChartConfig;
+      scaleType: HeatmapScaleType;
+    }
+  | {
+      mode: 'calculated';
+      config: PromqlConfigWithDateRange;
       scaleType: HeatmapScaleType;
     }
   | {
@@ -84,10 +93,17 @@ export function resolveHeatmapGranularity({
   );
 }
 
-/** PromQL heatmaps only support series mode. */
 export function toHeatmapQuery(config: HeatmapSeriesChartConfig): HeatmapQuery {
-  if (isPromqlChartConfig(config) || getHeatmapMode(config) === 'series') {
+  if (getHeatmapMode(config) === 'series') {
     return { mode: 'series', config };
+  }
+
+  if (isPromqlChartConfig(config)) {
+    return {
+      mode: 'calculated',
+      config,
+      scaleType: config.heatmap?.scaleType ?? PROMQL_DEFAULT_HEATMAP_SCALE_TYPE,
+    };
   }
 
   const firstSelect = Array.isArray(config.select)
@@ -113,9 +129,9 @@ export function toHeatmapQuery(config: HeatmapSeriesChartConfig): HeatmapQuery {
 }
 
 /**
- * The time-chart query behind a series-mode heatmap, bucketed at the heatmap's
- * granularity: `select[0]` and the group by for a builder config, or the first
- * expression's range query for PromQL.
+ * The time-chart query behind a series-mode or calculated heatmap, bucketed at
+ * the heatmap's granularity: `select[0]` and the group by for a builder
+ * config, or the first expression's range query for PromQL.
  */
 export function buildHeatmapSeriesConfig(
   config: HeatmapSeriesChartConfig,
@@ -129,6 +145,9 @@ export function buildHeatmapSeriesConfig(
     granularity,
     // Heatmaps have no series limit control, a default is applied automatically
     seriesLimit: undefined,
+    // Heatmap settings only change how the response is drawn, so keep them
+    // out of the query's cache key: switching mode or scale reuses the data.
+    heatmap: undefined,
   });
 }
 
