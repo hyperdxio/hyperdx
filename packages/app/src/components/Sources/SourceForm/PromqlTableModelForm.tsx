@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 
+import { PROMQL_TIMESTAMP_EXPRESSION } from '@/source';
+
 import { MinAutoGranularityFormRow } from './MinAutoGranularityFormRow';
 import { TableModelProps } from './types';
 
@@ -8,7 +10,7 @@ const PROMQL_MIN_AUTO_GRANULARITY_HELP_TEXT =
 
 export function PromqlTableModelForm({ control, setValue }: TableModelProps) {
   useEffect(() => {
-    setValue('timestampValueExpression' as any, 'timestamp');
+    setValue('timestampValueExpression' as any, PROMQL_TIMESTAMP_EXPRESSION);
   }, [setValue]);
 
   // PromQL sources use the standard database + table fields from BaseSourceSchema.

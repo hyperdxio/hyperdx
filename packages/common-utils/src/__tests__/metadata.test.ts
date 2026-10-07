@@ -3449,6 +3449,57 @@ describe('Metadata', () => {
     });
   });
 
+  describe('getTimeSeriesTables', () => {
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('returns the TimeSeries tables from system.tables', async () => {
+      const tables = [
+        { databaseName: 'default', tableName: 'metrics_ts' },
+        { databaseName: 'otel', tableName: 'prom' },
+      ];
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({ data: tables }),
+      });
+
+      const result = await metadata.getTimeSeriesTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toEqual(tables);
+      const { query } = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(query).toContain("engine = 'TimeSeries'");
+      expect(mockCache.getOrFetch).toHaveBeenCalledWith(
+        'test_connection.timeSeriesTables',
+        expect.any(Function),
+      );
+    });
+
+    it('returns an empty list when permissions error occurs', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockRejectedValue(
+        new Error('Not enough privileges'),
+      );
+
+      const result = await metadata.getTimeSeriesTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toEqual([]);
+    });
+
+    it('rethrows other errors', async () => {
+      (mockClickhouseClient.query as jest.Mock).mockRejectedValue(
+        new Error('Connection refused'),
+      );
+
+      await expect(
+        metadata.getTimeSeriesTables({ connectionId: 'test_connection' }),
+      ).rejects.toThrow('Connection refused');
+    });
+  });
+
   describe('doMetadataMVsAggregateColumn (word-boundary token match)', () => {
     const tableConn = {
       databaseName: 'default',
