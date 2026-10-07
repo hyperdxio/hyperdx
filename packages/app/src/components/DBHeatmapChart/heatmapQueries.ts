@@ -1,4 +1,5 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
+import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
@@ -172,6 +173,10 @@ export function buildHeatmapBoundsConfig({
           },
         ],
         timestampValueExpression: '__hdx_time_bucket',
+        // The first bucket is labelled before an unaligned start, so align
+        // this filter on bucket labels. The inner query keeps the original
+        // range so no events outside it are counted.
+        dateRange: getAlignedDateRange(config.dateRange, granularity),
         from: { databaseName: '', tableName: 'min_max_calc' },
       }
     : {
@@ -214,7 +219,7 @@ export function buildHeatmapBucketConfig({
   scaleType: HeatmapScaleType;
   effectiveMin: string | number;
   max: string | number;
-  granularity: string;
+  granularity: SQLInterval;
   nBuckets: number;
 }): BuilderChartConfigWithDateRange {
   const valueExpression = config.select[0].valueExpression;
@@ -265,6 +270,7 @@ export function buildHeatmapBucketConfig({
           },
         ],
         timestampValueExpression: '__hdx_time_bucket',
+        dateRange: getAlignedDateRange(config.dateRange, granularity),
         from: { databaseName: '', tableName: 'bucket_calc' },
         orderBy: [{ valueExpression: 'x_bucket', ordering: 'ASC' }],
         granularity,

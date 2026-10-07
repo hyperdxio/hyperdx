@@ -97,4 +97,39 @@ describe('useHeatmapData', () => {
       expect(boundsQuery.with[0].chartConfig.granularity).toBe('30 second');
     },
   );
+
+  it('aligns only the bucket-label filter of an aggregate value', () => {
+    const dateRange: [Date, Date] = [
+      new Date(T0 + 5 * 60 * 1000),
+      new Date(T0 + HOUR + 20 * 60 * 1000),
+    ];
+    const { boundsQuery, bucketQuery } = renderDistributionHeatmap({
+      ...traceConfig,
+      select: [
+        { aggFn: 'count', aggCondition: '', valueExpression: 'avg(Duration)' },
+      ],
+      dateRange,
+      granularity: '1 hour',
+    });
+
+    for (const query of [boundsQuery, bucketQuery]) {
+      expect(query.dateRange).toEqual([new Date(T0), new Date(T0 + 2 * HOUR)]);
+      expect(query.with[0].chartConfig.dateRange).toEqual(dateRange);
+    }
+  });
+
+  it('keeps the original range for a non-aggregate value', () => {
+    const dateRange: [Date, Date] = [
+      new Date(T0 + 5 * 60 * 1000),
+      new Date(T0 + HOUR + 20 * 60 * 1000),
+    ];
+    const { boundsQuery, bucketQuery } = renderDistributionHeatmap({
+      ...traceConfig,
+      dateRange,
+      granularity: '1 hour',
+    });
+
+    expect(boundsQuery.dateRange).toEqual(dateRange);
+    expect(bucketQuery.dateRange).toEqual(dateRange);
+  });
 });
