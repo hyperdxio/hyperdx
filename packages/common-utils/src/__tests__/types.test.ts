@@ -14,6 +14,7 @@ import {
   MetricSourceSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
+  PromqlSourceSchema,
   SavedChartConfigSchema,
 } from '@/types';
 
@@ -868,6 +869,41 @@ describe('MetricSourceSchema.minAutoGranularity', () => {
 
   it('accepts a valid interval or absent', () => {
     expect(parse('1 minute').success).toBe(true);
+    expect(parse(undefined).success).toBe(true);
+  });
+
+  it("coerces the form's \"No minimum\" value ('') to undefined", () => {
+    const result = parse('');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.minAutoGranularity).toBeUndefined();
+    }
+  });
+
+  it('rejects a malformed interval', () => {
+    expect(parse('1 fortnight').success).toBe(false);
+    expect(parse('minute').success).toBe(false);
+  });
+});
+
+describe('PromqlSourceSchema.minAutoGranularity', () => {
+  const base = {
+    id: 'source-1',
+    kind: 'promql' as const,
+    name: 'Prometheus',
+    connection: 'conn-1',
+    from: { databaseName: 'default', tableName: 'metrics_ts' },
+    timestampValueExpression: 'timestamp',
+  };
+  const parse = (minAutoGranularity: unknown) =>
+    PromqlSourceSchema.safeParse({ ...base, minAutoGranularity });
+
+  it('accepts a valid interval or absent', () => {
+    const result = parse('1 minute');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.minAutoGranularity).toBe('1 minute');
+    }
     expect(parse(undefined).success).toBe(true);
   });
 

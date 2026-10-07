@@ -1,6 +1,7 @@
 import { omit, pick } from 'lodash';
 import { Path, UseFormSetError } from 'react-hook-form';
 import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import {
   displayTypeSupportsInstantQuery,
   displayTypeSupportsReducer,
@@ -12,7 +13,7 @@ import {
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
-  HEATMAP_ALLOWED_SOURCE_KINDS,
+  getHeatmapSourceKinds,
   isBuilderSavedChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -25,6 +26,7 @@ import {
   ChartVariable,
   DisplayType,
   getSampleWeightExpression,
+  HeatmapMode,
   isLogSource,
   isMetricSource,
   isRangeThresholdType,
@@ -91,6 +93,9 @@ function normalizeChartConfig<
     | 'onClick'
     | 'formulas'
     | 'showOperandSeries'
+    | 'groupBy'
+    | 'heatmap'
+    | 'where'
   >,
 >(config: C, source: TSource): C {
   const isMetricSource = source.kind === SourceKind.Metric;
@@ -131,6 +136,25 @@ function normalizeChartConfig<
       config.onClick && config.displayType === DisplayType.Table
         ? config.onClick
         : undefined,
+    ...normalizeHeatmapFields(config),
+  };
+}
+
+/** Remove or default heatmap-related fields based on displayType and heatmap mode */
+function normalizeHeatmapFields<
+  C extends Pick<
+    BuilderSavedChartConfig,
+    'displayType' | 'groupBy' | 'heatmap' | 'where'
+  >,
+>(config: C): Pick<C, 'groupBy' | 'heatmap' | 'where'> {
+  if (config.displayType !== DisplayType.Heatmap) {
+    return { groupBy: config.groupBy, heatmap: undefined, where: config.where };
+  }
+  const isDistribution = getHeatmapMode(config) === 'distribution';
+  return {
+    groupBy: isDistribution ? undefined : config.groupBy,
+    heatmap: config.heatmap,
+    where: isDistribution ? config.where : '',
   };
 }
 
@@ -140,12 +164,14 @@ export const isRawSqlDisplayType = (
   | DisplayType.Table
   | DisplayType.Line
   | DisplayType.StackedBar
+  | DisplayType.StackedLine
   | DisplayType.Pie
   | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
@@ -161,21 +187,7 @@ export const isStringSelectDisplayType = (
   displayType === DisplayType.Search ||
   displayType === DisplayType.EventPatterns;
 
-export const isPromqlDisplayType = (
-  displayType: DisplayType | undefined,
-): displayType is
-  | DisplayType.Table
-  | DisplayType.Line
-  | DisplayType.StackedBar
-  | DisplayType.Pie
-  | DisplayType.Bar
-  | DisplayType.Number =>
-  displayType === DisplayType.Table ||
-  displayType === DisplayType.Line ||
-  displayType === DisplayType.StackedBar ||
-  displayType === DisplayType.Pie ||
-  displayType === DisplayType.Bar ||
-  displayType === DisplayType.Number;
+export const isPromqlDisplayType = isRawSqlDisplayType;
 
 const NON_PROMQL_SOURCE_KINDS = Object.values(SourceKind).filter(
   kind => kind !== SourceKind.Promql,
@@ -194,15 +206,17 @@ const ROW_LISTING_SOURCE_KINDS = NON_PROMQL_SOURCE_KINDS.filter(
 export function getAllowedSourceKinds({
   configType,
   displayType,
+  heatmapMode,
 }: {
   configType: ChartEditorFormState['configType'];
   displayType: DisplayType | undefined;
+  heatmapMode?: HeatmapMode;
 }): SourceKind[] {
   if (configType === 'promql' && isPromqlDisplayType(displayType)) {
     return [SourceKind.Promql];
   }
   if (displayType === DisplayType.Heatmap) {
-    return [...HEATMAP_ALLOWED_SOURCE_KINDS];
+    return [...getHeatmapSourceKinds(heatmapMode)];
   }
   if (isStringSelectDisplayType(displayType)) {
     return ROW_LISTING_SOURCE_KINDS;
@@ -241,6 +255,7 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        'seriesLimit',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: formPromqlExpressions(form),
@@ -340,6 +355,7 @@ export function convertFormStateToChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        'seriesLimit',
       ]),
       promqlExpression: formPromqlExpressions(form),
       connection: source?.connection ?? form.connection ?? '',
@@ -711,10 +727,12 @@ export const validateChartForm = (
     });
   }
 
-  // Validate heatmap requires a value expression
+  // Distribution heatmaps require a value expression. Series heatmaps are
+  // validated like any other builder series above.
   if (
     !isRawSqlChart &&
     form.displayType === DisplayType.Heatmap &&
+    getHeatmapMode(form) === 'distribution' &&
     Array.isArray(form.series) &&
     form.series.length > 0 &&
     !form.series[0]?.valueExpression

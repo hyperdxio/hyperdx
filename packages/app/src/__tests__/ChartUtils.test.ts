@@ -1317,6 +1317,29 @@ describe('ChartUtils', () => {
 
       expect(result.dateRange).toEqual(promqlConfig.dateRange);
     });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
   });
 
   describe('convertToReducedPromqlChartConfig and convertToPromqlSparklineChartConfig', () => {
@@ -1362,6 +1385,29 @@ describe('ChartUtils', () => {
         new Date('2025-11-27T00:00:14.076Z'),
       ]);
       expect(result.granularity).toBe('30 minute');
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
     });
 
     it('names the reducer, defaulting it, and queries one expression', () => {
@@ -1678,6 +1724,47 @@ describe('ChartUtils', () => {
       expect(result).toEqual([
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
+    });
+
+    describe('maxGroups', () => {
+      const manyGroups = (count: number) => ({
+        data: Array.from({ length: count }, (_, i) => ({
+          value: i,
+          series_name: `s${i}`,
+        })),
+        meta: [
+          { name: 'value', type: 'Float64' },
+          { name: 'series_name', type: 'String' },
+        ],
+      });
+
+      it('keeps the largest maxGroups groups', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(5),
+          getColor,
+          true,
+          2,
+        );
+        expect(result.map(e => e.label)).toEqual(['s4', 's3']);
+      });
+
+      it('caps at 500 groups by default', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+        );
+        expect(result).toHaveLength(500);
+      });
+
+      it('cannot raise the 500-group cap', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+          true,
+          1000,
+        );
+        expect(result).toHaveLength(500);
+      });
     });
   });
 

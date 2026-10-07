@@ -74,6 +74,7 @@ export function convertExternalAlertChartConfigToInternal(
 const EXTERNAL_ALERT_DISPLAY_TYPES = [
   DisplayType.Line,
   DisplayType.StackedBar,
+  DisplayType.StackedLine,
   DisplayType.Number,
 ] as const;
 
@@ -107,6 +108,8 @@ export const EVALUATION_INERT_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'fitYAxisToData',
   'onClick',
   'alternateRowBackground',
+  // Heatmap tiles carry no alerts; alert display types ignore it.
+  'heatmap',
   // Client-side null-bucket rendering; the alert task ignores it.
   'fillNulls',
   // Evaluation-relevant only with a groupBy, which (on variants whose shape
@@ -160,8 +163,8 @@ const REPRESENTABLE_SELECT_ITEM_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Select-item fields that are inert on line/stacked_bar/number charts
- * (heatmap- or table-cell-only affordances) and may be dropped.
+ * Select-item fields that are inert on line/stacked_bar/stacked_line/number
+ * charts (heatmap- or table-cell-only affordances) and may be dropped.
  */
 const EVALUATION_INERT_SELECT_ITEM_KEYS: ReadonlySet<string> = new Set([
   'color',
@@ -339,6 +342,7 @@ export function convertAlertChartConfigToExternal(
   switch (external?.displayType) {
     case DisplayType.Line:
     case DisplayType.StackedBar:
+    case DisplayType.StackedLine:
     case DisplayType.Number: {
       const name = config.name ? { name: config.name } : {};
       const candidate =

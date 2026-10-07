@@ -32,6 +32,7 @@ import {
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
   isMetricSource,
+  isPromqlSource,
   QuerySettings,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -46,6 +47,7 @@ import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { useQueryAttribution } from '@/queryAttribution';
 import { useSource } from '@/source';
 import { ChartQueryResult } from '@/types';
 import { stripClientSideConfigFields } from '@/utils/chartConfig';
@@ -121,7 +123,11 @@ const shouldUseChunking = (
 export function getMinGranularitySeconds(
   source: TSource | undefined,
 ): number | undefined {
-  if (!source || !isMetricSource(source) || !source.minAutoGranularity) {
+  if (
+    !source ||
+    !(isMetricSource(source) || isPromqlSource(source)) ||
+    !source.minAutoGranularity
+  ) {
     return undefined;
   }
   return convertGranularityToSeconds(source.minAutoGranularity);
@@ -358,6 +364,7 @@ export function useQueriedChartConfig(
 ) {
   const { enabled = true } = options ?? {};
   const clickhouseClient = useClickhouseClient();
+  const attribution = useQueryAttribution();
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
 
@@ -408,7 +415,14 @@ export function useQueriedChartConfig(
     queryFn: async context => {
       // PromQL queries go through the Prometheus API route, not ClickHouse proxy
       if (isPromqlChartConfig(config) && config.dateRange) {
-        return queryPromqlChartConfig(config, config.dateRange, context.signal);
+        // Macros read the floor as the source's scrape interval, so it has to
+        // reach them even when the caller didn't put it on the config.
+        return queryPromqlChartConfig(
+          { ...config, minGranularitySeconds },
+          config.dateRange,
+          context.signal,
+          attribution,
+        );
       }
 
       const optimizedConfig = {

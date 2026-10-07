@@ -525,6 +525,48 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       });
     });
 
+    it('should save and re-read a series heatmap tile on a Log source', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: ctx.team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: ctx.connection._id,
+        name: 'Logs',
+      });
+      const config = {
+        displayType: 'heatmap',
+        heatmapMode: 'series',
+        sourceId: logSource._id.toString(),
+        select: [
+          {
+            aggFn: 'avg',
+            valueExpression: 'Duration',
+            where: 'SeverityText:error',
+            whereLanguage: 'lucene',
+            alias: 'Avg duration',
+          },
+        ],
+        groupBy: 'ServiceName',
+      };
+
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Series Heatmap Dashboard',
+        tiles: [{ name: 'Duration by service', config }],
+      });
+      expect(result.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(result));
+      expect(saved.tiles[0].config).toMatchObject(config);
+
+      const get = await callTool(ctx.client!, 'clickstack_get_dashboard', {
+        id: saved.id,
+      });
+      expect(get.isError).toBeFalsy();
+      expect(JSON.parse(getFirstText(get)).tiles[0].config).toMatchObject(
+        config,
+      );
+    });
+
     it('should round-trip every MCP-specific heatmap field through save, get, update, and re-get', async () => {
       const sourceId = ctx.traceSource._id.toString();
 
@@ -964,6 +1006,10 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         numberFormat,
         seriesLimit: 3,
       };
+      const stackedLineConfig = {
+        ...barConfig,
+        displayType: 'stacked_line' as const,
+      };
       const tableConfig = {
         displayType: 'table' as const,
         sourceId,
@@ -1011,6 +1057,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       const tiles = [
         { name: 'Line', config: lineConfig },
         { name: 'Bar', config: barConfig },
+        { name: 'Stacked Line', config: stackedLineConfig },
         { name: 'Table', config: tableConfig },
         { name: 'Pie', config: pieConfig },
         { name: 'Categorical Bar', config: categoricalBarConfig },
@@ -1019,6 +1066,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       const configByName: Record<string, object> = {
         Line: lineConfig,
         Bar: barConfig,
+        'Stacked Line': stackedLineConfig,
         Table: tableConfig,
         Pie: pieConfig,
         'Categorical Bar': categoricalBarConfig,

@@ -77,7 +77,11 @@ const timeChartSeriesSchema = z.object({
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
   metricName: z.string().optional(),
   displayType: z
-    .union([z.literal('stacked_bar'), z.literal('line')])
+    .union([
+      z.literal('stacked_bar'),
+      z.literal('stacked_line'),
+      z.literal('line'),
+    ])
     .optional(),
 });
 
@@ -390,6 +394,16 @@ const externalDashboardBarRawSqlChartConfigSchema =
     seriesLimit: z.number().int().nonnegative().optional(),
   });
 
+const externalDashboardStackedLineChartConfigSchema =
+  externalDashboardBarChartConfigSchema.extend({
+    displayType: z.literal('stacked_line'),
+  });
+
+const externalDashboardStackedLineRawSqlChartConfigSchema =
+  externalDashboardBarRawSqlChartConfigSchema.extend({
+    displayType: z.literal('stacked_line'),
+  });
+
 const externalDashboardTableChartConfigSchema = z.object({
   displayType: z.literal('table'),
   sourceId: objectIdSchema,
@@ -512,13 +526,14 @@ export type ExternalDashboardHeatmapSelectItem = z.infer<
   typeof externalDashboardHeatmapSelectItemSchema
 >;
 
-// Heatmap exposes the row-level filter at the chart-config level (matching
-// the editor: HeatmapSeriesEditor renders a single SearchWhereInput bound
-// to the top-level `where` / `whereLanguage`). There is no groupBy in the
-// heatmap UI (HeatmapSeriesEditor doesn't render one), so it is omitted
-// from the schema.
+// Distribution-mode heatmap. It exposes the row-level filter at the
+// chart-config level (matching the editor: HeatmapSeriesEditor renders a
+// single SearchWhereInput bound to the top-level `where` / `whereLanguage`).
+// Distribution heatmaps have no groupBy, so it is omitted from the schema.
+// `heatmapMode` is optional: an absent mode is 'distribution'.
 const externalDashboardHeatmapChartConfigSchema = z.object({
   displayType: z.literal('heatmap'),
+  heatmapMode: z.literal('distribution').optional(),
   sourceId: objectIdSchema,
   select: z.array(externalDashboardHeatmapSelectItemSchema).length(1),
   where: z.string().max(10000).optional().default(''),
@@ -527,6 +542,15 @@ const externalDashboardHeatmapChartConfigSchema = z.object({
   // in this file (e.g. `externalDashboardSearchChartConfigSchema`) drop
   // the redundant outer `.optional()`.
   whereLanguage: whereLanguageSchema,
+  numberFormat: NumberFormatSchema.optional(),
+});
+
+const externalDashboardHeatmapSeriesChartConfigSchema = z.object({
+  displayType: z.literal('heatmap'),
+  heatmapMode: z.literal('series'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
 });
 
@@ -567,6 +591,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
   [
     externalDashboardLineChartConfigSchema,
     externalDashboardBarChartConfigSchema,
+    externalDashboardStackedLineChartConfigSchema,
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
@@ -578,15 +603,32 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
   ],
 );
 
-type ExternalDashboardBuilderTileConfig = z.infer<
-  typeof externalDashboardBuilderTileConfigSchema
->;
+type ExternalDashboardBuilderTileConfig =
+  | z.infer<typeof externalDashboardBuilderTileConfigSchema>
+  | z.infer<typeof externalDashboardHeatmapSeriesChartConfigSchema>;
+
+/**
+ * Both heatmap modes share `displayType: 'heatmap'`, which a discriminated
+ * union cannot hold twice, so series-mode heatmaps are routed to their own
+ * schema. Any other `heatmapMode` falls through to the distribution schema
+ * and fails its literal.
+ */
+const getExternalBuilderTileConfigSchema = (data: unknown) =>
+  data !== null &&
+  typeof data === 'object' &&
+  'displayType' in data &&
+  data.displayType === 'heatmap' &&
+  'heatmapMode' in data &&
+  data.heatmapMode === 'series'
+    ? externalDashboardHeatmapSeriesChartConfigSchema
+    : externalDashboardBuilderTileConfigSchema;
 
 const externalDashboardRawSqlTileConfigSchema = z.discriminatedUnion(
   'displayType',
   [
     externalDashboardLineRawSqlChartConfigSchema,
     externalDashboardBarRawSqlChartConfigSchema,
+    externalDashboardStackedLineRawSqlChartConfigSchema,
     externalDashboardTableRawSqlChartConfigSchema,
     externalDashboardNumberRawSqlChartConfigSchema,
     externalDashboardPieRawSqlChartConfigSchema,
@@ -707,7 +749,7 @@ const externalDashboardTileConfigSchema = z
     // than a generic union failure.
     const schema = isRawSqlRoutedConfig(data)
       ? externalDashboardRawSqlTileConfigSchema
-      : externalDashboardBuilderTileConfigSchema;
+      : getExternalBuilderTileConfigSchema(data);
 
     const result = schema.safeParse(data);
     if (!result.success) {
@@ -728,7 +770,7 @@ const externalDashboardTileConfigSchema = z
     // so this is guaranteed to succeed.
     return isRawSqlRoutedConfig(data)
       ? externalDashboardRawSqlTileConfigSchema.parse(data)
-      : externalDashboardBuilderTileConfigSchema.parse(data);
+      : getExternalBuilderTileConfigSchema(data).parse(data);
   });
 
 export type ExternalDashboardTileConfig = z.infer<
@@ -918,6 +960,11 @@ export const externalAlertBuilderChartConfigSchema = z.discriminatedUnion(
       where: z.string().max(10000).optional(),
       whereLanguage: whereLanguageSchema,
     }),
+    externalDashboardStackedLineChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: z.string().max(10000).optional(),
+      whereLanguage: whereLanguageSchema,
+    }),
     externalDashboardNumberChartConfigSchema.extend({
       name: alertChartConfigNameSchema,
       where: z.string().max(10000).optional(),
@@ -935,6 +982,11 @@ export const externalAlertRawSqlChartConfigSchema = z.discriminatedUnion(
       whereLanguage: rejectedAlertRawSqlWhereField,
     }),
     externalDashboardBarRawSqlChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: rejectedAlertRawSqlWhereField,
+      whereLanguage: rejectedAlertRawSqlWhereField,
+    }),
+    externalDashboardStackedLineRawSqlChartConfigSchema.extend({
       name: alertChartConfigNameSchema,
       where: rejectedAlertRawSqlWhereField,
       whereLanguage: rejectedAlertRawSqlWhereField,

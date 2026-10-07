@@ -526,14 +526,25 @@ export function substitutePromqlChartConfigTemplates<
     variables?: ChartVariable[];
     granularity?: string;
     dateRange: [Date, Date];
+    minGranularitySeconds?: number;
   },
 >(config: T): T {
-  const { promqlExpression, variables = [], granularity, dateRange } = config;
+  const {
+    promqlExpression,
+    variables = [],
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+  } = config;
   const variableContext: VariableContext = {
     variables,
     inputLanguage: 'promql',
   };
-  const macroInputs = getPromqlMacroInputs(granularity, dateRange);
+  const macroInputs = getPromqlMacroInputs(
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+  );
   const macrosByName = new Map<string, Macro>(
     PROMQL_MACROS.map(({ name, minArgs, maxArgs, description, expand }) => [
       name,
