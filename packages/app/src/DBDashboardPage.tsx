@@ -161,6 +161,7 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
@@ -248,7 +249,10 @@ function HeatmapTile({
   dateRange: [Date, Date];
   enabled?: boolean;
 }) {
-  const heatmapQuery = toHeatmapQuery(queriedConfig);
+  const heatmapQuery = toHeatmapQuery({
+    ...queriedConfig,
+    minGranularitySeconds: getMinGranularitySeconds(source),
+  });
   const { mode } = heatmapQuery;
 
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(
@@ -425,7 +429,7 @@ const Tile = ({
   onUpdateChart,
   onMoveToGroup,
   moveTargets,
-  granularity,
+  granularity: dashboardGranularity,
   onTimeRangeSelect,
   filters,
   variables,
@@ -484,6 +488,13 @@ const Tile = ({
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+
+  // A live dashboard's granularity is the coarse refresh interval; heatmaps
+  // ignore it and stay on their own finer auto granularity.
+  const granularity =
+    isLive && chart.config.displayType === DisplayType.Heatmap
+      ? undefined
+      : dashboardGranularity;
 
   // Lazy loading: only fetch a tile's data once it has scrolled into the
   // browser viewport. React Grid Layout mounts every tile up front, so
