@@ -1225,6 +1225,7 @@ describe('useOffsetPaginatedQuery', () => {
         promqlConfig,
         promqlConfig.dateRange,
         expect.anything(),
+        {},
       );
       expect(renderChartConfig).not.toHaveBeenCalled();
       expect(mockClickhouseClient.query).not.toHaveBeenCalled();

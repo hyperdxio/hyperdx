@@ -45,7 +45,7 @@ import { DBSqlRowTable } from './components/DBRowTable';
 import DBTableChart from './components/DBTableChart';
 import OnboardingModal from './components/OnboardingModal';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import { clickhouseSql } from './utils/codeMirror';
 import { useConnections } from './connection';
 import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
@@ -491,7 +491,7 @@ const DEFAULT_INTERVAL = 'Past 1h';
 
 function ClickhousePage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('ClickHouse Dashboard');
   const { colorScheme } = useMantineColorScheme();
   const { data: connections } = useConnections();
   const [_connection, setConnection] = useQueryState('connection');
@@ -644,7 +644,7 @@ function ClickhousePage() {
       content={
         <>
           <Head>
-            <title>ClickHouse Dashboard – {brandName}</title>
+            <title>{title}</title>
           </Head>
           <OnboardingModal requireSource={false} />
           <Tabs
