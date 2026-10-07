@@ -120,16 +120,7 @@ export const ALERT_INTERVAL_OPTIONS: Record<AlertInterval, string> = {
   '1d': '1 day',
 };
 
-export const TILE_ALERT_INTERVAL_OPTIONS = _.pick(ALERT_INTERVAL_OPTIONS, [
-  '1m',
-  '5m',
-  '15m',
-  '30m',
-  '1h',
-  '6h',
-  '12h',
-  '1d',
-]);
+export const TILE_ALERT_INTERVAL_OPTIONS = ALERT_INTERVAL_OPTIONS;
 
 export const ALERT_CHANNEL_OPTIONS: Record<AlertChannelType, string> = {
   webhook: 'Webhook',
