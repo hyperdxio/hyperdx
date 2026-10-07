@@ -77,6 +77,15 @@ export class HeatmapComponent {
     return ((await row.textContent()) ?? '').replace(/^Series:\s*/, '').trim();
   }
 
+  /** A labelled value of the open cell tooltip, e.g. `Count Value`. */
+  async hoveredTooltipValue(label: 'Count Value' | 'Y Value') {
+    const row = this.container
+      .getByText(`${label}:`, { exact: true })
+      .locator('..');
+    await expect(row).toBeVisible();
+    return ((await row.textContent()) ?? '').replace(`${label}:`, '').trim();
+  }
+
   /**
    * Hover the top series-axis label, which the canvas draws, so its DOM
    * tooltip opens. Returns that tooltip.

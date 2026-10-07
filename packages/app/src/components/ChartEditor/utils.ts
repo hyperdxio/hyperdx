@@ -280,6 +280,7 @@ export function convertFormStateToSavedChartConfig(
       connection: form.connection ?? '',
       source: form.source || undefined,
       legendTemplate: form.legendTemplate?.trim() || undefined,
+      heatmap: formPromqlHeatmap(form),
     };
 
     return promqlConfig;
@@ -380,6 +381,7 @@ export function convertFormStateToChartConfig(
       source: form.source || undefined,
       from: source?.from,
       legendTemplate: form.legendTemplate?.trim() || undefined,
+      heatmap: formPromqlHeatmap(form),
     };
 
     return { ...promqlConfig, dateRange };
@@ -550,6 +552,13 @@ function formPromqlExpressions(form: ChartEditorFormState): PromqlSeries[] {
     queryType: keepQueryType ? series.queryType : undefined,
     reducer: keepReducer ? series.reducer : undefined,
   }));
+}
+
+/** Heatmap settings are dropped from PromQL tiles that are not heatmaps. */
+function formPromqlHeatmap(
+  form: ChartEditorFormState,
+): PromqlSavedChartConfig['heatmap'] {
+  return form.displayType === DisplayType.Heatmap ? form.heatmap : undefined;
 }
 
 export const validateChartForm = (

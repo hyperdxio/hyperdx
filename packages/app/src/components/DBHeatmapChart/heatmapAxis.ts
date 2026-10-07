@@ -41,38 +41,49 @@ export function formatHeatmapTick(
       }).format(actualValue);
 }
 
+const MIN_LOG_SPLITS = 3;
+
+/** Split mantissas within a power of 10, sparsest first. */
+const LOG_SPLIT_MANTISSAS = [
+  [1], // 1, 10, 100...
+  [1, 3], // 1, 3, 10, 30, 100...
+  [1, 2, 5], // 1, 2, 5, 10, 20, 50, 100...
+  [1, 2, 3, 5],
+  [1, 2, 3, 4, 5, 6, 7, 8, 9],
+];
+
 /**
- * Log-scale y-axis splits at powers of 10 (0.01, 0.1, 1, 10, 100…) so labels
- * are clean round numbers instead of arbitrary positions in log space.
- * `yMin`/`yMax` and the returned splits are natural-log values.
+ * Log-scale y-axis splits at round numbers: powers of 10 (0.01, 0.1, 1, 10…)
+ * when the range spans enough decades, otherwise denser mantissas within each
+ * decade, and evenly spaced nice values when the range is narrower than one
+ * mantissa step. `yMin`/`yMax` and the returned splits are natural-log values.
  */
 export function logScaleSplits(yMin: number, yMax: number): number[] {
   const realMin = Math.exp(yMin);
   const realMax = Math.exp(yMax);
-  const splits: number[] = [];
-  // Generate powers of 10 within range
   const startExp = Math.floor(Math.log10(realMin));
   const endExp = Math.ceil(Math.log10(realMax));
-  for (let e = startExp; e <= endExp; e++) {
-    const v = Math.pow(10, e);
-    const logV = Math.log(v);
-    if (logV >= yMin && logV <= yMax) {
-      splits.push(logV);
-    }
-  }
-  // If too few splits, add intermediate values (×3)
-  if (splits.length < 3) {
+
+  // Try increasingly dense sets of mantissas until the minimum
+  // number of log splits (axis ticks) is reached.
+  for (const mantissas of LOG_SPLIT_MANTISSAS) {
+    const splits: number[] = [];
     for (let e = startExp; e <= endExp; e++) {
-      for (const mult of [1, 3]) {
-        const v = mult * Math.pow(10, e);
-        const logV = Math.log(v);
-        if (logV >= yMin && logV <= yMax) {
-          splits.push(logV);
-        }
+      for (const mult of mantissas) {
+        const logV = Math.log(mult * Math.pow(10, e));
+        if (logV >= yMin && logV <= yMax) splits.push(logV);
       }
     }
-    // Deduplicate and sort
-    return [...new Set(splits)].sort((a, b) => a - b);
+    if (splits.length >= MIN_LOG_SPLITS) return splits;
+  }
+
+  // Fallback to linear splits when the log-scale splits are insufficient.
+  const maxIncr = (realMax - realMin) / MIN_LOG_SPLITS;
+  const mag = Math.pow(10, Math.floor(Math.log10(maxIncr)));
+  const incr = [5, 2, 1].map(m => m * mag).find(i => i <= maxIncr) ?? mag;
+  const splits: number[] = [];
+  for (let k = Math.ceil(realMin / incr); k * incr <= realMax; k++) {
+    splits.push(Math.log(k * incr));
   }
   return splits;
 }

@@ -32,4 +32,19 @@ describe('logScaleSplits', () => {
     const splits = logScaleSplits(Math.log(2), Math.log(40));
     expect(splits.map(Math.exp).map(v => Math.round(v))).toEqual([3, 10, 30]);
   });
+
+  it('uses every mantissa within a range narrower than a decade', () => {
+    const splits = logScaleSplits(Math.log(0.3), Math.log(0.66));
+    expect(splits.map(v => +Math.exp(v).toFixed(2))).toEqual([
+      0.3, 0.4, 0.5, 0.6,
+    ]);
+  });
+
+  it('spaces nice values evenly within a range narrower than a mantissa step', () => {
+    const splits = logScaleSplits(Math.log(0.3), Math.log(0.33));
+    expect(splits.length).toBeGreaterThanOrEqual(3);
+    expect(splits.map(v => +Math.exp(v).toFixed(3))).toEqual([
+      0.3, 0.31, 0.32, 0.33,
+    ]);
+  });
 });
