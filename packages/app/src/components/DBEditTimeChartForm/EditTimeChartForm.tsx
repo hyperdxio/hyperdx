@@ -310,7 +310,7 @@ export default function EditTimeChartForm({
   const configType = useWatch({ control, name: 'configType' });
   const connection = useWatch({ control, name: 'connection' });
   const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
-  const heatmapMode = getHeatmapMode({
+  const formHeatmapMode = getHeatmapMode({
     heatmap: useWatch({ control, name: 'heatmap' }),
   });
 
@@ -319,6 +319,8 @@ export default function EditTimeChartForm({
     configType === 'sql' && isRawSqlDisplayType(displayType);
   const isPromqlInput =
     configType === 'promql' && isPromqlDisplayType(displayType);
+  // PromQL heatmaps only support series mode
+  const heatmapMode: HeatmapMode = isPromqlInput ? 'series' : formHeatmapMode;
 
   const { data: sources } = useSources();
 
@@ -779,9 +781,12 @@ export default function EditTimeChartForm({
     setValue('source', firstSourceItemValue(allowedSourceItems) ?? '');
 
     // Record that a display-type or heatmap mode change triggered a source
-    // change, so that auto-submit runs in the correct effect below.
+    // change, so that auto-submit runs in the correct effect below. A mode
+    // change that comes from switching config type doesn't auto-submit, like
+    // any other config type change.
     isDisplayTypeSourceSwapPendingRef.current =
-      prev.displayType !== displayType || prev.heatmapMode !== heatmapMode;
+      prev.displayType !== displayType ||
+      (prev.heatmapMode !== heatmapMode && prev.configType === configType);
   }, [
     allowedSourceItems,
     allowedSourceKinds,
@@ -1008,6 +1013,19 @@ export default function EditTimeChartForm({
     [tableSource],
   );
 
+  const configTypeOptions = useMemo(
+    () => [
+      { label: 'Builder', value: 'builder' },
+      ...(isRawSqlDisplayType(displayType)
+        ? [{ label: 'SQL', value: 'sql' }]
+        : []),
+      ...(IS_PROMQL_ENABLED && isPromqlDisplayType(displayType)
+        ? [{ label: 'PromQL', value: 'promql' }]
+        : []),
+    ],
+    [displayType],
+  );
+
   return (
     <div ref={setParentRef} data-testid={dataTestId}>
       <ErrorBoundary>
@@ -1093,21 +1111,19 @@ export default function EditTimeChartForm({
             placeholder="My Chart Name"
             data-testid="chart-name-input"
           />
-          {isRawSqlDisplayType(displayType) && (
+          {configTypeOptions.length > 1 && (
             <Controller
               control={control}
               name="configType"
               render={({ field: { onChange, value } }) => (
                 <SegmentedControl
-                  value={value ?? 'builder'}
+                  value={
+                    configTypeOptions.some(option => option.value === value)
+                      ? value
+                      : 'builder'
+                  }
                   onChange={onChange}
-                  data={[
-                    { label: 'Builder', value: 'builder' },
-                    { label: 'SQL', value: 'sql' },
-                    ...(IS_PROMQL_ENABLED
-                      ? [{ label: 'PromQL', value: 'promql' }]
-                      : []),
-                  ]}
+                  data={configTypeOptions}
                 />
               )}
             />
