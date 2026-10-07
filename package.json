@@ -27,7 +27,7 @@
     "jscpd": "5.1.2",
     "knip": "^6.19.0",
     "lint-staged": "^13.1.2",
-    "nx": "23.1.1",
+    "nx": "23.2.1",
     "prettier": "3.3.3",
     "tslib": "^2.6.0",
     "typescript-eslint": "^8.46.0"
