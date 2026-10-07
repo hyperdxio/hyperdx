@@ -76,6 +76,30 @@ describe('ChartDisplaySettingsDrawer', () => {
         heatmapScaleType: 'linear',
       });
     });
+
+    it.each(['linear', 'log'] as const)(
+      'selects the %s default scale when the tile has none',
+      async scale => {
+        const onChange = jest.fn();
+        const user = userEvent.setup();
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={DisplayType.Heatmap}
+            heatmapMode="distribution"
+            defaultHeatmapScaleType={scale}
+            onChange={onChange}
+          />,
+        );
+
+        await user.click(screen.getByRole('button', { name: /apply/i }));
+
+        expect(onChange.mock.calls[0][0]).toMatchObject({
+          heatmapScaleType: scale,
+        });
+      },
+    );
   });
 
   describe('color picker section', () => {
@@ -753,6 +777,26 @@ describe('ChartDisplaySettingsDrawer', () => {
         screen.queryByTestId('legend-template-input'),
       ).not.toBeInTheDocument();
     });
+
+    it.each([
+      ['hidden', 'distribution', false],
+      ['offered', 'series', true],
+    ] as const)(
+      'is %s on a PromQL %s heatmap',
+      (_label, heatmapMode, isShown) => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Heatmap}
+            heatmapMode={heatmapMode}
+          />,
+        );
+
+        expect(screen.queryByTestId('legend-template-input') != null).toBe(
+          isShown,
+        );
+      },
+    );
 
     it('blocks Apply when the template exceeds the persisted length cap', async () => {
       const onChange = jest.fn();

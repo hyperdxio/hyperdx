@@ -13,6 +13,7 @@ import {
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
+import { HeatmapComponent } from './HeatmapComponent';
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 import { WhereInputComponent } from './WhereInputComponent';
 
@@ -73,7 +74,7 @@ export class ChartEditorComponent {
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
-  /** Pick the builder heatmap's mode in its segmented control. */
+  /** Pick the heatmap's mode in its segmented control. */
   async setHeatmapMode(mode: 'Distribution' | 'Series') {
     await this.editorForm()
       .getByTestId('heatmap-mode-control')
@@ -97,6 +98,11 @@ export class ChartEditorComponent {
     return this.editorForm()
       .getByTestId('heatmap-value-input')
       .locator('.cm-content');
+  }
+
+  /** The heatmap the editor previews. */
+  get previewHeatmap(): HeatmapComponent {
+    return new HeatmapComponent(this.page, this.editorForm());
   }
 
   /** A heatmap mode's (visually hidden) radio, for checking the selection. */

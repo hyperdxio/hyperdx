@@ -668,12 +668,12 @@ describe('PromQL expressions', () => {
     series: [],
   });
 
-  it('saves a heatmap with only its first expression queried and no heatmap mode', () => {
+  it('saves a heatmap with only its first expression queried and its heatmap settings', () => {
     const result = convertFormStateToSavedChartConfig(
       {
         ...promqlForm([{ expression: 'up' }], DisplayType.Heatmap),
         legendTemplate: '{{pod}}',
-        heatmap: { mode: 'distribution' },
+        heatmap: { mode: 'distribution', scaleType: 'log' },
         granularity: '5 minute',
       },
       undefined,
@@ -684,8 +684,37 @@ describe('PromQL expressions', () => {
       promqlExpression: [{ expression: 'up' }],
       legendTemplate: '{{pod}}',
       granularity: '5 minute',
+      heatmap: { mode: 'distribution', scaleType: 'log' },
     });
-    expect(result).not.toHaveProperty('heatmap');
+  });
+
+  it('queries a heatmap with its heatmap settings', () => {
+    const result = convertFormStateToChartConfig(
+      {
+        ...promqlForm([{ expression: 'up' }], DisplayType.Heatmap),
+        heatmap: { mode: 'series' },
+      },
+      [new Date(0), new Date(1000)],
+      undefined,
+    );
+    expect(result).toMatchObject({ heatmap: { mode: 'series' } });
+  });
+
+  it('drops heatmap settings from PromQL tiles that are not heatmaps', () => {
+    const form = {
+      ...promqlForm([{ expression: 'up' }], DisplayType.Line),
+      heatmap: { mode: 'series' as const },
+    };
+    expect(
+      convertFormStateToSavedChartConfig(form, undefined),
+    ).not.toHaveProperty('heatmap', expect.anything());
+    expect(
+      convertFormStateToChartConfig(
+        form,
+        [new Date(0), new Date(1000)],
+        undefined,
+      ),
+    ).not.toHaveProperty('heatmap', expect.anything());
   });
 
   it('saves the form rows as the expression list', () => {

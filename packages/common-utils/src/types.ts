@@ -397,6 +397,8 @@ export const ColorConditionSchema = z.discriminatedUnion('operator', [
 
 export type ColorCondition = z.infer<typeof ColorConditionSchema>;
 
+export const HeatmapScaleTypeSchema = z.enum(['log', 'linear']);
+
 export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -406,7 +408,7 @@ export const DerivedColumnSchema = z.intersection(
     metricNameSql: z.string().optional(),
     // Heatmap-specific fields (optional, only used when displayType is Heatmap)
     countExpression: z.string().optional(),
-    heatmapScaleType: z.enum(['log', 'linear']).optional(),
+    heatmapScaleType: HeatmapScaleTypeSchema.optional(),
     numberFormat: NumberFormatSchema.optional(),
     // Per-column palette-token color, applied by the renderer to this
     // column's cells on table tiles only (gated in the series editor by
@@ -1667,9 +1669,13 @@ export type RatioMode = z.infer<typeof RatioModeSchema>;
 export const HeatmapModeSchema = z.enum(['distribution', 'series']);
 export type HeatmapMode = z.infer<typeof HeatmapModeSchema>;
 
+export const HeatmapSettingsSchema = z.object({
+  mode: HeatmapModeSchema.optional(),
+});
+
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
   // Heatmap tiles only; an absent mode is 'distribution' (see getHeatmapMode).
-  heatmap: z.object({ mode: HeatmapModeSchema.optional() }).optional(),
+  heatmap: HeatmapSettingsSchema.optional(),
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   // Fallback expression for bare-text Lucene search when no implicit column is
@@ -1866,6 +1872,9 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   source: z.string().optional(),
   step: z.string().optional(),
   legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
+  heatmap: HeatmapSettingsSchema.extend({
+    scaleType: HeatmapScaleTypeSchema.optional(),
+  }).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
