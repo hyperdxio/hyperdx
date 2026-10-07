@@ -122,7 +122,7 @@ export const ALERT_INTERVAL_OPTIONS: Record<AlertInterval, string> = {
 };
 
 export const TILE_ALERT_INTERVAL_OPTIONS = _.pick(ALERT_INTERVAL_OPTIONS, [
-  ...(IS_DEV ? (['1m'] as const) : []),
+  '1m',
   '5m',
   '15m',
   '30m',
