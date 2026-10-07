@@ -3,6 +3,12 @@ import { Code, Stack } from '@mantine/core';
 import type { Meta } from '@storybook/nextjs';
 
 import {
+  MOCK_PROMQL_VALUES,
+  MOCK_SQL_VALUES,
+  useMockValues,
+} from '@/mocks/filterValues';
+
+import {
   FilterCondition,
   FilterConditionEditor,
   FilterConditionEditorProps,
@@ -12,11 +18,6 @@ import {
   PROMQL_FILTER_OPERATORS,
   SQL_FILTER_OPERATORS,
 } from './filterOperators';
-import {
-  MOCK_PROMQL_VALUES,
-  MOCK_SQL_VALUES,
-  useMockValues,
-} from './storyMocks';
 
 const meta = {
   title: 'Components/FilterConditionEditor',

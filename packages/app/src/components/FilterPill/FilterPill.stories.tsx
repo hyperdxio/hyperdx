@@ -3,6 +3,12 @@ import { Group, SegmentedControl, Stack } from '@mantine/core';
 import type { Meta, StoryObj } from '@storybook/nextjs';
 
 import {
+  MOCK_PROMQL_VALUES,
+  MOCK_SQL_VALUES,
+  useMockValues,
+} from '@/mocks/filterValues';
+
+import {
   FilterCondition,
   FilterConditionEditor,
 } from './FilterConditionEditor';
@@ -13,11 +19,6 @@ import {
 } from './filterOperators';
 import { FilterPill } from './FilterPill';
 import { FilterValueEditor } from './FilterValueEditor';
-import {
-  MOCK_PROMQL_VALUES,
-  MOCK_SQL_VALUES,
-  useMockValues,
-} from './storyMocks';
 
 const meta = {
   title: 'Components/FilterPill',
