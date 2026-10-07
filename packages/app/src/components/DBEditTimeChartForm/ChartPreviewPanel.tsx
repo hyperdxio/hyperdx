@@ -1,5 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
@@ -26,6 +29,7 @@ import DBHeatmapChart, {
   buildHeatmapBucketConfig,
   buildHeatmapSeriesConfig,
   HEATMAP_N_BUCKETS,
+  HeatmapSeriesChartConfig,
   resolveHeatmapGranularity,
   toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
@@ -64,7 +68,7 @@ function HeatmapPreview({
   config,
   minGranularitySeconds,
 }: {
-  config: BuilderChartConfigWithDateRange;
+  config: HeatmapSeriesChartConfig;
   minGranularitySeconds: number | undefined;
 }) {
   return (
@@ -344,7 +348,8 @@ export function ChartPreviewPanel({
       )}
       {queryReady &&
         queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
+        (isBuilderChartConfig(queriedConfig) ||
+          isPromqlChartConfig(queriedConfig)) &&
         activeTab === 'heatmap' && (
           <HeatmapPreview
             config={queriedConfig}

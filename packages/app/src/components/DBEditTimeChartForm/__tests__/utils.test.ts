@@ -327,6 +327,18 @@ describe('buildRenderedPromqlExpression', () => {
     );
   });
 
+  it("expands macros with a heatmap's finer auto granularity", () => {
+    expect(
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          displayType: DisplayType.Heatmap,
+          granularity: 'auto',
+          promqlExpression: [{ expression: 'rate(up[$__interval])' }],
+        }),
+      )?.expressions?.[0].expression,
+    ).toBe('rate(up[900s])');
+  });
+
   it('expands macros with the granularity a table queries with', () => {
     const seventyMinutes: [Date, Date] = [
       new Date('2024-01-01T00:00:00Z'),

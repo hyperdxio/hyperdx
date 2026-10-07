@@ -39,6 +39,7 @@ import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
@@ -50,7 +51,6 @@ import {
 import { isMissingFiltersMacro } from '@hyperdx/common-utils/dist/macros';
 import {
   AlertState,
-  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   ChartVariable,
   DashboardContainer as DashboardContainerSchema,
@@ -177,7 +177,10 @@ import ChartContainer, {
 } from './components/charts/ChartContainer';
 import DashboardFiltersModal from './components/DashboardFiltersModal';
 import { DBBarChart } from './components/DBBarChart';
-import DBHeatmapChart, { toHeatmapQuery } from './components/DBHeatmapChart';
+import DBHeatmapChart, {
+  HeatmapSeriesChartConfig,
+  toHeatmapQuery,
+} from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -244,7 +247,7 @@ function HeatmapTile({
   title: React.ReactNode;
   toolbarPrefix: React.ReactNode[];
   toolbarSuffix: React.ReactNode[];
-  queriedConfig: BuilderChartConfigWithDateRange;
+  queriedConfig: HeatmapSeriesChartConfig;
   source: TSource | undefined;
   dateRange: [Date, Date];
   enabled?: boolean;
@@ -262,7 +265,12 @@ function HeatmapTile({
 
   const eventDeltasUrl = useMemo(() => {
     // Search page event deltas only supports trace sources and distribution mode
-    if (!source || !isTraceSource(source) || mode !== 'distribution')
+    if (
+      !source ||
+      !isTraceSource(source) ||
+      mode !== 'distribution' ||
+      !isBuilderChartConfig(queriedConfig)
+    )
       return null;
     const url = buildEventsSearchUrl({
       source,
@@ -1384,7 +1392,8 @@ const Tile = ({
                 />
               )}
               {effectiveQueriedConfig?.displayType === DisplayType.Heatmap &&
-                isBuilderChartConfig(effectiveQueriedConfig) && (
+                (isBuilderChartConfig(effectiveQueriedConfig) ||
+                  isPromqlChartConfig(effectiveQueriedConfig)) && (
                   <HeatmapTile
                     keyPrefix={keyPrefix}
                     chartId={chart.id}
