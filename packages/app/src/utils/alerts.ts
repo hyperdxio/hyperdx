@@ -22,7 +22,6 @@ import {
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
 
-import { IS_DEV } from '@/config';
 import type { AlertsPageItem } from '@/types';
 
 export function intervalToGranularity(interval: AlertInterval) {
