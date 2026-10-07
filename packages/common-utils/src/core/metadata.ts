@@ -653,6 +653,50 @@ export class Metadata {
     );
   }
 
+  async getTimeSeriesTables({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<Pick<TableConnection, 'databaseName' | 'tableName'>[]> {
+    return this.cache.getOrFetch(
+      `${connectionId}.timeSeriesTables`,
+      async () => {
+        const sql = chSql`
+        SELECT database AS databaseName, name AS tableName
+        FROM system.tables
+        WHERE engine = 'TimeSeries'
+        ORDER BY database, name
+      `;
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res =>
+              res.json<Pick<TableConnection, 'databaseName' | 'tableName'>>(),
+            );
+          return json.data;
+        } catch (e) {
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch TimeSeries tables:',
+              e,
+            );
+            return [];
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,

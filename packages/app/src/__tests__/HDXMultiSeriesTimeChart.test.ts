@@ -542,6 +542,23 @@ describe('computeYAxisBounds', () => {
     }
   });
 
+  it('leaves a stacked line`s max to Recharts, selection or not', () => {
+    const lineData = [series('a'), series('b')];
+    const graphResults = [{ a: 60, b: 40 }];
+    for (const hasSelection of [false, true]) {
+      expect(
+        computeYAxisBounds(
+          graphResults,
+          lineData,
+          hasSelection,
+          false,
+          DisplayType.StackedLine,
+          [],
+        ),
+      ).toEqual({ domain: [0, 'auto'], ticks: undefined });
+    }
+  });
+
   it('falls back to auto when there is no numeric data', () => {
     const bounds = computeYAxisBounds(
       [],

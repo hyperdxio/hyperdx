@@ -1302,41 +1302,40 @@ const Tile = ({
             </TilePlaceholder>
           ) : (
             <>
-              {(effectiveQueriedConfig?.displayType === DisplayType.Line ||
-                effectiveQueriedConfig?.displayType ===
-                  DisplayType.StackedBar) && (
-                <DBTimeChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbarPrefixItems}
-                  toolbarSuffix={toolbarSuffixItems}
-                  sourceId={chart.config.source}
-                  showDisplaySwitcher={!readOnly}
-                  enabled={chartEnabled}
-                  config={effectiveQueriedConfig}
-                  annotations={annotations}
-                  onTimeRangeSelect={
-                    readOnly
-                      ? undefined
-                      : isFullscreenView
-                        ? (start, end) => setFullscreenDateRange([start, end])
-                        : onTimeRangeSelect
-                  }
-                  setDisplayType={
-                    readOnly
-                      ? undefined
-                      : displayType => {
-                          onUpdateChart?.({
-                            ...chart,
-                            config: {
-                              ...chart.config,
-                              displayType,
-                            },
-                          });
-                        }
-                  }
-                />
-              )}
+              {effectiveQueriedConfig &&
+                isTimeSeriesDisplayType(effectiveQueriedConfig.displayType) && (
+                  <DBTimeChart
+                    key={`${keyPrefix}-${chart.id}`}
+                    title={title}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    sourceId={chart.config.source}
+                    showDisplaySwitcher={!readOnly}
+                    enabled={chartEnabled}
+                    config={effectiveQueriedConfig}
+                    annotations={annotations}
+                    onTimeRangeSelect={
+                      readOnly
+                        ? undefined
+                        : isFullscreenView
+                          ? (start, end) => setFullscreenDateRange([start, end])
+                          : onTimeRangeSelect
+                    }
+                    setDisplayType={
+                      readOnly
+                        ? undefined
+                        : displayType => {
+                            onUpdateChart?.({
+                              ...chart,
+                              config: {
+                                ...chart.config,
+                                displayType,
+                              },
+                            });
+                          }
+                    }
+                  />
+                )}
               {effectiveQueriedConfig?.displayType === DisplayType.Table && (
                 <Box h="100%">
                   <DBTableChart

@@ -381,6 +381,29 @@ describe('DashboardFiltersModal', () => {
     expect(screen.getByTestId('filter-required-checkbox')).toBeChecked();
   });
 
+  it('saves a single-select filter and reopens it checked', async () => {
+    const { onSaveFilter, user } = renderModal();
+
+    await user.click(screen.getByTestId('add-filter-button'));
+    await selectFilterType(user, 'Static values');
+    await user.type(screen.getByTestId('filter-name-input'), 'Environment');
+    await user.type(screen.getByTestId('filter-options-input'), 'prod{Enter}');
+    await user.click(screen.getByTestId('filter-single-select-checkbox'));
+    await user.click(screen.getByTestId('save-filter-button'));
+
+    await waitFor(() => expect(onSaveFilter).toHaveBeenCalledTimes(1));
+    const saved: DashboardFilter = onSaveFilter.mock.calls[0][0];
+    expect(saved.maxSelections).toBe(1);
+    expect(saved.minSelections).toBeUndefined();
+
+    renderModal({ filters: [saved] });
+    await user.click(
+      screen.getAllByTestId(`edit-filter-button-${saved.name}`)[0],
+    );
+
+    expect(screen.getByTestId('filter-single-select-checkbox')).toBeChecked();
+  });
+
   it('offers the requirement scope, unchecked, once the filter is required', async () => {
     const { user } = renderModal();
 

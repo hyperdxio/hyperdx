@@ -57,6 +57,7 @@ Recommended pattern:
 Use BUILDER tiles (with sourceId) for most cases:
   line         Time-series trends (error rate, request volume, latency over time).
   stacked_bar  Compare categories over time (requests by service, errors by status code).
+  stacked_line Same as stacked_bar but as filled area bands (smooth cumulative totals).
   number       Single KPI metric (total requests, current error rate, p99 latency).
   table        Ranked lists (top endpoints by latency, error counts by service). Tables can wire row-click navigation via config.onClick to the /search page or another dashboard. See "TABLE TILE LINKING" below.
   pie          Proportional breakdowns (traffic share by service, errors by type). Keep slice count under 8.
@@ -67,7 +68,7 @@ Use BUILDER tiles (with sourceId) for most cases:
   markdown     Use sparingly. The dashboard already shows its name in the title bar at the top; do NOT add a "About this dashboard" tile that repeats it. Markdown bodies render h1/h2/h3 headings at title-bar scale, so a single \`## Service Catalog\` line eats most of the tile and pushes real KPIs below the fold. Skip markdown tiles for starter dashboards. If you must add one, size it to fit the text (h: 2-3 for a line or two; h: 1 clips it), use plain prose, no \`#\`/\`##\`/\`###\` headings. Use containers/tabs for section grouping instead.
 
 Use RAW SQL tiles (with connectionId) only for queries the builder cannot express:
-  Requires configType: "sql" plus a displayType (line, stacked_bar, table, number, pie, bar).
+  Requires configType: "sql" plus a displayType (line, stacked_bar, stacked_line, table, number, pie, bar).
   Use when you need JOINs, sub-queries, CTEs, or expressions the builder does not generate.
   ALWAYS set sourceId on a raw SQL tile (in addition to connectionId) UNLESS the query reads
   from multiple tables (e.g. JOINs across sources). sourceId enables the $__filters and 
@@ -116,6 +117,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 9d. USE A STATIC_LIST FILTER WHEN THE DROPDOWN SHOULD OFFER A FIXED HAND-AUTHORED LIST. When the values are a business list (environments, tenants, tiers) or a curated subset rather than derivable from the data, declare filters: [{ type: "STATIC_LIST", name, options: ["prod", "staging"], variableName }]. It takes no expression, sourceId, or where, and it is always variable-only (there is nothing to broadcast), so tiles must reference $variableName, typically via $__filter(<expression>, $<variableName>) with the column passed explicitly (the one-argument $__filter($var) form fails because the filter has no expression of its own).
 
 9e. MAKE A FILTER REQUIRED ONLY WHEN AN UNSCOPED VIEW IS MEANINGLESS. minSelections: 1 blocks the tiles that read the filter - the ones referencing its $variableName, and the ones its broadcast applies to - until the user picks a value. isGlobalRequirement: true widens that to every tile on the dashboard. Consider pairing either form with savedFilterValues so the dashboard opens on a sensible default rather than blocked.
+
+9f. MAKE A FILTER SINGLE-SELECT WHEN A TILE ONLY MAKES SENSE FOR ONE VALUE. maxSelections: 1 limits the dropdown to one value at a time, for example a host picker feeding a per-host detail view.
 
 10. UPDATE IS REPLACE, NOT MERGE. clickstack_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call clickstack_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 

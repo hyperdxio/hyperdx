@@ -506,6 +506,8 @@ describe('displayTypeToActiveTab', () => {
     [DisplayType.Bar, 'bar'],
     [DisplayType.Number, 'number'],
     [DisplayType.Line, 'time'],
+    [DisplayType.StackedBar, 'time'],
+    [DisplayType.StackedLine, 'time'],
   ])('maps %s to %s', (displayType, expected) => {
     expect(displayTypeToActiveTab(displayType)).toBe(expected);
   });

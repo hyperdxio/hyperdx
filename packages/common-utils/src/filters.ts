@@ -855,6 +855,13 @@ export function isFilterRequired(filter: { minSelections?: number }): boolean {
   return (filter.minSelections ?? 0) > 0;
 }
 
+/** Whether at most one value can be selected for the filter (or its variable). */
+export function isFilterSingleSelect(filter: {
+  maxSelections?: number;
+}): boolean {
+  return filter.maxSelections === 1;
+}
+
 /**
  * Whether the given required filter blocks every tile on the dashboard,
  * rather than only the tiles that read it.
@@ -959,7 +966,7 @@ export function getFilterVariableName(filter: {
 /** A dashboard variable's identity, before any selection is attached. */
 export type DashboardVariableDeclaration = Pick<
   ChartVariable,
-  'name' | 'expression'
+  'name' | 'expression' | 'maxSelections'
 >;
 
 /** Minimal projection of fields necessary to extract the variables a dashboard declares. */
@@ -968,6 +975,7 @@ export type FilterForVariableDeclaration = {
   expression?: string;
   variableName?: string;
   isVariableEnabled?: boolean;
+  maxSelections?: number;
 };
 
 /**
@@ -1001,6 +1009,7 @@ export function getDashboardVariableDeclarations(
   return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
     name,
     expression: filter.expression,
+    maxSelections: filter.maxSelections,
   }));
 }
 
