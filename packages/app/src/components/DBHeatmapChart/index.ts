@@ -7,6 +7,7 @@ export {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
   buildHeatmapSeriesConfig,
+  resolveHeatmapGranularity,
   toHeatmapQuery,
 } from './heatmapQueries';
 export { darkPalette, lightPalette } from './palette';
