@@ -145,9 +145,9 @@ including but not limited to:
 code we now use [Vouch](https://github.com/mitchellh/vouch): a maintainer has to
 vouch for you before your first pull request gets reviewed. AI tools make it
 cheap to open a plausible-looking PR with no understanding behind it, and
-reviewing those crowds out the contributions we want to spend time on. Getting
-vouched takes one issue — say hello and tell us what you want to work on. See
-[Getting vouched](./CONTRIBUTING.md#getting-vouched).
+reviewing those crowds out the contributions we want to spend time on. There's
+nothing to request up front: open your first PR and a maintainer vouches for you
+on it. See [Getting vouched](./CONTRIBUTING.md#getting-vouched).
 
 ## Motivation
 
