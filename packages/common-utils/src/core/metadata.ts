@@ -50,6 +50,7 @@ import {
 import {
   getAlignedDateRange,
   getDistributedTableArgs,
+  MapTextIndexPartsPerKey,
   MetadataMVQueryOptions,
   objectHash,
   splitAndTrimWithBracket,
@@ -64,6 +65,8 @@ const DEFAULT_MAX_KEYS = 1000;
 
 // Cap keys per dispatched query: each key is another operation for the db to fetch, and simply fetching all keys at once can be too much for the db to handle.
 export const GET_ALL_KEY_VALUES_CHUNK_SIZE = 100;
+
+export const DEFAULT_MAP_TEXT_INDEX_PARTS_PER_KEY = 1;
 
 /**
  * The index read could not be scoped to the requested date range, so it was
@@ -90,6 +93,66 @@ type KeyFetchingStrategies = {
 export type KeyValues = {
   key: string;
   value: string[] | number[];
+};
+
+type MapTextIndexValuesQuery = TableConnection & {
+  queryOptions: TextIndexMapColumnQueryOptions;
+  dateRange: [Date, Date];
+  timestampValueExpression: string;
+  signal?: AbortSignal;
+};
+
+type MapTextIndexBestPartsRow = {
+  column: string;
+  key: string;
+  value: string[];
+  /** 1 when the keys index lists the key in some part of the date range. */
+  indexed: number;
+  /** Parts of the date range the keys index lists any requested key in. */
+  covered_parts: number;
+  total_parts: number;
+};
+
+/**
+ * Keys the keys index doesn't list return no values. When some parts of the
+ * date range are missing from the index too, those keys may exist there, so
+ * say so instead of reporting nothing or reading every part.
+ */
+const warnOnKeysIndexGaps = ({
+  databaseName,
+  tableName,
+  queryOptions,
+  rows,
+}: {
+  databaseName: string;
+  tableName: string;
+  queryOptions: TextIndexMapColumnQueryOptions;
+  rows: MapTextIndexBestPartsRow[];
+}) => {
+  const gaps = new Map<
+    string,
+    { keys: string[]; coveredParts: number; totalParts: number }
+  >();
+  for (const row of rows) {
+    if (row.indexed || row.covered_parts >= row.total_parts) continue;
+    const gap = gaps.get(row.column) ?? {
+      keys: [],
+      coveredParts: row.covered_parts,
+      totalParts: row.total_parts,
+    };
+    gap.keys.push(row.key);
+    gaps.set(row.column, gap);
+  }
+  for (const [column, { keys, coveredParts, totalParts }] of gaps) {
+    const index = queryOptions.get(column)?.keysIndexName;
+    console.warn(
+      `getMapTextIndexKeyValues: no values read for ${column} keys [${keys.join(', ')}]: ` +
+        `keys index ${index} lists the requested keys in ${coveredParts} of ${totalParts} parts in the date range. ` +
+        `Parts written before the index was added are not read until they merge or ` +
+        `ALTER TABLE ${databaseName}.${tableName} MATERIALIZE INDEX ${index} runs. ` +
+        `Parts where ${column} is always empty are also unlisted.`,
+    );
+  }
 };
 
 export type MetricNames = {
@@ -813,15 +876,28 @@ export class Metadata {
     timestampValueExpression?: string;
   }): Promise<ChSql> {
     if (!dateRange || !timestampValueExpression) return chSql`1`;
-    const startTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})`;
-    const endTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})`;
     return chSql`part_name IN (
       SELECT name
       FROM system.parts
-      WHERE database = ${{ String: databaseName }} AND table = ${{ String: tableName }}
-        AND active=1
-        AND ((min_time >= ${startTime} AND min_time <= ${endTime}) OR (max_time <= ${endTime} AND max_time >= ${startTime}) OR (min_time <= ${startTime} AND max_time >= ${endTime}))
+      WHERE ${this.overlappingPartsCondition({ databaseName, tableName, dateRange })}
     )`;
+  }
+
+  /** `system.parts` filter for the active parts overlapping `dateRange`. */
+  private overlappingPartsCondition({
+    databaseName,
+    tableName,
+    dateRange,
+  }: {
+    databaseName: string;
+    tableName: string;
+    dateRange: [Date, Date];
+  }): ChSql {
+    const startTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})`;
+    const endTime = chSql`fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})`;
+    return chSql`database = ${{ String: databaseName }} AND table = ${{ String: tableName }}
+        AND active=1
+        AND ((min_time >= ${startTime} AND min_time <= ${endTime}) OR (max_time <= ${endTime} AND max_time >= ${startTime}) OR (min_time <= ${startTime} AND max_time >= ${endTime}))`;
   }
 
   /** Rejects what `mergeTreeIndex` cannot read; callers fall back to a scan. */
@@ -1560,77 +1636,42 @@ export class Metadata {
     dateRange,
     timestampValueExpression,
     signal,
-  }: TableConnection & {
-    queryOptions: TextIndexMapColumnQueryOptions;
-    dateRange: [Date, Date];
-    timestampValueExpression: string;
-    signal?: AbortSignal;
-  }): Promise<KeyValues[] | undefined> {
+  }: MapTextIndexValuesQuery): Promise<KeyValues[] | undefined> {
     const queryOptionsHash = objectHash(queryOptions);
     const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.getMapTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       try {
-        const sqlBranches: Array<ChSql> = [];
-        for (const [columnName, info] of queryOptions.entries()) {
-          const orChain = concatChSql(
-            ' OR ',
-            // Inline keys as SQL-escaped literals, not bind params: ~100
-            // per-key params exceed the web client's URL param budget and
-            // silently switch the request to a multipart body that proxies
-            // may reject. Keys are ingest-controlled, hence SqlString.escape.
-            info.keys.map(
-              k =>
-                chSql`startsWith(token, ${{
-                  UNSAFE_RAW_SQL: SqlString.escape(`${k}${info.separator}`),
-                }})`,
-            ),
+        const withKeysIndex: TextIndexMapColumnQueryOptions = new Map();
+        const withoutKeysIndex: TextIndexMapColumnQueryOptions = new Map();
+        for (const [columnName, info] of queryOptions) {
+          (info.keysIndexName ? withKeysIndex : withoutKeysIndex).set(
+            columnName,
+            info,
           );
-          const partsFilter = await this.partsOverlapFilter({
-            databaseName,
-            tableName,
-            dateRange,
-            timestampValueExpression,
-          });
-          const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
-          const sql = chSql`
-        SELECT * FROM (
-          SELECT ${{ String: columnName }} as column,
-            substring(token, 1, position(token, ${{ String: info.separator }}) - 1) AS key,
-            groupUniqArray(${{ Int32: info.limit }})(${valueSql}) AS value
-          FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: info.indexName }})
-          WHERE ${partsFilter}
-            AND (${orChain})
-            AND ${valueSql} != ''
-          GROUP BY column, key
-        )`;
-          sqlBranches.push(sql);
         }
-        const sql = concatChSql(' UNION ALL ', sqlBranches);
-
-        return await this.clickhouseClient
-          .query<'JSON'>({
-            query: sql.sql,
-            query_params: sql.params,
-            connectionId,
-            clickhouse_settings: {
-              max_rows_to_read: String(
-                this.getClickHouseSettings().max_rows_to_read ??
-                  DEFAULT_METADATA_MAX_ROWS_TO_READ,
-              ),
-              read_overflow_mode: 'break',
-              ...this.getClickHouseSettings(),
-            },
-            abort_signal: signal,
-          })
-          .then(res =>
-            res.json<{ column: string; key: string; value: string[] }>(),
-          )
-          .then(d =>
-            d.data.map(row => ({
-              key: `${row.column}['${row.key}']`,
-              value: row.value,
-            })),
-          );
+        const args = {
+          databaseName,
+          tableName,
+          connectionId,
+          dateRange,
+          timestampValueExpression,
+          signal,
+        };
+        const results = await Promise.all([
+          withKeysIndex.size > 0
+            ? this.readMapTextIndexValuesFromBestParts({
+                ...args,
+                queryOptions: withKeysIndex,
+              })
+            : [],
+          withoutKeysIndex.size > 0
+            ? this.scanMapTextIndexValues({
+                ...args,
+                queryOptions: withoutKeysIndex,
+              })
+            : [],
+        ]);
+        return results.flat();
       } catch (error) {
         // Text-index queries can fail transiently (part merged mid-read,
         // unsupported server, etc.). Isolate the failure so sibling
@@ -1642,6 +1683,207 @@ export class Metadata {
         return undefined;
       }
     });
+  }
+
+  /**
+   * Reads each key's values only from the parts the Map's keys-only text
+   * index says hold it in the most rows, plus the newest part holding it. On
+   * object storage, every part a key is read from costs a request or more per
+   * index file, so reading every part for every key is slow however few bytes
+   * it reads.
+   *
+   * Parts written before the keys index existed are missing from it, and keys
+   * found only in those parts return nothing (see `warnOnKeysIndexGaps`).
+   */
+  private async readMapTextIndexValuesFromBestParts({
+    databaseName,
+    tableName,
+    connectionId,
+    queryOptions,
+    dateRange,
+    signal,
+  }: MapTextIndexValuesQuery): Promise<KeyValues[]> {
+    const textIndex = (indexName: string) =>
+      chSql`mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: indexName }})`;
+    const catalogs: ChSql[] = [];
+    const branches: ChSql[] = [];
+    for (const [i, [columnName, info]] of [...queryOptions].entries()) {
+      if (!info.keysIndexName) continue;
+      const catalog = { UNSAFE_RAW_SQL: `keys_catalog_${i}` };
+      const partsSql =
+        info.partsPerKey === 'all'
+          ? chSql`groupArray(part_name)`
+          : chSql`arrayDistinct(arrayPushBack(
+              arraySlice(arrayReverseSort(groupArray((cardinality, part_name))), 1, ${{
+                UNSAFE_RAW_SQL: inlineNonNegativeInt(
+                  info.partsPerKey,
+                  'partsPerKey',
+                ),
+              }}).2,
+              argMax(part_name, indexOf(matching_parts, part_name))
+            ))`;
+      // Only the requested keys: a Map whose key names carry IDs can list
+      // millions of keys per part, and reading them all costs minutes of CPU
+      // and overflows the scalar. A constant `token IN` on the bare column
+      // reads just the dictionary blocks holding these keys.
+      const keysListSql = concatChSql(
+        ', ',
+        // Escaped literals rather than params; see `scanMapTextIndexValues`.
+        info.keys.map(k => chSql`${{ UNSAFE_RAW_SQL: SqlString.escape(k) }}`),
+      );
+      // A WITH scalar is evaluated once, before the branches are planned, so
+      // they can prune parts with it. Picking parts with a join instead
+      // disables pruning and every branch reads every part.
+      catalogs.push(chSql`(
+        SELECT (
+          CAST(groupArray((key, parts)), 'Map(String, Array(String))'),
+          toUInt32(length(groupUniqArrayArray(key_parts)))
+        )
+        FROM (
+          SELECT token AS key, ${partsSql} AS parts, groupArray(part_name) AS key_parts
+          FROM ${textIndex(info.keysIndexName)}
+          WHERE has(matching_parts, part_name)
+            AND token IN (${keysListSql})
+          GROUP BY key
+        )
+      ) AS ${catalog}`);
+      for (const key of info.keys) {
+        // Escaped literals rather than params; see `scanMapTextIndexValues`.
+        // The token filter must be a constant prefix on the bare `token`
+        // column (including the separator, or `k1` matches `k10=`): any
+        // function around `token` disables the dictionary lookup.
+        const keySql = { UNSAFE_RAW_SQL: SqlString.escape(key) };
+        const prefixSql = {
+          UNSAFE_RAW_SQL: SqlString.escape(`${key}${info.separator}`),
+        };
+        branches.push(chSql`
+        SELECT ${{ String: columnName }} AS column, ${keySql} AS key,
+          groupArray(substring(token, length(${prefixSql}) + 1)) AS value,
+          toUInt8(mapContains(${catalog}.1, ${keySql})) AS indexed,
+          ${catalog}.2 AS covered_parts,
+          toUInt32(length(matching_parts)) AS total_parts
+        FROM (
+          SELECT DISTINCT token
+          FROM ${textIndex(info.indexName)}
+          WHERE has(${catalog}.1[${keySql}], part_name)
+            AND startsWith(token, ${prefixSql})
+            AND token != ${prefixSql}
+          LIMIT ${{ Int32: info.limit }}
+        )`);
+      }
+    }
+    if (branches.length === 0) return [];
+
+    // Oldest first, so `indexOf(matching_parts, part_name)` ranks recency.
+    const sql = chSql`
+      WITH (
+        SELECT arraySort(groupArray((max_time, name))).2
+        FROM system.parts
+        WHERE ${this.overlappingPartsCondition({ databaseName, tableName, dateRange })}
+      ) AS matching_parts,
+      ${concatChSql(',\n', catalogs)}
+      ${concatChSql('\nUNION ALL\n', branches)}`;
+
+    const { data } = await this.clickhouseClient
+      .query<'JSON'>({
+        query: sql.sql,
+        query_params: sql.params,
+        connectionId,
+        clickhouse_settings: {
+          max_rows_to_read: String(
+            this.getClickHouseSettings().max_rows_to_read ??
+              DEFAULT_METADATA_MAX_ROWS_TO_READ,
+          ),
+          read_overflow_mode: 'break',
+          ...this.getClickHouseSettings(),
+          // The reader emits whole dictionary blocks until it has
+          // max_block_size rows; at 1, each branch's LIMIT stops it after the
+          // first block instead of ~128.
+          max_block_size: '1',
+          // Makes the WITH aliases visible to every UNION ALL branch.
+          enable_global_with_statement: 1,
+          enable_filesystem_cache: 0,
+        },
+        abort_signal: signal,
+      })
+      .then(res => res.json<MapTextIndexBestPartsRow>());
+
+    warnOnKeysIndexGaps({ databaseName, tableName, queryOptions, rows: data });
+    // Without GROUP BY, a branch that found no tokens still yields a row.
+    return data
+      .filter(row => row.value.length > 0)
+      .map(row => ({ key: `${row.column}['${row.key}']`, value: row.value }));
+  }
+
+  /** Every key's values from every part in the date range, in one pass. */
+  private async scanMapTextIndexValues({
+    databaseName,
+    tableName,
+    connectionId,
+    queryOptions,
+    dateRange,
+    timestampValueExpression,
+    signal,
+  }: MapTextIndexValuesQuery): Promise<KeyValues[]> {
+    const sqlBranches: Array<ChSql> = [];
+    for (const [columnName, info] of queryOptions.entries()) {
+      const orChain = concatChSql(
+        ' OR ',
+        // Inline keys as SQL-escaped literals, not bind params: ~100
+        // per-key params exceed the web client's URL param budget and
+        // silently switch the request to a multipart body that proxies
+        // may reject. Keys are ingest-controlled, hence SqlString.escape.
+        info.keys.map(
+          k =>
+            chSql`startsWith(token, ${{
+              UNSAFE_RAW_SQL: SqlString.escape(`${k}${info.separator}`),
+            }})`,
+        ),
+      );
+      const partsFilter = await this.partsOverlapFilter({
+        databaseName,
+        tableName,
+        dateRange,
+        timestampValueExpression,
+      });
+      const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
+      const sql = chSql`
+        SELECT * FROM (
+          SELECT ${{ String: columnName }} as column,
+            substring(token, 1, position(token, ${{ String: info.separator }}) - 1) AS key,
+            groupUniqArray(${{ Int32: info.limit }})(${valueSql}) AS value
+          FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: info.indexName }})
+          WHERE ${partsFilter}
+            AND (${orChain})
+            AND ${valueSql} != ''
+          GROUP BY column, key
+        )`;
+      sqlBranches.push(sql);
+    }
+    const sql = concatChSql(' UNION ALL ', sqlBranches);
+
+    return this.clickhouseClient
+      .query<'JSON'>({
+        query: sql.sql,
+        query_params: sql.params,
+        connectionId,
+        clickhouse_settings: {
+          max_rows_to_read: String(
+            this.getClickHouseSettings().max_rows_to_read ??
+              DEFAULT_METADATA_MAX_ROWS_TO_READ,
+          ),
+          read_overflow_mode: 'break',
+          ...this.getClickHouseSettings(),
+        },
+        abort_signal: signal,
+      })
+      .then(res => res.json<{ column: string; key: string; value: string[] }>())
+      .then(d =>
+        d.data.map(row => ({
+          key: `${row.column}['${row.key}']`,
+          value: row.value,
+        })),
+      );
   }
 
   private async getTextIndexKeyValues({
@@ -2608,6 +2850,7 @@ export class Metadata {
     tableName,
     keyExpressions,
     maxValuesPerKey = 20,
+    mapTextIndexPartsPerKey = DEFAULT_MAP_TEXT_INDEX_PARTS_PER_KEY,
     connectionId,
     metadataMVs,
     dateRange,
@@ -2618,12 +2861,31 @@ export class Metadata {
     tableName: string;
     keyExpressions: string[];
     maxValuesPerKey?: number;
+    /**
+     * For Map columns with both a `key=value` and a keys-only text index: how
+     * many parts each key's values are read from. A number N reads the N parts
+     * holding the key in the most rows plus the newest part holding it; 'all'
+     * reads every part holding it.
+     */
+    mapTextIndexPartsPerKey?: MapTextIndexPartsPerKey;
     connectionId: string;
     metadataMVs?: MetadataMaterializedViews;
     dateRange: [Date, Date];
     timestampValueExpression: string;
     signal?: AbortSignal;
   }): Promise<KeyValues[]> {
+    if (
+      mapTextIndexPartsPerKey !== 'all' &&
+      !(
+        Number.isInteger(mapTextIndexPartsPerKey) &&
+        mapTextIndexPartsPerKey >= 1
+      )
+    ) {
+      throw new Error(
+        `mapTextIndexPartsPerKey must be a positive integer or 'all', got: ${String(mapTextIndexPartsPerKey)}`,
+      );
+    }
+
     if (keyExpressions.length === 0) return [];
 
     if (keyExpressions.length > GET_ALL_KEY_VALUES_CHUNK_SIZE) {
@@ -2634,6 +2896,7 @@ export class Metadata {
             tableName,
             keyExpressions: batch,
             maxValuesPerKey,
+            mapTextIndexPartsPerKey,
             connectionId,
             metadataMVs,
             dateRange,
@@ -2688,6 +2951,8 @@ export class Metadata {
           if (!entry) {
             entry = {
               indexName: mapTextIndex.kv.indexName,
+              keysIndexName: mapTextIndex.key?.indexName,
+              partsPerKey: mapTextIndexPartsPerKey,
               limit: maxValuesPerKey,
               separator: mapTextIndex.kv.separator,
               keys: [],

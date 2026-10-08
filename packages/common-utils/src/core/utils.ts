@@ -1825,12 +1825,25 @@ export type TextIndexColumnQueryOptions = Map<
   }
 >;
 
+/**
+ * How many parts of the date range to read each Map key's values from: the N
+ * parts holding the key in the most rows (plus the newest part holding it), or
+ * every part holding it.
+ */
+export type MapTextIndexPartsPerKey = number | 'all';
+
 // This type serves as options to fetch values from map text indices.
 // This is a record of Map Column Name to required query parameters.
 export type TextIndexMapColumnQueryOptions = Map<
   string,
   {
     indexName: string;
+    /**
+     * Keys-only text index over the same Map. Without it, every key's values
+     * are read from every part in the date range.
+     */
+    keysIndexName?: string;
+    partsPerKey: MapTextIndexPartsPerKey;
     limit: number;
     separator: string;
     keys: string[];
