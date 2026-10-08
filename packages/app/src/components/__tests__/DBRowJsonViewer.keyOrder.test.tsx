@@ -1,4 +1,5 @@
 import React from 'react';
+import { Provider } from 'jotai';
 import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -28,14 +29,18 @@ const LEGACY_STORED_OPTIONS = {
 
 const data = { zebra: 'z', alpha: 'a', Mango: 'm' };
 
-// env="test" mounts the menu dropdown without a transition to wait on.
+// env="test" mounts the menu dropdown without a transition to wait on. The
+// viewer options atom is module-scoped, so each render gets its own jotai store;
+// the atom then reads localStorage when it mounts in that store.
 const renderViewer = () =>
   render(
-    <MantineProvider env="test">
-      <RowSidePanelContext value={{}}>
-        <DBRowJsonViewer data={data} />
-      </RowSidePanelContext>
-    </MantineProvider>,
+    <Provider>
+      <MantineProvider env="test">
+        <RowSidePanelContext value={{}}>
+          <DBRowJsonViewer data={data} />
+        </RowSidePanelContext>
+      </MantineProvider>
+    </Provider>,
   );
 
 const renderedKeys = (container: HTMLElement) =>
@@ -56,18 +61,16 @@ const selectKeyOrder = async (value: 'asc' | 'desc' | 'original') => {
 const storedKeyOrder = () =>
   JSON.parse(localStorage.getItem(VIEWER_OPTIONS_KEY) ?? '{}').keyOrder;
 
-// The viewer options atom lives at module scope, so its value carries across
-// the tests in this file — seed localStorage once, before the first render
-// reads it, and let the cases run in order.
 describe('DBRowJsonViewer key order', () => {
-  beforeAll(() => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('sorts alphabetically when stored options predate the setting', async () => {
     localStorage.setItem(
       VIEWER_OPTIONS_KEY,
       JSON.stringify(LEGACY_STORED_OPTIONS),
     );
-  });
-
-  it('sorts alphabetically when stored options predate the setting', async () => {
     const { container } = renderViewer();
 
     expect(renderedKeys(container)).toEqual(['alpha', 'Mango', 'zebra']);
@@ -78,8 +81,20 @@ describe('DBRowJsonViewer key order', () => {
     ).toBeInTheDocument();
   });
 
+  it('restores a stored order on render', async () => {
+    localStorage.setItem(
+      VIEWER_OPTIONS_KEY,
+      JSON.stringify({ ...LEGACY_STORED_OPTIONS, keyOrder: 'original' }),
+    );
+    const { container } = renderViewer();
+
+    expect(renderedKeys(container)).toEqual(['zebra', 'alpha', 'Mango']);
+  });
+
   it('switches between the stored order and reverse alphabetical', async () => {
     const { container } = renderViewer();
+
+    expect(renderedKeys(container)).toEqual(['alpha', 'Mango', 'zebra']);
 
     await selectKeyOrder('original');
     expect(renderedKeys(container)).toEqual(['zebra', 'alpha', 'Mango']);
