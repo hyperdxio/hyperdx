@@ -64,6 +64,24 @@ describe('opampController', () => {
     });
   });
 
+  describe('buildOtelCollectorConfig prometheusremotewrite exporter', () => {
+    it('takes the scheme and TLS mode from the collector environment, defaulting to plain HTTP', () => {
+      configState.IS_PROMQL_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      // The defaults matter: collector images older than this change don't
+      // export HYPERDX_PROMETHEUS_*, and must keep today's plain-HTTP config.
+      expect(cfg.exporters?.prometheusremotewrite).toMatchObject({
+        endpoint:
+          '${env:HYPERDX_PROMETHEUS_SCHEME:-http}://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        tls: { insecure: '${env:HYPERDX_PROMETHEUS_TLS_INSECURE:-true}' },
+      });
+    });
+  });
+
   describe('buildOtelCollectorConfig otlp/hyperdx authentication', () => {
     it('accepts bare and bearer-prefixed authorization values for each API key', () => {
       const cfg = buildOtelCollectorConfig([

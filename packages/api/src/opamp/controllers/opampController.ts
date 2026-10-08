@@ -149,7 +149,7 @@ type CollectorConfig = {
     prometheusremotewrite?: {
       endpoint: string;
       tls: {
-        insecure: boolean;
+        insecure: string;
       };
       resource_to_telemetry_conversion: {
         enabled: boolean;
@@ -336,10 +336,14 @@ export const buildOtelCollectorConfig = (
     );
 
     if (config.IS_PROMQL_ENABLED && otelCollectorConfig.exporters) {
+      // The collector's entrypoint.sh derives the scheme and TLS mode from
+      // CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT. The defaults keep plain HTTP
+      // for collector images that predate it.
       otelCollectorConfig.exporters.prometheusremotewrite = {
-        endpoint: 'http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        endpoint:
+          '${env:HYPERDX_PROMETHEUS_SCHEME:-http}://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
         tls: {
-          insecure: true,
+          insecure: '${env:HYPERDX_PROMETHEUS_TLS_INSECURE:-true}',
         },
         resource_to_telemetry_conversion: {
           enabled: true,
