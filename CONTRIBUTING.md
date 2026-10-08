@@ -108,8 +108,9 @@ account:
 1. Run `yarn app:dev:local` and open the app URL it prints.
 2. On the onboarding screen, click **Connect to Demo Server**. This adds a
    `Demo` connection and the Demo Logs, Traces, Metrics and Sessions sources,
-   the same data play.hyperdx.io uses. Connections and sources live in your
-   browser's local storage; clear site data to start over.
+   the same data play.hyperdx.io uses. Connections and sources live in browser
+   storage; clear site data to start over. Connections last only for the browser
+   session, so reopening the app may require reconnecting to the demo server.
 3. Follow your steps from there.
 
 This is the same mode the Vercel preview on your PR runs in, so reviewers can
