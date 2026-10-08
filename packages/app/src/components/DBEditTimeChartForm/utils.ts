@@ -48,6 +48,10 @@ import {
   tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import {
+  buildHeatmapSeriesConfig,
+  resolveHeatmapGranularity,
+} from '@/components/DBHeatmapChart/heatmapQueries';
 import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getMetricTableName } from '@/utils';
@@ -285,6 +289,13 @@ function toQueriedPromqlConfig(
   }
   if (isTimeSeriesDisplayType(config.displayType)) {
     const converted = convertToTimeChartConfig(config);
+    return isPromqlChartConfig(converted) ? converted : config;
+  }
+  if (config.displayType === DisplayType.Heatmap) {
+    const converted = buildHeatmapSeriesConfig(
+      config,
+      resolveHeatmapGranularity(config),
+    );
     return isPromqlChartConfig(converted) ? converted : config;
   }
   return config;

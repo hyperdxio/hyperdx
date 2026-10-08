@@ -1,9 +1,14 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
+  PromqlConfigWithDateRange,
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -36,10 +41,15 @@ export type HeatmapChartConfig = {
   with?: BuilderChartConfigWithDateRange['with'];
 };
 
+/** The configs a series-mode heatmap can query. */
+export type HeatmapSeriesChartConfig =
+  | BuilderChartConfigWithDateRange
+  | PromqlConfigWithDateRange;
+
 /**
  * What a heatmap queries, by mode. Distribution heatmaps bucket a value
- * expression server-side; series heatmaps query one builder series per time
- * bucket and draw a row per series.
+ * expression server-side; series heatmaps query one builder series or PromQL
+ * expression per time bucket and draw a row per series.
  */
 export type HeatmapQuery =
   | {
@@ -49,7 +59,7 @@ export type HeatmapQuery =
     }
   | {
       mode: 'series';
-      config: BuilderChartConfigWithDateRange;
+      config: HeatmapSeriesChartConfig;
     };
 
 const HEATMAP_AUTO_GRANULARITY_BUCKETS = 245;
@@ -74,10 +84,9 @@ export function resolveHeatmapGranularity({
   );
 }
 
-export function toHeatmapQuery(
-  config: BuilderChartConfigWithDateRange,
-): HeatmapQuery {
-  if (getHeatmapMode(config) === 'series') {
+/** PromQL heatmaps only support series mode. */
+export function toHeatmapQuery(config: HeatmapSeriesChartConfig): HeatmapQuery {
+  if (isPromqlChartConfig(config) || getHeatmapMode(config) === 'series') {
     return { mode: 'series', config };
   }
 
@@ -104,18 +113,19 @@ export function toHeatmapQuery(
 }
 
 /**
- * The time-chart query behind a series-mode heatmap: `select[0]` and the
- * group by, bucketed at the heatmap's granularity.
+ * The time-chart query behind a series-mode heatmap, bucketed at the heatmap's
+ * granularity: `select[0]` and the group by for a builder config, or the first
+ * expression's range query for PromQL.
  */
 export function buildHeatmapSeriesConfig(
-  config: BuilderChartConfigWithDateRange,
+  config: HeatmapSeriesChartConfig,
   granularity: SQLInterval,
 ): ChartConfigWithDateRange {
   return convertToTimeChartConfig({
     ...config,
-    select: Array.isArray(config.select)
-      ? config.select.slice(0, 1)
-      : config.select,
+    ...(isBuilderChartConfig(config) && Array.isArray(config.select)
+      ? { select: config.select.slice(0, 1) }
+      : {}),
     granularity,
     // Heatmaps have no series limit control, a default is applied automatically
     seriesLimit: undefined,
