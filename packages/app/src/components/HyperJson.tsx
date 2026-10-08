@@ -43,8 +43,11 @@ export type FormatLeafValue = (arg0: {
 /**
  * How object keys are ordered at every level of the tree.
  *
- * `original` keeps whatever order the data arrived in — for ClickHouse
- * `Map(...)` columns that is physical storage order.
+ * `original` keeps the object's own key order — for ClickHouse `Map(...)`
+ * columns, physical storage order — except that integer-like keys (`"200"`,
+ * `Map(UInt64, …)` keys) always come first in ascending numeric order. JS
+ * objects order keys that way, so the true order is already gone once the
+ * query result is parsed.
  */
 export type KeyOrder = 'asc' | 'desc' | 'original';
 
