@@ -11,6 +11,7 @@ import {
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
+  isAccessDeniedError,
   JSDataType,
   Row,
   streamToAsyncIterator,
@@ -652,6 +653,50 @@ export class Metadata {
     );
   }
 
+  async getTimeSeriesTables({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<Pick<TableConnection, 'databaseName' | 'tableName'>[]> {
+    return this.cache.getOrFetch(
+      `${connectionId}.timeSeriesTables`,
+      async () => {
+        const sql = chSql`
+        SELECT database AS databaseName, name AS tableName
+        FROM system.tables
+        WHERE engine = 'TimeSeries'
+        ORDER BY database, name
+      `;
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res =>
+              res.json<Pick<TableConnection, 'databaseName' | 'tableName'>>(),
+            );
+          return json.data;
+        } catch (e) {
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch TimeSeries tables:',
+              e,
+            );
+            return [];
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,
@@ -994,6 +1039,15 @@ export class Metadata {
       supportsMergeTreeTextIndex(clickhouseVersion);
     // Text Index path: query the key rollup index
     const textIndexInfo = textIndexInfoLookup.get(column);
+    const textIndexQuerySettings: ClickHouseSettings = {
+      ...this.getClickHouseSettings(),
+      // 'throw', not 'break': a partial key list would be cached without a
+      // TTL. On timeout the rollup/scan paths below take over.
+      max_execution_time: 15,
+      timeout_overflow_mode: 'throw',
+    };
+    // Set when the text index read hits a row policy; see the rollup guard.
+    let rowPolicyDenied = false;
     // Without timestampValueExpression, partsFilter can't bound this either. #3037
     if (
       textIndexInfo?.key?.indexName &&
@@ -1007,11 +1061,13 @@ export class Metadata {
         timestampValueExpression,
       });
       const index = textIndexInfo.key.indexName;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT token AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
@@ -1019,7 +1075,8 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: this.getClickHouseSettings(),
+            clickhouse_settings: textIndexQuerySettings,
+            abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
@@ -1028,11 +1085,16 @@ export class Metadata {
           return keys;
         }
       } catch (e) {
+        // The caller gave up; don't start the fallback with a dead signal and
+        // cache its instant rejection under the rollup key.
+        if (signal?.aborted) throw e;
+        // e.g. ACCESS_DENIED under a row policy or BAD_ARGUMENTS on a
+        // Distributed table; the paths below still work.
+        rowPolicyDenied = isAccessDeniedError(e);
         console.warn(
-          'getMapKeys rollup query failed for key text index query',
+          'getMapKeys key text index query failed; falling through to the next strategy',
           e,
         );
-        return [];
       }
     } else if (
       textIndexInfo?.kv?.indexName &&
@@ -1047,11 +1109,13 @@ export class Metadata {
       });
       const index = textIndexInfo.kv.indexName;
       const separator = textIndexInfo.kv.separator;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT splitByString(${{ String: separator }}, token)[1] AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
@@ -1059,7 +1123,8 @@ export class Metadata {
             query: sql.sql,
             query_params: sql.params,
             connectionId,
-            clickhouse_settings: this.getClickHouseSettings(),
+            clickhouse_settings: textIndexQuerySettings,
+            abort_signal: signal,
           })
           .then(r => r.json<{ key: string }>())
           .then(d => d.data.map(r => r.key).filter(Boolean));
@@ -1068,16 +1133,20 @@ export class Metadata {
           return keys;
         }
       } catch (e) {
+        // See the key text index catch above.
+        if (signal?.aborted) throw e;
+        rowPolicyDenied = isAccessDeniedError(e);
         console.warn(
-          'getMapKeys rollup query failed for kv text index query',
+          'getMapKeys kv text index query failed; falling through to the next strategy',
           e,
         );
-        return [];
       }
     }
 
-    // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range
-    if (metadataMVs && alignedDateRange) {
+    // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range.
+    // Rollups are separate tables the source's row policy doesn't cover, so
+    // after a policy denial only the source-table scan below is safe.
+    if (metadataMVs && alignedDateRange && !rowPolicyDenied) {
       // Own cache key: the shipped OTel rollups only index NativeColumn, so
       // Map columns come back empty here and must fall through to the bounded
       // scan below. Caching [] under cacheKey would block that fallback.

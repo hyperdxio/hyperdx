@@ -65,6 +65,7 @@ jest.mock('@/layout', () => ({
 }));
 jest.mock('@/theme/ThemeProvider', () => ({
   useBrandDisplayName: () => 'HyperDX',
+  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
 }));
 jest.mock('@/useConfirm', () => ({
   useConfirm: () => jest.fn(),

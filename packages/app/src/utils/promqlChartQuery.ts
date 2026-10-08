@@ -1,3 +1,4 @@
+import type { QueryAttribution } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   displayTypeSupportsInstantQuery,
   getQueriedPromqlSeries,
@@ -8,6 +9,7 @@ import {
 import { renderPromqlSeriesNames } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import { substitutePromqlChartConfigTemplates } from '@hyperdx/common-utils/dist/macros';
 import {
+  DateRange,
   DisplayType,
   PrometheusMatrixResult,
   PromqlChartConfig,
@@ -83,6 +85,7 @@ async function fetchInstantExpression(
   series: PromqlSeries,
   evalTime: Date,
   signal: AbortSignal,
+  attribution: QueryAttribution,
 ): Promise<ExpressionResult> {
   const response = await prometheusApi.query({
     query: series.expression,
@@ -96,6 +99,7 @@ async function fetchInstantExpression(
     database: config.from?.databaseName,
     table: config.from?.tableName,
     signal,
+    attribution,
   });
 
   return {
@@ -106,21 +110,27 @@ async function fetchInstantExpression(
 
 /** Evaluate one expression over the whole window, at the range endpoint. */
 async function fetchRangeExpression(
-  config: PromqlChartConfig,
+  config: PromqlChartConfig & Pick<DateRange, 'minGranularitySeconds'>,
   series: PromqlSeries,
   dateRange: [Date, Date],
   signal: AbortSignal,
+  attribution: QueryAttribution,
 ): Promise<ExpressionResult> {
   const [startDate, endDate] = dateRange;
   const response = await prometheusApi.queryRange({
     query: series.expression,
     start: startDate.getTime() / 1000,
     end: endDate.getTime() / 1000,
-    step: promqlStep(config.granularity, dateRange),
+    step: promqlStep(
+      config.granularity,
+      dateRange,
+      config.minGranularitySeconds,
+    ),
     connectionId: config.connection,
     database: config.from?.databaseName,
     table: config.from?.tableName,
     signal,
+    attribution,
   });
 
   if (response.status !== 'success' || !response.data) {
@@ -257,9 +267,11 @@ export function toTableRows(
  * response, so the chart formatters treat it like every other source.
  */
 export async function queryPromqlChartConfig(
-  config: PromqlChartConfig,
+  config: PromqlChartConfig & Pick<DateRange, 'minGranularitySeconds'>,
   dateRange: [Date, Date],
   signal: AbortSignal,
+  // Required so a new caller can't forget it and leave its queries untagged.
+  attribution: QueryAttribution,
 ): Promise<ChartQueryResult> {
   // Expand dashboard variables and macros before sending to Prometheus.
   const substituted = substitutePromqlChartConfigTemplates({
@@ -271,8 +283,20 @@ export async function queryPromqlChartConfig(
     getQueriedPromqlSeries(substituted).map(series =>
       displayTypeSupportsInstantQuery(substituted) &&
       promqlSeriesQueryType(series) === 'instant'
-        ? fetchInstantExpression(substituted, series, dateRange[1], signal)
-        : fetchRangeExpression(substituted, series, dateRange, signal),
+        ? fetchInstantExpression(
+            substituted,
+            series,
+            dateRange[1],
+            signal,
+            attribution,
+          )
+        : fetchRangeExpression(
+            substituted,
+            series,
+            dateRange,
+            signal,
+            attribution,
+          ),
     ),
   );
 

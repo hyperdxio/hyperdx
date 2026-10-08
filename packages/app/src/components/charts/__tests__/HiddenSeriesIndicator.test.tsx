@@ -42,4 +42,38 @@ describe('HiddenSeriesIndicator', () => {
     await userEvent.click(button);
     expect(onLoadAll).toHaveBeenCalledTimes(1);
   });
+
+  describe('passive notice copy', () => {
+    const hoverIcon = async (container: HTMLElement) => {
+      const icon = container.querySelector('svg');
+      expect(icon).not.toBeNull();
+      await userEvent.hover(icon!);
+    };
+
+    it('gives SQL advice by default', async () => {
+      const { container } = renderWithMantine(
+        <HiddenSeriesIndicator
+          hiddenSeriesCount={900}
+          renderedSeriesCount={100}
+        />,
+      );
+      await hoverIcon(container);
+      expect(await screen.findByText(/stricter GROUP BY/i)).toBeInTheDocument();
+    });
+
+    it('uses reduceCardinalityHint in place of the SQL advice', async () => {
+      const { container } = renderWithMantine(
+        <HiddenSeriesIndicator
+          hiddenSeriesCount={900}
+          renderedSeriesCount={100}
+          reduceCardinalityHint="Narrow the label matchers."
+        />,
+      );
+      await hoverIcon(container);
+      expect(
+        await screen.findByText(/narrow the label matchers/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/stricter GROUP BY/i)).not.toBeInTheDocument();
+    });
+  });
 });

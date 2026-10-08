@@ -1,8 +1,13 @@
-import { ClickHouseError } from '@clickhouse/client-common';
+import {
+  ClickHouseError,
+  type ClickHouseSettings,
+} from '@clickhouse/client-common';
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
+  isTimeSeriesDisplayType,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -29,6 +34,7 @@ import {
   convertToInternalTileConfig,
   isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { isQueryTimeoutError } from '@/tasks/checkAlerts/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
@@ -69,19 +75,18 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 // ─── Safety limits ───────────────────────────────────────────────────────────
 
 /** ClickHouse settings applied to all MCP query-tool executions.
- *  readonly=2 so max_execution_time can be set
- *  (readonly=1 rejects all setting changes). */
-const MCP_CLICKHOUSE_SETTINGS = {
+ *  readonly=2 so max_execution_time can be set (readonly=1 rejects it). */
+export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
   max_execution_time: 30,
-  readonly: 2,
-} as const;
+  readonly: '2',
+};
 
 /**
- * HTTP request timeout for MCP query-tool ClickHouse clients.
- * Set slightly above max_execution_time so ClickHouse can return a clean
- * timeout error before the HTTP connection is aborted.
+ * HTTP request timeout for MCP query-tool ClickHouse clients. Set above
+ * max_execution_time so ClickHouse returns a clean timeout before the HTTP
+ * connection is aborted.
  */
-const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+export const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
 
 // ─── Increase top-N cap hint ────────────────────────────────────────────────
 
@@ -551,11 +556,15 @@ export async function runConfigTile(
     // collapses to one row per group. Default to "auto" so the renderer
     // picks a bucket, mirroring the REST charts path
     // (packages/api/src/routers/external-api/v2/charts.ts:289).
-    // Search tiles intentionally have no granularity (handled above).
+    // Series heatmaps bucket by time like line charts; distribution heatmaps
+    // compute their own buckets. Search tiles intentionally have no
+    // granularity (handled above).
+    const isSeriesHeatmap =
+      builderConfig.displayType === DisplayType.Heatmap &&
+      getHeatmapMode(builderConfig) === 'series';
     const granularityOverride =
       !isSearch &&
-      (builderConfig.displayType === DisplayType.Line ||
-        builderConfig.displayType === DisplayType.StackedBar)
+      (isTimeSeriesDisplayType(builderConfig.displayType) || isSeriesHeatmap)
         ? { granularity: options?.granularity ?? 'auto' }
         : {};
 
@@ -687,6 +696,9 @@ const SERVER_CH_ERROR_TYPES = new Set([
   'SOCKET_TIMEOUT',
   'POCO_EXCEPTION',
   'ALL_CONNECTION_TRIES_FAILED',
+  // A query hitting max_execution_time is a resource failure, not a user
+  // mistake; the `user` default hid these in error views.
+  'TIMEOUT_EXCEEDED',
 ]);
 
 /**
@@ -865,6 +877,20 @@ function findCause<T>(
   return undefined;
 }
 
+const SOCKET_TIMEOUT_CODES: ReadonlySet<string> = new Set(['ETIMEDOUT']);
+
+/**
+ * True when a query ran out of time: ClickHouse's max_execution_time or the
+ * client request timeout. A socket ETIMEDOUT is excluded because ClickHouse
+ * was unreachable, so narrowing the query won't help.
+ */
+export function isQueryOutOfTime(e: unknown): boolean {
+  const socketTimeout = findCause(e, (c): c is Error =>
+    hasNodeErrorCode(c, SOCKET_TIMEOUT_CODES),
+  );
+  return !socketTimeout && isQueryTimeoutError(e);
+}
+
 /** @internal Exported for testing only. */
 export function errorHint(msg: string, error?: unknown): string | null {
   const unknownVariableError = findCause(
@@ -902,6 +928,19 @@ export function errorHint(msg: string, error?: unknown): string | null {
     return (
       'Add a LIMIT, narrow the time range, or use a smaller granularity. ' +
       'The result row count is too large to serialize back to the agent.'
+    );
+  }
+  // Match only real timeouts. A bare `max_execution_time` substring would also
+  // hijack SETTING_CONSTRAINT_VIOLATION / readonly errors ("Setting
+  // max_execution_time shouldn't be greater than…"), which need a different fix.
+  if (
+    /TIMEOUT_EXCEEDED|Timeout exceeded/i.test(msg) ||
+    isQueryOutOfTime(error)
+  ) {
+    return (
+      'The query exceeded its execution-time limit. Narrow the time range so ' +
+      'ClickHouse can prune partitions, add filters to reduce the rows scanned, ' +
+      'or lower the requested LIMIT.'
     );
   }
   if (/TOO_MANY_ROWS_OR_BYTES|RESULT_IS_TOO_LARGE/i.test(msg)) {

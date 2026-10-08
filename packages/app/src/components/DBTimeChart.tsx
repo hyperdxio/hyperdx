@@ -23,7 +23,11 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
-import { IconChartBar, IconChartLine } from '@tabler/icons-react';
+import {
+  IconChartAreaLine,
+  IconChartBar,
+  IconChartLine,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -61,6 +65,9 @@ import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+const PROMQL_REDUCE_CARDINALITY_HINT =
+  'Narrow the label matchers, aggregate with sum by (...), or set a series limit to reduce the number of series.';
 
 /** A single group column / value pair decoded from a chart series key. */
 export type SeriesGroupFilter = { column: string; value: string };
@@ -927,15 +934,23 @@ function DBTimeChartComponent({
           options={[
             {
               value: DisplayType.Line,
-              label: 'Display as Line Chart',
+              label: 'Display as line chart',
               icon: <IconChartLine />,
             },
             {
               value: DisplayType.StackedBar,
               label: config.compareToPreviousPeriod
-                ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                : 'Display as Bar Chart',
+                ? 'Stacked bar chart unavailable when comparing to previous period'
+                : 'Display as stacked bar chart',
               icon: <IconChartBar />,
+              disabled: config.compareToPreviousPeriod,
+            },
+            {
+              value: DisplayType.StackedLine,
+              label: config.compareToPreviousPeriod
+                ? 'Stacked line chart unavailable when comparing to previous period'
+                : 'Display as stacked line chart',
+              icon: <IconChartAreaLine />,
               disabled: config.compareToPreviousPeriod,
             },
           ]}
@@ -953,6 +968,11 @@ function DBTimeChartComponent({
           // raise the cap (loadAllHandler is undefined otherwise), so the
           // notice never advertises a no-op click.
           onLoadAll={loadAllHandler}
+          reduceCardinalityHint={
+            isPromqlChartConfig(config)
+              ? PROMQL_REDUCE_CARDINALITY_HINT
+              : undefined
+          }
         />,
       );
     }

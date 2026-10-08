@@ -9,10 +9,12 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { displayTypeSupportsBuilderAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
+  HeatmapMode,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -83,7 +85,8 @@ type ChartEditorControlsProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
-  openHeatmapSettings: () => void;
+  heatmapMode: HeatmapMode;
+  onHeatmapModeChange: (mode: HeatmapMode) => void;
 };
 
 export function ChartEditorControls({
@@ -117,7 +120,8 @@ export function ChartEditorControls({
   chartConfigForExplanations,
   onSubmit,
   openDisplaySettings,
-  openHeatmapSettings,
+  heatmapMode,
+  onHeatmapModeChange,
 }: ChartEditorControlsProps) {
   // Formulas (HDX-5080): derived series computed from the chart's series via
   // letter-ref arithmetic expressions. Metric and event (log/trace) sources,
@@ -224,12 +228,18 @@ export function ChartEditorControls({
       </Flex>
       {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
         <HeatmapSeriesEditor
+          key={fields[0]?.id}
           control={control}
           setValue={setValue}
+          clearErrors={clearErrors}
+          errors={errors}
           tableSource={tableSource}
           dateRange={dateRange}
+          parentRef={parentRef}
           onSubmit={onSubmit}
-          onOpenDisplaySettings={openHeatmapSettings}
+          onOpenDisplaySettings={openDisplaySettings}
+          mode={heatmapMode}
+          onModeChange={onHeatmapModeChange}
         />
       ) : displayType === DisplayType.EventPatterns ? (
         <Flex gap="xs" direction="column">
@@ -489,9 +499,7 @@ export function ChartEditorControls({
                     checked={ratioMode === 'share_of_total'}
                   />
                 )}
-              {(displayType === DisplayType.Line ||
-                displayType === DisplayType.StackedBar ||
-                displayType === DisplayType.Number) &&
+              {displayTypeSupportsBuilderAlerts(displayType) &&
                 alertsEnabled &&
                 !alert &&
                 !IS_LOCAL_MODE && (

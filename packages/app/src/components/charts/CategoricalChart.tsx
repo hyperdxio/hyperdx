@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
-import { hasNonEmptyOrderBy } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  hasNonEmptyOrderBy,
+  hasPositiveSeriesLimit,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
@@ -13,7 +16,10 @@ import {
   formatResponseForCategoricalChart,
 } from '@/ChartUtils';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import { getColorProps } from '@/utils';
@@ -46,16 +52,20 @@ export function useCategoricalChart({
   toolbarSuffix,
 }: CategoricalChartProps) {
   const { data: source } = useSource({ id: config.source });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   const queriedConfig = useMemo(() => {
     if (isBuilderChartConfig(config)) {
       return convertToCategoricalChartConfig(config);
     }
     if (isPromqlChartConfig(config)) {
-      return convertToReducedPromqlChartConfig(config);
+      return convertToReducedPromqlChartConfig({
+        ...config,
+        minGranularitySeconds,
+      });
     }
     return config;
-  }, [config]);
+  }, [config, minGranularitySeconds]);
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
@@ -123,8 +133,21 @@ export function useCategoricalChart({
         isBuilderChartConfig(queriedConfig) &&
         hasNonEmptyOrderBy(queriedConfig.orderBy);
 
+      // Builder charts apply seriesLimit as a SQL LIMIT. Prometheus returns
+      // every series, so a PromQL limit trims the largest-first rows here.
+      const maxGroups =
+        isPromqlChartConfig(queriedConfig) &&
+        hasPositiveSeriesLimit(queriedConfig.seriesLimit)
+          ? queriedConfig.seriesLimit
+          : undefined;
+
       return [
-        formatResponseForCategoricalChart(data, getColorProps, !hasOrderBy),
+        formatResponseForCategoricalChart(
+          data,
+          getColorProps,
+          !hasOrderBy,
+          maxGroups,
+        ),
         null,
       ];
     } catch (error) {

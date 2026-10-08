@@ -271,10 +271,30 @@ describe('queryPromqlChartConfig', () => {
       },
       dateRange,
       new AbortController().signal,
+      {},
     );
 
     expect(prometheusApi.query).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 10_000 }),
+    );
+  });
+
+  it('passes the attribution through to the request', async () => {
+    const attribution = { surface: 'dashboard' as const, tile: 'tile-1' };
+    await queryPromqlChartConfig(
+      {
+        configType: 'promql',
+        displayType: DisplayType.Table,
+        connection: 'conn',
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+      },
+      dateRange,
+      new AbortController().signal,
+      attribution,
+    );
+
+    expect(prometheusApi.query).toHaveBeenCalledWith(
+      expect.objectContaining({ attribution }),
     );
   });
 
@@ -290,10 +310,66 @@ describe('queryPromqlChartConfig', () => {
       },
       dateRange,
       new AbortController().signal,
+      {},
     );
 
     expect(prometheusApi.query).toHaveBeenCalledWith(
       expect.objectContaining({ limit: undefined }),
     );
+  });
+
+  it('runs a heatmap as a range query of its first expression', async () => {
+    jest
+      .mocked(prometheusApi.queryRange)
+      .mockReset()
+      .mockResolvedValue({
+        status: 'success',
+        data: {
+          resultType: 'matrix',
+          result: [
+            {
+              metric: { job: 'api', instance: 'a' },
+              values: [[dateRange[0].getTime() / 1000, '1']],
+            },
+          ],
+        },
+      });
+
+    const result = await queryPromqlChartConfig(
+      {
+        configType: 'promql',
+        displayType: DisplayType.Heatmap,
+        connection: 'conn',
+        granularity: '5 minute',
+        legendTemplate: '{{job}}',
+        promqlExpression: [
+          {
+            expression: 'rate(up{job="$job"}[$__interval])',
+            queryType: 'instant',
+          },
+          { expression: 'down' },
+        ],
+        variables: [{ name: 'job', values: ['api'] }],
+      },
+      dateRange,
+      new AbortController().signal,
+      {},
+    );
+
+    expect(prometheusApi.query).not.toHaveBeenCalled();
+    expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+    expect(prometheusApi.queryRange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        query: 'rate(up{job="api"}[300s])',
+        step: '300s',
+      }),
+    );
+    expect(result.data).toEqual([
+      {
+        __hdx_time_bucket: dateRange[0].toISOString(),
+        value: 1,
+        series_name: 'api',
+      },
+    ]);
   });
 });

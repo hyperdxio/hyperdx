@@ -4,12 +4,16 @@ import { screen, within } from '@testing-library/react';
 import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import { DBPieChart } from '@/components/DBPieChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -318,6 +322,16 @@ describe('DBPieChart', () => {
       expect(queriedConfig.granularity).toBe('1 minute');
     });
 
+    it("floors an auto granularity at the source's minimum", () => {
+      jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(300);
+
+      renderWithMantine(<DBPieChart config={promqlConfig} />);
+
+      const queriedConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+      expect(queriedConfig.granularity).toBe('5 minute');
+      expect(queriedConfig.minGranularitySeconds).toBe(300);
+    });
+
     it('keeps the same query key when only the reducer changes', () => {
       renderWithMantine(<DBPieChart config={promqlConfig} />);
       renderWithMantine(
@@ -337,7 +351,7 @@ describe('DBPieChart', () => {
       expect(second).toEqual(first);
     });
 
-    it('draws a slice per series, largest first', () => {
+    const mockThreeSeries = () =>
       mockUseQueriedChartConfig.mockReturnValue({
         data: {
           data: [
@@ -354,12 +368,31 @@ describe('DBPieChart', () => {
         isError: false,
       });
 
-      renderWithMantine(<DBPieChart config={promqlConfig} />);
-
-      const labels = within(screen.getByTestId('pie-chart-legend'))
+    const legendLabels = () =>
+      within(screen.getByTestId('pie-chart-legend'))
         .getAllByTitle(/.+/)
         .map(el => el.getAttribute('title'));
-      expect(labels).toEqual(['checkout', 'ad', 'cart']);
+
+    it('draws a slice per series, largest first', () => {
+      mockThreeSeries();
+      renderWithMantine(<DBPieChart config={promqlConfig} />);
+      expect(legendLabels()).toEqual(['checkout', 'ad', 'cart']);
+    });
+
+    it('keeps only the largest seriesLimit slices', () => {
+      mockThreeSeries();
+      renderWithMantine(
+        <DBPieChart config={{ ...promqlConfig, seriesLimit: 2 }} />,
+      );
+      expect(legendLabels()).toEqual(['checkout', 'ad']);
+    });
+
+    it('treats a seriesLimit of 0 as unlimited', () => {
+      mockThreeSeries();
+      renderWithMantine(
+        <DBPieChart config={{ ...promqlConfig, seriesLimit: 0 }} />,
+      );
+      expect(legendLabels()).toEqual(['checkout', 'ad', 'cart']);
     });
   });
 });

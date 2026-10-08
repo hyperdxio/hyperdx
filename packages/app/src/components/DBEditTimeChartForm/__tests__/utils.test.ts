@@ -327,6 +327,18 @@ describe('buildRenderedPromqlExpression', () => {
     );
   });
 
+  it("expands macros with a heatmap's finer auto granularity", () => {
+    expect(
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          displayType: DisplayType.Heatmap,
+          granularity: 'auto',
+          promqlExpression: [{ expression: 'rate(up[$__interval])' }],
+        }),
+      )?.expressions?.[0].expression,
+    ).toBe('rate(up[900s])');
+  });
+
   it('expands macros with the granularity a table queries with', () => {
     const seventyMinutes: [Date, Date] = [
       new Date('2024-01-01T00:00:00Z'),
@@ -363,6 +375,59 @@ describe('buildRenderedPromqlExpression', () => {
       ).toBe('up[60s] / 4260s');
     },
   );
+
+  describe("with the source's minimum auto granularity", () => {
+    const render = (
+      displayType: DisplayType,
+      granularity: string,
+      minGranularitySeconds?: number,
+    ) =>
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          displayType,
+          granularity,
+          promqlExpression: [
+            { expression: 'rate(up[$__rate_interval]) / $__interval' },
+          ],
+        }),
+        minGranularitySeconds,
+      )?.expressions?.[0].expression;
+
+    // 70 minutes on auto resolves to 60s, below the 300s floor.
+    it('floors an auto step that is below it', () => {
+      const seventyMinutes: [Date, Date] = [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T01:10:00Z'),
+      ];
+      const renderShort = (displayType: DisplayType) =>
+        buildRenderedPromqlExpression(
+          {
+            ...promqlConfig({
+              displayType,
+              granularity: 'auto',
+              promqlExpression: [{ expression: '$__interval' }],
+            }),
+            dateRange: seventyMinutes,
+          },
+          300,
+        )?.expressions?.[0].expression;
+
+      expect(renderShort(DisplayType.Line)).toBe('300s');
+      expect(renderShort(DisplayType.Table)).toBe('300s');
+      expect(renderShort(DisplayType.Number)).toBe('300s');
+    });
+
+    it('sizes $__rate_interval from it, however the granularity was chosen', () => {
+      // max(15 + 60, 4 * 60), with the hand-picked 15s step kept
+      expect(render(DisplayType.Line, '15 second', 60)).toBe(
+        'rate(up[240s]) / 15s',
+      );
+    });
+
+    it('assumes a 15s scrape interval without one', () => {
+      expect(render(DisplayType.Line, '15 second')).toBe('rate(up[60s]) / 15s');
+    });
+  });
 
   it('reports a substitution failure instead of an expression', () => {
     const result = buildRenderedPromqlExpression(
@@ -441,6 +506,8 @@ describe('displayTypeToActiveTab', () => {
     [DisplayType.Bar, 'bar'],
     [DisplayType.Number, 'number'],
     [DisplayType.Line, 'time'],
+    [DisplayType.StackedBar, 'time'],
+    [DisplayType.StackedLine, 'time'],
   ])('maps %s to %s', (displayType, expected) => {
     expect(displayTypeToActiveTab(displayType)).toBe(expected);
   });
@@ -982,6 +1049,34 @@ describe('buildChartConfigForExplanations', () => {
       expect(result).toBeDefined();
     },
   );
+
+  it("carries the source's minimum auto granularity on the heatmap tab", () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: 'metric-source',
+      tableSource: {
+        kind: SourceKind.Metric,
+        id: 'metric-source',
+        name: 'Metrics',
+        from: { databaseName: 'default', tableName: '' },
+        connection: 'clickhouse',
+        timestampValueExpression: 'Timestamp',
+        resourceAttributesExpression: 'ResourceAttributes',
+        metricTables: {
+          gauge: 'metrics.gauge',
+          sum: 'metrics.sum',
+          histogram: 'metrics.histogram',
+          summary: 'metrics.summary',
+          'exponential histogram': 'metrics.exp_histogram',
+        },
+        minAutoGranularity: '5 minute',
+      } satisfies Extract<TSource, { kind: SourceKind.Metric }>,
+      activeTab: 'heatmap',
+    });
+
+    expect(result?.minGranularitySeconds).toBe(300);
+  });
 
   it('falls back to chartConfig when queriedSource does not match', () => {
     const result = buildChartConfigForExplanations({

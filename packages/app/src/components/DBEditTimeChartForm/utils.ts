@@ -48,6 +48,10 @@ import {
   tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import {
+  buildHeatmapSeriesConfig,
+  resolveHeatmapGranularity,
+} from '@/components/DBHeatmapChart/heatmapQueries';
 import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getMetricTableName } from '@/utils';
@@ -287,12 +291,24 @@ function toQueriedPromqlConfig(
     const converted = convertToTimeChartConfig(config);
     return isPromqlChartConfig(converted) ? converted : config;
   }
+  if (config.displayType === DisplayType.Heatmap) {
+    const converted = buildHeatmapSeriesConfig(
+      config,
+      resolveHeatmapGranularity(config),
+    );
+    return isPromqlChartConfig(converted) ? converted : config;
+  }
   return config;
 }
 
-/** The expressions a PromQL tile is queried with, with macros and variables substituted. */
+/**
+ * The expressions a PromQL tile is queried with, with macros and variables
+ * substituted. `minGranularitySeconds` is the PromQL source's floor, which the
+ * chart applies to `auto` granularity and `$__rate_interval`.
+ */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
+  minGranularitySeconds?: number,
 ): RenderedPromqlExpression | undefined {
   if (queriedConfig == null || !isPromqlChartConfig(queriedConfig)) {
     return undefined;
@@ -300,7 +316,7 @@ export function buildRenderedPromqlExpression(
 
   try {
     const substituted = substitutePromqlChartConfigTemplates(
-      toQueriedPromqlConfig(queriedConfig),
+      toQueriedPromqlConfig({ ...queriedConfig, minGranularitySeconds }),
     );
     return {
       expressions: getQueriedPromqlSeries(substituted).map((series, index) => ({
@@ -427,9 +443,9 @@ export function buildChartConfigForExplanations({
   // so that the MV optimization explanation and generated SQL preview
   // are accurate.  Heatmap is special-cased: it actually runs as two
   // sequential queries (bounds + bucketed counts) that depend on each
-  // other at runtime, so the SQL preview transforms `config` itself into
-  // both queries on render and the MV indicator is suppressed for this
-  // tab.  Returning `config` unchanged is intentional.
+  // other at runtime, so the SQL preview transforms `builderConfig` itself
+  // into both queries on render and the MV indicator is suppressed for this
+  // tab.
   const builderConfig: BuilderChartConfigWithDateRange = {
     ...config,
     minGranularitySeconds: getMinGranularitySeconds(tableSource),
@@ -444,7 +460,7 @@ export function buildChartConfigForExplanations({
   } else if (activeTab === 'pie' || activeTab === 'bar') {
     return convertToCategoricalChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
-    return config;
+    return builderConfig;
   }
 
   return config;
