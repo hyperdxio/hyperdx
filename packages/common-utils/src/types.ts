@@ -1669,6 +1669,13 @@ export type RatioMode = z.infer<typeof RatioModeSchema>;
 export const HeatmapModeSchema = z.enum(['distribution', 'series']);
 export type HeatmapMode = z.infer<typeof HeatmapModeSchema>;
 
+// PromQL heatmaps can also draw pre-bucketed Prometheus histograms (`le` buckets).
+export const PromqlHeatmapModeSchema = z.enum([
+  ...HeatmapModeSchema.options,
+  'histogram',
+]);
+export type PromqlHeatmapMode = z.infer<typeof PromqlHeatmapModeSchema>;
+
 export const HeatmapSettingsSchema = z.object({
   mode: HeatmapModeSchema.optional(),
 });
@@ -1873,6 +1880,7 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   step: z.string().optional(),
   legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
   heatmap: HeatmapSettingsSchema.extend({
+    mode: PromqlHeatmapModeSchema.optional(),
     scaleType: HeatmapScaleTypeSchema.optional(),
   }).optional(),
 });

@@ -106,8 +106,8 @@ function HeatmapSQLPreview({
   };
   const query = toHeatmapQuery(configWithTimestamp);
 
-  // Only PromQL heatmaps are calculated, and they have no SQL to preview
-  if (query.mode === 'calculated') {
+  // Only PromQL heatmaps are calculated or histograms, and they have no SQL
+  if (query.mode === 'calculated' || query.mode === 'histogram') {
     return null;
   }
 
