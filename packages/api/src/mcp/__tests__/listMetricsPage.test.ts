@@ -83,14 +83,20 @@ describe('assembleMetricsPage', () => {
     ]);
   });
 
-  it("resumes a timed-out cursor kind from the cursor's position", () => {
+  it('skips a timed-out kind when nothing was collected so the cursor moves forward', () => {
     const page = assembleMetricsPage(
-      [{ kind: 'sum', afterName: 'm', scan: pending }],
+      [
+        { kind: 'gauge', afterName: 'm', scan: pending },
+        { kind: 'sum', scan: ok('a') },
+      ],
       10,
       true,
     );
-    expect(page?.entries).toEqual([]);
-    expect(page?.next).toEqual({ kind: 'sum', lastName: 'm' });
+    expect(page?.entries).toEqual([{ name: 'a', kind: 'sum' }]);
+    expect(page?.next).toBeUndefined();
+    expect(page?.partialFailure).toEqual([
+      { kind: 'gauge', error: KIND_TIMED_OUT_ERROR },
+    ]);
   });
 
   it('skips failed kinds and records them', () => {

@@ -39,8 +39,8 @@ export const KIND_TIMED_OUT_ERROR =
  * Build a page from per-kind scan results, filling `limit` entries in kind
  * order. Each scan holds up to `limit + 1` names so an overflow can be
  * detected. Returns null when a pending kind still decides the page's
- * contents, unless `finalize` is set, in which case the first pending kind
- * is reported as timed out and the page ends there.
+ * contents, unless `finalize` is set, in which case pending kinds are
+ * reported as timed out.
  *
  * @internal Exported for testing.
  */
@@ -60,10 +60,12 @@ export function assembleMetricsPage(
     const { kind, scan } = slot;
     if (scan.status === 'pending') {
       if (!finalize) return null;
-      // End the page at the timed-out kind so the cursor resumes there.
-      // Moving on to later kinds would leave its names unreachable.
       partialFailure.push({ kind, error: KIND_TIMED_OUT_ERROR });
-      return resumeAt(slot);
+      // End the page at the timed-out kind so the cursor resumes there.
+      // With nothing collected that would hand back the caller's own
+      // cursor forever, so skip it like a failed kind instead.
+      if (entries.length > 0) return resumeAt(slot);
+      continue;
     }
     if (scan.status === 'error') {
       partialFailure.push({ kind, error: scan.error });

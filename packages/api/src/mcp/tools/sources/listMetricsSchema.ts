@@ -10,8 +10,6 @@ import { DISCOVERABLE_METRIC_KINDS } from './metricKinds';
 export const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 500;
 
-// ─── Cursor ──────────────────────────────────────────────────────────────────
-
 const cursorPayloadSchema = z.object({
   kind: z.enum(DISCOVERABLE_METRIC_KINDS),
   // Absent when the next page starts at the beginning of `kind`.
@@ -29,8 +27,6 @@ export function encodeCursor(payload: ListMetricsCursorPayload): string {
 export function decodeCursor(raw: string): ListMetricsCursorPayload | null {
   return decodeCursorPayload(raw, cursorPayloadSchema);
 }
-
-// ─── Schema ──────────────────────────────────────────────────────────────────
 
 export const listMetricsSchema = z.object({
   sourceId: z

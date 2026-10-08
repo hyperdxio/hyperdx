@@ -40,8 +40,6 @@ const ENRICH_RESERVE_MS = 4_000;
 const NAMES_MAX_EXEC_SECONDS = 28;
 const ENRICH_MAX_EXEC_SECONDS = 3;
 
-// ─── Tool registration ───────────────────────────────────────────────────────
-
 export function registerListMetrics({
   context,
   registerTool,
