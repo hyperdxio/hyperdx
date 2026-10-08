@@ -14,7 +14,6 @@ import {
   isFilterBroadcastEnabled,
   isFilterGlobalRequirement,
   isFilterRequired,
-  isFilterSingleSelect,
   isFilterVariableEnabled,
   isQueryExpressionFilter,
   isRenderablePinnedFilter,
@@ -38,6 +37,7 @@ import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
 } from '@/types';
+import { isFilterSingleSelect } from '@/variables';
 
 describe('filters', () => {
   describe('filtersToQuery', () => {
@@ -1157,6 +1157,11 @@ describe('filters', () => {
       [
         'a regex-formatted reference',
         'match(ServiceName, ${svc:regex})',
+        'sql',
+      ],
+      [
+        'a promql-formatted reference',
+        "match(ServiceName, '${svc:promql}')",
         'sql',
       ],
     ] as const)('reports nothing for %s', (_label, where, whereLanguage) => {

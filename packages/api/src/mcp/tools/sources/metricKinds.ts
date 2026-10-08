@@ -93,3 +93,6 @@ export function sanitizeMetricTables(
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
+
+/** Default time window for the metric discovery tools when startTime is omitted. */
+export const METRIC_DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;

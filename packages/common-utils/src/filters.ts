@@ -855,13 +855,6 @@ export function isFilterRequired(filter: { minSelections?: number }): boolean {
   return (filter.minSelections ?? 0) > 0;
 }
 
-/** Whether at most one value can be selected for the filter (or its variable). */
-export function isFilterSingleSelect(filter: {
-  maxSelections?: number;
-}): boolean {
-  return filter.maxSelections === 1;
-}
-
 /**
  * Whether the given required filter blocks every tile on the dashboard,
  * rather than only the tiles that read it.
@@ -1118,7 +1111,8 @@ export function getPendingFilterValuesVariables(
         // A reference inside the macro that guards it is only emitted once the
         // variable has values, so it needs no empty-state rendering of its own.
         reference.guardedBy !== reference.name &&
-        (reference.format ?? 'sqlstring') !== 'regex' &&
+        // regex and promql have a valid empty-selection rendering.
+        !['regex', 'promql'].includes(reference.format ?? 'sqlstring') &&
         emptyVariableNames.has(reference.name),
     )
     .map(reference => reference.name);
