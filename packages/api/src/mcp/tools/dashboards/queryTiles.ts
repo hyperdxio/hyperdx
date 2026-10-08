@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { runWithTimeout } from '@/mcp/utils/timeout';
 import Dashboard from '@/models/dashboard';
 import {
   convertToExternalDashboard,
@@ -103,23 +104,11 @@ export async function withDeadline<T>(
   if (remaining <= 0) {
     throw new TileDeadlineError();
   }
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout>;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      // Cancel the query in ClickHouse, then surface the timeout.
-      controller.abort();
-      reject(new TileDeadlineError());
-    }, remaining);
-  });
-  try {
-    return await Promise.race([startWork(controller.signal), deadline]);
-  } finally {
-    clearTimeout(timer!);
-    // Belt-and-suspenders: abort on any exit so a query started by a thunk
-    // that then rejected for another reason is never left running.
-    controller.abort();
+  const outcome = await runWithTimeout(startWork, { timeoutMs: remaining });
+  if (outcome.timedOut) {
+    throw new TileDeadlineError();
   }
+  return outcome.value;
 }
 
 /**

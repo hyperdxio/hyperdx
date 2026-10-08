@@ -14,6 +14,12 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import {
+  MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
+  runWithTimeout,
+  type TimeoutOutcome,
+} from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -33,15 +39,11 @@ import { extractSourceConfig } from './schemas';
 const VALUE_SAMPLE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // When discovery's signal is aborted; it then returns what it has so far.
-// Matches the 30s budget of the other MCP query tools.
-export const DESCRIBE_TIMEOUT_MS = 30_000;
+export const DESCRIBE_TIMEOUT_MS = MCP_TOOL_TIMEOUT_MS;
 
 // Extra time after the abort before the handler stops waiting, in case a
-// ClickHouse call ignores the signal. 30s + 2s lines up with
-// MCP_REQUEST_TIMEOUT in query/helpers.ts.
-export const DESCRIBE_BACKSTOP_MS = 2_000;
-
-const BACKSTOP = Symbol('backstop');
+// ClickHouse call ignores the signal.
+export const DESCRIBE_BACKSTOP_MS = MCP_TIMEOUT_GRACE_MS;
 
 // Max sampled values per low-cardinality column / map attribute key.
 const MAX_LC_VALUES = 20;
@@ -578,24 +580,7 @@ export function registerDescribeSource({
       }),
     },
     async ({ sourceId }) => {
-      const controller = new AbortController();
       const progress: DescribeProgress = {};
-
-      // At the deadline, abort so discovery skips its remaining stages and
-      // returns what it has. The backstop covers ClickHouse calls that
-      // ignore the signal: it answers from the latest snapshot instead of
-      // waiting on them.
-      const abortTimer = setTimeout(
-        () => controller.abort(),
-        DESCRIBE_TIMEOUT_MS,
-      );
-      let backstopTimer: ReturnType<typeof setTimeout> | undefined;
-      const backstop = new Promise<typeof BACKSTOP>(resolve => {
-        backstopTimer = setTimeout(
-          () => resolve(BACKSTOP),
-          DESCRIBE_TIMEOUT_MS + DESCRIBE_BACKSTOP_MS,
-        );
-      });
 
       const span = trace.getActiveSpan();
       const recordOutcome = (
@@ -622,36 +607,31 @@ export function registerDescribeSource({
         );
       };
 
+      // At the deadline, discovery skips its remaining stages and returns
+      // what it has. The grace window covers ClickHouse calls that ignore
+      // the signal: past it we answer from the latest snapshot instead.
+      let outcome: TimeoutOutcome<ToolResult>;
       try {
-        const result = await Promise.race([
-          describeSourceSchema(
-            teamId.toString(),
-            sourceId,
-            controller.signal,
-            progress,
-          ),
-          backstop,
-        ]);
-        if (result === BACKSTOP) {
-          return timedOutResult();
-        }
-        recordOutcome(
-          result.isError ? 'error' : progress.partial ? 'partial' : 'complete',
+        outcome = await runWithTimeout(
+          signal =>
+            describeSourceSchema(teamId.toString(), sourceId, signal, progress),
+          { timeoutMs: DESCRIBE_TIMEOUT_MS, graceMs: DESCRIBE_BACKSTOP_MS },
         );
-        return result;
       } catch (e) {
-        if (controller.signal.aborted) {
-          return timedOutResult();
-        }
         logger.warn(
           { teamId, sourceId, error: e },
           'Failed to describe source schema',
         );
         throw e;
-      } finally {
-        clearTimeout(abortTimer);
-        clearTimeout(backstopTimer);
       }
+      if (outcome.timedOut) {
+        return timedOutResult();
+      }
+      const result = outcome.value;
+      recordOutcome(
+        result.isError ? 'error' : progress.partial ? 'partial' : 'complete',
+      );
+      return result;
     },
   );
 }
