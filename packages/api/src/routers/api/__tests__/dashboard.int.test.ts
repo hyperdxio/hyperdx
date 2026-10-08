@@ -1185,7 +1185,7 @@ describe('dashboard router', () => {
         .expect(200);
 
       const stored = await Dashboard.findById(created.body.id).lean();
-      expect(stored?.filters?.[0].minSelections).toBe(1);
+      expect(stored?.filters?.[0]).toMatchObject({ minSelections: 1 });
     });
 
     // Absence is meaningful: the client reads a missing value as not required,
@@ -1791,6 +1791,306 @@ describe('dashboard router', () => {
           ],
         })
         .expect(400);
+    });
+  });
+
+  describe('ad hoc filters', () => {
+    const createSource = (kind: SourceKind, teamId = team._id) =>
+      Source.create({
+        kind,
+        name: `Test ${kind} source`,
+        team: teamId,
+        connection: new Types.ObjectId().toString(),
+        from: { databaseName: 'test_db', tableName: `${kind}_table` },
+        timestampValueExpression: 'timestamp',
+        defaultTableSelectExpression: 'body',
+        ...(kind === SourceKind.Metric && {
+          metricTables: { gauge: 'otel_metrics_gauge' },
+          resourceAttributesExpression: 'ResourceAttributes',
+        }),
+      });
+
+    let logSourceId: string;
+    let traceSourceId: string;
+    let promqlSourceId: string;
+    beforeEach(async () => {
+      logSourceId = (await createSource(SourceKind.Log))._id.toString();
+      traceSourceId = (await createSource(SourceKind.Trace))._id.toString();
+      promqlSourceId = (await createSource(SourceKind.Promql))._id.toString();
+    });
+
+    const makeAdhocFilter = (overrides = {}) => ({
+      id: new Types.ObjectId().toString(),
+      type: 'ADHOC' as const,
+      name: 'Ad hoc',
+      sourceType: 'sql' as const,
+      sources: [logSourceId],
+      isVariableEnabled: true as const,
+      variableName: 'adhoc',
+      ...overrides,
+    });
+
+    const adhocValue = {
+      type: 'adhoc' as const,
+      name: 'adhoc',
+      conditions: [
+        { key: 'ServiceName', operator: '=~' as const, value: 'api.*' },
+        {
+          key: "LogAttributes['env']",
+          operator: 'NOT LIKE' as const,
+          value: 'dev',
+        },
+      ],
+    };
+
+    it('persists a SQL ad hoc filter and its saved conditions', async () => {
+      const filter = makeAdhocFilter({
+        sources: [logSourceId, traceSourceId],
+        appliesToSourceIds: [traceSourceId],
+        isBroadcastEnabled: false,
+      });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [filter],
+          savedFilterValues: [adhocValue],
+        })
+        .expect(200);
+
+      expect(created.body.filters).toEqual([filter]);
+      expect(created.body.savedFilterValues).toEqual([adhocValue]);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+      expect(stored?.savedFilterValues).toEqual([adhocValue]);
+
+      const list = await agent.get('/dashboards').expect(200);
+      const listed = list.body.find(
+        (d: { id: string }) => d.id === created.body.id,
+      );
+      expect(listed.filters).toEqual([filter]);
+      expect(listed.savedFilterValues).toEqual([adhocValue]);
+    });
+
+    it('persists a PromQL ad hoc filter', async () => {
+      const filter = makeAdhocFilter({
+        sourceType: 'promql',
+        sources: [promqlSourceId],
+      });
+
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.filters).toEqual([filter]);
+    });
+
+    it('persists saved conditions alongside other filter values on PATCH', async () => {
+      const filter = makeAdhocFilter();
+      const created = await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [filter] })
+        .expect(200);
+
+      const savedFilterValues = [
+        { type: 'sql' as const, condition: "ServiceName IN ('api')" },
+        { type: 'variable' as const, name: 'env', values: ['prod'] },
+        adhocValue,
+      ];
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ savedFilterValues })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(stored?.savedFilterValues).toEqual(savedFilterValues);
+    });
+
+    it.each([
+      ['no source type', { sourceType: undefined }],
+      ['an unknown source type', { sourceType: 'lucene' }],
+      ['no sources', { sources: undefined }],
+      ['empty sources', { sources: [] }],
+      ['an empty source ID', { sources: [''] }],
+      ['an invalid variable name', { variableName: '1adhoc' }],
+      ['not variable-enabled', { isVariableEnabled: false }],
+      ['variables unset', { isVariableEnabled: undefined }],
+      ['a minimum selection', { minSelections: 1 }],
+      ['a maximum selection', { maxSelections: 1 }],
+      ['a global requirement', { isGlobalRequirement: true }],
+    ])('rejects an ad hoc filter with %s', async (_label, overrides) => {
+      await agent
+        .post('/dashboards')
+        .send({ ...MOCK_DASHBOARD, filters: [makeAdhocFilter(overrides)] })
+        .expect(400);
+    });
+
+    it.each([
+      [
+        'an unknown operator',
+        { conditions: [{ key: 'a', operator: '>', value: '1' }] },
+      ],
+      [
+        'an empty key',
+        { conditions: [{ key: '', operator: '=', value: '1' }] },
+      ],
+      [
+        'too many conditions',
+        {
+          conditions: Array.from({ length: 101 }, () => ({
+            key: 'a',
+            operator: '=',
+            value: '1',
+          })),
+        },
+      ],
+    ])('rejects saved conditions with %s', async (_label, overrides) => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [makeAdhocFilter()],
+          savedFilterValues: [{ ...adhocValue, ...overrides }],
+        })
+        .expect(400);
+    });
+
+    it('rejects a variable name it shares with another filter', async () => {
+      await agent
+        .post('/dashboards')
+        .send({
+          ...MOCK_DASHBOARD,
+          filters: [
+            makeAdhocFilter({ variableName: 'service' }),
+            {
+              id: new Types.ObjectId().toString(),
+              type: 'QUERY_EXPRESSION' as const,
+              name: 'Service',
+              expression: 'ServiceName',
+              source: logSourceId,
+              isVariableEnabled: true,
+              variableName: 'service',
+            },
+          ],
+        })
+        .expect(400);
+    });
+
+    describe('source validation', () => {
+      it('rejects a source that does not exist', async () => {
+        const source = new Types.ObjectId().toString();
+
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [makeAdhocFilter({ sources: [logSourceId, source] })],
+          })
+          .expect(400);
+
+        expect(response.body.message).toContain(source);
+        expect(response.body.message).not.toContain(logSourceId);
+      });
+
+      it.each([
+        ['a PromQL source in a SQL filter', 'sql', SourceKind.Promql],
+        ['a metric source in a SQL filter', 'sql', SourceKind.Metric],
+        ['a log source in a PromQL filter', 'promql', SourceKind.Log],
+      ])('rejects %s', async (_label, sourceType, kind) => {
+        const source = (await createSource(kind))._id.toString();
+
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [makeAdhocFilter({ sourceType, sources: [source] })],
+          })
+          .expect(400);
+
+        expect(response.body.message).toContain(source);
+      });
+
+      it('rejects an applies-to source of the wrong type', async () => {
+        const response = await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeAdhocFilter({ appliesToSourceIds: [promqlSourceId] }),
+            ],
+          })
+          .expect(400);
+
+        expect(response.body.message).toContain(promqlSourceId);
+      });
+
+      it("rejects another team's source", async () => {
+        const otherTeamSource = await createSource(
+          SourceKind.Log,
+          new Types.ObjectId(),
+        );
+
+        await agent
+          .post('/dashboards')
+          .send({
+            ...MOCK_DASHBOARD,
+            filters: [
+              makeAdhocFilter({ sources: [otherTeamSource._id.toString()] }),
+            ],
+          })
+          .expect(400);
+      });
+
+      it('rejects a source added by PATCH, leaving the stored filter alone', async () => {
+        const filter = makeAdhocFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({
+            filters: [{ ...filter, sources: [logSourceId, promqlSourceId] }],
+          })
+          .expect(400);
+
+        const stored = await Dashboard.findById(created.body.id).lean();
+        expect(stored?.filters).toEqual([filter]);
+      });
+
+      it("lets unrelated edits through after a filter's source is deleted", async () => {
+        const filter = makeAdhocFilter({ appliesToSourceIds: [traceSourceId] });
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await Source.findByIdAndDelete(logSourceId);
+        await Source.findByIdAndDelete(traceSourceId);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ name: 'Renamed', filters: [{ ...filter, name: 'Renamed' }] })
+          .expect(200);
+      });
+
+      it('rejects a PATCH changing the source type to one its sources do not match', async () => {
+        const filter = makeAdhocFilter();
+        const created = await agent
+          .post('/dashboards')
+          .send({ ...MOCK_DASHBOARD, filters: [filter] })
+          .expect(200);
+
+        await agent
+          .patch(`/dashboards/${created.body.id}`)
+          .send({ filters: [{ ...filter, sourceType: 'promql' }] })
+          .expect(400);
+      });
     });
   });
 

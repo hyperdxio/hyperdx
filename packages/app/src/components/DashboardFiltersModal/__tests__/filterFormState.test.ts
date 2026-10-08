@@ -193,8 +193,11 @@ describe('toSavedFilter', () => {
   });
 });
 
-/** The minimum a form needs to save, per filter type. */
-const byType: Record<DashboardFilter['type'], Partial<FilterFormValues>> = {
+/** The minimum a form needs to save, per filter type the form supports. */
+const byType: Record<
+  Exclude<DashboardFilter['type'], 'ADHOC'>,
+  Partial<FilterFormValues>
+> = {
   QUERY_EXPRESSION: {
     type: 'QUERY_EXPRESSION',
     name: 'Service',
@@ -221,7 +224,7 @@ describe('minSelections', () => {
     (_type, filter) => {
       const saved = toSavedFilter(formValues({ ...filter, isRequired: true }));
 
-      expect(saved.minSelections).toBe(1);
+      expect(saved).toMatchObject({ minSelections: 1 });
       expect(toFormValues(saved).isRequired).toBe(true);
     },
   );
@@ -262,7 +265,7 @@ describe('isGlobalRequirement', () => {
         formValues({ ...filter, isRequired: true, isGlobalRequirement: true }),
       );
 
-      expect(saved.isGlobalRequirement).toBe(true);
+      expect(saved).toMatchObject({ isGlobalRequirement: true });
       expect(toFormValues(saved).isGlobalRequirement).toBe(true);
     },
   );
@@ -307,7 +310,7 @@ describe('maxSelections', () => {
         formValues({ ...filter, isSingleSelect: true }),
       );
 
-      expect(saved.maxSelections).toBe(1);
+      expect(saved).toMatchObject({ maxSelections: 1 });
       expect(saved).not.toHaveProperty('isSingleSelect');
       expect(toFormValues(saved).isSingleSelect).toBe(true);
     },
