@@ -449,17 +449,19 @@ export const bulkInsertLogs = async (
 // the on-disk row is byte-identical to today's behaviour. New tests that need
 // to exercise the cross-scope attribute hashing (see HDX-4466) can opt in by
 // passing one or both maps explicitly.
-export const bulkInsertMetricsGauge = async (
-  metrics: {
-    MetricName: string;
-    ResourceAttributes: Record<string, string>;
-    ScopeAttributes?: Record<string, string>;
-    Attributes?: Record<string, string>;
-    ServiceName: string;
-    TimeUnix: Date;
-    Value: number;
-  }[],
-) => {
+type NumberMetricPoint = {
+  MetricName: string;
+  MetricUnit?: string;
+  MetricDescription?: string;
+  ResourceAttributes: Record<string, string>;
+  ScopeAttributes?: Record<string, string>;
+  Attributes?: Record<string, string>;
+  ServiceName: string;
+  TimeUnix: Date;
+  Value: number;
+};
+
+export const bulkInsertMetricsGauge = async (metrics: NumberMetricPoint[]) => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
@@ -470,17 +472,10 @@ export const bulkInsertMetricsGauge = async (
 };
 
 export const bulkInsertMetricsSum = async (
-  metrics: {
+  metrics: (NumberMetricPoint & {
     AggregationTemporality: number;
     IsMonotonic: boolean;
-    MetricName: string;
-    ResourceAttributes: Record<string, string>;
-    ScopeAttributes?: Record<string, string>;
-    Attributes?: Record<string, string>;
-    ServiceName: string;
-    TimeUnix: Date;
-    Value: number;
-  }[],
+  })[],
 ) => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');

@@ -35,12 +35,24 @@ export const VARIABLE_FORMATS = [
   'csv',
   'lucene',
   'markdown',
+  'promql',
 ] as const;
 
 export type VariableFormat = (typeof VARIABLE_FORMATS)[number];
 
+/** Whether at most one value can be selected for the filter (or its variable). */
+export function isFilterSingleSelect(filter: {
+  maxSelections?: number;
+}): boolean {
+  return filter.maxSelections === 1;
+}
+
 const isVariableFormat = (format: string): format is VariableFormat =>
   (VARIABLE_FORMATS as readonly string[]).includes(format);
+
+/** Formats whose expansion always sits inside a quoted string literal. */
+const isStringLiteralFormat = (format: string | undefined) =>
+  format === 'regex' || format === 'promql';
 
 const escapeRegexValue = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -61,24 +73,34 @@ const escapePromqlStringValue = (value: string) =>
 const escapeMarkdownValue = (value: string) =>
   value.replace(/\r\n|\r|\n/g, ' ').replace(/[!-/:-@[-`{-~]/g, '\\$&');
 
+const formatRegexValues = (values: string[]) => {
+  if (values.length === 0) return '.*';
+  const escaped = values.map(escapeRegexValue);
+  return escaped.length === 1 ? escaped[0] : `(${escaped.join('|')})`;
+};
+
 /**
  * Render a variable's selected values in the requested format. Every format
  * has an "empty selection" rendering that keeps the surrounding query valid.
  */
 export function formatVariableValues(
-  values: string[],
+  variable: Pick<ChartVariable, 'values' | 'maxSelections'>,
   format: VariableFormat,
 ): string {
+  const { values } = variable;
   switch (format) {
     case 'sqlstring':
       return values.length === 0
         ? 'NULL'
         : values.map(value => `'${escapeSqlString(value)}'`).join(', ');
-    case 'regex': {
-      if (values.length === 0) return '.*';
-      const escaped = values.map(escapeRegexValue);
-      return escaped.length === 1 ? escaped[0] : `(${escaped.join('|')})`;
-    }
+    case 'regex':
+      return formatRegexValues(values);
+    case 'promql':
+      // Keyed on configuration, not selection count, so the matcher's operator
+      // is fixed: `label="$var"` for single-select, `label=~"$var"` otherwise.
+      return isFilterSingleSelect(variable)
+        ? (values[0] ?? '')
+        : formatRegexValues(values);
     case 'csv':
       return values.join(',');
     case 'lucene':
@@ -443,11 +465,11 @@ type LanguageSettings = {
    */
   disableMacros?: boolean;
   /**
-   * Escapes a `regex`-format expansion for the string literal it always sits
-   * inside. Only `regex` needs this: `sqlstring` and `lucene` quote and escape
-   * themselves, and `csv` is the raw escape hatch that carries identifiers.
+   * Escapes a `regex`- or `promql`-format expansion for the string literal it
+   * always sits inside. `sqlstring` and `lucene` quote and escape themselves,
+   * and `csv` is the raw escape hatch that carries identifiers.
    */
-  escapeRegexForLiteral?: (rendered: string) => string;
+  escapeForStringLiteral?: (rendered: string) => string;
   /**
    * Whether SQL comments (`--`, `#`, block comments) are skipped over rather
    * than scanned for references.
@@ -459,13 +481,13 @@ type LanguageSettings = {
 const LANGUAGE_SETTINGS: Record<TemplateLanguage, LanguageSettings> = {
   sql: {
     defaultFormat: 'sqlstring',
-    escapeRegexForLiteral: rendered => escapeSqlString(rendered),
+    escapeForStringLiteral: rendered => escapeSqlString(rendered),
   },
   lucene: { defaultFormat: 'lucene', disableMacros: true },
   promql: {
-    defaultFormat: 'regex',
+    defaultFormat: 'promql',
     disableMacros: true,
-    escapeRegexForLiteral: escapePromqlStringValue,
+    escapeForStringLiteral: escapePromqlStringValue,
   },
   markdown: {
     defaultFormat: 'markdown',
@@ -587,7 +609,7 @@ function expandFilterMacro(args: string[], ctx: VariableContext): string {
 
   if (variable.values.length === 0) return sqlNoOp(variableName);
 
-  return `(${expression} IN (${formatVariableValues(variable.values, 'sqlstring')}))`;
+  return `(${expression} IN (${formatVariableValues(variable, 'sqlstring')}))`;
 }
 
 function expandConditionalAllMacro(
@@ -641,10 +663,10 @@ export function expandVariableToken(
 
   const settings = languageSettings(ctx.inputLanguage);
   const format = requestedFormat ?? settings.defaultFormat;
-  const rendered = formatVariableValues(variable.values, format);
+  const rendered = formatVariableValues(variable, format);
 
-  return format === 'regex' && settings.escapeRegexForLiteral
-    ? settings.escapeRegexForLiteral(rendered)
+  return isStringLiteralFormat(format) && settings.escapeForStringLiteral
+    ? settings.escapeForStringLiteral(rendered)
     : rendered;
 }
 
@@ -1301,18 +1323,31 @@ export function validateVariableReferencesInTemplate(
     }
   }
 
-  // A regex expansion — PromQL's default — is only valid as a matcher value:
-  // both `(api|web)` and the empty-selection `.*` are syntax errors anywhere
-  // else, so `up{service=~$svc}` and `${svc}_total` are mistakes.
+  // A regex or promql expansion is only valid as a quoted matcher value: an
+  // alternation like `(api|web)`, `.*`, or an empty value is a syntax error
+  // anywhere else, so `up{service=~$svc}` and `${svc}_total` are mistakes.
   if (language === 'promql') {
     const unquoted = resolved.filter(
       r =>
-        (r.format ?? settings.defaultFormat) === 'regex' && !r.inStringLiteral,
+        isStringLiteralFormat(r.format ?? settings.defaultFormat) &&
+        !r.inStringLiteral,
     );
-    if (unquoted.length > 0) {
-      const [{ name }] = unquoted;
+    const isExactValue = (r: (typeof unquoted)[number]) =>
+      (r.format ?? settings.defaultFormat) === 'promql' &&
+      variables.some(v => v.name === r.name && isFilterSingleSelect(v));
+    const groups = [
+      { refs: unquoted.filter(isExactValue), kind: 'a string', op: '=' },
+      {
+        refs: unquoted.filter(r => !isExactValue(r)),
+        kind: 'a regular expression',
+        op: '=~',
+      },
+    ];
+    for (const { refs, kind, op } of groups) {
+      if (refs.length === 0) continue;
+      const [{ name }] = refs;
       warnings.push(
-        `${formatReferenceList(unquoted)} expands to a regular expression, which is only valid inside a quoted matcher value. Wrap it as {<label>=~"$${name}"}, or use \${${name}:csv} to interpolate the values as written.`,
+        `${formatReferenceList(refs)} expands to ${kind}, which is only valid inside a quoted matcher value. Wrap it as {<label>${op}"$${name}"}, or use \${${name}:csv} to interpolate the values as written.`,
       );
     }
   }

@@ -3,6 +3,7 @@ export { default } from './DBHeatmapChart';
 export { HEATMAP_DURATION_NUMBER_FORMAT } from './heatmapAxis';
 export { HEATMAP_N_BUCKETS } from './heatmapBounds';
 export type { HeatmapScaleType } from './heatmapGrid';
+export type { HeatmapSeriesChartConfig } from './heatmapQueries';
 export {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,

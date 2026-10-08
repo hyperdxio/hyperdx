@@ -2,11 +2,11 @@ import {
   getDashboardVariableDeclarations,
   getDashboardVariableFilters,
   getFilterVariableName,
-  isFilterSingleSelect,
   isFilterVariableEnabled,
   isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import type { ChartVariable } from '@hyperdx/common-utils/dist/types';
+import { isFilterSingleSelect } from '@hyperdx/common-utils/dist/variables';
 import { z } from 'zod';
 
 import type {

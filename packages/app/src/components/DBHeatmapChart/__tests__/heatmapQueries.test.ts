@@ -1,9 +1,11 @@
 import {
   BuilderChartConfigWithDateRange,
   DisplayType,
+  PromqlConfigWithDateRange,
 } from '@hyperdx/common-utils/dist/types';
 
 import {
+  buildHeatmapSeriesConfig,
   resolveHeatmapGranularity,
   toHeatmapQuery,
 } from '@/components/DBHeatmapChart/heatmapQueries';
@@ -61,4 +63,30 @@ describe('toHeatmapQuery', () => {
       expect(query.config.granularity).toBe('5 minute');
     },
   );
+});
+
+describe('PromQL heatmaps', () => {
+  const config: PromqlConfigWithDateRange = {
+    configType: 'promql',
+    displayType: DisplayType.Heatmap,
+    promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
+    connection: 'test-connection',
+    dateRange: [new Date(T0 + 90_000), new Date(T0 + HOUR + 90_000)],
+    granularity: '5 minute',
+    legendTemplate: '{{job}}',
+  };
+
+  it('are always series heatmaps', () => {
+    expect(toHeatmapQuery(config)).toEqual({ mode: 'series', config });
+  });
+
+  it('query at the heatmap granularity over a bucket-aligned range', () => {
+    expect(buildHeatmapSeriesConfig(config, '5 minute')).toMatchObject({
+      configType: 'promql',
+      promqlExpression: config.promqlExpression,
+      legendTemplate: '{{job}}',
+      granularity: '5 minute',
+      dateRange: [new Date(T0), new Date(T0 + HOUR + 5 * 60_000)],
+    });
+  });
 });

@@ -6,7 +6,6 @@ import {
   getPendingFilterValuesVariables,
   isFilterGlobalRequirement,
   isFilterRequired,
-  isFilterSingleSelect,
   isFilterVariableEnabled,
   isQueryExpressionFilter,
   isStaticListFilter,
@@ -15,6 +14,7 @@ import {
   ChartVariable,
   DashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
+import { isFilterSingleSelect } from '@hyperdx/common-utils/dist/variables';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconAlertTriangle, IconHelp, IconRefresh } from '@tabler/icons-react';
 

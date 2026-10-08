@@ -7,7 +7,6 @@ import {
   getFilterVariableName,
   isFilterGlobalRequirement,
   isFilterRequired,
-  isFilterSingleSelect,
   isFilterVariableEnabled,
   parseQuery,
 } from '@/filters';
@@ -20,6 +19,7 @@ import {
   SavedChartConfig,
   VariableFilterValue,
 } from '@/types';
+import { isFilterSingleSelect } from '@/variables';
 
 /**
  * A dashboards filter/variable state is persisted as an array of entries in one of two

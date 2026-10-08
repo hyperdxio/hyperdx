@@ -4,7 +4,6 @@ import {
   isFilterBroadcastEnabled,
   isFilterGlobalRequirement,
   isFilterRequired,
-  isFilterSingleSelect,
   isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -14,6 +13,7 @@ import {
   QueryExpressionDashboardFilter,
   StaticListDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
+import { isFilterSingleSelect } from '@hyperdx/common-utils/dist/variables';
 
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 
