@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { parseTimeRange } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
@@ -21,8 +22,8 @@ import {
 import {
   DISCOVERABLE_METRIC_KINDS,
   type DiscoverableMetricKind,
+  METRIC_DEFAULT_LOOKBACK_MS,
 } from './metricKinds';
-import { parseTimeRange } from './metricTimeRange';
 
 // Wall-clock budget for the whole call, matching the 30s cap the MCP query
 // tools use.
@@ -130,7 +131,11 @@ async function listMetricsImpl(
     );
   }
 
-  const timeRange = parseTimeRange(input.startTime, input.endTime);
+  const timeRange = parseTimeRange(
+    input.startTime,
+    input.endTime,
+    METRIC_DEFAULT_LOOKBACK_MS,
+  );
   if ('error' in timeRange) {
     return mcpUserError(timeRange.error);
   }

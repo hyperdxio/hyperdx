@@ -253,11 +253,12 @@ export function buildTile(
 export function parseTimeRange(
   startTime?: string,
   endTime?: string,
+  defaultLookbackMs: number = ms('15m'),
 ): { error: string } | { startDate: Date; endDate: Date } {
   const endDate = endTime ? new Date(endTime) : new Date();
   const startDate = startTime
     ? new Date(startTime)
-    : new Date(endDate.getTime() - ms('15m'));
+    : new Date(endDate.getTime() - defaultLookbackMs);
   if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
     return {
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',

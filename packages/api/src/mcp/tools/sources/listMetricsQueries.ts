@@ -21,7 +21,7 @@ async function queryRows<T>({
   timeoutOverflowMode,
   signal,
 }: {
-  clickhouseClient: ClickhouseClient;
+  clickhouseClient: Pick<ClickhouseClient, 'query'>;
   sql: ChSql;
   connectionId: string;
   maxExecutionSeconds: number;
@@ -62,7 +62,7 @@ export async function fetchMetricNames({
   maxExecutionSeconds,
   signal,
 }: {
-  clickhouseClient: ClickhouseClient;
+  clickhouseClient: Pick<ClickhouseClient, 'query'>;
   databaseName: string;
   tableName: string;
   connectionId: string;
@@ -126,7 +126,7 @@ async function fetchMetricUnitsAndDescriptions({
   maxExecutionSeconds,
   signal,
 }: {
-  clickhouseClient: ClickhouseClient;
+  clickhouseClient: Pick<ClickhouseClient, 'query'>;
   databaseName: string;
   tableName: string;
   connectionId: string;

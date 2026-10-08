@@ -13,7 +13,10 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
+import {
+  clickHouseErrorResult,
+  parseTimeRange,
+} from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
@@ -26,8 +29,8 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 import {
   DISCOVERABLE_METRIC_KINDS,
   type DiscoverableMetricKind,
+  METRIC_DEFAULT_LOOKBACK_MS,
 } from './metricKinds';
-import { parseTimeRange } from './metricTimeRange';
 
 // Matches the 30s cap the MCP query tools use.
 const DESCRIBE_TIMEOUT_MS = 30_000;
@@ -480,7 +483,11 @@ async function describeMetricImpl(
     );
   }
 
-  const timeRange = parseTimeRange(input.startTime, input.endTime);
+  const timeRange = parseTimeRange(
+    input.startTime,
+    input.endTime,
+    METRIC_DEFAULT_LOOKBACK_MS,
+  );
   if ('error' in timeRange) {
     return mcpUserError(timeRange.error);
   }

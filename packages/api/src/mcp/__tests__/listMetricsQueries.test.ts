@@ -1,4 +1,3 @@
-import type { ClickhouseClient } from '@/clickhouse';
 import { fetchMetricNames } from '@/mcp/tools/sources/listMetricsQueries';
 
 describe('fetchMetricNames', () => {
@@ -6,10 +5,9 @@ describe('fetchMetricNames', () => {
     const query = jest.fn().mockResolvedValue({
       json: () => Promise.resolve({ data: [{ MetricName: 'a' }] }),
     });
-    const clickhouseClient = { query } as unknown as ClickhouseClient;
 
     const names = await fetchMetricNames({
-      clickhouseClient,
+      clickhouseClient: { query },
       databaseName: 'default',
       tableName: 'otel_metrics_gauge',
       connectionId: 'conn',
