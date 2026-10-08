@@ -710,24 +710,38 @@ export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
   }),
 });
 
+const mcpStackedTimeChartConfigFields = {
+  sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+  select: z.array(mcpTileSelectItemSchema).min(1).max(20),
+  groupBy: z.string().optional(),
+  fillNulls: z.boolean().optional().default(true),
+  alignDateRangeToGranularity: z.boolean().optional(),
+  asRatio: z.boolean().optional(),
+  numberFormat: mcpNumberFormatSchema
+    .optional()
+    .describe(tileLevelNumberFormatDescription),
+  seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+  formulas: mcpTileFormulasSchema,
+  showOperandSeries: mcpShowOperandSeriesSchema,
+};
+
 export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
   config: z.object({
     ...rejectedTileWhereFields,
     displayType: z
       .literal('stacked_bar')
       .describe('Stacked bar chart over time'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    select: z.array(mcpTileSelectItemSchema).min(1).max(20),
-    groupBy: z.string().optional(),
-    fillNulls: z.boolean().optional().default(true),
-    alignDateRangeToGranularity: z.boolean().optional(),
-    asRatio: z.boolean().optional(),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
-    formulas: mcpTileFormulasSchema,
-    showOperandSeries: mcpShowOperandSeriesSchema,
+    ...mcpStackedTimeChartConfigFields,
+  }),
+});
+
+export const mcpStackedLineTileSchema = mcpTileLayoutSchema.extend({
+  config: z.object({
+    ...rejectedTileWhereFields,
+    displayType: z
+      .literal('stacked_line')
+      .describe('Stacked line (area) chart over time'),
+    ...mcpStackedTimeChartConfigFields,
   }),
 });
 
@@ -1075,7 +1089,15 @@ export const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
           'ADVANCED: Only use raw SQL tiles when the builder tile types cannot express the query you need.',
       ),
     displayType: z
-      .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'bar'])
+      .enum([
+        'line',
+        'stacked_bar',
+        'stacked_line',
+        'table',
+        'number',
+        'pie',
+        'bar',
+      ])
       .describe('How to render the SQL results'),
     connectionId: z
       .string()
@@ -1154,6 +1176,7 @@ GROUP BY ServiceName, ts
 const mcpTileSchema = z.union([
   mcpLineTileSchema,
   mcpBarTileSchema,
+  mcpStackedLineTileSchema,
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
@@ -1189,6 +1212,9 @@ const mcpPatchTileLayoutSchema = z.object({
 const mcpPatchTileSchema = z.union([
   mcpPatchTileLayoutSchema.extend({ config: mcpLineTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({ config: mcpBarTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpStackedLineTileSchema.shape.config,
+  }),
   mcpPatchTileLayoutSchema.extend({ config: mcpTableTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpNumberTileSchema.shape.config,
@@ -1292,6 +1318,19 @@ const mcpDashboardFilterBaseShape = {
     .describe(
       'Widens a REQUIRED filter (minSelections: 1) to block EVERY tile on the dashboard, ' +
         'not just the ones that read it. Ignored unless minSelections is 1.',
+    ),
+  maxSelections: z
+    .number()
+    .int()
+    .min(1)
+    .max(1)
+    .optional()
+    .describe(
+      'Set to 1 to make this filter SINGLE-SELECT: the user can pick at most one ' +
+        'value. In PromQL, a single-select variable expands to its raw value by ' +
+        'default (for exact matchers such as {job="$job"}), while a multi-select ' +
+        'one expands to an escaped regex (for {job=~"$job"}). Omit for the normal ' +
+        'multi-select behavior.',
     ),
 };
 

@@ -959,7 +959,7 @@ export function getFilterVariableName(filter: {
 /** A dashboard variable's identity, before any selection is attached. */
 export type DashboardVariableDeclaration = Pick<
   ChartVariable,
-  'name' | 'expression'
+  'name' | 'expression' | 'maxSelections'
 >;
 
 /** Minimal projection of fields necessary to extract the variables a dashboard declares. */
@@ -968,6 +968,7 @@ export type FilterForVariableDeclaration = {
   expression?: string;
   variableName?: string;
   isVariableEnabled?: boolean;
+  maxSelections?: number;
 };
 
 /**
@@ -1001,6 +1002,7 @@ export function getDashboardVariableDeclarations(
   return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
     name,
     expression: filter.expression,
+    maxSelections: filter.maxSelections,
   }));
 }
 
@@ -1109,7 +1111,8 @@ export function getPendingFilterValuesVariables(
         // A reference inside the macro that guards it is only emitted once the
         // variable has values, so it needs no empty-state rendering of its own.
         reference.guardedBy !== reference.name &&
-        (reference.format ?? 'sqlstring') !== 'regex' &&
+        // regex and promql have a valid empty-selection rendering.
+        !['regex', 'promql'].includes(reference.format ?? 'sqlstring') &&
         emptyVariableNames.has(reference.name),
     )
     .map(reference => reference.name);

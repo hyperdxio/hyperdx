@@ -37,6 +37,7 @@ import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
 } from '@/types';
+import { isFilterSingleSelect } from '@/variables';
 
 describe('filters', () => {
   describe('filtersToQuery', () => {
@@ -1167,6 +1168,11 @@ describe('filters', () => {
         'match(ServiceName, ${svc:regex})',
         'sql',
       ],
+      [
+        'a promql-formatted reference',
+        "match(ServiceName, '${svc:promql}')",
+        'sql',
+      ],
     ] as const)('reports nothing for %s', (_label, where, whereLanguage) => {
       expect(
         getPendingFilterValuesVariables({ where, whereLanguage }, [svc([])]),
@@ -1693,6 +1699,16 @@ describe('filters', () => {
     });
   });
 
+  describe('isFilterSingleSelect', () => {
+    it('treats a missing cap as multi-select', () => {
+      expect(isFilterSingleSelect({})).toBe(false);
+    });
+
+    it('holds for a cap of one', () => {
+      expect(isFilterSingleSelect({ maxSelections: 1 })).toBe(true);
+    });
+  });
+
   describe('isFilterGlobalRequirement', () => {
     it('treats a missing flag as covering only the tiles that read the filter', () => {
       expect(isFilterGlobalRequirement({})).toBe(false);
@@ -1944,6 +1960,18 @@ describe('filters', () => {
           filter({ isVariableEnabled: true, variableName: 'svc' }),
         ]),
       ).toEqual([{ name: 'svc', expression: 'ServiceName' }]);
+    });
+
+    it('carries the selection cap', () => {
+      expect(
+        getDashboardVariableDeclarations([
+          filter({
+            isVariableEnabled: true,
+            variableName: 'svc',
+            maxSelections: 1,
+          }),
+        ]),
+      ).toEqual([{ name: 'svc', expression: 'ServiceName', maxSelections: 1 }]);
     });
 
     it('falls back to the name derived from the display name', () => {

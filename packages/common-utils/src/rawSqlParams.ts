@@ -64,22 +64,20 @@ export const QUERY_PARAMS: Record<RawSqlQueryParam, QueryParamDefinition> = {
   },
 };
 
+const TIME_SERIES_QUERY_PARAMS = [
+  QUERY_PARAMS.startDateMilliseconds,
+  QUERY_PARAMS.endDateMilliseconds,
+  QUERY_PARAMS.intervalSeconds,
+  QUERY_PARAMS.intervalMilliseconds,
+];
+
 export const QUERY_PARAMS_BY_DISPLAY_TYPE: Record<
   DisplayType,
   QueryParamDefinition[]
 > = {
-  [DisplayType.Line]: [
-    QUERY_PARAMS.startDateMilliseconds,
-    QUERY_PARAMS.endDateMilliseconds,
-    QUERY_PARAMS.intervalSeconds,
-    QUERY_PARAMS.intervalMilliseconds,
-  ],
-  [DisplayType.StackedBar]: [
-    QUERY_PARAMS.startDateMilliseconds,
-    QUERY_PARAMS.endDateMilliseconds,
-    QUERY_PARAMS.intervalSeconds,
-    QUERY_PARAMS.intervalMilliseconds,
-  ],
+  [DisplayType.Line]: TIME_SERIES_QUERY_PARAMS,
+  [DisplayType.StackedBar]: TIME_SERIES_QUERY_PARAMS,
+  [DisplayType.StackedLine]: TIME_SERIES_QUERY_PARAMS,
   [DisplayType.Table]: [
     QUERY_PARAMS.startDateMilliseconds,
     QUERY_PARAMS.endDateMilliseconds,
@@ -119,6 +117,7 @@ export const DATE_RANGE_WHERE_EXAMPLE_SQL = `WHERE TimestampTime >= fromUnixTime
 export const QUERY_PARAM_EXAMPLES: Record<DisplayType, string> = {
   [DisplayType.Line]: TIME_CHART_EXAMPLE_SQL,
   [DisplayType.StackedBar]: TIME_CHART_EXAMPLE_SQL,
+  [DisplayType.StackedLine]: TIME_CHART_EXAMPLE_SQL,
   [DisplayType.Table]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Pie]: DATE_RANGE_WHERE_EXAMPLE_SQL,
   [DisplayType.Bar]: DATE_RANGE_WHERE_EXAMPLE_SQL,

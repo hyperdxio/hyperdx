@@ -15,6 +15,7 @@ import {
   mcpLineTileSchema,
   mcpNumberTileSchema,
   mcpSqlTileSchema,
+  mcpStackedLineTileSchema,
 } from '@/mcp/tools/dashboards/schemas';
 
 // ---------------------------------------------------------------------------
@@ -28,7 +29,8 @@ import {
 
 // Inline alerts carry their chart config in the same dialect as dashboard
 // tile configs, restricted to the display types the alert evaluator can run
-// as a time series: line, stacked_bar, and number (builder or raw SQL).
+// as a time series: line, stacked_bar, stacked_line, and number (builder or
+// raw SQL).
 // Reuses the dashboard tile config shapes so agents author both from one
 // vocabulary; the raw SQL variant narrows displayType and drops the
 // tile-only onClick affordance. Full validation (formulas, number
@@ -78,6 +80,11 @@ const mcpAlertChartConfigSchema = z
       where: mcpAlertChartLevelWhereSchema,
       whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
     }),
+    mcpStackedLineTileSchema.shape.config.extend({
+      name: mcpAlertChartConfigNameSchema,
+      where: mcpAlertChartLevelWhereSchema,
+      whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
+    }),
     mcpNumberTileSchema.shape.config.extend({
       name: mcpAlertChartConfigNameSchema,
       where: mcpAlertChartLevelWhereSchema,
@@ -88,16 +95,16 @@ const mcpAlertChartConfigSchema = z
       where: rejectedRawSqlAlertWhereField,
       whereLanguage: rejectedRawSqlAlertWhereField,
       displayType: z
-        .enum(['line', 'stacked_bar', 'number'])
+        .enum(['line', 'stacked_bar', 'stacked_line', 'number'])
         .describe(
-          'How to render the SQL results. Alerts evaluate line, stacked_bar, or number charts only.',
+          'How to render the SQL results. Alerts evaluate line, stacked_bar, stacked_line, or number charts only.',
         ),
     }),
   ])
   .describe(
     'Chart configuration for inline alerts (required when source is "inline"). ' +
       'Same shape as a dashboard tile config, limited to displayType line, ' +
-      'stacked_bar, or number. Omit configType for the builder variant ' +
+      'stacked_bar, stacked_line, or number. Omit configType for the builder variant ' +
       '(sourceId + select); set configType to "sql" for the Raw SQL variant ' +
       '(connectionId + sqlTemplate; the template must use the $__timeFilter ' +
       'and $__timeInterval macros so each evaluation window can be queried).',

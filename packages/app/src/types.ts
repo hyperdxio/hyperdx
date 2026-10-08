@@ -120,7 +120,7 @@ export type TimeChartSeries = {
   groupBy: string[];
   numberFormat?: NumberFormat;
   color?: string;
-  displayType?: 'stacked_bar' | 'line';
+  displayType?: 'stacked_bar' | 'stacked_line' | 'line';
   implicitColumn?: string;
   whereSql?: string;
   groupBySql?: string;

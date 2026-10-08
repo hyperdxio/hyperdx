@@ -29,6 +29,8 @@ function DisplaySwitcher<T extends string>({
           <ActionIcon
             size="xs"
             me={2}
+            data-testid={`display-switcher-${optionValue}`}
+            data-active={value === optionValue ? 'true' : undefined}
             className={cx({
               'text-brand': value === optionValue,
               'text-muted-hover': value !== optionValue,
