@@ -8,9 +8,9 @@ import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
-  HeatmapMode,
   MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
+  PromqlHeatmapMode,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -89,8 +89,8 @@ interface ChartDisplaySettingsDrawerProps {
   configType?: 'sql' | 'builder' | 'promql';
   /** Whether a PromQL tile's queried expression runs over a range. */
   promqlUsesRange?: boolean;
-  /** A builder heatmap's mode; only distribution heatmaps have a numeric y axis to scale. */
-  heatmapMode?: HeatmapMode;
+  /** A heatmap's mode; only distribution heatmaps have a numeric y axis to scale. */
+  heatmapMode?: PromqlHeatmapMode;
   /** The heatmap scale used when the tile has none set. */
   defaultHeatmapScaleType?: HeatmapScaleType;
   previousDateRange?: [Date, Date];
@@ -227,13 +227,14 @@ export default function ChartDisplaySettingsDrawer({
     displayType === DisplayType.Heatmap && heatmapMode === 'distribution';
 
   // Every PromQL display that surfaces a series name. A number tile shows one
-  // value, a table gives each label its own column, and a distribution heatmap
-  // merges every series into one, so none has a legend.
+  // value, a table gives each label its own column, a distribution heatmap
+  // merges every series into one, and a histogram heatmap labels rows by
+  // bucket, so none has a legend.
   const showLegendTemplate =
     configType === 'promql' &&
     displayType !== DisplayType.Number &&
     displayType !== DisplayType.Table &&
-    !isDistributionHeatmap;
+    !(displayType === DisplayType.Heatmap && heatmapMode !== 'series');
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; on PromQL it trims the reduced series client-side

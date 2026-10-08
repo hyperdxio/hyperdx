@@ -8,12 +8,12 @@ export type HeatmapYAxis =
       scale: HeatmapScaleType;
       /** `rows + 1` ascending row boundaries in data space. Rows may be uneven. */
       edges: number[];
-      /**
-       * The top row has no upper bound (e.g. a `+Inf` histogram bucket), so
-       * its last edge is ignored and it is drawn as tall as the row below.
-       */
-      openTop?: boolean;
     }
+  /**
+   * Pre-bucketed histogram rows, drawn evenly. One ascending upper bound per
+   * row; the top bound may be `Infinity` (a `+Inf` bucket).
+   */
+  | { type: 'buckets'; bounds: number[] }
   | { type: 'series'; labels: string[] };
 
 /** Source-agnostic heatmap data: one column per time bucket, one row per y bucket or series. */
@@ -28,8 +28,8 @@ export type HeatmapGrid = {
 };
 
 /**
- * Numeric-axis cells are counts, empty at 0. Series-axis cells are values
- * that may be zero or negative, empty when NaN.
+ * Numeric- and bucket-axis cells are counts, empty at 0. Series-axis cells
+ * are values that may be zero or negative, empty when NaN.
  */
 export type HeatmapCellKind = 'count' | 'value';
 
@@ -49,22 +49,27 @@ export const EMPTY_HEATMAP_GRID: HeatmapGrid = {
 };
 
 export function heatmapRowCount(yAxis: HeatmapYAxis) {
-  return yAxis.type === 'series'
-    ? yAxis.labels.length
-    : Math.max(0, yAxis.edges.length - 1);
+  switch (yAxis.type) {
+    case 'series':
+      return yAxis.labels.length;
+    case 'buckets':
+      return yAxis.bounds.length;
+    case 'numeric':
+      return Math.max(0, yAxis.edges.length - 1);
+  }
 }
 
 /**
- * Lower and upper bound of each row in plot space. The uPlot y scale is
- * linear, so log-scale rows are plotted in natural-log space and tick labels
- * are exponentiated back.
+ * Lower and upper bound of each row in plot space. Series and histogram
+ * bucket rows are unit-height bands. The uPlot y scale is linear, so log-scale
+ * rows are plotted in natural-log space and tick labels are exponentiated back.
  */
 export function rowPlotBounds(yAxis: HeatmapYAxis): {
   lo: number[];
   hi: number[];
 } {
   const rows = heatmapRowCount(yAxis);
-  if (yAxis.type === 'series') {
+  if (yAxis.type !== 'numeric') {
     return {
       lo: Array.from({ length: rows }, (_, r) => r),
       hi: Array.from({ length: rows }, (_, r) => r + 1),
@@ -74,11 +79,6 @@ export function rowPlotBounds(yAxis: HeatmapYAxis): {
   const toPlot = yAxis.scale === 'log' ? Math.log : (v: number) => v;
   const lo = yAxis.edges.slice(0, rows).map(toPlot);
   const hi = yAxis.edges.slice(1, rows + 1).map(toPlot);
-  if (yAxis.openTop && rows > 0) {
-    const last = rows - 1;
-    const height = rows > 1 ? hi[last - 1] - lo[last - 1] : 1;
-    hi[last] = lo[last] + height;
-  }
   return { lo, hi };
 }
 

@@ -8,6 +8,11 @@ import type { HighlightedPoint } from './highlightDataPlugin';
 export type HeatmapTooltipCell =
   | { kind: 'series'; name: string; formattedValue: string }
   | {
+      kind: 'bucket';
+      formattedRange: string;
+      percentile: number | undefined;
+    }
+  | {
       kind: 'distribution';
       formattedY: string;
       percentile: number | undefined;
@@ -89,7 +94,15 @@ export function HeatmapTooltip({
         ) : (
           <>
             <div>
-              <b>Y Value:</b> {cell.formattedY}
+              {cell.kind === 'bucket' ? (
+                <>
+                  <b>Bucket:</b> {cell.formattedRange}
+                </>
+              ) : (
+                <>
+                  <b>Y Value:</b> {cell.formattedY}
+                </>
+              )}
               {cell.percentile != null &&
                 ` (p${new Intl.NumberFormat('en-US', {
                   maximumFractionDigits: 1,
