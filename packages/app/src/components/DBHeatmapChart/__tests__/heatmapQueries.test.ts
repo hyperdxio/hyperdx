@@ -107,6 +107,30 @@ describe('PromQL heatmaps', () => {
     });
   });
 
+  it('are histogram heatmaps in histogram mode', () => {
+    const histogramConfig: PromqlConfigWithDateRange = {
+      ...config,
+      heatmap: { mode: 'histogram' },
+    };
+    expect(toHeatmapQuery(histogramConfig)).toEqual({
+      mode: 'histogram',
+      config: histogramConfig,
+    });
+  });
+
+  it('query a histogram heatmap as a histogram, with the expression as written', () => {
+    const histogramConfig: PromqlConfigWithDateRange = {
+      ...config,
+      heatmap: { mode: 'histogram', scaleType: 'log' },
+    };
+    expect(buildHeatmapSeriesConfig(histogramConfig, '5 minute')).toMatchObject(
+      {
+        promqlExpression: config.promqlExpression,
+        heatmap: { mode: 'histogram' },
+      },
+    );
+  });
+
   it('query at the heatmap granularity over a bucket-aligned range', () => {
     expect(buildHeatmapSeriesConfig(config, '5 minute')).toMatchObject({
       configType: 'promql',

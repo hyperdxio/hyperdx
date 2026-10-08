@@ -52,8 +52,31 @@ function responseToHeatmapSeries(
 
 /**
  * Query a heatmap's series like a time chart, bucketed at the heatmap
- * granularity, as one point list per series. Keeps the `maxSeries` series
- * with the largest peaks.
+ * granularity. The previous response stays in place while refreshing.
+ */
+export function useHeatmapSeriesQuery({
+  config,
+  enabled,
+}: {
+  config: HeatmapSeriesChartConfig;
+  enabled: boolean;
+}) {
+  const timeBuckets = useHeatmapTimeBuckets(config);
+  const seriesConfig = buildHeatmapSeriesConfig(
+    config,
+    timeBuckets.granularity,
+  );
+  const query = useQueriedChartConfig(seriesConfig, {
+    queryKey: ['heatmap_series', seriesConfig],
+    enabled,
+    placeholderData: prev => prev,
+  });
+  return { ...timeBuckets, ...query };
+}
+
+/**
+ * Query a heatmap's series as one point list per series. Keeps the
+ * `maxSeries` series with the largest peaks.
  */
 export function useHeatmapSeriesPoints({
   config,
@@ -64,18 +87,15 @@ export function useHeatmapSeriesPoints({
   enabled: boolean;
   maxSeries: number;
 }) {
-  const { granularity, generatedTsBuckets, fromMs, toMs } =
-    useHeatmapTimeBuckets(config);
-
-  const seriesConfig = buildHeatmapSeriesConfig(config, granularity);
-  const { data, isLoading, isPlaceholderData, error } = useQueriedChartConfig(
-    seriesConfig,
-    {
-      queryKey: ['heatmap_series', seriesConfig],
-      enabled,
-      placeholderData: prev => prev,
-    },
-  );
+  const {
+    generatedTsBuckets,
+    fromMs,
+    toMs,
+    data,
+    isLoading,
+    isPlaceholderData,
+    error,
+  } = useHeatmapSeriesQuery({ config, enabled });
 
   // Depend on primitive number ms values so a fresh dateRange array doesn't
   // re-parse the response and rebuild the grid on every render.
