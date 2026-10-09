@@ -16,7 +16,6 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -142,8 +141,6 @@ function DBServiceMapPage() {
   useEffect(() => {
     syncSourceParam(watchedSource);
   }, [watchedSource]);
-
-  const sourceTableConnection = useMemo(() => tcFromSource(source), [source]);
 
   const serviceNameKey = source?.serviceNameExpression ?? 'ServiceName';
   const serviceNamesChartConfig = useMemo(
@@ -370,7 +367,7 @@ function DBServiceMapPage() {
                 data-testid="service-map-service-filter"
               />
               <SearchWhereInput
-                tableConnection={sourceTableConnection}
+                source={source}
                 control={control}
                 name="where"
                 onSubmit={onSubmit}
@@ -381,7 +378,6 @@ function DBServiceMapPage() {
                 size="xs"
                 data-testid="service-map-search-input"
                 dateRange={searchedTimeRange}
-                sourceId={source?.id}
                 lucenePlaceholder="Filter spans w/ Lucene (ex. http.method:GET)"
                 sqlPlaceholder="SQL WHERE to filter spans (ex. Duration > 1000000)"
                 minWidth="min(500px, 100%)"

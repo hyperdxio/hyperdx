@@ -30,7 +30,7 @@ import {
   ClickHouseQueryError,
   ColumnMeta,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
@@ -874,7 +874,7 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
     id: sourceID,
     kinds: [SourceKind.Log, SourceKind.Trace],
   });
-  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+  const { data: tableMetadata } = useTableMetadata(getSourceTable({ source }));
 
   // When source changes, make sure select and orderby fields are set to default
   return useMemo(() => {
@@ -2082,11 +2082,6 @@ function DBSearchPageContent() {
     ],
   );
 
-  const inputSourceTableConnection = useMemo(
-    () => tcFromSource(inputSourceObj),
-    [inputSourceObj],
-  );
-
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -2370,7 +2365,7 @@ function DBSearchPageContent() {
           />
           <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
             <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
+              source={inputSourceObj}
               control={control}
               name="select"
               defaultValue={defaultSearchConfig.select}
@@ -2380,12 +2375,11 @@ function DBSearchPageContent() {
               size="xs"
               allowMultiline
               dateRange={searchedTimeRange}
-              sourceId={inputSource}
             />
           </Box>
           <Box style={{ maxWidth: 400, width: '20%' }}>
             <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
+              source={inputSourceObj}
               control={control}
               name="orderBy"
               defaultValue={defaultSearchConfig.orderBy}
@@ -2393,7 +2387,6 @@ function DBSearchPageContent() {
               label="ORDER BY"
               size="xs"
               dateRange={searchedTimeRange}
-              sourceId={inputSource}
             />
           </Box>
           <>
@@ -2448,7 +2441,7 @@ function DBSearchPageContent() {
         />
         <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
           <SearchWhereInput
-            tableConnection={inputSourceTableConnection}
+            source={inputSourceObj}
             control={control}
             name="where"
             onSubmit={onSubmit}
@@ -2458,7 +2451,6 @@ function DBSearchPageContent() {
             data-testid="search-input"
             minWidth="min(600px, 100%)"
             dateRange={searchedTimeRange}
-            sourceId={inputSource}
             size="xs"
           />
           <Flex

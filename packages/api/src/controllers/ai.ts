@@ -3,7 +3,6 @@ import { createOpenAI } from '@ai-sdk/openai';
 import {
   getMetadata,
   TableMetadata,
-  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   AILineTableResponse,
@@ -103,13 +102,7 @@ export async function getAIMetadata(source: ISource) {
     connectionId,
   });
 
-  const allFields = await metadata.getAllFields({
-    databaseName,
-    tableName,
-    connectionId,
-    metadataMVs: tcFromSource(source).metadataMVs,
-    timestampValueExpression: source.timestampValueExpression,
-  });
+  const allFields = await metadata.getAllFields({ source });
 
   // TODO: Dedup with DBSearchPageFilters.tsx logic
   allFields.sort((a, b) => {

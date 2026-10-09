@@ -1,7 +1,7 @@
 import z from 'zod';
 import {
-  TableConnection,
-  TableConnectionChoice,
+  SourceTable,
+  SourceTableChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   displayTypeSupportsReducer,
@@ -467,11 +467,11 @@ export function buildChartConfigForExplanations({
 }
 
 /**
- * Picks the table connection(s) that drive attribute autocomplete for the
+ * Picks the source table(s) that drive attribute autocomplete for the
  * chart-level Group By.
  *
  * Metric sources have no single `from.tableName` (they fan out to per-type
- * metric tables), so we build one connection per series' metric table + name
+ * metric tables), so we pick one table per series' metric type + name
  * (deduped) and ask the editor to offer only fields present in ALL of them
  * (`intersectFields`). A ratio can mix metric types (e.g. gauge / sum) whose
  * tables have different native columns — a union would suggest a column that
@@ -479,23 +479,21 @@ export function buildChartConfigForExplanations({
  * By must be restricted to fields valid for every series.
  *
  * Non-metric sources (and metric sources with no resolvable series) fall back
- * to the source's single `tableConnection`.
+ * to the source itself.
  */
-export function buildGroupByConnectionProps({
+export function buildGroupBySourceProps({
   tableSource,
   series,
-  tableConnection,
 }: {
   tableSource: TSource | undefined;
   series: { metricType?: string; metricName?: string }[] | undefined;
-  tableConnection: TableConnection;
-}): TableConnectionChoice & { intersectFields?: boolean } {
+}): SourceTableChoice & { intersectFields?: boolean } {
   if (tableSource?.kind !== SourceKind.Metric || !Array.isArray(series)) {
-    return { tableConnection };
+    return { source: tableSource };
   }
 
   const seen = new Set<string>();
-  const connections: TableConnection[] = [];
+  const sourceTables: SourceTable[] = [];
   for (const s of series) {
     if (!s?.metricType || !s?.metricName) continue;
     const metricTable = getMetricTableName(tableSource, s.metricType);
@@ -503,15 +501,14 @@ export function buildGroupByConnectionProps({
     const key = `${metricTable}::${s.metricName}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    connections.push({
-      databaseName: tableSource.from.databaseName,
-      tableName: metricTable,
-      connectionId: tableSource.connection,
+    sourceTables.push({
+      source: tableSource,
+      metricType: s.metricType,
       metricName: s.metricName,
     });
   }
 
-  return connections.length > 0
-    ? { tableConnections: connections, intersectFields: true }
-    : { tableConnection };
+  return sourceTables.length > 0
+    ? { sourceTables, intersectFields: true }
+    : { source: tableSource };
 }

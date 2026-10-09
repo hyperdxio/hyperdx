@@ -1,5 +1,5 @@
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
-import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceTableChoice } from '@hyperdx/common-utils/dist/core/metadata';
 import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
@@ -108,14 +108,10 @@ export type SearchWhereInputProps = {
    * If not provided, defaults to `${name}Language` (e.g. name="where" → "whereLanguage").
    */
   languageName?: string;
-  /**
-   * Source id used in various queries
-   */
-  sourceId?: string;
   parentRef?: HTMLElement | null;
   /** Whether the dashboard variables in scope apply to this expression. */
   enableVariables?: boolean;
-} & TableConnectionChoice &
+} & SourceTableChoice &
   UseControllerProps<any>;
 
 /**
@@ -128,7 +124,7 @@ export type SearchWhereInputProps = {
  * @example
  * ```tsx
  * <SearchWhereInput
- *   tableConnection={tcFromSource(source)}
+ *   source={source}
  *   control={control}
  *   name="where"
  *   languageName="whereLanguage"
@@ -139,8 +135,10 @@ export type SearchWhereInputProps = {
  * ```
  */
 export default function SearchWhereInput({
-  tableConnection,
-  tableConnections,
+  source,
+  metricType,
+  metricName,
+  sourceTables,
   control,
   name,
   onSubmit,
@@ -159,7 +157,6 @@ export default function SearchWhereInput({
   additionalSuggestions,
   dateRange,
   languageName = `${name}Language`,
-  sourceId,
   parentRef,
   enableVariables = false,
 }: SearchWhereInputProps) {
@@ -180,7 +177,9 @@ export default function SearchWhereInput({
     onLanguageChange?.(lang);
   };
 
-  const tc = tableConnection ? { tableConnection } : { tableConnections };
+  const sourceProps = sourceTables
+    ? { sourceTables }
+    : { source, metricType, metricName };
   const baseHeight =
     size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 
@@ -227,7 +226,7 @@ export default function SearchWhereInput({
         <Box className={styles.inputWrapper}>
           {isSql ? (
             <SQLInlineEditorControlled
-              {...tc}
+              {...sourceProps}
               control={control}
               name={name}
               placeholder={sqlPlaceholder}
@@ -238,13 +237,12 @@ export default function SearchWhereInput({
               size={size}
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}
-              sourceId={sourceId}
               parentRef={parentRef}
               enableVariables={enableVariables}
             />
           ) : (
             <SearchInputV2
-              {...tc}
+              {...sourceProps}
               control={control}
               name={name}
               onSubmit={onSubmit}
@@ -256,7 +254,6 @@ export default function SearchWhereInput({
               data-testid={dataTestId}
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}
-              sourceId={sourceId}
               enableVariables={enableVariables}
             />
           )}

@@ -26,11 +26,7 @@ export default function ServiceDashboardEndpointPerformanceChart({
   service?: string;
   endpoint?: string;
 }) {
-  const { data: jsonColumns = [] } = useJsonColumns({
-    databaseName: source?.from?.databaseName || '',
-    tableName: source?.from?.tableName || '',
-    connectionId: source?.connection || '',
-  });
+  const { data: jsonColumns = [] } = useJsonColumns({ source });
   const { expressions } = useServiceDashboardExpressions({ source });
 
   if (!source || !expressions) {

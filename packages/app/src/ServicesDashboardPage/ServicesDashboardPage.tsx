@@ -15,7 +15,6 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { UseControllerProps, useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   PresetDashboard,
   SourceKind,
@@ -361,8 +360,7 @@ function ServicesDashboardPage() {
               dateRange={searchedTimeRange}
             />
             <SearchWhereInput
-              tableConnection={tcFromSource(source)}
-              sourceId={sourceId}
+              source={source}
               dateRange={searchedTimeRange}
               control={control}
               name="where"

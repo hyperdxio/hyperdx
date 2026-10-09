@@ -10,7 +10,6 @@ import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
@@ -1398,8 +1397,7 @@ export function DBTraceWaterfallChartContainer({
                 Spans filter
               </Text>
               <SearchWhereInput
-                tableConnection={tcFromSource(traceTableSource)}
-                sourceId={traceTableSource.id}
+                source={traceTableSource}
                 dateRange={dateRange}
                 name="traceWhere"
                 languageName="traceWhereLanguage"
@@ -1436,8 +1434,7 @@ export function DBTraceWaterfallChartContainer({
                   Logs filter
                 </Text>
                 <SearchWhereInput
-                  tableConnection={tcFromSource(logTableSource)}
-                  sourceId={logTableSource.id}
+                  source={logTableSource}
                   dateRange={dateRange}
                   name="logWhere"
                   languageName="logWhereLanguage"

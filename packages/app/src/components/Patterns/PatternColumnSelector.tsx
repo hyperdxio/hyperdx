@@ -1,4 +1,3 @@
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { Box } from '@mantine/core';
 
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
@@ -31,7 +30,6 @@ export function PatternColumnSelector({
   bodyValueExpression?: string;
 }) {
   const { data: source } = useSource({ id: sourceId });
-  const tableConnection = tcFromSource(source);
 
   if (!onChange) return null;
 
@@ -42,7 +40,7 @@ export function PatternColumnSelector({
   return (
     <Box py="xs" maw={600}>
       <SQLInlineEditor
-        tableConnection={tableConnection}
+        source={source}
         value={value}
         onChange={onChange}
         onSubmit={onSubmit}
@@ -51,7 +49,6 @@ export function PatternColumnSelector({
         placeholder={placeholder}
         size="xs"
         allowMultiline={false}
-        sourceId={sourceId}
         dateRange={dateRange}
       />
     </Box>
