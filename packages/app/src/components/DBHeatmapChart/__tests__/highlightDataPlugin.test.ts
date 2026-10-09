@@ -16,6 +16,7 @@ function hover(
   cursor: { left: number; top: number },
   cells = [2, 6],
   cellKind: HeatmapCellKind = 'count',
+  plotSize = { clientWidth: 200, clientHeight: 100 },
 ) {
   const onPointHighlight = jest.fn();
   const plugin = highlightDataPlugin({
@@ -25,7 +26,7 @@ function hover(
   });
   const u = {
     cursor,
-    over: { offsetLeft: 5, offsetTop: 7 },
+    over: { offsetLeft: 5, offsetTop: 7, ...plotSize },
     valToPos,
     posToVal,
     data: [
@@ -58,6 +59,24 @@ describe('highlightDataPlugin', () => {
       xCoord: 105,
       yCoord: 87,
       xSize: 10,
+      ySize: 20,
+    });
+  });
+
+  it('clips the reported box to the plot area', () => {
+    // The column spans x 95..105; the plot ends at x 100
+    expect(
+      reported(
+        hover({ left: 98, top: 80 }, [2, 6], 'count', {
+          clientWidth: 100,
+          clientHeight: 100,
+        }),
+      ),
+    ).toMatchObject({
+      closestIndex: 1,
+      xCoord: 102.5,
+      yCoord: 87,
+      xSize: 5,
       ySize: 20,
     });
   });

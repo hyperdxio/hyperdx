@@ -1717,6 +1717,8 @@ export const ChartVariableSchema = z.object({
   expression: z.string().optional(),
   /** Empty means nothing is selected. */
   values: z.array(z.string()),
+  /** The filter's selection cap; 1 means the variable is single-select. */
+  maxSelections: z.number().optional(),
 });
 
 export type ChartVariable = z.infer<typeof ChartVariableSchema>;
@@ -2120,6 +2122,11 @@ const dashboardFilterBaseSchema = z.object({
    * undefined and 0 both imply no minimum selection requirement.
    */
   minSelections: z.number().int().min(0).max(1).optional(),
+  /**
+   * The most values that can be selected at once. Only 1 is currently allowed,
+   * which makes the filter single-select. undefined implies no cap.
+   */
+  maxSelections: z.number().int().min(1).max(1).optional(),
   /**
    * Whether an unsatisfied requirement blocks every tile on the dashboard,
    * rather than only the tiles that read this filter (via variable or broadcast).

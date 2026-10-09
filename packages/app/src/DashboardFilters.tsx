@@ -14,6 +14,7 @@ import {
   ChartVariable,
   DashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
+import { isFilterSingleSelect } from '@hyperdx/common-utils/dist/variables';
 import { Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconAlertTriangle, IconHelp, IconRefresh } from '@tabler/icons-react';
 
@@ -186,6 +187,7 @@ const DashboardFilterSelect = ({
           loading={isLoading}
           // A static list renders in the order its author wrote it.
           sort={!isStaticListFilter(filter)}
+          isMultiSelect={!isFilterSingleSelect(filter)}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />

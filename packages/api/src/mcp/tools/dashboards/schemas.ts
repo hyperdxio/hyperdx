@@ -1319,6 +1319,19 @@ const mcpDashboardFilterBaseShape = {
       'Widens a REQUIRED filter (minSelections: 1) to block EVERY tile on the dashboard, ' +
         'not just the ones that read it. Ignored unless minSelections is 1.',
     ),
+  maxSelections: z
+    .number()
+    .int()
+    .min(1)
+    .max(1)
+    .optional()
+    .describe(
+      'Set to 1 to make this filter SINGLE-SELECT: the user can pick at most one ' +
+        'value. In PromQL, a single-select variable expands to its raw value by ' +
+        'default (for exact matchers such as {job="$job"}), while a multi-select ' +
+        'one expands to an escaped regex (for {job=~"$job"}). Omit for the normal ' +
+        'multi-select behavior.',
+    ),
 };
 
 const mcpQueryExpressionFilterSchema = z

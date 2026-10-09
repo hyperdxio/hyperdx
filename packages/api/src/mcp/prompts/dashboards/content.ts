@@ -118,6 +118,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 9e. MAKE A FILTER REQUIRED ONLY WHEN AN UNSCOPED VIEW IS MEANINGLESS. minSelections: 1 blocks the tiles that read the filter - the ones referencing its $variableName, and the ones its broadcast applies to - until the user picks a value. isGlobalRequirement: true widens that to every tile on the dashboard. Consider pairing either form with savedFilterValues so the dashboard opens on a sensible default rather than blocked.
 
+9f. MAKE A FILTER SINGLE-SELECT WHEN A TILE ONLY MAKES SENSE FOR ONE VALUE. maxSelections: 1 limits the dropdown to one value at a time, for example a host picker feeding a per-host detail view.
+
 10. UPDATE IS REPLACE, NOT MERGE. clickstack_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call clickstack_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
 11. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.
@@ -1222,6 +1224,7 @@ Only add one when the default is wrong. \${service:sqlstring} is redundant in a 
   sqlstring  'a', 'b'             NULL        the default in SQL inputs
   lucene     ("a" OR "b")         ("")        the default in Lucene inputs; ("") is a match-all, so no guard is needed
   regex      (a|b)                .*          use with match()
+  promql     a  or  (a|b)         ""  or  .*  the default in PromQL; a single-select variable (maxSelections: 1) renders its raw value for {label="$var"}, a multi-select one an escaped regex for {label=~"$var"}
   csv        a,b                  <empty>     use INSIDE a string literal
   markdown   a, b                 <empty>     the default in markdown tiles; markdown syntax in values is escaped
 

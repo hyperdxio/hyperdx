@@ -183,6 +183,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
           values: selection
             ? Array.from(selection.included).map(String).sort()
             : [],
+          maxSelections: filter.maxSelections,
         };
       },
     );

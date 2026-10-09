@@ -187,7 +187,25 @@ export const isStringSelectDisplayType = (
   displayType === DisplayType.Search ||
   displayType === DisplayType.EventPatterns;
 
-export const isPromqlDisplayType = isRawSqlDisplayType;
+export const isPromqlDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Table
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.StackedLine
+  | DisplayType.Pie
+  | DisplayType.Bar
+  | DisplayType.Number
+  | DisplayType.Heatmap =>
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
+  displayType === DisplayType.Pie ||
+  displayType === DisplayType.Bar ||
+  displayType === DisplayType.Number ||
+  displayType === DisplayType.Heatmap;
 
 const NON_PROMQL_SOURCE_KINDS = Object.values(SourceKind).filter(
   kind => kind !== SourceKind.Promql,
@@ -553,6 +571,8 @@ export const validateChartForm = (
 
   const isRawSqlChart =
     form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
+  const isPromqlChart =
+    form.configType === 'promql' && isPromqlDisplayType(form.displayType);
 
   // Validate connection is selected for raw SQL charts
   if (isRawSqlChart && !form.connection) {
@@ -731,6 +751,7 @@ export const validateChartForm = (
   // validated like any other builder series above.
   if (
     !isRawSqlChart &&
+    !isPromqlChart &&
     form.displayType === DisplayType.Heatmap &&
     getHeatmapMode(form) === 'distribution' &&
     Array.isArray(form.series) &&
