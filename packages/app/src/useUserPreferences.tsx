@@ -7,6 +7,7 @@ import {
   CONTENT_FONT_SIZES,
   type ContentFontSize,
   DEFAULT_CONTENT_FONT_SIZE,
+  isContentFontSize,
 } from '@/config/fonts';
 
 type ColorModePreference = 'light' | 'dark' | 'system';
@@ -239,7 +240,13 @@ export const useContentFontSize = () => {
     userPreferences: { contentFontSize },
   } = useUserPreferences();
 
-  const size = contentFontSize ?? DEFAULT_CONTENT_FONT_SIZE;
+  // The guard looks redundant against the declared type, but the value comes
+  // from localStorage: a hand-edited or stale blob can carry a size we no
+  // longer ship, and indexing CONTENT_FONT_SIZES with it would be undefined.
+  const size =
+    contentFontSize && isContentFontSize(contentFontSize)
+      ? contentFontSize
+      : DEFAULT_CONTENT_FONT_SIZE;
   const { base, compact } = CONTENT_FONT_SIZES[size];
 
   return {

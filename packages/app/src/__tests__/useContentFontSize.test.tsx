@@ -70,6 +70,27 @@ describe('useContentFontSize', () => {
     });
   });
 
+  it('falls back to the default when the stored size is not one we ship', () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        isUTC: false,
+        timeFormat: '12h',
+        colorMode: 'dark',
+        font: 'IBM Plex Mono',
+        contentFontSize: 'xl',
+      }),
+    );
+
+    const { result } = renderContentFontSize();
+
+    expect(result.current.resolved).toEqual({
+      contentFontSize: 'sm',
+      ...CONTENT_FONT_SIZES.sm,
+      scale: 1,
+    });
+  });
+
   it('resolves the stored preference', () => {
     const { result } = renderContentFontSize();
 
