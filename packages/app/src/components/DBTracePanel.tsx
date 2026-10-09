@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useAtom } from 'jotai';
@@ -78,6 +79,16 @@ const eventRowWhereSchema = z.object({
 const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
   eventRowWhereSchema.parse,
 );
+
+const selectionKey = (value: EventRowWhere | null) =>
+  value == null ? 'null' : `${value.traceId}|${value.type}|${value.id}`;
+
+// What the router has actually committed. nuqs updates `useQueryState` values
+// as soon as they are set, before the URL changes.
+const readCommittedSelection = () => {
+  const raw = new URLSearchParams(window.location.search).get('eventRowWhere');
+  return raw == null ? null : eventRowWhereParser.parse(raw);
+};
 
 enum SpanDetailTab {
   Overview = 'overview',
@@ -298,29 +309,89 @@ export default function DBTracePanel({
 
   const { mutate: updateTableSource } = useUpdateSource();
 
-  const [eventRowWhere, setEventRowWhere] = useQueryState(
+  const [urlSelection, setUrlSelection] = useQueryState(
     'eventRowWhere',
     eventRowWhereParser,
   );
 
-  // A persisted span selection belongs to the trace it was made in. Gate it by
-  // the current `traceId` at *read* time so a selection left in the URL from a
-  // previous trace (e.g. after "View Trace" opened a different trace, or an old
-  // shared link) can never render against this trace's waterfall — no matter how
-  // the panel was (re)mounted.
-  const selectedSpan =
-    eventRowWhere != null && eventRowWhere.traceId === traceId
-      ? eventRowWhere
-      : null;
+  // nuqs applies URL writes out of order (#3255), so a choice made here wins
+  // over the URL. undefined: defer to the URL; null: closed; value: selected.
+  const [localSelection, setLocalSelection] = useState<
+    EventRowWhere | null | undefined
+  >(undefined);
 
-  // Stamp the current trace onto every selection so the gate above can tell it
-  // apart from a stale one.
+  const [selectionTraceId, setSelectionTraceId] = useState(traceId);
+  if (selectionTraceId !== traceId) {
+    setSelectionTraceId(traceId);
+    setLocalSelection(prev => (prev?.traceId === traceId ? prev : undefined));
+  }
+
+  const mergedSelection =
+    localSelection === undefined ? urlSelection : localSelection;
+  const selectedSpan =
+    mergedSelection?.traceId === traceId ? mergedSelection : null;
+
+  // Writes this panel sent that the router hasn't committed yet. A commit of one
+  // that isn't the latest write is a late commit; any other value belongs to
+  // another panel or a navigation, so it is left alone.
+  const lastWrittenRef = useRef<EventRowWhere | null | undefined>(undefined);
+  const pendingRef = useRef(new Set<string>());
+
+  const recordSelection = useCallback((next: EventRowWhere | null) => {
+    lastWrittenRef.current = next;
+    setLocalSelection(next);
+  }, []);
+
+  const writeUrl = useCallback(
+    (next: EventRowWhere | null) => {
+      pendingRef.current.add(selectionKey(next));
+      void setUrlSelection(next);
+    },
+    [setUrlSelection],
+  );
+
+  const writeSelection = useCallback(
+    (next: EventRowWhere | null) => {
+      recordSelection(next);
+      writeUrl(next);
+    },
+    [recordSelection, writeUrl],
+  );
+
+  useEffect(() => {
+    lastWrittenRef.current = undefined;
+    pendingRef.current.clear();
+  }, [traceId]);
+
+  // Runs on every value nuqs reports, but checks the committed URL.
+  useEffect(() => {
+    const key = selectionKey(readCommittedSelection());
+    const last = lastWrittenRef.current;
+    if (
+      pendingRef.current.delete(key) &&
+      last !== undefined &&
+      key !== selectionKey(last)
+    ) {
+      writeUrl(last);
+    }
+  }, [urlSelection, writeUrl]);
+
   const selectSpan = useCallback(
     (where: { id: string; type: string; aliasWith: WithClause[] }) => {
-      setEventRowWhere({ ...where, traceId });
+      writeSelection({ ...where, traceId });
     },
-    [setEventRowWhere, traceId],
+    [writeSelection, traceId],
   );
+
+  useEffect(() => {
+    const syncFromUrl = () => {
+      // The browser already holds this URL, so record it without writing.
+      pendingRef.current.clear();
+      recordSelection(readCommittedSelection());
+    };
+    window.addEventListener('popstate', syncFromUrl);
+    return () => window.removeEventListener('popstate', syncFromUrl);
+  }, [recordSelection]);
 
   const {
     control: traceIdControl,
@@ -345,16 +416,6 @@ export default function DBTracePanel({
     }
   }, [parentSourceData, traceIdSetValue]);
 
-  // Reset highlighted row when trace ID changes
-  // otherwise we'll show stale span details
-  useEffect(() => {
-    if (eventRowWhere != null && eventRowWhere.traceId !== traceId) {
-      setEventRowWhere(prev =>
-        prev != null && prev.traceId !== traceId ? null : prev,
-      );
-    }
-  }, [eventRowWhere, traceId, setEventRowWhere]);
-
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -370,8 +431,8 @@ export default function DBTracePanel({
   const detailPanelSize = isSideLayout ? rightPanelSize : bottomPanelSize;
 
   const handleCloseSpanDetails = useCallback(() => {
-    setEventRowWhere(null);
-  }, [setEventRowWhere]);
+    writeSelection(null);
+  }, [writeSelection]);
 
   const selectedSpanSource = useMemo(() => {
     if (!selectedSpan) return null;
