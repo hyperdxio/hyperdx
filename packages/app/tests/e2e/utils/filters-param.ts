@@ -1,13 +1,19 @@
 /**
  * The `filters=` URL param carries dashboard filter selections in one of two
- * shapes: legacy, keyed by SQL expression, or variable-keyed by variable name.
- * These helpers are the one definition of that contract for the E2E suite.
+ * shapes: legacy, keyed by SQL expression, or variable-keyed by variable name
+ * (selected values, or an ad hoc filter's conditions). These helpers are the
+ * one definition of that contract for the E2E suite.
  */
 import { expect, type Page } from '@playwright/test';
 
 export type FilterEntry =
   | { type: 'sql'; condition: string }
-  | { type: 'variable'; name: string; values: string[] };
+  | { type: 'variable'; name: string; values: string[] }
+  | {
+      type: 'adhoc';
+      name: string;
+      conditions: { key: string; operator: string; value: string }[];
+    };
 
 /** The raw, still-encoded `filters=` param. `null` when the param is absent. */
 export const rawFiltersParam = (page: Page): string | null =>

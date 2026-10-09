@@ -112,3 +112,16 @@ export const LoadingValues = () => (
 export const NoSuggestions = () => (
   <Demo operators={SQL_FILTER_OPERATORS} values={{}} />
 );
+
+export const KeysError = () => (
+  <Demo operators={SQL_FILTER_OPERATORS} values={{}} isKeysError />
+);
+
+export const ValuesError = () => (
+  <Demo
+    operators={SQL_FILTER_OPERATORS}
+    values={{ ServiceName: [], SeverityText: [] }}
+    initial={{ key: 'ServiceName', operator: '=', value: '' }}
+    isValuesError
+  />
+);

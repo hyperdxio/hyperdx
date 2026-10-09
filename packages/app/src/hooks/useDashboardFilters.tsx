@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import { uniqBy } from 'lodash';
 import { useQueryState } from 'nuqs';
 import {
   FilterSelection,
@@ -8,6 +9,7 @@ import {
   ParsedDashboardFilterValues,
   resolveFilterSelection,
   serializeDashboardFilterValues,
+  VariableEntryValue,
 } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   doesFilterApplyToSource,
@@ -15,10 +17,13 @@ import {
   filtersToQuery,
   getDashboardVariableFilters,
   getFilterExpression,
+  getFilterVariableName,
+  isAdhocFilter,
   isFilterBroadcastEnabled,
   isQueryExpressionFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  AdhocFilterCondition,
   ChartVariable,
   DashboardFilter,
   Filter,
@@ -39,6 +44,10 @@ const hasSelection = (selection: FilterSelection): boolean =>
 const isRepresentableAsVariable = (selection: FilterSelection): boolean =>
   selection.excluded.size === 0 && selection.range == null;
 
+/** Conditions are identified by content (e.g. pill keys), so drop repeats. */
+const uniqConditions = (conditions: AdhocFilterCondition[]) =>
+  uniqBy(conditions, condition => JSON.stringify(condition));
+
 /**
  * Rebuild the whole state array from the selections every declared filter
  * currently resolves to. Anything that belongs to no declared filter is
@@ -49,11 +58,12 @@ const rebuildEntries = (
   parsed: ParsedDashboardFilterValues,
 ) => {
   const byExpression: FilterState = {};
-  const byVariable = new Map<string, string[]>();
+  const byVariable = new Map<string, VariableEntryValue>();
   const declaredExpressions = new Set<string>();
   const declaredVariableNames = new Set<string>();
 
   for (const filter of filters) {
+    if (isAdhocFilter(filter)) continue;
     const expression = getFilterExpression(filter);
     if (expression) declaredExpressions.add(expression);
 
@@ -67,7 +77,10 @@ const rebuildEntries = (
     if (!isRepresentableAsVariable(selection) && expression) {
       byExpression[expression] = selection;
     } else if (selection.included.size > 0) {
-      byVariable.set(key.name, Array.from(selection.included).map(String));
+      byVariable.set(key.name, {
+        type: 'variable',
+        values: Array.from(selection.included).map(String),
+      });
     }
   }
 
@@ -83,9 +96,10 @@ const rebuildEntries = (
     }
   }
 
-  // Pass through any entries that don't correspond to a declared filter.
-  for (const [name, values] of parsed.byVariable) {
-    if (!declaredVariableNames.has(name)) byVariable.set(name, values);
+  // Pass through any entries that don't correspond to a declared filter. Ad hoc
+  // filters are skipped above, so their conditions pass through here too.
+  for (const [name, value] of parsed.byVariable) {
+    if (!declaredVariableNames.has(name)) byVariable.set(name, value);
   }
   for (const [expression, selection] of Object.entries(parsed.byExpression)) {
     if (!declaredExpressions.has(expression)) {
@@ -120,7 +134,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
         const key = filterSelectionKey(target);
         if (key.kind === 'variable') {
           // Set even when empty to avoid falling back to a legacy expression-keyed value
-          parsed.byVariable.set(key.name, values);
+          parsed.byVariable.set(key.name, { type: 'variable', values });
         } else if (values.length === 0) {
           delete parsed.byExpression[key.expression];
         } else {
@@ -136,26 +150,60 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     [setFilterValueEntries, filters],
   );
 
+  const setAdhocConditions = useCallback(
+    (filterId: string, conditions: AdhocFilterCondition[]) => {
+      setFilterValueEntries(prev => {
+        const target = filters.find(f => f.id === filterId);
+        const name = target && getFilterVariableName(target);
+        if (!name) return prev;
+
+        const parsed = parseDashboardFilterValues(prev ?? []);
+        parsed.byVariable.set(name, {
+          type: 'adhoc',
+          conditions: uniqConditions(conditions),
+        });
+        return rebuildEntries(filters, parsed);
+      });
+    },
+    [setFilterValueEntries, filters],
+  );
+
   const {
     selectionByFilterId,
+    adhocConditionsByFilterId,
     ignoredExpressions,
     ignoredVariableNames,
     variables,
     unsatisfiedRequiredFilters,
   } = useMemo<{
     selectionByFilterId: ReadonlyMap<string, FilterSelection>;
+    adhocConditionsByFilterId: ReadonlyMap<string, AdhocFilterCondition[]>;
     ignoredExpressions: string[];
     ignoredVariableNames: string[];
     variables: ChartVariable[];
     unsatisfiedRequiredFilters: DashboardFilter[];
   }>(() => {
     const parsed = parseDashboardFilterValues(filterValueEntries ?? []);
+    // Ad hoc filters aren't exposed as variables yet
+    const nonAdhocFilters = filters.filter(filter => !isAdhocFilter(filter));
+    const adhocFilters = filters.filter(isAdhocFilter);
 
     // Keyed by filter ID: two definitions may share one expression
     const selectionByFilterId = new Map<string, FilterSelection>();
-    for (const filter of filters) {
+    for (const filter of nonAdhocFilters) {
       const selection = resolveFilterSelection(filter, parsed);
       if (selection) selectionByFilterId.set(filter.id, selection);
+    }
+
+    const adhocConditionsByFilterId = new Map<string, AdhocFilterCondition[]>();
+    for (const filter of adhocFilters) {
+      const value = parsed.byVariable.get(getFilterVariableName(filter) ?? '');
+      if (value?.type === 'adhoc') {
+        adhocConditionsByFilterId.set(
+          filter.id,
+          uniqConditions(value.conditions),
+        );
+      }
     }
 
     // Find state that doesn't correspond to any declared filter, so the caller can surface a warning.
@@ -166,8 +214,11 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
       expression => !knownExpressions.has(expression),
     );
 
-    const variableFilters = getDashboardVariableFilters(filters);
-    const declaredVariableNames = new Set(variableFilters.map(v => v.name));
+    const variableFilters = getDashboardVariableFilters(nonAdhocFilters);
+    const declaredVariableNames = new Set([
+      ...variableFilters.map(v => v.name),
+      ...adhocFilters.flatMap(filter => getFilterVariableName(filter) ?? []),
+    ]);
     const ignoredVariableNames = Array.from(parsed.byVariable.keys()).filter(
       name => !declaredVariableNames.has(name),
     );
@@ -191,6 +242,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
 
     return {
       selectionByFilterId,
+      adhocConditionsByFilterId,
       variables,
       ignoredExpressions,
       ignoredVariableNames,
@@ -260,6 +312,10 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     broadcastedFilters,
     /** Set the selected values for a filter, by its ID */
     setFilterValue,
+    /** Each ad hoc filter's current conditions, keyed by `filter.id`. */
+    adhocConditionsByFilterId,
+    /** Replace the conditions of an ad hoc filter, by its ID */
+    setAdhocConditions,
     /** Set the raw filter value state */
     setFilterValueEntries,
     /** The raw persisted entries, as they appear in the URL param. */

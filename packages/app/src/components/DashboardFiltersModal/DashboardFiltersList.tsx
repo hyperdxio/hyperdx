@@ -1,9 +1,6 @@
 import {
-  getAdhocFilterAppliesToSourceIds,
   getFilterBroadcastTarget,
   getFilterVariableName,
-  isAdhocFilter,
-  isFilterBroadcastEnabled,
   isFilterGlobalRequirement,
   isFilterRequired,
   isFilterVariableEnabled,
@@ -104,12 +101,6 @@ function getBroadcastTargetDisplay(
   filter: DashboardFilter,
   sources?: { id: string; name: string }[],
 ) {
-  // An ad hoc filter broadcasts to its own sources unless narrowed further
-  if (isAdhocFilter(filter)) {
-    if (!isFilterBroadcastEnabled(filter)) return undefined;
-    return getSourceNames(getAdhocFilterAppliesToSourceIds(filter), sources);
-  }
-
   const broadcastTarget = getFilterBroadcastTarget(filter);
   if (!broadcastTarget) return undefined;
 

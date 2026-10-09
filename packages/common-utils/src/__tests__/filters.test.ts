@@ -28,6 +28,7 @@ import {
   validateVariableName,
 } from '@/filters';
 import type {
+  AdhocDashboardFilter,
   ChartVariable,
   DashboardFilter,
   Filter,
@@ -1611,14 +1612,33 @@ describe('filters', () => {
       ...overrides,
     });
 
-    it('reports the expression and scope for a broadcasting filter', () => {
+    it('reports the scope for a broadcasting filter', () => {
       expect(getFilterBroadcastTarget(filter({}))).toEqual({
-        expression: 'ServiceName',
         appliesToSourceIds: undefined,
       });
       expect(
         getFilterBroadcastTarget(filter({ appliesToSourceIds: ['logs'] })),
-      ).toEqual({ expression: 'ServiceName', appliesToSourceIds: ['logs'] });
+      ).toEqual({ appliesToSourceIds: ['logs'] });
+    });
+
+    it('scopes an ad hoc filter to its own sources unless narrowed', () => {
+      const adhoc: AdhocDashboardFilter = {
+        id: 'f4',
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources: ['logs', 'traces'],
+        isVariableEnabled: true,
+      };
+      expect(getFilterBroadcastTarget(adhoc)).toEqual({
+        appliesToSourceIds: ['logs', 'traces'],
+      });
+      expect(
+        getFilterBroadcastTarget({ ...adhoc, appliesToSourceIds: ['logs'] }),
+      ).toEqual({ appliesToSourceIds: ['logs'] });
+      expect(
+        getFilterBroadcastTarget({ ...adhoc, isBroadcastEnabled: false }),
+      ).toBeUndefined();
     });
 
     it('returns undefined when broadcasting is off', () => {
