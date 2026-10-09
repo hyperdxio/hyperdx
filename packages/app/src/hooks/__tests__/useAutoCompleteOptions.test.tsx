@@ -11,7 +11,11 @@ import {
   tokenizeAtCursor,
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
-import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
+import {
+  useAllFields,
+  useAllKeyValues,
+  useGetKeyValues,
+} from '@/hooks/useMetadata';
 
 enableMapSet();
 
@@ -49,6 +53,7 @@ jest.mock('../useMetadata', () => {
     useAllFields: jest.fn(),
     useMultipleAllFields: jest.fn(),
     useGetKeyValues: jest.fn(),
+    useAllKeyValues: jest.fn(),
     useColumns: jest.fn().mockReturnValue({ data: [], isLoading: false }),
     useDateTimeColumns: jest.fn().mockReturnValue(new Map()),
     useJsonColumns: jest.fn().mockReturnValue({ data: [] }),
@@ -114,6 +119,10 @@ describe('useAutoCompleteOptions', () => {
       data: null,
       isFetching: false,
     });
+    (useAllKeyValues as jest.Mock).mockReturnValue({
+      data: undefined,
+      isFetching: false,
+    });
 
     wrapper = makeWrapper();
   });
@@ -144,7 +153,7 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should return key value options with correct lucene formatting', () => {
-    (useGetKeyValues as jest.Mock).mockReturnValue({
+    (useAllKeyValues as jest.Mock).mockReturnValue({
       data: [
         {
           key: 'ResourceAttributes.service.name',
@@ -191,7 +200,7 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should handle nested key value options', () => {
-    (useGetKeyValues as jest.Mock).mockReturnValue({
+    (useAllKeyValues as jest.Mock).mockReturnValue({
       data: [
         {
           key: 'ResourceAttributes',

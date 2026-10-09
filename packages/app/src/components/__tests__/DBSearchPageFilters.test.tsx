@@ -417,6 +417,50 @@ describe('FilterGroup', () => {
     },
   };
 
+  it('shows a loader instead of the value count while values load', () => {
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        options={[]}
+        optionsLoading
+        showFilterCounts
+      />,
+    );
+
+    expect(
+      screen.getByTestId('filter-values-loading-Test Filter'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('(0)')).not.toBeInTheDocument();
+  });
+
+  it('keeps the applied filter count while values load', () => {
+    renderWithMantine(
+      <FilterGroup
+        {...defaultProps}
+        optionsLoading
+        showFilterCounts
+        selectedValues={{
+          included: new Set(['apple']),
+          excluded: new Set(),
+        }}
+      />,
+    );
+
+    expect(screen.getByText('(1)')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('filter-values-loading-Test Filter'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('shows the value count once values have loaded', () => {
+    renderWithMantine(<FilterGroup {...defaultProps} showFilterCounts />);
+
+    expect(screen.getByText('(3)')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('filter-values-loading-Test Filter'),
+    ).not.toBeInTheDocument();
+  });
+
   it('should sort options alphabetically by default', () => {
     renderWithMantine(<FilterGroup {...defaultProps} />);
 

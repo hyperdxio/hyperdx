@@ -4,6 +4,7 @@ import {
   cleanClickHouseExpression,
   getFilterStateEntry,
   groupFacetsByBaseName,
+  listRequestedFacets,
   toClickHouseKeyExpression,
   toQuotedClickHouseKeyExpression,
 } from './utils';
@@ -74,6 +75,90 @@ describe('groupFacetsByBaseName — dot/bracket de-duplication', () => {
     ]);
 
     expect(result.grouped[0].children).toHaveLength(2);
+  });
+
+  it('keeps a merged child loading while either entry is loading', () => {
+    const result = groupFacetsByBaseName([
+      { key: 'LogAttributes.time', value: ['a'] },
+      { key: "LogAttributes['time']", value: [], isLoading: true },
+    ]);
+
+    expect(result.grouped[0].children[0].isLoading).toBe(true);
+  });
+});
+
+describe('listRequestedFacets', () => {
+  const toUiKey = (sqlKey: string) => sqlKey.replace(/`/g, '');
+
+  it('lists keys without values as pending while fetching, in request order', () => {
+    const result = listRequestedFacets({
+      requestedKeys: ['ServiceName', 'SeverityText', "`my-map`['k']"],
+      arrived: [{ key: 'SeverityText', value: ['info'] }],
+      isFetching: true,
+      toUiKey,
+    });
+
+    expect(result.facets).toEqual([
+      { key: 'ServiceName', value: [] },
+      { key: 'SeverityText', value: ['info'] },
+      { key: "my-map['k']", value: [] },
+    ]);
+    expect(result.pendingKeys).toEqual(new Set(['ServiceName', "my-map['k']"]));
+  });
+
+  it('lists every requested key before any values arrive', () => {
+    const result = listRequestedFacets({
+      requestedKeys: ['ServiceName', 'SeverityText'],
+      arrived: undefined,
+      isFetching: true,
+      toUiKey,
+    });
+
+    expect(result.facets).toEqual([
+      { key: 'ServiceName', value: [] },
+      { key: 'SeverityText', value: [] },
+    ]);
+    expect(result.pendingKeys.size).toBe(2);
+  });
+
+  it('drops keys that never got values once fetching ends', () => {
+    const result = listRequestedFacets({
+      requestedKeys: ['ServiceName', 'SeverityText'],
+      arrived: [{ key: 'SeverityText', value: ['info'] }],
+      isFetching: false,
+      toUiKey,
+    });
+
+    expect(result.facets).toEqual([{ key: 'SeverityText', value: ['info'] }]);
+    expect(result.pendingKeys.size).toBe(0);
+  });
+
+  it('appends results the request did not name, after the requested keys', () => {
+    const result = listRequestedFacets({
+      requestedKeys: ['ServiceName'],
+      arrived: [
+        { key: 'StaleKey', value: ['old'] },
+        { key: 'ServiceName', value: ['api'] },
+      ],
+      isFetching: false,
+      toUiKey,
+    });
+
+    expect(result.facets).toEqual([
+      { key: 'ServiceName', value: ['api'] },
+      { key: 'StaleKey', value: ['old'] },
+    ]);
+  });
+
+  it('returns no facets when nothing has arrived and nothing is fetching', () => {
+    const result = listRequestedFacets({
+      requestedKeys: ['ServiceName'],
+      arrived: undefined,
+      isFetching: false,
+      toUiKey,
+    });
+
+    expect(result.facets).toBeUndefined();
   });
 });
 

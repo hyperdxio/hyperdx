@@ -17,8 +17,10 @@ import {
 import {
   Facet,
   useAllFields,
+  useAllKeyValues,
   useColumns,
   useDateTimeColumns,
+  useFilterKeysFetchLimit,
   useGetKeyValues,
   useJsonColumns,
   useMapColumns,
@@ -28,7 +30,7 @@ import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
-import { toQuotedClickHouseKeyExpression } from './utils';
+import { listRequestedFacets, toQuotedClickHouseKeyExpression } from './utils';
 
 const INITIAL_LOAD_LIMIT = 20;
 
@@ -191,24 +193,40 @@ function useFacets({
     [chartConfig, dateRange, mode],
   );
 
-  const { data: rawFacets, ...rest } = useGetKeyValues(
+  const isValuesQueryEnabled = !!enabled && !disableValues;
+  const exactKeyValues = useGetKeyValues(
     {
       chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
       keys: escapedKeysToFetch,
-      mode,
     },
-    { enabled: enabled && !disableValues },
+    { enabled: isValuesQueryEnabled && mode === 'exact' },
   );
+  const allKeyValues = useAllKeyValues(
+    {
+      chartConfig: facetsChartConfig,
+      limit: INITIAL_LOAD_LIMIT,
+      keys: escapedKeysToFetch,
+    },
+    { enabled: isValuesQueryEnabled && mode === 'all' },
+  );
+  const {
+    data: rawFacets,
+    error: keyValuesError,
+    isLoading: isKeyValuesLoading,
+    isFetching,
+  } = mode === 'all' ? allKeyValues : exactKeyValues;
 
-  // Map the (escaped) result keys back to the original UI keys.
-  const facets = useMemo<Facet[] | undefined>(
+  const maxKeys = useFilterKeysFetchLimit();
+  const { facets, pendingKeys } = useMemo(
     () =>
-      rawFacets?.map(f => ({
-        ...f,
-        key: sqlKeyToUiKey.get(f.key) ?? f.key,
-      })),
-    [rawFacets, sqlKeyToUiKey],
+      listRequestedFacets({
+        requestedKeys: escapedKeysToFetch.slice(0, maxKeys),
+        arrived: rawFacets,
+        isFetching,
+        toUiKey: sqlKey => sqlKeyToUiKey.get(sqlKey) ?? sqlKey,
+      }),
+    [escapedKeysToFetch, maxKeys, rawFacets, isFetching, sqlKeyToUiKey],
   );
 
   const metadata = useMetadataWithSettings();
@@ -288,10 +306,12 @@ function useFacets({
   );
 
   return {
-    ...rest,
-    error: allFieldsError ?? rest.error,
+    error: allFieldsError ?? keyValuesError,
     data: { keys: allFields, keyValues: facets },
-    isLoading: isAllFieldsLoading || rest.isLoading,
+    /** Listed keys whose values haven't arrived yet; their facets are empty. */
+    pendingKeys,
+    isLoading: isAllFieldsLoading || isKeyValuesLoading,
+    isFetching,
     loadMoreFacetsForKey,
   };
 }

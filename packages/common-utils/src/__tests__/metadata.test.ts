@@ -1709,6 +1709,101 @@ describe('Metadata', () => {
         consoleWarnSpy.mockRestore();
       });
     });
+
+    describe('streamAllKeyValues', () => {
+      const respond = (data: unknown[]) =>
+        Promise.resolve({ json: () => Promise.resolve({ data }) });
+
+      const mvRow = {
+        ColumnIdentifier: 'NativeColumn',
+        Key: 'ServiceName',
+        Values: ['api'],
+      };
+      const mapTextIndexRow = {
+        column: 'LogAttributes',
+        key: 'requestId',
+        value: ['r1'],
+      };
+
+      it('yields each query as it finishes, without waiting for the slowest', async () => {
+        setupDefaultLogsSchema();
+        let releaseMapTextIndex: () => void = () => {};
+        const mapTextIndexGate = new Promise<void>(resolve => {
+          releaseMapTextIndex = resolve;
+        });
+        (mockClickhouseClient.query as jest.Mock).mockImplementation(
+          ({ query }: { query: string }) => {
+            if (query.includes('startsWith(token,')) {
+              return mapTextIndexGate.then(() => respond([mapTextIndexRow]));
+            }
+            if (query.includes('ColumnIdentifier =')) {
+              return respond([mvRow]);
+            }
+            return respond([]);
+          },
+        );
+
+        const stream = metadata.streamAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['requestId']", 'ServiceName'],
+        });
+
+        await expect(stream.next()).resolves.toEqual({
+          done: false,
+          value: [{ key: 'ServiceName', value: ['api'] }],
+        });
+        releaseMapTextIndex();
+        await expect(stream.next()).resolves.toEqual({
+          done: false,
+          value: [{ key: "LogAttributes['requestId']", value: ['r1'] }],
+        });
+        await expect(stream.next()).resolves.toEqual({
+          done: true,
+          value: undefined,
+        });
+      });
+
+      it('skips a failed query and keeps yielding the rest', async () => {
+        setupDefaultLogsSchema();
+        jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+        (mockClickhouseClient.query as jest.Mock).mockImplementation(
+          ({ query }: { query: string }) => {
+            if (query.includes('startsWith(token,')) {
+              return Promise.reject(new Error('map text index unavailable'));
+            }
+            if (query.includes('ColumnIdentifier =')) {
+              return respond([mvRow]);
+            }
+            return respond([]);
+          },
+        );
+
+        const yielded: unknown[] = [];
+        for await (const keyValues of metadata.streamAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['requestId']", 'ServiceName'],
+        })) {
+          yielded.push(keyValues);
+        }
+
+        expect(yielded).toEqual([[{ key: 'ServiceName', value: ['api'] }]]);
+      });
+
+      it('yields nothing for empty keyExpressions', async () => {
+        setupDefaultLogsSchema();
+
+        const stream = metadata.streamAllKeyValues({
+          ...baseArgs,
+          keyExpressions: [],
+        });
+
+        await expect(stream.next()).resolves.toEqual({
+          done: true,
+          value: undefined,
+        });
+        expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('getValuesDistribution', () => {
