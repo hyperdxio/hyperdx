@@ -19,7 +19,9 @@ type HighlightRow = {
 
 // Only the first hint after mount or a trace change yields to an existing
 // selection (restored from the URL, or picked by the user). A later hint
-// change means a different row was opened, so it replaces the selection.
+// change while this hook stays mounted replaces the selection. A remount
+// cannot tell a new row from that restored selection, so the side panel
+// clears the span when its opened row changes.
 export function useRowHighlightHint({
   traceId,
   initialRowHighlightHint,

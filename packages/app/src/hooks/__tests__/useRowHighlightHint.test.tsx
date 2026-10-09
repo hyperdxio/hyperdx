@@ -161,6 +161,35 @@ describe('useRowHighlightHint', () => {
     });
   });
 
+  it('keeps an existing selection when remounted with a different hint', () => {
+    const first = renderHint({ highlightedRowWhere: 'where-a' });
+    expect(first.onClick).not.toHaveBeenCalled();
+    first.unmount();
+
+    const remounted = renderHint({
+      initialRowHighlightHint: hintB,
+      highlightedRowWhere: 'where-a',
+    });
+
+    expect(remounted.onClick).not.toHaveBeenCalled();
+  });
+
+  it('selects the new hint when remounted after the selection was cleared', () => {
+    const first = renderHint({ highlightedRowWhere: 'where-a' });
+    first.unmount();
+
+    const remounted = renderHint({
+      initialRowHighlightHint: hintB,
+      highlightedRowWhere: null,
+    });
+
+    expect(remounted.onClick).toHaveBeenCalledWith({
+      id: 'where-b',
+      type: 'trace',
+      aliasWith: [],
+    });
+  });
+
   it('does not restore a selection the user cleared while the hint is unchanged', () => {
     const { onClick, rerender } = renderHint();
 
