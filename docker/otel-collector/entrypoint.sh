@@ -24,6 +24,43 @@ if [ "$HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE" = "true" ]; then
   export HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA=true
 fi
 
+# CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT accepts a bare host:port (plain HTTP,
+# the original format) or an http:// or https:// URL. Both the standalone
+# config and the OpAMP-managed config (opampController.ts) need it as
+# host:port, because it is also a Prometheus scrape target, so the scheme is
+# split off here and handed to the prometheusremotewrite exporter through
+# HYPERDX_PROMETHEUS_SCHEME and HYPERDX_PROMETHEUS_TLS_INSECURE. Runs before
+# migrations so a bad value fails fast without touching ClickHouse.
+prometheus_endpoint_error() {
+  echo "ERROR: CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT $1. Use host:port, http://host:port or https://host:port." >&2
+  exit 1
+}
+
+if [ -n "$CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT" ]; then
+  HYPERDX_PROMETHEUS_SCHEME=http
+  HYPERDX_PROMETHEUS_TLS_INSECURE=true
+  case "$CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT" in
+    https://*)
+      HYPERDX_PROMETHEUS_SCHEME=https
+      HYPERDX_PROMETHEUS_TLS_INSECURE=false
+      ;;
+    http://*) ;;
+    # Only the scheme is echoed back: the rest of the URL may carry credentials.
+    *://*) prometheus_endpoint_error "has an unsupported scheme '${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT%%://*}'" ;;
+  esac
+
+  PROMETHEUS_HOST_PORT="${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT#*://}"
+  PROMETHEUS_HOST_PORT="${PROMETHEUS_HOST_PORT%/}"
+  case "$PROMETHEUS_HOST_PORT" in
+    "") prometheus_endpoint_error "has no host" ;;
+    */*) prometheus_endpoint_error "must not include a path (/write is appended automatically)" ;;
+  esac
+
+  export CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT="$PROMETHEUS_HOST_PORT"
+  export HYPERDX_PROMETHEUS_SCHEME HYPERDX_PROMETHEUS_TLS_INSECURE
+  echo "CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT scheme: $HYPERDX_PROMETHEUS_SCHEME"
+fi
+
 # Run ClickHouse schema migrations if not using legacy schema creation
 if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
   # Run Go-based migrate tool with TLS support
