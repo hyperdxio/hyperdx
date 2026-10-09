@@ -4758,7 +4758,7 @@ __metadata:
     express: "npm:^4.19.2"
     express-rate-limit: "npm:^6.7.1"
     express-session: "npm:^1.17.3"
-    handlebars: "npm:^4.7.9"
+    handlebars: "npm:^4.7.10"
     http-graceful-shutdown: "npm:^3.1.13"
     http-proxy-middleware: "npm:^4.0.0"
     ip-address: "npm:^10.7.1"
@@ -4988,7 +4988,7 @@ __metadata:
     date-fns: "npm:^2.28.0"
     date-fns-tz: "npm:^2.0.0"
     dotenv: "npm:^17.2.3"
-    handlebars: "npm:^4.7.9"
+    handlebars: "npm:^4.7.10"
     jest: "npm:^30.2.0"
     lodash: "npm:^4.18.1"
     node-sql-parser: "npm:^5.3.5"
@@ -19118,6 +19118,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"handlebars@npm:^4.7.10":
+  version: 4.7.10
+  resolution: "handlebars@npm:4.7.10"
+  dependencies:
+    minimist: "npm:^1.2.8"
+    neo-async: "npm:^2.6.2"
+    source-map: "npm:^0.6.1"
+    uglify-js: "npm:^3.1.4"
+    wordwrap: "npm:^1.0.0"
+  dependenciesMeta:
+    uglify-js:
+      optional: true
+  bin:
+    handlebars: bin/handlebars
+  checksum: 10c0/9b5573584ae5836172ae3f1502d9819568ba1b92ee83b81b18223beeb4c07486595e7b0fa633102beabc66ed06fe6e7da1dd9a9ea8c7072b9550b9a88809165c
+  languageName: node
+  linkType: hard
+
 "handlebars@npm:^4.7.9":
   version: 4.7.9
   resolution: "handlebars@npm:4.7.9"
@@ -23429,7 +23447,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"minimist@npm:1.2.8, minimist@npm:^1.2.0, minimist@npm:^1.2.5, minimist@npm:^1.2.6, minimist@npm:^1.2.7":
+"minimist@npm:1.2.8, minimist@npm:^1.2.0, minimist@npm:^1.2.5, minimist@npm:^1.2.6, minimist@npm:^1.2.7, minimist@npm:^1.2.8":
   version: 1.2.8
   resolution: "minimist@npm:1.2.8"
   checksum: 10c0/19d3fcdca050087b84c2029841a093691a91259a47def2f18222f41e7645a0b7c44ef4b40e88a1e58a40c84d2ef0ee6047c55594d298146d0eb3f6b737c20ce6
