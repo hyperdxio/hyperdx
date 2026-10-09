@@ -148,6 +148,7 @@ import {
   resolveExploreGroupBy,
 } from './components/Explore/exploreGroupBy';
 import { ExploreGroupByControl } from './components/Explore/ExploreGroupByControl';
+import { PatternColumnSelector } from './components/Explore/ExplorePatternColumnSelector';
 import { ExploreQueryEditor } from './components/Explore/ExploreQueryEditor';
 import { ExploreResultsToolbar } from './components/Explore/ExploreResultsToolbar';
 import { ExploreSeriesList } from './components/Explore/ExploreSeriesList';
@@ -163,7 +164,6 @@ import {
   MetricBrowseRail,
 } from './components/MetricWall/MetricBrowse';
 import { nextSearchForPatternMatch } from './components/Patterns/patternColumn';
-import { PatternColumnSelector } from './components/Patterns/PatternColumnSelector';
 import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
@@ -3573,6 +3573,7 @@ function DBExplorePage() {
                         keepOpenSelector={
                           SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
                         }
+                        rememberWidth
                         onSidebarOpen={onSidebarOpen}
                         enabled={isReady}
                         queryKeyPrefix={QUERY_KEY_PREFIX}
@@ -3675,6 +3676,7 @@ function DBExplorePage() {
                         }
                         patternColumn={patternColumn}
                         onViewMatchingEvents={handleViewMatchingEvents}
+                        highlightPatterns
                         totalCountConfig={histogramTimeChartConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />
@@ -3821,6 +3823,7 @@ function DBExplorePage() {
                             keepOpenSelector={
                               SEARCH_RESULTS_PANEL_KEEP_OPEN_SELECTOR
                             }
+                            rememberWidth
                             onSidebarOpen={onSidebarOpen}
                             onExpandedRowsChange={onExpandedRowsChange}
                             enabled={isReady}

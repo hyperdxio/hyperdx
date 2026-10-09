@@ -428,7 +428,7 @@ export function ChartPreviewPanel({
               <Accordion.Item value="sample">
                 <Accordion.Control icon={<IconList size={16} />}>
                   <Text size="sm" style={{ alignSelf: 'center' }}>
-                    Sample matched events
+                    Sample Matched Events
                   </Text>
                 </Accordion.Control>
                 <Accordion.Panel>

@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { TSource } from '@hyperdx/common-utils/dist/types';
-import { Button, Card, Drawer, Group, Stack, Text } from '@mantine/core';
+import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
 import { IconList } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
@@ -31,6 +31,7 @@ export default function PatternSidePanel({
   bodyValueExpression,
   source,
   onViewMatchingEvents,
+  highlightPattern = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -38,6 +39,7 @@ export default function PatternSidePanel({
   bodyValueExpression: string;
   source: TSource;
   onViewMatchingEvents?: () => void;
+  highlightPattern?: boolean;
 }) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 100;
@@ -140,26 +142,29 @@ export default function PatternSidePanel({
               <Stack>
                 <Card p="md">
                   <Text size="sm">
-                    <PatternTemplate text={pattern.pattern} />
-                  </Text>
-                  <Group gap="xs" mt="sm">
-                    {onViewMatchingEvents != null && (
-                      <Button
-                        variant="primary"
-                        size="xs"
-                        leftSection={<IconList size={14} />}
-                        onClick={onViewMatchingEvents}
-                        data-testid="view-matching-events"
-                      >
-                        View matching events
-                      </Button>
+                    {highlightPattern ? (
+                      <PatternTemplate text={pattern.pattern} />
+                    ) : (
+                      pattern.pattern
                     )}
-                    <AISummarizePatternButton pattern={pattern} />
-                  </Group>
+                  </Text>
+                  {onViewMatchingEvents != null && (
+                    <Button
+                      variant="primary"
+                      size="xs"
+                      mt="sm"
+                      leftSection={<IconList size={14} />}
+                      onClick={onViewMatchingEvents}
+                      data-testid="view-matching-events"
+                    >
+                      View matching events
+                    </Button>
+                  )}
+                  <AISummarizePatternButton pattern={pattern} />
                 </Card>
                 <Card p="md">
                   <Card.Section p="md" py="xs">
-                    ~{pattern.count?.toLocaleString()} sample events
+                    ~{pattern.count?.toLocaleString()} Sample Events
                   </Card.Section>
                   <RawLogTable
                     rows={displayedSamples}

@@ -149,7 +149,7 @@ describe('RawLogTable', () => {
         screen.queryByTestId('search-results-table-bar'),
       ).not.toBeInTheDocument();
       expect(
-        container.querySelector('thead [title="Enable wrap lines"]'),
+        container.querySelector('thead [title="Enable  Wrap Lines"]'),
       ).toBeInTheDocument();
     });
 
@@ -167,7 +167,7 @@ describe('RawLogTable', () => {
         screen.getByTestId('table-display-settings'),
       );
       expect(
-        container.querySelector('thead [title="Enable wrap lines"]'),
+        container.querySelector('thead [title="Enable  Wrap Lines"]'),
       ).not.toBeInTheDocument();
     });
   });

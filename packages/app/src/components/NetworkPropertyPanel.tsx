@@ -218,7 +218,6 @@ export function NetworkPropertySubpanel({
         <Table
           borderless
           density="compact"
-          layout="auto"
           columns={networkColumns}
           data={[
             url && { label: 'URL', value: url },
@@ -254,7 +253,6 @@ export function NetworkPropertySubpanel({
               borderless
               hideHeader
               density="compact"
-              layout="auto"
               columns={headerColumns}
               data={requestHeaders}
               emptyMessage="No request headers collected"
@@ -285,7 +283,6 @@ export function NetworkPropertySubpanel({
               borderless
               hideHeader
               density="compact"
-              layout="auto"
               columns={headerColumns}
               data={responseHeaders}
               emptyMessage="No response headers collected"

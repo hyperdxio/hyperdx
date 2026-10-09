@@ -2,7 +2,7 @@ import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { PatternColumnSelector } from '@/components/Patterns/PatternColumnSelector';
+import { PatternColumnSelector } from '@/components/Explore/ExplorePatternColumnSelector';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 
 jest.mock('@/hooks/useMetadata', () => ({

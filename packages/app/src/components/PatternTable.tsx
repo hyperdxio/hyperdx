@@ -30,17 +30,24 @@ export default function PatternTable({
   totalCountQueryKeyPrefix,
   bodyValueExpression,
   patternColumn: externalPatternColumn,
-  onApplyPatternColumn,
+  draftPatternColumn: externalDraftPatternColumn,
+  onDraftPatternColumnChange: externalOnDraftPatternColumnChange,
+  onSubmit: externalOnSubmit,
   onViewMatchingEvents,
+  highlightPatterns = false,
   source,
 }: {
   config: BuilderChartConfigWithDateRange;
   totalCountConfig: BuilderChartConfigWithDateRange;
   bodyValueExpression: string;
   patternColumn?: string | null;
-  onApplyPatternColumn?: (value: string) => void;
+  draftPatternColumn?: string;
+  onDraftPatternColumnChange?: (value: string) => void;
+  onSubmit?: () => void;
   /** Switch the search to events matching this Drain template. */
   onViewMatchingEvents?: (sqlCondition: string) => void;
+  /** Explore-only pattern highlighting and empty state. */
+  highlightPatterns?: boolean;
   totalCountQueryKeyPrefix: string;
   source?: TSource;
 }) {
@@ -48,9 +55,12 @@ export default function PatternTable({
 
   const [selectedPattern, setSelectedPattern] = useState<Pattern | null>(null);
 
-  // Explore puts the picker in the results toolbar. Search still renders it
-  // here, above the table. Dashboard tiles configure the expression in the
-  // editor, so they pass neither handler.
+  // Search edits the expression here and applies it with the page query.
+  // Explore keeps its picker in the toolbar, and dashboard tiles configure
+  // the expression in the editor, so neither passes these handlers.
+  const hasExternalPatternColumn =
+    externalOnDraftPatternColumnChange != null && externalOnSubmit != null;
+
   const effectiveBodyValueExpression = buildPatternColumnExpression({
     patternColumn: externalPatternColumn ?? null,
     fallback: bodyValueExpression,
@@ -104,16 +114,15 @@ export default function PatternTable({
 
   return (
     <>
-      {onApplyPatternColumn != null && (
-        <Box py="xs">
-          <PatternColumnSelector
-            tableSource={source}
-            value={externalPatternColumn ?? ''}
-            onApply={onApplyPatternColumn}
-            dateRange={config.dateRange}
-            defaultField={bodyValueExpression}
-          />
-        </Box>
+      {hasExternalPatternColumn && (
+        <PatternColumnSelector
+          sourceId={source?.id}
+          value={externalDraftPatternColumn ?? ''}
+          onChange={externalOnDraftPatternColumnChange}
+          onSubmit={externalOnSubmit}
+          dateRange={config.dateRange}
+          bodyValueExpression={bodyValueExpression}
+        />
       )}
       {error ? (
         <Container style={{ overflow: 'auto' }}>
@@ -146,7 +155,9 @@ export default function PatternTable({
             </Box>
           )}
         </Container>
-      ) : !isLoading && sortedGroupedResults.length === 0 ? (
+      ) : highlightPatterns &&
+        !isLoading &&
+        sortedGroupedResults.length === 0 ? (
         <EmptyState
           h="100%"
           icon={<IconBracketsContain size={32} />}
@@ -158,6 +169,7 @@ export default function PatternTable({
           <RawLogTable
             isLive={false}
             wrapLines={true}
+            formatPatternColumn={highlightPatterns}
             isLoading={isLoading}
             rows={sortedGroupedResults ?? []}
             displayedColumns={[
@@ -174,7 +186,7 @@ export default function PatternTable({
             generateRowId={row => ({ where: row.id, aliasWith: [] })}
             columnNameMap={{
               __hdx_pattern_trend: 'Trend',
-              countStr: 'Est. count',
+              countStr: highlightPatterns ? 'Est. count' : 'Count',
               pattern: 'Pattern',
               level: 'Level',
             }}
@@ -193,6 +205,7 @@ export default function PatternTable({
                   ? () => handleViewMatchingEvents(selectedPattern)
                   : undefined
               }
+              highlightPattern={highlightPatterns}
             />
           )}
         </>

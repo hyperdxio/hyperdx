@@ -2,8 +2,8 @@
 '@hyperdx/app': patch
 ---
 
-Pick the column an aggregation reduces over from a list, rather than typing it
-into a box labelled "SQL column". The series row now reads
+On Explore, pick the column an aggregation reduces over from a list, rather
+than typing it into a box labelled "SQL column". The series row now reads
 `99th Percentile of Duration`, built as the same labelled field as the
 `Group by` and `As <chart type>` pickers beside it, with a SQL tab still one
 click away for expressions a list cannot hold like `Duration / 1e6`.
@@ -15,5 +15,6 @@ averaging `ServiceName` used to buy a chart of zeroes with nothing to say it
 had gone wrong. `Count Distinct` and `Any` pass the column through untouched
 and still list every field, and `Custom` keeps its expression editor.
 
-The popover behind Group by, event patterns and the new series column is now
-one component instead of three near-copies.
+On Explore, the popover behind Group by, event patterns, and the series column
+is one component. Search keeps the SQL pattern expression field, and the tile
+editor keeps its SQL column input.

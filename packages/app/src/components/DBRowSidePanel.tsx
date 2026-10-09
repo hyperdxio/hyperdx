@@ -75,6 +75,7 @@ import { DBSessionPanel, useSessionId } from './DBSessionPanel';
 import DBTracePanel from './DBTracePanel';
 import {
   DrawerFullWidthToggle,
+  INITIAL_DRAWER_WIDTH_PERCENT,
   INITIAL_ROW_PANEL_WIDTH_PERCENT,
   ROW_PANEL_WIDTH_STORAGE_KEY,
 } from './DrawerUtils';
@@ -250,6 +251,11 @@ type DBRowSidePanelProps = {
   // Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
+  /**
+   * Persist the panel width and open at the narrower row-panel default.
+   * Explore only — other drawers keep the session-player width.
+   */
+  rememberWidth?: boolean;
 };
 
 type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
@@ -1322,28 +1328,35 @@ export default function DBRowSidePanelErrorBoundary({
   source,
   closeOnClickOutside = true,
   keepOpenSelector,
+  rememberWidth = false,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  // Reading a row is a repeated action, so the width someone settles on should
-  // outlive the session rather than being re-dragged after every reload.
+  // Explore remembers the width across reloads. Other pages keep the wider
+  // session-player default and do not write it to storage.
   const [storedWidth, setStoredWidth] = useLocalStorage(
     ROW_PANEL_WIDTH_STORAGE_KEY,
     INITIAL_ROW_PANEL_WIDTH_PERCENT,
   );
   const { size, setSize, startResize } = useResizable(
-    storedWidth,
+    rememberWidth ? storedWidth : INITIAL_DRAWER_WIDTH_PERCENT,
     'right',
-    setStoredWidth,
+    rememberWidth ? setStoredWidth : undefined,
   );
 
   const isFullWidth = size >= 99;
   const toggleFullWidth = useCallback(() => {
-    const next = isFullWidth ? INITIAL_ROW_PANEL_WIDTH_PERCENT : 100;
+    const next = isFullWidth
+      ? rememberWidth
+        ? INITIAL_ROW_PANEL_WIDTH_PERCENT
+        : INITIAL_DRAWER_WIDTH_PERCENT
+      : 100;
     setSize(next);
-    setStoredWidth(next);
-  }, [isFullWidth, setSize, setStoredWidth]);
+    if (rememberWidth) {
+      setStoredWidth(next);
+    }
+  }, [isFullWidth, rememberWidth, setSize, setStoredWidth]);
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 

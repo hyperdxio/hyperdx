@@ -335,7 +335,7 @@ export function FilterPill({
         </Text>
         <ActionIcon
           size={14}
-          variant="subtle"
+          variant={variant === 'inline' ? 'subtle' : 'transparent'}
           color="gray"
           onClick={e => {
             // Keep the one-click remove without also toggling the action menu.

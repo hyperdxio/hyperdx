@@ -383,6 +383,7 @@ export const RawLogTable = memo(
     variant = 'default',
     onRemoveColumn,
     tableBarRightSection,
+    formatPatternColumn = false,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -429,6 +430,8 @@ export const RawLogTable = memo(
     /** When defined (including `null`), the table actions move from the header
      *  into a bar attached to the top of the table, with this at its right end. */
     tableBarRightSection?: React.ReactNode;
+    /** Highlight Drain templates. Explore only. */
+    formatPatternColumn?: boolean;
   }) => {
     const hasTableBar = tableBarRightSection !== undefined;
     const dedupedRows = useMemo(() => {
@@ -678,7 +681,7 @@ export const RawLogTable = memo(
                 highlightText(truncatedStrValue, tableSearch.searchQuery, {
                   isCurrentMatch,
                 })
-              ) : column === 'pattern' ? (
+              ) : formatPatternColumn && column === 'pattern' ? (
                 <PatternTemplate text={truncatedStrValue} />
               ) : (
                 truncatedStrValue
@@ -715,6 +718,7 @@ export const RawLogTable = memo(
         aliasMap,
         lastColumnWidth,
         wrapLinesEnabled,
+        formatPatternColumn,
         tableSearch.searchQuery,
         tableSearch.matchIndices,
         tableSearch.currentMatchIndex,
@@ -993,10 +997,10 @@ export const RawLogTable = memo(
       Object.keys(columnSizeStorage).length > 0 && (
         <UnstyledButton
           onClick={() => setColumnSizeStorage({})}
-          title="Reset column widths"
+          title="Reset Column Widths"
           display="flex"
         >
-          <MantineTooltip label="Reset column widths">
+          <MantineTooltip label="Reset Column Widths">
             <IconRotateClockwise size={16} />
           </MantineTooltip>
         </UnstyledButton>
@@ -1004,11 +1008,11 @@ export const RawLogTable = memo(
     const sqlAction = config && (
       <UnstyledButton
         onClick={() => handleSqlModalOpen(true)}
-        title="Show generated SQL"
+        title="Show Generated SQL"
         tabIndex={0}
         display="flex"
       >
-        <MantineTooltip label="Show generated SQL">
+        <MantineTooltip label="Show Generated SQL">
           <IconCode size={16} />
         </MantineTooltip>
       </UnstyledButton>
@@ -1016,11 +1020,11 @@ export const RawLogTable = memo(
     const wrapAction = (
       <UnstyledButton
         onClick={() => setWrapLinesEnabled(prev => !prev)}
-        title={`${wrapLinesEnabled ? 'Disable' : 'Enable'} wrap lines`}
+        title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
         display="flex"
       >
         <MantineTooltip
-          label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} wrap lines`}
+          label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
         >
           {wrapLinesEnabled ? (
             <IconTextWrapDisabled size={16} />
@@ -1037,7 +1041,7 @@ export const RawLogTable = memo(
         className="fs-6"
       >
         <MantineTooltip
-          label={`Download table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+          label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
         >
           <IconDownload size={16} />
         </MantineTooltip>
@@ -1972,7 +1976,7 @@ function DBSqlRowTableComponent({
           <Box mah={100} style={{ overflow: 'auto' }}>
             {noisyPatterns.data?.map(p => (
               <Text fz="xs" key={p.id}>
-                <PatternTemplate text={p.pattern} />
+                {p.pattern}
               </Text>
             ))}
             {noisyPatternIds.length === 0 && (

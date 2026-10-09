@@ -227,7 +227,7 @@ describe('ChartPreviewPanel', () => {
       ).toBeDisabled();
     });
 
-    it('should show the sample matched events section when showSampleEvents is true', () => {
+    it('should show Sample Matched Events when showSampleEvents is true', () => {
       renderPanel({
         queriedConfig: baseBuilderConfig,
         showGeneratedSql: true,
@@ -236,10 +236,10 @@ describe('ChartPreviewPanel', () => {
         activeTab: 'time',
       });
 
-      expect(screen.getByText('Sample matched events')).toBeInTheDocument();
+      expect(screen.getByText('Sample Matched Events')).toBeInTheDocument();
     });
 
-    it('should not show the sample matched events section when showSampleEvents is false', () => {
+    it('should not show Sample Matched Events when showSampleEvents is false', () => {
       renderPanel({
         queriedConfig: baseBuilderConfig,
         showGeneratedSql: true,
@@ -248,7 +248,7 @@ describe('ChartPreviewPanel', () => {
       });
 
       expect(
-        screen.queryByText('Sample matched events'),
+        screen.queryByText('Sample Matched Events'),
       ).not.toBeInTheDocument();
     });
 

@@ -4,7 +4,7 @@ import type { Filter } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-import { ChartSeriesEditor } from '@/components/DBEditTimeChartForm/ChartSeriesEditor';
+import { ExploreChartSeriesEditor } from '@/components/Explore/ExploreChartSeriesEditor';
 import type { FilterStateHook } from '@/searchFilters';
 
 // Both filter inputs pull in CodeMirror and the ClickHouse metadata hooks.
@@ -81,7 +81,7 @@ function Harness({
       {onSeriesChange != null && (
         <SeriesFiltersProbe control={control} onChange={onSeriesChange} />
       )}
-      <ChartSeriesEditor
+      <ExploreChartSeriesEditor
         control={control}
         databaseName="default"
         index={0}

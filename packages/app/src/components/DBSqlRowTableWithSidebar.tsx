@@ -59,6 +59,7 @@ interface Props {
   // it. Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
+  rememberWidth?: boolean;
   tableBarRightSection?: React.ReactNode;
   /** Show the rows of this hand-written statement instead of `config`'s. */
   rawSqlConfig?: RawSqlRowTableConfig;
@@ -92,6 +93,7 @@ export default function DBSqlRowTableWithSideBar({
   onResolvedColumnsChange,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
+  rememberWidth = false,
   tableBarRightSection,
   rawSqlConfig,
 }: Props) {
@@ -140,6 +142,7 @@ export default function DBSqlRowTableWithSideBar({
           onClose={onCloseSidebar}
           closeOnClickOutside={closeOnClickOutside}
           keepOpenSelector={keepOpenSelector}
+          rememberWidth={rememberWidth}
         />
       )}
       {rawSqlConfig ? (

@@ -143,7 +143,11 @@ describe('ChartSeriesTooltip', () => {
 
   it('renders one action menu per series when there is more than one series', () => {
     renderWithMantine(
-      <ChartSeriesTooltip {...baseProps} activePayload={multiSeriesPayload} />,
+      <ChartSeriesTooltip
+        {...baseProps}
+        activePayload={multiSeriesPayload}
+        seriesActions="menu"
+      />,
     );
 
     expect(
@@ -172,6 +176,7 @@ describe('ChartSeriesTooltip', () => {
         {...baseProps}
         activePayload={singleSeriesPayload}
         showSingleSeriesActions
+        seriesActions="menu"
       />,
     );
 
@@ -189,6 +194,7 @@ describe('ChartSeriesTooltip', () => {
       <ChartSeriesTooltip
         {...baseProps}
         activePayload={multiSeriesPayload}
+        seriesActions="menu"
         onFocusSeries={onFocusSeries}
         onDismiss={onDismiss}
       />,
@@ -218,6 +224,7 @@ describe('ChartSeriesTooltip', () => {
         }
         drillInLabel="View related logs"
         focusLabel="Filter to this series"
+        seriesActions="menu"
       />,
     );
 

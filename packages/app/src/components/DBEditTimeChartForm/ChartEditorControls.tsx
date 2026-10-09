@@ -19,16 +19,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  Box,
-  Button,
-  Divider,
-  Flex,
-  Group,
-  Stack,
-  Switch,
-  Text,
-} from '@mantine/core';
+import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
 import {
   IconBell,
   IconCirclePlus,
@@ -95,7 +86,6 @@ type ChartEditorControlsProps = {
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
   openHeatmapSettings: () => void;
-  hideDisplaySettingsButton?: boolean;
 };
 
 export function ChartEditorControls({
@@ -129,7 +119,6 @@ export function ChartEditorControls({
   onSubmit,
   openDisplaySettings,
   openHeatmapSettings,
-  hideDisplaySettingsButton = false,
 }: ChartEditorControlsProps) {
   // Formulas (HDX-5080): derived series computed from the chart's series via
   // letter-ref arithmetic expressions. Metric and event (log/trace) sources,
@@ -286,54 +275,52 @@ export function ChartEditorControls({
         </Flex>
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
         <>
-          <Stack gap="xs">
-            {fields.map((field, index) => (
-              <ChartSeriesEditor
-                control={control}
-                databaseName={databaseName ?? ''}
-                dateRange={dateRange}
-                index={index}
+          {fields.map((field, index) => (
+            <ChartSeriesEditor
+              control={control}
+              databaseName={databaseName ?? ''}
+              dateRange={dateRange}
+              index={index}
+              key={field.id}
+              parentRef={parentRef}
+              namePrefix={`series.${index}.`}
+              onRemoveSeries={removeSeries}
+              length={fields.length}
+              onSwapSeries={swapSeries}
+              onDuplicateSeries={duplicateSeries}
+              onSubmit={onSubmit}
+              setValue={setValue}
+              connectionId={tableSource?.connection}
+              showGroupBy={
+                fields.length === 1 && displayType !== DisplayType.Number
+              }
+              showHaving={
+                fields.length === 1 && displayType === DisplayType.Table
+              }
+              showDuplicate={canAddSeries}
+              showColor={displayType === DisplayType.Table}
+              tableName={tableName ?? ''}
+              tableSource={tableSource}
+              errors={
+                errors.series && Array.isArray(errors.series)
+                  ? errors.series[index]
+                  : undefined
+              }
+              clearErrors={clearErrors}
+            />
+          ))}
+          {sourceSupportsFormulas &&
+            formulaFields.map((field, index) => (
+              <ChartFormulaEditor
                 key={field.id}
-                parentRef={parentRef}
-                namePrefix={`series.${index}.`}
-                onRemoveSeries={removeSeries}
-                length={fields.length}
-                onSwapSeries={swapSeries}
-                onDuplicateSeries={duplicateSeries}
+                control={control}
+                index={index}
+                namePrefix={`formulas.${index}.`}
+                onRemoveFormula={handleRemoveFormula}
                 onSubmit={onSubmit}
                 setValue={setValue}
-                connectionId={tableSource?.connection}
-                showGroupBy={
-                  fields.length === 1 && displayType !== DisplayType.Number
-                }
-                showHaving={
-                  fields.length === 1 && displayType === DisplayType.Table
-                }
-                showDuplicate={canAddSeries}
-                showColor={displayType === DisplayType.Table}
-                tableName={tableName ?? ''}
-                tableSource={tableSource}
-                errors={
-                  errors.series && Array.isArray(errors.series)
-                    ? errors.series[index]
-                    : undefined
-                }
-                clearErrors={clearErrors}
               />
             ))}
-            {sourceSupportsFormulas &&
-              formulaFields.map((field, index) => (
-                <ChartFormulaEditor
-                  key={field.id}
-                  control={control}
-                  index={index}
-                  namePrefix={`formulas.${index}.`}
-                  onRemoveFormula={handleRemoveFormula}
-                  onSubmit={onSubmit}
-                  setValue={setValue}
-                />
-              ))}
-          </Stack>
           {fields.length > 1 && displayType !== DisplayType.Number && (
             <>
               <Divider mt="md" mb="sm" />
@@ -353,7 +340,7 @@ export function ChartEditorControls({
                       whiteSpace: 'nowrap',
                     }}
                   >
-                    Group by
+                    Group By
                   </Text>
                 </Flex>
                 <div>
@@ -413,7 +400,7 @@ export function ChartEditorControls({
                   }}
                 >
                   <IconCirclePlus size={14} className="me-2" />
-                  Add series
+                  Add Series
                 </Button>
               )}
               {canAddFormula && (
@@ -531,16 +518,14 @@ export function ChartEditorControls({
                   onSubmit={onSubmit}
                 />
               )}
-              {!hideDisplaySettingsButton && (
-                <Button
-                  onClick={openDisplaySettings}
-                  size="compact-sm"
-                  variant="secondary"
-                  data-testid="display-settings-button"
-                >
-                  Display Settings
-                </Button>
-              )}
+              <Button
+                onClick={openDisplaySettings}
+                size="compact-sm"
+                variant="secondary"
+                data-testid="display-settings-button"
+              >
+                Display Settings
+              </Button>
             </Group>
           </Flex>
         </>

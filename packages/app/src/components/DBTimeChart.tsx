@@ -148,6 +148,7 @@ function ChartTooltipOverlay({
   drillInLabel,
   focusLabel,
   showSingleSeriesActions,
+  seriesActions = 'icons',
   onDismiss,
   onFocusSeries,
   onShowAllSeries,
@@ -164,6 +165,7 @@ function ChartTooltipOverlay({
   drillInLabel?: string;
   focusLabel?: string;
   showSingleSeriesActions?: boolean;
+  seriesActions?: 'icons' | 'menu';
   onDismiss: () => void;
   /** Focus a series by its raw series key (dataKey) and display name. */
   onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
@@ -258,7 +260,7 @@ function ChartTooltipOverlay({
             onDismiss();
           }
         }}
-        closeOnClickOutside={false}
+        closeOnClickOutside={seriesActions !== 'menu'}
         closeOnEscape
         trapFocus={false}
         withinPortal
@@ -303,6 +305,7 @@ function ChartTooltipOverlay({
             drillInLabel={drillInLabel}
             focusLabel={focusLabel}
             showSingleSeriesActions={showSingleSeriesActions}
+            seriesActions={seriesActions}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
             onShowAllSeries={onShowAllSeries}
@@ -1068,19 +1071,28 @@ function DBTimeChartComponent({
             payload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
             buildRelatedTraceUrl={
-              source?.kind === SourceKind.Metric
+              drillDownPath === '/explore' && source?.kind === SourceKind.Metric
                 ? buildRelatedTraceUrl
                 : undefined
             }
             drillInLabel={
-              source?.kind === SourceKind.Metric
-                ? 'View related logs'
-                : 'View events'
+              drillDownPath === '/explore'
+                ? source?.kind === SourceKind.Metric
+                  ? 'View related logs'
+                  : 'View events'
+                : undefined
             }
             focusLabel={
-              onFocusSeries ? 'Filter to this series' : 'Focus series'
+              drillDownPath === '/explore'
+                ? onFocusSeries
+                  ? 'Filter to this series'
+                  : 'Focus series'
+                : undefined
             }
-            showSingleSeriesActions={source?.kind === SourceKind.Metric}
+            showSingleSeriesActions={
+              drillDownPath === '/explore' && source?.kind === SourceKind.Metric
+            }
+            seriesActions={drillDownPath === '/explore' ? 'menu' : 'icons'}
             // Stable reference so the overlay's scroll-dismissal effect doesn't
             // re-register its window listener on every re-render.
             onDismiss={dismissPinned}

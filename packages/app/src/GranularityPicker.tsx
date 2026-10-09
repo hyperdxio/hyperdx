@@ -25,47 +25,47 @@ export function GranularityPicker({
       data={[
         {
           value: 'auto' as const,
-          label: 'Auto granularity',
+          label: 'Auto Granularity',
         },
         {
           value: Granularity.ThirtySecond,
-          label: '30 seconds',
+          label: '30 Seconds Granularity',
         },
         {
           value: Granularity.OneMinute,
-          label: '1 minute',
+          label: '1 Minute Granularity',
         },
         {
           value: Granularity.FiveMinute,
-          label: '5 minutes',
+          label: '5 Minutes Granularity',
         },
         {
           value: Granularity.TenMinute,
-          label: '10 minutes',
+          label: '10 Minutes Granularity',
         },
         {
           value: Granularity.FifteenMinute,
-          label: '15 minutes',
+          label: '15 Minutes Granularity',
         },
         {
           value: Granularity.ThirtyMinute,
-          label: '30 minutes',
+          label: '30 Minutes Granularity',
         },
         {
           value: Granularity.OneHour,
-          label: '1 hour',
+          label: '1 Hour Granularity',
         },
         {
           value: Granularity.TwelveHour,
-          label: '12 hours',
+          label: '12 Hours Granularity',
         },
         {
           value: Granularity.OneDay,
-          label: '1 day',
+          label: '1 Day Granularity',
         },
         {
           value: Granularity.SevenDay,
-          label: '7 days',
+          label: '7 Day Granularity',
         },
       ]}
       onChange={v =>

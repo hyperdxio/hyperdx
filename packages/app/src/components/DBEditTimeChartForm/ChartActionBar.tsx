@@ -92,7 +92,6 @@ type ChartActionBarProps = {
   onTimeRangeSearch?: (value: string) => void;
   filtersToggle?: DashboardFiltersToggleProps;
   setSaveToDashboardModalOpen: (open: boolean) => void;
-  hidePrimaryActions?: boolean;
 };
 
 export function ChartActionBar({
@@ -120,7 +119,6 @@ export function ChartActionBar({
   onTimeRangeSearch,
   filtersToggle,
   setSaveToDashboardModalOpen,
-  hidePrimaryActions = false,
 }: ChartActionBarProps) {
   const configType = useWatch({ control, name: 'configType' });
   const displayType = useWatch({ control, name: 'displayType' });
@@ -139,44 +137,42 @@ export function ChartActionBar({
       }));
 
   return (
-    <Flex justify={hidePrimaryActions ? 'flex-end' : 'space-between'} mt="sm">
-      {!hidePrimaryActions && (
-        <Flex gap="sm">
-          {onSave != null && (
-            <Button
-              data-testid="chart-save-button"
-              loading={isSaving}
-              variant="primary"
-              onClick={handleSubmit(handleSave)}
-            >
-              Save
-            </Button>
-          )}
-          {/* Only once an alert exists on the chart: with none there is nothing
-              to save, and the button would read as a second way to add one. */}
-          {onSaveAlert != null && handleSaveAlert != null && hasAlert && (
-            <Button
-              data-testid="chart-save-alert-button"
-              loading={isSavingAlert}
-              variant="primary"
-              leftSection={<IconBell size={16} />}
-              onClick={handleSubmit(handleSaveAlert)}
-            >
-              {saveAlertLabel}
-            </Button>
-          )}
-          {onClose != null && (
-            <Button
-              variant="subtle"
-              color="dark"
-              onClick={onClose}
-              disabled={isSaving}
-            >
-              Cancel
-            </Button>
-          )}
-        </Flex>
-      )}
+    <Flex justify="space-between" mt="sm">
+      <Flex gap="sm">
+        {onSave != null && (
+          <Button
+            data-testid="chart-save-button"
+            loading={isSaving}
+            variant="primary"
+            onClick={handleSubmit(handleSave)}
+          >
+            Save
+          </Button>
+        )}
+        {/* Only once an alert exists on the chart: with none there is nothing
+            to save, and the button would read as a second way to add one. */}
+        {onSaveAlert != null && handleSaveAlert != null && hasAlert && (
+          <Button
+            data-testid="chart-save-alert-button"
+            loading={isSavingAlert}
+            variant="primary"
+            leftSection={<IconBell size={16} />}
+            onClick={handleSubmit(handleSaveAlert)}
+          >
+            {saveAlertLabel}
+          </Button>
+        )}
+        {onClose != null && (
+          <Button
+            variant="subtle"
+            color="dark"
+            onClick={onClose}
+            disabled={isSaving}
+          >
+            Cancel
+          </Button>
+        )}
+      </Flex>
       <Flex gap="sm" mb="sm" align="flex-start" justify="end">
         {filtersToggle != null && tabQueriesData(activeTab) && (
           <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">

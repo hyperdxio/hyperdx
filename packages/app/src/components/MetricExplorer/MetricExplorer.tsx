@@ -27,7 +27,10 @@ type MetricExplorerProps = {
   onSelectedChange: (entry: MetricCatalogEntry) => void;
   /** Commit shortcut (double-click a metric). The shell also renders a button. */
   onApply?: (entry: MetricCatalogEntry) => void;
-  /** Omit to browse tags read-only, with no group-by action. */
+  /** Syntax for clauses handed to `onAddWhere`. @default 'sql' */
+  language?: 'sql' | 'lucene';
+  /** Omit to browse tags read-only, with no filter or group-by actions. */
+  onAddWhere?: (clause: string) => void;
   onAddGroupBy?: (clause: string) => void;
 };
 
@@ -46,6 +49,8 @@ export function MetricExplorer({
   selected,
   onSelectedChange,
   onApply,
+  language,
+  onAddWhere,
   onAddGroupBy,
 }: MetricExplorerProps) {
   const { entries, failedKinds, isLoading, error } = useMetricCatalog({
@@ -77,6 +82,8 @@ export function MetricExplorer({
         <MetricDetailPanel
           metricSource={metricSource}
           metric={selected}
+          language={language}
+          onAddWhere={onAddWhere}
           onAddGroupBy={onAddGroupBy}
         />
       </Box>

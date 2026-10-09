@@ -1120,28 +1120,31 @@ export class ChartEditorComponent {
    * Click Apply in the open Display Settings drawer and wait for it to close.
    */
   async applyDisplaySettings() {
-    const rail = this.page.getByTestId('tile-settings-rail');
-    await rail.getByRole('button', { name: 'Apply', exact: true }).click();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByRole('button', { name: 'Apply', exact: true }).click();
+    await drawer.waitFor({ state: 'hidden', timeout: 5000 });
   }
 
   /**
-   * Set the "Series Limit" value in Tile settings. On pie/bar builder charts
-   * this caps the number of slices/bars displayed.
+   * Set the "Series Limit" value in the Display Settings drawer. On pie/bar
+   * builder charts this caps the number of slices/bars displayed. Opens the
+   * drawer, fills the input, then applies and closes.
    */
   async setSeriesLimit(limit: number) {
     await this.openDisplaySettings();
-    const rail = this.page.getByTestId('tile-settings-rail');
-    await rail.getByLabel('Series Limit').fill(String(limit));
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByLabel('Series Limit').fill(String(limit));
     await this.applyDisplaySettings();
   }
 
   /**
-   * Set the "Legend template" value in Tile settings (PromQL charts only).
+   * Set the "Legend template" value in the Display Settings drawer (PromQL
+   * charts only). Opens the drawer, fills the input, then applies and closes.
    */
   async setLegendTemplate(template: string) {
     await this.openDisplaySettings();
-    const rail = this.page.getByTestId('tile-settings-rail');
-    await rail.getByTestId('legend-template-input').fill(template);
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.getByTestId('legend-template-input').fill(template);
     await this.applyDisplaySettings();
   }
 
@@ -1171,21 +1174,23 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Wait for the Tile settings rail to be visible.
+   * Open the Display Settings drawer and wait for it to become visible.
    */
   async openDisplaySettings() {
     await this.page
-      .getByTestId('tile-settings-rail')
-      .waitFor({ state: 'visible', timeout: 5000 });
+      .getByRole('button', { name: 'Display Settings', exact: true })
+      .click();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    await drawer.waitFor({ state: 'visible', timeout: 5000 });
   }
 
   /**
-   * Toggle the "Display Group By Columns on Left" checkbox in Tile settings
-   * to the given state.
+   * Toggle the "Display Group By Columns on Left" checkbox in the open
+   * Display Settings drawer to the given state.
    */
   async setGroupByColumnsOnLeft(checked: boolean) {
-    const rail = this.page.getByTestId('tile-settings-rail');
-    const checkbox = rail.getByLabel('Display Group By Columns on Left');
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    const checkbox = drawer.getByLabel('Display Group By Columns on Left');
     const isChecked = await checkbox.isChecked();
     if (isChecked !== checked) {
       await checkbox.click();
@@ -1193,25 +1198,20 @@ export class ChartEditorComponent {
   }
 
   /**
-   * Click the "Add series" button to add a new series to the chart.
+   * Click the "Add Series" button to add a new series to the chart.
    */
   async addSeries() {
     await this.page
-      .getByRole('button', { name: 'Add series', exact: true })
+      .getByRole('button', { name: 'Add Series', exact: true })
       .click();
   }
 
-  async openSeriesActions(index: number) {
-    await this.page.getByTestId('series-actions-menu').nth(index).click();
-  }
-
   /**
-   * Click Duplicate on the series at zero-based `index` to insert a copy
-   * of it directly below.
+   * Click the "Duplicate" button on the series at zero-based `index` to insert
+   * a copy of it directly below.
    */
   async duplicateSeries(index: number) {
-    await this.openSeriesActions(index);
-    await this.page.getByRole('menuitem', { name: 'Duplicate' }).click();
+    await this.page.getByTestId('series-duplicate-button').nth(index).click();
   }
 
   /**
@@ -1363,8 +1363,10 @@ export class ChartEditorComponent {
    * wait for the "Series Display Settings" drawer to become visible.
    */
   async openSeriesNumberFormat(seriesIndex: number) {
-    await this.openSeriesActions(seriesIndex);
-    await this.page.getByRole('menuitem', { name: 'Display format' }).click();
+    await this.page
+      .getByRole('button', { name: 'Edit display format' })
+      .nth(seriesIndex)
+      .click();
     await this.seriesDisplaySettingsDrawer().waitFor({
       state: 'visible',
       timeout: 5000,

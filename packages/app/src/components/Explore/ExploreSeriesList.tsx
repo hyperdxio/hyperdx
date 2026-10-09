@@ -9,7 +9,7 @@ import { Button, Group, NumberInput, Stack, Text } from '@mantine/core';
 import { IconCirclePlus, IconMathFunction } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-import { ChartSeriesEditor } from '@/components/DBEditTimeChartForm/ChartSeriesEditor';
+import { ExploreChartSeriesEditor } from '@/components/Explore/ExploreChartSeriesEditor';
 import {
   ExploreFormulaCard,
   useFormulaLetterInsert,
@@ -173,7 +173,7 @@ export function ExploreSeriesList({
   return (
     <Stack gap="xs" w="100%" data-testid="search-agg-controls">
       {fields.map((field, index) => (
-        <ChartSeriesEditor
+        <ExploreChartSeriesEditor
           key={field.id}
           control={control}
           databaseName={databaseName}
