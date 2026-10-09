@@ -418,6 +418,14 @@ Storybook and `renderWithMantine` in tests get the provider for free.
   `Badge`, `Separator`, `Spacer`, `Icon`). Import from `@clickhouse/click-ui`.
 - **Do not**: Mix both libraries inside one small component, and do not
   replace working Mantine code outside the change you were asked to make.
+- **`Container` is not a `Box`**: click-ui has no plain-wrapper equivalent of
+  Mantine `Box`. `Container` is a flex layout, closer to `Group` or `Stack`. It
+  defaults to `display="flex"`, `orientation="horizontal"`, and
+  `alignItems="center"`, so a direct swap puts the children in one row. It also
+  has no `m`/`p`/`w`-style props, only `gap` and `padding` tokens. To replace a
+  `Box` that only carries attributes such as `id` or `data-testid`, use a plain
+  HTML element. To replace a `Box` that uses Mantine style props, keep the
+  `Box`, or set `Container` props to match the layout and check it visually.
 - **Styling**: click-ui styles live in the `clickui` CSS cascade layer, so any
   unlayered app or Mantine rule wins over them. Override `--click-*` variables
   outside the layer if a token must change.
