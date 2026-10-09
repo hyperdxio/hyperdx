@@ -950,16 +950,16 @@ export function getFilterExpression(
   return isQueryExpressionFilter(filter) ? filter.expression : undefined;
 }
 
-/** What the filter broadcasts, or undefined when it cannot broadcast. */
+/** Where the filter broadcasts, or undefined when it cannot broadcast. */
 export function getFilterBroadcastTarget(
   filter: DashboardFilter,
-): { expression: string; appliesToSourceIds?: string[] } | undefined {
-  if (!isQueryExpressionFilter(filter) || !isFilterBroadcastEnabled(filter))
-    return undefined;
-  return {
-    expression: filter.expression,
-    appliesToSourceIds: filter.appliesToSourceIds,
-  };
+): { appliesToSourceIds?: string[] } | undefined {
+  if (!isFilterBroadcastEnabled(filter)) return undefined;
+  if (isAdhocFilter(filter)) {
+    return { appliesToSourceIds: getAdhocFilterAppliesToSourceIds(filter) };
+  }
+  if (!isQueryExpressionFilter(filter)) return undefined;
+  return { appliesToSourceIds: filter.appliesToSourceIds };
 }
 
 /**

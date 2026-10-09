@@ -1,4 +1,6 @@
 import {
+  AdhocDashboardFilter,
+  AdhocFilterCondition,
   DashboardFilter,
   DashboardFilterValue,
   Filter,
@@ -985,6 +987,107 @@ describe('useDashboardFilters', () => {
         { type: 'sql', condition: "service.name IN ('api')" },
         { type: 'variable', name: 'env', values: ['staging'] },
       ]);
+    });
+  });
+
+  describe('ad hoc filters', () => {
+    const adhocFilter: AdhocDashboardFilter = {
+      id: 'adhoc1',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'sql',
+      sources: ['logs'],
+      isVariableEnabled: true,
+      variableName: 'conds',
+    };
+    const condition: AdhocFilterCondition = {
+      key: 'ServiceName',
+      operator: '!=',
+      value: 'api',
+    };
+
+    it('reads conditions from an ad hoc entry with its variable name', () => {
+      mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+
+      const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
+
+      expect(result.current.adhocConditionsByFilterId.get('adhoc1')).toEqual([
+        condition,
+      ]);
+      expect(result.current.ignoredVariableNames).toEqual([]);
+    });
+
+    it('writes and clears conditions without touching other entries', () => {
+      mockState = [{ type: 'sql', condition: "environment IN ('prod')" }];
+      const filters = [mockFilters[0], adhocFilter];
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      act(() => {
+        result.current.setAdhocConditions('adhoc1', [condition]);
+      });
+      expect(mockState).toEqual([
+        { type: 'sql', condition: "environment IN ('prod')" },
+        { type: 'adhoc', name: 'conds', conditions: [condition] },
+      ]);
+
+      act(() => {
+        result.current.setAdhocConditions('adhoc1', []);
+      });
+      expect(mockState).toEqual([
+        { type: 'sql', condition: "environment IN ('prod')" },
+      ]);
+    });
+
+    it('drops repeated conditions on read and write', () => {
+      mockState = [
+        { type: 'adhoc', name: 'conds', conditions: [condition, condition] },
+      ];
+      const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
+
+      expect(result.current.adhocConditionsByFilterId.get('adhoc1')).toEqual([
+        condition,
+      ]);
+
+      act(() => {
+        result.current.setAdhocConditions('adhoc1', [condition, condition]);
+      });
+      expect(mockState).toEqual([
+        { type: 'adhoc', name: 'conds', conditions: [condition] },
+      ]);
+    });
+
+    it('keeps conditions across a write to another filter', () => {
+      mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+      const filters = [mockFilters[0], adhocFilter];
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      act(() => {
+        result.current.setFilterValue('filter1', ['prod']);
+      });
+
+      expect(mockState).toEqual([
+        { type: 'sql', condition: "environment IN ('prod')" },
+        { type: 'adhoc', name: 'conds', conditions: [condition] },
+      ]);
+    });
+
+    it('exposes no variable, selection, or broadcast query', () => {
+      mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+
+      const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
+
+      expect(result.current.variables).toEqual([]);
+      expect(result.current.selectionByFilterId.size).toBe(0);
+      expect(result.current.broadcastedFilters).toEqual([]);
+    });
+
+    it('lists an ad hoc entry naming no declared filter as ignored', () => {
+      mockState = [{ type: 'adhoc', name: 'renamed', conditions: [condition] }];
+
+      const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
+
+      expect(result.current.adhocConditionsByFilterId.size).toBe(0);
+      expect(result.current.ignoredVariableNames).toEqual(['renamed']);
     });
   });
 

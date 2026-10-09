@@ -26,9 +26,11 @@ export type FilterConditionEditorProps<TOperator extends string = string> = {
   initial?: FilterCondition<TOperator>;
   keyOptions: string[];
   isLoadingKeys?: boolean;
+  isKeysError?: boolean;
   /** Suggestions for the key last reported by `onKeyChange`. */
   valueOptions: string[];
   isLoadingValues?: boolean;
+  isValuesError?: boolean;
   /** The trimmed key, once typing pauses, so the caller can fetch its values. */
   onKeyChange?: (key: string) => void;
   keyLabel?: string;
@@ -38,6 +40,7 @@ export type FilterConditionEditorProps<TOperator extends string = string> = {
 };
 
 const KEY_DEBOUNCE_MS = 300;
+const SUGGESTIONS_ERROR = "Couldn't load suggestions";
 
 /** Pick a key, an operator, and a value. Free text is accepted for both inputs. */
 export function FilterConditionEditor<TOperator extends string = string>({
@@ -45,8 +48,10 @@ export function FilterConditionEditor<TOperator extends string = string>({
   initial,
   keyOptions,
   isLoadingKeys,
+  isKeysError,
   valueOptions,
   isLoadingValues,
+  isValuesError,
   onKeyChange,
   keyLabel = 'Key',
   keyPlaceholder = 'Select a key',
@@ -69,6 +74,7 @@ export function FilterConditionEditor<TOperator extends string = string>({
   // Values shown while the key is still settling belong to the previous key.
   const isValueLoading =
     !!trimmedKey && (!!isLoadingValues || debouncedKey !== trimmedKey);
+  const isValuesErrorShown = !!trimmedKey && !isValueLoading && !!isValuesError;
   const selectedOperator = operators.find(op => op.value === operator);
   const canSubmit = !!trimmedKey && operator != null;
 
@@ -84,6 +90,7 @@ export function FilterConditionEditor<TOperator extends string = string>({
         placeholder={keyPlaceholder}
         options={keyOptions}
         isLoading={isLoadingKeys}
+        error={!isLoadingKeys && isKeysError ? SUGGESTIONS_ERROR : undefined}
         value={key}
         onChange={setKey}
         // Enter moves on to the value instead of applying an empty-value filter.
@@ -105,6 +112,7 @@ export function FilterConditionEditor<TOperator extends string = string>({
         placeholder={selectedOperator?.valuePlaceholder ?? 'Select a value'}
         options={valueOptions}
         isLoading={isValueLoading}
+        error={isValuesErrorShown ? SUGGESTIONS_ERROR : undefined}
         value={value}
         onChange={setValue}
         onSubmit={submit}

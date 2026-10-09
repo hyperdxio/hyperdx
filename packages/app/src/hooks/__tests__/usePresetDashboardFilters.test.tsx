@@ -111,6 +111,8 @@ describe('usePresetDashboardFilters', () => {
     jest.mocked(useDashboardFilters).mockReturnValue({
       selectionByFilterId: mockSelectionByFilterId,
       setFilterValue: mockSetFilterValue,
+      adhocConditionsByFilterId: new Map(),
+      setAdhocConditions: jest.fn(),
       broadcastedFilters: mockFilterQueries,
       setFilterValueEntries: jest.fn(),
       filterValueEntries: null,

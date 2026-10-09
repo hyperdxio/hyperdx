@@ -26,7 +26,7 @@ export type FilterAutocompleteProps = {
   'aria-label'?: string;
   'data-testid'?: string;
   ref?: Ref<HTMLInputElement>;
-} & Pick<AutocompleteProps, 'w' | 'size' | 'autoFocus' | 'mb'>;
+} & Pick<AutocompleteProps, 'w' | 'size' | 'autoFocus' | 'mb' | 'error'>;
 
 /** Suggestion input for filter keys and values that also accepts free text. */
 export function FilterAutocomplete({

@@ -35,7 +35,6 @@ import {
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
-import { isAdhocFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -1979,14 +1978,12 @@ function DBDashboardPage({
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
-  // Ad hoc filters aren't rendered or applied yet
-  const filters = useMemo(
-    () => (dashboard?.filters ?? []).filter(filter => !isAdhocFilter(filter)),
-    [dashboard?.filters],
-  );
+  const filters = useMemo(() => dashboard?.filters ?? [], [dashboard?.filters]);
   const {
     selectionByFilterId,
     setFilterValue,
+    adhocConditionsByFilterId,
+    setAdhocConditions,
     setFilterValueEntries,
     filterValueEntries,
     ignoredFilterExpressions,
@@ -3351,6 +3348,8 @@ function DBDashboardPage({
           filters={filters}
           selectionByFilterId={selectionByFilterId}
           onSetFilterValue={setFilterValue}
+          adhocConditionsByFilterId={adhocConditionsByFilterId}
+          onSetAdhocConditions={setAdhocConditions}
           dateRange={searchedTimeRange}
           variables={variables}
         />
@@ -3524,7 +3523,7 @@ function DBDashboardPage({
         <DashboardFiltersModal
           opened={showFiltersModal}
           onClose={() => setShowFiltersModal(false)}
-          filters={dashboard?.filters ?? []}
+          filters={filters}
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}

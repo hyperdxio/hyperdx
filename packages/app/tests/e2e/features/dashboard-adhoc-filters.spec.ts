@@ -1,9 +1,11 @@
 /**
  * An `ADHOC` dashboard filter's conditions (`key operator value`) are picked
- * from the keys of its sources. For now the filters modal only lists, creates,
- * and edits them; they are not rendered or applied on the dashboard.
+ * from the keys of its sources. The filters modal creates and edits them, and
+ * the dashboard renders their conditions and keeps them in the URL; they are not
+ * applied to tiles yet.
  */
 import { DashboardPage } from '../page-objects/DashboardPage';
+import { SERVICES } from '../seed-clickhouse';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
@@ -11,6 +13,7 @@ import {
   DEFAULT_TRACES_SOURCE_NAME,
   PROMQL_SOURCE_NAME,
 } from '../utils/constants';
+import { expectFiltersParam, filtersParam } from '../utils/filters-param';
 
 test.describe(
   'Ad hoc dashboard filters',
@@ -257,6 +260,213 @@ test.describe(
       ).toBeVisible();
     });
 
+    test('picks conditions from the keys and values of one SQL source', async ({
+      page,
+    }) => {
+      const filterName = 'Conditions';
+      const pills = dashboardPage.getAdhocConditionPills(filterName);
+
+      await test.step('Create the filter', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addAdhocFilterToDashboard(
+          filterName,
+          [DEFAULT_LOGS_SOURCE_NAME],
+          { variableName: 'conds' },
+        );
+        await dashboardPage.closeFiltersModal();
+        await expect(dashboardPage.getAdhocFilter(filterName)).toBeVisible();
+      });
+
+      await test.step('Keys are suggested, values only once a key is picked', async () => {
+        const editor = dashboardPage.getAdhocConditionEditor(filterName);
+        const valueInput = dashboardPage.getAdhocConditionInput(
+          filterName,
+          'value',
+        );
+        const serviceNameOption = editor.getByRole('option', {
+          name: 'ServiceName',
+          exact: true,
+        });
+        const accountingOption = editor.getByRole('option', {
+          name: 'accounting',
+          exact: true,
+        });
+
+        await dashboardPage.openAddAdhocCondition(filterName);
+        await valueInput.click();
+        await expect(editor.getByRole('option')).toHaveCount(0);
+
+        await dashboardPage.getAdhocConditionInput(filterName, 'key').click();
+        await expect(serviceNameOption).toBeVisible({ timeout: 30000 });
+        await serviceNameOption.click();
+
+        await valueInput.click();
+        await expect(accountingOption).toBeVisible({ timeout: 30000 });
+        await accountingOption.click();
+        await valueInput.press('Enter');
+        await expect(editor).toBeHidden();
+      });
+
+      await test.step('The condition is shown and kept in the URL', async () => {
+        await expect(pills).toHaveCount(1);
+        await expect(pills).toHaveText('ServiceName = accounting');
+        await expectFiltersParam(page, [
+          {
+            type: 'adhoc',
+            name: 'conds',
+            conditions: [
+              { key: 'ServiceName', operator: '=', value: 'accounting' },
+            ],
+          },
+        ]);
+      });
+
+      await test.step('Editing the pill changes its operator', async () => {
+        await dashboardPage.editAdhocCondition(
+          filterName,
+          'ServiceName = accounting',
+          { operatorLabel: '!=' },
+        );
+        await expect(pills).toHaveText('ServiceName != accounting');
+        await expectFiltersParam(page, [
+          {
+            type: 'adhoc',
+            name: 'conds',
+            conditions: [
+              { key: 'ServiceName', operator: '!=', value: 'accounting' },
+            ],
+          },
+        ]);
+      });
+
+      await test.step('The condition survives a reload', async () => {
+        await page.reload();
+        await dashboardPage.waitForLoaded();
+        await expect(pills).toHaveText('ServiceName != accounting');
+      });
+
+      await test.step('Removing the pill clears it from the URL', async () => {
+        await pills.getByRole('button', { name: 'Remove filter' }).click();
+        await expect(pills).toHaveCount(0);
+        await expect.poll(() => filtersParam(page) ?? []).toEqual([]);
+      });
+    });
+
+    test('offers deduplicated keys and values across several SQL sources', async ({
+      page,
+    }) => {
+      const filterName = 'Both';
+      const editor = dashboardPage.getAdhocConditionEditor(filterName);
+      const pills = dashboardPage.getAdhocConditionPills(filterName);
+
+      await test.step('Create a filter over logs and traces', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addAdhocFilterToDashboard(
+          filterName,
+          [DEFAULT_LOGS_SOURCE_NAME, DEFAULT_TRACES_SOURCE_NAME],
+          { variableName: 'both' },
+        );
+        await dashboardPage.closeFiltersModal();
+      });
+
+      const keyInput = dashboardPage.getAdhocConditionInput(filterName, 'key');
+
+      await test.step('A key both sources have is listed once', async () => {
+        await dashboardPage.openAddAdhocCondition(filterName);
+        // Typing narrows the list, which renders at most 200 suggestions.
+        await keyInput.fill('ServiceName');
+        await expect(
+          editor.getByRole('option', { name: 'ServiceName', exact: true }),
+        ).toHaveCount(1, { timeout: 30000 });
+      });
+
+      await test.step('A key only one source has is offered too', async () => {
+        await keyInput.fill('SpanName');
+        await expect(
+          editor.getByRole('option', { name: 'SpanName', exact: true }),
+        ).toHaveCount(1);
+      });
+
+      await test.step("The key's values are listed once each", async () => {
+        await keyInput.fill('ServiceName');
+        await dashboardPage.getAdhocConditionInput(filterName, 'value').click();
+        await expect(
+          editor.getByRole('option', { name: 'accounting', exact: true }),
+        ).toHaveCount(1, { timeout: 30000 });
+        const options = await dashboardPage.getOpenFilterDropdownOptions();
+        expect(new Set(options).size).toBe(options.length);
+        expect(options).toEqual(expect.arrayContaining([...SERVICES]));
+        await dashboardPage.fillAdhocConditionEditor(filterName, {
+          value: 'accounting',
+        });
+      });
+
+      await test.step('A key only one source has gets its values', async () => {
+        await dashboardPage.openAddAdhocCondition(filterName);
+        await keyInput.fill('SeverityText');
+        await dashboardPage.getAdhocConditionInput(filterName, 'value').click();
+        await expect(
+          editor.getByRole('option', { name: 'error', exact: true }),
+        ).toBeVisible({ timeout: 30000 });
+        await dashboardPage.fillAdhocConditionEditor(filterName, {
+          value: 'error',
+        });
+      });
+
+      await test.step('Both conditions survive a reload', async () => {
+        await expect(pills).toHaveText([
+          'ServiceName = accounting',
+          'SeverityText = error',
+        ]);
+        await page.reload();
+        await dashboardPage.waitForLoaded();
+        await expect(pills).toHaveText([
+          'ServiceName = accounting',
+          'SeverityText = error',
+        ]);
+      });
+    });
+
+    test('picks conditions from the labels of a PromQL source', async () => {
+      const filterName = 'Labels';
+      const editor = dashboardPage.getAdhocConditionEditor(filterName);
+
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.openEditFiltersModal();
+      await dashboardPage.addAdhocFilterToDashboard(
+        filterName,
+        [PROMQL_SOURCE_NAME],
+        { sourceType: 'Prometheus' },
+      );
+      await dashboardPage.closeFiltersModal();
+
+      await dashboardPage.openAddAdhocCondition(filterName);
+      await dashboardPage.getAdhocConditionInput(filterName, 'key').click();
+      await expect(
+        editor.getByRole('option', { name: 'service', exact: true }),
+      ).toBeVisible({ timeout: 30000 });
+      await expect(
+        editor.getByRole('option', { name: '__name__', exact: true }),
+      ).toHaveCount(0);
+
+      await dashboardPage
+        .getAdhocConditionInput(filterName, 'key')
+        .fill('service');
+      await dashboardPage.getAdhocConditionInput(filterName, 'value').click();
+      await expect(
+        editor.getByRole('option', { name: 'accounting', exact: true }),
+      ).toBeVisible({ timeout: 30000 });
+      await dashboardPage.fillAdhocConditionEditor(filterName, {
+        operatorLabel: '=~',
+        value: 'acc.*',
+      });
+      await expect(dashboardPage.getAdhocConditionPills(filterName)).toHaveText(
+        'service =~ acc.*',
+      );
+    });
+
     test("lives alongside the dashboard's other filters", async ({ page }) => {
       await test.step('Create an ad hoc and a static filter', async () => {
         await dashboardPage.createNewDashboard();
@@ -285,11 +495,12 @@ test.describe(
         await page.getByRole('button', { name: 'Cancel' }).click();
       });
 
-      await test.step('Only the other filter is rendered on the dashboard', async () => {
+      await test.step('Both filters are rendered on the dashboard', async () => {
         await dashboardPage.closeFiltersModal();
         await expect(
           dashboardPage.getFilterSelectByName('Environment'),
         ).toBeVisible();
+        await expect(dashboardPage.getAdhocFilter('Conditions')).toBeVisible();
         await expect(
           dashboardPage.getFilterSelectByName('Conditions'),
         ).toHaveCount(0);
