@@ -21,6 +21,7 @@ import {
   ChartVariable,
   DASHBOARD_VARIABLE_NAME_PATTERN,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+  DashboardFilter,
   DisplayType,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -41,10 +42,10 @@ export const VARIABLE_FORMATS = [
 export type VariableFormat = (typeof VARIABLE_FORMATS)[number];
 
 /** Whether at most one value can be selected for the filter (or its variable). */
-export function isFilterSingleSelect(filter: {
-  maxSelections?: number;
-}): boolean {
-  return filter.maxSelections === 1;
+export function isFilterSingleSelect(
+  filter: DashboardFilter | { maxSelections?: number },
+): boolean {
+  return 'maxSelections' in filter && filter.maxSelections === 1;
 }
 
 const isVariableFormat = (format: string): format is VariableFormat =>

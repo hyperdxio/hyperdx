@@ -17,9 +17,10 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
 import {
   type DashboardFilterQueryIssue,
+  isAdhocFilter,
+  isAdhocFilterValue,
   isPrometheusLabelFilter,
   isQueryExpressionFilter,
-  isStaticListFilter,
   QUERY_EXPRESSION_FILTER_SOURCE_KINDS,
   type SavedFilterValueIssue,
   type SavedQueryIssue,
@@ -39,6 +40,8 @@ import {
   isOnClickDashboardById,
   isOnClickSearchById,
   isTraceSource,
+  type PromqlLabelDashboardFilter,
+  type QueryExpressionDashboardFilter,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -392,9 +395,15 @@ function resolveAppliesToSources(
   };
 }
 
+/** Whether the filter names a single source that import must map. */
+const isSourceBackedTemplateFilter = (
+  filter: DashboardFilter,
+): filter is QueryExpressionDashboardFilter | PromqlLabelDashboardFilter =>
+  isQueryExpressionFilter(filter) || isPrometheusLabelFilter(filter);
+
 /** Returns the filter if it names a source, or `undefined` if it doesn't. */
 const sourceBackedTemplateFilter = (filter: DashboardFilter | undefined) =>
-  filter && !isStaticListFilter(filter) ? filter : undefined;
+  filter && isSourceBackedTemplateFilter(filter) ? filter : undefined;
 
 /**
  * The query-expression half of a template filter, or `undefined` for any other
@@ -486,7 +495,7 @@ export function buildMappingFormSchema(
       });
 
       input.filters?.forEach((filter, idx) => {
-        if (isStaticListFilter(filter)) return;
+        if (!isSourceBackedTemplateFilter(filter)) return;
         const mappedSourceId = data.filterSourceMappings?.[idx];
         if (!mappedSourceId) {
           ctx.addIssue({
@@ -575,9 +584,10 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     });
 
     const filterSourceMappings = input.filters?.map(filter => {
-      if (isStaticListFilter(filter)) return '';
+      const sourceName = sourceBackedTemplateFilter(filter)?.source;
+      if (sourceName == null) return '';
       const match = sources.find(
-        source => source.name.toLowerCase() === filter.source.toLowerCase(),
+        source => source.name.toLowerCase() === sourceName.toLowerCase(),
       );
       return match?.id || '';
     });
@@ -944,25 +954,31 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
       });
 
       // Zip the source mappings with the input filters
-      const zippedFilters = input.filters?.map((filter, idx) => {
-        const source = findSource(data.filterSourceMappings?.[idx]);
-        const appliesTo = data.filterAppliesToSourceMappings?.[idx]?.filter(
-          id => !!id?.length,
-        );
-        return {
-          ...filter,
-          // A sourceless filter (`STATIC_LIST`) gets no mapping row, so
-          // `source` is undefined here
-          ...(source ? { source: source.id } : {}),
-          appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
-        };
-      });
+      const zippedFilters = input.filters
+        ?.map((filter, idx) => {
+          const source = findSource(data.filterSourceMappings?.[idx]);
+          const appliesTo = data.filterAppliesToSourceMappings?.[idx]?.filter(
+            id => !!id?.length,
+          );
+          return {
+            ...filter,
+            // A sourceless filter (`STATIC_LIST`) gets no mapping row, so
+            // `source` is undefined here
+            ...(source ? { source: source.id } : {}),
+            appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
+          };
+        })
+        // Ad hoc filters aren't importable yet.
+        .filter(filter => !isAdhocFilter(filter));
 
       // Format for server
       const output = convertToDashboardDocument({
         ...input,
         tiles: zippedTiles,
         filters: zippedFilters,
+        savedFilterValues: input.savedFilterValues?.filter(
+          value => !isAdhocFilterValue(value),
+        ),
         name: data.dashboardName,
         tags: data.tags,
       });
@@ -1123,9 +1139,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
             {/** Map filter sources */}
             {input.filters?.map((filter, i) => (
               <Fragment key={filter.id}>
-                {/* A static filter reads its values from the list stored on it,
-                    so it has neither a source nor an applies-to list to map. */}
-                {!isStaticListFilter(filter) && (
+                {isSourceBackedTemplateFilter(filter) && (
                   <Table.Tr>
                     <Table.Td>{filter.name} (Filter)</Table.Td>
                     <Table.Td>Data Source</Table.Td>

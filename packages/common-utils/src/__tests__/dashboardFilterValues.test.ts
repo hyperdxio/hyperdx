@@ -139,6 +139,24 @@ describe('dashboardFilterValues', () => {
       expect(parsed.byExpression).toEqual({ Env: included('prod') });
     });
 
+    it('carries ad hoc entries through a parse and serialize round trip', () => {
+      const adhoc: DashboardFilterValue = {
+        type: 'adhoc',
+        name: 'adhoc',
+        conditions: [{ key: 'ServiceName', operator: '=~', value: 'api.*' }],
+      };
+
+      const parsed = parseDashboardFilterValues([
+        adhoc,
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
+
+      expect(serializeDashboardFilterValues(parsed)).toEqual([
+        { type: 'variable', name: 'env', values: ['prod'] },
+        adhoc,
+      ]);
+    });
+
     it('drops a sql entry it can extract nothing from, rather than carrying it', () => {
       // Carrying these would grow the URL without bound: a rebuild re-emits
       // every declared filter through `filtersToQuery`, so a filter whose

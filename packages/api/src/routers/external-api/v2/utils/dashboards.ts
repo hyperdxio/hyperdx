@@ -54,6 +54,8 @@ import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
 import Dashboard, { DashboardDocument } from '@/models/dashboard';
 import {
+  getExternalCompatibleFilters,
+  getExternalCompatibleFilterValues,
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
   translateFilterToExternalFilter,
@@ -682,10 +684,14 @@ export function convertToExternalDashboard(
       .map(tile => convertTileToExternalChart(tile, containerById, dashboardId))
       .filter(t => t !== undefined),
     tags: dashboard.tags || [],
-    filters: dashboard.filters?.map(translateFilterToExternalFilter) || [],
+    filters: getExternalCompatibleFilters(dashboard.filters).map(
+      translateFilterToExternalFilter,
+    ),
     savedQuery: dashboard.savedQuery ?? null,
     savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
-    savedFilterValues: dashboard.savedFilterValues ?? [],
+    savedFilterValues: getExternalCompatibleFilterValues(
+      dashboard.savedFilterValues,
+    ),
     // Mongoose persists missing arrays as []. Only emit containers when
     // the user actually saved one or more, so dashboards without the
     // organization layer round-trip with the field absent.
@@ -1145,7 +1151,7 @@ function getHeatmapTilesWithIncompatibleSources(
  * Returns an error message string if any of the referenced source IDs is not
  * a valid PromQL source, or null if all of them are.
  */
-export function getPromqlLabelFilterSourceError(
+function getPromqlLabelFilterSourceError(
   sources: SourceForValidation[],
   referencedSourceIds: string[],
 ): string | null {

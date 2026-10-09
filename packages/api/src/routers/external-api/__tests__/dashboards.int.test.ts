@@ -8154,6 +8154,58 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  describe('ad hoc filters', () => {
+    const adhocFilter = () => ({
+      id: new ObjectId().toString(),
+      type: 'ADHOC' as const,
+      name: 'Ad hoc',
+      sourceType: 'sql' as const,
+      sources: [traceSource._id.toString()],
+      isVariableEnabled: true as const,
+      variableName: 'adhoc',
+    });
+    const adhocValue = {
+      type: 'adhoc' as const,
+      name: 'adhoc',
+      conditions: [{ key: 'ServiceName', operator: '=', value: 'api' }],
+    };
+
+    it('hides ad hoc filters and their saved values from GET', async () => {
+      const dashboard = await createTestDashboard({
+        filters: [adhocFilter()],
+        savedFilterValues: [adhocValue],
+      });
+
+      const response = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+
+      expect(response.body.data.filters).toEqual([]);
+      expect(response.body.data.savedFilterValues).toEqual([]);
+    });
+
+    it('rejects an ad hoc filter in a POST', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            filters: [omit(adhocFilter(), 'id')],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('rejects ad hoc saved values in a POST', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [adhocValue],
+          }),
+        )
+        .expect(400);
+    });
+  });
+
   describe('DELETE /:id', () => {
     it('should delete a dashboard', async () => {
       const dashboard = await createTestDashboard();
