@@ -38,7 +38,6 @@ export default mongoose.model<ITeam>(
         type: Boolean,
         default: false,
       },
-      // TODO: maybe add these to a top level Mixed type
       // CH Client Settings
       metadataMaxRowsToRead: Number,
       searchRowLimit: Number,
@@ -46,6 +45,17 @@ export default mongoose.model<ITeam>(
       fieldMetadataDisabled: Boolean,
       parallelizeWhenPossible: Boolean,
       filterKeysFetchLimit: Number,
+      // Query Language Settings
+      defaultQueryLanguage: {
+        type: String,
+        enum: ['lucene', 'sql'],
+        default: 'lucene',
+      },
+      allowedQueryLanguages: {
+        type: [String],
+        enum: ['lucene', 'sql'],
+        default: ['lucene', 'sql'],
+      },
     },
     {
       timestamps: true,

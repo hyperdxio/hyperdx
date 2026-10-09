@@ -1,6 +1,9 @@
 import {
+  DEFAULT_QUERY_LANGUAGES,
+  QueryLanguage,
   TagResourceType,
   TeamClickHouseSettingsUpdate,
+  TeamQueryLanguageSettingsUpdate,
 } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,6 +14,7 @@ import Alert from '@/models/alert';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import Team, { type ITeam, type TeamDocument } from '@/models/team';
+import { Api400Error } from '@/utils/errors';
 
 export function getTeamInviteUrl(token: string) {
   return `${config.FRONTEND_URL}/join-team?token=${token}`;
@@ -26,6 +30,8 @@ export const LOCAL_APP_TEAM = {
   apiKey: uuidv4(),
   collectorAuthenticationEnforced: false,
   isMetricsSeriesTableEnabled: false,
+  defaultQueryLanguage: 'lucene' as QueryLanguage,
+  allowedQueryLanguages: [...DEFAULT_QUERY_LANGUAGES] as QueryLanguage[],
   toJSON() {
     return this;
   },
@@ -101,12 +107,9 @@ export function setTeamName(teamId: ObjectId, name: string) {
   return Team.findByIdAndUpdate(teamId, { name }, { new: true });
 }
 
-export function updateTeamClickhouseSettings(
-  teamId: ObjectId,
-  settings: TeamClickHouseSettingsUpdate,
-) {
-  const $set: Record<string, any> = {};
-  const $unset: Record<string, any> = {};
+function buildSetUnsetUpdate<T extends Record<string, unknown>>(settings: T) {
+  const $set: Record<string, unknown> = {};
+  const $unset: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(settings)) {
     if (value === null) {
@@ -116,11 +119,111 @@ export function updateTeamClickhouseSettings(
     }
   }
 
-  const update: Record<string, any> = {};
+  const update: mongoose.UpdateQuery<ITeam> = {};
   if (Object.keys($set).length > 0) update.$set = $set;
   if (Object.keys($unset).length > 0) update.$unset = $unset;
 
+  return update;
+}
+
+export function updateTeamClickhouseSettings(
+  teamId: ObjectId,
+  settings: TeamClickHouseSettingsUpdate,
+) {
+  const update = buildSetUnsetUpdate(settings);
   return Team.findByIdAndUpdate(teamId, update, { new: true });
+}
+
+export async function updateTeamQueryLanguageSettings(
+  teamId: ObjectId,
+  settings: TeamQueryLanguageSettingsUpdate,
+) {
+  if (config.IS_LOCAL_APP_MODE) {
+    const effectiveAllowed =
+      settings.allowedQueryLanguages ??
+      LOCAL_APP_TEAM.allowedQueryLanguages ??
+      DEFAULT_QUERY_LANGUAGES;
+
+    if (effectiveAllowed.length === 0) {
+      throw new Api400Error('At least one query language must be enabled');
+    }
+
+    const effectiveDefault =
+      settings.defaultQueryLanguage ??
+      LOCAL_APP_TEAM.defaultQueryLanguage ??
+      'lucene';
+
+    if (!effectiveAllowed.includes(effectiveDefault)) {
+      throw new Api400Error(
+        'Default query language must be one of the allowed query languages',
+      );
+    }
+
+    if (settings.defaultQueryLanguage !== undefined) {
+      LOCAL_APP_TEAM.defaultQueryLanguage = settings.defaultQueryLanguage;
+    }
+    if (settings.allowedQueryLanguages !== undefined) {
+      LOCAL_APP_TEAM.allowedQueryLanguages = settings.allowedQueryLanguages;
+    }
+    return LOCAL_APP_TEAM;
+  }
+
+  const currentTeam = await Team.findById(teamId);
+  if (!currentTeam) {
+    throw new Error(`Team ${teamId} not found`);
+  }
+
+  const effectiveAllowed =
+    settings.allowedQueryLanguages ??
+    currentTeam.allowedQueryLanguages ??
+    DEFAULT_QUERY_LANGUAGES;
+
+  if (effectiveAllowed.length === 0) {
+    throw new Api400Error('At least one query language must be enabled');
+  }
+
+  const effectiveDefault =
+    settings.defaultQueryLanguage ??
+    currentTeam.defaultQueryLanguage ??
+    'lucene';
+
+  if (!effectiveAllowed.includes(effectiveDefault)) {
+    throw new Api400Error(
+      'Default query language must be one of the allowed query languages',
+    );
+  }
+
+  const update = buildSetUnsetUpdate(settings);
+
+  const queryFilter: Record<string, unknown> = { _id: teamId };
+
+  if (settings.allowedQueryLanguages && !settings.defaultQueryLanguage) {
+    const includesDefaultLucene =
+      settings.allowedQueryLanguages.includes('lucene');
+    queryFilter.$or = [
+      { defaultQueryLanguage: { $in: settings.allowedQueryLanguages } },
+      ...(includesDefaultLucene
+        ? [{ defaultQueryLanguage: { $exists: false } }]
+        : []),
+    ];
+  } else if (settings.defaultQueryLanguage && !settings.allowedQueryLanguages) {
+    queryFilter.$or = [
+      { allowedQueryLanguages: settings.defaultQueryLanguage },
+      { allowedQueryLanguages: { $exists: false } },
+    ];
+  }
+
+  const updatedTeam = await Team.findOneAndUpdate(queryFilter, update, {
+    new: true,
+  });
+
+  if (!updatedTeam) {
+    throw new Api400Error(
+      'Default query language must be one of the allowed query languages',
+    );
+  }
+
+  return updatedTeam;
 }
 
 function getCollectionsWithTags(

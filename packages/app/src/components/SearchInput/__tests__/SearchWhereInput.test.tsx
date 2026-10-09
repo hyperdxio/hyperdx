@@ -6,7 +6,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
+import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
+import SearchWhereInput, {
+  getStoredLanguage,
+} from '@/components/SearchInput/SearchWhereInput';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
 
 function renderWithMantine(ui: React.ReactElement) {
@@ -75,6 +78,85 @@ function TestWrapper({
 describe('SearchWhereInput', () => {
   beforeEach(() => {
     queryClient.clear();
+  });
+
+  describe('Team Query Language Settings', () => {
+    it('returns null when no team argument is passed and localStorage is empty', () => {
+      window.localStorage.removeItem('hdx-search-where-language');
+      expect(getStoredLanguage()).toBeNull();
+    });
+
+    it('returns stored language when no team argument is passed if localStorage has a value', () => {
+      window.localStorage.setItem('hdx-search-where-language', 'sql');
+      expect(getStoredLanguage()).toBe('sql');
+    });
+
+    it('returns stored language if allowed by team', () => {
+      window.localStorage.setItem('hdx-search-where-language', 'sql');
+      expect(
+        getStoredLanguage({
+          allowedQueryLanguages: ['lucene', 'sql'],
+          defaultQueryLanguage: 'lucene',
+        }),
+      ).toBe('sql');
+    });
+
+    it('falls back to defaultQueryLanguage when stored language is disallowed', () => {
+      window.localStorage.setItem('hdx-search-where-language', 'lucene');
+      expect(
+        getStoredLanguage({
+          allowedQueryLanguages: ['sql'],
+          defaultQueryLanguage: 'sql',
+        }),
+      ).toBe('sql');
+    });
+
+    it('returns defaultQueryLanguage SQL when both languages are allowed and localStorage is empty', () => {
+      window.localStorage.removeItem('hdx-search-where-language');
+      expect(
+        getStoredLanguage({
+          allowedQueryLanguages: ['lucene', 'sql'],
+          defaultQueryLanguage: 'sql',
+        }),
+      ).toBe('sql');
+    });
+
+    it('does not write auto-resolved team defaults to localStorage on reconciliation', () => {
+      window.localStorage.removeItem('hdx-search-where-language');
+      const lang = getStoredLanguage({
+        allowedQueryLanguages: ['lucene', 'sql'],
+        defaultQueryLanguage: 'sql',
+      });
+      expect(lang).toBe('sql');
+      expect(
+        window.localStorage.getItem('hdx-search-where-language'),
+      ).toBeNull();
+    });
+
+    it('preserves an explicit allowed form language when team default differs', () => {
+      renderWithMantine(<TestWrapper defaultLanguage="sql" />);
+      expect(
+        screen.getByRole('combobox', { name: 'Query language' }),
+      ).toHaveValue('SQL');
+      expect(
+        screen.queryByPlaceholderText(/Search your events w\/ Lucene/i),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('InputLanguageSwitch', () => {
+    it('disables language dropdown when only one language is allowed', () => {
+      const onLanguageChange = jest.fn();
+      renderWithMantine(
+        <InputLanguageSwitch
+          language="sql"
+          onLanguageChange={onLanguageChange}
+          allowedLanguages={['sql']}
+        />,
+      );
+      const select = screen.getByRole('combobox', { name: 'Query language' });
+      expect(select).toBeDisabled();
+    });
   });
 
   describe('Lucene Mode', () => {

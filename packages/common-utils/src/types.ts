@@ -156,10 +156,18 @@ const SearchConditionRequiredLanguageSchema = z.enum([
   'lucene',
   'promql',
 ]);
+export const QueryLanguageSchema =
+  SearchConditionRequiredLanguageSchema.exclude(['promql']);
+export type QueryLanguage = z.infer<typeof QueryLanguageSchema>;
+export const DEFAULT_QUERY_LANGUAGES: QueryLanguage[] =
+  QueryLanguageSchema.options;
+export function formatQueryLanguageLabel(lang: QueryLanguage): string {
+  return lang === 'sql' ? 'SQL' : 'Lucene';
+}
 export const SearchConditionLanguageSchema =
   SearchConditionRequiredLanguageSchema.optional();
 export const SearchConditionTrimmedLanguageSchema =
-  SearchConditionRequiredLanguageSchema.exclude(['promql']).optional();
+  QueryLanguageSchema.optional();
 export const AggregateFunctionSchema = z.enum([
   'avg',
   'count',
@@ -2353,6 +2361,27 @@ export type TeamClickHouseSettings = z.infer<
   typeof TeamClickHouseSettingsSchema
 >;
 
+export const TeamQueryLanguageSettingsSchema = z.object({
+  defaultQueryLanguage: QueryLanguageSchema.optional(),
+  allowedQueryLanguages: z.array(QueryLanguageSchema).min(1).optional(),
+});
+
+export const TeamQueryLanguageSettingsUpdateSchema =
+  TeamQueryLanguageSettingsSchema;
+
+export type TeamQueryLanguageSettings = z.infer<
+  typeof TeamQueryLanguageSettingsSchema
+>;
+export type TeamQueryLanguageSettingsUpdate = z.infer<
+  typeof TeamQueryLanguageSettingsUpdateSchema
+>;
+
+export const UpdateQueryLanguageSettingsApiResponseSchema =
+  TeamQueryLanguageSettingsSchema.partial();
+export type UpdateQueryLanguageSettingsApiResponse = z.infer<
+  typeof UpdateQueryLanguageSettingsApiResponseSchema
+>;
+
 export const TeamSchema = z
   .object({
     id: z.string(),
@@ -2363,7 +2392,8 @@ export const TeamSchema = z
     collectorAuthenticationEnforced: z.boolean(),
     isMetricsSeriesTableEnabled: z.boolean(),
   })
-  .merge(TeamClickHouseSettingsSchema);
+  .merge(TeamClickHouseSettingsSchema)
+  .merge(TeamQueryLanguageSettingsSchema);
 
 export type Team = z.infer<typeof TeamSchema>;
 
@@ -3097,7 +3127,9 @@ export const MeApiResponseSchema = z.object({
     name: true,
     allowedAuthMethods: true,
     apiKey: true,
-  }).merge(TeamClickHouseSettingsSchema),
+  })
+    .merge(TeamClickHouseSettingsSchema)
+    .merge(TeamQueryLanguageSettingsSchema),
   usageStatsEnabled: z.boolean(),
   aiAssistantEnabled: z.boolean(),
 });
