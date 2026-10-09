@@ -82,6 +82,8 @@ export const IS_METRICS_ENABLED = true;
 export const IS_MTVIEWS_ENABLED = false;
 export const IS_SESSIONS_ENABLED = true;
 export const IS_PROMQL_ENABLED = env('NEXT_PUBLIC_ENABLE_PROMQL') === 'true';
+export const IS_ADHOC_FILTERS_ENABLED =
+  env('NEXT_PUBLIC_ENABLE_ADHOC_FILTERS') === 'true';
 // Suffix for the tab title/sidebar pill. Shown in full in the page title;
 // only truncated visually (via CSS ellipsis) in the sidebar, where space is
 // constrained. Internal whitespace is collapsed so it displays consistently
