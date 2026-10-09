@@ -120,6 +120,7 @@ const makeLogSource = (opts: { withMVs: boolean }) => ({
 });
 
 type SourceQueryResult = ReturnType<typeof sourceModule.useSource>;
+type AllFieldsResult = ReturnType<typeof useMetadataModule.useAllFields>;
 type MetadataWithSettings = ReturnType<
   typeof useMetadataModule.useMetadataWithSettings
 >;
@@ -449,6 +450,32 @@ describe('useFetchFacets', () => {
       // independent of the values query; it stays defined once metadata
       // loads. Only `keyValues` is gated on the active pipeline query.
       expect(result.current.data.keyValues).toBeUndefined();
+    });
+  });
+
+  describe('errors', () => {
+    it('surfaces a field lookup error so the filter panel can report it', () => {
+      setupDefaultMocks({ withMVs: false });
+      const fieldsError = new Error('DESCRIBE failed');
+      useAllFields.mockReturnValue({
+        data: [],
+        error: fieldsError,
+        isLoading: false,
+      } as unknown as AllFieldsResult);
+      const { wrapper } = makeWrapper();
+
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper },
+      );
+
+      expect(result.current.error).toBe(fieldsError);
     });
   });
 
