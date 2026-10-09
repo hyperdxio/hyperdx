@@ -4,6 +4,11 @@ import {
   TableConnectionChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  displayTypeSupportsReducer,
+  getQueriedPromqlSeries,
+} from '@hyperdx/common-utils/dist/core/promql';
+import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
+import {
   configConsumesBroadcastFilters,
   getBlockingRequiredFilterNames,
 } from '@hyperdx/common-utils/dist/dashboardFilterValues';
@@ -13,6 +18,7 @@ import {
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
+import { substitutePromqlChartConfigTemplates } from '@hyperdx/common-utils/dist/macros';
 import {
   BuilderChartConfigWithDateRange,
   ChartAlertBaseSchema,
@@ -20,27 +26,33 @@ import {
   ChartConfigWithOptTimestamp,
   ChartVariable,
   DashboardFilter,
+  DateRange,
   DisplayType,
   Filter,
+  PromqlChartConfig,
   SavedChartConfig,
   SelectList,
   SourceKind,
   TSource,
   validateAlertScheduleOffsetMinutes,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  filterReferencedVariables,
-  substitutePromqlChartConfigVariables,
-} from '@hyperdx/common-utils/dist/variables';
+import { filterReferencedVariables } from '@hyperdx/common-utils/dist/variables';
 
 import {
   convertToCategoricalChartConfig,
   convertToNumberChartConfig,
+  convertToPromqlTableChartConfig,
+  convertToReducedPromqlChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
   tryExpandConfigVariables,
 } from '@/ChartUtils';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
+import {
+  buildHeatmapSeriesConfig,
+  resolveHeatmapGranularity,
+} from '@/components/DBHeatmapChart/heatmapQueries';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
 import { getMetricTableName } from '@/utils';
 import {
@@ -53,7 +65,10 @@ export const isQueryReady = (
 ) => {
   if (!queriedConfig) return false;
   if (isPromqlChartConfig(queriedConfig)) {
-    return !!(queriedConfig.promqlExpression && queriedConfig.connection);
+    return !!(
+      getQueriedPromqlSeries(queriedConfig).length > 0 &&
+      queriedConfig.connection
+    );
   }
   if (isRawSqlChartConfig(queriedConfig)) {
     return !!(queriedConfig.sqlTemplate && queriedConfig.connection);
@@ -246,23 +261,69 @@ export function resolveTilePreviewFilters({
   };
 }
 
-/** A PromQL tile's substituted expression, or why there isn't one. */
-export type RenderedPromqlExpression =
-  | { expression: string; error?: never }
-  | { expression?: never; error: string };
+/** One expression as a PromQL tile queries it. */
+type RenderedPromqlEntry = {
+  id: string;
+  expression: string;
+  alias?: string;
+};
 
-/** The expression a PromQL tile is queried with, with variables substituted. */
+/** A PromQL tile's substituted expressions, or why there aren't any. */
+export type RenderedPromqlExpression =
+  | { expressions: RenderedPromqlEntry[]; error?: never }
+  | { expressions?: never; error: string };
+
+/**
+ * The config a PromQL chart of this display type actually queries with. Macros
+ * depend on the resolved granularity and date range, so the preview must
+ * resolve them the same way the chart does.
+ */
+function toQueriedPromqlConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  if (displayTypeSupportsReducer(config)) {
+    return convertToReducedPromqlChartConfig(config);
+  }
+  if (config.displayType === DisplayType.Table) {
+    return convertToPromqlTableChartConfig(config);
+  }
+  if (isTimeSeriesDisplayType(config.displayType)) {
+    const converted = convertToTimeChartConfig(config);
+    return isPromqlChartConfig(converted) ? converted : config;
+  }
+  if (config.displayType === DisplayType.Heatmap) {
+    const converted = buildHeatmapSeriesConfig(
+      config,
+      resolveHeatmapGranularity(config),
+    );
+    return isPromqlChartConfig(converted) ? converted : config;
+  }
+  return config;
+}
+
+/**
+ * The expressions a PromQL tile is queried with, with macros and variables
+ * substituted. `minGranularitySeconds` is the PromQL source's floor, which the
+ * chart applies to `auto` granularity and `$__rate_interval`.
+ */
 export function buildRenderedPromqlExpression(
   queriedConfig: ChartConfigWithDateRange | undefined,
+  minGranularitySeconds?: number,
 ): RenderedPromqlExpression | undefined {
   if (queriedConfig == null || !isPromqlChartConfig(queriedConfig)) {
     return undefined;
   }
 
   try {
+    const substituted = substitutePromqlChartConfigTemplates(
+      toQueriedPromqlConfig({ ...queriedConfig, minGranularitySeconds }),
+    );
     return {
-      expression:
-        substitutePromqlChartConfigVariables(queriedConfig).promqlExpression,
+      expressions: getQueriedPromqlSeries(substituted).map((series, index) => ({
+        id: String(index),
+        expression: series.expression,
+        alias: series.alias?.trim() || undefined,
+      })),
     };
   } catch (e) {
     // Substitution throws on an unrecognized format such as `${svc:json}`. The
@@ -271,8 +332,8 @@ export function buildRenderedPromqlExpression(
     return {
       error:
         e instanceof Error
-          ? `Variables could not be expanded: ${e.message}`
-          : 'Variables could not be expanded.',
+          ? `Expression could not be expanded: ${e.message}`
+          : 'Expression could not be expanded.',
     };
   }
 }
@@ -382,10 +443,13 @@ export function buildChartConfigForExplanations({
   // so that the MV optimization explanation and generated SQL preview
   // are accurate.  Heatmap is special-cased: it actually runs as two
   // sequential queries (bounds + bucketed counts) that depend on each
-  // other at runtime, so the SQL preview transforms `config` itself into
-  // both queries on render and the MV indicator is suppressed for this
-  // tab.  Returning `config` unchanged is intentional.
-  const builderConfig = config as BuilderChartConfigWithDateRange;
+  // other at runtime, so the SQL preview transforms `builderConfig` itself
+  // into both queries on render and the MV indicator is suppressed for this
+  // tab.
+  const builderConfig: BuilderChartConfigWithDateRange = {
+    ...config,
+    minGranularitySeconds: getMinGranularitySeconds(tableSource),
+  };
 
   if (activeTab === 'time') {
     return convertToTimeChartConfig(builderConfig);
@@ -396,7 +460,7 @@ export function buildChartConfigForExplanations({
   } else if (activeTab === 'pie' || activeTab === 'bar') {
     return convertToCategoricalChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
-    return config;
+    return builderConfig;
   }
 
   return config;

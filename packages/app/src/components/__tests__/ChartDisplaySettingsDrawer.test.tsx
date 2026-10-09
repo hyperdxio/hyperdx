@@ -30,6 +30,54 @@ describe('ChartDisplaySettingsDrawer', () => {
     jest.clearAllMocks();
   });
 
+  describe('heatmap y axis scale', () => {
+    it('shows the scale only for distribution heatmaps', () => {
+      const { unmount } = renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          heatmapMode="series"
+        />,
+      );
+      expect(
+        screen.queryByTestId('heatmap-scale-control'),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          heatmapMode="distribution"
+        />,
+      );
+      expect(screen.getByTestId('heatmap-scale-control')).toBeInTheDocument();
+    });
+
+    it('applies the chosen scale', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          heatmapMode="distribution"
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByText('Linear'));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        heatmapScaleType: 'linear',
+      });
+    });
+  });
+
   describe('color picker section', () => {
     it('shows the color picker when displayType is Number', () => {
       renderWithMantine(
@@ -225,6 +273,80 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).not.toBeInTheDocument();
     });
 
+    describe('PromQL (client render cap)', () => {
+      const promqlProps = { ...baseProps, configType: 'promql' as const };
+
+      it.each([DisplayType.Line, DisplayType.StackedBar])(
+        'shows the Series Limit input for PromQL %s charts',
+        displayType => {
+          renderWithMantine(
+            <ChartDisplaySettingsDrawer
+              {...promqlProps}
+              displayType={displayType}
+            />,
+          );
+
+          const input = screen.getByRole('textbox', { name: /series limit/i });
+          expect(input).toHaveAttribute(
+            'placeholder',
+            `Default (${MAX_RENDERED_TIME_CHART_SERIES})`,
+          );
+        },
+      );
+
+      it('describes the limit as a render cap, not a fetch cap', () => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Line}
+          />,
+        );
+
+        expect(
+          screen.getByText(/maximum number of series rendered/i),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/fetched/i)).not.toBeInTheDocument();
+      });
+
+      it.each([DisplayType.Number, DisplayType.Table])(
+        'does not show the Series Limit input for PromQL %s charts',
+        displayType => {
+          renderWithMantine(
+            <ChartDisplaySettingsDrawer
+              {...promqlProps}
+              displayType={displayType}
+            />,
+          );
+
+          expect(
+            screen.queryByRole('textbox', { name: /series limit/i }),
+          ).not.toBeInTheDocument();
+        },
+      );
+
+      it('calls onChange with the entered seriesLimit when applied', async () => {
+        const onChange = jest.fn();
+        const user = userEvent.setup();
+
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Line}
+            onChange={onChange}
+          />,
+        );
+
+        await user.type(
+          screen.getByRole('textbox', { name: /series limit/i }),
+          '5',
+        );
+        await user.click(screen.getByRole('button', { name: /apply/i }));
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 5 });
+      });
+    });
+
     it('calls onChange with the entered seriesLimit when applied', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
@@ -287,6 +409,23 @@ describe('ChartDisplaySettingsDrawer', () => {
         expect(
           screen.getByRole('textbox', { name: /series limit/i }),
         ).toBeInTheDocument();
+      },
+    );
+
+    it.each([DisplayType.Pie, DisplayType.Bar])(
+      'shows the Series Limit input for PromQL %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.getByRole('textbox', { name: /series limit/i }),
+        ).toHaveAttribute('placeholder', 'Disabled (e.g. 10)');
       },
     );
 
@@ -486,6 +625,24 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('display group by columns on left setting (PromQL)', () => {
+    it('does not show the toggle for PromQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="promql"
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as
@@ -577,6 +734,25 @@ describe('ChartDisplaySettingsDrawer', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Line,
     };
+
+    it('is offered on a PromQL time series chart', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...promqlProps} />);
+
+      expect(screen.getByTestId('legend-template-input')).toBeInTheDocument();
+    });
+
+    it('is hidden on a PromQL table chart', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('legend-template-input'),
+      ).not.toBeInTheDocument();
+    });
 
     it('blocks Apply when the template exceeds the persisted length cap', async () => {
       const onChange = jest.fn();

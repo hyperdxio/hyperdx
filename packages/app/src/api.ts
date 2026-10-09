@@ -2,6 +2,11 @@ import { useCallback } from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
+import {
+  buildLogComment,
+  QUERY_ATTRIBUTION_HEADER,
+  type QueryAttribution,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import type {
   Alert,
   AlertApiResponse,
@@ -14,6 +19,8 @@ import type {
   OnboardingTaskId,
   PresetDashboard,
   PresetDashboardFilter,
+  PrometheusMatrixResult,
+  PrometheusVectorResult,
   RotateAccessKeyApiResponse,
   RotateApiKeyApiResponse,
   TagResourceType,
@@ -797,17 +804,30 @@ export default api;
 // --------------------------
 // Prometheus API
 // --------------------------
-type PrometheusMetric = Record<string, string>;
-export type PrometheusMatrixResult = {
-  metric: PrometheusMetric;
-  values: [number, string][];
-};
-type PrometheusQueryRangeResponse = {
+export type PrometheusQueryRangeResponse = {
   status: 'success' | 'error';
   data?: {
     resultType: 'matrix';
     result: PrometheusMatrixResult[];
   };
+  error?: string;
+};
+/**
+ * An instant query's result. `vector` carries one sample per series; `scalar`
+ * is a bare sample with no labels at all, which `scalar(...)`, `1 + 1` and
+ * `time()` all return.
+ *
+ * `matrix` is reachable here too -- a range-vector selector (`up[5m]`) or a
+ * subquery evaluates to one even on this endpoint -- and carries a series of
+ * samples rather than a single value. `string` carries nothing numeric.
+ */
+export type PrometheusInstantQueryResponse = {
+  status: 'success' | 'error';
+  data?:
+    | { resultType: 'vector'; result: PrometheusVectorResult[] }
+    | { resultType: 'scalar'; result: [number, string] }
+    | { resultType: 'matrix'; result: PrometheusMatrixResult[] }
+    | { resultType: 'string'; result: unknown };
   error?: string;
 };
 type PrometheusLabelsResponse = {
@@ -847,11 +867,28 @@ const uniqueLabels = (
 ): PrometheusLabelsResponse =>
   resp.data ? { ...resp, data: [...new Set(resp.data)] } : resp;
 
+const attributionHeaders = (
+  attribution: QueryAttribution | undefined,
+): Record<string, string> | undefined => {
+  const logComment = buildLogComment(attribution);
+  return logComment ? { [QUERY_ATTRIBUTION_HEADER]: logComment } : undefined;
+};
+
 const prometheusFetch = <T>(
   path: string,
   searchParams: Record<string, string>,
+  signal?: AbortSignal,
+  attribution?: QueryAttribution,
 ): Promise<T> =>
-  withPrometheusError(() => server.post(path, { searchParams }).json<T>());
+  withPrometheusError(() =>
+    server
+      .post(path, {
+        searchParams,
+        signal,
+        headers: attributionHeaders(attribution),
+      })
+      .json<T>(),
+  );
 
 export const prometheusApi = {
   queryRange: (params: {
@@ -862,16 +899,48 @@ export const prometheusApi = {
     connectionId: string;
     database?: string;
     table?: string;
+    signal?: AbortSignal;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusQueryRangeResponse> =>
-    prometheusFetch('v1/prometheus/query_range', {
-      query: params.query,
-      start: String(params.start),
-      end: String(params.end),
-      step: params.step,
-      connectionId: params.connectionId,
-      ...(params.database ? { database: params.database } : {}),
-      ...(params.table ? { table: params.table } : {}),
-    }),
+    prometheusFetch(
+      'v1/prometheus/query_range',
+      {
+        query: params.query,
+        start: String(params.start),
+        end: String(params.end),
+        step: params.step,
+        connectionId: params.connectionId,
+        ...(params.database ? { database: params.database } : {}),
+        ...(params.table ? { table: params.table } : {}),
+      },
+      params.signal,
+      params.attribution,
+    ),
+
+  query: (params: {
+    query: string;
+    time: number;
+    connectionId: string;
+    database?: string;
+    table?: string;
+    /** Maximum number of series to return. */
+    limit?: number;
+    signal?: AbortSignal;
+    attribution?: QueryAttribution;
+  }): Promise<PrometheusInstantQueryResponse> =>
+    prometheusFetch(
+      'v1/prometheus/query',
+      {
+        query: params.query,
+        time: String(params.time),
+        connectionId: params.connectionId,
+        ...(params.limit ? { limit: String(params.limit) } : {}),
+        ...(params.database ? { database: params.database } : {}),
+        ...(params.table ? { table: params.table } : {}),
+      },
+      params.signal,
+      params.attribution,
+    ),
 
   labels: (params: {
     connectionId: string;
@@ -879,10 +948,12 @@ export const prometheusApi = {
     table?: string;
     start?: number;
     end?: number;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusLabelsResponse> =>
     server
       .get('v1/prometheus/labels', {
         searchParams: labelLookupSearchParams(params),
+        headers: attributionHeaders(params.attribution),
       })
       .json<PrometheusLabelsResponse>()
       .then(uniqueLabels),
@@ -895,11 +966,13 @@ export const prometheusApi = {
     start?: number;
     end?: number;
     match?: string;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusLabelsResponse> =>
     withPrometheusError(() =>
       server
         .get(`v1/prometheus/label/${params.label}/values`, {
           searchParams: labelLookupSearchParams(params),
+          headers: attributionHeaders(params.attribution),
         })
         .json<PrometheusLabelsResponse>()
         .then(uniqueLabels),

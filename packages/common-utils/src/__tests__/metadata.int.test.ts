@@ -1306,4 +1306,252 @@ describe('Metadata Integration Tests', () => {
       querySpy.mockRestore();
     });
   });
+
+  describe('getTimeSeriesTables', () => {
+    const database = 'test_ts_discovery';
+
+    const timeSeriesCommand = (query: string) =>
+      client.command({
+        query,
+        clickhouse_settings: { allow_experimental_time_series_table: 1 },
+      });
+
+    beforeAll(async () => {
+      await timeSeriesCommand(`DROP DATABASE IF EXISTS ${database}`);
+      await timeSeriesCommand(`CREATE DATABASE ${database}`);
+      await timeSeriesCommand(
+        `CREATE TABLE ${database}.metrics_ts ENGINE = TimeSeries`,
+      );
+      await timeSeriesCommand(
+        `CREATE TABLE ${database}.custom_ts ENGINE = TimeSeries`,
+      );
+      await timeSeriesCommand(
+        `CREATE TABLE ${database}.not_ts (ts DateTime) ENGINE = MergeTree ORDER BY ts`,
+      );
+    });
+
+    afterAll(async () => {
+      await timeSeriesCommand(`DROP DATABASE IF EXISTS ${database}`);
+    });
+
+    it('lists only TimeSeries tables, without their inner tables', async () => {
+      const metadata = new Metadata(hdxClient, new MetadataCache());
+
+      const tables = await metadata.getTimeSeriesTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(tables.filter(t => t.databaseName === database)).toEqual([
+        { databaseName: database, tableName: 'custom_ts' },
+        { databaseName: database, tableName: 'metrics_ts' },
+      ]);
+    });
+  });
+
+  describe('getMapKeys - unbounded scan guard (#3037)', () => {
+    const tableName = 'test_map_keys_scan';
+    let metadata: Metadata;
+
+    beforeAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+      // Map(LowCardinality(String), String) hits a separate, pre-existing bug on this CH version.
+      await client.command({
+        query: `CREATE TABLE default.${tableName} (
+            Timestamp DateTime64(9),
+            LogAttributes Map(String, String)
+          )
+          ENGINE = MergeTree()
+          PARTITION BY toDate(Timestamp)
+          ORDER BY Timestamp
+        `,
+      });
+
+      // One row inside the default 24h lookback, one row 5 days back in its own partition.
+      await client.insert({
+        table: `default.${tableName}`,
+        values: [
+          {
+            Timestamp: new Date(Date.now() - 60 * 60 * 1000)
+              .toISOString()
+              .replace('T', ' ')
+              .replace('Z', ''),
+            LogAttributes: { 'http.method': 'GET' },
+          },
+          {
+            Timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+              .toISOString()
+              .replace('T', ' ')
+              .replace('Z', ''),
+            LogAttributes: { 'legacy.key': 'value' },
+          },
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    it('falls back to an unbounded scan when no timestampValueExpression is given', async () => {
+      const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
+      const keys = await metadata.getMapKeys({
+        databaseName: 'default',
+        tableName,
+        column: 'LogAttributes',
+        connectionId: 'test_connection',
+        dateRange: [new Date(Date.now() - 60 * 60 * 1000), new Date()],
+      });
+
+      // dateRange is ignored without an expression to apply it to.
+      expect(keys).toEqual(
+        expect.arrayContaining(['http.method', 'legacy.key']),
+      );
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Unbounded Map key scan'),
+      );
+
+      warnSpy.mockRestore();
+    });
+
+    it('defaults to the last 24h and excludes older partitions', async () => {
+      const keys = await metadata.getMapKeys({
+        databaseName: 'default',
+        tableName,
+        column: 'LogAttributes',
+        connectionId: 'test_connection',
+        timestampValueExpression: 'Timestamp',
+      });
+
+      expect(keys).toContain('http.method');
+      expect(keys).not.toContain('legacy.key');
+    });
+
+    it('reaches older partitions when the caller asks for that window explicitly', async () => {
+      const keys = await metadata.getMapKeys({
+        databaseName: 'default',
+        tableName,
+        column: 'LogAttributes',
+        connectionId: 'test_connection',
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date(Date.now() - 6 * 24 * 60 * 60 * 1000),
+          new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
+        ],
+      });
+
+      expect(keys).toEqual(['legacy.key']);
+    });
+  });
+
+  describe.each([
+    {
+      path: 'key',
+      tableName: 'test_map_keys_key_text_index_order',
+      indexDefinition: `INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE text(tokenizer = 'array') GRANULARITY 1`,
+    },
+    {
+      path: 'kv',
+      tableName: 'test_map_keys_kv_text_index_order',
+      indexDefinition: `LogAttributeItems Array(String) MATERIALIZED
+          arrayMap(x -> concat(x.1, '=', x.2), CAST(LogAttributes, 'Array(Tuple(String, String))')),
+        INDEX idx_log_attr_items LogAttributeItems TYPE text(tokenizer = 'array') GRANULARITY 1`,
+    },
+  ])(
+    'getMapKeys - $path text index ordering',
+    ({ tableName, indexDefinition }) => {
+      let metadata: Metadata;
+      let textIndexSupported = false;
+
+      beforeAll(async () => {
+        const probe = new Metadata(hdxClient, new MetadataCache());
+        textIndexSupported = supportsMergeTreeTextIndex(
+          await probe.getServerVersion({ connectionId: 'test_connection' }),
+        );
+        if (!textIndexSupported) return;
+
+        await client.command({
+          query: `CREATE OR REPLACE TABLE default.${tableName} (
+              Timestamp DateTime64(9),
+              LogAttributes Map(LowCardinality(String), String),
+              ${indexDefinition}
+            )
+            ENGINE = MergeTree()
+            PARTITION BY toDate(Timestamp)
+            ORDER BY Timestamp
+          `,
+        });
+
+        // The text index dictionary is sorted, so without an ORDER BY the
+        // LIMIT keeps the alphabetically first keys. The frequent keys sort
+        // after the 200 one-off keys, and in reverse order of frequency.
+        const insert = (attributes: string, rows: number) =>
+          client.command({
+            query: `INSERT INTO default.${tableName} (Timestamp, LogAttributes)
+              SELECT now64(9) - INTERVAL 10 MINUTE, ${attributes}
+              FROM numbers(${rows})`,
+          });
+        await insert(`map(concat('rare.', toString(number)), 'v')`, 200);
+        await insert(
+          `map('user.id', 'x', 'trace.flags', 'x', 'service.name', 'x')`,
+          40,
+        );
+        await insert(`map('user.id', 'x', 'trace.flags', 'x')`, 10);
+        await insert(`map('user.id', 'x')`, 10);
+      });
+
+      afterAll(async () => {
+        await client.command({
+          query: `DROP TABLE IF EXISTS default.${tableName}`,
+        });
+      });
+
+      beforeEach(() => {
+        metadata = new Metadata(hdxClient, new MetadataCache());
+      });
+
+      afterEach(() => {
+        jest.restoreAllMocks();
+      });
+
+      it('keeps the most frequent keys when maxKeys truncates the list', async () => {
+        if (!textIndexSupported) {
+          console.warn(
+            'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+          );
+          return;
+        }
+        const querySpy = jest.spyOn(hdxClient, 'query');
+
+        const keys = await metadata.getMapKeys({
+          databaseName: 'default',
+          tableName,
+          column: 'LogAttributes',
+          connectionId: 'test_connection',
+          maxKeys: 3,
+          timestampValueExpression: 'Timestamp',
+          dateRange: [
+            new Date(Date.now() - 60 * 60 * 1000),
+            new Date(Date.now() + 60 * 1000),
+          ],
+        });
+
+        expect(
+          querySpy.mock.calls.some(([{ query }]) =>
+            query.includes('mergeTreeTextIndex'),
+          ),
+        ).toBe(true);
+        expect(keys).toEqual(['user.id', 'trace.flags', 'service.name']);
+      });
+    },
+  );
 });

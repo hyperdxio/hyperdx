@@ -9,7 +9,13 @@ import {
   JSDataType,
   ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  DEFAULT_PROMQL_REDUCER,
+  getQueriedPromqlSeries,
+  isRangeQuery,
+} from '@hyperdx/common-utils/dist/core/promql';
 import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -19,6 +25,7 @@ import {
   getAlignedDateRange,
   Granularity,
   hasPositiveSeriesLimit,
+  TIME_SERIES_DISPLAY_TYPE_BY_NAME,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -27,10 +34,12 @@ import {
   BuilderSavedChartConfig,
   ChartConfigWithDateRange,
   ChartConfigWithOptDateRange,
+  DateRange,
   DisplayType,
   Filter,
   isSearchableSource,
   MetricsDataType as MetricsDataTypeV2,
+  PromqlChartConfig,
   SourceKind,
   SQLInterval,
   TMetricSource,
@@ -92,12 +101,18 @@ export const DEFAULT_CHART_CONFIG: Omit<
   alignDateRangeToGranularity: true,
 };
 
-function getTimeChartGranularity(
-  granularity: string | undefined,
+export function getTimeChartGranularity<T extends string>(
+  granularity: T | 'auto' | undefined,
   dateRange: [Date, Date],
+  minGranularitySeconds?: number,
+  maxBuckets = 80,
 ) {
   return granularity === 'auto' || granularity == null
-    ? convertDateRangeToGranularityString(dateRange, 80)
+    ? convertDateRangeToGranularityString(
+        dateRange,
+        maxBuckets,
+        minGranularitySeconds,
+      )
     : granularity;
 }
 
@@ -112,6 +127,76 @@ function getTimeChartDateRange(
 }
 
 export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
+/**
+ * A PromQL config's resolved granularity, and its date range aligned to that
+ * granularity's buckets when it runs a range query, so its samples land on the
+ * same boundaries as the timeseries charts' and stay put across refreshes.
+ */
+function getAlignedRangeAndGranularity(
+  config: PromqlChartConfig & DateRange,
+): Pick<PromqlChartConfig & DateRange, 'granularity' | 'dateRange'> {
+  const granularity = getTimeChartGranularity(
+    config.granularity,
+    config.dateRange,
+    config.minGranularitySeconds,
+  );
+  return {
+    granularity,
+    dateRange: isRangeQuery(config)
+      ? getTimeChartDateRange(
+          config.dateRange,
+          config.alignDateRangeToGranularity,
+          granularity,
+        )
+      : config.dateRange,
+  };
+}
+
+/**
+ * Converts the given config into one that is suitable for a tile that shows
+ * 1 value per series (number, pie, and bar tiles). The reducer defaults to
+ * the last value.
+ */
+export function convertToReducedPromqlChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  return {
+    ...config,
+    ...getAlignedRangeAndGranularity(config),
+    promqlExpression: getQueriedPromqlSeries(config).map(series => ({
+      ...series,
+      reducer: series.reducer ?? DEFAULT_PROMQL_REDUCER,
+    })),
+  };
+}
+
+/**
+ * The config for the sparkline behind a PromQL number tile: the tile's query
+ * with no reducer, so the buckets are plotted rather than collapsed.
+ *
+ * Intentionally matches convertToReducedPromqlChartConfig except for the reducer,
+ * so that react-query keys remain consistent between the reduced and sparkline versions.
+ */
+export function convertToPromqlSparklineChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  const reduced = convertToReducedPromqlChartConfig(config);
+  return {
+    ...reduced,
+    promqlExpression: getQueriedPromqlSeries(reduced).map(series => ({
+      ...series,
+      reducer: undefined,
+    })),
+  };
+}
+
+/** A PromQL table tile's queried config. */
+export function convertToPromqlTableChartConfig(
+  config: PromqlChartConfig & DateRange,
+): PromqlChartConfig & DateRange {
+  return { ...config, ...getAlignedRangeAndGranularity(config) };
+}
 
 export function convertToTimeChartConfig(
   config: ChartConfigWithDateRange,
@@ -129,6 +214,7 @@ export function convertToTimeChartConfig(
   const granularity = getTimeChartGranularity(
     config.granularity,
     config.dateRange,
+    config.minGranularitySeconds,
   );
 
   const dateRange = getTimeChartDateRange(
@@ -173,12 +259,14 @@ export function useTimeChartSettings(
     | 'fillNulls'
     | 'granularity'
     | 'alignDateRangeToGranularity'
+    | 'minGranularitySeconds'
   >,
 ) {
   return useMemo(() => {
     const granularity = getTimeChartGranularity(
       config.granularity,
       config.dateRange,
+      config.minGranularitySeconds,
     );
 
     const dateRange = getTimeChartDateRange(
@@ -196,7 +284,7 @@ export function useTimeChartSettings(
   }, [config]);
 }
 
-export const ChartKeyJoiner = ' · ';
+export const ChartKeyJoiner = SERIES_KEY_JOINER;
 const PreviousPeriodSuffix = ' (previous)';
 
 /**
@@ -468,6 +556,7 @@ export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
   applyDefaultOrder: boolean = true,
+  maxGroups: number = DEFAULT_MAX_CATEGORICAL_GROUPS,
 ): Array<{ label: string; value: number; color: string }> {
   if (data.meta == null) {
     throw new Error('No meta data found in response');
@@ -505,7 +594,7 @@ export function formatResponseForCategoricalChart(
   }
 
   return labelsAndValues
-    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .slice(0, Math.min(maxGroups, DEFAULT_MAX_CATEGORICAL_GROUPS))
     .map((entry, index) => ({
       ...entry,
       color: getColor(index, entry.label),
@@ -1083,7 +1172,7 @@ export const convertV1ChartConfigToV2 = (
     granularity?: Granularity;
     dateRange: [Date, Date];
     seriesReturnType: 'ratio' | 'column';
-    displayType?: 'stacked_bar' | 'line';
+    displayType?: 'stacked_bar' | 'stacked_line' | 'line';
     name?: string;
     fillNulls?: number | false;
     sortOrder?: SortOrder;
@@ -1107,8 +1196,7 @@ export const convertV1ChartConfigToV2 = (
   }
 
   const firstSeries = series[0];
-  const convertedDisplayType =
-    displayType === 'stacked_bar' ? DisplayType.StackedBar : DisplayType.Line;
+  const convertedDisplayType = TIME_SERIES_DISPLAY_TYPE_BY_NAME[displayType];
 
   if (firstSeries.table === 'logs') {
     // TODO: this might not work properly since logs + traces are mixed in v1
@@ -1174,6 +1262,23 @@ export function tryExpandConfigVariables<
   }
 }
 
+const NO_LOG_SOURCE_WARNING_DISMISSED_KEY =
+  'drilldown-metric-correlated-log-warning';
+
+// Called while rendering (chart tooltips), so it must not throw when storage is
+// blocked (sandboxed iframe, disabled cookies) or missing (SSR).
+function isNoLogSourceWarningDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.localStorage.getItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY) ===
+      'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Build search URL for viewing events based on group-by values
  * Used by both chart clicks and table row clicks
@@ -1209,9 +1314,21 @@ export function buildEventsSearchUrl({
         ? source.logSourceId
         : undefined;
     if (logSourceId == null) {
+      if (isNoLogSourceWarningDismissed()) return null;
       notifications.show({
         color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
+        message:
+          'Drill-down is unavailable for metric sources that lack correlated log sources',
+        id: 'no-log-source-associated',
+        closeButtonProps: {
+          onClick: () => {
+            try {
+              localStorage.setItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY, 'true');
+            } catch {
+              // don't do anything
+            }
+          },
+        },
       });
       return null;
     }

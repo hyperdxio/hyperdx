@@ -30,6 +30,7 @@ import {
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
 import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { CheckBoxControlled } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
 import {
@@ -69,6 +70,7 @@ type ChartSeriesEditorProps = {
   showHaving: boolean;
   showDuplicate: boolean;
   showColor: boolean;
+  showSeriesNumberFormat?: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -92,6 +94,7 @@ export function ChartSeriesEditor({
   showHaving,
   showDuplicate,
   showColor,
+  showSeriesNumberFormat = true,
   tableName: _tableName,
   parentRef,
   length,
@@ -299,7 +302,9 @@ export function ChartSeriesEditor({
         onSwap={onSwapSeries}
         onRemove={length > 1 ? onRemoveSeries : undefined}
         onDuplicate={showDuplicate ? onDuplicateSeries : undefined}
-        onOpenNumberFormat={openSeriesNumberFormat}
+        onOpenNumberFormat={
+          showSeriesNumberFormat ? openSeriesNumberFormat : undefined
+        }
         leadingSection={
           isFormulaSourceKind(tableSource?.kind) ? (
             <Tooltip label="Reference this series in a formula by this letter">
@@ -418,6 +423,8 @@ export function ChartSeriesEditor({
           >
             <SQLInlineEditorControlled
               tableConnection={tableConnection}
+              sourceId={tableSource?.id}
+              dateRange={dateRange}
               control={control}
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
@@ -428,15 +435,18 @@ export function ChartSeriesEditor({
         )}
         {(showWhere || showGroupBy || showHaving) && (
           <div
-            className="flex-grow-1 gap-2 align-items-center"
+            className="flex-grow-1 gap-2"
             style={{
               display: 'grid',
               gridTemplateColumns: 'auto 1fr auto 1fr',
+              alignItems: 'start',
             }}
           >
             {showWhere && (
               <>
-                <Text size="sm">Where</Text>
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+                  <Text size="sm">Where</Text>
+                </Flex>
                 <div
                   style={{
                     gridColumn:
@@ -450,7 +460,6 @@ export function ChartSeriesEditor({
                     control={control}
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
-                    showLabel={false}
                     additionalSuggestions={attributeSuggestions}
                     data-testid="series-where-input"
                     enableVariables
@@ -460,9 +469,11 @@ export function ChartSeriesEditor({
             )}
             {showGroupBy && (
               <>
-                <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                  Group By
-                </Text>
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+                  <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                    Group By
+                  </Text>
+                </Flex>
                 <div
                   style={{
                     minWidth: 200,
@@ -474,6 +485,8 @@ export function ChartSeriesEditor({
                   <SQLInlineEditorControlled
                     parentRef={parentRef}
                     tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -484,12 +497,16 @@ export function ChartSeriesEditor({
                 </div>
                 {showHaving && (
                   <>
-                    <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      Having
-                    </Text>
+                    <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+                      <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                        Having
+                      </Text>
+                    </Flex>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"

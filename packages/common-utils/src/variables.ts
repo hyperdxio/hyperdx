@@ -1,5 +1,6 @@
 import lucene from '@hyperdx/lucene';
 
+import { getPromqlSeries } from './core/promql';
 import {
   escapeSqlString,
   isQuoteEscapedByBackslash,
@@ -20,6 +21,7 @@ import {
   ChartVariable,
   DASHBOARD_VARIABLE_NAME_PATTERN,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+  DisplayType,
   SavedChartConfig,
   SearchConditionLanguage,
   SelectList,
@@ -32,12 +34,25 @@ export const VARIABLE_FORMATS = [
   'regex',
   'csv',
   'lucene',
+  'markdown',
+  'promql',
 ] as const;
 
 export type VariableFormat = (typeof VARIABLE_FORMATS)[number];
 
+/** Whether at most one value can be selected for the filter (or its variable). */
+export function isFilterSingleSelect(filter: {
+  maxSelections?: number;
+}): boolean {
+  return filter.maxSelections === 1;
+}
+
 const isVariableFormat = (format: string): format is VariableFormat =>
   (VARIABLE_FORMATS as readonly string[]).includes(format);
+
+/** Formats whose expansion always sits inside a quoted string literal. */
+const isStringLiteralFormat = (format: string | undefined) =>
+  format === 'regex' || format === 'promql';
 
 const escapeRegexValue = (value: string) =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -50,29 +65,50 @@ const escapePromqlStringValue = (value: string) =>
   value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
 /**
+ * Backslash-escape every ASCII punctuation character (CommonMark renders each
+ * escape as the literal character), so a value renders as plain text rather
+ * than as markdown syntax. Newlines become spaces so a value can't split the
+ * surrounding block.
+ */
+const escapeMarkdownValue = (value: string) =>
+  value.replace(/\r\n|\r|\n/g, ' ').replace(/[!-/:-@[-`{-~]/g, '\\$&');
+
+const formatRegexValues = (values: string[]) => {
+  if (values.length === 0) return '.*';
+  const escaped = values.map(escapeRegexValue);
+  return escaped.length === 1 ? escaped[0] : `(${escaped.join('|')})`;
+};
+
+/**
  * Render a variable's selected values in the requested format. Every format
  * has an "empty selection" rendering that keeps the surrounding query valid.
  */
 export function formatVariableValues(
-  values: string[],
+  variable: Pick<ChartVariable, 'values' | 'maxSelections'>,
   format: VariableFormat,
 ): string {
+  const { values } = variable;
   switch (format) {
     case 'sqlstring':
       return values.length === 0
         ? 'NULL'
         : values.map(value => `'${escapeSqlString(value)}'`).join(', ');
-    case 'regex': {
-      if (values.length === 0) return '.*';
-      const escaped = values.map(escapeRegexValue);
-      return escaped.length === 1 ? escaped[0] : `(${escaped.join('|')})`;
-    }
+    case 'regex':
+      return formatRegexValues(values);
+    case 'promql':
+      // Keyed on configuration, not selection count, so the matcher's operator
+      // is fixed: `label="$var"` for single-select, `label=~"$var"` otherwise.
+      return isFilterSingleSelect(variable)
+        ? (values[0] ?? '')
+        : formatRegexValues(values);
     case 'csv':
       return values.join(',');
     case 'lucene':
       return values.length === 0
         ? '("")'
         : `(${values.map(value => `"${escapeLuceneValue(value)}"`).join(' OR ')})`;
+    case 'markdown':
+      return values.map(escapeMarkdownValue).join(', ');
     default:
       format satisfies never; // Unreachable
       throw new Error(`Unknown variable format '${format}'`);
@@ -195,7 +231,14 @@ export function findBalancedParens(input: string, start: number): number {
 export function scanTemplateTokens(
   input: string,
   macroNames: readonly string[],
-  { onMalformed = 'throw' }: { onMalformed?: 'throw' | 'skip' } = {},
+  {
+    onMalformed = 'throw',
+    skipSqlComments = true,
+  }: {
+    onMalformed?: 'throw' | 'skip';
+    /** Whether SQL comments are skipped over rather than scanned for references. */
+    skipSqlComments?: boolean;
+  } = {},
 ): TemplateToken[] {
   // Longest name first so `$__filters` isn't matched as `$__filter` + `s`, etc.
   const sortedMacroNames = [...macroNames].sort((a, b) => b.length - a.length);
@@ -217,7 +260,7 @@ export function scanTemplateTokens(
   let i = 0;
   while (i < input.length) {
     // Consume any comments starting at this position
-    if (!inSingleQuote && !inDoubleQuote) {
+    if (skipSqlComments && !inSingleQuote && !inDoubleQuote) {
       const commentEnd = findCommentEnd(input, i);
       if (commentEnd > i) {
         text += input.slice(i, commentEnd);
@@ -403,7 +446,9 @@ export function expandTemplate(
 
 // -- Variable expansion -----------------------------------------------------
 
-export type TemplateLanguage = NonNullable<SearchConditionLanguage>;
+export type TemplateLanguage =
+  | NonNullable<SearchConditionLanguage>
+  | 'markdown';
 
 export type VariableContext = {
   variables: ChartVariable[];
@@ -420,24 +465,35 @@ type LanguageSettings = {
    */
   disableMacros?: boolean;
   /**
-   * Escapes a `regex`-format expansion for the string literal it always sits
-   * inside. Only `regex` needs this: `sqlstring` and `lucene` quote and escape
-   * themselves, and `csv` is the raw escape hatch that carries identifiers.
+   * Escapes a `regex`- or `promql`-format expansion for the string literal it
+   * always sits inside. `sqlstring` and `lucene` quote and escape themselves,
+   * and `csv` is the raw escape hatch that carries identifiers.
    */
-  escapeRegexForLiteral?: (rendered: string) => string;
+  escapeForStringLiteral?: (rendered: string) => string;
+  /**
+   * Whether SQL comments (`--`, `#`, block comments) are skipped over rather
+   * than scanned for references.
+   */
+  skipSqlComments?: boolean;
 };
 
 /** Settings controlling how variables and templates are expanded for each template language. */
 const LANGUAGE_SETTINGS: Record<TemplateLanguage, LanguageSettings> = {
   sql: {
     defaultFormat: 'sqlstring',
-    escapeRegexForLiteral: rendered => escapeSqlString(rendered),
+    escapeForStringLiteral: rendered => escapeSqlString(rendered),
   },
   lucene: { defaultFormat: 'lucene', disableMacros: true },
   promql: {
-    defaultFormat: 'regex',
+    defaultFormat: 'promql',
     disableMacros: true,
-    escapeRegexForLiteral: escapePromqlStringValue,
+    escapeForStringLiteral: escapePromqlStringValue,
+  },
+  markdown: {
+    defaultFormat: 'markdown',
+    disableMacros: true,
+    // Markdown doesn't have SQL comments, we wouldn't want to skip # ... (a markdown header)
+    skipSqlComments: false,
   },
 };
 
@@ -553,7 +609,7 @@ function expandFilterMacro(args: string[], ctx: VariableContext): string {
 
   if (variable.values.length === 0) return sqlNoOp(variableName);
 
-  return `(${expression} IN (${formatVariableValues(variable.values, 'sqlstring')}))`;
+  return `(${expression} IN (${formatVariableValues(variable, 'sqlstring')}))`;
 }
 
 function expandConditionalAllMacro(
@@ -607,10 +663,10 @@ export function expandVariableToken(
 
   const settings = languageSettings(ctx.inputLanguage);
   const format = requestedFormat ?? settings.defaultFormat;
-  const rendered = formatVariableValues(variable.values, format);
+  const rendered = formatVariableValues(variable, format);
 
-  return format === 'regex' && settings.escapeRegexForLiteral
-    ? settings.escapeRegexForLiteral(rendered)
+  return isStringLiteralFormat(format) && settings.escapeForStringLiteral
+    ? settings.escapeForStringLiteral(rendered)
     : rendered;
 }
 
@@ -857,9 +913,11 @@ export function substituteVariables(
     );
   }
 
-  if (languageSettings(ctx.inputLanguage).disableMacros) {
+  const settings = languageSettings(ctx.inputLanguage);
+  if (settings.disableMacros) {
     return scanTemplateTokens(input, VARIABLE_MACRO_NAMES, {
       onMalformed: 'skip',
+      skipSqlComments: settings.skipSqlComments,
     })
       .map(token => expandVariableOnly(token, ctx))
       .join('');
@@ -985,29 +1043,6 @@ export function substituteChartConfigVariables<
 }
 
 /**
- * Expand the variable references in a PromQL config's expression, returning it
- * with `variables` consumed. `variables` being undefined means this is a no-op.
- *
- * Dropping `variables` from the result ensures a config can't be substituted
- * twice, the same way `substituteChartConfigVariables` does.
- */
-export function substitutePromqlChartConfigVariables<
-  T extends { promqlExpression: string; variables?: ChartVariable[] },
->(config: T): T {
-  const { variables } = config;
-  if (variables == null) return config;
-
-  return {
-    ...config,
-    promqlExpression: substituteVariables(config.promqlExpression, {
-      variables,
-      inputLanguage: 'promql',
-    }),
-    variables: undefined,
-  };
-}
-
-/**
  * Every variable reference across a chart builder config's expressions.
  * Never throws: it runs over saved configs that may be mid-edit or malformed.
  */
@@ -1050,7 +1085,10 @@ export type VariableReference = {
  * template written that way is reported as using the macro; expansion is what
  * rejects it.
  */
-export function getVariableReferences(input: string): VariableReference[] {
+export function getVariableReferences(
+  input: string,
+  { skipSqlComments }: { skipSqlComments?: boolean } = {},
+): VariableReference[] {
   const references: VariableReference[] = [];
 
   /** Returns the referenced name, or undefined when the argument isn't one. */
@@ -1075,6 +1113,7 @@ export function getVariableReferences(input: string): VariableReference[] {
   const visit = (text: string, guardedBy?: string) => {
     for (const token of scanTemplateTokens(text, VARIABLE_MACRO_NAMES, {
       onMalformed: 'skip',
+      skipSqlComments,
     })) {
       if (token.kind === 'text') continue;
       if (token.kind !== 'macro') {
@@ -1161,13 +1200,16 @@ export function validateVariableReferencesInTemplate(
     /** The sentence subject of each message, e.g. `SQL references ...`. */
     subject?: string;
     /** The language the renderer parses this template as. */
-    language?: SearchConditionLanguage;
+    language?: TemplateLanguage;
   } = {},
 ): VariableReferenceIssues {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  const references = getVariableReferences(template);
+  const settings = languageSettings(language);
+  const references = getVariableReferences(template, {
+    skipSqlComments: settings.skipSqlComments,
+  });
 
   // Attempt to expand macros, so that errors during expansion can be surfaced.
   if (variables != null && hasVariableMacro(template)) {
@@ -1216,17 +1258,34 @@ export function validateVariableReferencesInTemplate(
     );
   }
 
-  const settings = languageSettings(language);
-
   // A macro-less language leaves a macro exactly as written, so writing one can
   // only ever have been a mistake.
   if (settings.disableMacros && macroReferences.length > 0) {
     const [{ name }] = macroReferences;
+    const macros = formatReferenceList(macroReferences);
     warnings.push(
       language === 'promql'
-        ? `${formatReferenceList(macroReferences)} has no meaning in a PromQL expression — it is left as written and sent to Prometheus verbatim. Reference the variable directly, as in {<label>=~"$${name}"}.`
-        : `${formatReferenceList(macroReferences)} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
+        ? `${macros} has no meaning in a PromQL expression — it is left as written and sent to Prometheus verbatim. Reference the variable directly, as in {<label>=~"$${name}"}.`
+        : language === 'markdown'
+          ? `${macros} has no meaning in markdown — it is left as written. Reference the variable directly, as in $${name}.`
+          : `${macros} has no meaning in a Lucene expression — it is left as written and matched as literal text. Switch this input to SQL, or reference the variable directly, as in <field>:$${name}.`,
     );
+  }
+
+  // Markdown rendering falls back to the text as written rather than failing
+  // like a query would, so nothing else reports an unrecognized format there.
+  if (language === 'markdown') {
+    const badFormat = valueReferences.filter(
+      r =>
+        knownVariableNames.has(r.name) &&
+        r.format != null &&
+        !isVariableFormat(r.format),
+    );
+    if (badFormat.length > 0) {
+      warnings.push(
+        `${formatReferenceList(badFormat)} uses an unknown format, so no variables are substituted. Expected one of: ${VARIABLE_FORMATS.join(', ')}.`,
+      );
+    }
   }
 
   // An unrecognized format throws during expansion, so it is already reported.
@@ -1264,18 +1323,31 @@ export function validateVariableReferencesInTemplate(
     }
   }
 
-  // A regex expansion — PromQL's default — is only valid as a matcher value:
-  // both `(api|web)` and the empty-selection `.*` are syntax errors anywhere
-  // else, so `up{service=~$svc}` and `${svc}_total` are mistakes.
+  // A regex or promql expansion is only valid as a quoted matcher value: an
+  // alternation like `(api|web)`, `.*`, or an empty value is a syntax error
+  // anywhere else, so `up{service=~$svc}` and `${svc}_total` are mistakes.
   if (language === 'promql') {
     const unquoted = resolved.filter(
       r =>
-        (r.format ?? settings.defaultFormat) === 'regex' && !r.inStringLiteral,
+        isStringLiteralFormat(r.format ?? settings.defaultFormat) &&
+        !r.inStringLiteral,
     );
-    if (unquoted.length > 0) {
-      const [{ name }] = unquoted;
+    const isExactValue = (r: (typeof unquoted)[number]) =>
+      (r.format ?? settings.defaultFormat) === 'promql' &&
+      variables.some(v => v.name === r.name && isFilterSingleSelect(v));
+    const groups = [
+      { refs: unquoted.filter(isExactValue), kind: 'a string', op: '=' },
+      {
+        refs: unquoted.filter(r => !isExactValue(r)),
+        kind: 'a regular expression',
+        op: '=~',
+      },
+    ];
+    for (const { refs, kind, op } of groups) {
+      if (refs.length === 0) continue;
+      const [{ name }] = refs;
       warnings.push(
-        `${formatReferenceList(unquoted)} expands to a regular expression, which is only valid inside a quoted matcher value. Wrap it as {<label>=~"$${name}"}, or use \${${name}:csv} to interpolate the values as written.`,
+        `${formatReferenceList(refs)} expands to ${kind}, which is only valid inside a quoted matcher value. Wrap it as {<label>${op}"$${name}"}, or use \${${name}:csv} to interpolate the values as written.`,
       );
     }
   }
@@ -1287,9 +1359,13 @@ export function validateVariableReferencesInTemplate(
  * Returns the names of every variable the template could reference.
  * Never throws: it runs over saved SQL that may be mid-edit or malformed.
  */
-export function getReferencedVariableNames(input: string): string[] {
+export function getReferencedVariableNames(
+  input: string,
+  language: TemplateLanguage = 'sql',
+): string[] {
+  const { skipSqlComments } = languageSettings(language);
   const names = new Set<string>(
-    getVariableReferences(input).map(ref => ref.name),
+    getVariableReferences(input, { skipSqlComments }).map(ref => ref.name),
   );
   return Array.from(names);
 }
@@ -1315,11 +1391,16 @@ export function filterReferencedVariables(
   if ('configType' in config && config.configType === 'sql') {
     names = getReferencedVariableNames(config.sqlTemplate);
   } else if ('configType' in config && config.configType === 'promql') {
-    names = getReferencedVariableNames(config.promqlExpression);
+    names = getPromqlSeries(config).flatMap(series =>
+      getReferencedVariableNames(series.expression),
+    );
   } else {
     names = getBuilderVariableReferences(config).map(
       reference => reference.name,
     );
+    if (config.displayType === DisplayType.Markdown && config.markdown) {
+      names.push(...getReferencedVariableNames(config.markdown, 'markdown'));
+    }
   }
 
   const referenced = new Set(names);

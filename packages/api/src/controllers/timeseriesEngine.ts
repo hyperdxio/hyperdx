@@ -8,6 +8,10 @@ import {
   Metadata,
   MetadataCache,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  PrometheusMatrixResult,
+  PrometheusVectorResult,
+} from '@hyperdx/common-utils/dist/types';
 
 import { ClickhouseClient } from '@/clickhouse';
 import logger from '@/utils/logger';
@@ -258,16 +262,6 @@ export async function queryLabelNames({
 // PromQL through `prometheusQuery`/`prometheusQueryRange`. ClickHouse only
 // holds the HTTP API forward-compatible while TimeSeries is in preview, so
 // this path is a fallback for old servers, not the primary route.
-
-type PrometheusMetric = Record<string, string>;
-export type PrometheusMatrixResult = {
-  metric: PrometheusMetric;
-  values: [number, string][];
-};
-export type PrometheusVectorResult = {
-  metric: PrometheusMetric;
-  value: [number, string];
-};
 
 const toUnixSeconds = (timestamp: string | number) =>
   typeof timestamp === 'string'

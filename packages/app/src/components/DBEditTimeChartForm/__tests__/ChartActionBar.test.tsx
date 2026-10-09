@@ -62,6 +62,7 @@ function FormWrapper({ children, defaultValues }: WrapperProps) {
 
 const renderActionBar = (
   overrides: Partial<React.ComponentProps<typeof ChartActionBar>> = {},
+  formValues: Partial<ChartEditorFormState> = {},
 ) => {
   const onSubmit = jest.fn();
   const handleSave = jest.fn();
@@ -70,7 +71,7 @@ const renderActionBar = (
   const setSaveToDashboardModalOpen = jest.fn();
 
   const result = renderWithMantine(
-    <FormWrapper>
+    <FormWrapper defaultValues={formValues}>
       {({ control, handleSubmit }) => (
         <ChartActionBar
           control={control}
@@ -219,14 +220,56 @@ describe('ChartActionBar', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it('should render granularity picker for time tab', () => {
-    renderActionBar({ activeTab: 'time' });
+  it.each(['time', 'heatmap'])(
+    'should render granularity picker for %s tab',
+    activeTab => {
+      renderActionBar({ activeTab });
+
+      expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
+    },
+  );
+
+  it('should not render granularity picker for non-time tabs', () => {
+    renderActionBar({ activeTab: 'table' });
+
+    expect(screen.queryByTestId('granularity-picker')).not.toBeInTheDocument();
+  });
+
+  it('should render granularity picker for a PromQL tile that ranges', () => {
+    renderActionBar(
+      { activeTab: 'number' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Number,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
 
     expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
   });
 
-  it('should not render granularity picker for non-time tabs', () => {
-    renderActionBar({ activeTab: 'table' });
+  it('should not render granularity picker for an all-instant PromQL tile', () => {
+    renderActionBar(
+      { activeTab: 'number' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Number,
+        promqlExpressions: [{ expression: 'up', queryType: 'instant' }],
+      },
+    );
+
+    expect(screen.queryByTestId('granularity-picker')).not.toBeInTheDocument();
+  });
+
+  it('should not render granularity picker when a PromQL tile switches to a display type without PromQL', () => {
+    renderActionBar(
+      { activeTab: 'markdown' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Markdown,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
 
     expect(screen.queryByTestId('granularity-picker')).not.toBeInTheDocument();
   });
@@ -257,6 +300,19 @@ describe('ChartActionBar', () => {
 
   it('should not render ORDER BY editor for pie tab when raw SQL', () => {
     renderActionBar({ activeTab: 'pie', isRawSqlInput: true });
+
+    expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
+  });
+
+  it('should not render ORDER BY editor for a PromQL table', () => {
+    renderActionBar(
+      { activeTab: 'table' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Table,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
 
     expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
   });

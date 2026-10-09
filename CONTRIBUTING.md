@@ -57,6 +57,26 @@ you merge it.** That PR needs an approval rather than a green CI run — GitHub
 does not run workflows on PRs the bot creates. Merge them one at a time; two
 open at once will conflict on the same sorted list.
 
+## From issue to pull request
+
+New bug reports and feature requests open with a `Needs Feedback` label (the
+issue templates apply it automatically). That label means the issue is still
+being discussed — the scope, the approach, or whether we want the change at all
+isn't settled yet. **Please don't start a PR against a `Needs Feedback`
+issue**; the discussion often changes what the fix should be, and code written
+too early tends to get thrown away.
+
+Once a maintainer is happy with the direction, they swap `Needs Feedback` for
+`Accepting PR`. That's the green light: the issue is understood and ready for
+someone to pick up. Comment to claim it so two people don't duplicate work, then
+open your PR and reference the issue (e.g. `Closes #123`).
+
+If an issue you care about is stuck in `Needs Feedback`, add the missing detail
+(a clear repro, the debug info from Help → Copy debug info, your use case) or
+ask on the issue — that's usually what unblocks it. This is a convention, not a
+hard gate: it keeps effort pointed at changes we've agreed on, on top of the
+vouching trust check above.
+
 ## Architecture Overview
 
 ![architecture](./.github/images/architecture.png)

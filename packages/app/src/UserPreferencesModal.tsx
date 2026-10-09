@@ -21,6 +21,8 @@ import {
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
 import {
+  DEFAULT_ROW_CLICK_ACTION,
+  RowClickAction,
   useContentFontSize,
   UserPreferences,
   useUserPreferences,
@@ -30,6 +32,11 @@ const OPTIONS_COLOR_MODE = [
   { label: 'System', value: 'system' },
   { label: 'Light', value: 'light' },
   { label: 'Dark', value: 'dark' },
+];
+
+const OPTIONS_ROW_CLICK_ACTION: { label: string; value: RowClickAction }[] = [
+  { label: 'Open side panel', value: 'sidePanel' },
+  { label: 'Expand inline', value: 'expand' },
 ];
 
 // Brand theme options (generated from theme registry)
@@ -114,6 +121,27 @@ export const UserPreferencesModal = ({
                 isUTC: e.currentTarget.checked,
               })
             }
+          />
+        </SettingContainer>
+
+        <Divider label="Search results" labelPosition="left" mt="sm" />
+        <SettingContainer
+          label="Row click"
+          description="What clicking a result row does. The chevron always expands inline."
+        >
+          <Select
+            data-testid="row-click-action-select"
+            value={userPreferences.rowClickAction ?? DEFAULT_ROW_CLICK_ACTION}
+            onChange={value => {
+              const option = OPTIONS_ROW_CLICK_ACTION.find(
+                o => o.value === value,
+              );
+              if (option) {
+                setUserPreference({ rowClickAction: option.value });
+              }
+            }}
+            data={OPTIONS_ROW_CLICK_ACTION}
+            allowDeselect={false}
           />
         </SettingContainer>
 

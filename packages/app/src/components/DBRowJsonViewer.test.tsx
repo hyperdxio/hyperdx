@@ -1,6 +1,8 @@
 import React from 'react';
 import { fireEvent, screen, within } from '@testing-library/react';
 
+import { useMaterializedAliasColumnsOption } from '@/hooks/useMaterializedAliasColumnsOption';
+
 import { buildJSONExtractQuery, DBRowJsonViewer } from './DBRowJsonViewer';
 import { RowSidePanelContext } from './DBRowSidePanel';
 
@@ -184,6 +186,46 @@ describe('DBRowJsonViewer', () => {
     clickLineButton('field1', 'Column');
 
     expect(mockToggleColumn).toHaveBeenCalledWith("LogAttributes['field1']");
+  });
+
+  it('turns the materialized and alias columns option on and off from the menu', async () => {
+    const OptionValue = () => (
+      <span data-testid="materialized-alias-option">
+        {String(useMaterializedAliasColumnsOption()[0])}
+      </span>
+    );
+    const { container } = renderWithMantine(
+      <RowSidePanelContext value={defaultContext}>
+        <DBRowJsonViewer data={logData} showMaterializedAliasColumnsOption />
+        <OptionValue />
+      </RowSidePanelContext>,
+    );
+    const option = screen.getByTestId('materialized-alias-option');
+    const toggle = async () => {
+      fireEvent.click(container.querySelector('[aria-haspopup="menu"]')!);
+      fireEvent.click(
+        await screen.findByTestId('json-viewer-materialized-alias-toggle'),
+      );
+    };
+
+    expect(option).toHaveTextContent('false');
+    await toggle();
+    expect(option).toHaveTextContent('true');
+    expect(
+      localStorage.getItem('hdx-row-show-materialized-alias-columns'),
+    ).toBe('true');
+    await toggle();
+    expect(option).toHaveTextContent('false');
+  });
+
+  it('hides the materialized and alias columns option unless asked to show it', async () => {
+    const { container } = renderComponent(logData);
+    fireEvent.click(container.querySelector('[aria-haspopup="menu"]')!);
+
+    expect(await screen.findByText('Hide blank values')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('json-viewer-materialized-alias-toggle'),
+    ).not.toBeInTheDocument();
   });
 
   describe('timestamp fields', () => {

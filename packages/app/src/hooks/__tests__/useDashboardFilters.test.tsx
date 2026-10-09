@@ -941,6 +941,53 @@ describe('useDashboardFilters', () => {
     });
   });
 
+  describe('single-select filters', () => {
+    const singleSelect: QueryExpressionDashboardFilter = {
+      ...mockFilters[0],
+      isVariableEnabled: true,
+      variableName: 'env',
+      maxSelections: 1,
+    };
+
+    it('honors only the first of several values in the URL', () => {
+      mockState = [
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ];
+
+      const { result } = renderHook(() => useDashboardFilters([singleSelect]));
+
+      expect(selectionFor(result, 'filter1')?.included).toEqual(
+        new Set(['staging']),
+      );
+      expect(result.current.variables).toEqual([
+        {
+          name: 'env',
+          expression: 'environment',
+          values: ['staging'],
+          maxSelections: 1,
+        },
+      ]);
+    });
+
+    it('drops the extra values from the URL on the next write', () => {
+      mockState = [
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ];
+      const filters = [singleSelect, mockFilters[1]];
+
+      const { result } = renderHook(() => useDashboardFilters(filters));
+
+      act(() => {
+        result.current.setFilterValue('filter2', ['api']);
+      });
+
+      expect(mockState).toEqual([
+        { type: 'sql', condition: "service.name IN ('api')" },
+        { type: 'variable', name: 'env', values: ['staging'] },
+      ]);
+    });
+  });
+
   describe('unsatisfiedRequiredFilters', () => {
     const required = (
       overrides: Partial<QueryExpressionDashboardFilter> = {},

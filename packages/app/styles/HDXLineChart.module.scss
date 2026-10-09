@@ -9,7 +9,8 @@
 // On hover, hide the series area fills so overlapping lines stay readable. A
 // class toggle is cheaper than swapping each <Area>'s fill prop (which
 // re-created every Area). `!important` beats recharts' inline fill.
-.chartHovered :global(.recharts-area .recharts-area-area) {
+.chartHovered:not([data-stacked-fill])
+  :global(.recharts-area .recharts-area-area) {
   fill: none !important;
 }
 

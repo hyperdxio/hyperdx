@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import cx from 'classnames';
 import {
   Bar,
   BarChart,
@@ -66,6 +67,7 @@ export const DBBarChart = (props: CategoricalChartProps) => {
     toolbarItems,
     data,
     isLoading,
+    isPlaceholderData,
     isError,
     error,
     chartData,
@@ -94,7 +96,12 @@ export const DBBarChart = (props: CategoricalChartProps) => {
           variant={props.errorVariant}
         />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (
@@ -108,7 +115,7 @@ export const DBBarChart = (props: CategoricalChartProps) => {
           <ResponsiveContainer
             height="100%"
             width="100%"
-            className={isLoading ? 'effect-pulse' : ''}
+            className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
           >
             <BarChart data={chartData}>
               <XAxis

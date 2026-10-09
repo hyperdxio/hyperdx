@@ -26,6 +26,7 @@ type VirtualMultiSelectProps = {
   placeholder?: string;
   /** Whether to sort options before rendering. True by default */
   sort?: boolean;
+  isMultiSelect?: boolean;
   values: string[];
   onChange: (values: string[]) => void;
   'data-testid'?: string;
@@ -37,6 +38,7 @@ export function VirtualMultiSelect({
   loading,
   placeholder,
   sort = true,
+  isMultiSelect = true,
   values,
   onChange,
   'data-testid': dataTestId,
@@ -72,13 +74,6 @@ export function VirtualMultiSelect({
     },
   });
 
-  const handleSelectValue = (val: string) => {
-    onChange(
-      values.includes(val) ? values.filter(v => v !== val) : [...values, val],
-    );
-    setSearch('');
-  };
-
   const handleRemoveValue = (val: string) =>
     onChange(values.filter(v => v !== val));
 
@@ -86,8 +81,18 @@ export function VirtualMultiSelect({
 
   const handleAddValue = (val: string) => {
     if (!values.includes(val)) {
-      onChange([...values, val]);
+      onChange(isMultiSelect ? [...values, val] : [val]);
     }
+  };
+
+  const handleSelectValue = (val: string) => {
+    if (values.includes(val)) {
+      handleRemoveValue(val);
+    } else {
+      handleAddValue(val);
+    }
+    setSearch('');
+    if (!isMultiSelect) combobox.closeDropdown();
   };
 
   const handleKeyDown: KeyboardEventHandler<HTMLInputElement> = event => {
@@ -115,6 +120,10 @@ export function VirtualMultiSelect({
     combobox.updateSelectedOptionIndex();
     setSearch(event.currentTarget.value);
   };
+
+  // Hide the input field (cursor) for single selects with existing values,
+  // otherwise the user is visually encouraged to add another value.
+  const isInputFieldLocked = !isMultiSelect && values.length > 0;
 
   const virtualItems = virtualizer.getVirtualItems();
   const totalSize = virtualizer.getTotalSize();
@@ -167,6 +176,8 @@ export function VirtualMultiSelect({
               <PillsInput.Field
                 onFocus={() => combobox.openDropdown()}
                 onBlur={() => combobox.closeDropdown()}
+                type={isInputFieldLocked ? 'hidden' : 'visible'}
+                readOnly={isInputFieldLocked}
                 value={search}
                 placeholder={placeholder}
                 onChange={handleChange}

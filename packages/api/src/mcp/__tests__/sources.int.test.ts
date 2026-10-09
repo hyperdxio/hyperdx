@@ -895,6 +895,64 @@ describe('MCP Source Tools', () => {
       }
     });
 
+    it('walks every kind across pages without repeating or dropping names', async () => {
+      const metricSource = await createMetricSource();
+      await seedMetricNames();
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 10; page++) {
+        const result = await callTool(client, 'clickstack_list_metrics', {
+          sourceId: metricSource._id.toString(),
+          limit: 1,
+          ...(cursor && { cursor }),
+        });
+        expect(result.isError).toBeFalsy();
+        const output: {
+          metrics: { kind: string; name: string }[];
+          nextCursor?: string;
+        } = JSON.parse(getFirstText(result));
+        seen.push(...output.metrics.map(m => `${m.kind}:${m.name}`));
+        cursor = output.nextCursor;
+        if (!cursor) break;
+      }
+      expect(seen).toEqual([
+        'gauge:system.cpu.utilization',
+        'gauge:system.memory.usage',
+        'sum:http.server.request.count',
+        'histogram:http.server.request.duration',
+      ]);
+    });
+
+    it('returns unit and description for each listed metric', async () => {
+      const metricSource = await createMetricSource();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'system.cpu.utilization',
+          MetricUnit: '1',
+          MetricDescription: 'CPU utilization',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: new Date(),
+          Value: 0.42,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'gauge',
+      });
+      const output = JSON.parse(getFirstText(result));
+      expect(output.metrics).toEqual([
+        {
+          name: 'system.cpu.utilization',
+          kind: 'gauge',
+          unit: '1',
+          description: 'CPU utilization',
+        },
+      ]);
+    });
+
     it('rejects a malformed cursor with an actionable error', async () => {
       const metricSource = await createMetricSource();
       const result = await callTool(client, 'clickstack_list_metrics', {
@@ -1456,6 +1514,42 @@ describe('MCP Source Tools', () => {
   });
 
   describe('clickstack_save_source (update)', () => {
+    it('preserves minAutoGranularity through a describe -> rename -> save round trip', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        timestampValueExpression: 'TimeUnix',
+        resourceAttributesExpression: 'ResourceAttributes',
+        metricTables: { gauge: 'otel_metrics_gauge' },
+        connection: connection._id,
+        name: 'Rename Me',
+        minAutoGranularity: '1 minute',
+      });
+
+      // Regression: an agent renaming a source via describe -> save (the
+      // documented clone/update flow) must not silently drop fields that
+      // extractSourceConfig/mcpSaveSourceSchema haven't been told about -
+      // findOneAndReplace below would otherwise wipe them with no warning.
+      const described = await callTool(client, 'clickstack_describe_source', {
+        sourceId: created._id.toString(),
+      });
+      const config = JSON.parse(getFirstText(described)).source.config;
+      expect(config.minAutoGranularity).toBe('1 minute');
+
+      const { id: _id, ...renameInput } = config;
+      const result = await callTool(client, 'clickstack_save_source', {
+        ...renameInput,
+        id: created._id.toString(),
+        name: 'Renamed',
+      });
+      expect(result.isError).toBeFalsy();
+
+      const stored = await Source.findById(created._id);
+      expect(stored?.name).toBe('Renamed');
+      expect(stored?.get('minAutoGranularity')).toBe('1 minute');
+    });
+
     it('updates an existing log source (full replace)', async () => {
       const created = await Source.create({
         kind: SourceKind.Log,

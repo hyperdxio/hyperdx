@@ -542,11 +542,24 @@ export function hashCode(str: string) {
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
   maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+  /**
+   * Floor for the auto-inferred bucket size, in seconds. Useful when the
+   * underlying data is reported on a fixed interval (e.g. a metrics scrape
+   * interval): without this, a short selected date range can auto-infer a
+   * bucket smaller than that interval, producing sparse/steppy-looking
+   * series (buckets alternating between a real sample and an empty one).
+   * Sourced from `MetricSource.minAutoGranularity` where applicable -
+   * undefined/0 preserves the previous unfloored behavior.
+   */
+  minGranularitySeconds?: number,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
   const diffSeconds = Math.floor((end - start) / 1000);
-  const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
+  const granularitySizeSeconds = Math.max(
+    Math.ceil(diffSeconds / maxNumBuckets),
+    minGranularitySeconds ?? 0,
+  );
 
   if (granularitySizeSeconds <= 15) {
     return Granularity.FifteenSecond;
@@ -1196,6 +1209,44 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
   );
 }
 
+/**
+ * Index of the first standalone SETTINGS keyword, or -1. Occurrences inside
+ * quoted strings, comments or identifiers (e.g. `'app.settings.reloads'`,
+ * `AppSettings`, `LogAttributes.settings`) are not the clause and must not
+ * split the query.
+ */
+function findSettingsKeyword(sql: string): number {
+  const isWordChar = (c: string) => /\w/.test(c);
+  const nextNonSpace = (from: number) => sql.slice(from).trimStart().charAt(0);
+  let quote: string | undefined;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql.charAt(i);
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = undefined;
+    } else if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+    } else if (c === '-' && sql.charAt(i + 1) === '-') {
+      const lineEnd = sql.indexOf('\n', i + 2);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+    } else if (c === '/' && sql.charAt(i + 1) === '*') {
+      const blockEnd = sql.indexOf('*/', i + 2);
+      if (blockEnd === -1) break;
+      i = blockEnd + 1;
+    } else if (
+      sql.substring(i, i + 8).toUpperCase() === 'SETTINGS' &&
+      !isWordChar(sql.charAt(i - 1)) &&
+      !isWordChar(sql.charAt(i + 8)) &&
+      sql.slice(0, i).trimEnd().slice(-1) !== '.' &&
+      !['.', '['].includes(nextNonSpace(i + 8))
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 /*
   This function extracts the SETTINGS clause from the end(!) of the sql string.
 */
@@ -1206,7 +1257,7 @@ export function extractSettingsClauseFromEnd(
     ? sqlInput.trim().slice(0, -1)
     : sqlInput.trim();
 
-  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+  const settingsIndex = findSettingsKeyword(sql);
 
   if (settingsIndex === -1) {
     return [sql, undefined] as const;
@@ -1486,9 +1537,7 @@ export function displayTypeSupportsRawSqlAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
   return (
-    displayType === DisplayType.Line ||
-    displayType === DisplayType.StackedBar ||
-    displayType === DisplayType.Number
+    isTimeSeriesDisplayType(displayType) || displayType === DisplayType.Number
   );
 }
 
@@ -1496,9 +1545,7 @@ export function displayTypeSupportsBuilderAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
   return (
-    displayType === DisplayType.Line ||
-    displayType === DisplayType.StackedBar ||
-    displayType === DisplayType.Number
+    isTimeSeriesDisplayType(displayType) || displayType === DisplayType.Number
   );
 }
 
@@ -1513,10 +1560,12 @@ export const isFormulaDisplayType = (
 ): displayType is
   | DisplayType.Line
   | DisplayType.StackedBar
+  | DisplayType.StackedLine
   | DisplayType.Table
   | DisplayType.Number =>
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
   displayType === DisplayType.Table ||
   displayType === DisplayType.Number;
 
@@ -1634,7 +1683,7 @@ export function validateRawSqlChartConfig(
   }
 
   // Track macros this function has already described with an error, to avoid repetition.
-  const reportedMacros = new Set<MacroName>();
+  const reportedMacros = new Set<MacroExpansionError['macro']>();
   const pushError = (message: string, macro?: MacroName) => {
     errors.push(message);
     if (macro != null) reportedMacros.add(macro);
@@ -1749,11 +1798,20 @@ export function validateRawSqlChartConfig(
   return { errors, warnings };
 }
 
+/** Maps the time-series display type names used by the external API and v1 chart configs. */
+export const TIME_SERIES_DISPLAY_TYPE_BY_NAME = {
+  line: DisplayType.Line,
+  stacked_bar: DisplayType.StackedBar,
+  stacked_line: DisplayType.StackedLine,
+} as const satisfies Record<string, DisplayType>;
+
 export const isTimeSeriesDisplayType = (
   displayType: DisplayType | undefined,
 ): boolean => {
   return (
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.StackedLine
   );
 };
 

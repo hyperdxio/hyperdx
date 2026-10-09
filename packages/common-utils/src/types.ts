@@ -34,6 +34,7 @@ export const UseTextIndexSchema = z.nativeEnum(UseTextIndex);
 export enum DisplayType {
   Line = 'line',
   StackedBar = 'stacked_bar',
+  StackedLine = 'stacked_line',
   Table = 'table',
   Pie = 'pie',
   Bar = 'bar',
@@ -1662,7 +1663,13 @@ const SharedChartSettingsSchema = z.object({
 export const RatioModeSchema = z.enum(['per_group', 'share_of_total']);
 export type RatioMode = z.infer<typeof RatioModeSchema>;
 
+// Heatmap y-axis may be a numeric distribution or series/groups.
+export const HeatmapModeSchema = z.enum(['distribution', 'series']);
+export type HeatmapMode = z.infer<typeof HeatmapModeSchema>;
+
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
+  // Heatmap tiles only; an absent mode is 'distribution' (see getHeatmapMode).
+  heatmap: z.object({ mode: HeatmapModeSchema.optional() }).optional(),
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   // Fallback expression for bare-text Lucene search when no implicit column is
@@ -1710,6 +1717,8 @@ export const ChartVariableSchema = z.object({
   expression: z.string().optional(),
   /** Empty means nothing is selected. */
   values: z.array(z.string()),
+  /** The filter's selection cap; 1 means the variable is single-select. */
+  maxSelections: z.number().optional(),
 });
 
 export type ChartVariable = z.infer<typeof ChartVariableSchema>;
@@ -1783,10 +1792,76 @@ export type RawSqlChartConfig = z.infer<typeof RawSqlChartConfigSchema>;
 
 export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
 
+// Caps the number of expressions on one PromQL tile
+export const MAX_PROMQL_EXPRESSIONS = 10;
+
+/**
+ * Whether a PromQL expression is evaluated at a single moment (`instant`)
+ * or at intervals over a range of time (`range`).
+ */
+export const PromqlQueryTypeSchema = z.enum(['instant', 'range']);
+
+export type PromqlQueryType = z.infer<typeof PromqlQueryTypeSchema>;
+
+/** A Prometheus series' label set, `__name__` included. */
+export type PrometheusMetric = Record<string, string>;
+
+/**
+ * One series of a Prometheus matrix result: its samples over time. Values
+ * cross the wire as strings, as the Prometheus HTTP API returns them.
+ */
+export type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+
+/** One series of a Prometheus vector result: a single `[unix seconds, value]`. */
+export type PrometheusVectorResult = {
+  metric: PrometheusMetric;
+  value: [number, string];
+};
+
+/** How a range query's samples are client-side aggregated to a single value. */
+export enum PromqlReducer {
+  LastNotNull = 'lastNotNull',
+  Min = 'min',
+  Max = 'max',
+  Mean = 'mean',
+  Sum = 'sum',
+  Count = 'count',
+}
+
+export const PromqlReducerSchema = z.nativeEnum(PromqlReducer);
+
+/** One of the expressions a PromQL chart plots. */
+export const PromqlSeriesSchema = z.object({
+  expression: z.string(),
+  /** Prefixed to every series name this expression produces. */
+  alias: z.string().optional(),
+  /** Whether to evaluate with query or query_range. Instant is not supported for timeseries charts */
+  queryType: PromqlQueryTypeSchema.optional(),
+  /** Only read when `queryType` is `range`. Defaults to last non-null. */
+  reducer: PromqlReducerSchema.optional(),
+});
+
+export type PromqlSeries = z.infer<typeof PromqlSeriesSchema>;
+
+/**
+ * What a PromQL chart plots: a list of expressions, or a bare expression
+ * string as tiles were saved before multi-expression support.
+ */
+export const PromqlExpressionListSchema = z
+  .array(PromqlSeriesSchema)
+  .min(1)
+  .max(MAX_PROMQL_EXPRESSIONS)
+  .or(z.string());
+
+export type PromqlExpressionList = z.infer<typeof PromqlExpressionListSchema>;
+
 /** Base schema for PromQL chart configs (persisted fields) */
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
-  promqlExpression: z.string(),
+  promqlExpression: PromqlExpressionListSchema,
   connection: z.string(),
   source: z.string().optional(),
   step: z.string().optional(),
@@ -1821,6 +1896,12 @@ export type DateRange = {
   // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
   // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
+  // Runtime-only, populated from the queried Metric or PromQL source's
+  // `minAutoGranularity` (when set) by whichever caller resolves the source
+  // before rendering. Floors "auto" granularity resolution; see
+  // `convertDateRangeToGranularityString`. PromQL also reads it as the
+  // source's scrape interval for `$__rate_interval`. Never persisted.
+  minGranularitySeconds?: number;
 };
 
 export type ChartConfigWithDateRange = ChartConfig & DateRange;
@@ -2041,6 +2122,11 @@ const dashboardFilterBaseSchema = z.object({
    * undefined and 0 both imply no minimum selection requirement.
    */
   minSelections: z.number().int().min(0).max(1).optional(),
+  /**
+   * The most values that can be selected at once. Only 1 is currently allowed,
+   * which makes the filter single-select. undefined implies no cap.
+   */
+  maxSelections: z.number().int().min(1).max(1).optional(),
   /**
    * Whether an unsatisfied requirement blocks every tile on the dashboard,
    * rather than only the tiles that read this filter (via variable or broadcast).
@@ -2477,6 +2563,24 @@ export const SessionSourceSchema = BaseSourceSchema.extend({
   resourceAttributesExpression: z.string().optional(),
 });
 
+/**
+ * Floor for "Auto Granularity" on charts querying a metric or PromQL source.
+ * Without this, a short selected date range can auto-infer a bucket smaller
+ * than the metric's actual scrape/report interval, producing sparse/steppy
+ * series. Unset preserves the previous unfloored behavior. Only
+ * constrains auto-inference - an explicit (non-"auto") granularity
+ * picked on a tile is never overridden. PromQL sources also use it as the
+ * scrape interval that `$__rate_interval` is computed from.
+ *
+ * Preprocessed so the form's "No minimum" option (stored as `''`, since a
+ * Mantine Select needs a string value for every entry including the unset
+ * one) round-trips through the schema as `undefined`.
+ */
+export const MinAutoGranularitySchema = z.preprocess(
+  v => (v === '' ? undefined : v),
+  SQLIntervalSchema.optional(),
+);
+
 // Metric source form schema
 export const MetricSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Metric),
@@ -2497,11 +2601,13 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
   // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
   seriesTable: z.string().optional(),
+  minAutoGranularity: MinAutoGranularitySchema,
 });
 
 // PromQL source form schema
 export const PromqlSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Promql),
+  minAutoGranularity: MinAutoGranularitySchema,
 });
 
 // Union of all source form schemas for validation

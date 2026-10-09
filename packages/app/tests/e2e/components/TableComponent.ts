@@ -54,7 +54,7 @@ export class TableComponent {
   }
 
   /**
-   * Click on a specific row
+   * Click on a specific row, which opens it in the side panel.
    */
   async clickRow(index: number) {
     await this.getRow(index).click();
@@ -68,6 +68,24 @@ export class TableComponent {
   }
 
   /**
+   * Open a row in the side panel via its hover button. The button only exists
+   * once the `expand` row-click preference is set — without it a plain
+   * {@link clickRow} already opens the panel.
+   */
+  async openRowSidePanel(index: number) {
+    const row = this.getRow(index);
+    await row.hover();
+    await row.getByRole('button', { name: 'Open in side panel' }).click();
+  }
+
+  /**
+   * Open the first row in the side panel via its hover button.
+   */
+  async openFirstRowSidePanel() {
+    await this.openRowSidePanel(0);
+  }
+
+  /**
    * Expand a row in place via its chevron button, revealing the inline expanded
    * row underneath it.
    */
@@ -76,6 +94,72 @@ export class TableComponent {
       .getByRole('button', { name: 'Expand log details' })
       .click();
     await this.firstExpandedRow.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+
+  /**
+   * Collapse a row expanded by {@link expandRow}, via the same chevron.
+   */
+  async collapseRow(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: 'Collapse log details' })
+      .click();
+  }
+
+  /**
+   * Click a row's body — the large hit target covering everything but the
+   * chevron. Requires the `expand` row-click preference, under which it toggles
+   * inline expansion, so calling it twice collapses the row.
+   */
+  async clickRowBody(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: /^(Expand|Collapse) log row$/ })
+      .click();
+  }
+
+  /**
+   * Expand a row in place by clicking its body rather than the chevron.
+   */
+  async expandRowByBodyClick(index: number) {
+    await this.clickRowBody(index);
+    await this.firstExpandedRow.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+
+  /**
+   * Scroll the virtualized container to an absolute offset.
+   */
+  async scrollTo(top: number) {
+    await this.tableContainer.evaluate(
+      (el, offset) => el.scrollTo({ top: offset }),
+      top,
+    );
+  }
+
+  /**
+   * Layout readings for the virtualized scroll container.
+   *
+   * `visibleGapPx` is the empty space between the bottom of the last rendered
+   * row and the bottom of the viewport. While rows remain below, a healthy
+   * table overfills the viewport and this is negative; it turns positive when
+   * the virtualizer holds stale row heights and stops rendering enough rows to
+   * cover the screen.
+   */
+  async getVirtualizationMetrics() {
+    return this.tableContainer.evaluate(el => {
+      const rows = el.querySelectorAll('[data-testid^="table-row-"]');
+      const last = rows[rows.length - 1];
+      return {
+        renderedRows: rows.length,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        visibleGapPx: Math.round(
+          el.getBoundingClientRect().bottom -
+            (last ? last.getBoundingClientRect().bottom : 0),
+        ),
+        remainingBelowPx: Math.round(
+          el.scrollHeight - el.scrollTop - el.clientHeight,
+        ),
+      };
+    });
   }
 
   /**
@@ -121,6 +205,19 @@ export class TableComponent {
    */
   getRowCheckbox(index: number) {
     return this.getRow(index).getByTestId('row-select-checkbox');
+  }
+
+  /**
+   * The cell holding a row's multi-select checkbox. It is the element that
+   * fades the checkbox in and out, so assert visibility on it rather than on
+   * the checkbox itself.
+   */
+  getRowCheckboxCell(index: number) {
+    return this.getRow(index).getByTestId('row-select-cell');
+  }
+
+  async hoverRow(index: number) {
+    await this.getRow(index).hover();
   }
 
   /**

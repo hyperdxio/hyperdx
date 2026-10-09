@@ -299,7 +299,7 @@ test.describe(
       await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
       await dashboardPage.chartEditor.waitForDataToLoad();
       await dashboardPage.chartEditor.switchToPromqlMode();
-      await dashboardPage.chartEditor.selectPromqlSource(PROMQL_SOURCE_NAME);
+      await dashboardPage.chartEditor.selectSource(PROMQL_SOURCE_NAME);
     };
 
     test('narrows the queried series to the selected values', async ({
@@ -375,6 +375,56 @@ test.describe(
       });
     });
 
+    test('matches a single-select variable exactly', async ({ page }) => {
+      test.setTimeout(120000);
+
+      const dashboardPage = new DashboardPage(page);
+      const seriesAreas = page
+        .locator('.recharts-responsive-container')
+        .first()
+        .locator('.recharts-area');
+
+      await test.step('Create a dashboard with a single-select $svc variable', async () => {
+        await dashboardPage.goto();
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addStaticListFilterToDashboard(
+          'Service',
+          SERVICES.slice(0, 2),
+          { variableName: 'svc', singleSelect: true },
+        );
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('Add a PromQL tile with an exact $svc matcher', async () => {
+        await openPromqlTileEditor(dashboardPage);
+        await dashboardPage.chartEditor.setChartName('PromQL tile');
+        await dashboardPage.chartEditor.replacePromqlExpression(
+          `${E2E_PROMQL_METRIC_NAME}{service="$svc"}`,
+        );
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1, {
+          timeout: 10000,
+        });
+      });
+
+      await test.step('With nothing selected, no series match', async () => {
+        // A zero series count also holds while the tile is still loading.
+        await expect(
+          dashboardPage
+            .getTiles()
+            .first()
+            .getByText('No data found within time range.'),
+        ).toBeVisible({ timeout: 30000 });
+        await expect(seriesAreas).toHaveCount(0);
+      });
+
+      await test.step('Selecting a service matches its series', async () => {
+        await dashboardPage.toggleFilterValue('Service', SERVICES[0]);
+        await expect(seriesAreas).toHaveCount(1, { timeout: 30000 });
+      });
+    });
+
     /**
      * The expression above is only writable if the editor tells you the
      * variable exists. Three completion sources share the PromQL input —
@@ -417,9 +467,10 @@ test.describe(
         const info = page.locator('.cm-completionInfo');
         await info.waitFor({ state: 'visible', timeout: 10000 });
 
-        // Nothing is selected on this dashboard, and regex is promql's default
-        // format — so the bare reference previews the match-everything state
-        // that makes the tile above valid before anything is picked.
+        // Nothing is selected on this dashboard, and a multi-select variable
+        // renders as a regex by default — so the bare reference previews the
+        // match-everything state that makes the tile above valid before
+        // anything is picked.
         await expect(info.locator('.cm-completionInfo-footnote')).toHaveText(
           'Expands to: .*',
         );

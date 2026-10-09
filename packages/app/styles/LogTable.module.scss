@@ -50,6 +50,10 @@ $button-height: 18px;
     opacity: 1;
   }
 
+  &:hover .selectCell {
+    opacity: 1;
+  }
+
   &:hover .rowContentButton {
     background-color: var(--log-table-muted-bg);
   }
@@ -63,9 +67,34 @@ $button-height: 18px;
   }
 }
 
+// Search is a read-and-navigate surface, so the checkbox stays out of the way
+// until the row is hovered. The cell keeps its width whatever the state —
+// revealing the control must never reflow the data columns.
 .selectCell {
   vertical-align: middle;
   user-select: none;
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+
+  // Tab still reaches the checkbox while it is transparent. Deliberately not
+  // :focus-within — a mouse click leaves focus on the checkbox, which would
+  // strand it on screen after the row is unchecked.
+  &:has(:focus-visible) {
+    opacity: 1;
+  }
+}
+
+// One checked row puts the table in selection mode and reveals every checkbox,
+// so a shift-click range has visible endpoints and checked rows stay marked.
+.selectionActive .selectCell {
+  opacity: 1;
+}
+
+// Touch has no hover to reveal with.
+@media (hover: none) {
+  .selectCell {
+    opacity: 1;
+  }
 }
 
 .selectCheckbox {
