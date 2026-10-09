@@ -1,7 +1,41 @@
+import { QueryAttribution } from '@hyperdx/common-utils/dist/clickhouse';
 import { useQuery } from '@tanstack/react-query';
 
 import { prometheusApi } from '@/api';
 import { useMetadataQueryAttribution } from '@/queryAttribution';
+
+type PromqlLabelLookup = {
+  sourceId: string;
+  start?: number;
+  end?: number;
+  attribution?: QueryAttribution;
+};
+
+/** The label lookup APIs accept whole seconds. */
+export const toPromqlSeconds = (dateRange: [Date, Date]) => ({
+  start: Math.floor(dateRange[0].getTime() / 1000),
+  end: Math.ceil(dateRange[1].getTime() / 1000),
+});
+
+export async function fetchPromqlLabelNames(
+  params: PromqlLabelLookup,
+): Promise<string[]> {
+  const resp = await prometheusApi.labels(params);
+  if (resp.status === 'error') {
+    throw new Error(resp.error ?? 'Label names query failed');
+  }
+  return resp.data ?? [];
+}
+
+export async function fetchPromqlLabelValues(
+  params: PromqlLabelLookup & { label: string; match?: string },
+): Promise<string[]> {
+  const resp = await prometheusApi.labelValues(params);
+  if (resp.status === 'error') {
+    throw new Error(resp.error ?? 'Label values query failed');
+  }
+  return resp.data ?? [];
+}
 
 export function usePromqlMetricNames(sourceId: string | undefined) {
   const attribution = useMetadataQueryAttribution();
@@ -9,12 +43,11 @@ export function usePromqlMetricNames(sourceId: string | undefined) {
     queryKey: ['promql-metric-names', sourceId],
     queryFn: async () => {
       if (!sourceId) return [];
-      const resp = await prometheusApi.labelValues({
+      return fetchPromqlLabelValues({
         label: '__name__',
         sourceId,
         attribution,
       });
-      return resp.data ?? [];
     },
     enabled: !!sourceId,
     staleTime: 60_000,
@@ -28,8 +61,7 @@ export function usePromqlLabelNames(sourceId: string | undefined) {
     queryKey: ['promql-label-names', sourceId],
     queryFn: async () => {
       if (!sourceId) return [];
-      const resp = await prometheusApi.labels({ sourceId, attribution });
-      return resp.data ?? [];
+      return fetchPromqlLabelNames({ sourceId, attribution });
     },
     enabled: !!sourceId,
     staleTime: 60_000,
