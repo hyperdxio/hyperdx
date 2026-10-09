@@ -164,7 +164,9 @@ export async function computeAliasWithClauses(
 ): Promise<BuilderChartConfigWithOptDateRange['with']> {
   const resolvedSelect =
     savedSearch.select ||
-    ((source.kind === SourceKind.Log || source.kind === SourceKind.Trace) &&
+    ((source.kind === SourceKind.Log ||
+      source.kind === SourceKind.Trace ||
+      source.kind === SourceKind.Netflow) &&
       source.defaultTableSelectExpression) ||
     '';
   const config: BuilderChartConfigWithOptDateRange = {

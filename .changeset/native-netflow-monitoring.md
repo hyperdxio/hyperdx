@@ -33,3 +33,7 @@ axis widths.
 Preserve NetFlow mappings through MCP source tools, ignore stale source inference,
 share filter keys across visualizations, retain quoted columns, and make explicit
 include/exclude actions idempotent. Format flow times using user preferences.
+
+Support NetFlow saved-search alerts with default aliases, previews, and flow
+samples in notifications. Keep unfinished search fields pending when applying
+click filters, and display the configured record limit.

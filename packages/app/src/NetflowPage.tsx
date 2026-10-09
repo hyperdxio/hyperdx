@@ -60,12 +60,11 @@ function NetflowPage() {
     (s): s is TNetflowSource => s.kind === SourceKind.Netflow && !s.disabled,
   );
   const source = params.source
-    ? netflowSources?.find(
-        s => s.id === params.source || s.name === params.source,
-      )
+    ? netflowSources?.find(s => [s.id, s.name].includes(params.source))
     : netflowSources?.[0];
-  const { control, handleSubmit, reset, getValues } = useForm({
-    values: { ...params, source: source?.id ?? '' },
+  const { filters: appliedFilters, ...formParams } = params;
+  const { control, handleSubmit, reset } = useForm({
+    values: { ...formParams, source: source?.id ?? '' },
   });
   const selectedSource = useWatch({ control, name: 'source' });
   const syncSource = useEffectEvent((id: string) => {
@@ -81,12 +80,8 @@ function NetflowPage() {
   }, [selectedSource]);
   const clickFilters = useNetflowFilterState({
     source,
-    filters: params.filters,
-    onChange: filters => {
-      const next = { ...getValues(), filters };
-      reset(next);
-      void setParams(next);
-    },
+    filters: appliedFilters,
+    onChange: filters => void setParams({ filters }),
   });
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
@@ -101,9 +96,7 @@ function NetflowPage() {
     onTimeRangeSelect,
     isLive: false,
   });
-  const duration =
-    searchedTimeRange[1].getTime() - searchedTimeRange[0].getTime();
-  const hasValidTimeRange = Number.isFinite(duration) && duration > 0;
+  const hasValidTimeRange = searchedTimeRange[1] > searchedTimeRange[0];
   const configs = useMemo(
     () =>
       source && hasValidTimeRange
@@ -226,14 +219,13 @@ function NetflowPage() {
                       source: source?.id ?? '',
                       where: '',
                       whereLanguage: params.whereLanguage,
-                      filters: [],
                       exporter: '',
                       protocol: '',
                       srcAddr: '',
                       dstAddr: '',
                     };
                     reset(cleared);
-                    void setParams(cleared);
+                    void setParams({ ...cleared, filters: [] });
                   }}
                 >
                   Clear filters
@@ -241,9 +233,8 @@ function NetflowPage() {
               </Group>
               <NetflowFilterPills {...clickFilters} />
               <Text size="xs" c="dimmed">
-                Explore traffic volume, top talkers, and recent flow records.
-                Rates are averaged over the selected time range; counters
-                account for the source’s sampling rate.
+                Explore traffic, top talkers, and recent flows. Rates average
+                over the selected time range; counters account for sampling.
               </Text>
               {error ? (
                 <Alert variant="danger" title="Could not load NetFlow sources">

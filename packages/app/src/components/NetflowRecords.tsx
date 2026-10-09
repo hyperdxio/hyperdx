@@ -65,7 +65,8 @@ export default function NetflowRecords({
               c="dimmed"
               style={{ whiteSpace: 'nowrap' }}
             >
-              Latest {rows.length} records · limit 500
+              Latest {rows.length} records
+              {config.limit?.limit != null && ` · limit ${config.limit.limit}`}
             </Text>,
           ]}
         >

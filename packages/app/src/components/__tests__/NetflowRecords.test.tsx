@@ -24,6 +24,7 @@ const config: BuilderChartConfigWithDateRange = {
   ],
   select: '*',
   where: '',
+  limit: { limit: 25 },
 };
 
 describe('NetFlow records', () => {
@@ -72,6 +73,7 @@ describe('NetFlow records', () => {
     });
     renderWithMantine(<NetflowRecords config={config} />);
 
+    expect(screen.getByText('Latest 1 records · limit 25')).toBeInTheDocument();
     expect(screen.getByText('10.0.0.1 · 1234')).toBeInTheDocument();
     expect(screen.getByText('2001:db8::1 · 443')).toBeInTheDocument();
     expect(screen.getByText('2,000')).toBeInTheDocument();

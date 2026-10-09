@@ -32,6 +32,39 @@ try {
     exact: true,
   });
   if (await devtools.isVisible()) await devtools.click();
+  const draftSearch = page.getByTestId('netflow-search');
+  const draftProtocol = page.getByLabel('Protocol', { exact: true });
+  await draftSearch.fill('Proto:17');
+  await draftProtocol.fill('17');
+  await choose(
+    page.getByTestId('netflow-breakdown-protocol').getByRole('button', {
+      name: 'Filter protocol: TCP',
+      exact: true,
+    }),
+    'Include',
+  );
+  await expect(pills).toContainText('Protocol = TCP');
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('where') || '')
+    .toBe('');
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('protocol') || '')
+    .toBe('');
+  await expect(draftSearch).toHaveValue('Proto:17');
+  await expect(draftProtocol).toHaveValue('17');
+  await expect(
+    records.getByRole('button', { name: 'Filter protocol: UDP', exact: true }),
+  ).toHaveCount(0);
+  await expect(records.locator('tbody tr').first()).toBeVisible();
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('where'))
+    .toBe('Proto:17');
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('protocol'))
+    .toBe('17');
+  await expect(records.getByText('No flow records found')).toBeVisible();
+  await clear();
   for (const field of ['srcAddr', 'dstAddr', 'protocol', 'exporter']) {
     console.log(`Checking ${field} chart filters`);
     const chart = page.getByTestId(`netflow-breakdown-${field}`);
@@ -121,7 +154,7 @@ try {
   await clear();
   assert.deepEqual(errors, []);
   console.log(
-    'Clickable NetFlow filters passed: chart include/exclude, removal, reload, Lucene composition, row/drawer actions, IPv6, clear.',
+    'Clickable NetFlow filters passed: pending search/quick-filter drafts, chart include/exclude, removal, reload, Lucene composition, row/drawer actions, IPv6, clear.',
   );
 } finally {
   await browser.close();
