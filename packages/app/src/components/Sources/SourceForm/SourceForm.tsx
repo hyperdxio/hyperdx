@@ -81,6 +81,7 @@ export function TableSourceForm({
   onCreate,
   isNew = false,
   defaultName = '',
+  defaultKind = SourceKind.Log,
   onCancel,
 }: {
   sourceId?: string;
@@ -89,6 +90,7 @@ export function TableSourceForm({
   onCancel?: () => void;
   isNew?: boolean;
   defaultName?: string;
+  defaultKind?: SourceKind;
 }) {
   const { data: source } = useSource({ id: sourceId });
   const { data: connections } = useConnections();
@@ -96,7 +98,7 @@ export function TableSourceForm({
   const { control, setValue, handleSubmit, resetField, setError, clearErrors } =
     useForm<TSource>({
       defaultValues: {
-        kind: SourceKind.Log,
+        kind: defaultKind,
         name: defaultName,
         connection: connections?.[0]?.id,
         from: {
@@ -130,9 +132,10 @@ export function TableSourceForm({
   const watchedKind = useWatch({
     control,
     name: 'kind',
-    defaultValue: source?.kind || SourceKind.Log,
+    defaultValue: source?.kind || defaultKind,
   });
   const prevTableNameRef = useRef(watchedTableName);
+  const prevKindRef = useRef(watchedKind);
 
   const selectedConnection = useMemo(
     () => connections?.find(c => c.id === watchedConnection),
@@ -166,8 +169,12 @@ export function TableSourceForm({
   useEffect(() => {
     (async () => {
       try {
-        if (watchedTableName !== prevTableNameRef.current) {
+        if (
+          watchedTableName !== prevTableNameRef.current ||
+          watchedKind !== prevKindRef.current
+        ) {
           prevTableNameRef.current = watchedTableName;
+          prevKindRef.current = watchedKind;
 
           if (isPrometheusOnlyConnection) {
             return;
@@ -229,7 +236,7 @@ export function TableSourceForm({
   const kind = useWatch({
     control,
     name: 'kind',
-    defaultValue: source?.kind || SourceKind.Log,
+    defaultValue: source?.kind || defaultKind,
   });
 
   const createSource = useCreateSource();
@@ -630,6 +637,10 @@ export function TableSourceForm({
                 withAsterisk
               >
                 <Group>
+                  <Radio
+                    value={SourceKind.Netflow}
+                    label={SOURCE_KIND_LABELS[SourceKind.Netflow]}
+                  />
                   <Radio
                     value={SourceKind.Log}
                     label={SOURCE_KIND_LABELS[SourceKind.Log]}

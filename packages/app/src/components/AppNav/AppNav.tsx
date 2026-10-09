@@ -23,6 +23,7 @@ import {
   IconDeviceFloppy,
   IconDeviceLaptop,
   IconLayoutGrid,
+  IconNetwork,
   IconSettings,
   IconSitemap,
   IconTable,
@@ -80,6 +81,12 @@ type NavLinkConfig = {
 };
 
 const NAV_LINKS: NavLinkConfig[] = [
+  {
+    id: 'netflow',
+    label: 'NetFlow',
+    href: '/netflow',
+    icon: <IconNetwork size={16} />,
+  },
   {
     id: 'chart',
     label: 'Chart Explorer',

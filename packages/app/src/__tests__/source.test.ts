@@ -14,6 +14,7 @@ import {
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
+  inferTableSourceConfig,
   pickTimeSeriesTable,
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
@@ -725,5 +726,68 @@ describe('getBuilderValueColumnCount', () => {
 
   it('returns 0 for raw SQL configs', () => {
     expect(getBuilderValueColumnCount(makeRawSqlConfig({}))).toBe(0);
+  });
+});
+
+describe('NetFlow source inference', () => {
+  const infer = async (names: string[]) =>
+    inferTableSourceConfig({
+      databaseName: 'default',
+      tableName: 'flows',
+      connectionId: 'connection',
+      kind: SourceKind.Netflow,
+      metadata: {
+        getColumns: jest.fn().mockResolvedValue(
+          names.map(name => ({
+            name,
+            type: name === 'TimeReceived' ? 'DateTime' : 'UInt64',
+          })),
+        ),
+        getTableMetadata: jest
+          .fn()
+          .mockResolvedValue({ primary_key: 'TimeReceived' }),
+      } as any,
+    });
+  it('maps Akvorado columns and preserves sampling semantics', async () => {
+    expect(
+      await infer([
+        'TimeReceived',
+        'Bytes',
+        'Packets',
+        'SamplingRate',
+        'SrcAddr',
+        'DstAddr',
+        'SrcPort',
+        'DstPort',
+        'Proto',
+        'ExporterName',
+        'InIfName',
+        'OutIfName',
+      ]),
+    ).toMatchObject({
+      kind: SourceKind.Netflow,
+      timestampValueExpression: 'TimeReceived',
+      bytesExpression: 'Bytes',
+      packetsExpression: 'Packets',
+      samplingRateExpression: 'SamplingRate',
+      srcAddrExpression: 'SrcAddr',
+      dstAddrExpression: 'DstAddr',
+      protocolExpression: 'Proto',
+    });
+  });
+  it('does not invent optional columns for unenriched or unsampled tables', async () => {
+    const config = await infer([
+      'TimeReceived',
+      'Bytes',
+      'Packets',
+      'SrcAddr',
+      'DstAddr',
+      'SrcPort',
+      'DstPort',
+      'Proto',
+    ]);
+    expect(config).not.toHaveProperty('samplingRateExpression');
+    expect(config).not.toHaveProperty('exporterExpression');
+    expect(config).not.toHaveProperty('inIfExpression');
   });
 });

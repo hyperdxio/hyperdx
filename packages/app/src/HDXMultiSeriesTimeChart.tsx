@@ -2066,7 +2066,7 @@ export const MemoChart = memo(function MemoChart({
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
           />
           <YAxis
-            width={Y_AXIS_WIDTH}
+            width="auto"
             minTickGap={25}
             tickFormatter={yAxisTickFormatter}
             tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}

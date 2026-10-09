@@ -71,6 +71,11 @@ function emptyStateTitle(tab: DashboardTab, hasFilters: boolean): string {
 
 const PRESET_DASHBOARDS = [
   {
+    name: 'NetFlow',
+    href: '/netflow',
+    description: 'Network traffic, top talkers, exporters, and flow records',
+  },
+  {
     name: 'Services',
     href: '/services',
     description: 'Monitor HTTP endpoints, latency, and error rates',

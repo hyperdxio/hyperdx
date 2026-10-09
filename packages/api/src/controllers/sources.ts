@@ -5,6 +5,7 @@ import {
   ISourceInput,
   LogSource,
   MetricSource,
+  NetflowSource,
   PromqlSource,
   SessionSource,
   Source,
@@ -16,6 +17,8 @@ import {
 // recognises kind-specific fields (e.g. metricTables on MetricSource).
 function getModelForKind(kind: SourceKind) {
   switch (kind) {
+    case SourceKind.Netflow:
+      return NetflowSource;
     case SourceKind.Log:
       return LogSource;
     case SourceKind.Trace:

@@ -1,6 +1,8 @@
 import { Control, UseFormSetValue } from 'react-hook-form';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 
+import { LogTableModelForm } from './LogTableModelForm';
+import { MetricTableModelForm } from './MetricTableModelForm';
 // traceModel= ...
 // logModel=....
 // traceModel.logModel = 'custom'
@@ -8,8 +10,7 @@ import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 // need to make sure we don't recursively render them :joy:
 // OR traceModel.logModel = 'log_id_blah'
 // custom always points towards the url param
-import { LogTableModelForm } from './LogTableModelForm';
-import { MetricTableModelForm } from './MetricTableModelForm';
+import { NetflowTableModelForm } from './NetflowTableModelForm';
 import { PromqlTableModelForm } from './PromqlTableModelForm';
 import { SessionTableModelForm } from './SessionTableModelForm';
 import { TraceTableModelForm } from './TraceTableModelForm';
@@ -26,6 +27,8 @@ export function TableModelForm({
   sourceId?: string;
 }) {
   switch (kind) {
+    case SourceKind.Netflow:
+      return <NetflowTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Log:
       return <LogTableModelForm control={control} setValue={setValue} />;
     case SourceKind.Trace:

@@ -548,13 +548,15 @@ export function ChartEditorControls({
             name="select"
             placeholder={
               ((tableSource?.kind === SourceKind.Log ||
-                tableSource?.kind === SourceKind.Trace) &&
+                tableSource?.kind === SourceKind.Trace ||
+                tableSource?.kind === SourceKind.Netflow) &&
                 tableSource.defaultTableSelectExpression) ||
               'SELECT Columns'
             }
             defaultValue={
               tableSource?.kind === SourceKind.Log ||
-              tableSource?.kind === SourceKind.Trace
+              tableSource?.kind === SourceKind.Trace ||
+              tableSource?.kind === SourceKind.Netflow
                 ? tableSource.defaultTableSelectExpression
                 : undefined
             }

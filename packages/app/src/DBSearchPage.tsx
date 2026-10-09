@@ -184,7 +184,11 @@ const LIVE_TAIL_REFRESH_FREQUENCY_OPTIONS = [
 ];
 const DEFAULT_REFRESH_FREQUENCY = 10000;
 
-const ALLOWED_SOURCE_KINDS = [SourceKind.Log, SourceKind.Trace];
+const ALLOWED_SOURCE_KINDS = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Netflow,
+];
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -505,7 +509,7 @@ function SaveSearchModalComponent({
 
   const { data: sourceObj } = useSource({
     id: searchedConfig.source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
+    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
   });
   const effectiveSelect =
     searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
@@ -796,7 +800,7 @@ function useSearchedConfigToChartConfig(
 ) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
-    kinds: [SourceKind.Log, SourceKind.Trace],
+    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
   });
   const defaultOrderBy = useDefaultOrderBy(source);
 
@@ -872,7 +876,7 @@ function optimizeDefaultOrderBy(
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({
     id: sourceID,
-    kinds: [SourceKind.Log, SourceKind.Trace],
+    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
   });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
@@ -880,11 +884,16 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
   return useMemo(() => {
     // If no source, return undefined so that the orderBy is not set incorrectly
     if (!source) return undefined;
-    const trimmedOrderBy = source.orderByExpression?.trim();
+    const trimmedOrderBy =
+      'orderByExpression' in source
+        ? source.orderByExpression?.trim()
+        : undefined;
     if (trimmedOrderBy) return trimmedOrderBy;
     return optimizeDefaultOrderBy(
       source?.timestampValueExpression ?? '',
-      source.displayedTimestampValueExpression,
+      'displayedTimestampValueExpression' in source
+        ? source.displayedTimestampValueExpression
+        : undefined,
       tableMetadata?.sorting_key,
     );
   }, [source, tableMetadata]);
@@ -1047,7 +1056,7 @@ function DBSearchPageContent() {
   const { source: searchedSource } = useResolvedSourceParam(
     rawSearchedConfig.source,
     {
-      kinds: [SourceKind.Log, SourceKind.Trace],
+      kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
     },
   );
 
@@ -1179,7 +1188,8 @@ function DBSearchPageContent() {
       select:
         _savedSearch?.select ??
         (searchedSource?.kind === SourceKind.Log ||
-        searchedSource?.kind === SourceKind.Trace
+        searchedSource?.kind === SourceKind.Trace ||
+        searchedSource?.kind === SourceKind.Netflow
           ? searchedSource.defaultTableSelectExpression
           : undefined),
       where: _savedSearch?.where ?? '',

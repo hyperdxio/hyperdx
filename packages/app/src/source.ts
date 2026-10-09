@@ -25,6 +25,7 @@ import {
   SourceSchema,
   TLogSource,
   TMetricSource,
+  TNetflowSource,
   TPromqlSource,
   TSessionSource,
   TSource,
@@ -300,6 +301,7 @@ type TStrippedSource<T extends TSource> = Partial<
   Omit<T, 'id' | 'name' | 'from' | 'connection'>
 > & { kind: T['kind'] };
 type InferredSourceConfig =
+  | TStrippedSource<TNetflowSource>
   | TStrippedSource<TLogSource>
   | TStrippedSource<TTraceSource>
   | TStrippedSource<TMetricSource>
@@ -347,6 +349,44 @@ export async function inferTableSourceConfig({
       : {}),
     kind,
   };
+
+  if (kind === SourceKind.Netflow) {
+    const names = new Set(columns.map(column => column.name));
+    const mapping = {
+      bytesExpression: 'Bytes',
+      packetsExpression: 'Packets',
+      samplingRateExpression: 'SamplingRate',
+      srcAddrExpression: 'SrcAddr',
+      dstAddrExpression: 'DstAddr',
+      srcPortExpression: 'SrcPort',
+      dstPortExpression: 'DstPort',
+      protocolExpression: 'Proto',
+      exporterExpression: 'ExporterName',
+      inIfExpression: 'InIfName',
+      outIfExpression: 'OutIfName',
+    };
+    const selected = [
+      'TimeReceived',
+      'SrcAddr',
+      'DstAddr',
+      'SrcPort',
+      'DstPort',
+      'Proto',
+      'Bytes',
+      'Packets',
+    ].filter(name => names.has(name));
+    return {
+      ...baseConfig,
+      kind: SourceKind.Netflow,
+      ...(names.has('TimeReceived')
+        ? { timestampValueExpression: 'TimeReceived' }
+        : {}),
+      defaultTableSelectExpression: selected.join(', ') || '*',
+      ...Object.fromEntries(
+        Object.entries(mapping).filter(([, column]) => names.has(column)),
+      ),
+    };
+  }
 
   if (kind === SourceKind.Promql) {
     return baseConfig as TStrippedSource<TPromqlSource>;

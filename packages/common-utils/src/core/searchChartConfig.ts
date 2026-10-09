@@ -4,6 +4,7 @@ import {
   DisplayType,
   Filter,
   isLogSource,
+  isNetflowSource,
   isTraceSource,
   pickSampleWeightExpressionProps,
   SearchCondition,
@@ -96,7 +97,7 @@ function resolveSelect(
   select: SelectList | null | undefined,
 ): BuilderChartConfig['select'] {
   if (select != null && select.length > 0) return select;
-  if (isLogSource(source) || isTraceSource(source)) {
+  if (isLogSource(source) || isTraceSource(source) || isNetflowSource(source)) {
     return source.defaultTableSelectExpression ?? '';
   }
   return '';

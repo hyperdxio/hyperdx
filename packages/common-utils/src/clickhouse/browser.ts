@@ -184,8 +184,10 @@ export class ClickhouseClient extends BaseClickhouseClient {
       clickhouseSettings = neutralSettings as ClickHouseSettings;
     }
 
+    const isLocalMode = this.username != null && this.password != null;
     const httpHeaders: { [header: string]: string } = {
-      ...(connectionId && connectionId !== 'local'
+      // Only the API proxy uses this header; direct requests must avoid a CORS preflight.
+      ...(!isLocalMode && connectionId && connectionId !== 'local'
         ? { 'x-hyperdx-connection-id': connectionId }
         : {}),
     };
