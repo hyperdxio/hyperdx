@@ -1,4 +1,7 @@
 import {
+  bucketRowSplits,
+  formatBucketBound,
+  formatBucketRange,
   formatHeatmapTick,
   logScaleSplits,
 } from '@/components/DBHeatmapChart/heatmapAxis';
@@ -46,5 +49,65 @@ describe('logScaleSplits', () => {
     expect(splits.map(v => +Math.exp(v).toFixed(3))).toEqual([
       0.3, 0.31, 0.32, 0.33,
     ]);
+  });
+});
+
+describe('formatBucketBound', () => {
+  it('labels the open-ended bucket +Inf', () => {
+    expect(formatBucketBound(Infinity, undefined)).toBe('+Inf');
+  });
+
+  it('keeps the digits that tell adjacent bounds apart', () => {
+    expect(formatBucketBound(0.0025, undefined)).toBe('0.0025');
+    expect(formatBucketBound(2.5, undefined)).toBe('2.5');
+    expect(formatBucketBound(2.5, { output: 'number', mantissa: 1 })).toBe(
+      '2.5',
+    );
+  });
+
+  it('formats durations', () => {
+    expect(formatBucketBound(250, { output: 'number', unit: 'ms' })).toBe(
+      '250ms',
+    );
+  });
+});
+
+describe('formatBucketRange', () => {
+  const format = (bound: number) => formatBucketBound(bound, undefined);
+
+  it('leaves the lowest bucket unbounded below', () => {
+    expect(formatBucketRange([0.1, 1, Infinity], 0, format)).toBe('≤ 0.1');
+    expect(formatBucketRange([-1, 1], 0, format)).toBe('≤ -1');
+  });
+
+  it('spans from the next bound down', () => {
+    expect(formatBucketRange([0.1, 1, Infinity], 1, format)).toBe('0.1 – 1');
+  });
+
+  it('reads the +Inf bucket as everything above the last finite bound', () => {
+    expect(formatBucketRange([0.1, 1, Infinity], 2, format)).toBe('> 1');
+  });
+
+  it('reads a lone +Inf bucket as every observation', () => {
+    expect(formatBucketRange([Infinity], 0, format)).toBe('≤ +Inf');
+  });
+});
+
+describe('bucketRowSplits', () => {
+  it('ticks the top of every row when they fit', () => {
+    expect(bucketRowSplits(4, 200)).toEqual([1, 2, 3, 4]);
+  });
+
+  it('thins ticks to evenly spaced rows that fit the height, keeping the top row', () => {
+    const splits = bucketRowSplits(100, 200);
+    expect(splits.length).toBeLessThan(100);
+    expect(splits.at(-1)).toBe(100);
+    const gaps = new Set(splits.slice(1).map((s, i) => s - splits[i]));
+    expect(gaps.size).toBe(1);
+    expect(bucketRowSplits(100, 400).length).toBeGreaterThan(splits.length);
+  });
+
+  it('keeps the top tick in a very short plot', () => {
+    expect(bucketRowSplits(5, 0)).toEqual([5]);
   });
 });

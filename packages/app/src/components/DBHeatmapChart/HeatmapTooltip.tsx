@@ -8,10 +8,23 @@ import type { HighlightedPoint } from './highlightDataPlugin';
 export type HeatmapTooltipCell =
   | { kind: 'series'; name: string; formattedValue: string }
   | {
+      kind: 'bucket';
+      formattedRange: string;
+      percentile: number | undefined;
+    }
+  | {
       kind: 'distribution';
       formattedY: string;
       percentile: number | undefined;
     };
+
+// Histogram cells hold rate() values, which can be far below 0.001; keep
+// significant digits there without rounding large counts.
+const COUNT_FORMAT = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 3,
+  maximumSignificantDigits: 3,
+  roundingPriority: 'morePrecision',
+});
 
 type HeatmapTooltipProps = {
   point: HighlightedPoint;
@@ -89,18 +102,22 @@ export function HeatmapTooltip({
         ) : (
           <>
             <div>
-              <b>Y Value:</b> {cell.formattedY}
+              {cell.kind === 'bucket' ? (
+                <>
+                  <b>Bucket:</b> {cell.formattedRange}
+                </>
+              ) : (
+                <>
+                  <b>Y Value:</b> {cell.formattedY}
+                </>
+              )}
               {cell.percentile != null &&
                 ` (p${new Intl.NumberFormat('en-US', {
                   maximumFractionDigits: 1,
                 }).format(cell.percentile)})`}
             </div>
             <div>
-              <b>Count Value:</b>{' '}
-              {new Intl.NumberFormat('en-US', {
-                notation: 'standard',
-                compactDisplay: 'short',
-              }).format(point.countVal)}
+              <b>Count Value:</b> {COUNT_FORMAT.format(point.countVal)}
             </div>
           </>
         )}

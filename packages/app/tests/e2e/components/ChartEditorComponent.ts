@@ -75,7 +75,7 @@ export class ChartEditorComponent {
   }
 
   /** Pick the heatmap's mode in its segmented control. */
-  async setHeatmapMode(mode: 'Distribution' | 'Series') {
+  async setHeatmapMode(mode: 'Distribution' | 'Series' | 'Histogram') {
     await this.editorForm()
       .getByTestId('heatmap-mode-control')
       .locator('.mantine-SegmentedControl-label')
@@ -105,8 +105,13 @@ export class ChartEditorComponent {
     return new HeatmapComponent(this.page, this.editorForm());
   }
 
+  /** The error the preview shows in place of the chart. */
+  get previewError(): Locator {
+    return this.editorForm().getByTestId('chart-error-state');
+  }
+
   /** A heatmap mode's (visually hidden) radio, for checking the selection. */
-  heatmapModeOption(mode: 'Distribution' | 'Series'): Locator {
+  heatmapModeOption(mode: 'Distribution' | 'Series' | 'Histogram'): Locator {
     return this.editorForm()
       .getByTestId('heatmap-mode-control')
       .getByRole('radio', { name: mode, exact: true });

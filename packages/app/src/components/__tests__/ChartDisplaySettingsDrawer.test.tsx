@@ -780,6 +780,7 @@ describe('ChartDisplaySettingsDrawer', () => {
 
     it.each([
       ['hidden', 'distribution', false],
+      ['hidden', 'histogram', false],
       ['offered', 'series', true],
     ] as const)(
       'is %s on a PromQL %s heatmap',

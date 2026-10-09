@@ -150,15 +150,10 @@ describe('rowPlotBounds', () => {
     expect(hi).toEqual([Math.log(10), Math.log(1000)]);
   });
 
-  it('draws an open top row as tall as the row below it', () => {
-    const { lo, hi } = rowPlotBounds({
-      type: 'numeric',
-      scale: 'linear',
-      edges: [0, 1, 3, Infinity],
-      openTop: true,
-    });
-    expect(lo).toEqual([0, 1, 3]);
-    expect(hi).toEqual([1, 3, 5]);
+  it('gives each histogram bucket a unit-height band, whatever its bound', () => {
+    expect(
+      rowPlotBounds({ type: 'buckets', bounds: [0.1, 10, Infinity] }),
+    ).toEqual({ lo: [0, 1, 2], hi: [1, 2, 3] });
   });
 
   it('gives each series row a unit-height band', () => {

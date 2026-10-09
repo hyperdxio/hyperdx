@@ -56,12 +56,16 @@ export function heatmapPaths(opts: {
             const bottom = valToPosY(y0s[i], scaleY, yDim, yOff);
             const top = valToPosY(y1s[i], scaleY, yDim, yOff);
 
+            // Snap both edges (not just the origin) so adjacent cells share a
+            // pixel boundary; a fractional size leaves antialiased seams.
+            const x0 = Math.round(left);
+            const y0 = Math.round(bottom);
             rect(
               fillPaths[fills[i]],
-              Math.round(left),
-              Math.round(bottom),
-              right - left,
-              top - bottom,
+              x0,
+              y0,
+              Math.round(right) - x0,
+              Math.round(top) - y0,
             );
           }
         }
