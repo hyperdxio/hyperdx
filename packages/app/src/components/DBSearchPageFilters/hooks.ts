@@ -17,6 +17,7 @@ import {
 import {
   Facet,
   useAllFields,
+  useAllKeyValues,
   useColumns,
   useDateTimeColumns,
   useGetKeyValues,
@@ -191,15 +192,29 @@ function useFacets({
     [chartConfig, dateRange, mode],
   );
 
-  const { data: rawFacets, ...rest } = useGetKeyValues(
+  const isValuesQueryEnabled = !!enabled && !disableValues;
+  const exactKeyValues = useGetKeyValues(
     {
       chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
       keys: escapedKeysToFetch,
-      mode,
     },
-    { enabled: enabled && !disableValues },
+    { enabled: isValuesQueryEnabled && mode === 'exact' },
   );
+  const allKeyValues = useAllKeyValues(
+    {
+      chartConfig: facetsChartConfig,
+      limit: INITIAL_LOAD_LIMIT,
+      keys: escapedKeysToFetch,
+    },
+    { enabled: isValuesQueryEnabled && mode === 'all' },
+  );
+  const {
+    data: rawFacets,
+    error: keyValuesError,
+    isLoading: isKeyValuesLoading,
+    isFetching,
+  } = mode === 'all' ? allKeyValues : exactKeyValues;
 
   // Map the (escaped) result keys back to the original UI keys.
   const facets = useMemo<Facet[] | undefined>(
@@ -288,10 +303,10 @@ function useFacets({
   );
 
   return {
-    ...rest,
-    error: allFieldsError ?? rest.error,
+    error: allFieldsError ?? keyValuesError,
     data: { keys: allFields, keyValues: facets },
-    isLoading: isAllFieldsLoading || rest.isLoading,
+    isLoading: isAllFieldsLoading || isKeyValuesLoading,
+    isFetching,
     loadMoreFacetsForKey,
   };
 }

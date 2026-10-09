@@ -15,6 +15,7 @@ import api from '@/api';
 import {
   deduplicate2dArray,
   intersect2dArray,
+  useAllKeyValues,
   useGetKeyValues,
   useMultipleAllFields,
   useMultipleGetKeyValues,
@@ -273,6 +274,128 @@ describe('useGetKeyValues', () => {
       jest.spyOn(mockMetadata, 'getKeyValuesWithMVs'),
     ).not.toHaveBeenCalled();
     await waitFor(() => expect(result.current.isLoading).toBe(true));
+  });
+});
+
+describe('useAllKeyValues', () => {
+  let wrapper: React.ComponentType<{ children: any }>;
+  let mockMetadata: Metadata;
+
+  const chartConfig = createMockChartConfig({
+    source: 'source1',
+    timestampValueExpression: 'Timestamp',
+    dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+  });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
+    jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
+    jest.spyOn(api, 'useMe').mockReturnValue({
+      data: { team: {} },
+      isLoading: false,
+    } as any);
+    jest.mocked(useSources).mockReturnValue({
+      data: [{ id: 'source1' }],
+      isLoading: false,
+    } as any);
+
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    wrapper = ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  });
+
+  it("shows each query's values before the slowest finishes, in the order of keys", async () => {
+    let releaseSlowQuery: () => void = () => {};
+    const slowQuery = new Promise<void>(resolve => {
+      releaseSlowQuery = resolve;
+    });
+    jest
+      .spyOn(mockMetadata, 'streamAllKeyValues')
+      .mockImplementation(async function* () {
+        yield [{ key: 'SeverityText', value: ['info'] }];
+        await slowQuery;
+        yield [{ key: 'ServiceName', value: ['api'] }];
+      });
+
+    const { result } = renderHook(
+      () =>
+        useAllKeyValues({
+          chartConfig,
+          keys: ['ServiceName', 'SeverityText'],
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() =>
+      expect(result.current.data).toEqual([
+        { key: 'SeverityText', value: ['info'] },
+      ]),
+    );
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isFetching).toBe(true);
+
+    releaseSlowQuery();
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(result.current.data).toEqual([
+      { key: 'ServiceName', value: ['api'] },
+      { key: 'SeverityText', value: ['info'] },
+    ]);
+  });
+
+  it('streams the keys, limit, and table from the chart config', async () => {
+    const streamAllKeyValues = jest
+      .spyOn(mockMetadata, 'streamAllKeyValues')
+      .mockImplementation(async function* () {
+        yield [{ key: 'StatusCode', value: [200, 500] }];
+      });
+
+    const { result } = renderHook(
+      () =>
+        useAllKeyValues({
+          chartConfig,
+          keys: ['StatusCode'],
+          limit: 7,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(streamAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        databaseName: 'telemetry',
+        tableName: 'traces',
+        connectionId: 'foo',
+        keyExpressions: ['StatusCode'],
+        maxValuesPerKey: 7,
+        dateRange: chartConfig.dateRange,
+        timestampValueExpression: 'Timestamp',
+      }),
+    );
+    expect(result.current.data).toEqual([
+      { key: 'StatusCode', value: ['200', '500'] },
+    ]);
+  });
+
+  it('does not stream when disabled', () => {
+    const streamAllKeyValues = jest.spyOn(mockMetadata, 'streamAllKeyValues');
+
+    const { result } = renderHook(
+      () =>
+        useAllKeyValues(
+          { chartConfig, keys: ['ServiceName'] },
+          { enabled: false },
+        ),
+      { wrapper },
+    );
+
+    expect(streamAllKeyValues).not.toHaveBeenCalled();
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.data).toBeUndefined();
   });
 });
 
