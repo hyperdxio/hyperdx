@@ -67,6 +67,12 @@ number that may be absent. Compare against `undefined` rather than using
 Keep a newline or space between `{{/unless}}` and a closing `}` — Handlebars
 reads `}}}` as a triple-stache and fails to compile the template.
 
+The template is Handlebars, not JSON: it only has to be JSON once rendered.
+Write string arguments inside `{{ … }}` with plain or single quotes —
+`{{#if (eq state "ALERT")}}` or `{{#if (eq state 'ALERT')}}` — never JSON-escaped
+as `\"ALERT\"`, which Handlebars cannot parse. The webhook form shows where a
+body fails to compile.
+
 The **Send test** button on the webhook form fills every variable with a sample
 value, so a template that uses them can be checked before an alert fires. The
 sample is a `between` alert, so `{{thresholdMax}}` is populated there — a test
@@ -93,13 +99,13 @@ instead if every group of a grouped alert should collapse into one incident.
 
 Routing by severity and deduping on the alert rather than the firing:
 
-```json
+```
 {
   "alert_id": "{{alertId}}",
   "dedup_key": "{{alertId}}-{{groupKey}}",
   "status": "{{status}}",
   "summary": "{{title}}",
-  "urgency": "{{#if (eq alertType \"dashboard_chart\")}}low{{else}}high{{/if}}",
+  "urgency": "{{#if (eq alertType 'dashboard_chart')}}low{{else}}high{{/if}}",
   "value": {{value}},
   "threshold": {{threshold}},
   "window": { "start": "{{startTimeISO}}", "end": "{{endTimeISO}}" },

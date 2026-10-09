@@ -2,9 +2,14 @@ import {
   clearTemplateCache,
   compileLenient,
   compileStrict,
+  getWebhookTemplateError,
   UnknownTemplateHelperError,
   validateTemplate,
 } from '@/core/handlebarsEnv';
+import {
+  DEFAULT_GENERIC_WEBHOOK_BODY,
+  DEFAULT_INCIDENT_IO_WEBHOOK_BODY,
+} from '@/types';
 
 describe.each([
   ['compileStrict', compileStrict],
@@ -126,5 +131,50 @@ describe('validateTemplate', () => {
   it('does not throw when a referenced variable is absent (non-strict mode)', () => {
     // Strict mode would throw MissingTemplateVariableError here; validate must not.
     expect(() => validateTemplate('{{missing}}')).not.toThrow();
+  });
+});
+
+describe('getWebhookTemplateError', () => {
+  it('accepts a template that is invalid JSON before rendering', () => {
+    const body =
+      '{"status": "{{#if (eq state "ALERT")}}firing{{else}}resolved{{/if}}"}';
+    expect(() => JSON.parse(body)).toThrow();
+    expect(getWebhookTemplateError(body)).toBe(null);
+  });
+
+  it.each([DEFAULT_GENERIC_WEBHOOK_BODY, DEFAULT_INCIDENT_IO_WEBHOOK_BODY])(
+    'accepts the default body %#',
+    body => {
+      expect(getWebhookTemplateError(body)).toBe(null);
+    },
+  );
+
+  it('rejects JSON-escaped quotes inside a helper call', () => {
+    const body =
+      '{"status": "{{#if (eq state \\"ALERT\\")}}firing{{else}}resolved{{/if}}"}';
+    expect(() => JSON.parse(body)).not.toThrow();
+    expect(getWebhookTemplateError(body)).toEqual({
+      message: expect.stringContaining('Parse error on line 1'),
+      line: 1,
+      column: 29,
+    });
+  });
+
+  it('reports the line and column of a parse error on a later line', () => {
+    expect(getWebhookTemplateError('{\n  "a": "{{title}"\n}')).toMatchObject({
+      line: 2,
+      column: 16,
+    });
+  });
+
+  it('reports the location of a mismatched block', () => {
+    expect(getWebhookTemplateError('{{#if x}}{{/each}}')).toMatchObject({
+      message: expect.stringContaining("if doesn't match each"),
+      line: 1,
+    });
+  });
+
+  it.each(['', '   \n', undefined])('accepts an empty body (%p)', body => {
+    expect(getWebhookTemplateError(body)).toBe(null);
   });
 });

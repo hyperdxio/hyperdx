@@ -134,3 +134,61 @@ export const clearTemplateCache = () => {
   strictCache.clear();
   lenientCache.clear();
 };
+
+export type WebhookTemplateError = {
+  message: string;
+  line?: number;
+  column?: number;
+};
+
+const toFiniteNumber = (value: unknown): number | undefined =>
+  typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+
+// Reads a property off a value of unknown shape without a type assertion.
+const read = (value: unknown, key: string): unknown =>
+  value != null && typeof value === 'object'
+    ? Reflect.get(value, key)
+    : undefined;
+
+// Handlebars reports 0-based columns.
+const toLocation = (line: unknown, column: unknown) => {
+  const col = toFiniteNumber(column);
+  return {
+    line: toFiniteNumber(line),
+    column: col == null ? undefined : col + 1,
+  };
+};
+
+/**
+ * Compiles a webhook body template and returns the error, with its line and
+ * column where Handlebars knows them, or null when it compiles. Delivery
+ * renders with stock Handlebars plus an `eq` helper; helpers don't affect
+ * compilation, so stock Handlebars catches the same errors. An empty body
+ * compiles: it falls back to the default template.
+ */
+export function getWebhookTemplateError(
+  template: string | undefined,
+): WebhookTemplateError | null {
+  if (!template?.trim()) return null;
+  try {
+    // compile() is lazy; precompile() parses and compiles up front.
+    Handlebars.precompile(template, { noEscape: true });
+    return null;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    if (read(e, 'lineNumber') != null) {
+      return {
+        message,
+        ...toLocation(read(e, 'lineNumber'), read(e, 'column')),
+      };
+    }
+    // Parse errors carry only the line, in the message. The lexer that just
+    // failed still holds the offending token's position. Parsing is
+    // synchronous, so nothing has run since.
+    const loc = read(read(read(Handlebars, 'Parser'), 'lexer'), 'yylloc');
+    return {
+      message,
+      ...toLocation(read(loc, 'first_line'), read(loc, 'first_column')),
+    };
+  }
+}
