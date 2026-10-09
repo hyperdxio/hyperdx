@@ -1,5 +1,4 @@
 import SqlString from 'sqlstring';
-import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import type { TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Filter,
@@ -20,9 +19,9 @@ export function pickSourceConfigFields(source: TSource) {
     timestampValueExpression: source.timestampValueExpression,
     connection: source.connection,
     from: source.from,
-    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     ...(isLogSource(source) || isTraceSource(source)
       ? {
+          implicitColumnExpression: source.implicitColumnExpression,
           useTextIndexForImplicitColumn: source.useTextIndexForImplicitColumn,
         }
       : {}),

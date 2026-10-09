@@ -3,10 +3,10 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import * as config from '@/config';
 import { createTeam } from '@/controllers/team';
-import { getServer } from '@/fixtures';
+import { getLoggedInAgent, getServer } from '@/fixtures';
 import { buildTile, runConfigTile } from '@/mcp/tools/query/helpers';
 import Connection from '@/models/connection';
-import { NetflowSource } from '@/models/source';
+import { NetflowSource, Source } from '@/models/source';
 import { runSearchConfig } from '@/routers/external-api/v2/utils/search';
 
 describe('NetFlow bare-term search through MCP and REST query paths', () => {
@@ -57,6 +57,59 @@ describe('NetFlow bare-term search through MCP and REST query paths', () => {
     await ch.close();
     await server.stop();
   });
+
+  it.each([SourceKind.Log, SourceKind.Trace, SourceKind.Netflow])(
+    'REST chart series resolves bare Lucene terms for %s',
+    async kind => {
+      const { agent, team, user } = await getLoggedInAgent(server);
+      const connection = await Connection.create({
+        team: team._id,
+        name: 'Chart ClickHouse',
+        host: config.CLICKHOUSE_HOST,
+        username: config.CLICKHOUSE_USER,
+        password: config.CLICKHOUSE_PASSWORD,
+      });
+      const source = await Source.create({
+        kind,
+        team: team._id,
+        connection: connection.id,
+        name: 'Chart source',
+        from: { databaseName: 'default', tableName: 'netflow_search_test' },
+        timestampValueExpression: 'timestamp',
+        defaultTableSelectExpression: 'router, bytes',
+        implicitColumnExpression:
+          kind === SourceKind.Netflow ? undefined : 'router',
+        srcAddrExpression: 'client',
+        dstAddrExpression: 'server',
+        srcPortExpression: 'src_port',
+        dstPortExpression: 'dst_port',
+        protocolExpression: 'protocol',
+        exporterExpression: 'router',
+        bytesExpression: 'bytes',
+        packetsExpression: 'packets',
+      });
+      const response = await agent
+        .post('/api/v2/charts/series')
+        .set('Authorization', `Bearer ${user.accessKey}`)
+        .send({
+          startTime: startDate.getTime(),
+          endTime: endDate.getTime(),
+          series: [
+            {
+              sourceId: source.id,
+              dataSource: 'events',
+              aggFn: 'count',
+              where: 'west AND bytes:[1000 TO *]',
+              whereLanguage: 'lucene',
+              groupBy: [],
+            },
+          ],
+        })
+        .expect(200);
+      expect(response.body.data).toHaveLength(1);
+      expect(Number(response.body.data[0]['series_0.data'])).toBe(1);
+    },
+  );
 
   it.each([
     {

@@ -1,4 +1,4 @@
-import { KeyboardEventHandler, ReactElement, useState } from 'react';
+import { KeyboardEventHandler, memo, ReactElement, useState } from 'react';
 import { Button, Menu } from '@mantine/core';
 
 import { NETFLOW_DIMENSION_LABELS, NetflowFilterField } from '@/netflow';
@@ -13,6 +13,9 @@ type TargetProps = {
   opened: boolean;
   buttonProps: {
     'aria-label': string;
+    'aria-haspopup'?: 'menu';
+    'aria-expanded'?: boolean;
+    onClick: () => void;
     onKeyDown: KeyboardEventHandler;
     role?: 'button';
     tabIndex?: number;
@@ -27,8 +30,9 @@ type Props = {
   | { label: string; onSelect?: (excluded: boolean) => void }
 );
 
-export default function NetflowFilterMenu(props: Props) {
+export default memo(function NetflowFilterMenu(props: Props) {
   const [opened, setOpened] = useState(false);
+  const [activated, setActivated] = useState(false);
   const { value, allowEmpty = false, target } = props;
   const label =
     'field' in props ? NETFLOW_DIMENSION_LABELS[props.field] : props.label;
@@ -41,11 +45,20 @@ export default function NetflowFilterMenu(props: Props) {
   const displayValue = value || (allowEmpty ? '(empty)' : '—');
   const buttonProps: TargetProps['buttonProps'] = {
     'aria-label': `Filter ${label}: ${displayValue}`,
+    'aria-haspopup': interactive ? 'menu' : undefined,
+    'aria-expanded': interactive ? opened : undefined,
+    onClick: () => {
+      if (interactive && !activated) {
+        setActivated(true);
+        setOpened(true);
+      }
+    },
     role: interactive ? 'button' : undefined,
     tabIndex: interactive ? 0 : undefined,
     onKeyDown: event => {
       if (interactive && (event.key === 'Enter' || event.key === ' ')) {
         event.preventDefault();
+        setActivated(true);
         setOpened(true);
       }
     },
@@ -56,6 +69,8 @@ export default function NetflowFilterMenu(props: Props) {
     </Button>
   );
   if (!interactive) return target ? renderedTarget : <>{displayValue}</>;
+  // Flow tables can have thousands of filter cells; create a popover only when used.
+  if (!activated) return renderedTarget;
   return (
     <Menu
       opened={opened}
@@ -70,4 +85,4 @@ export default function NetflowFilterMenu(props: Props) {
       </Menu.Dropdown>
     </Menu>
   );
-}
+});

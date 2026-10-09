@@ -18,7 +18,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { IconNetwork, IconPlayerPlay, IconRefresh } from '@tabler/icons-react';
+import { IconPlayerPlay, IconRefresh } from '@tabler/icons-react';
 
 import EmptyState from '@/components/EmptyState';
 import { TextInputControlled } from '@/components/InputControlled';
@@ -26,7 +26,9 @@ import NetflowCharts from '@/components/NetflowCharts';
 import NetflowFilterPills, {
   useNetflowFilterState,
 } from '@/components/NetflowFilterPills';
-import NetflowSourceModal from '@/components/NetflowSourceModal';
+import NetflowSourceModal, {
+  NetflowSourceEmptyState,
+} from '@/components/NetflowSourceModal';
 import { PageLayout } from '@/components/PageLayout';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { SourceSelectControlled } from '@/components/SourceSelect';
@@ -66,13 +68,24 @@ function NetflowPage() {
   const { control, handleSubmit, reset } = useForm({
     values: { ...formParams, source: source?.id ?? '' },
   });
+  const clearFilters = (id = source?.id ?? '') => {
+    const cleared = {
+      source: id,
+      where: '',
+      whereLanguage: params.whereLanguage,
+      exporter: '',
+      protocol: '',
+      srcAddr: '',
+      dstAddr: '',
+    };
+    reset(cleared);
+    void setParams({ ...cleared, filters: [] });
+  };
   const selectedSource = useWatch({ control, name: 'source' });
   const syncSource = useEffectEvent((id: string) => {
     if (id && id !== params.source) {
-      void setParams({
-        source: id,
-        ...(id !== source?.id ? { filters: [] } : {}),
-      });
+      if (id !== source?.id) clearFilters(id);
+      else void setParams({ source: id });
     }
   });
   useEffect(() => {
@@ -103,7 +116,12 @@ function NetflowPage() {
         ? buildNetflowQueryConfigs({
             source,
             dateRange: searchedTimeRange,
-            filters: params,
+            filters: {
+              exporter: params.exporter,
+              protocol: params.protocol,
+              srcAddr: params.srcAddr,
+              dstAddr: params.dstAddr,
+            },
             where: params.where,
             whereLanguage: params.whereLanguage,
             extraFilters: params.filters,
@@ -126,7 +144,7 @@ function NetflowPage() {
         sourceId={source?.id}
         onClose={() => setSourceModal(null)}
         onCreate={created => {
-          void setParams({ source: created.id, filters: [] });
+          clearFilters(created.id);
           setSourceModal(null);
         }}
       />
@@ -212,26 +230,16 @@ function NetflowPage() {
                     }
                   />
                 ))}
-                <Button
-                  variant="secondary"
-                  onClick={() => {
-                    const cleared = {
-                      source: source?.id ?? '',
-                      where: '',
-                      whereLanguage: params.whereLanguage,
-                      exporter: '',
-                      protocol: '',
-                      srcAddr: '',
-                      dstAddr: '',
-                    };
-                    reset(cleared);
-                    void setParams({ ...cleared, filters: [] });
-                  }}
-                >
+                <Button variant="secondary" onClick={() => clearFilters()}>
                   Clear filters
                 </Button>
               </Group>
-              <NetflowFilterPills {...clickFilters} />
+              {configs && (
+                <NetflowFilterPills
+                  {...clickFilters}
+                  chartConfig={configs.totalBytes}
+                />
+              )}
               <Text size="xs" c="dimmed">
                 Explore traffic, top talkers, and recent flows. Rates average
                 over the selected time range; counters account for sampling.
@@ -263,27 +271,10 @@ function NetflowPage() {
                   onTimeRangeSelect={onTimeRangeSelect}
                 />
               ) : (
-                <EmptyState
-                  icon={<IconNetwork size={32} />}
-                  title={
-                    params.source
-                      ? 'NetFlow source unavailable'
-                      : 'No NetFlow sources configured'
-                  }
-                  description={
-                    params.source
-                      ? 'Select an available NetFlow source and run the query, or add a new source.'
-                      : 'Connect your Akvorado or NetFlow table in ClickHouse to monitor network traffic.'
-                  }
-                  variant="card"
-                >
-                  <Button
-                    variant="primary"
-                    onClick={() => setSourceModal('new')}
-                  >
-                    Add NetFlow source
-                  </Button>
-                </EmptyState>
+                <NetflowSourceEmptyState
+                  selected={!!params.source}
+                  onCreate={() => setSourceModal('new')}
+                />
               )}
             </Stack>
           }

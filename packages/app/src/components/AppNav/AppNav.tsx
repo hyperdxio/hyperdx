@@ -112,6 +112,7 @@ const NAV_LINKS: NavLinkConfig[] = [
     label: 'NetFlow',
     href: '/netflow',
     icon: <IconNetwork size={16} />,
+    isBeta: true,
   },
 ];
 

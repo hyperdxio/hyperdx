@@ -165,7 +165,9 @@ export const mcpSaveSourceSchema = z.object({
   samplingRateExpression: z
     .string()
     .optional()
-    .describe('NetFlow sampling multiplier. Omit for already scaled counters.'),
+    .describe(
+      'NetFlow sampling multiplier. Omit for unsampled or already scaled counters. Omitted mappings and null or non-positive row values use a multiplier of one.',
+    ),
   exporterExpression: z.string().optional(),
   inIfExpression: z.string().optional(),
   outIfExpression: z.string().optional(),

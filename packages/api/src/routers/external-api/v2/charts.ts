@@ -299,9 +299,7 @@ const buildChartConfigFromRequest = async (
     ],
     where: '',
     timestampValueExpression: source.timestampValueExpression,
-    ...(source.kind === SourceKind.Netflow && {
-      implicitColumnExpression: getSourceImplicitColumnExpression(source),
-    }),
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     ...pickSampleWeightExpressionProps(source),
     dateRange: [new Date(params.startTime), new Date(params.endTime)] as [
       Date,

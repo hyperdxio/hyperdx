@@ -184,21 +184,22 @@ export function TableSourceForm({
 
   useEffect(() => {
     let cancelled = false;
+    // Reconnecting a saved source to a replica must preserve its custom mappings.
+    const shouldInfer =
+      watchedTableName !== prevTableNameRef.current ||
+      watchedKind !== prevKindRef.current ||
+      (isNew &&
+        (watchedConnection !== prevConnectionRef.current ||
+          watchedDatabaseName !== prevDatabaseNameRef.current ||
+          metadata !== prevMetadataRef.current));
+    prevTableNameRef.current = watchedTableName;
+    prevKindRef.current = watchedKind;
+    prevConnectionRef.current = watchedConnection;
+    prevDatabaseNameRef.current = watchedDatabaseName;
+    prevMetadataRef.current = metadata;
     (async () => {
       try {
-        if (
-          watchedTableName !== prevTableNameRef.current ||
-          watchedKind !== prevKindRef.current ||
-          watchedConnection !== prevConnectionRef.current ||
-          watchedDatabaseName !== prevDatabaseNameRef.current ||
-          metadata !== prevMetadataRef.current
-        ) {
-          prevTableNameRef.current = watchedTableName;
-          prevKindRef.current = watchedKind;
-          prevConnectionRef.current = watchedConnection;
-          prevDatabaseNameRef.current = watchedDatabaseName;
-          prevMetadataRef.current = metadata;
-
+        if (shouldInfer) {
           if (isPrometheusOnlyConnection) {
             return;
           }
@@ -256,6 +257,7 @@ export function TableSourceForm({
     setValue,
     getFieldState,
     isPrometheusOnlyConnection,
+    isNew,
   ]);
 
   // Sets the default connection field to the first connection after the

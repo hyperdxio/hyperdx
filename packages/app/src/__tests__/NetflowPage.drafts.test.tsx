@@ -26,11 +26,17 @@ const mockSource: TNetflowSource = {
   protocolExpression: 'Proto',
   exporterExpression: 'ExporterName',
 };
+const mockOtherSource = {
+  ...mockSource,
+  id: 'other',
+  name: 'Other flows',
+  protocolExpression: 'IPProtocol',
+};
 const mockRange = [
   new Date('2026-10-09T12:00:00Z'),
   new Date('2026-10-09T13:00:00Z'),
 ];
-const mockInitialParams = {
+let mockInitialParams = {
   source: 'flows',
   where: 'Proto:6',
   whereLanguage: 'lucene',
@@ -63,7 +69,9 @@ jest.mock('nuqs', () => ({
     ];
   },
 }));
-jest.mock('@/source', () => ({ useSources: () => ({ data: [mockSource] }) }));
+jest.mock('@/source', () => ({
+  useSources: () => ({ data: [mockSource, mockOtherSource] }),
+}));
 jest.mock('@/layout', () => ({
   withAppNavForSurface: () => (page: unknown) => page,
 }));
@@ -76,9 +84,16 @@ jest.mock('@/netflow', () => ({
 }));
 jest.mock('@/components/NetflowCharts', () => () => null);
 jest.mock('@/components/NetflowSourceModal', () => () => null);
-jest.mock('@/components/SourceSelect', () => ({
-  SourceSelectControlled: () => null,
-}));
+jest.mock('@/components/SourceSelect', () => {
+  const Input = jest.requireActual(
+    '@/components/InputControlled',
+  ).TextInputControlled;
+  return {
+    SourceSelectControlled: ({ control }: { control: unknown }) => (
+      <Input control={control} name="source" label="Source" />
+    ),
+  };
+});
 jest.mock('@/components/TimePicker', () => ({ TimePicker: () => null }));
 jest.mock('@/hooks/useDashboardRefresh', () => ({
   useDashboardRefresh: () => ({ refresh: jest.fn() }),
@@ -112,6 +127,86 @@ jest.mock('@/components/SearchInput/SearchWhereInput', () => {
 });
 
 describe('NetFlow draft search fields', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockInitialParams = {
+      source: 'flows',
+      where: 'Proto:6',
+      whereLanguage: 'lucene',
+      filters: [],
+      exporter: '',
+      protocol: '',
+      srcAddr: '',
+      dstAddr: '',
+    };
+  });
+
+  it('clears applied search, quick filters and unsubmitted drafts when switching sources', async () => {
+    mockInitialParams = {
+      ...mockInitialParams,
+      exporter: 'edge',
+      protocol: '6',
+      srcAddr: '192.0.2.1',
+      dstAddr: '192.0.2.2',
+    };
+    renderWithMantine(<NetflowPage />);
+    const query = await screen.findByLabelText('Query');
+    act(() =>
+      mockFilterChange([{ type: 'sql', condition: "ExporterName = 'edge'" }]),
+    );
+    fireEvent.change(query, { target: { value: 'MissingOldColumn:443' } });
+    fireEvent.change(screen.getByLabelText('Protocol'), {
+      target: { value: '17' },
+    });
+    fireEvent.change(screen.getByLabelText('Source'), {
+      target: { value: 'other' },
+    });
+    await waitFor(() =>
+      expect(
+        jest.mocked(buildNetflowQueryConfigs).mock.lastCall?.[0],
+      ).toMatchObject({
+        source: mockOtherSource,
+        where: '',
+        extraFilters: [],
+        filters: { exporter: '', protocol: '', srcAddr: '', dstAddr: '' },
+      }),
+    );
+    for (const label of [
+      'Query',
+      'Exporter',
+      'Protocol',
+      'Source IP',
+      'Destination IP',
+    ]) {
+      expect(screen.getByLabelText(label)).toHaveValue('');
+    }
+    expect(
+      Object.keys(
+        jest.mocked(buildNetflowQueryConfigs).mock.lastCall?.[0].filters ?? {},
+      ).sort(),
+    ).toEqual(['dstAddr', 'exporter', 'protocol', 'srcAddr']);
+  });
+
+  it('preserves applied filters while canonicalizing a source name to its ID', async () => {
+    mockInitialParams = {
+      ...mockInitialParams,
+      source: 'Flows',
+      protocol: '6',
+    };
+    renderWithMantine(<NetflowPage />);
+    await screen.findByLabelText('Query');
+    await waitFor(() =>
+      expect(screen.getByLabelText('Source')).toHaveValue('flows'),
+    );
+    expect(
+      jest.mocked(buildNetflowQueryConfigs).mock.lastCall?.[0],
+    ).toMatchObject({
+      source: mockSource,
+      where: 'Proto:6',
+      filters: { protocol: '6' },
+    });
+  });
+
   it('preserves drafts until Run when clicks or migrations update filters', async () => {
     renderWithMantine(<NetflowPage />);
     const query = await screen.findByLabelText('Query');

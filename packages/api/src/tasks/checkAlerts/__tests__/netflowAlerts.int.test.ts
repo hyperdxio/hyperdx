@@ -101,9 +101,30 @@ describe('NetFlow saved-search alerts', () => {
       whereLanguage: 'lucene' as const,
       implicitColumnExpression: "concat('customflow ', toString(SrcAddr))",
     },
+    {
+      name: 'no matching flows',
+      savedSelect: undefined,
+      where: 'traffic:[999999 TO *]',
+      whereLanguage: 'lucene' as const,
+      noMatch: true,
+    },
+    {
+      name: 'grouped flow alerts',
+      savedSelect: undefined,
+      where: 'traffic:[1000 TO *]',
+      whereLanguage: 'lucene' as const,
+      groupBy: 'SrcAddr',
+    },
   ])(
     'evaluates and delivers $name with aliased samples',
-    async ({ savedSelect, where, whereLanguage, implicitColumnExpression }) => {
+    async ({
+      savedSelect,
+      where,
+      whereLanguage,
+      implicitColumnExpression,
+      noMatch,
+      groupBy,
+    }) => {
       const postMessage = jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValue({ text: 'ok' });
@@ -159,7 +180,8 @@ describe('NetFlow saved-search alerts', () => {
           channel: { type: 'webhook', webhookId: webhook.id },
           interval: '5m',
           thresholdType: AlertThresholdType.ABOVE,
-          threshold: 2,
+          threshold: groupBy ? 1 : 2,
+          groupBy,
         },
         new mongoose.Types.ObjectId(),
       );
@@ -190,7 +212,9 @@ describe('NetFlow saved-search alerts', () => {
       const alertProvider = await loadProvider();
       const metadata = getMetadata(clickhouseClient);
       const teamWebhooksById = new Map([[webhook.id, webhook]]);
-      const expectedSamples = '"2001:db8::1",2000\n"2001:db8::2",3000\n';
+      const expectedSamples = noMatch
+        ? ''
+        : '"2001:db8::1",2000\n"2001:db8::2",3000\n';
       expect(
         await fetchSampleLines({
           clickhouseClient,
@@ -218,18 +242,20 @@ describe('NetFlow saved-search alerts', () => {
       );
 
       expect(await Alert.findById(alert.id).lean()).toMatchObject({
-        state: AlertState.ALERT,
+        state: noMatch ? AlertState.OK : AlertState.ALERT,
         executionErrors: [],
       });
       const histories = await AlertHistory.find({ alert: alert.id }).lean();
-      expect(histories).toHaveLength(1);
-      expect(histories[0]).toMatchObject({
-        state: AlertState.ALERT,
-        lastValues: [{ count: 2 }],
-      });
-      expect(postMessage).toHaveBeenCalledTimes(1);
+      expect(histories).toHaveLength(groupBy ? 2 : 1);
+      for (const history of histories)
+        expect(history).toMatchObject({
+          state: noMatch ? AlertState.OK : AlertState.ALERT,
+          lastValues: [{ count: noMatch ? 0 : groupBy ? 1 : 2 }],
+        });
+      expect(postMessage).toHaveBeenCalledTimes(noMatch ? 0 : groupBy ? 2 : 1);
+      if (noMatch) return;
       expect(JSON.stringify(postMessage.mock.calls[0][1])).toContain(
-        '2 lines found',
+        `${groupBy ? 1 : 2} lines found`,
       );
       expect(JSON.stringify(postMessage.mock.calls[0][1])).toContain(
         '2001:db8::1',

@@ -1,6 +1,31 @@
 import { expect, test } from '../../fixtures/netflow';
+import { expectFiltersParam } from '../../utils/filters-param';
 
 test.use({ viewport: { width: 1600, height: 1050 } });
+
+test('NetFlow URL range filters remain visible and removable after reload', async ({
+  page,
+  netflow,
+}) => {
+  const params = new URLSearchParams({
+    source: netflow.source.id,
+    filters: encodeURIComponent(
+      JSON.stringify([
+        { type: 'sql', condition: 'Bytes BETWEEN 0 AND 2000000' },
+      ]),
+    ),
+  });
+  await page.goto(`/netflow?${params}`);
+  const rows = page.getByTestId('netflow-records').locator('tbody tr');
+  await expect(rows).toHaveCount(300);
+  await page.reload();
+  const range = page.getByTestId('active-filter-pill-Bytes');
+  await expect(range).toContainText('0 – 2000000');
+  await range.getByRole('button', { name: 'Remove filter' }).click();
+  await expect(range).toHaveCount(0);
+  await expectFiltersParam(page, []);
+  await expect(rows).toHaveCount(500);
+});
 
 test('NetFlow searches, drafts, click filters and sampled details survive reload', async ({
   page,
@@ -89,6 +114,14 @@ test('NetFlow source selection applies immediately and clears incompatible filte
   await page.goto(`/netflow?source=${netflow.source.id}`);
   const records = page.getByTestId('netflow-records');
   await expect(records.locator('tbody tr')).toHaveCount(500);
+  const search = page.getByTestId('netflow-search');
+  const protocol = page.getByLabel('Protocol', { exact: true });
+  await search.fill('Proto:6');
+  await protocol.fill('6');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get('where'))
+    .toBe('Proto:6');
   await records
     .getByRole('button', { name: 'Filter Protocol: TCP', exact: true })
     .first()
@@ -96,6 +129,8 @@ test('NetFlow source selection applies immediately and clears incompatible filte
   await page.getByRole('menuitem', { name: 'Include', exact: true }).click();
   const pills = page.getByTestId('netflow-filter-pills');
   await expect(pills).toContainText('Protocol = TCP');
+  await search.fill('Proto:17');
+  await protocol.fill('17');
   await page
     .getByRole('combobox', { name: 'NetFlow source', exact: true })
     .click();
@@ -108,6 +143,13 @@ test('NetFlow source selection applies immediately and clears incompatible filte
   await expect(
     pills.getByRole('button', { name: 'Remove filter' }),
   ).toHaveCount(0);
+  await expect(search).toHaveValue('');
+  await expect(protocol).toHaveValue('');
+  for (const name of ['where', 'exporter', 'protocol', 'srcAddr', 'dstAddr']) {
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get(name) || '')
+      .toBe('');
+  }
   await page
     .getByRole('button', { name: 'Source actions', exact: true })
     .click();

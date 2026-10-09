@@ -1,9 +1,29 @@
+import { ReactNode } from 'react';
 import { SourceKind, TNetflowSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { screen } from '@testing-library/react';
 
 import NetflowSankey from '@/components/NetflowSankey';
+import NetflowSankeyChart from '@/components/NetflowSankeyChart';
 import { buildNetflowQueryConfigs } from '@/netflow';
+import { buildNetflowSankeyData } from '@/netflowSankey';
+
+let mockRender: 'node' | 'link' = 'node';
+let mockIndex = 99;
+jest.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }: { children: ReactNode }) => children,
+  Sankey: ({
+    node,
+    link,
+  }: {
+    node: (props: { index: number }) => ReactNode;
+    link: (props: { index: number }) => ReactNode;
+  }) => (
+    <svg data-testid="mock-sankey">
+      {(mockRender === 'node' ? node : link)({ index: mockIndex })}
+    </svg>
+  ),
+}));
 
 let mockColumns = [{ name: 'SrcAS', type: 'UInt32' }];
 jest.mock('@/hooks/useMetadata', () => ({
@@ -38,6 +58,40 @@ const source: TNetflowSource = {
   protocolExpression: 'Proto',
   exporterExpression: 'Exporter',
 };
+
+it.each(['node', 'link', 'source', 'target'] as const)(
+  'ignores an out-of-bounds Sankey %s during a data transition',
+  missing => {
+    const dimensions = [
+      { key: 'src', label: 'Source', expression: 'SrcAddr' },
+      { key: 'dst', label: 'Destination', expression: 'DstAddr' },
+    ];
+    const data = buildNetflowSankeyData(
+      [
+        {
+          __netflow_dimension_0: 'a',
+          __netflow_dimension_1: 'b',
+          __netflow_value: 100,
+        },
+      ],
+      dimensions,
+    );
+    mockRender = missing === 'node' ? 'node' : 'link';
+    mockIndex = missing === 'node' || missing === 'link' ? 99 : 0;
+    if (missing === 'source' || missing === 'target')
+      data.links[0][missing] = 99;
+    renderWithMantine(
+      <NetflowSankeyChart
+        data={data}
+        dimensions={dimensions}
+        rangeSeconds={60}
+      />,
+    );
+    expect(
+      screen.getByTestId('mock-sankey').querySelector('rect, path'),
+    ).toBeNull();
+  },
+);
 
 it('falls back to available dimensions when the selected column disappears on a source switch', () => {
   const baseConfig = buildNetflowQueryConfigs({

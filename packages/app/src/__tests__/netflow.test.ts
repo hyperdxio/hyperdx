@@ -9,7 +9,6 @@ import { buildAlertChartConfig } from '@/components/alerts/AlertDetailChart';
 import { convertFormStateToChartConfig } from '@/components/ChartEditor/utils';
 import { buildReleaseChartConfig } from '@/hooks/useReleaseAnnotations';
 import { buildNetflowQueryConfigs, buildNetflowWhere } from '@/netflow';
-import { pickSourceConfigFields } from '@/ServicesDashboardPage/helpers';
 
 const source: TNetflowSource = {
   id: 'flows',
@@ -90,17 +89,24 @@ describe('NetFlow queries', () => {
       dateRange,
       filters: {},
     });
+    expect(configs.flows.select).toContainEqual({
+      valueExpression: 'if((SamplingRate) > 0, (SamplingRate), 1)',
+      alias: '__netflow_samplingRate',
+    });
     expect(configs.summary.select).toEqual([
       {
-        valueExpression: 'sum(toFloat64(Bytes) * (SamplingRate)) * 8 / 3600',
+        valueExpression:
+          'sum(toFloat64(Bytes) * (if((SamplingRate) > 0, (SamplingRate), 1))) * 8 / 3600',
         alias: '__netflow_bitsPerSecond',
       },
       {
-        valueExpression: 'sum(toFloat64(Packets) * (SamplingRate)) / 3600',
+        valueExpression:
+          'sum(toFloat64(Packets) * (if((SamplingRate) > 0, (SamplingRate), 1))) / 3600',
         alias: '__netflow_packetsPerSecond',
       },
       {
-        valueExpression: 'sum(toFloat64(Bytes) * (SamplingRate))',
+        valueExpression:
+          'sum(toFloat64(Bytes) * (if((SamplingRate) > 0, (SamplingRate), 1)))',
         alias: '__netflow_bytes',
       },
       { valueExpression: 'count()', alias: '__netflow_flowRecords' },
@@ -108,7 +114,7 @@ describe('NetFlow queries', () => {
     expect(configs.traffic.select).toEqual([
       {
         valueExpression: expect.stringContaining(
-          'sum(toFloat64(Bytes) * (SamplingRate)) * 8 /',
+          'sum(toFloat64(Bytes) * (if((SamplingRate) > 0, (SamplingRate), 1))) * 8 /',
         ),
         alias: 'Bits per second',
       },
@@ -225,12 +231,6 @@ describe.each([undefined, 'SearchText'])(
     const select = [{ valueExpression: 'sum(Bytes)' }];
     const expected =
       implicitColumnExpression ?? expect.stringContaining('toString(SrcAddr)');
-
-    it('carries the search mapping through generic source field projection', () => {
-      expect(pickSourceConfigFields(selectedSource)).toMatchObject({
-        implicitColumnExpression: expected,
-      });
-    });
 
     it.each(['sql', 'builder'] as const)(
       'carries the search mapping into %s chart editor previews',

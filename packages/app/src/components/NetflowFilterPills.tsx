@@ -5,8 +5,11 @@ import {
   isRenderablePinnedFilter,
   parseQuery,
 } from '@hyperdx/common-utils/dist/filters';
-import { Filter, TNetflowSource } from '@hyperdx/common-utils/dist/types';
-import { Group } from '@mantine/core';
+import {
+  BuilderChartConfigWithDateRange,
+  Filter,
+  TNetflowSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import { getNetflowDimensions, NETFLOW_DIMENSION_LABELS } from '@/netflow';
 import {
@@ -17,11 +20,8 @@ import {
 import { useSearchPageFilterState } from '@/searchFilters';
 
 import { cleanClickHouseExpression } from './DBSearchPageFilters/utils';
-import { FilterPill } from './FilterPill';
+import { ActiveFilterPills } from './ActiveFilterPills';
 import { NetflowFilterHandler } from './NetflowFilterMenu';
-
-// Filter keys are complete SQL expressions; restore their original quoting at emission.
-const knownColumns = new Set<string>();
 
 // Table and Sankey filters can wrap the same mapped field in different SQL expressions.
 function canonicalizeMappedFilters(
@@ -65,6 +65,8 @@ export function useNetflowFilterState({
   filters: Filter[];
   onChange: (filters: Filter[]) => void;
 }) {
+  // Keys are SQL expressions, not physical columns; restore their quoting at emission.
+  const knownColumns = useMemo(() => new Set<string>(), []);
   const dimensions = useMemo(
     () => (source ? getNetflowDimensions(source) : undefined),
     [source],
@@ -189,31 +191,21 @@ export function useNetflowFilterState({
 export default function NetflowFilterPills({
   state,
   fieldLabels,
-}: Pick<ReturnType<typeof useNetflowFilterState>, 'state' | 'fieldLabels'>) {
+  chartConfig,
+}: Pick<ReturnType<typeof useNetflowFilterState>, 'state' | 'fieldLabels'> & {
+  chartConfig: BuilderChartConfigWithDateRange;
+}) {
   return (
-    <Group gap="xs" data-testid="netflow-filter-pills">
-      {Object.entries(state.filters).flatMap(([field, values]) =>
-        (['included', 'excluded'] as const).flatMap(polarity =>
-          Array.from(values[polarity]).map(value => (
-            <FilterPill
-              key={`${field}:${polarity}:${value}`}
-              field={
-                fieldLabels[field] ?? unwrapSankeyDimensionExpression(field)
-              }
-              value={String(value)}
-              operator={polarity === 'excluded' ? '!=' : '='}
-              isExcluded={polarity === 'excluded'}
-              onRemove={() =>
-                state.setFilterValue(
-                  field,
-                  value,
-                  polarity === 'excluded' ? 'exclude' : 'include',
-                )
-              }
-            />
-          )),
-        ),
-      )}
-    </Group>
+    <ActiveFilterPills
+      searchFilters={state}
+      chartConfig={chartConfig}
+      enableValueEditing={false}
+      fieldLabel={field =>
+        fieldLabels[field] ?? unwrapSankeyDimensionExpression(field)
+      }
+      px={0}
+      gap="xs"
+      data-testid="netflow-filter-pills"
+    />
   );
 }

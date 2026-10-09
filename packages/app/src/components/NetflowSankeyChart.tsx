@@ -77,6 +77,7 @@ export default function NetflowSankeyChart({
               }}
               node={props => {
                 const node = data.nodes[props.index];
+                if (!node) return <g />;
                 return (
                   <NetflowSankeyNode
                     {...props}
@@ -89,8 +90,10 @@ export default function NetflowSankeyChart({
               }}
               link={props => {
                 const link = data.links[props.index];
+                if (!link) return <g />;
                 const source = data.nodes[link.source];
                 const target = data.nodes[link.target];
+                if (!source || !target) return <g />;
                 return (
                   <Tooltip
                     multiline

@@ -1,3 +1,4 @@
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { filtersToQuery, parseQuery } from '@hyperdx/common-utils/dist/filters';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
@@ -13,10 +14,22 @@ import {
 } from '../../../../src/netflowSankey';
 import { expect, test } from '../../fixtures/netflow';
 
+const queryRunner =
+  (client: ClickhouseClient) =>
+  async (config: BuilderChartConfigWithDateRange) =>
+    (
+      await client.queryChartConfig({
+        config,
+        metadata: getMetadata(client),
+        querySettings: undefined,
+      })
+    ).data;
+
 test('steady traffic keeps its rate in partial first and last buckets', async ({
   netflow,
 }) => {
   const { client, database, source } = netflow;
+  const run = queryRunner(client);
   const start = Date.parse('2026-10-09T12:00:00Z');
   const view = await client.query({
     query: `CREATE VIEW ${database}.steady AS
@@ -32,38 +45,22 @@ test('steady traffic keeps its rate in partial first and last buckets', async ({
     dateRange: [new Date(start + 30000), new Date(start + 3620000)],
     filters: {},
   });
-  const result = await client.queryChartConfig({
-    config: configs.traffic,
-    metadata: getMetadata(client),
-    querySettings: undefined,
-  });
-  expect(result.data).toHaveLength(61);
+  const result = await run(configs.traffic);
+  expect(result).toHaveLength(61);
   // 125 raw bytes/second * sampling 100 * 8. Both edge buckets have less than a minute of data.
-  expect(result.data.map(row => Number(row['Bits per second']))).toEqual(
+  expect(result.map(row => Number(row['Bits per second']))).toEqual(
     Array(61).fill(100000),
   );
-  const summary = await client.queryChartConfig({
-    config: configs.summary,
-    metadata: getMetadata(client),
-    querySettings: undefined,
-  });
-  expect(Number(summary.data[0].__netflow_flowRecords)).toBe(3590);
-  expect(Number(summary.data[0].__netflow_bytes)).toBe(3590 * 125 * 100);
+  const summary = await run(configs.summary);
+  expect(Number(summary[0].__netflow_flowRecords)).toBe(3590);
+  expect(Number(summary[0].__netflow_bytes)).toBe(3590 * 125 * 100);
 });
 
 test('NetFlow queries preserve sampled totals, raw records, aliases and Lucene semantics', async ({
   netflow,
 }) => {
   const { client, source, dateRange, database } = netflow;
-  const metadata = getMetadata(client);
-  const run = async (config: BuilderChartConfigWithDateRange) =>
-    (
-      await client.queryChartConfig({
-        config,
-        metadata,
-        querySettings: undefined,
-      })
-    ).data;
+  const run = queryRunner(client);
   const direct = async (where = '1') =>
     (
       await (
@@ -159,10 +156,11 @@ test('NetFlow handles lowercase counter aliases and custom timestamp and exporte
   netflow,
 }) => {
   const { client, source, dateRange, database } = netflow;
+  const run = queryRunner(client);
   const view = await client.query({
     query: `CREATE VIEW ${database}.lowercase AS SELECT
     TimeReceived AS timestamp, Bytes AS bytes, Packets AS packets,
-    SamplingRate AS sampling, Proto AS protocol, ExporterName AS "router-name",
+    [NULL, -1, 0, 1, 100][toUnixTimestamp(TimeReceived) % 5 + 1] AS sampling, Proto AS protocol, ExporterName AS "router-name",
     SrcAddr AS srcAddr, DstAddr AS dstAddr, SrcPort AS srcPort, DstPort AS dstPort,
     InIfName AS inputInterface, OutIfName AS outputInterface FROM ${database}.flows`,
   });
@@ -193,24 +191,40 @@ test('NetFlow handles lowercase counter aliases and custom timestamp and exporte
   for (const config of Object.values(configs).filter(
     config => config != null,
   )) {
-    const { data } = await client.queryChartConfig({
-      config,
-      metadata: getMetadata(client),
-      querySettings: undefined,
-    });
-    expect(data.length).toBeGreaterThan(0);
+    expect((await run(config)).length).toBeGreaterThan(0);
   }
-  const result = await client.queryChartConfig({
-    config: configs.flows,
-    metadata: getMetadata(client),
-    querySettings: undefined,
-  });
-  expect(result.data).toHaveLength(500);
-  expect(new Date(String(result.data[0].__netflow_timestamp)).getTime()).toBe(
+  const result = await run(configs.flows);
+  const summary = await run(configs.summary);
+  // Each of the five sampling values occurs 120 times after the TCP filter.
+  expect(Number(summary[0].__netflow_bytes)).toBe(6246240000000);
+  expect(Number(summary[0].__netflow_packetsPerSecond)).toBeCloseTo(
+    12480000 / 3600,
+  );
+  for (const row of result) {
+    expect([1, 100]).toContain(Number(row.__netflow_samplingRate));
+    expect(Number(row.__netflow_bytes)).toBe(
+      Number(row.__netflow_rawBytes) * Number(row.__netflow_samplingRate),
+    );
+  }
+  const sankey = await run(
+    buildNetflowSankeyConfig({
+      baseConfig: configs.totalBytes,
+      dimensions: [
+        { key: 'src', label: 'Source', expression: 'srcAddr' },
+        { key: 'dst', label: 'Destination', expression: 'dstAddr' },
+      ],
+    }),
+  );
+  expect(
+    sankey.reduce((total, row) => total + Number(row.__netflow_value), 0),
+  ).toBe(6246240000000);
+
+  expect(result).toHaveLength(500);
+  expect(new Date(String(result[0].__netflow_timestamp)).getTime()).toBe(
     dateRange[1].getTime() - 904000,
   );
   expect(
-    result.data.every(
+    result.every(
       row =>
         row.__netflow_protocol === 'TCP' && row.__netflow_exporter === 'edge-a',
     ),
@@ -221,15 +235,7 @@ test('NetFlow Sankey conserves path traffic and executes quoted, empty and compo
   netflow,
 }) => {
   const { client, source, dateRange } = netflow;
-  const metadata = getMetadata(client);
-  const run = async (config: BuilderChartConfigWithDateRange) =>
-    (
-      await client.queryChartConfig({
-        config,
-        metadata,
-        querySettings: undefined,
-      })
-    ).data;
+  const run = queryRunner(client);
   const dimensions = [
     {
       key: 'src',

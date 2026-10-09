@@ -47,3 +47,12 @@ mappings consistently in REST and MCP.
 Apply the same bare-term search defaults to dashboards, chart editing, alert
 details, and dashboard filters. Support timestamp expression lists in flow
 records and normalize partial traffic buckets over their selected duration.
+
+Preserve saved source mappings when connections, databases, or metadata change.
+Show removable range filters using the shared filter pills and apply configured
+full-text mappings consistently in the external charts API. Mark NetFlow
+navigation as beta.
+
+Clear applied and pending searches when switching NetFlow sources, treat invalid
+sampling multipliers as one, guard stale Sankey render indices, and create cell
+filter popovers only after interaction.

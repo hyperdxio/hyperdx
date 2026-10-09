@@ -1,10 +1,31 @@
-import { fireEvent, screen } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 
 import NetflowFilterMenu from '@/components/NetflowFilterMenu';
 import NetflowSankeyTable from '@/components/NetflowSankeyTable';
 import { buildNetflowSankeyData } from '@/netflowSankey';
 
 describe('NetFlow filter menus', () => {
+  it('allocates a popover only after interaction and reopens after closing', async () => {
+    renderWithMantine(
+      <MantineProvider env="test">
+        <NetflowFilterMenu field="protocol" value="TCP" onFilter={jest.fn()} />
+      </MantineProvider>,
+    );
+    const target = () =>
+      screen.getByRole('button', { name: 'Filter Protocol: TCP' });
+    expect(target()).not.toHaveAttribute('id');
+    fireEvent.click(target());
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Include' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument(),
+    );
+    fireEvent.click(target());
+    expect(
+      await screen.findByRole('menuitem', { name: 'Exclude' }),
+    ).toBeVisible();
+  });
+
   it.each([
     ['Include', false],
     ['Exclude', true],

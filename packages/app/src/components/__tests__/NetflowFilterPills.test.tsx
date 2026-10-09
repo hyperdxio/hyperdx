@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { enableMapSet } from 'immer';
 import { parseQuery } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -5,13 +6,27 @@ import {
   SourceKind,
   TNetflowSource,
 } from '@hyperdx/common-utils/dist/types';
-import { act, renderHook } from '@testing-library/react';
+import {
+  act,
+  fireEvent,
+  renderHook,
+  screen,
+  within,
+} from '@testing-library/react';
 
-import { useNetflowFilterState } from '@/components/NetflowFilterPills';
-import { getNetflowDimensions } from '@/netflow';
+import NetflowFilterPills, {
+  useNetflowFilterState,
+} from '@/components/NetflowFilterPills';
+import { useGetKeyValues } from '@/hooks/useMetadata';
+import { buildNetflowQueryConfigs, getNetflowDimensions } from '@/netflow';
 import { sankeyDimensionExpression } from '@/netflowSankey';
 
 enableMapSet();
+
+jest.mock('@/hooks/useMetadata', () => ({
+  useGetKeyValues: jest.fn(() => ({ data: [], isFetching: false })),
+}));
+jest.mock('@/useFormatTime', () => ({ useFormatTime: () => String }));
 
 const source: TNetflowSource = {
   id: 'flows',
@@ -56,6 +71,78 @@ function renderFilters(filters: Filter[] = [], selectedSource = source) {
 }
 
 describe('NetFlow explicit filter actions', () => {
+  it('keeps custom SQL expression pills read-only without looking up unquoted columns', () => {
+    jest.mocked(useGetKeyValues).mockClear();
+    const dimension = {
+      key: 'provider',
+      label: 'Provider',
+      expression: '`provider-name`',
+    };
+    const { result } = renderFilters([
+      {
+        type: 'sql',
+        condition: `${sankeyDimensionExpression(dimension)} IN ('transit')`,
+      },
+    ]);
+    const configs = buildNetflowQueryConfigs({
+      source,
+      dateRange: [new Date(0), new Date(60000)],
+      filters: {},
+    });
+    renderWithMantine(
+      <NetflowFilterPills
+        {...result.current}
+        chartConfig={configs.totalBytes}
+      />,
+    );
+    fireEvent.click(screen.getByText('provider-name'));
+    expect(useGetKeyValues).toHaveBeenCalled();
+    expect(useGetKeyValues).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ enabled: true }),
+    );
+    expect(screen.getByText('transit')).toBeInTheDocument();
+  });
+
+  it('shows a URL range filter and removes it without dropping other fields', () => {
+    const onChange = jest.fn();
+    function Pills() {
+      const [filters, setFilters] = useState<Filter[]>([
+        { type: 'sql', condition: 'Bytes BETWEEN 100 AND 200' },
+        { type: 'sql', condition: "ExporterName IN ('edge-a')" },
+      ]);
+      const state = useNetflowFilterState({
+        source,
+        filters,
+        onChange: next => {
+          onChange(next);
+          setFilters(next);
+        },
+      });
+      const configs = buildNetflowQueryConfigs({
+        source,
+        dateRange: [new Date(0), new Date(60000)],
+        filters: {},
+      });
+      return <NetflowFilterPills {...state} chartConfig={configs.totalBytes} />;
+    }
+    renderWithMantine(<Pills />);
+    expect(screen.getByText('100 – 200')).toBeInTheDocument();
+    expect(screen.getByText('Exporter')).toBeInTheDocument();
+    const range = screen.getByTestId('active-filter-pill-Bytes');
+    fireEvent.click(
+      within(range).getByRole('button', { name: 'Remove filter' }),
+    );
+    expect(screen.queryByText('100 – 200')).not.toBeInTheDocument();
+    expect(screen.getByText('edge-a')).toBeInTheDocument();
+    expect(parseQuery(onChange.mock.lastCall?.[0]).filters).toEqual({
+      [sankeyDimensionExpression(exporter)]: {
+        included: new Set(['edge-a']),
+        excluded: new Set(),
+      },
+    });
+  });
+
   it.each([
     ['exporter', 'edge-a', 'edge-b'],
     ['protocol', 'TCP', 'UDP'],

@@ -137,7 +137,10 @@ export function buildNetflowQueryConfigs({
   if (!Number.isFinite(seconds) || seconds <= 0)
     throw new Error('Time range must have a start before its end');
 
-  const sample = source.samplingRateExpression?.trim() || '1';
+  const samplingRate = source.samplingRateExpression?.trim();
+  const sample = samplingRate
+    ? `if((${samplingRate}) > 0, (${samplingRate}), 1)`
+    : '1';
   const exporter = source.exporterExpression?.trim();
   const inputInterface = source.inIfExpression?.trim();
   const outputInterface = source.outIfExpression?.trim();

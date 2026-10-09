@@ -132,10 +132,17 @@ For already sampling-adjusted counters, omit the sampling-rate mapping to avoid
 expanding the counters twice. Full deployments persist the source through the
 existing authenticated source API and MongoDB model.
 
+Missing, null, or non-positive sampling multipliers are treated as one. Positive
+multipliers scale bytes and packets once across charts, records, and Sankey
+paths.
+
 Traffic rates use the seconds covered by each bucket within the selected time
 range, including partial first and last buckets. Flow records display and sort
 by the first timestamp expression when multiple timestamp mappings are
 configured.
+
+Switching sources clears the search and quick filters, including pending edits,
+so predicates for one table do not carry into another table.
 
 ## Sankey visualization
 
