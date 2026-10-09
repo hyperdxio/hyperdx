@@ -1331,6 +1331,19 @@ export default function DBRowSidePanelErrorBoundary({
     eventRowWhereParser,
   );
 
+  // The trace view unmounts while a new row loads and when the user leaves the
+  // Trace tab. A fresh mount treats the previous span as a restored selection
+  // and keeps it. Drop that span when the opened row changes; the first mount
+  // keeps a selection that arrived with the URL.
+  const openedRowIdRef = useRef(rowId);
+  useEffect(() => {
+    if (openedRowIdRef.current === rowId) {
+      return;
+    }
+    openedRowIdRef.current = rowId;
+    setEventRowWhere(null);
+  }, [rowId, setEventRowWhere]);
+
   const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
 
   const _onClose = useCallback(() => {
