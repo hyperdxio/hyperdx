@@ -343,6 +343,34 @@ export function useTableMetadata(
   });
 }
 
+/**
+ * Throw the first rejection when every lookup failed, otherwise return what
+ * succeeded, so one failing source doesn't empty a multi-source result.
+ */
+async function settleAllOrThrow<T>(promises: Promise<T>[]): Promise<T[]> {
+  const results = await Promise.allSettled(promises);
+  const fulfilled = results.flatMap(result =>
+    result.status === 'fulfilled' ? [result.value] : [],
+  );
+  const firstRejected = results.find(result => result.status === 'rejected');
+  if (firstRejected && fulfilled.length === 0) throw firstRejected.reason;
+  return fulfilled;
+}
+
+/**
+ * Values for `keys` across one or more sources.
+ *
+ * - `'exact'` reads metadata MVs, else the raw table, sampling the first
+ *   `max_rows_to_read` rows unless `disableRowLimit` is set. Supports
+ *   `keyConditions`.
+ * - `'all'` tries text indexes, then metadata MVs, then the raw table, so it is
+ *   cheaper for typeahead. It skips JSON-column keys, and its lookups return no
+ *   values instead of failing, so it rarely errors.
+ *
+ * `limit` caps the values returned per key in both modes.
+ *
+ * Errors only when every source's lookup fails.
+ */
 export function useMultipleGetKeyValues(
   {
     chartConfigs,
@@ -362,7 +390,11 @@ export function useMultipleGetKeyValues(
     limit?: number;
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
-    /** Pass directly to skip source-based resolution (e.g. when chartConfig has no source) */
+    /**
+     * MVs for 'all' mode, used instead of resolving them from the config's
+     * source (e.g. when chartConfig has no source). Ignored when there is more
+     * than one config, since MVs belong to a single table.
+     */
     metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
@@ -389,59 +421,51 @@ export function useMultipleGetKeyValues(
       keyConditions?.map(c => c && serializeFilterState(c)),
       disableRowLimit,
       maxKeys,
+      limit,
     ],
     queryFn: async ({ signal }) => {
-      if (mode === 'all') {
-        const firstConfig = chartConfigsArr[0];
-        if (!firstConfig || keys.length === 0) return [];
+      if (keys.length === 0) return [];
+      const usableMVsOverride =
+        chartConfigsArr.length === 1 ? metadataMVsOverride : undefined;
 
-        // Use explicit override, or resolve from source
-        const firstSource = firstConfig.source
-          ? sources?.find(s => s.id === firstConfig.source)
+      const lookups = chartConfigsArr.map(chartConfig => {
+        const source = chartConfig.source
+          ? sources?.find(s => s.id === chartConfig.source)
           : undefined;
         const metadataMVs =
-          metadataMVsOverride ??
-          (firstSource &&
-          (isLogSource(firstSource) || isTraceSource(firstSource))
-            ? firstSource.metadataMaterializedViews
+          usableMVsOverride ??
+          (source && (isLogSource(source) || isTraceSource(source))
+            ? source.metadataMaterializedViews
             : undefined);
+        return { chartConfig, source, metadataMVs };
+      });
 
-        const { databaseName, tableName } = firstConfig.from;
-        const connectionId = firstConfig.connection;
-        const dateRange = firstConfig.dateRange;
-
-        return metadata.getAllKeyValues({
-          databaseName,
-          tableName,
-          keyExpressions: keys.slice(0, maxKeys),
-          maxValuesPerKey: 20,
-          connectionId,
-          metadataMVs,
-          dateRange,
-          timestampValueExpression: firstConfig.timestampValueExpression,
-          signal,
-        });
-      }
-
-      // 'exact' mode
-      return (
-        await Promise.all(
-          chartConfigsArr.map(chartConfig => {
-            const source = chartConfig.source
-              ? sources?.find(s => s.id === chartConfig.source)
-              : undefined;
-            return metadata.getKeyValuesWithMVs({
-              chartConfig,
-              keys: keys.slice(0, maxKeys),
-              keyConditions: keyConditions?.slice(0, maxKeys),
-              limit,
-              disableRowLimit,
-              source,
-              signal,
-            });
-          }),
-        )
-      ).flatMap(v => v);
+      const results = await settleAllOrThrow(
+        lookups.map(({ chartConfig, source, metadataMVs }) =>
+          mode === 'all'
+            ? metadata.getAllKeyValues({
+                databaseName: chartConfig.from.databaseName,
+                tableName: chartConfig.from.tableName,
+                keyExpressions: keys.slice(0, maxKeys),
+                maxValuesPerKey: limit,
+                connectionId: chartConfig.connection,
+                metadataMVs,
+                dateRange: chartConfig.dateRange,
+                timestampValueExpression: chartConfig.timestampValueExpression,
+                signal,
+              })
+            : metadata.getKeyValuesWithMVs({
+                chartConfig,
+                keys: keys.slice(0, maxKeys),
+                keyConditions: keyConditions?.slice(0, maxKeys),
+                limit,
+                disableRowLimit,
+                source,
+                signal,
+              }),
+        ),
+      );
+      return results.flat();
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     placeholderData: keepPreviousData,
