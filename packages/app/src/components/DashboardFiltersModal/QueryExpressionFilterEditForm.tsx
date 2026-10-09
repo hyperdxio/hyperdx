@@ -5,7 +5,6 @@ import {
   UseFormTrigger,
   useWatch,
 } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   hasFilterEffect,
   QUERY_EXPRESSION_FILTER_SOURCE_KINDS,
@@ -28,7 +27,6 @@ import SourceSchemaPreview, {
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useSource } from '@/source';
-import { getMetricTableName } from '@/utils';
 
 import { TOOLTIP_PORTAL_TARGET } from './constants';
 import { CustomInputWrapper } from './CustomInputWrapper';
@@ -62,14 +60,6 @@ export const QueryExpressionFilterEditForm = ({
   const { data: source } = useSource({ id: sourceId });
 
   const metricType = useWatch({ control, name: 'sourceMetricType' });
-  const tableName = source && getMetricTableName(source, metricType);
-  const tableConnection: TableConnection | undefined = tableName
-    ? {
-        connectionId: source.connection,
-        databaseName: source.from.databaseName,
-        tableName,
-      }
-    : undefined;
 
   const sourceIsMetric = source?.kind === SourceKind.Metric;
   const metricTypes = Object.values(MetricsDataType).filter(type =>
@@ -177,8 +167,8 @@ export const QueryExpressionFilterEditForm = ({
         error={errors.expression}
       >
         <SQLInlineEditorControlled
-          tableConnection={tableConnection}
-          sourceId={sourceId}
+          source={source}
+          metricType={metricType}
           control={control}
           name="expression"
           placeholder="SQL column or expression"
@@ -193,8 +183,8 @@ export const QueryExpressionFilterEditForm = ({
         tooltipText="Optional condition used to filter the rows from which available filter values are queried. May reference the dashboard's other variables."
       >
         <SearchWhereInput
-          tableConnection={tableConnection}
-          sourceId={sourceId}
+          source={source}
+          metricType={metricType}
           control={control}
           name="where"
           languageName="whereLanguage"

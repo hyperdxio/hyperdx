@@ -40,10 +40,6 @@ jest.mock('nuqs', () => ({
   useQueryStates: jest.fn(() => [mockFieldsState, jest.fn()]),
 }));
 
-jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-  tcFromSource: jest.fn(() => ({})),
-}));
-
 jest.mock('@/source', () => ({
   getDurationMsExpression: jest.fn(() => 'Duration'),
 }));

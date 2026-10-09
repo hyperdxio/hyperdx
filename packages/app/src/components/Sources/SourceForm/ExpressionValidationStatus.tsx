@@ -1,22 +1,20 @@
+import { SourceLike } from '@hyperdx/common-utils/dist/types';
 import { Box, MantineSpacing, Text } from '@mantine/core';
 
 import { ErrorCollapse } from '@/components/Error/ErrorCollapse';
-import {
-  TableConnectionLike,
-  useExpressionValidation,
-} from '@/hooks/useExpressionValidation';
+import { useExpressionValidation } from '@/hooks/useExpressionValidation';
 
 export function ExpressionValidationStatus({
   expression,
-  tableConnection,
+  source,
   mt = 'xs',
 }: {
   expression: string;
-  tableConnection: TableConnectionLike;
+  source: SourceLike;
   mt?: MantineSpacing;
 }) {
   const { shouldShowResult, isInvalid, isValid, error } =
-    useExpressionValidation({ expression, tableConnection });
+    useExpressionValidation({ expression, source });
 
   if (!shouldShowResult) {
     return null;

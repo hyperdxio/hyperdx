@@ -5,8 +5,8 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
+  getSourceTable,
   Metadata,
-  TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -16,6 +16,7 @@ import {
 import {
   InternalAggregateFunction,
   MaterializedViewConfiguration,
+  SourceLike,
 } from '@hyperdx/common-utils/dist/types';
 
 export const MV_AGGREGATE_FUNCTIONS = [
@@ -102,7 +103,11 @@ function isSummingMergeTree(
  * or if the target table is not an AggregatingMergeTree.
  */
 async function getMetadataForMaterializedViewAndTable(
-  { databaseName, tableName, connectionId }: TableConnection,
+  {
+    databaseName,
+    tableName,
+    connectionId,
+  }: { databaseName: string; tableName: string; connectionId: string },
   metadata: Metadata,
 ) {
   try {
@@ -313,22 +318,28 @@ export function getSourceTableColumn(
 }
 
 /**
- * Attempts to create a MaterializedViewConfiguration object from the given TableConnections
+ * Attempts to create a MaterializedViewConfiguration object for a source
  * by introspecting the view, target table, and source table.
  *
- * @param mvTableOrView - A TableConnection representing either the materialized view or the target table.
- * @param sourceTable - A TableConnection representing the source table (the table the materialized view selects from).
+ * @param mvTableOrView - Either the materialized view or its target table, on the source's connection.
+ * @param source - The source whose table the materialized view selects from.
  *
  * Returns undefined if the configuration cannot be inferred.
  */
 export async function inferMaterializedViewConfig(
-  mvTableOrView: TableConnection,
-  sourceTable: TableConnection,
+  mvTableOrView: Pick<
+    MaterializedViewConfiguration,
+    'databaseName' | 'tableName'
+  >,
+  source: SourceLike,
   metadata: Metadata,
 ): Promise<MaterializedViewConfiguration | undefined> {
-  const { databaseName, tableName, connectionId } = mvTableOrView;
-  const { databaseName: sourceDatabaseName, tableName: sourceTableName } =
-    sourceTable;
+  const { databaseName, tableName } = mvTableOrView;
+  const {
+    databaseName: sourceDatabaseName,
+    tableName: sourceTableName,
+    connectionId,
+  } = getSourceTable({ source });
 
   if (!tableName) {
     return undefined;

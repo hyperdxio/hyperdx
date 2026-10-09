@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Control, useWatch } from 'react-hook-form';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceLike, TSource } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Box, Flex, Text, Tooltip } from '@mantine/core';
 import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 import { IconCheck } from '@tabler/icons-react';
@@ -15,14 +16,10 @@ import { FormRow } from './FormRow';
 
 export function OrderByFormRow({
   control,
-  databaseName,
-  tableName,
-  connectionId,
+  source,
 }: {
   control: Control<TSource>;
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
+  source: SourceLike;
 }) {
   const orderByInput = useWatch({
     control,
@@ -39,6 +36,7 @@ export function OrderByFormRow({
     setExplainExpressionDebounced(orderByInput ?? '');
   }, [orderByInput]);
 
+  const { databaseName, tableName, connectionId } = getSourceTable({ source });
   const {
     data: explainData,
     error: explainError,
@@ -77,11 +75,7 @@ export function OrderByFormRow({
         <Flex align="flex-start" gap="sm">
           <Box flex={1}>
             <SQLInlineEditorControlled
-              tableConnection={{
-                databaseName,
-                tableName,
-                connectionId,
-              }}
+              source={source}
               control={control}
               name="orderByExpression"
               placeholder="e.g. Timestamp DESC"

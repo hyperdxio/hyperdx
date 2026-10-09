@@ -3,7 +3,7 @@ import { useController, UseControllerProps } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
 import {
   Field,
-  TableConnectionChoice,
+  SourceTableChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { genEnglishExplanation } from '@hyperdx/common-utils/dist/queryParser';
 import { Group } from '@mantine/core';
@@ -43,8 +43,10 @@ export class LuceneLanguageFormatter implements ILanguageFormatter {
 
 const luceneLanguageFormatter = new LuceneLanguageFormatter();
 export default function SearchInputV2({
-  tableConnection,
-  tableConnections,
+  source,
+  metricType,
+  metricName,
+  sourceTables,
   placeholder = 'Search your events for anything...',
   size = 'sm',
   zIndex,
@@ -54,7 +56,6 @@ export default function SearchInputV2({
   queryHistoryType,
   allowMultiline = true,
   dateRange,
-  sourceId,
   enableVariables = false,
   'data-testid': dataTestId,
   ...props
@@ -68,11 +69,10 @@ export default function SearchInputV2({
   queryHistoryType?: string;
   allowMultiline?: boolean;
   dateRange?: [Date, Date];
-  sourceId?: string;
   enableVariables?: boolean;
   'data-testid'?: string;
 } & UseControllerProps<any> &
-  TableConnectionChoice) {
+  SourceTableChoice) {
   const {
     field: { onChange, value },
   } = useController(props);
@@ -97,6 +97,10 @@ export default function SearchInputV2({
   );
   const validationState = variableValidationState(variableIssues);
 
+  // Autocomplete draws keys and values from a single table, so with several
+  // sources it uses the first.
+  const primary = sourceTables?.[0] ?? { source, metricType, metricName };
+
   const {
     options: autoCompleteOptions,
     isLoadingValues,
@@ -105,25 +109,25 @@ export default function SearchInputV2({
     luceneLanguageFormatter,
     value != null ? `${value}` : '',
     {
-      tableConnection: tableConnection ? tableConnection : tableConnections,
+      ...primary,
       additionalSuggestions,
       dateRange,
-      sourceId,
       inputRef: ref,
     },
   );
 
   useEffect(() => {
-    if (tableConnection) {
+    if (source) {
       genEnglishExplanation({
         query: expandVariablesForEnglish(value != null ? `${value}` : ''),
-        tableConnection,
+        source,
+        metricType,
         metadata,
       }).then(q => {
         setParsedEnglishQuery(q);
       });
     }
-  }, [value, expandVariablesForEnglish, tableConnection, metadata]);
+  }, [value, expandVariablesForEnglish, source, metricType, metadata]);
 
   useHotkeys(
     ['/', 's'],

@@ -1,3 +1,4 @@
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render } from '@testing-library/react';
 
@@ -6,12 +7,13 @@ import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 jest.mock('@/hooks/useMetadata', () => ({
   useMultipleAllFields: jest.fn().mockReturnValue({ data: [] }),
 }));
-jest.mock('@/source', () => ({
-  useSource: jest.fn().mockReturnValue({ data: undefined }),
-}));
 
 const noop = () => {};
-const connection = { databaseName: 'db', tableName: 't', connectionId: 'c' };
+const source = {
+  kind: SourceKind.Log,
+  connection: 'c',
+  from: { databaseName: 'db', tableName: 't' },
+};
 
 const countCssRules = () =>
   [...document.styleSheets].reduce((n, s) => n + s.cssRules.length, 0);
@@ -22,7 +24,7 @@ describe('SQLInlineEditor', () => {
     const second = jest.fn();
     const editor = (onSubmit: () => void) => (
       <SQLInlineEditor
-        tableConnection={connection}
+        source={source}
         value="Timestamp"
         onChange={noop}
         onSubmit={onSubmit}

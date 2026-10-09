@@ -12,7 +12,7 @@ import {
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import {
   buildChartConfigForExplanations,
-  buildGroupByConnectionProps,
+  buildGroupBySourceProps,
   buildRenderedPromqlExpression,
   buildSampleEventsConfig,
   computeDbTimeChartConfig,
@@ -1123,28 +1123,21 @@ describe('buildChartConfigForExplanations', () => {
 });
 
 // ---------------------------------------------------------------------------
-// buildGroupByConnectionProps
+// buildGroupBySourceProps
 // ---------------------------------------------------------------------------
 
-describe('buildGroupByConnectionProps', () => {
-  const tableConnection = {
-    databaseName: 'default',
-    tableName: 'logs',
-    connectionId: 'clickhouse',
-  };
-
-  it('falls back to the source tableConnection for non-metric sources', () => {
-    const result = buildGroupByConnectionProps({
+describe('buildGroupBySourceProps', () => {
+  it('falls back to the source for non-metric sources', () => {
+    const result = buildGroupBySourceProps({
       tableSource: logSource,
       series: [{ metricType: 'gauge', metricName: 'cpu' }],
-      tableConnection,
     });
 
-    expect(result).toEqual({ tableConnection });
+    expect(result).toEqual({ source: logSource });
   });
 
-  it('builds one intersected connection per distinct metric table + name for mixed-type series', () => {
-    const result = buildGroupByConnectionProps({
+  it('builds one intersected source table per distinct metric table + name for mixed-type series', () => {
+    const result = buildGroupBySourceProps({
       tableSource: metricSource,
       series: [
         { metricType: 'gauge', metricName: 'cpu' },
@@ -1154,34 +1147,22 @@ describe('buildGroupByConnectionProps', () => {
         // incomplete series — skipped
         { metricType: 'gauge' },
       ],
-      tableConnection,
     });
 
-    expect(result.tableConnection).toBeUndefined();
+    expect(result.source).toBeUndefined();
     expect(result.intersectFields).toBe(true);
-    expect(result.tableConnections).toEqual([
-      {
-        databaseName: 'default',
-        tableName: 'metrics.gauge',
-        connectionId: 'clickhouse',
-        metricName: 'cpu',
-      },
-      {
-        databaseName: 'default',
-        tableName: 'metrics.sum',
-        connectionId: 'clickhouse',
-        metricName: 'requests',
-      },
+    expect(result.sourceTables).toEqual([
+      { source: metricSource, metricType: 'gauge', metricName: 'cpu' },
+      { source: metricSource, metricType: 'sum', metricName: 'requests' },
     ]);
   });
 
-  it('falls back to the tableConnection when a metric source has no resolvable series', () => {
-    const result = buildGroupByConnectionProps({
+  it('falls back to the source when a metric source has no resolvable series', () => {
+    const result = buildGroupBySourceProps({
       tableSource: metricSource,
       series: [{ metricName: 'cpu' }], // no metricType
-      tableConnection,
     });
 
-    expect(result).toEqual({ tableConnection });
+    expect(result).toEqual({ source: metricSource });
   });
 });

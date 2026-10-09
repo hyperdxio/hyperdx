@@ -29,12 +29,12 @@ import {
   TextIndexInfo,
 } from '@/queryParser';
 import type {
-  BuilderChartConfig,
   BuilderChartConfigWithDateRange,
   MetadataMaterializedViews,
+  SourceLike,
   TSource,
 } from '@/types';
-import { isLogSource, isTraceSource, SourceKind } from '@/types';
+import { MetricsDataTypeSchema, SourceKind } from '@/types';
 
 import {
   ClickHouseVersion,
@@ -544,7 +544,11 @@ export class Metadata {
     databaseName,
     tableName,
     connectionId,
-  }: TableConnection) {
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }) {
     return this.cache.getOrFetch(
       `${connectionId}.${databaseName}.${tableName}.sourceMaterializedViews`,
       async () => {
@@ -657,7 +661,7 @@ export class Metadata {
     connectionId,
   }: {
     connectionId: string;
-  }): Promise<Pick<TableConnection, 'databaseName' | 'tableName'>[]> {
+  }): Promise<{ databaseName: string; tableName: string }[]> {
     return this.cache.getOrFetch(
       `${connectionId}.timeSeriesTables`,
       async () => {
@@ -676,7 +680,7 @@ export class Metadata {
               clickhouse_settings: this.getClickHouseSettings(),
             })
             .then(res =>
-              res.json<Pick<TableConnection, 'databaseName' | 'tableName'>>(),
+              res.json<{ databaseName: string; tableName: string }>(),
             );
           return json.data;
         } catch (e) {
@@ -755,7 +759,11 @@ export class Metadata {
     databaseName,
     tableName,
     connectionId,
-  }: TableConnection) {
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }) {
     return this.cache.getOrFetch(
       `${connectionId}.${databaseName}.${tableName}.mapColumnTextIndexes`,
       async () => {
@@ -773,7 +781,11 @@ export class Metadata {
     databaseName,
     tableName,
     connectionId,
-  }: TableConnection): Promise<Map<string, SkipIndexMetadata>> {
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }): Promise<Map<string, SkipIndexMetadata>> {
     return this.cache.getOrFetch(
       `${connectionId}.${databaseName}.${tableName}.nativeColumnTextIndexes`,
       async () => {
@@ -1350,9 +1362,13 @@ export class Metadata {
   }: {
     column: string;
     maxKeys?: number;
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    metricName?: string;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
-  } & TableConnection) {
+  }) {
     // HDX-2480 delete line below to reenable json filters
     return []; // Need to disable JSON keys for the time being.
     const cacheKey = metricName
@@ -1560,7 +1576,10 @@ export class Metadata {
     dateRange,
     timestampValueExpression,
     signal,
-  }: TableConnection & {
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
     queryOptions: TextIndexMapColumnQueryOptions;
     dateRange: [Date, Date];
     timestampValueExpression: string;
@@ -1652,7 +1671,10 @@ export class Metadata {
     dateRange,
     timestampValueExpression,
     signal,
-  }: TableConnection & {
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
     queryOptions: TextIndexColumnQueryOptions;
     dateRange: [Date, Date];
     timestampValueExpression: string;
@@ -1720,7 +1742,10 @@ export class Metadata {
     queryOptions,
     maxValuesPerKey,
     signal,
-  }: TableConnection & {
+  }: {
+    databaseName: string;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
     queryOptions: MetadataMVQueryOptions;
     dateRange: [Date, Date];
     maxValuesPerKey: number;
@@ -1820,18 +1845,25 @@ export class Metadata {
     });
   }
 
+  /**
+   * Columns, Map keys and JSON paths of a source's table. Key discovery is
+   * bounded to `dateRange` by the source's timestamp expression and served
+   * from its metadata materialized views when it has them.
+   */
   async getAllFields({
-    databaseName,
-    tableName,
-    connectionId,
+    source,
+    metricType,
     metricName,
-    metadataMVs,
     dateRange,
-    timestampValueExpression,
-  }: TableConnection & {
+  }: SourceTable<SourceLike> & {
     dateRange?: [Date, Date];
-    timestampValueExpression?: string;
   }) {
+    const { databaseName, tableName, connectionId } = getSourceTable({
+      source,
+      metricType,
+    });
+    const { timestampValueExpression, metadataMaterializedViews: metadataMVs } =
+      source;
     const fields: Field[] = [];
     const columns = await this.getColumns({
       databaseName,
@@ -2490,7 +2522,11 @@ export class Metadata {
   }
 
   private async doMetadataMVsAggregateColumn(
-    { databaseName, tableName, connectionId }: TableConnection,
+    {
+      databaseName,
+      tableName,
+      connectionId,
+    }: { databaseName: string; tableName: string; connectionId: string },
     columnName: string,
   ): Promise<boolean> {
     const allTableMetadata = await this.getAllTableMetadata({
@@ -2518,7 +2554,12 @@ export class Metadata {
     tableName,
     connectionId,
     metadataMVs,
-  }: TableConnection): Promise<KeyFetchingStrategies> {
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    metadataMVs?: MetadataMaterializedViews;
+  }): Promise<KeyFetchingStrategies> {
     return this.cache.getOrFetch(
       `${connectionId}.${databaseName}.${tableName}.${JSON.stringify(metadataMVs)}.determineKeyValueFetchingStrategy`,
       async () => {
@@ -2782,7 +2823,6 @@ export class Metadata {
       promises.push(
         this.getMetadataMVKeyValues({
           databaseName,
-          tableName,
           connectionId,
           queryOptions: metadataMVQueryOptions,
           maxValuesPerKey,
@@ -3233,47 +3273,61 @@ export function parseKeyPath(key: string): string[] {
   return [key];
 }
 
-// Describes a table and potentially related views
-export type TableConnection = {
+/**
+ * A source narrowed to one of its tables. Metric sources keep each metric type
+ * in its own table, so they need `metricType`; `metricName` further scopes
+ * discovery to that metric's rows.
+ */
+export type SourceTable<S extends SourceLike = TSource> = {
+  source: S;
+  metricType?: string;
+  metricName?: string;
+};
+
+/** Either one source, or several sources whose fields are combined. */
+export type SourceTableChoice<S extends SourceLike = TSource> =
+  | (Partial<SourceTable<S>> & { sourceTables?: never })
+  | {
+      sourceTables?: SourceTable<S>[];
+      source?: never;
+      metricType?: never;
+      metricName?: never;
+    };
+
+/**
+ * The table a source reads from. Metric sources have no table of their own,
+ * so without a metric type this is `from.tableName`, which is empty for them.
+ */
+export function getMetricTableName(
+  source: SourceLike,
+  metricType?: string,
+): string | undefined {
+  if (metricType == null) {
+    return source.from?.tableName;
+  }
+  const tableType = MetricsDataTypeSchema.safeParse(metricType.toLowerCase());
+  if (source.kind === SourceKind.Metric && tableType.success) {
+    return source.metricTables?.[tableType.data];
+  }
+  return undefined;
+}
+
+/**
+ * The ClickHouse table behind a source, for table-level metadata lookups.
+ * Missing parts are empty strings, which metadata hooks treat as "not ready".
+ */
+export function getSourceTable({
+  source,
+  metricType,
+}: Partial<SourceTable<SourceLike>>): {
   databaseName: string;
   tableName: string;
   connectionId: string;
-  metricName?: string;
-  metadataMVs?: MetadataMaterializedViews;
-  // Bounds Map key discovery; without it Map keys are skipped. #3037
-  timestampValueExpression?: string;
-};
-
-export type TableConnectionChoice =
-  | {
-      tableConnection?: never;
-      tableConnections?: TableConnection[];
-    }
-  | {
-      tableConnection?: TableConnection;
-      tableConnections?: never;
-    };
-
-export function tcFromChartConfig(
-  config?: BuilderChartConfig,
-): TableConnection {
-  return {
-    databaseName: config?.from?.databaseName ?? '',
-    tableName: config?.from?.tableName ?? '',
-    connectionId: config?.connection ?? '',
-  };
-}
-
-export function tcFromSource(source?: TSource): TableConnection {
+} {
   return {
     databaseName: source?.from?.databaseName ?? '',
-    tableName: source?.from?.tableName ?? '',
+    tableName: (source && getMetricTableName(source, metricType)) ?? '',
     connectionId: source?.connection ?? '',
-    metadataMVs:
-      source && (isLogSource(source) || isTraceSource(source))
-        ? source.metadataMaterializedViews
-        : undefined,
-    timestampValueExpression: source?.timestampValueExpression,
   };
 }
 

@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
-import {
-  TableConnection,
-  tcFromSource,
-} from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   displayTypeSupportsRawSqlAlerts,
   validateRawSqlChartConfig,
@@ -13,6 +10,7 @@ import {
   ChartVariable,
   RawSqlChartConfig,
   SourceKind,
+  SourceLike,
 } from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
@@ -44,7 +42,7 @@ import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
 import { IS_LOCAL_MODE } from '@/config';
 import useResizable from '@/hooks/useResizable';
-import { useSources } from '@/source';
+import { getMaterializedViewSource, useSources } from '@/source';
 import { getAllMetricTables, usePrevious } from '@/utils';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
@@ -223,15 +221,15 @@ export default function RawSqlChartEditor({
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
-  const tableConnections: TableConnection[] = useMemo(() => {
+  const sourceTables = useMemo(() => {
     if (!sources) return [];
     return sources
       .filter(s => s.connection === connection && !s.disabled)
       .flatMap(source => {
-        const tables: TableConnection[] = getAllMetricTables(source);
+        const tables: SourceTable<SourceLike>[] = getAllMetricTables(source);
 
         if (!isMetricSource(source)) {
-          tables.push(tcFromSource(source));
+          tables.push({ source });
         }
 
         if (
@@ -240,9 +238,7 @@ export default function RawSqlChartEditor({
         ) {
           tables.push(
             ...source.materializedViews.map(mv => ({
-              databaseName: mv.databaseName,
-              tableName: mv.tableName,
-              connectionId: source.connection,
+              source: getMaterializedViewSource(source, mv),
             })),
           );
         }
@@ -351,7 +347,7 @@ export default function RawSqlChartEditor({
           height={`${size}vh`}
           enableLineWrapping
           placeholder={placeholderSQl}
-          tableConnections={tableConnections}
+          sourceTables={sourceTables}
           additionalCompletions={additionalCompletions}
           onSubmit={onSubmit}
         />

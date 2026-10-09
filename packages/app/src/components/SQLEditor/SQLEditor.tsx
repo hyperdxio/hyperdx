@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
 import { acceptCompletion } from '@codemirror/autocomplete';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  getSourceTable,
+  SourceTable,
+} from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceLike } from '@hyperdx/common-utils/dist/types';
 import { Paper, useMantineColorScheme } from '@mantine/core';
 import CodeMirror, {
   Compartment,
@@ -27,10 +31,9 @@ type SQLEditorProps = {
   placeholder?: string;
   height?: string;
   enableLineWrapping?: boolean;
-  tableConnections?: TableConnection[];
+  sourceTables?: SourceTable<SourceLike>[];
   additionalCompletions?: SQLCompletion[];
   dateRange?: [Date, Date];
-  timestampValueExpression?: string;
   onSubmit?: () => void;
 };
 
@@ -48,10 +51,9 @@ export default function SQLEditor({
   value,
   height,
   enableLineWrapping = false,
-  tableConnections,
+  sourceTables,
   additionalCompletions,
   dateRange,
-  timestampValueExpression,
   onSubmit,
 }: SQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
@@ -66,21 +68,22 @@ export default function SQLEditor({
     [onSubmit],
   );
 
-  const { data: fields } = useMultipleAllFields(tableConnections ?? [], {
+  const { data: fields } = useMultipleAllFields(sourceTables ?? [], {
     dateRange,
-    timestampValueExpression,
   });
+
+  const tables = useMemo(
+    () => sourceTables?.map(getSourceTable) ?? [],
+    [sourceTables],
+  );
 
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
       const identifiers: string[] = [
         // Suggest database and table names for autocompletion
-        ...new Set(tableConnections?.map(tc => tc.tableName) ?? []),
-        ...new Set(tableConnections?.map(tc => tc.databaseName) ?? []),
-        ...new Set(
-          tableConnections?.map(tc => `${tc.databaseName}.${tc.tableName}`) ??
-            [],
-        ),
+        ...new Set(tables.map(t => t.tableName)),
+        ...new Set(tables.map(t => t.databaseName)),
+        ...new Set(tables.map(t => `${t.databaseName}.${t.tableName}`)),
 
         // Suggest column names for autocompletion, including Map keys
         ...(fields?.map(column => {
@@ -102,7 +105,7 @@ export default function SQLEditor({
         ),
       });
     },
-    [additionalCompletions, fields, tableConnections],
+    [additionalCompletions, fields, tables],
   );
 
   useEffect(() => {

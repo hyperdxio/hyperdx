@@ -2,6 +2,11 @@ import React from 'react';
 import { enableMapSet } from 'immer';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { Field } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  SourceKind,
+  TMetricSource,
+  TTraceSource,
+} from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook } from '@testing-library/react';
 
@@ -92,11 +97,39 @@ const mockFields: Field[] = [
   },
 ];
 
-const mockTableConnection = {
-  databaseName: 'test_db',
-  tableName: 'traces',
-  connectionId: 'conn1',
-};
+const mockSource = {
+  id: 'traces',
+  name: 'Traces',
+  kind: SourceKind.Trace,
+  connection: 'conn1',
+  from: { databaseName: 'test_db', tableName: 'traces' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp, SpanName',
+  durationExpression: 'Duration',
+  durationPrecision: 9,
+  traceIdExpression: 'TraceId',
+  spanIdExpression: 'SpanId',
+  parentSpanIdExpression: 'ParentSpanId',
+  spanNameExpression: 'SpanName',
+  spanKindExpression: 'SpanKind',
+} satisfies TTraceSource;
+
+const mockMetricSource = {
+  id: 'metrics',
+  name: 'Metrics',
+  kind: SourceKind.Metric,
+  connection: 'conn1',
+  from: { databaseName: 'test_db', tableName: '' },
+  timestampValueExpression: 'TimeUnix',
+  metricTables: {
+    gauge: 'metrics_gauge',
+    histogram: '',
+    sum: 'metrics_sum',
+    summary: '',
+    'exponential histogram': '',
+  },
+  resourceAttributesExpression: 'ResourceAttributes',
+} satisfies TMetricSource;
 
 describe('useAutoCompleteOptions', () => {
   let wrapper: React.FC<{ children: React.ReactNode }>;
@@ -122,7 +155,7 @@ describe('useAutoCompleteOptions', () => {
     const { result } = renderHook(
       () =>
         useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-          tableConnection: mockTableConnection,
+          source: mockSource,
         }),
       { wrapper },
     );
@@ -160,7 +193,7 @@ describe('useAutoCompleteOptions', () => {
           luceneFormatter,
           'ResourceAttributes.service.name',
           {
-            tableConnection: mockTableConnection,
+            source: mockSource,
           },
         ),
       { wrapper },
@@ -209,7 +242,7 @@ describe('useAutoCompleteOptions', () => {
     const { result } = renderHook(
       () =>
         useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-          tableConnection: mockTableConnection,
+          source: mockSource,
         }),
       { wrapper },
     );
@@ -242,7 +275,7 @@ describe('useAutoCompleteOptions', () => {
     const { result } = renderHook(
       () =>
         useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-          tableConnection: mockTableConnection,
+          source: mockSource,
           additionalSuggestions: ['custom.field'],
         }),
       { wrapper },
@@ -268,44 +301,42 @@ describe('useAutoCompleteOptions', () => {
     ]);
   });
 
-  // The hook has to hand the table connection down to field discovery, or
-  // callers a source id can't serve — the dashboard-wide WHERE, metric
-  // sources — get an empty field list. Asserted on the call args rather than
-  // on `options` because `useAllFields` is mocked to return `mockFields`
-  // unconditionally, which is exactly what hid the bug.
-  it('discovers fields from the tableConnection when no sourceId is given', () => {
+  // The hook has to hand the source down to field discovery, or the fields
+  // come from the wrong table. Asserted on the call args rather than on
+  // `options` because `useAllFields` is mocked to return `mockFields`
+  // unconditionally.
+  it('discovers fields from the source', () => {
     renderHook(
       () =>
         useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-          tableConnection: mockTableConnection,
+          source: mockSource,
         }),
       { wrapper },
     );
 
-    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
-      mockTableConnection,
-    );
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual({
+      source: mockSource,
+      metricType: undefined,
+      metricName: undefined,
+    });
   });
 
-  it('uses the first table connection when given an array', () => {
+  it('narrows a metric source to the metric type and name', () => {
     renderHook(
       () =>
         useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-          tableConnection: [
-            mockTableConnection,
-            {
-              databaseName: 'other_db',
-              tableName: 'logs',
-              connectionId: 'conn2',
-            },
-          ],
+          source: mockMetricSource,
+          metricType: 'gauge',
+          metricName: 'cpu',
         }),
       { wrapper },
     );
 
-    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
-      mockTableConnection,
-    );
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual({
+      source: mockMetricSource,
+      metricType: 'gauge',
+      metricName: 'cpu',
+    });
   });
 });
 

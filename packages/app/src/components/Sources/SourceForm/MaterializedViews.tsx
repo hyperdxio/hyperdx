@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Controller, useFieldArray, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
@@ -24,6 +24,7 @@ import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import SelectControlled from '@/components/SelectControlled';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { getMaterializedViewSource } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   inferMaterializedViewConfig,
@@ -33,6 +34,7 @@ import {
 import { DEFAULT_DATABASE, MV_AGGREGATE_FUNCTION_OPTIONS } from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
+import { useFormSource } from './useFormSource';
 
 /** Component for configuring one or more materialized views */
 export function MaterializedViewsFormSection({
@@ -210,6 +212,15 @@ function MaterializedViewFormSection({
     name: `materializedViews.${mvIndex}.tableName`,
     defaultValue: '',
   });
+  const source = useFormSource(control);
+  const mvSource = useMemo(
+    () =>
+      getMaterializedViewSource(source, {
+        databaseName: mvDatabaseName,
+        tableName: mvTableName,
+      }),
+    [source, mvDatabaseName, mvTableName],
+  );
 
   return (
     <Stack gap="sm" data-testid="mv-form-section" data-mv-index={mvIndex}>
@@ -242,11 +253,7 @@ function MaterializedViewFormSection({
             Timestamp Column
           </Text>
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName: mvDatabaseName,
-              tableName: mvTableName,
-              connectionId: connection,
-            }}
+            source={mvSource}
             control={control}
             placeholder="Timestamp"
             name={`materializedViews.${mvIndex}.timestampColumn`}
@@ -332,11 +339,7 @@ function MaterializedViewFormSection({
           </Tooltip>
         </Text>
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName: mvDatabaseName,
-            tableName: mvTableName,
-            connectionId: connection,
-          }}
+          source={mvSource}
           control={control}
           name={`materializedViews.${mvIndex}.dimensionColumns`}
           placeholder="ServiceName, StatusCode"
@@ -374,8 +377,6 @@ function AggregatedColumnsFormSection({
     appendAggregate({ sourceColumn: '', aggFn: 'avg', mvColumn: '' });
   }, [appendAggregate]);
 
-  const kind = useWatch({ control, name: 'kind' });
-  const connection = useWatch({ control, name: 'connection' });
   const mvTableName = useWatch({
     control,
     name: `materializedViews.${mvIndex}.tableName`,
@@ -384,8 +385,7 @@ function AggregatedColumnsFormSection({
     control,
     name: `materializedViews.${mvIndex}.databaseName`,
   });
-  const fromDatabaseName = useWatch({ control, name: 'from.databaseName' });
-  const fromTableName = useWatch({ control, name: 'from.tableName' });
+  const source = useFormSource(control);
   const prevMvTableNameRef = useRef(mvTableName);
 
   const metadata = useMetadataWithSettings();
@@ -397,24 +397,17 @@ function AggregatedColumnsFormSection({
           prevMvTableNameRef.current = mvTableName;
 
           if (
-            (kind === SourceKind.Log || kind === SourceKind.Trace) &&
-            connection &&
+            (source.kind === SourceKind.Log ||
+              source.kind === SourceKind.Trace) &&
+            source.connection &&
             mvDatabaseName &&
             mvTableName &&
-            fromDatabaseName &&
-            fromTableName
+            source.from.databaseName &&
+            source.from.tableName
           ) {
             const config = await inferMaterializedViewConfig(
-              {
-                databaseName: mvDatabaseName,
-                tableName: mvTableName,
-                connectionId: connection,
-              },
-              {
-                databaseName: fromDatabaseName,
-                tableName: fromTableName,
-                connectionId: connection,
-              },
+              { databaseName: mvDatabaseName, tableName: mvTableName },
+              source,
               metadata,
             );
 
@@ -442,11 +435,8 @@ function AggregatedColumnsFormSection({
     })();
   }, [
     mvTableName,
-    kind,
-    connection,
     mvDatabaseName,
-    fromDatabaseName,
-    fromTableName,
+    source,
     mvIndex,
     replaceAggregates,
     setValue,
@@ -506,22 +496,24 @@ function AggregatedColumnRow({
   colIndex: number;
   onRemove: () => void;
 }) {
-  const connectionId = useWatch({ control, name: `connection` });
-  const sourceDatabaseName = useWatch({
-    control,
-    name: `from.databaseName`,
-    defaultValue: DEFAULT_DATABASE,
-  });
-  const sourceTableName = useWatch({ control, name: `from.tableName` });
+  const source = useFormSource(control);
   const mvDatabaseName = useWatch({
     control,
     name: `materializedViews.${mvIndex}.databaseName`,
-    defaultValue: sourceDatabaseName,
+    defaultValue: source.from.databaseName,
   });
   const mvTableName = useWatch({
     control,
     name: `materializedViews.${mvIndex}.tableName`,
   });
+  const mvSource = useMemo(
+    () =>
+      getMaterializedViewSource(source, {
+        databaseName: mvDatabaseName,
+        tableName: mvTableName,
+      }),
+    [source, mvDatabaseName, mvTableName],
+  );
   const isCount =
     useWatch({
       control,
@@ -545,11 +537,7 @@ function AggregatedColumnRow({
       {!isCount && (
         <Grid.Col span={4}>
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName: sourceDatabaseName,
-              tableName: sourceTableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.sourceColumn`}
             placeholder="Source Column"
@@ -561,11 +549,7 @@ function AggregatedColumnRow({
         <Group wrap="nowrap" align="flex-start">
           <Box flex={1}>
             <SQLInlineEditorControlled
-              tableConnection={{
-                databaseName: mvDatabaseName,
-                tableName: mvTableName,
-                connectionId,
-              }}
+              source={mvSource}
               control={control}
               name={`materializedViews.${mvIndex}.aggregatedColumns.${colIndex}.mvColumn`}
               placeholder="View Column"

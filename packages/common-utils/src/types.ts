@@ -2636,6 +2636,22 @@ export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
 export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
 export type TPromqlSource = Extract<TSource, { kind: SourceKind.Promql }>;
 
+/**
+ * The parts of a source that field discovery reads. Every `TSource` satisfies
+ * it, and the source form passes its unsaved values the same way.
+ */
+export const SourceLikeSchema = BaseSourceSchema.pick({
+  kind: true,
+  connection: true,
+  from: true,
+}).extend({
+  // Bounds Map key discovery to a date range. #3037
+  timestampValueExpression: z.string().optional(),
+  metricTables: MetricTableSchema.optional(),
+  metadataMaterializedViews: MetadataMaterializedViewsSchema.optional(),
+});
+export type SourceLike = z.infer<typeof SourceLikeSchema>;
+
 // Type guards for narrowing TSource by kind
 export function isLogSource(source: TSource): source is TLogSource {
   return source.kind === SourceKind.Log;

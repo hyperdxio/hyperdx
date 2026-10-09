@@ -2,7 +2,6 @@ import * as React from 'react';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
   alertDisplayNameSchema,
@@ -426,8 +425,7 @@ export function EditAlertModal({
                 grouped by
               </Text>
               <SQLInlineEditorControlled
-                tableConnection={tcFromSource(source)}
-                sourceId={source?.id}
+                source={source}
                 control={control}
                 name="groupBy"
                 placeholder="SQL Columns"

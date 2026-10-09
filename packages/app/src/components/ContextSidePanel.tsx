@@ -2,7 +2,6 @@ import { use, useCallback, useEffect, useMemo, useState } from 'react';
 import ms from 'ms';
 import { ErrorBoundary } from 'react-error-boundary';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   isLogSource,
@@ -254,7 +253,7 @@ export default function ContextSubpanel({
           {showCustomSearch && (
             <Group px="sm" pb="xs">
               <SearchWhereInput
-                tableConnection={tcFromSource(source)}
+                source={source}
                 control={control}
                 name="where"
                 enableHotkey

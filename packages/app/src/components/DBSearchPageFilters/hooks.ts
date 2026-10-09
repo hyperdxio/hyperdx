@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import produce from 'immer';
-import {
-  TableConnection,
-  tcFromSource,
-} from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
 } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
-  isMetricSource,
+  isLogSource,
+  isTraceSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -25,7 +23,6 @@ import {
   useMetadataWithSettings,
 } from '@/hooks/useMetadata';
 import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
-import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
 import { toQuotedClickHouseKeyExpression } from './utils';
@@ -35,49 +32,28 @@ const INITIAL_LOAD_LIMIT = 20;
 /* The maximum number of values per filter to load when "Load More" is clicked */
 const LOAD_MORE_LOAD_LIMIT = 10000;
 
-/**
- * Decide which table key-value discovery reads from.
- *
- * The source stays authoritative whenever we have one, so its metadata
- * materialized views keep serving discovery. `fallback` — the table connection
- * a caller passes — is consulted in the two cases the source can't answer:
- *
- *  - No source id is provided
- *  - A metric source, in which case the fallback provides the metric type's table name
- */
-export function resolveTableConnection(
-  source: TSource | undefined,
-  fallback: TableConnection | undefined,
-): TableConnection {
-  const isFallbackUsable =
-    !!fallback?.databaseName && !!fallback.tableName && !!fallback.connectionId;
-  if (!source) {
-    return isFallbackUsable ? fallback : tcFromSource(undefined);
-  }
-  if (isMetricSource(source) && isFallbackUsable) {
-    return fallback;
-  }
-  return tcFromSource(source);
-}
+type FacetsSource = {
+  /** Where keys and values are discovered, and whose pinned filters apply. */
+  source: TSource | undefined;
+  /** Picks the table of a metric source, which keeps one per metric type. */
+  metricType?: string;
+  /** Scopes key discovery to one metric's rows. */
+  metricName?: string;
+};
 
 function useFacets({
   chartConfig,
-  sourceId,
-  tableConnection: tableConnectionFallback,
+  source,
+  metricType,
+  metricName,
   mode,
   dateRange,
   filterState,
   showMoreFields,
   enabled,
   disableValues,
-}: {
+}: FacetsSource & {
   chartConfig: BuilderChartConfigWithDateRange;
-  sourceId: string | null;
-  /**
-   * A table where keys and values are discovered. Used when sourceId
-   * is not provided or references a metrics source.
-   */
-  tableConnection?: TableConnection;
   mode: 'all' | 'exact';
   dateRange: [Date, Date];
   filterState?: FilterState;
@@ -85,35 +61,27 @@ function useFacets({
   enabled?: boolean;
   disableValues?: boolean;
 }) {
-  const { data: source } = useSource({
-    id: sourceId,
-  });
-  const tableConnection = useMemo(
-    () => resolveTableConnection(source, tableConnectionFallback),
-    [source, tableConnectionFallback],
+  const table = useMemo(
+    () => getSourceTable({ source, metricType }),
+    [source, metricType],
   );
-  const { data: columns, isLoading: isColumnsLoading } =
-    useColumns(tableConnection);
+  const { data: columns, isLoading: isColumnsLoading } = useColumns(table);
   const dateTimeColumns = useDateTimeColumns(columns);
   const knownColumns = useMemo(
     () => (columns ? new Set(columns.map(c => c.name)) : new Set<string>()),
     [columns],
   );
-  const { data: jsonColumns } = useJsonColumns(tableConnection);
-  const { data: mapColumns } = useMapColumns(tableConnection);
+  const { data: jsonColumns } = useJsonColumns({ source, metricType });
+  const { data: mapColumns } = useMapColumns({ source, metricType });
 
   const {
     data: allFields,
     error: allFieldsError,
     isLoading: isAllFieldsLoading,
-  } = useAllFields(tableConnection, {
-    dateRange,
-    timestampValueExpression: source?.timestampValueExpression,
-    enabled,
-  });
+  } = useAllFields({ source, metricType, metricName }, { dateRange, enabled });
 
   const { isFieldPinned, isSharedFieldPinned } = usePinnedFilters(
-    sourceId ?? null,
+    source?.id ?? null,
   );
 
   const keysToFetch = useMemo(() => {
@@ -240,20 +208,15 @@ function useFacets({
           };
         }
 
-        if (
-          !tableConnection.databaseName ||
-          !tableConnection.tableName ||
-          !tableConnection.connectionId
-        ) {
-          throw new Error(
-            'loadMoreFacetsForKey: a source or table connection must be defined',
-          );
+        if (!table.databaseName || !table.tableName || !table.connectionId) {
+          throw new Error('loadMoreFacetsForKey: a source must be defined');
         }
         const newKeyVals = await metadata.getAllKeyValues({
-          databaseName: tableConnection.databaseName,
-          tableName: tableConnection.tableName,
-          connectionId: tableConnection.connectionId,
-          metadataMVs: tableConnection.metadataMVs,
+          ...table,
+          metadataMVs:
+            source && (isLogSource(source) || isTraceSource(source))
+              ? source.metadataMaterializedViews
+              : undefined,
           keyExpressions: [sqlKey],
           maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
           dateRange,
@@ -276,7 +239,7 @@ function useFacets({
     },
     [
       mode,
-      tableConnection,
+      table,
       metadata,
       chartConfig,
       dateRange,
@@ -298,21 +261,16 @@ function useFacets({
 
 export function useFetchFacets({
   chartConfig,
-  sourceId,
-  tableConnection,
+  source,
+  metricType,
+  metricName,
   dateRange,
   mode,
   filterState,
   showMoreFields,
   disableValues,
-}: {
+}: FacetsSource & {
   chartConfig: BuilderChartConfigWithDateRange;
-  sourceId: string | null;
-  /**
-   * A table where keys and values are discovered. Used when sourceId
-   * is not provided or references a metrics source.
-   */
-  tableConnection?: TableConnection;
   dateRange: [Date, Date];
   mode: 'all' | 'exact';
   filterState?: FilterState;
@@ -321,8 +279,9 @@ export function useFetchFacets({
 }) {
   const facetsQuery = useFacets({
     chartConfig,
-    sourceId,
-    tableConnection,
+    source,
+    metricType,
+    metricName,
     mode,
     dateRange,
     filterState,
@@ -331,6 +290,7 @@ export function useFetchFacets({
     disableValues,
   });
 
+  const table = getSourceTable({ source, metricType });
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);
   const facets = useMemo<Facet[] | undefined>(() => {
     const base = facetsQuery.data.keyValues;
@@ -409,10 +369,10 @@ export function useFetchFacets({
     setExtraFacets(null);
     setExtraFacetKeys(new Set());
   }, [
-    sourceId,
-    tableConnection?.databaseName,
-    tableConnection?.tableName,
-    tableConnection?.connectionId,
+    source?.id,
+    table.databaseName,
+    table.tableName,
+    table.connectionId,
     dateRange,
     mode,
     filterState,

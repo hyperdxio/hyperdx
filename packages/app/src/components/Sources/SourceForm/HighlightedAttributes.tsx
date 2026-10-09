@@ -1,5 +1,6 @@
 import React from 'react';
 import { useFieldArray, useWatch } from 'react-hook-form';
+import { SourceLike } from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Button, Flex, Grid, Text, Tooltip } from '@mantine/core';
 import {
   IconCheck,
@@ -14,19 +15,17 @@ import { InputControlled } from '@/components/InputControlled';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useExpressionValidation } from '@/hooks/useExpressionValidation';
 
-import { DEFAULT_DATABASE } from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
+import { useFormSource } from './useFormSource';
 
 type HighlightedAttributeRowProps = Omit<TableModelProps, 'setValue'> & {
   id: string;
   index: number;
-  databaseName: string;
+  source: SourceLike;
   name:
     | 'highlightedTraceAttributeExpressions'
     | 'highlightedRowAttributeExpressions';
-  tableName: string;
-  connectionId: string;
   removeHighlightedAttribute: (index: number) => void;
 };
 
@@ -34,10 +33,8 @@ function HighlightedAttributeRow({
   id,
   index,
   control,
-  databaseName,
+  source,
   name,
-  tableName,
-  connectionId,
   removeHighlightedAttribute,
 }: HighlightedAttributeRowProps) {
   const expressionInput = useWatch({
@@ -60,7 +57,7 @@ function HighlightedAttributeRow({
   } = useExpressionValidation({
     expression: expressionInput,
     alias: aliasInput,
-    tableConnection: { databaseName, tableName, connectionId },
+    source,
   });
 
   return (
@@ -71,11 +68,7 @@ function HighlightedAttributeRow({
           data-name={`${name}.${index}.sqlExpression`}
         >
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name={`${name}.${index}.sqlExpression`}
             disableKeywordAutocomplete
@@ -173,13 +166,7 @@ export function HighlightedAttributeExpressionsFormRow({
   label: string;
   helpText?: string;
 }) {
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
-  const tableName = useWatch({ control, name: 'from.tableName' });
-  const connectionId = useWatch({ control, name: 'connection' });
+  const source = useFormSource(control);
 
   const {
     fields: highlightedAttributes,
@@ -201,9 +188,7 @@ export function HighlightedAttributeExpressionsFormRow({
               index,
               name,
               control,
-              databaseName,
-              tableName,
-              connectionId,
+              source,
               removeHighlightedAttribute,
             }}
           />

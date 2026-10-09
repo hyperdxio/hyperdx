@@ -6,8 +6,13 @@ import {
   Field,
   Metadata,
   MetadataCache,
+  SourceTable,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  SourceKind,
+  SourceLike,
+} from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
@@ -291,17 +296,29 @@ describe('useMultipleAllFields', () => {
     { path: ['col_shared'], type: 'number', jsType: JSDataType.Number },
   ];
 
-  const tcA = {
-    databaseName: 'db',
-    tableName: 'table_a',
-    connectionId: 'conn1',
-  };
+  const tableA = {
+    source: {
+      kind: SourceKind.Log,
+      connection: 'conn1',
+      from: { databaseName: 'db', tableName: 'table_a' },
+    },
+  } satisfies SourceTable<SourceLike>;
 
-  const tcB = {
-    databaseName: 'db',
-    tableName: 'table_b',
-    connectionId: 'conn1',
-  };
+  const tableB = {
+    source: {
+      kind: SourceKind.Log,
+      connection: 'conn1',
+      from: { databaseName: 'db', tableName: 'table_b' },
+    },
+  } satisfies SourceTable<SourceLike>;
+
+  const unpopulatedTable = {
+    source: {
+      kind: SourceKind.Log,
+      connection: '',
+      from: { databaseName: '', tableName: '' },
+    },
+  } satisfies SourceTable<SourceLike>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -326,9 +343,12 @@ describe('useMultipleAllFields', () => {
       .mockResolvedValueOnce(fieldsA)
       .mockRejectedValueOnce(new Error('connection refused'));
 
-    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useMultipleAllFields([tableA, tableB]),
+      {
+        wrapper,
+      },
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -336,30 +356,44 @@ describe('useMultipleAllFields', () => {
     expect(result.current.data).toEqual(fieldsA);
   });
 
-  it('falls back to each connection timestampValueExpression when none is passed', async () => {
+  it('passes each source and its metric selection to getAllFields', async () => {
     const getAllFields = jest
       .spyOn(mockMetadata, 'getAllFields')
       .mockResolvedValue(fieldsA);
+    const metricTable = {
+      source: {
+        kind: SourceKind.Metric,
+        connection: 'conn1',
+        from: { databaseName: 'db', tableName: '' },
+        metricTables: {
+          gauge: 'metrics_gauge',
+          histogram: '',
+          sum: '',
+          summary: '',
+          'exponential histogram': '',
+        },
+      },
+      metricType: 'gauge',
+      metricName: 'cpu',
+    } satisfies SourceTable<SourceLike>;
+    const dateRange: [Date, Date] = [new Date(0), new Date(1000)];
 
     const { result } = renderHook(
-      () =>
-        useMultipleAllFields([
-          { ...tcA, timestampValueExpression: 'TimestampA' },
-          tcB,
-        ]),
+      () => useMultipleAllFields([tableA, metricTable], { dateRange }),
       { wrapper },
     );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(getAllFields).toHaveBeenCalledWith(
-      expect.objectContaining({ timestampValueExpression: 'TimestampA' }),
-    );
-    expect(getAllFields).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tableName: 'table_b',
-        timestampValueExpression: undefined,
-      }),
-    );
+    expect(getAllFields).toHaveBeenCalledWith({
+      source: tableA.source,
+      metricType: undefined,
+      metricName: undefined,
+      dateRange,
+    });
+    expect(getAllFields).toHaveBeenCalledWith({
+      ...metricTable,
+      dateRange,
+    });
   });
 
   it('should deduplicate fields across successful connections', async () => {
@@ -368,9 +402,12 @@ describe('useMultipleAllFields', () => {
       .mockResolvedValueOnce(fieldsA)
       .mockResolvedValueOnce(fieldsB);
 
-    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useMultipleAllFields([tableA, tableB]),
+      {
+        wrapper,
+      },
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -388,9 +425,12 @@ describe('useMultipleAllFields', () => {
       .mockRejectedValueOnce(new Error('fail 1'))
       .mockRejectedValueOnce(new Error('fail 2'));
 
-    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useMultipleAllFields([tableA, tableB]),
+      {
+        wrapper,
+      },
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
@@ -405,14 +445,17 @@ describe('useMultipleAllFields', () => {
       .mockResolvedValueOnce(fieldsA)
       .mockRejectedValueOnce(new Error('timeout'));
 
-    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
-      wrapper,
-    });
+    const { result } = renderHook(
+      () => useMultipleAllFields([tableA, tableB]),
+      {
+        wrapper,
+      },
+    );
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(warnSpy).toHaveBeenCalledWith(
-      'Failed to fetch fields for table connection',
+      'Failed to fetch fields for source',
       expect.any(Error),
     );
 
@@ -422,7 +465,7 @@ describe('useMultipleAllFields', () => {
   it('should skip deduplication for a single connection', async () => {
     jest.spyOn(mockMetadata, 'getAllFields').mockResolvedValueOnce(fieldsA);
 
-    const { result } = renderHook(() => useMultipleAllFields([tcA]), {
+    const { result } = renderHook(() => useMultipleAllFields([tableA]), {
       wrapper,
     });
 
@@ -431,17 +474,14 @@ describe('useMultipleAllFields', () => {
     expect(result.current.data).toEqual(fieldsA);
   });
 
-  // `tcFromSource` returns an all-empty-strings connection (never undefined)
-  // while the source is still loading, so an unpopulated connection must never
-  // reach `getAllFields` — it would issue `DESCRIBE .` with no connection id.
-  it('should not fetch for an unpopulated table connection', async () => {
+  // An unsaved source (e.g. in the source form) can have an empty table or
+  // connection, which must never reach `getAllFields` — it would issue
+  // `DESCRIBE .` with no connection id.
+  it('should not fetch for a source with an unpopulated table', async () => {
     const getAllFields = jest.spyOn(mockMetadata, 'getAllFields');
 
     const { result } = renderHook(
-      () =>
-        useMultipleAllFields([
-          { databaseName: '', tableName: '', connectionId: '' },
-        ]),
+      () => useMultipleAllFields([unpopulatedTable]),
       { wrapper },
     );
 
@@ -449,15 +489,11 @@ describe('useMultipleAllFields', () => {
     expect(getAllFields).not.toHaveBeenCalled();
   });
 
-  it('should not fetch for an unpopulated table connection even when the caller passes enabled: true', async () => {
+  it('should not fetch for a source with an unpopulated table even when the caller passes enabled: true', async () => {
     const getAllFields = jest.spyOn(mockMetadata, 'getAllFields');
 
     const { result } = renderHook(
-      () =>
-        useMultipleAllFields(
-          [{ databaseName: '', tableName: '', connectionId: '' }],
-          { enabled: true },
-        ),
+      () => useMultipleAllFields([unpopulatedTable], { enabled: true }),
       { wrapper },
     );
 
@@ -471,7 +507,7 @@ describe('useMultipleAllFields', () => {
       .mockResolvedValue(fieldsA);
 
     const { result } = renderHook(
-      () => useMultipleAllFields([tcA], { enabled: false }),
+      () => useMultipleAllFields([tableA], { enabled: false }),
       { wrapper },
     );
 
@@ -479,11 +515,11 @@ describe('useMultipleAllFields', () => {
     expect(getAllFields).not.toHaveBeenCalled();
   });
 
-  it('should fetch a populated table connection when the caller passes enabled: true', async () => {
+  it('should fetch a populated source when the caller passes enabled: true', async () => {
     jest.spyOn(mockMetadata, 'getAllFields').mockResolvedValueOnce(fieldsA);
 
     const { result } = renderHook(
-      () => useMultipleAllFields([tcA], { enabled: true }),
+      () => useMultipleAllFields([tableA], { enabled: true }),
       { wrapper },
     );
 

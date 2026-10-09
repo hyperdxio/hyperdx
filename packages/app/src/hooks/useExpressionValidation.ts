@@ -1,24 +1,20 @@
 import { useCallback, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceLike } from '@hyperdx/common-utils/dist/types';
 import { useDebouncedCallback, useDidUpdate } from '@mantine/hooks';
 
 import { useExplainQuery } from '@/hooks/useExplainQuery';
 
-export type TableConnectionLike = {
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-};
-
 export function useExpressionValidation({
   expression,
   alias,
-  tableConnection,
+  source,
   debounceMs = 1000,
 }: {
   expression: string | undefined;
   alias?: string;
-  tableConnection: TableConnectionLike;
+  source: SourceLike;
   debounceMs?: number;
 }) {
   const [explainParams, setExplainParams] = useState<{
@@ -37,7 +33,7 @@ export function useExpressionValidation({
     setExplainParamsDebounced({ expression, alias });
   }, [expression, alias]);
 
-  const { databaseName, tableName, connectionId } = tableConnection;
+  const { databaseName, tableName, connectionId } = getSourceTable({ source });
 
   const { data, error, isLoading } = useExplainQuery(
     {

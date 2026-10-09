@@ -18,10 +18,12 @@ import {
   ChartConfig,
   ChartConfigWithOptDateRange,
   ChartConfigWithOptTimestamp,
+  MaterializedViewConfiguration,
   MetricFormula,
   MetricsDataType,
   NumberFormat,
   SourceKind,
+  SourceLike,
   SourceSchema,
   TLogSource,
   TMetricSource,
@@ -64,6 +66,24 @@ export function getSourceValidationNotificationId(sourceId: string) {
 // this will return the first one. We'll want to refine this over time
 export function getFirstTimestampValueExpression(valueExpression: string) {
   return splitAndTrimWithBracket(valueExpression)[0];
+}
+
+/**
+ * `source`, reading from one of its materialized views instead of its own
+ * table. Its metadata views index its own table, so they don't carry over.
+ */
+export function getMaterializedViewSource(
+  source: SourceLike,
+  mv: Pick<MaterializedViewConfiguration, 'databaseName' | 'tableName'> & {
+    timestampColumn?: string;
+  },
+): SourceLike {
+  return {
+    kind: source.kind,
+    connection: source.connection,
+    from: { databaseName: mv.databaseName, tableName: mv.tableName },
+    timestampValueExpression: mv.timestampColumn,
+  };
 }
 
 export function getSpanEventBody(eventModel: TTraceSource) {

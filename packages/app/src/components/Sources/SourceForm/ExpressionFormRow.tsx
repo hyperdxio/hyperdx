@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
 import { Control, UseFormSetValue, useWatch } from 'react-hook-form';
 import { ColumnMetaType } from '@hyperdx/common-utils/dist/clickhouse';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  SourceKind,
+  SourceLike,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import {
@@ -22,7 +26,7 @@ export function ExpressionFormRow({
   helpText,
   columns,
   sourceKind,
-  tableConnection,
+  source,
 }: {
   control: Control<TSource>;
   setValue: UseFormSetValue<TSource>;
@@ -32,11 +36,7 @@ export function ExpressionFormRow({
   helpText?: string;
   columns?: ColumnMetaType[];
   sourceKind: SourceKind;
-  tableConnection: {
-    databaseName: string;
-    tableName: string;
-    connectionId: string;
-  };
+  source: SourceLike;
 }) {
   const currentValue = useWatch({ control, name });
   const value = typeof currentValue === 'string' ? currentValue : '';
@@ -52,16 +52,13 @@ export function ExpressionFormRow({
   return (
     <FormRow label={label} helpText={helpText}>
       <SQLInlineEditorControlled
-        tableConnection={tableConnection}
+        source={source}
         control={control}
         name={name}
         placeholder={placeholder}
       />
       {value.trim() ? (
-        <ExpressionValidationStatus
-          expression={value}
-          tableConnection={tableConnection}
-        />
+        <ExpressionValidationStatus expression={value} source={source} />
       ) : (
         <SourceFieldCandidateHint
           candidates={candidates}

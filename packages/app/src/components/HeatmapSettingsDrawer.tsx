@@ -2,7 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Divider, Drawer, Group, Stack } from '@mantine/core';
 import { IconPlayerPlay } from '@tabler/icons-react';
 
@@ -20,8 +20,7 @@ export type HeatmapSettingsValues = z.infer<typeof HeatmapSettingsSchema>;
 export default function HeatmapSettingsDrawer({
   opened,
   onClose,
-  connection,
-  sourceId,
+  source,
   dateRange,
   parentRef,
   defaultValues,
@@ -29,8 +28,7 @@ export default function HeatmapSettingsDrawer({
 }: {
   opened: boolean;
   onClose: () => void;
-  connection: TableConnection;
-  sourceId?: string;
+  source: TSource;
   dateRange?: [Date, Date];
   parentRef?: HTMLElement | null;
   defaultValues: HeatmapSettingsValues;
@@ -73,8 +71,7 @@ export default function HeatmapSettingsDrawer({
 
           <SQLInlineEditorControlled
             parentRef={parentRef}
-            tableConnection={connection}
-            sourceId={sourceId}
+            source={source}
             dateRange={dateRange}
             control={form.control}
             name="value"
@@ -90,8 +87,7 @@ export default function HeatmapSettingsDrawer({
 
           <SQLInlineEditorControlled
             parentRef={parentRef}
-            tableConnection={connection}
-            sourceId={sourceId}
+            source={source}
             dateRange={dateRange}
             control={form.control}
             name="count"

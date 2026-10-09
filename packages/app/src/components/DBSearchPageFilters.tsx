@@ -1,8 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import {
+  getSourceTable,
   TableMetadata,
-  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -1166,8 +1166,7 @@ const DBSearchPageFiltersComponent = ({
   const { size, startResize } = useResizable(16, 'left');
 
   const { data: source } = useSource({ id: sourceId });
-  const sourceTableConnection = tcFromSource(source);
-  const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
+  const { data: jsonColumns } = useJsonColumns({ source });
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -1180,7 +1179,7 @@ const DBSearchPageFiltersComponent = ({
     connectionId: chartConfig.connection,
   });
 
-  const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
+  const { data: tableMetadata } = useTableMetadata(getSourceTable({ source }));
 
   useEffect(() => {
     if (!isLive) {
@@ -1210,7 +1209,7 @@ const DBSearchPageFiltersComponent = ({
     extraFacetKeys,
   } = useFetchFacets({
     chartConfig,
-    sourceId: sourceId ?? null,
+    source,
     dateRange,
     mode: showAllValues ? 'all' : 'exact',
     filterState,
