@@ -130,6 +130,9 @@ describe('SearchWhereInput', () => {
         'data-single-line',
         'true',
       );
+      expect(
+        screen.queryByRole('button', { name: 'Keep expanded' }),
+      ).not.toBeInTheDocument();
       await user.click(input);
       await user.keyboard('first{Shift>}{Enter}{/Shift}second');
 
@@ -155,6 +158,47 @@ describe('SearchWhereInput', () => {
 
       expect(screen.getByText(/SQL WHERE clause/i)).toBeInTheDocument();
     });
+  });
+
+  describe('Multiline display', () => {
+    it.each(['lucene', 'sql'] as const)(
+      'opens the %s input on focus and pins it open after blur',
+      async defaultLanguage => {
+        const user = userEvent.setup();
+        renderWithMantine(
+          <TestWrapper
+            defaultLanguage={defaultLanguage}
+            defaultWhere={'first line\nsecond line'}
+          />,
+        );
+
+        const pin = screen.getByRole('button', { name: 'Keep expanded' });
+        const root = pin.closest('[data-multiline-expanded]');
+        expect(root).toHaveAttribute('data-multiline-expanded', 'false');
+        expect(root).toHaveAttribute('data-multiline-pinned', 'false');
+
+        if (defaultLanguage === 'lucene') {
+          await user.click(
+            screen.getByPlaceholderText(/Search your events w\/ Lucene/i),
+          );
+        } else {
+          await user.click(
+            document.querySelector('.cm-content') as HTMLElement,
+          );
+        }
+
+        expect(root).toHaveAttribute('data-multiline-expanded', 'true');
+        expect(root).toHaveAttribute('data-multiline-pinned', 'false');
+
+        await user.click(pin);
+
+        expect(
+          screen.getByRole('button', { name: 'Collapse after blur' }),
+        ).toHaveAttribute('aria-expanded', 'true');
+        expect(root).toHaveAttribute('data-multiline-pinned', 'true');
+        expect(root).toHaveAttribute('data-multiline-expanded', 'true');
+      },
+    );
   });
 
   describe('Form Integration', () => {
