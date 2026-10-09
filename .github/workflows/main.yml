@@ -128,8 +128,12 @@ jobs:
       # MongoDB/ClickHouse database, so they must stay serial (--runInBand)
       # within a runner. We shard ACROSS runners instead: each shard is its own
       # VM with its own Docker stack, and jest's --shard splits the test files
-      # so the shards run in parallel. --shard is forwarded through nx (args
-      # after `--` reach the underlying jest invocations).
+      # so the shards run in parallel.
+      #
+      # Jest is invoked per package rather than through `nx run-many`: nx's
+      # streamed output prefixes every pipe chunk as its own line, splitting
+      # Jest's stack traces and ANSI codes mid-line. Both packages always run
+      # so one failure doesn't hide the other.
       #
       # Runs inline (not `make ci-int`) so the compose project stays `hdx-ci`
       # (matching the bake step above); make ci-int's `-p int-<slot>` is local
@@ -140,7 +144,10 @@ jobs:
       - name: Run integration tests
         run: |
           docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
-          npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+          status=0
+          yarn workspace @hyperdx/common-utils ci:int --shard=${{ matrix.shard }}/${{ strategy.job-total }} || status=1
+          yarn workspace @hyperdx/api ci:int --shard=${{ matrix.shard }}/${{ strategy.job-total }} || status=1
+          exit $status
   # Stable aggregator context: `integration` is green only when all four shards
   # pass. Merge-queue / required-status checks target this single context, since
   # the per-shard contexts (Integration - Shard N) are not stable check names.
