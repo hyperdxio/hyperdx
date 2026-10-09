@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
-  getNetflowImplicitColumnExpression,
+  getSourceImplicitColumnExpression,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -69,9 +69,7 @@ export const AlertPreviewChart = ({
 
   const { data: aliasMap } = useAliasMapFromChartConfig({
     select: resolvedSelect,
-    implicitColumnExpression: isNetflowSource(source)
-      ? getNetflowImplicitColumnExpression(source)
-      : undefined,
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     where: where || '',
     connection: source.connection,
     from: source.from,

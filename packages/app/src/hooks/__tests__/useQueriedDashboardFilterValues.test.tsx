@@ -162,6 +162,54 @@ describe('useQueriedDashboardFilterValues', () => {
     jest.restoreAllMocks();
   });
 
+  it('uses mapped NetFlow fields for bare Lucene terms in filter-value queries', async () => {
+    jest.spyOn(sourceModule, 'useSources').mockReturnValue({
+      data: [
+        {
+          ...mockSources[0],
+          id: 'flows',
+          kind: SourceKind.Netflow,
+          srcAddrExpression: 'ClientIP',
+          dstAddrExpression: 'ServerIP',
+          srcPortExpression: 'ClientPort',
+          dstPortExpression: 'ServerPort',
+          protocolExpression: 'Protocol',
+          exporterExpression: 'RouterName',
+        },
+      ],
+      isLoading: false,
+    } as any);
+    const { result } = renderHook(
+      () =>
+        useQueriedDashboardFilterValues({
+          filters: [
+            {
+              id: 'router',
+              type: 'QUERY_EXPRESSION',
+              name: 'Router',
+              expression: 'RouterName',
+              source: 'flows',
+              where: 'edge',
+              whereLanguage: 'lucene',
+            },
+          ],
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          where: 'edge',
+          whereLanguage: 'lucene',
+          implicitColumnExpression:
+            expect.stringContaining('toString(ClientIP)'),
+        }),
+      }),
+    );
+  });
+
   it('should convert non-string key values to strings', async () => {
     // Arrange
     jest.spyOn(sourceModule, 'useSources').mockReturnValue({

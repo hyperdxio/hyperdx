@@ -31,9 +31,7 @@ import {
 export type SearchChartConfig = BuilderChartConfig & Partial<DateRange>;
 
 /** Bare terms search mapped dimensions even on sources saved before this option existed. */
-export function getNetflowImplicitColumnExpression(
-  source: TNetflowSource,
-): string {
+function getNetflowImplicitColumnExpression(source: TNetflowSource): string {
   if (source.implicitColumnExpression?.trim()) {
     return source.implicitColumnExpression.trim();
   }
@@ -50,6 +48,17 @@ export function getNetflowImplicitColumnExpression(
     .map(expression => expression?.trim())
     .filter(Boolean);
   return `concatWithSeparator(' ', ${expressions.map(expression => `ifNull(toString(${expression}), '')`).join(', ')})`;
+}
+
+export function getSourceImplicitColumnExpression(
+  source: TSource,
+): string | undefined {
+  if (isNetflowSource(source)) {
+    return getNetflowImplicitColumnExpression(source);
+  }
+  return isLogSource(source) || isTraceSource(source)
+    ? source.implicitColumnExpression
+    : undefined;
 }
 
 /**
@@ -162,11 +171,7 @@ export function buildSearchChartConfig(
   const userFilters: Filter[] = input.filters ?? [];
   const mergedFilters: Filter[] = [...tableFilter, ...userFilters];
 
-  const implicitColumnExpression = isNetflowSource(source)
-    ? getNetflowImplicitColumnExpression(source)
-    : isLogSource(source) || isTraceSource(source)
-      ? source.implicitColumnExpression
-      : undefined;
+  const implicitColumnExpression = getSourceImplicitColumnExpression(source);
   const useTextIndexForImplicitColumn =
     isLogSource(source) || isTraceSource(source)
       ? source.useTextIndexForImplicitColumn

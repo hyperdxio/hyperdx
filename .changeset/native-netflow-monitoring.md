@@ -30,9 +30,10 @@ Recover from invalid time ranges without crashing, clear source-specific click
 filters when switching sources, and keep chart geometry aligned with automatic
 axis widths.
 
-Preserve NetFlow mappings through MCP source tools, ignore stale source inference,
-share filter keys across visualizations, retain quoted columns, and make explicit
-include/exclude actions idempotent. Format flow times using user preferences.
+Preserve NetFlow mappings through MCP source tools, ignore stale source
+inference, share filter keys across visualizations, retain quoted columns, and
+make explicit include/exclude actions idempotent. Format flow times using user
+preferences.
 
 Support NetFlow saved-search alerts with default aliases, previews, and flow
 samples in notifications. Keep unfinished search fields pending when applying
@@ -42,3 +43,7 @@ Search mapped flow dimensions with bare Lucene terms or a custom full-text
 expression. Share the summary aggregate query, reuse accessible filter menus,
 restore valid Sankey dimensions across source changes, and document source
 mappings consistently in REST and MCP.
+
+Apply the same bare-term search defaults to dashboards, chart editing, alert
+details, and dashboard filters. Support timestamp expression lists in flow
+records and normalize partial traffic buckets over their selected duration.

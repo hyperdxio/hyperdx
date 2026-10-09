@@ -28,6 +28,54 @@ const dateRange: [Date, Date] = [
 ];
 
 describe('NetFlow queries', () => {
+  it.each([
+    ['TimeReceived, FlowDate', 'TimeReceived'],
+    [
+      "toDateTime(TimeReceived, 'UTC'), toDate(TimeReceived)",
+      "toDateTime(TimeReceived, 'UTC')",
+    ],
+  ])(
+    'uses the first timestamp expression for flow rows (%s)',
+    (mapping, timestamp) => {
+      const configs = buildNetflowQueryConfigs({
+        source: { ...source, timestampValueExpression: mapping },
+        dateRange,
+        filters: {},
+      });
+      expect(configs.flows.select[0]).toEqual({
+        valueExpression: timestamp,
+        alias: '__netflow_timestamp',
+      });
+      expect(configs.flows.orderBy).toBe(`${timestamp} DESC`);
+      // All mapped columns still participate in the shared timestamp optimizer/filter.
+      expect(configs.flows.timestampValueExpression).toBe(mapping);
+      expect(configs.traffic.timestampValueExpression).toBe(mapping);
+    },
+  );
+
+  it('normalizes partial traffic buckets without expanding the selected range', () => {
+    const selectedRange: [Date, Date] = [
+      new Date('2026-10-09T12:00:30Z'),
+      new Date('2026-10-09T13:00:20Z'),
+    ];
+    const configs = buildNetflowQueryConfigs({
+      source,
+      dateRange: selectedRange,
+      filters: {},
+    });
+    expect(configs.traffic).toMatchObject({
+      dateRange: selectedRange,
+      alignDateRangeToGranularity: false,
+    });
+    expect(configs.traffic.select).toEqual([
+      {
+        alias: 'Bits per second',
+        valueExpression: expect.stringMatching(/least\(.*greatest\(/),
+      },
+    ]);
+    expect(configs.summary.dateRange).toEqual(selectedRange);
+  });
+
   it('estimates sampled traffic but counts stored flow records', () => {
     const configs = buildNetflowQueryConfigs({
       source,
@@ -51,7 +99,9 @@ describe('NetFlow queries', () => {
     ]);
     expect(configs.traffic.select).toEqual([
       {
-        valueExpression: 'sum(toFloat64(Bytes) * (SamplingRate)) * 8 / 60',
+        valueExpression: expect.stringContaining(
+          'sum(toFloat64(Bytes) * (SamplingRate)) * 8 /',
+        ),
         alias: 'Bits per second',
       },
     ]);

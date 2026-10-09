@@ -942,11 +942,11 @@ function formatExternalSource(source: SourceDocument) {
  *             $ref: '#/components/schemas/QuerySetting'
  *         timestampValueExpression:
  *           type: string
- *           description: SQL expression for the mapped flow field.
+ *           description: Timestamp column or SQL expression used to filter flow records by time and group them into time buckets. Must produce a ClickHouse date or timestamp value.
  *           example: TimeReceived
  *         defaultTableSelectExpression:
  *           type: string
- *           description: SQL expression for the mapped flow field.
+ *           description: Comma-separated SQL select list used when displaying flow records in search results and alert samples. May include SQL expressions and aliases.
  *           example: TimeReceived, SrcAddr, DstAddr, Bytes
  *         implicitColumnExpression:
  *           type: string

@@ -1,8 +1,10 @@
-import { getNetflowImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   escapeSqlString,
+  getFirstTimestampValueExpression,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   BuilderChartConfigWithDateRange,
@@ -144,6 +146,12 @@ export function buildNetflowQueryConfigs({
   const packets = `toFloat64(${source.packetsExpression}) * (${sample})`;
   const granularity = convertDateRangeToGranularityString(dateRange);
   const bucketSeconds = convertGranularityToSeconds(granularity);
+  const timestamp = getFirstTimestampValueExpression(
+    source.timestampValueExpression,
+  );
+  const bucketStart = `toUnixTimestamp64Milli(toDateTime64(\`${FIXED_TIME_BUCKET_EXPR_ALIAS}\`, 3)) / 1000`;
+  // Edge buckets cover only the intersection with the selected range.
+  const coveredSeconds = `least(${bucketStart} + ${bucketSeconds}, ${dateRange[1].getTime() / 1000}) - greatest(${bucketStart}, ${dateRange[0].getTime() / 1000})`;
   const dimensions = getNetflowDimensions(source);
   const protocol = dimensions.protocol;
   const base = {
@@ -151,7 +159,7 @@ export function buildNetflowQueryConfigs({
     connection: source.connection,
     source: source.id,
     timestampValueExpression: source.timestampValueExpression,
-    implicitColumnExpression: getNetflowImplicitColumnExpression(source),
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     dateRange,
     dateRangeEndInclusive: false,
     alignDateRangeToGranularity: false,
@@ -185,7 +193,7 @@ export function buildNetflowQueryConfigs({
     ...base,
     select: [
       {
-        valueExpression: `sum(${bytes}) * 8 / ${bucketSeconds}`,
+        valueExpression: `sum(${bytes}) * 8 / (${coveredSeconds})`,
         alias: 'Bits per second',
       },
     ],
@@ -197,7 +205,7 @@ export function buildNetflowQueryConfigs({
     ...base,
     select: [
       {
-        valueExpression: source.timestampValueExpression,
+        valueExpression: timestamp,
         alias: netflowColumnAlias('timestamp'),
       },
       {
@@ -241,7 +249,7 @@ export function buildNetflowQueryConfigs({
         alias: netflowColumnAlias('outputInterface'),
       },
     ],
-    orderBy: `${source.timestampValueExpression} DESC`,
+    orderBy: `${timestamp} DESC`,
     limit: { limit: 500 },
     displayType: DisplayType.Table,
   };

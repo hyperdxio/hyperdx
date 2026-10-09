@@ -132,6 +132,11 @@ For already sampling-adjusted counters, omit the sampling-rate mapping to avoid
 expanding the counters twice. Full deployments persist the source through the
 existing authenticated source API and MongoDB model.
 
+Traffic rates use the seconds covered by each bucket within the selected time
+range, including partial first and last buckets. Flow records display and sort
+by the first timestamp expression when multiple timestamp mappings are
+configured.
+
 ## Sankey visualization
 
 Select **Sankey** in the NetFlow visualization selector to explore traffic
@@ -169,6 +174,7 @@ make dev-e2e FILE=netflow
 The suite checks sampled overview totals and raw counters, every chart query,
 IPv4/IPv6 filters, literal escaping, Lucene and SQL composition, Sankey traffic
 conservation, empty classifications, source switching, pending query drafts, URL
-reloads, invalid time ranges, flow details, and chart axes at wide and narrow
-viewport sizes. Failures use the normal Playwright screenshots, traces, and
-reports under `packages/app/test-results/`.
+reloads, invalid time ranges, partial-bucket rates, timestamp expression lists,
+flow details, and chart axes at wide and narrow viewport sizes. Failures use the
+normal Playwright screenshots, traces, and reports under
+`packages/app/test-results/`.

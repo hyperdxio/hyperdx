@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { isMissingColumnError } from '@hyperdx/common-utils/dist/clickhouse';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   BuilderChartConfigWithDateRange,
   Filter,
@@ -227,10 +228,7 @@ export function buildReleaseChartConfig(
     from: source.from,
     timestampValueExpression: source.timestampValueExpression,
     // Needed for Lucene scope filters to resolve bare terms.
-    implicitColumnExpression:
-      'implicitColumnExpression' in source
-        ? source.implicitColumnExpression
-        : undefined,
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     useTextIndexForImplicitColumn:
       'useTextIndexForImplicitColumn' in source
         ? source.useTextIndexForImplicitColumn

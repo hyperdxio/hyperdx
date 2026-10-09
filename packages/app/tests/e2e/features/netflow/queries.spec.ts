@@ -13,6 +13,44 @@ import {
 } from '../../../../src/netflowSankey';
 import { expect, test } from '../../fixtures/netflow';
 
+test('steady traffic keeps its rate in partial first and last buckets', async ({
+  netflow,
+}) => {
+  const { client, database, source } = netflow;
+  const start = Date.parse('2026-10-09T12:00:00Z');
+  const view = await client.query({
+    query: `CREATE VIEW ${database}.steady AS
+    SELECT toDateTime(${start / 1000}) + number AS TimeReceived,
+      125 AS Bytes, 1 AS Packets, 100 AS SamplingRate FROM numbers(3660)`,
+  });
+  await view.text();
+  const configs = buildNetflowQueryConfigs({
+    source: {
+      ...source,
+      from: { databaseName: database, tableName: 'steady' },
+    },
+    dateRange: [new Date(start + 30000), new Date(start + 3620000)],
+    filters: {},
+  });
+  const result = await client.queryChartConfig({
+    config: configs.traffic,
+    metadata: getMetadata(client),
+    querySettings: undefined,
+  });
+  expect(result.data).toHaveLength(61);
+  // 125 raw bytes/second * sampling 100 * 8. Both edge buckets have less than a minute of data.
+  expect(result.data.map(row => Number(row['Bits per second']))).toEqual(
+    Array(61).fill(100000),
+  );
+  const summary = await client.queryChartConfig({
+    config: configs.summary,
+    metadata: getMetadata(client),
+    querySettings: undefined,
+  });
+  expect(Number(summary.data[0].__netflow_flowRecords)).toBe(3590);
+  expect(Number(summary.data[0].__netflow_bytes)).toBe(3590 * 125 * 100);
+});
+
 test('NetFlow queries preserve sampled totals, raw records, aliases and Lucene semantics', async ({
   netflow,
 }) => {
@@ -132,7 +170,7 @@ test('NetFlow handles lowercase counter aliases and custom timestamp and exporte
   const customSource = {
     ...source,
     from: { databaseName: database, tableName: 'lowercase' },
-    timestampValueExpression: 'toDateTime(timestamp)',
+    timestampValueExpression: 'toDateTime(timestamp), toDate(timestamp)',
     bytesExpression: 'bytes',
     packetsExpression: 'packets',
     samplingRateExpression: 'sampling',
@@ -168,6 +206,9 @@ test('NetFlow handles lowercase counter aliases and custom timestamp and exporte
     querySettings: undefined,
   });
   expect(result.data).toHaveLength(500);
+  expect(new Date(String(result.data[0].__netflow_timestamp)).getTime()).toBe(
+    dateRange[1].getTime() - 904000,
+  );
   expect(
     result.data.every(
       row =>

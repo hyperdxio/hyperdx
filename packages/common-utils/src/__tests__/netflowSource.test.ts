@@ -1,4 +1,7 @@
-import { buildSearchChartConfig } from '@/core/searchChartConfig';
+import {
+  buildSearchChartConfig,
+  getSourceImplicitColumnExpression,
+} from '@/core/searchChartConfig';
 import {
   isSearchableSource,
   SourceKind,
@@ -79,6 +82,9 @@ it('searches mapped NetFlow dimensions for bare Lucene terms by default', () => 
   expect(config.implicitColumnExpression).toContain('toString(SrcAddr)');
   expect(config.implicitColumnExpression).toContain('toString(ExporterName)');
   expect(config.implicitColumnExpression).toContain('toString(OutIfName)');
+  expect(getSourceImplicitColumnExpression(SourceSchema.parse(source))).toBe(
+    config.implicitColumnExpression,
+  );
 });
 
 it('preserves and uses a custom NetFlow implicit expression', () => {
@@ -87,6 +93,7 @@ it('preserves and uses a custom NetFlow implicit expression', () => {
     implicitColumnExpression: 'SearchText',
   });
   expect(parsed).toHaveProperty('implicitColumnExpression', 'SearchText');
+  expect(getSourceImplicitColumnExpression(parsed)).toBe('SearchText');
   expect(
     buildSearchChartConfig(parsed, { where: 'router' })
       .implicitColumnExpression,

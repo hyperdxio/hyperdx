@@ -21,7 +21,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
-  getNetflowImplicitColumnExpression,
+  getSourceImplicitColumnExpression,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
@@ -177,12 +177,7 @@ export async function computeAliasWithClauses(
     select: resolvedSelect,
     where: savedSearch.where,
     whereLanguage: savedSearch.whereLanguage,
-    implicitColumnExpression:
-      source.kind === SourceKind.Netflow
-        ? getNetflowImplicitColumnExpression(source)
-        : source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.implicitColumnExpression
-          : undefined,
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     useTextIndexForImplicitColumn:
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.useTextIndexForImplicitColumn
@@ -740,12 +735,7 @@ const buildAlertChartConfigFromSavedConfig = ({
   if (displayTypeSupportsBuilderAlerts(savedConfig.displayType)) {
     // NetFlow derives its implicit expression from mapped flow dimensions.
     // Text-index options exist on Log and Trace; metricTables exists on Metric.
-    const implicitColumnExpression =
-      source.kind === SourceKind.Netflow
-        ? getNetflowImplicitColumnExpression(source)
-        : source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-          ? source.implicitColumnExpression
-          : undefined;
+    const implicitColumnExpression = getSourceImplicitColumnExpression(source);
     const useTextIndexForImplicitColumn =
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.useTextIndexForImplicitColumn
