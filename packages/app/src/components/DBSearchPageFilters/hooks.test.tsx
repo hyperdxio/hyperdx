@@ -69,6 +69,7 @@ jest.mock('@/hooks/useMetadata', () => ({
   useAllFields: jest.fn(),
   useGetKeyValues: jest.fn(),
   useAllKeyValues: jest.fn(),
+  useFilterKeysFetchLimit: jest.fn(),
 }));
 
 const useMe = jest.mocked(api.useMe);
@@ -84,6 +85,9 @@ const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
 const useAllFields = jest.mocked(useMetadataModule.useAllFields);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
 const useAllKeyValues = jest.mocked(useMetadataModule.useAllKeyValues);
+const useFilterKeysFetchLimit = jest.mocked(
+  useMetadataModule.useFilterKeysFetchLimit,
+);
 
 const CHART_CONFIG: BuilderChartConfigWithDateRange = {
   connection: 'conn1',
@@ -201,6 +205,8 @@ function setupDefaultMocks({ withMVs }: { withMVs: boolean }) {
     isError: false,
     error: null,
   });
+
+  useFilterKeysFetchLimit.mockReturnValue(100);
 }
 
 describe('useFetchFacets', () => {
@@ -446,6 +452,83 @@ describe('useFetchFacets', () => {
       // independent of the values query; it stays defined once metadata
       // loads. Only `keyValues` is gated on the active pipeline query.
       expect(result.current.data.keyValues).toBeUndefined();
+    });
+  });
+
+  describe('pending keys', () => {
+    const TWO_FIELDS = [
+      {
+        path: ['ServiceName'],
+        type: 'LowCardinality(String)',
+        jsType: 'string',
+      },
+      {
+        path: ['SeverityText'],
+        type: 'LowCardinality(String)',
+        jsType: 'string',
+      },
+    ];
+
+    const mockAllKeyValues = (data: Facet[] | undefined, isFetching: boolean) =>
+      useAllKeyValues.mockReturnValue({
+        data,
+        isLoading: false,
+        isFetching,
+        isError: false,
+        error: null,
+      });
+
+    const renderAllMode = () =>
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper: makeWrapper().wrapper },
+      );
+
+    it('lists keys whose values have not arrived yet as empty, pending facets', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({ data: TWO_FIELDS } as any);
+      mockAllKeyValues([{ key: 'SeverityText', value: ['info'] }], true);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: [] },
+        { key: 'SeverityText', value: ['info'] },
+      ]);
+      expect(result.current.pendingKeys).toEqual(new Set(['ServiceName']));
+    });
+
+    it('drops keys without values once the values query finishes', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({ data: TWO_FIELDS } as any);
+      mockAllKeyValues([{ key: 'SeverityText', value: ['info'] }], false);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'SeverityText', value: ['info'] },
+      ]);
+      expect(result.current.pendingKeys.size).toBe(0);
+    });
+
+    it('does not list keys past the team key fetch limit', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({ data: TWO_FIELDS } as any);
+      useFilterKeysFetchLimit.mockReturnValue(1);
+      mockAllKeyValues(undefined, true);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: [] },
+      ]);
+      expect(result.current.pendingKeys).toEqual(new Set(['ServiceName']));
     });
   });
 

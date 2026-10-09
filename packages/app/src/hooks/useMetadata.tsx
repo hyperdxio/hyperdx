@@ -343,6 +343,12 @@ export function useTableMetadata(
   });
 }
 
+/** How many keys a filter values query reads, per the team's setting. */
+export function useFilterKeysFetchLimit() {
+  const { data: me } = api.useMe();
+  return me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+}
+
 export function useMultipleGetKeyValues(
   {
     chartConfigs,
@@ -366,11 +372,9 @@ export function useMultipleGetKeyValues(
   const chartConfigsArr = toArray(chartConfigs);
 
   const { enabled = true } = options || {};
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
+  const { isLoading: isLoadingMe } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
-
-  const maxKeys =
-    me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+  const maxKeys = useFilterKeysFetchLimit();
 
   const query = useQuery<Facet[]>({
     queryKey: [
@@ -487,9 +491,8 @@ const facetKey = (facet: Facet) => facet.key;
  * metadata materialized views, or a raw table scan; each of those queries'
  * values show up as soon as it lands, rather than after the slowest one.
  *
- * Facets are kept in the order of `keys`, so each holds its place while the
- * queries finish in any order, and while a new date range replaces the
- * previous one's values.
+ * Facets arrive in whatever order the queries finish. While a new date range
+ * streams, the previous range's values stay in place until replaced.
  */
 export function useAllKeyValues(
   {
@@ -505,11 +508,9 @@ export function useAllKeyValues(
   { enabled = true }: { enabled?: boolean } = {},
 ) {
   const metadata = useMetadataWithSettings();
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
+  const { isLoading: isLoadingMe } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
-
-  const maxKeys =
-    me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+  const maxKeys = useFilterKeysFetchLimit();
   const keysToFetch = useMemo(() => keys.slice(0, maxKeys), [keys, maxKeys]);
 
   const source = chartConfig.source
@@ -564,23 +565,13 @@ export function useAllKeyValues(
     itemKey: facetKey,
   });
 
-  const data = useMemo(() => {
-    if (!streamed.data) return undefined;
-    // Keys the result renders differently from the request (re-quoted
-    // identifiers) sort last, in arrival order.
-    const position = new Map(keysToFetch.map((key, i) => [key, i] as const));
-    const rank = (facet: Facet) =>
-      position.get(facet.key) ?? keysToFetch.length;
-    return [...streamed.data].sort((a, b) => rank(a) - rank(b));
-  }, [streamed.data, keysToFetch]);
-
   return {
-    data,
+    data: streamed.data,
     error: streamed.error,
     isError: streamed.isError,
     isFetching: streamed.isStreaming,
     // Only until the first values land; the stream then fills in.
-    isLoading: (!data && streamed.isStreaming) || isLoadingSources,
+    isLoading: (!streamed.data && streamed.isStreaming) || isLoadingSources,
   };
 }
 

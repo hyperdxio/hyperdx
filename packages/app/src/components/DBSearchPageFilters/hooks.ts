@@ -20,6 +20,7 @@ import {
   useAllKeyValues,
   useColumns,
   useDateTimeColumns,
+  useFilterKeysFetchLimit,
   useGetKeyValues,
   useJsonColumns,
   useMapColumns,
@@ -29,7 +30,7 @@ import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
-import { toQuotedClickHouseKeyExpression } from './utils';
+import { listRequestedFacets, toQuotedClickHouseKeyExpression } from './utils';
 
 const INITIAL_LOAD_LIMIT = 20;
 
@@ -216,14 +217,16 @@ function useFacets({
     isFetching,
   } = mode === 'all' ? allKeyValues : exactKeyValues;
 
-  // Map the (escaped) result keys back to the original UI keys.
-  const facets = useMemo<Facet[] | undefined>(
+  const maxKeys = useFilterKeysFetchLimit();
+  const { facets, pendingKeys } = useMemo(
     () =>
-      rawFacets?.map(f => ({
-        ...f,
-        key: sqlKeyToUiKey.get(f.key) ?? f.key,
-      })),
-    [rawFacets, sqlKeyToUiKey],
+      listRequestedFacets({
+        requestedKeys: escapedKeysToFetch.slice(0, maxKeys),
+        arrived: rawFacets,
+        isFetching,
+        toUiKey: sqlKey => sqlKeyToUiKey.get(sqlKey) ?? sqlKey,
+      }),
+    [escapedKeysToFetch, maxKeys, rawFacets, isFetching, sqlKeyToUiKey],
   );
 
   const metadata = useMetadataWithSettings();
@@ -305,6 +308,8 @@ function useFacets({
   return {
     error: allFieldsError ?? keyValuesError,
     data: { keys: allFields, keyValues: facets },
+    /** Listed keys whose values haven't arrived yet; their facets are empty. */
+    pendingKeys,
     isLoading: isAllFieldsLoading || isKeyValuesLoading,
     isFetching,
     loadMoreFacetsForKey,

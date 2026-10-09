@@ -308,7 +308,7 @@ describe('useAllKeyValues', () => {
     );
   });
 
-  it("shows each query's values before the slowest finishes, in the order of keys", async () => {
+  it("shows each query's values before the slowest finishes", async () => {
     let releaseSlowQuery: () => void = () => {};
     const slowQuery = new Promise<void>(resolve => {
       releaseSlowQuery = resolve;
@@ -342,8 +342,8 @@ describe('useAllKeyValues', () => {
 
     await waitFor(() => expect(result.current.isFetching).toBe(false));
     expect(result.current.data).toEqual([
-      { key: 'ServiceName', value: ['api'] },
       { key: 'SeverityText', value: ['info'] },
+      { key: 'ServiceName', value: ['api'] },
     ]);
   });
 
