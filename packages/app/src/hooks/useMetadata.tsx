@@ -224,87 +224,155 @@ export function useMapColumns(
   });
 }
 
+type TableConnectionFields = {
+  fields: Field[];
+  columns: ColumnMeta[];
+  /** The lookup failed; `columns` is kept if it loaded first. */
+  error?: Error;
+};
+
+type MultipleAllFieldsOptions = {
+  dateRange?: [Date, Date];
+  timestampValueExpression?: string;
+  // Return only fields present in EVERY table connection instead of the
+  // union. Use for a shared expression (e.g. a chart-level Group By over
+  // multiple series) that must be valid against all of them — the union
+  // would offer fields that exist in one table but not another.
+  intersect?: boolean;
+  enabled?: boolean;
+};
+
+/**
+ * Fields (columns plus Map / JSON keys) across one or more tables, merged into
+ * `data`, with each table connection's fields and raw columns also returned by index.
+ *
+ * A table connection whose lookup fails counts as no fields, so `data` still holds
+ * the others'. With `intersect`, a failed table connection makes `data` empty, since
+ * no field can be confirmed for it. Each failed table connection's error is in
+ * `errorsByTableConnection`; `isError` and `error` are set only when every
+ * table connection failed.
+ *
+ * When the team disables field metadata, `data` is `[]` but
+ * `columnsByTableConnection` is still filled.
+ */
 export function useMultipleAllFields(
   tableConnections: TableConnection[],
-  options?: Partial<UseQueryOptions<Field[]>> & {
-    dateRange?: [Date, Date];
-    timestampValueExpression?: string;
-    // Return only fields present in EVERY table connection instead of the
-    // union. Use for a shared expression (e.g. a chart-level Group By over
-    // multiple series) that must be valid against all of them — the union
-    // would offer fields that exist in one table but not another.
-    intersect?: boolean;
-  },
-) {
-  const metadata = useMetadataWithSettings();
-  const { data: me, isFetched } = api.useMe();
-  const {
+  {
     dateRange,
     timestampValueExpression,
     intersect,
-    enabled: enabledOption = true,
-    ...queryOptions
-  } = options ?? {};
-  return useQuery<Field[]>({
+    enabled = true,
+  }: MultipleAllFieldsOptions = {},
+) {
+  const metadata = useMetadataWithSettings();
+  const { data: me, isFetched } = api.useMe();
+  const isFieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
+  const allPopulated = tableConnections.every(
+    tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
+  );
+
+  const query = useQuery<TableConnectionFields[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
       ...tableConnections.map(tc => ({ ...tc })),
       dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
       timestampValueExpression,
-      intersect ?? false,
+      isFieldMetadataDisabled,
     ],
-    queryFn: async () => {
-      const team = me?.team;
-      if (team?.fieldMetadataDisabled) {
-        return [];
-      }
-
-      const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc =>
-          metadata.getAllFields({
-            ...tc,
-            dateRange,
-            timestampValueExpression:
-              timestampValueExpression ?? tc.timestampValueExpression,
-          }),
-        ),
-      );
-
-      const fields2d: Field[][] = promiseResults.map(result => {
-        if (result.status === 'rejected') {
-          console.warn(
-            'Failed to fetch fields for table connection',
-            result.reason,
-          );
-          return [];
-        }
-        return result.value;
-      });
-
-      // skip set logic if not needed
-      if (fields2d.length === 1) return fields2d[0];
-
-      return intersect
-        ? intersect2dArray<Field>(fields2d)
-        : deduplicate2dArray<Field>(fields2d);
-    },
-    ...queryOptions,
+    queryFn: () =>
+      Promise.all(
+        tableConnections.map(async (tc): Promise<TableConnectionFields> => {
+          let columns: ColumnMeta[] = [];
+          try {
+            columns = await metadata.getColumns({
+              databaseName: tc.databaseName,
+              tableName: tc.tableName,
+              connectionId: tc.connectionId,
+            });
+            const fields = isFieldMetadataDisabled
+              ? []
+              : await metadata.getAllFields({
+                  ...tc,
+                  dateRange,
+                  timestampValueExpression:
+                    timestampValueExpression ?? tc.timestampValueExpression,
+                });
+            return { fields, columns };
+          } catch (error) {
+            console.warn('Failed to fetch fields for table connection', error);
+            return {
+              fields: [],
+              columns,
+              error: error instanceof Error ? error : new Error(String(error)),
+            };
+          }
+        }),
+      ),
     enabled:
-      enabledOption &&
-      tableConnections.length > 0 &&
-      tableConnections.every(
-        tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
-      ) &&
-      isFetched,
+      enabled && tableConnections.length > 0 && allPopulated && isFetched,
   });
+
+  const tableConnectionFields = query.data;
+  const merged = useMemo(() => {
+    const fieldsByTableConnection = new Map<number, Field[]>();
+    const columnsByTableConnection = new Map<number, ColumnMeta[]>();
+    const errorsByTableConnection = new Map<number, Error>();
+    tableConnectionFields?.forEach(({ fields, columns, error }, index) => {
+      fieldsByTableConnection.set(index, fields);
+      columnsByTableConnection.set(index, columns);
+      if (error) errorsByTableConnection.set(index, error);
+    });
+    const isError =
+      !!tableConnectionFields?.length &&
+      errorsByTableConnection.size === tableConnectionFields.length;
+
+    let data: Field[] | undefined;
+    if (tableConnectionFields) {
+      const fields2d = tableConnectionFields.map(({ fields }) => fields);
+      // skip set logic if not needed
+      if (fields2d.length === 1) data = fields2d[0];
+      else
+        data = intersect
+          ? intersect2dArray<Field>(fields2d)
+          : deduplicate2dArray<Field>(fields2d);
+    }
+
+    return {
+      data,
+      error: isError ? (tableConnectionFields?.[0].error ?? null) : null,
+      isError,
+      fieldsByTableConnection: fieldsByTableConnection as ReadonlyMap<
+        number,
+        Field[]
+      >,
+      columnsByTableConnection: columnsByTableConnection as ReadonlyMap<
+        number,
+        ColumnMeta[]
+      >,
+      errorsByTableConnection: errorsByTableConnection as ReadonlyMap<
+        number,
+        Error
+      >,
+    };
+  }, [tableConnectionFields, intersect]);
+
+  // The status fields come from `merged` rather than spreading `query`:
+  // `queryFn` never throws, so the query's own `status` and `isError` would
+  // report success when every table connection failed.
+  return {
+    ...merged,
+    isPending: query.isPending,
+    isSuccess: query.isSuccess && !merged.isError,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+    isFieldMetadataDisabled,
+  };
 }
 
 export function useAllFields(
   tableConnection: TableConnection | undefined,
-  options?: Partial<UseQueryOptions<Field[]>> & {
-    dateRange?: [Date, Date];
-    timestampValueExpression?: string;
-  },
+  options?: Omit<MultipleAllFieldsOptions, 'intersect'>,
 ) {
   return useMultipleAllFields(
     tableConnection ? [tableConnection] : [],
