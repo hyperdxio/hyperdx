@@ -17,6 +17,7 @@ import {
 } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { runWithTimeout } from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 
 import { QUERYABLE_METRIC_KINDS, sanitizeMetricTables } from './metricKinds';
@@ -35,15 +36,15 @@ const MAX_PREVIEW_NAMES_PER_KIND = 10;
 const PREVIEW_CONCURRENCY = 6;
 
 // Server-side cap per preview query, slightly under the wall-clock budget
-// so break-mode partial results make it back and get attached before the
-// AbortController fires.
+// so break-mode partial results make it back and get attached before it
+// aborts.
 const PREVIEW_QUERY_MAX_EXECUTION_SEC = 2.5;
 
 /**
  * ClickhouseClient that caps every query with max_execution_time +
  * timeout_overflow_mode=break, so a slow sampling query returns whatever
  * rows ClickHouse processed within the budget instead of timing out with
- * nothing. The AbortController in attachMetricNamePreviews remains the
+ * nothing. The timeout in attachMetricNamePreviews remains the
  * wall-clock backstop for stalls the server-side cap cannot cover (e.g.
  * network).
  */
@@ -111,12 +112,6 @@ async function attachMetricNamePreviews({
     }),
   );
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(
-    () => controller.abort(),
-    METRIC_PREVIEW_TIMEOUT_MS,
-  );
-
   const now = new Date();
   // Multiple sources can point at the same physical table (e.g. cloned
   // source configs) — dedupe the sampling per (connection, db, table,
@@ -129,13 +124,13 @@ async function attachMetricNamePreviews({
   // clickstack_timeseries / clickstack_table, and summary metrics are not.
   const queryableKinds = new Set<string>(QUERYABLE_METRIC_KINDS);
 
-  const tasks: Array<() => Promise<void>> = [];
+  const tasks: Array<(signal: AbortSignal) => Promise<void>> = [];
   for (const entry of entries) {
     const client = clients.get(entry.connectionId);
     if (!client) continue;
     for (const [kind, tableName] of Object.entries(entry.metricTables)) {
       if (!queryableKinds.has(kind)) continue;
-      tasks.push(async () => {
+      tasks.push(async signal => {
         // JSON-encode the tuple so delimiter characters inside a
         // component cannot make two distinct tuples collide.
         const cacheKey = JSON.stringify([
@@ -154,7 +149,7 @@ async function attachMetricNamePreviews({
             connectionId: entry.connectionId,
             now,
             timestampValueExpression: entry.timestampValueExpression,
-            signal: controller.signal,
+            signal,
             maxNames: MAX_PREVIEW_NAMES_PER_KIND,
             enrich: false,
           }).then(samples => samples.map(s => s.name));
@@ -172,34 +167,26 @@ async function attachMetricNamePreviews({
     }
   }
 
-  const abortedPromise = new Promise<void>(resolve => {
-    controller.signal.addEventListener('abort', () => resolve(), {
-      once: true,
-    });
-  });
-
   const queue = new PQueue({ concurrency: PREVIEW_CONCURRENCY });
-  const drained = Promise.all(
-    tasks.map(task =>
-      queue.add(async () => {
-        // Don't start new sampling once the budget has expired.
-        if (controller.signal.aborted) return;
-        try {
-          await task();
-        } catch {
-          // Best-effort: individual sampling failures never fail the call.
-        }
-      }),
-    ),
+  // Stops waiting at the budget even if a ClickHouse call ignores the
+  // signal, so it cannot hold list_sources past it.
+  await runWithTimeout(
+    signal =>
+      Promise.all(
+        tasks.map(task =>
+          queue.add(async () => {
+            // Don't start new sampling once the budget has expired.
+            if (signal.aborted) return;
+            try {
+              await task(signal);
+            } catch {
+              // Best-effort: individual sampling failures never fail the call.
+            }
+          }),
+        ),
+      ),
+    { timeoutMs: METRIC_PREVIEW_TIMEOUT_MS },
   );
-
-  try {
-    // Race the queue against the abort so a ClickHouse call that ignores
-    // the signal cannot hold list_sources past its budget.
-    await Promise.race([drained, abortedPromise]);
-  } finally {
-    clearTimeout(timeoutId);
-  }
 
   for (const [summary, preview] of previews) {
     if (preview.size > 0) {

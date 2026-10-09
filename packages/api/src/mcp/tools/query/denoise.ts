@@ -14,6 +14,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
 
 import { resolveBodyExpression } from './helpers';
 
@@ -151,13 +152,21 @@ export async function denoiseSearchResults(
         config: sampleConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: { max_execution_time: 30 } },
+        opts: {
+          clickhouse_settings: {
+            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+          },
+        },
       }),
       clickhouseClient.queryChartConfig({
         config: countConfig,
         metadata,
         querySettings: source.querySettings,
-        opts: { clickhouse_settings: { max_execution_time: 30 } },
+        opts: {
+          clickhouse_settings: {
+            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+          },
+        },
       }),
     ]);
   } catch {

@@ -18,6 +18,7 @@ import {
   mcpServerError,
   mcpUserError,
 } from '@/mcp/utils/errors';
+import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
@@ -186,7 +187,9 @@ export async function mineWindowPatterns(
         metadata,
         querySettings: source.querySettings,
         opts: {
-          clickhouse_settings: { max_execution_time: 30 },
+          clickhouse_settings: {
+            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+          },
           abort_signal: options?.abortSignal,
         },
       }),
@@ -195,7 +198,9 @@ export async function mineWindowPatterns(
         metadata,
         querySettings: source.querySettings,
         opts: {
-          clickhouse_settings: { max_execution_time: 30 },
+          clickhouse_settings: {
+            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+          },
           abort_signal: options?.abortSignal,
         },
       }),

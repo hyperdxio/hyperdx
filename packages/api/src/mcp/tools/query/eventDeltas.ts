@@ -16,6 +16,7 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
@@ -358,7 +359,9 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
             query_params: targetSql.params,
             format: 'JSON',
             connectionId: source.connection.toString(),
-            clickhouse_settings: { max_execution_time: 30 },
+            clickhouse_settings: {
+              max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+            },
             abort_signal: abortController.signal,
           }),
           clickhouseClient.query({
@@ -366,7 +369,9 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
             query_params: baselineSql.params,
             format: 'JSON',
             connectionId: source.connection.toString(),
-            clickhouse_settings: { max_execution_time: 30 },
+            clickhouse_settings: {
+              max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+            },
             abort_signal: abortController.signal,
           }),
         ]);

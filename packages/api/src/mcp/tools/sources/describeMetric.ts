@@ -23,6 +23,7 @@ import {
   mcpUserError,
   sanitizeFetchError,
 } from '@/mcp/utils/errors';
+import { MCP_TOOL_TIMEOUT_MS, runWithTimeout } from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -32,8 +33,7 @@ import {
   METRIC_DEFAULT_LOOKBACK_MS,
 } from './metricKinds';
 
-// Matches the 30s cap the MCP query tools use.
-const DESCRIBE_TIMEOUT_MS = 30_000;
+const DESCRIBE_TIMEOUT_MS = MCP_TOOL_TIMEOUT_MS;
 
 // Server-side safety nets for the attribute-keys discovery query.
 // Sample at most N rows that match (MetricName, time range), then
@@ -739,40 +739,23 @@ export function registerDescribeMetric({
       // optional-field types into `unknown`, but the parser produces
       // the typed shape we need for downstream calls.
       const input = describeMetricSchema.parse(rawInput);
-      const controller = new AbortController();
-      // Hoist the timer handle so the finally block can cancel it on the
-      // success path — otherwise a stale controller.abort() fires
-      // DESCRIBE_TIMEOUT_MS after every successful call and the
-      // setTimeout closure stays pinned for the same duration.
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(new Error('DESCRIBE_METRIC_TIMEOUT'));
-        }, DESCRIBE_TIMEOUT_MS);
-      });
-      try {
-        return await Promise.race([
-          describeMetricImpl(teamId.toString(), input, controller.signal),
-          timeoutPromise,
-        ]);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'DESCRIBE_METRIC_TIMEOUT') {
-          logger.warn(
-            { teamId, sourceId: input.sourceId, metricName: input.metricName },
-            'clickstack_describe_metric timed out',
-          );
-          return mcpServerError(
-            'Discovery timed out. The metric table may be under load or the ' +
-              'attribute set may be very high-cardinality. Try narrowing ' +
-              'startTime/endTime or setting sampleValues:false to skip the ' +
-              'value-sampling stage.',
-          );
-        }
-        throw e;
-      } finally {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      const outcome = await runWithTimeout(
+        signal => describeMetricImpl(teamId.toString(), input, signal),
+        { timeoutMs: DESCRIBE_TIMEOUT_MS },
+      );
+      if (!outcome.timedOut) {
+        return outcome.value;
       }
+      logger.warn(
+        { teamId, sourceId: input.sourceId, metricName: input.metricName },
+        'clickstack_describe_metric timed out',
+      );
+      return mcpServerError(
+        'Discovery timed out. The metric table may be under load or the ' +
+          'attribute set may be very high-cardinality. Try narrowing ' +
+          'startTime/endTime or setting sampleValues:false to skip the ' +
+          'value-sampling stage.',
+      );
     },
   );
 }

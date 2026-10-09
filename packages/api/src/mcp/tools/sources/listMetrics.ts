@@ -9,6 +9,7 @@ import { getSource } from '@/controllers/sources';
 import { parseTimeRange } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import { MCP_TOOL_TIMEOUT_MS, runWithTimeout } from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 
 import { KIND_TIMED_OUT_ERROR, scanKindsForPage } from './listMetricsPage';
@@ -25,9 +26,8 @@ import {
   METRIC_DEFAULT_LOOKBACK_MS,
 } from './metricKinds';
 
-// Wall-clock budget for the whole call, matching the 30s cap the MCP query
-// tools use.
-const LIST_TIMEOUT_MS = 30_000;
+// Wall-clock budget for the whole call.
+const LIST_TIMEOUT_MS = MCP_TOOL_TIMEOUT_MS;
 
 // Time held back from the name scan for the unit/description lookup and
 // response assembly. Kinds still scanning when it starts are reported as
@@ -75,40 +75,21 @@ export function registerListMetrics({
         listMetricsSchema.parse(rawInput);
 
       const deadlineAt = Date.now() + LIST_TIMEOUT_MS;
-      const controller = new AbortController();
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(new Error('LIST_METRICS_TIMEOUT'));
-        }, LIST_TIMEOUT_MS);
-      });
-
-      try {
-        return await Promise.race([
-          listMetricsImpl(
-            teamId.toString(),
-            input,
-            deadlineAt,
-            controller.signal,
-          ),
-          timeoutPromise,
-        ]);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'LIST_METRICS_TIMEOUT') {
-          logger.warn(
-            { teamId, sourceId: input.sourceId },
-            'clickstack_list_metrics timed out',
-          );
-          return mcpServerError(
-            'clickstack_list_metrics timed out. Try narrowing the time window ' +
-              '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
-          );
-        }
-        throw e;
-      } finally {
-        clearTimeout(timeoutId);
+      const outcome = await runWithTimeout(
+        signal => listMetricsImpl(teamId.toString(), input, deadlineAt, signal),
+        { timeoutMs: LIST_TIMEOUT_MS },
+      );
+      if (!outcome.timedOut) {
+        return outcome.value;
       }
+      logger.warn(
+        { teamId, sourceId: input.sourceId },
+        'clickstack_list_metrics timed out',
+      );
+      return mcpServerError(
+        'clickstack_list_metrics timed out. Try narrowing the time window ' +
+          '(startTime/endTime), pinning a single `kind`, or adding a namePattern filter.',
+      );
     },
   );
 }
