@@ -117,8 +117,10 @@ import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import {
   FIND_CURRENT_HIGHLIGHT_BACKGROUND,
   FIND_HIGHLIGHT_BACKGROUND,
+  FIND_HIGHLIGHT_TEXT,
   highlightTerms,
   QUERY_HIGHLIGHT_BACKGROUND,
+  QUERY_HIGHLIGHT_TEXT,
 } from './DBTable/highlightText';
 import {
   ROW_SELECTION_COLUMN_WIDTH,
@@ -688,6 +690,7 @@ export const RawLogTable = memo(
                         backgroundColor: isCurrentMatch
                           ? FIND_CURRENT_HIGHLIGHT_BACKGROUND
                           : FIND_HIGHLIGHT_BACKGROUND,
+                        textColor: FIND_HIGHLIGHT_TEXT,
                       },
                     ]
                   : []),
@@ -696,6 +699,7 @@ export const RawLogTable = memo(
                       {
                         terms: queryHighlightTerms[column],
                         backgroundColor: QUERY_HIGHLIGHT_BACKGROUND,
+                        textColor: QUERY_HIGHLIGHT_TEXT,
                       },
                     ]
                   : []),

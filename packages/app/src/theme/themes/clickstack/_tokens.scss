@@ -213,6 +213,22 @@
   --color-border-code: #4d4f66;
   --color-bg-kbd: var(--click-global-color-background-default);
 
+  /* Search match highlighting (result tables). The find box is a deliberate,
+     transient action, so it gets a solid block; the active query's own terms
+     are ambient and always on, so they get a wash that keeps a line readable
+     when a dozen matches land in it. `yellow` is remapped to the brand gold
+     here, so these follow the brand. Both solid fills are light in either
+     color mode, so their text stays dark in both. */
+  --color-bg-highlight-query: color-mix(
+    in srgb,
+    var(--mantine-color-yellow-4),
+    transparent 78%
+  );
+  --color-text-highlight-query: var(--color-text);
+  --color-bg-highlight-find: var(--mantine-color-yellow-3);
+  --color-bg-highlight-find-current: var(--mantine-color-orange-5);
+  --color-text-highlight-find: var(--mantine-color-dark-9);
+
   /* JSON Syntax Highlighting - Yellow/Gold palette */
   --color-json-string: #ffd966;
   --color-json-number: #f59e0b;
@@ -449,6 +465,18 @@
   --color-bg-code: var(--palette-slate-50);
   --color-border-code: #dee2e6;
   --color-bg-kbd: var(--click-global-color-background-muted);
+
+  /* Search match highlighting - see the dark block for the rationale. The wash
+     is less transparent here because it sits on white, not on a dark body. */
+  --color-bg-highlight-query: color-mix(
+    in srgb,
+    var(--mantine-color-yellow-4),
+    transparent 68%
+  );
+  --color-text-highlight-query: var(--color-text);
+  --color-bg-highlight-find: var(--mantine-color-yellow-3);
+  --color-bg-highlight-find-current: var(--mantine-color-orange-5);
+  --color-text-highlight-find: var(--mantine-color-dark-9);
 
   /* JSON Syntax Highlighting */
   --color-json-string: #997300;

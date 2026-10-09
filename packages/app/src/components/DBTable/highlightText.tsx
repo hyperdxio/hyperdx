@@ -1,14 +1,20 @@
 import React from 'react';
 
 /** Terms the user typed into the in-table find box. */
-export const FIND_HIGHLIGHT_BACKGROUND = 'var(--mantine-color-yellow-3)';
+export const FIND_HIGHLIGHT_BACKGROUND = 'var(--color-bg-highlight-find)';
 /** The find match the user is currently sitting on. */
 export const FIND_CURRENT_HIGHLIGHT_BACKGROUND =
-  'var(--mantine-color-orange-5)';
-/** Terms pulled from the active Lucene query, kept distinct from find matches. */
-export const QUERY_HIGHLIGHT_BACKGROUND = 'var(--mantine-color-blue-3)';
+  'var(--color-bg-highlight-find-current)';
+export const FIND_HIGHLIGHT_TEXT = 'var(--color-text-highlight-find)';
 
-const DEFAULT_TEXT_COLOR = 'var(--color-text-inverted)';
+/**
+ * Terms pulled from the active Lucene query. Same yellow family as the find
+ * box, but a wash rather than a solid fill: these are always on and a busy row
+ * can carry a dozen of them, so they have to stay readable and stay out of the
+ * find box's way.
+ */
+export const QUERY_HIGHLIGHT_BACKGROUND = 'var(--color-bg-highlight-query)';
+export const QUERY_HIGHLIGHT_TEXT = 'var(--color-text-highlight-query)';
 
 interface HighlightTextSettings {
   isCurrentMatch: boolean;
@@ -118,7 +124,7 @@ export const highlightTerms = (
         key={`${match.start}-${match.end}-${match.groupIndex}`}
         style={{
           backgroundColor: group.backgroundColor,
-          color: group.textColor || DEFAULT_TEXT_COLOR,
+          color: group.textColor || FIND_HIGHLIGHT_TEXT,
           padding: 0,
         }}
       >

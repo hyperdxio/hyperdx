@@ -27,6 +27,9 @@ export const semanticColorsGrouped = {
     'color-bg-modal',
     'color-bg-code',
     'color-bg-kbd',
+    'color-bg-highlight-query',
+    'color-bg-highlight-find',
+    'color-bg-highlight-find-current',
   ],
   borders: [
     'color-border',
@@ -49,6 +52,8 @@ export const semanticColorsGrouped = {
     'color-text-danger',
     'color-text-warning',
     'color-text-info',
+    'color-text-highlight-query',
+    'color-text-highlight-find',
   ],
   icons: ['color-icon-primary', 'color-icon-muted'],
   overlay: ['color-overlay', 'color-backdrop'],
