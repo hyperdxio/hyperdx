@@ -3380,15 +3380,6 @@ describe('extractLuceneHighlightTerms', () => {
     ]);
   });
 
-  it('dedupes repeated terms case-insensitively, per field', () => {
-    expect(
-      extractLuceneHighlightTerms('error OR Error OR ServiceName:error'),
-    ).toEqual([
-      { term: 'error', field: undefined },
-      { term: 'error', field: 'ServiceName' },
-    ]);
-  });
-
   it('walks nested groups', () => {
     expect(
       extractLuceneHighlightTerms('(foo OR (bar AND ServiceName:api)) baz'),

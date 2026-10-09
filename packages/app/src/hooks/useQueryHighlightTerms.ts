@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { extractLuceneHighlightTerms } from '@hyperdx/common-utils/dist/queryParser';
 import {
-  Filter,
   SearchCondition,
   SearchConditionLanguage,
 } from '@hyperdx/common-utils/dist/types';
@@ -21,13 +20,13 @@ function normalizeFieldName(name: string): string {
 }
 
 /**
- * Spread Lucene terms over the columns they can match. Bare terms search the
- * source's implicit column(s), which we can't resolve here, so they go
- * everywhere; a field-scoped term only highlights in its own column, and
+ * Spread a Lucene query's terms over the columns they can match. Bare terms
+ * search the source's implicit column(s), which we can't resolve here, so they
+ * go everywhere; a field-scoped term only highlights in its own column, and
  * nowhere at all when that column isn't displayed.
  */
 export function mapHighlightTermsToColumns(
-  conditions: string[],
+  query: string,
   displayedColumns: string[],
 ): QueryHighlightTerms {
   const columnsByField = new Map<string, string[]>();
@@ -37,21 +36,15 @@ export function mapHighlightTermsToColumns(
   }
 
   const termsByColumn: QueryHighlightTerms = {};
-  const addTerm = (column: string, term: string) => {
-    const terms = (termsByColumn[column] ??= []);
-    if (!terms.includes(term)) {
-      terms.push(term);
-    }
-  };
-
-  for (const condition of conditions) {
-    for (const { term, field } of extractLuceneHighlightTerms(condition)) {
-      const columns =
-        field == null
-          ? displayedColumns
-          : (columnsByField.get(normalizeFieldName(field)) ?? []);
-      for (const column of columns) {
-        addTerm(column, term);
+  for (const { term, field } of extractLuceneHighlightTerms(query)) {
+    const columns =
+      field == null
+        ? displayedColumns
+        : (columnsByField.get(normalizeFieldName(field)) ?? []);
+    for (const column of columns) {
+      const terms = (termsByColumn[column] ??= []);
+      if (!terms.includes(term)) {
+        terms.push(term);
       }
     }
   }
@@ -60,35 +53,19 @@ export function mapHighlightTermsToColumns(
 }
 
 /**
- * Terms from the active Lucene query (and any Lucene sidebar filters) that
- * explain why the displayed rows matched, ready to highlight per column.
+ * Terms from the active Lucene query that explain why the displayed rows
+ * matched, ready to highlight per column.
  */
-export function useQueryHighlightTerms({
-  where,
-  whereLanguage,
-  filters,
-  displayedColumns,
-}: {
-  where?: SearchCondition;
-  whereLanguage?: SearchConditionLanguage;
-  filters?: Filter[];
-  displayedColumns: string[];
-}): QueryHighlightTerms {
-  const conditions = useMemo(() => {
-    const luceneConditions: string[] = [];
-    if (whereLanguage === 'lucene' && where) {
-      luceneConditions.push(where);
-    }
-    for (const filter of filters ?? []) {
-      if (filter.type === 'lucene') {
-        luceneConditions.push(filter.condition);
-      }
-    }
-    return luceneConditions;
-  }, [where, whereLanguage, filters]);
+export function useQueryHighlightTerms(
+  config:
+    | { where?: SearchCondition; whereLanguage?: SearchConditionLanguage }
+    | undefined,
+  displayedColumns: string[],
+): QueryHighlightTerms {
+  const query = config?.whereLanguage === 'lucene' ? config.where : undefined;
 
   return useMemo(
-    () => mapHighlightTermsToColumns(conditions, displayedColumns),
-    [conditions, displayedColumns],
+    () => (query ? mapHighlightTermsToColumns(query, displayedColumns) : {}),
+    [query, displayedColumns],
   );
 }

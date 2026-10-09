@@ -1,34 +1,32 @@
 import React from 'react';
 
-/** Terms the user typed into the in-table find box. */
-export const FIND_HIGHLIGHT_BACKGROUND = 'var(--color-bg-highlight-find)';
-/** The find match the user is currently sitting on. */
-export const FIND_CURRENT_HIGHLIGHT_BACKGROUND =
-  'var(--color-bg-highlight-find-current)';
-export const FIND_HIGHLIGHT_TEXT = 'var(--color-text-highlight-find)';
-
 /**
- * Terms pulled from the active Lucene query. Same yellow family as the find
- * box, but a wash rather than a solid fill: these are always on and a busy row
- * can carry a dozen of them, so they have to stay readable and stay out of the
- * find box's way. It is paired with no text color so the cell keeps its own —
- * a log level stays level-colored underneath the wash.
+ * A set of terms sharing one style. Leaving `textColor` unset keeps whatever
+ * colour the text already had, which only works over a translucent background.
  */
-export const QUERY_HIGHLIGHT_BACKGROUND = 'var(--color-bg-highlight-query)';
-
-interface HighlightTextSettings {
-  isCurrentMatch: boolean;
-  textColor: string;
-  backgroundColor: string;
-  currentMatchBackgroundColor: string;
-}
-
-/** A set of terms sharing one colour. Without `textColor` the match keeps the
- * colour it would have had, which only works over a translucent background. */
 export type HighlightGroup = {
   terms: string[];
   backgroundColor: string;
   textColor?: string;
+};
+
+/** The in-table find box: a solid fill, since it is a deliberate, transient action. */
+export const FIND_HIGHLIGHT = {
+  backgroundColor: 'var(--color-bg-highlight-find)',
+  textColor: 'var(--color-text-highlight-find)',
+};
+/** The find match the user is currently sitting on. */
+export const FIND_CURRENT_HIGHLIGHT = {
+  backgroundColor: 'var(--color-bg-highlight-find-current)',
+  textColor: 'var(--color-text-highlight-find)',
+};
+/**
+ * The active query's own terms. Same yellow family as the find box, but a wash
+ * rather than a solid fill: these are always on and a busy row can carry a
+ * dozen of them. No text colour, so a log level keeps its severity colour.
+ */
+export const QUERY_HIGHLIGHT = {
+  backgroundColor: 'var(--color-bg-highlight-query)',
 };
 
 type Match = { start: number; end: number; groupIndex: number };
@@ -82,15 +80,11 @@ function mergeNonOverlapping(accepted: Match[], candidates: Match[]): Match[] {
       merged.push(candidate);
     }
   }
-  while (i < accepted.length) {
-    merged.push(accepted[i]);
-    i++;
-  }
-  return merged;
+  return [...merged, ...accepted.slice(i)];
 }
 
 /**
- * Wrap every occurrence of the given terms in a `<mark>`, coloured by the group
+ * Wrap every occurrence of the given terms in a `<mark>`, styled by the group
  * the term came from. Matching is case-insensitive substring matching. Earlier
  * groups win where matches would overlap, so the find box keeps its colour when
  * it lands on top of a query term.
@@ -136,36 +130,7 @@ export const highlightTerms = (
     );
     cursor = match.end;
   }
-  if (cursor < text.length) {
-    parts.push(text.slice(cursor));
-  }
+  parts.push(text.slice(cursor));
 
   return <>{parts}</>;
-};
-
-/**
- * Highlight a single find-box query within a cell value.
- *
- * @param text - The text to highlight within
- * @param query - The query to highlight
- * @param settings.isCurrentMatch - Whether this is the match the user is on,
- * which is highlighted with an orange background.
- */
-export const highlightText = (
-  text: string,
-  query: string,
-  settings: Partial<HighlightTextSettings> = {},
-): React.ReactNode => {
-  if (!query.trim()) return text;
-
-  return highlightTerms(text, [
-    {
-      terms: [query],
-      backgroundColor: settings.isCurrentMatch
-        ? settings.currentMatchBackgroundColor ||
-          FIND_CURRENT_HIGHLIGHT_BACKGROUND
-        : settings.backgroundColor || FIND_HIGHLIGHT_BACKGROUND,
-      textColor: settings.textColor || FIND_HIGHLIGHT_TEXT,
-    },
-  ]);
 };

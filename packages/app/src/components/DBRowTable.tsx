@@ -115,11 +115,11 @@ import ChartErrorState, {
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import {
-  FIND_CURRENT_HIGHLIGHT_BACKGROUND,
-  FIND_HIGHLIGHT_BACKGROUND,
-  FIND_HIGHLIGHT_TEXT,
+  FIND_CURRENT_HIGHLIGHT,
+  FIND_HIGHLIGHT,
+  HighlightGroup,
   highlightTerms,
-  QUERY_HIGHLIGHT_BACKGROUND,
+  QUERY_HIGHLIGHT,
 } from './DBTable/highlightText';
 import {
   ROW_SELECTION_COLUMN_WIDTH,
@@ -601,13 +601,14 @@ export const RawLogTable = memo(
     const [highlightQueryEnabled, setHighlightQueryEnabled] =
       useLocalStorage<boolean>(HIGHLIGHT_QUERY_STORAGE_KEY, true);
 
-    const queryHighlightTerms = useQueryHighlightTerms({
-      where: config?.where,
-      whereLanguage: config?.whereLanguage,
-      filters: config?.filters,
+    const queryHighlightTerms = useQueryHighlightTerms(
+      config,
       displayedColumns,
-    });
+    );
     const hasQueryHighlightTerms = Object.keys(queryHighlightTerms).length > 0;
+    const highlightQueryLabel = highlightQueryEnabled
+      ? 'Hide search term highlights'
+      : 'Highlight search terms';
 
     const columns = useMemo<ColumnDef<any>[]>(
       () => [
@@ -676,28 +677,20 @@ export const RawLogTable = memo(
                 tableSearch.matchIndices[tableSearch.currentMatchIndex] ===
                   info.row.index;
 
-              // The find box wins over the query terms where the two overlap
-              const highlightGroups = [
-                ...(tableSearch.searchQuery
-                  ? [
-                      {
-                        terms: [tableSearch.searchQuery],
-                        backgroundColor: isCurrentMatch
-                          ? FIND_CURRENT_HIGHLIGHT_BACKGROUND
-                          : FIND_HIGHLIGHT_BACKGROUND,
-                        textColor: FIND_HIGHLIGHT_TEXT,
-                      },
-                    ]
-                  : []),
-                ...(highlightQueryEnabled && queryHighlightTerms[column]
-                  ? [
-                      {
-                        terms: queryHighlightTerms[column],
-                        backgroundColor: QUERY_HIGHLIGHT_BACKGROUND,
-                      },
-                    ]
-                  : []),
-              ];
+              // Listed first, so the find box wins where the two overlap
+              const highlightGroups: HighlightGroup[] = [];
+              if (tableSearch.searchQuery) {
+                highlightGroups.push({
+                  ...(isCurrentMatch ? FIND_CURRENT_HIGHLIGHT : FIND_HIGHLIGHT),
+                  terms: [tableSearch.searchQuery],
+                });
+              }
+              if (highlightQueryEnabled && queryHighlightTerms[column]) {
+                highlightGroups.push({
+                  ...QUERY_HIGHLIGHT,
+                  terms: queryHighlightTerms[column],
+                });
+              }
 
               const displayValue = highlightGroups.length
                 ? highlightTerms(truncatedStrValue, highlightGroups)
@@ -1120,20 +1113,10 @@ export const RawLogTable = memo(
                                     onClick={() =>
                                       setHighlightQueryEnabled(prev => !prev)
                                     }
-                                    title={
-                                      highlightQueryEnabled
-                                        ? 'Hide search term highlights'
-                                        : 'Highlight search terms'
-                                    }
+                                    title={highlightQueryLabel}
                                     display="flex"
                                   >
-                                    <MantineTooltip
-                                      label={
-                                        highlightQueryEnabled
-                                          ? 'Hide search term highlights'
-                                          : 'Highlight search terms'
-                                      }
-                                    >
+                                    <MantineTooltip label={highlightQueryLabel}>
                                       {highlightQueryEnabled ? (
                                         <IconHighlight size={16} />
                                       ) : (

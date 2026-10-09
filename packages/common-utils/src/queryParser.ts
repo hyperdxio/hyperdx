@@ -2185,15 +2185,6 @@ export type LuceneHighlightTerm = {
   field?: string;
 };
 
-const NEGATING_OPERATORS = new Set<lucene.Operator>([
-  'NOT',
-  'AND NOT',
-  'OR NOT',
-]);
-
-/** Comparison prefixes that match a value range rather than a substring. */
-const COMPARISON_PREFIXES = ['>=', '<=', '>', '<'];
-
 function stripFieldNegation(field: string) {
   return field.startsWith('-')
     ? { field: field.slice(1), isNegated: true }
@@ -2209,18 +2200,13 @@ function highlightTermFromNode(
   node: lucene.NodeTerm,
   inheritedField: string | undefined,
 ): LuceneHighlightTerm | undefined {
-  if (node.regex) {
-    return undefined;
-  }
-
   const isImplicitField = node.field === IMPLICIT_FIELD;
   const { field, isNegated } = stripFieldNegation(node.field);
-  if (isNegated) {
-    return undefined;
-  }
 
   // `-foo`/`!foo` exclude the term; `level:-5` searches for the literal `-5`.
-  if (isImplicitField && (node.prefix === '-' || node.prefix === '!')) {
+  const isNegatedTerm =
+    isImplicitField && (node.prefix === '-' || node.prefix === '!');
+  if (node.regex || isNegated || isNegatedTerm) {
     return undefined;
   }
 
@@ -2230,36 +2216,31 @@ function highlightTermFromNode(
   }
 
   if (!node.quoted) {
-    if (term === RANGE_UNBOUNDED) {
-      return undefined;
-    }
-    if (COMPARISON_PREFIXES.some(prefix => term.startsWith(prefix))) {
+    // `*` alone is an existence check, and `>5`/`<=5` match a range of values
+    if (term === RANGE_UNBOUNDED || /^[<>]/.test(term)) {
       return undefined;
     }
     // Leading/trailing `*` widen an already-substring match, so drop them and
     // highlight the literal part. Interior `*` is matched literally.
-    term = term.replace(/^\*/, '').replace(/\*$/, '');
+    term = term.replace(/^\*|\*$/g, '');
   }
 
   if (!term) {
     return undefined;
   }
 
-  return {
-    term,
-    field: isImplicitField ? inheritedField : field,
-  };
+  return { term, field: isImplicitField ? inheritedField : field };
 }
 
 function collectHighlightTerms(
   node: lucene.AST | lucene.Node,
   inheritedField: string | undefined,
-  push: (term: LuceneHighlightTerm) => void,
+  terms: LuceneHighlightTerm[],
 ): void {
   if (isNodeTerm(node)) {
     const term = highlightTermFromNode(node, inheritedField);
     if (term) {
-      push(term);
+      terms.push(term);
     }
     return;
   }
@@ -2289,11 +2270,12 @@ function collectHighlightTerms(
 
   // `start` is the leading `NOT` in ex. `NOT foo AND bar`, which negates `foo`
   if (!('start' in ast && ast.start === 'NOT')) {
-    collectHighlightTerms(ast.left, childField, push);
+    collectHighlightTerms(ast.left, childField, terms);
   }
 
-  if (isBinaryAST(ast) && !NEGATING_OPERATORS.has(ast.operator)) {
-    collectHighlightTerms(ast.right, childField, push);
+  // `NOT`, `AND NOT` and `OR NOT` all negate the right-hand side
+  if (isBinaryAST(ast) && !ast.operator.includes('NOT')) {
+    collectHighlightTerms(ast.right, childField, terms);
   }
 }
 
@@ -2312,24 +2294,12 @@ export function extractLuceneHighlightTerms(
     return [];
   }
 
-  let ast: lucene.AST;
+  const terms: LuceneHighlightTerm[] = [];
   try {
-    ast = parse(query);
+    collectHighlightTerms(parse(query), undefined, terms);
   } catch {
     return [];
   }
-
-  const terms: LuceneHighlightTerm[] = [];
-  const seen = new Set<string>();
-  collectHighlightTerms(ast, undefined, term => {
-    const key = `${term.field ?? ''}\u0000${term.term.toLowerCase()}`;
-    if (seen.has(key)) {
-      return;
-    }
-    seen.add(key);
-    terms.push(term);
-  });
-
   return terms;
 }
 
