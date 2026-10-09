@@ -25,10 +25,6 @@ import DBRowSidePanel, {
 } from './DBRowSidePanel';
 import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
-import {
-  eventRowWhereForOpenedRow,
-  eventRowWhereParser,
-} from './eventRowWhere';
 
 interface Props {
   sourceId: string;
@@ -92,10 +88,6 @@ export default function DBSqlRowTableWithSideBar({
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
   const [rowSource, setRowSource] = useQueryState('rowSource');
-  const [, setEventRowWhere] = useQueryState(
-    'eventRowWhere',
-    eventRowWhereParser,
-  );
   const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
 
   const onOpenSidebar = useCallback(
@@ -104,19 +96,8 @@ export default function DBSqlRowTableWithSideBar({
       setAliasWith(rowWhere.aliasWith);
       setRowSource(sourceId);
       onSidebarOpen?.(rowWhere.where);
-      setEventRowWhere(current =>
-        eventRowWhereForOpenedRow(current, rowId, rowWhere.where),
-      );
     },
-    [
-      rowId,
-      setRowId,
-      setAliasWith,
-      setRowSource,
-      sourceId,
-      onSidebarOpen,
-      setEventRowWhere,
-    ],
+    [setRowId, setAliasWith, setRowSource, sourceId, onSidebarOpen],
   );
 
   const onCloseSidebar = useCallback(() => {

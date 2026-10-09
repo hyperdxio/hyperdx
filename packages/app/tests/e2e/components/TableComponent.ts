@@ -67,6 +67,10 @@ export class TableComponent {
     await this.firstRow.click();
   }
 
+  async clickRowContaining(text: string) {
+    await this.getRows().filter({ hasText: text }).first().click();
+  }
+
   /**
    * Open a row in the side panel via its hover button. The button only exists
    * once the `expand` row-click preference is set — without it a plain
