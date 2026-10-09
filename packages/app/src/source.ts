@@ -20,6 +20,7 @@ import {
   ChartConfigWithOptTimestamp,
   MetricFormula,
   MetricsDataType,
+  NETFLOW_COLUMN_EXPRESSIONS,
   NumberFormat,
   SourceKind,
   SourceSchema,
@@ -352,19 +353,6 @@ export async function inferTableSourceConfig({
 
   if (kind === SourceKind.Netflow) {
     const names = new Set(columns.map(column => column.name));
-    const mapping = {
-      bytesExpression: 'Bytes',
-      packetsExpression: 'Packets',
-      samplingRateExpression: 'SamplingRate',
-      srcAddrExpression: 'SrcAddr',
-      dstAddrExpression: 'DstAddr',
-      srcPortExpression: 'SrcPort',
-      dstPortExpression: 'DstPort',
-      protocolExpression: 'Proto',
-      exporterExpression: 'ExporterName',
-      inIfExpression: 'InIfName',
-      outIfExpression: 'OutIfName',
-    };
     const selected = [
       'TimeReceived',
       'SrcAddr',
@@ -383,7 +371,9 @@ export async function inferTableSourceConfig({
         : {}),
       defaultTableSelectExpression: selected.join(', ') || '*',
       ...Object.fromEntries(
-        Object.entries(mapping).filter(([, column]) => names.has(column)),
+        Object.entries(NETFLOW_COLUMN_EXPRESSIONS).filter(([, column]) =>
+          names.has(column),
+        ),
       ),
     };
   }

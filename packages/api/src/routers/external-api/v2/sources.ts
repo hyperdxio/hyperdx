@@ -948,6 +948,10 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: SQL expression for the mapped flow field.
  *           example: TimeReceived, SrcAddr, DstAddr, Bytes
+ *         implicitColumnExpression:
+ *           type: string
+ *           description: Optional SQL expression searched by bare Lucene terms. When omitted or blank, searches mapped IP addresses, ports, protocol, exporter, and interfaces.
+ *           example: SearchText
  *         bytesExpression:
  *           type: string
  *           description: SQL expression for the mapped flow field.
@@ -978,7 +982,7 @@ function formatExternalSource(source: SourceDocument) {
  *           example: Proto
  *         samplingRateExpression:
  *           type: string
- *           description: SQL expression for the mapped flow field.
+ *           description: Sampling multiplier applied to observed byte and packet counters. Omit or leave empty for unsampled or already scaled counters; the multiplier then defaults to one.
  *           example: SamplingRate
  *         exporterExpression:
  *           type: string

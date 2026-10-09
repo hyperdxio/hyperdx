@@ -669,10 +669,6 @@ export function TableSourceForm({
               >
                 <Group>
                   <Radio
-                    value={SourceKind.Netflow}
-                    label={SOURCE_KIND_LABELS[SourceKind.Netflow]}
-                  />
-                  <Radio
                     value={SourceKind.Log}
                     label={SOURCE_KIND_LABELS[SourceKind.Log]}
                   />
@@ -698,6 +694,10 @@ export function TableSourceForm({
                       label={SOURCE_KIND_LABELS[SourceKind.Promql]}
                     />
                   )}
+                  <Radio
+                    value={SourceKind.Netflow}
+                    label={SOURCE_KIND_LABELS[SourceKind.Netflow]}
+                  />
                 </Group>
               </Radio.Group>
             )}

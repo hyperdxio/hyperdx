@@ -1,13 +1,14 @@
-import { useState } from 'react';
 import { NodeProps } from 'recharts/types/chart/Sankey';
 import { NumericUnit } from '@hyperdx/common-utils/dist/types';
-import { Menu, Stack, Text, Tooltip } from '@mantine/core';
+import { Stack, Text, Tooltip } from '@mantine/core';
 
 import {
   NetflowSankeyNode as SankeyNode,
   SankeyFilterHandler,
 } from '@/netflowSankey';
 import { formatNumber, truncateMiddle } from '@/utils';
+
+import NetflowFilterMenu from './NetflowFilterMenu';
 
 export function NetflowSankeyTooltip({
   label,
@@ -54,81 +55,58 @@ export default function NetflowSankeyNode({
   onFilter?: SankeyFilterHandler;
   color: string;
 }) {
-  const [opened, setOpened] = useState(false);
   const value = Number(payload.value);
-  const target = (
-    <Tooltip
-      disabled={opened}
-      multiline
-      maw={360}
-      withArrow
-      label={
-        <NetflowSankeyTooltip
-          label={`${node.dimension.label}: ${node.name}`}
-          value={value}
-          rangeSeconds={rangeSeconds}
-        />
-      }
-    >
-      <g
-        role={onFilter ? 'button' : undefined}
-        tabIndex={onFilter ? 0 : undefined}
-        aria-label={`Filter ${node.dimension.label}: ${node.rawValue || '(empty)'}`}
-        onKeyDown={event => {
-          if (onFilter && (event.key === 'Enter' || event.key === ' ')) {
-            event.preventDefault();
-            setOpened(true);
-          }
-        }}
-        style={{ cursor: onFilter ? 'pointer' : 'default' }}
-      >
-        <rect
-          x={x}
-          y={y}
-          width={width}
-          height={Math.max(height, 1)}
-          fill={color}
-          rx={2}
-        />
-        <text
-          x={x + width + 8}
-          y={y + height / 2}
-          dominantBaseline="middle"
-          textAnchor="start"
-          fontSize={11}
-          fill="var(--color-text-primary)"
-          stroke="var(--color-bg-body)"
-          strokeWidth={3}
-          paintOrder="stroke"
-        >
-          {truncateMiddle(node.name, 26)}
-        </text>
-      </g>
-    </Tooltip>
-  );
-
-  if (!onFilter) return target;
-
   return (
-    <Menu
-      opened={opened}
-      onChange={setOpened}
-      withinPortal
-      position="bottom-start"
-    >
-      <Menu.Target>{target}</Menu.Target>
-      <Menu.Dropdown>
-        <Menu.Item
-          onClick={() => onFilter(node.dimension, node.rawValue, false)}
+    <NetflowFilterMenu
+      label={node.dimension.label}
+      value={node.rawValue}
+      allowEmpty
+      onSelect={
+        onFilter &&
+        (excluded => onFilter(node.dimension, node.rawValue, excluded))
+      }
+      target={({ opened, buttonProps }) => (
+        <Tooltip
+          disabled={opened}
+          multiline
+          maw={360}
+          withArrow
+          label={
+            <NetflowSankeyTooltip
+              label={`${node.dimension.label}: ${node.name}`}
+              value={value}
+              rangeSeconds={rangeSeconds}
+            />
+          }
         >
-          Include
-        </Menu.Item>
-        <Menu.Item
-          onClick={() => onFilter(node.dimension, node.rawValue, true)}
-        >
-          Exclude
-        </Menu.Item>
-      </Menu.Dropdown>
-    </Menu>
+          <g
+            {...buttonProps}
+            style={{ cursor: onFilter ? 'pointer' : 'default' }}
+          >
+            <rect
+              x={x}
+              y={y}
+              width={width}
+              height={Math.max(height, 1)}
+              fill={color}
+              rx={2}
+            />
+            <text
+              x={x + width + 8}
+              y={y + height / 2}
+              dominantBaseline="middle"
+              textAnchor="start"
+              fontSize={11}
+              fill="var(--color-text-primary)"
+              stroke="var(--color-bg-body)"
+              strokeWidth={3}
+              paintOrder="stroke"
+            >
+              {truncateMiddle(node.name, 26)}
+            </text>
+          </g>
+        </Tooltip>
+      )}
+    />
   );
 }

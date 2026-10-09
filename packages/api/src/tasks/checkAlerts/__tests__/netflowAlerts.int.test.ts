@@ -88,9 +88,22 @@ describe('NetFlow saved-search alerts', () => {
       where: 'traffic:[1000 TO *]',
       whereLanguage: 'lucene' as const,
     },
+    {
+      name: 'bare Lucene terms with default mappings',
+      savedSelect: undefined,
+      where: 'db8 AND traffic:[1000 TO *]',
+      whereLanguage: 'lucene' as const,
+    },
+    {
+      name: 'bare Lucene terms with custom implicit expression',
+      savedSelect: undefined,
+      where: 'customflow AND traffic:[1000 TO *]',
+      whereLanguage: 'lucene' as const,
+      implicitColumnExpression: "concat('customflow ', toString(SrcAddr))",
+    },
   ])(
     'evaluates and delivers $name with aliased samples',
-    async ({ savedSelect, where, whereLanguage }) => {
+    async ({ savedSelect, where, whereLanguage, implicitColumnExpression }) => {
       const postMessage = jest
         .spyOn(slack, 'postMessageToWebhook')
         .mockResolvedValue({ text: 'ok' });
@@ -110,6 +123,7 @@ describe('NetFlow saved-search alerts', () => {
         from: { databaseName: 'default', tableName: 'netflow_alert_test' },
         timestampValueExpression: 'TimeReceived',
         defaultTableSelectExpression: select,
+        implicitColumnExpression,
         bytesExpression: 'Bytes',
         packetsExpression: 'Packets',
         samplingRateExpression: 'SamplingRate',

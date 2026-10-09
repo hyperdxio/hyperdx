@@ -95,7 +95,9 @@ Press Enter or Run to apply the query to all charts and flow records. Queries
 combine with the exporter, protocol, and address filters using AND; Clear
 filters resets both the search and quick filters. The query and selected
 language are saved in the URL. The shared language selector also supports SQL
-WHERE expressions.
+WHERE expressions. Bare terms search the mapped addresses, ports, protocol,
+exporter, and interfaces. Set the optional **Full-text search expression** in
+the source editor to search a different expression.
 
 Click an IP address, protocol, exporter, or interface in a breakdown chart, flow
 row, or flow details to **Include** or **Exclude** it. These actions apply
@@ -132,43 +134,41 @@ existing authenticated source API and MongoDB model.
 
 ## Sankey visualization
 
-Select **Sankey** in the NetFlow visualization selector to explore traffic paths.
-Choose two to five dimensions in left-to-right order from the source mappings or
-scalar table columns. Akvorado tables default to `SrcAS` → `InIfConnectivity` →
-`InIfProvider` → exporter when those columns are available.
+Select **Sankey** in the NetFlow visualization selector to explore traffic
+paths. Choose two to five dimensions in left-to-right order from the source
+mappings or scalar table columns. Akvorado tables default to `SrcAS` →
+`InIfConnectivity` → `InIfProvider` → exporter when those columns are available.
 
 Link widths represent sampling-adjusted bytes for the top 10, 20, or 50 paths.
 The table and tooltips show transferred bytes and average bit rate over the
-selected time range. Paths outside the limit are omitted from the diagram.
-Click a node or table value to include or exclude it using the shared filters;
-Lucene search, quick filters, and the time range also apply to this view.
-The visualization, ordered dimensions, and path limit are saved in the URL.
+selected time range. Paths outside the limit are omitted from the diagram. Click
+a node or table value to include or exclude it using the shared filters; Lucene
+search, quick filters, and the time range also apply to this view. The
+visualization, ordered dimensions, and path limit are saved in the URL.
 
-## Query verification
+The path limit bounds returned paths, not the number of groups ClickHouse
+aggregates. For high-cardinality dimensions or wide ranges, configure
+`max_memory_usage` and `max_bytes_before_external_group_by` through the
+connection's query settings.
 
-After building common-utils and seeding, run the real chart configurations
-against local ClickHouse:
+A local validation with two million flow records, five dimensions, and a 30-day
+range completed in 0.71 seconds while reading 106 MB, with a 512 MiB memory cap
+and a 64 MiB external aggregation threshold. This checks that configuration on
+the local fixture; it is not a production performance guarantee.
+
+## Automated verification
+
+The NetFlow browser and ClickHouse query checks run in the existing Playwright
+suite and are discovered by CI. Each test creates and tears down its own
+ClickHouse database and source configuration; the demo seeder is not required.
 
 ```sh
-node node_modules/tsx/dist/cli.mjs scripts/netflow-query-check.ts
+make dev-e2e FILE=netflow
 ```
 
-This checks overview values, time series, breakdowns, the flow table, IPv4/IPv6
-filters, protocol filtering, and safe handling of SQL syntax in filter values.
-The seeder also verifies counts and sampled totals on every run.
-
-With the local app running and freshly seeded data, verify the browser workflow:
-
-```sh
-yarn playwright install chromium
-node scripts/netflow-browser-check.mjs
-node scripts/netflow-click-browser-check.mjs
-node node_modules/tsx/dist/cli.mjs scripts/netflow-click-query-check.ts
-node node_modules/tsx/dist/cli.mjs scripts/netflow-sankey-query-check.ts
-node scripts/netflow-sankey-browser-check.mjs
-```
-
-This checks charts, filters, sampled flow details, refresh, source creation and
-persistence, and the shared Search page. Screenshots are saved under
-`packages/app/test-results/netflow/`. Set `NETFLOW_APP_URL` if the app uses a
-different local port.
+The suite checks sampled overview totals and raw counters, every chart query,
+IPv4/IPv6 filters, literal escaping, Lucene and SQL composition, Sankey traffic
+conservation, empty classifications, source switching, pending query drafts, URL
+reloads, invalid time ranges, flow details, and chart axes at wide and narrow
+viewport sizes. Failures use the normal Playwright screenshots, traces, and
+reports under `packages/app/test-results/`.

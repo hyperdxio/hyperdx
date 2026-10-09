@@ -3,6 +3,8 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 
+import { NETFLOW_ALIASES, netflowColumnAlias } from '@/netflow';
+
 export interface SankeyDimension {
   key: string;
   label: string;
@@ -33,11 +35,18 @@ export interface NetflowSankeyData {
   nodes: NetflowSankeyNode[];
   links: NetflowSankeyLink[];
   paths: { values: string[]; value: number }[];
-  totalBytes: number;
 }
 
 export function sankeyDimensionExpression(dimension: SankeyDimension): string {
   return `ifNull(toString(${dimension.expression}), '')`;
+}
+
+export function unwrapSankeyDimensionExpression(expression: string): string {
+  return expression.replace(/^ifNull\(toString\((.*)\), ''\)$/s, '$1');
+}
+
+export function normalizeNetflowSankeyLimit(limit: number): number {
+  return [10, 20, 50].includes(limit) ? limit : 20;
 }
 
 export function buildNetflowSankeyConfig({
@@ -58,22 +67,18 @@ export function buildNetflowSankeyConfig({
 
   const dimensionSelect = dimensions.map((dimension, stage) => ({
     valueExpression: sankeyDimensionExpression(dimension),
-    alias: `__netflow_dimension_${stage}`,
+    alias: netflowColumnAlias(`dimension_${stage}`),
   }));
 
   return {
     ...baseConfig,
     select: [
       ...dimensionSelect,
-      { ...baseConfig.select[0], alias: '__netflow_value' },
+      { ...baseConfig.select[0], alias: NETFLOW_ALIASES.value },
     ],
     groupBy: dimensionSelect.map(dimension => dimension.alias).join(', '),
-    orderBy: '__netflow_value DESC',
-    limit: {
-      limit: Number.isFinite(limit)
-        ? Math.min(100, Math.max(1, Math.floor(limit)))
-        : 20,
-    },
+    orderBy: `${NETFLOW_ALIASES.value} DESC`,
+    limit: { limit: normalizeNetflowSankeyLimit(limit) },
     displayType: DisplayType.Table,
   };
 }
@@ -86,26 +91,26 @@ export function buildNetflowSankeyData(
     nodes: [],
     links: [],
     paths: [],
-    totalBytes: 0,
   };
   if (dimensions.length < 2) return data;
 
   const nodeIndices = new Map<string, number>();
   const links = new Map<string, NetflowSankeyLink>();
   for (const row of rows) {
-    const rawBytes = row.__netflow_value;
+    const rawBytes = row[NETFLOW_ALIASES.value];
     if (typeof rawBytes !== 'number' && typeof rawBytes !== 'string') continue;
     const value = Number(rawBytes);
     if (!Number.isFinite(value) || value <= 0) continue;
     if (
       dimensions.some(
-        (_, stage) => !Object.hasOwn(row, `__netflow_dimension_${stage}`),
+        (_, stage) =>
+          !Object.hasOwn(row, netflowColumnAlias(`dimension_${stage}`)),
       )
     )
       continue;
 
     const values = dimensions.map((_, stage) =>
-      String(row[`__netflow_dimension_${stage}`] ?? ''),
+      String(row[netflowColumnAlias(`dimension_${stage}`)] ?? ''),
     );
     const pathNodes = values.map((rawValue, stage) => {
       // Stage-qualified IDs keep repeated values in different dimensions acyclic.
@@ -132,7 +137,6 @@ export function buildNetflowSankeyData(
       else links.set(key, { source, target, value });
     }
     data.paths.push({ values, value });
-    data.totalBytes += value;
   }
   data.links = [...links.values()];
   return data;

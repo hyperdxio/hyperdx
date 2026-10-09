@@ -6,24 +6,24 @@ import {
 import { quoteIdentifierIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
 import { TNetflowSource } from '@hyperdx/common-utils/dist/types';
 
-import { getNetflowDimensions } from '@/netflow';
+import { getNetflowDimensions, NETFLOW_DIMENSION_LABELS } from '@/netflow';
 import { SankeyDimension } from '@/netflowSankey';
 
 export function getSankeyDimensionOptions(
   source: TNetflowSource,
   columns: ColumnMeta[],
 ): SankeyDimension[] {
-  const labels: Record<string, string> = {
-    srcAddr: 'Source IP',
-    dstAddr: 'Destination IP',
-    protocol: 'Protocol',
-    exporter: 'Exporter',
-    inputInterface: 'Input interface',
-    outputInterface: 'Output interface',
-  };
   const mapped = Object.entries(getNetflowDimensions(source)).flatMap(
     ([key, expression]) =>
-      expression ? [{ key, label: labels[key], expression }] : [],
+      expression
+        ? [
+            {
+              key,
+              label: NETFLOW_DIMENSION_LABELS[key],
+              expression,
+            },
+          ]
+        : [],
   );
   const scalarTypes = [
     JSDataType.String,

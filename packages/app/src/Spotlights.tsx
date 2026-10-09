@@ -66,14 +66,6 @@ export const useSpotlightActions = () => {
     // Preset dashboards
     const presetDashboards = [
       {
-        id: 'preset-netflow',
-        label: 'NetFlow',
-        description:
-          'Network traffic, top talkers, exporters, and flow records',
-        href: '/netflow',
-        keywords: ['netflow', 'network', 'akvorado', 'traffic', 'flows'],
-      },
-      {
         id: 'preset-services',
         label: 'Services',
         description: 'Monitor HTTP endpoints, latency, and error rates',
@@ -98,6 +90,14 @@ export const useSpotlightActions = () => {
             },
           ]
         : []),
+      {
+        id: 'preset-netflow',
+        label: 'NetFlow',
+        description:
+          'Network traffic, top talkers, exporters, and flow records',
+        href: '/netflow',
+        keywords: ['netflow', 'network', 'akvorado', 'traffic', 'flows'],
+      },
     ];
 
     presetDashboards.forEach(preset => {

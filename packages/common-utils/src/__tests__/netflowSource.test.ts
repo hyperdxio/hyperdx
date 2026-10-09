@@ -70,3 +70,43 @@ it('searches raw flows with mapped defaults without log-only fields or sampling 
   expect(config).not.toHaveProperty('bodyExpression');
   expect(config).not.toHaveProperty('sampleWeightExpression');
 });
+
+it('searches mapped NetFlow dimensions for bare Lucene terms by default', () => {
+  const config = buildSearchChartConfig(SourceSchema.parse(source), {
+    where: 'edge-router',
+    whereLanguage: 'lucene',
+  });
+  expect(config.implicitColumnExpression).toContain('toString(SrcAddr)');
+  expect(config.implicitColumnExpression).toContain('toString(ExporterName)');
+  expect(config.implicitColumnExpression).toContain('toString(OutIfName)');
+});
+
+it('preserves and uses a custom NetFlow implicit expression', () => {
+  const parsed = SourceSchema.parse({
+    ...source,
+    implicitColumnExpression: 'SearchText',
+  });
+  expect(parsed).toHaveProperty('implicitColumnExpression', 'SearchText');
+  expect(
+    buildSearchChartConfig(parsed, { where: 'router' })
+      .implicitColumnExpression,
+  ).toBe('SearchText');
+});
+
+it('derives implicit search from custom mappings and ignores blank optional dimensions', () => {
+  const parsed = SourceSchema.parse({
+    ...source,
+    srcAddrExpression: 'client_ip',
+    implicitColumnExpression: '  ',
+    exporterExpression: '  ',
+    inIfExpression: undefined,
+    outIfExpression: '',
+  });
+  const implicit = buildSearchChartConfig(parsed, {
+    where: 'router',
+  }).implicitColumnExpression;
+  expect(implicit).toContain('toString(client_ip)');
+  expect(implicit).not.toMatch(
+    /SrcAddr|ExporterName|InIfName|OutIfName|toString\(\s*\)/,
+  );
+});

@@ -1302,6 +1302,7 @@ describe('MCP Source Tools', () => {
   describe('clickstack_save_source (create)', () => {
     it('round-trips every NetFlow mapping through create, describe, update, and clone', async () => {
       const mappings = {
+        implicitColumnExpression: 'SearchText',
         bytesExpression: 'Bytes',
         packetsExpression: 'Packets',
         samplingRateExpression: 'SamplingRate',
@@ -1335,7 +1336,21 @@ describe('MCP Source Tools', () => {
         sourceId: saved.id,
       });
       expect(described.isError).toBeFalsy();
-      const sourceConfig = JSON.parse(getFirstText(described)).source.config;
+      const describedSource = JSON.parse(getFirstText(described)).source;
+      expect(describedSource.keyColumns).toMatchObject({
+        bytes: 'Bytes',
+        packets: 'Packets',
+        samplingRate: 'SamplingRate',
+        srcAddr: 'SrcAddr',
+        dstAddr: 'DstAddr',
+        srcPort: 'SrcPort',
+        dstPort: 'DstPort',
+        protocol: 'Proto',
+        exporter: 'ExporterName',
+        inIf: 'InIfName',
+        outIf: 'OutIfName',
+      });
+      const sourceConfig = describedSource.config;
       expect(sourceConfig).toMatchObject({ id: saved.id, ...mappings });
       const updatedMappings = Object.fromEntries(
         Object.entries(mappings).map(([key, value]) => [key, `(${value})`]),

@@ -1,12 +1,7 @@
+import { KeyboardEventHandler, ReactElement, useState } from 'react';
 import { Button, Menu } from '@mantine/core';
 
-export type NetflowFilterField =
-  | 'srcAddr'
-  | 'dstAddr'
-  | 'protocol'
-  | 'exporter'
-  | 'inputInterface'
-  | 'outputInterface';
+import { NETFLOW_DIMENSION_LABELS, NetflowFilterField } from '@/netflow';
 
 export type NetflowFilterHandler = (
   field: NetflowFilterField,
@@ -14,35 +9,64 @@ export type NetflowFilterHandler = (
   excluded: boolean,
 ) => void;
 
-export default function NetflowFilterMenu({
-  field,
-  value,
-  onFilter,
-}: {
-  field: NetflowFilterField;
+type TargetProps = {
+  opened: boolean;
+  buttonProps: {
+    'aria-label': string;
+    onKeyDown: KeyboardEventHandler;
+    role?: 'button';
+    tabIndex?: number;
+  };
+};
+type Props = {
   value: string;
-  onFilter?: NetflowFilterHandler;
-}) {
-  if (!value.trim() || !onFilter) return <>{value || '—'}</>;
+  allowEmpty?: boolean;
+  target?: (props: TargetProps) => ReactElement;
+} & (
+  | { field: NetflowFilterField; onFilter?: NetflowFilterHandler }
+  | { label: string; onSelect?: (excluded: boolean) => void }
+);
 
+export default function NetflowFilterMenu(props: Props) {
+  const [opened, setOpened] = useState(false);
+  const { value, allowEmpty = false, target } = props;
+  const label =
+    'field' in props ? NETFLOW_DIMENSION_LABELS[props.field] : props.label;
+  const onSelect =
+    'field' in props
+      ? props.onFilter &&
+        ((excluded: boolean) => props.onFilter?.(props.field, value, excluded))
+      : props.onSelect;
+  const interactive = !!onSelect && (allowEmpty || !!value.trim());
+  const displayValue = value || (allowEmpty ? '(empty)' : '—');
+  const buttonProps: TargetProps['buttonProps'] = {
+    'aria-label': `Filter ${label}: ${displayValue}`,
+    role: interactive ? 'button' : undefined,
+    tabIndex: interactive ? 0 : undefined,
+    onKeyDown: event => {
+      if (interactive && (event.key === 'Enter' || event.key === ' ')) {
+        event.preventDefault();
+        setOpened(true);
+      }
+    },
+  };
+  const renderedTarget = target?.({ opened, buttonProps }) ?? (
+    <Button variant="link" size="compact-xs" {...buttonProps}>
+      {displayValue}
+    </Button>
+  );
+  if (!interactive) return target ? renderedTarget : <>{displayValue}</>;
   return (
-    <Menu withinPortal position="bottom-start">
-      <Menu.Target>
-        <Button
-          variant="link"
-          size="compact-xs"
-          aria-label={`Filter ${field}: ${value}`}
-        >
-          {value}
-        </Button>
-      </Menu.Target>
+    <Menu
+      opened={opened}
+      onChange={setOpened}
+      withinPortal
+      position="bottom-start"
+    >
+      <Menu.Target>{renderedTarget}</Menu.Target>
       <Menu.Dropdown>
-        <Menu.Item onClick={() => onFilter(field, value, false)}>
-          Include
-        </Menu.Item>
-        <Menu.Item onClick={() => onFilter(field, value, true)}>
-          Exclude
-        </Menu.Item>
+        <Menu.Item onClick={() => onSelect?.(false)}>Include</Menu.Item>
+        <Menu.Item onClick={() => onSelect?.(true)}>Exclude</Menu.Item>
       </Menu.Dropdown>
     </Menu>
   );

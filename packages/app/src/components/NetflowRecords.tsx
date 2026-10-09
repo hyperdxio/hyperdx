@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { NETFLOW_DIMENSION_LABELS, netflowColumnAlias } from '@/netflow';
 import { useFormatTime } from '@/useFormatTime';
 import { formatNumber } from '@/utils';
 
@@ -22,16 +23,16 @@ import NetflowFilterMenu, { NetflowFilterHandler } from './NetflowFilterMenu';
 
 const fields = [
   ['timestamp', 'Time'],
-  ['srcAddr', 'Source IP'],
+  ['srcAddr', NETFLOW_DIMENSION_LABELS.srcAddr],
   ['srcPort', 'Source port'],
-  ['dstAddr', 'Destination IP'],
+  ['dstAddr', NETFLOW_DIMENSION_LABELS.dstAddr],
   ['dstPort', 'Destination port'],
-  ['protocol', 'Protocol'],
-  ['exporter', 'Exporter'],
+  ['protocol', NETFLOW_DIMENSION_LABELS.protocol],
+  ['exporter', NETFLOW_DIMENSION_LABELS.exporter],
   ['bytes', 'Bytes'],
   ['packets', 'Packets'],
-  ['inputInterface', 'Input interface'],
-  ['outputInterface', 'Output interface'],
+  ['inputInterface', NETFLOW_DIMENSION_LABELS.inputInterface],
+  ['outputInterface', NETFLOW_DIMENSION_LABELS.outputInterface],
   ['samplingRate', 'Sampling rate'],
   ['rawBytes', 'Raw bytes'],
   ['rawPackets', 'Raw packets'],
@@ -49,8 +50,14 @@ export default function NetflowRecords({
   const [selected, setSelected] = useState<Record<string, unknown> | null>(
     null,
   );
-  const rows = (data?.data ?? []).map(row =>
-    Object.fromEntries(fields.map(([key]) => [key, row[`__netflow_${key}`]])),
+  const rows = useMemo(
+    () =>
+      (data?.data ?? []).map(row =>
+        Object.fromEntries(
+          fields.map(([key]) => [key, row[netflowColumnAlias(key)]]),
+        ),
+      ),
+    [data],
   );
 
   return (

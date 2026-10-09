@@ -144,6 +144,20 @@ async function describeSourceSchema(
       severityText: source.severityTextExpression,
       traceId: source.traceIdExpression,
     };
+  } else if (source.kind === SourceKind.Netflow) {
+    meta.keyColumns = {
+      bytes: source.bytesExpression,
+      packets: source.packetsExpression,
+      samplingRate: source.samplingRateExpression,
+      srcAddr: source.srcAddrExpression,
+      dstAddr: source.dstAddrExpression,
+      srcPort: source.srcPortExpression,
+      dstPort: source.dstPortExpression,
+      protocol: source.protocolExpression,
+      exporter: source.exporterExpression,
+      inIf: source.inIfExpression,
+      outIf: source.outIfExpression,
+    };
   } else if (source.kind === SourceKind.Metric) {
     // Filter out implementation-detail keys (e.g. a stray Mongoose `_id`
     // on the metricTables subdoc) so the agent only sees valid metric

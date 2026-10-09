@@ -7,6 +7,7 @@ import {
 } from '@/mcp/tools/sources/schemas';
 
 const mappings = {
+  implicitColumnExpression: 'SearchText',
   bytesExpression: 'Bytes',
   packetsExpression: 'Packets',
   srcAddrExpression: 'SrcAddr',

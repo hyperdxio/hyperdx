@@ -8,10 +8,11 @@ import {
 import { Filter, TNetflowSource } from '@hyperdx/common-utils/dist/types';
 import { Group } from '@mantine/core';
 
-import { getNetflowDimensions } from '@/netflow';
+import { getNetflowDimensions, NETFLOW_DIMENSION_LABELS } from '@/netflow';
 import {
   sankeyDimensionExpression,
   SankeyFilterHandler,
+  unwrapSankeyDimensionExpression,
 } from '@/netflowSankey';
 import { useSearchPageFilterState } from '@/searchFilters';
 
@@ -19,18 +20,10 @@ import { cleanClickHouseExpression } from './DBSearchPageFilters/utils';
 import { FilterPill } from './FilterPill';
 import { NetflowFilterHandler } from './NetflowFilterMenu';
 
-const labels = new Map([
-  ['srcAddr', 'Source IP'],
-  ['dstAddr', 'Destination IP'],
-  ['protocol', 'Protocol'],
-  ['exporter', 'Exporter'],
-  ['inputInterface', 'Input interface'],
-  ['outputInterface', 'Output interface'],
-]);
 // Filter keys are complete SQL expressions; restore their original quoting at emission.
 const knownColumns = new Set<string>();
 
-// Older links used separate keys for table and Sankey clicks on the same field.
+// Table and Sankey filters can wrap the same mapped field in different SQL expressions.
 function canonicalizeMappedFilters(
   filters: Filter[],
   expressions: Map<string, string>,
@@ -172,7 +165,10 @@ export function useNetflowFilterState({
     Object.entries(dimensions ?? {}).flatMap(([field, expression]) =>
       expression
         ? [
-            [cleanClickHouseExpression(expression), labels.get(field) ?? field],
+            [
+              cleanClickHouseExpression(expression),
+              NETFLOW_DIMENSION_LABELS[field],
+            ],
             [
               cleanClickHouseExpression(
                 sankeyDimensionExpression({
@@ -181,7 +177,7 @@ export function useNetflowFilterState({
                   expression,
                 }),
               ),
-              labels.get(field) ?? field,
+              NETFLOW_DIMENSION_LABELS[field],
             ],
           ]
         : [],
@@ -202,8 +198,7 @@ export default function NetflowFilterPills({
             <FilterPill
               key={`${field}:${polarity}:${value}`}
               field={
-                fieldLabels[field] ??
-                field.replace(/^ifNull\(toString\((.*)\), ''\)$/s, '$1')
+                fieldLabels[field] ?? unwrapSankeyDimensionExpression(field)
               }
               value={String(value)}
               operator={polarity === 'excluded' ? '!=' : '='}

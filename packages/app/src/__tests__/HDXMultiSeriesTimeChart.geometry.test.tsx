@@ -1,6 +1,6 @@
-import { ComponentProps, ReactNode } from 'react';
+import { ComponentProps, ReactElement } from 'react';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { screen } from '@testing-library/react';
+import { waitFor } from '@testing-library/react';
 
 import {
   getAnnotationElements,
@@ -8,44 +8,22 @@ import {
 } from '@/components/charts/chartAnnotations';
 import { MemoChart } from '@/HDXMultiSeriesTimeChart';
 
-let mockPlotWidth = 240;
+let mockContainerWidth = 500;
 jest.mock('recharts', () => {
   const React = jest.requireActual('react');
-  const Chart = ({
-    children,
-    barSize,
-  }: {
-    children: ReactNode;
-    barSize?: number;
-  }) => (
-    <svg data-testid="chart" data-bar-size={barSize}>
-      {children}
-    </svg>
-  );
   return {
     ...jest.requireActual('recharts'),
-    AreaChart: Chart,
-    BarChart: Chart,
-    Area: () => null,
-    Bar: () => null,
-    XAxis: () => null,
-    YAxis: () => null,
-    Tooltip: () => null,
-    ReferenceLine: () => null,
-    Customized: () => null,
-    usePlotArea: () => ({ x: 255, y: 5, width: mockPlotWidth, height: 250 }),
+    // jsdom has no layout engine; only supply the container's measured size.
     ResponsiveContainer: ({
       children,
-      onResize,
     }: {
-      children: ReactNode;
-      onResize?: (width: number) => void;
-    }) => {
-      React.useEffect(() => {
-        onResize?.(500);
-      }, [onResize]);
-      return children;
-    },
+      children: ReactElement<{ width: number; height: number }>;
+    }) =>
+      React.createElement(children.type, {
+        ...children.props,
+        width: mockContainerWidth,
+        height: 300,
+      }),
   };
 });
 jest.mock('@/components/charts/chartAnnotations', () => ({
@@ -63,7 +41,16 @@ jest.mock('@/useFormatTime', () => ({ useFormatTime: () => String }));
 
 const props = {
   graphResults: [{ ts_bucket: 100, value: 1 }],
-  lineData: [],
+  lineData: [
+    {
+      dataKey: 'value',
+      currentPeriodKey: 'value',
+      previousPeriodKey: 'previous',
+      displayName: 'Traffic',
+      valueColumnName: 'value',
+      color: 'var(--color-chart-blue)',
+    },
+  ],
   dateRange: [new Date(0), new Date(200000)],
   granularity: '1 minute',
   displayType: DisplayType.StackedBar,
@@ -76,35 +63,37 @@ const props = {
 
 describe('time chart plot geometry', () => {
   beforeEach(() => {
-    mockPlotWidth = 240;
+    mockContainerWidth = 500;
     jest.clearAllMocks();
   });
 
-  it('uses the measured plot width for bars and annotation layout', () => {
-    renderWithMantine(<MemoChart {...props} />);
-    expect(screen.getByTestId('chart')).toHaveAttribute('data-bar-size', '192');
-    expect(layoutAnnotations).toHaveBeenLastCalledWith(
-      expect.any(Array),
-      expect.objectContaining({ plotWidth: 240 }),
-    );
-    expect(getAnnotationElements).toHaveBeenLastCalledWith(
-      expect.any(Array),
-      expect.objectContaining({ plotWidth: 240 }),
-    );
-  });
-
-  it('updates geometry when the automatic axis grows without a container resize', () => {
-    const { rerender } = renderWithMantine(<MemoChart {...props} />);
-    mockPlotWidth = 180;
+  it('uses the real Recharts plot area for single bars and annotations after resize', async () => {
+    const { container, rerender } = renderWithMantine(<MemoChart {...props} />);
+    const assertGeometry = async () => {
+      await waitFor(() => {
+        const plot = container.querySelector('clipPath rect');
+        expect(plot).not.toBeNull();
+        const width = Number(plot?.getAttribute('width'));
+        expect(width).toBeGreaterThan(0);
+        expect(width).toBeLessThan(mockContainerWidth);
+        const bar = container.querySelector('.recharts-bar-rectangle rect');
+        expect(bar).not.toBeNull();
+        expect(Number(bar?.getAttribute('width'))).toBe(
+          Math.floor(width * 0.8),
+        );
+        expect(layoutAnnotations).toHaveBeenLastCalledWith(
+          expect.any(Array),
+          expect.objectContaining({ plotWidth: width }),
+        );
+        expect(getAnnotationElements).toHaveBeenLastCalledWith(
+          expect.any(Array),
+          expect.objectContaining({ plotWidth: width }),
+        );
+      });
+    };
+    await assertGeometry();
+    mockContainerWidth = 350;
     rerender(<MemoChart {...props} graphResults={[...props.graphResults]} />);
-    expect(screen.getByTestId('chart')).toHaveAttribute('data-bar-size', '144');
-    expect(layoutAnnotations).toHaveBeenLastCalledWith(
-      expect.any(Array),
-      expect.objectContaining({ plotWidth: 180 }),
-    );
-    expect(getAnnotationElements).toHaveBeenLastCalledWith(
-      expect.any(Array),
-      expect.objectContaining({ plotWidth: 180 }),
-    );
+    await assertGeometry();
   });
 });

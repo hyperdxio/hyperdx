@@ -34,20 +34,26 @@ describe('NetFlow queries', () => {
       dateRange,
       filters: {},
     });
-    expect(configs.totalBytes.select).toEqual([
-      {
-        valueExpression: 'sum(toFloat64(Bytes) * (SamplingRate))',
-        alias: '__netflow_value',
-      },
-    ]);
-    expect(configs.bitsPerSecond.select).toEqual([
+    expect(configs.summary.select).toEqual([
       {
         valueExpression: 'sum(toFloat64(Bytes) * (SamplingRate)) * 8 / 3600',
-        alias: '__netflow_value',
+        alias: '__netflow_bitsPerSecond',
       },
+      {
+        valueExpression: 'sum(toFloat64(Packets) * (SamplingRate)) / 3600',
+        alias: '__netflow_packetsPerSecond',
+      },
+      {
+        valueExpression: 'sum(toFloat64(Bytes) * (SamplingRate))',
+        alias: '__netflow_bytes',
+      },
+      { valueExpression: 'count()', alias: '__netflow_flowRecords' },
     ]);
-    expect(configs.flowRecords.select).toEqual([
-      { valueExpression: 'count()', alias: '__netflow_value' },
+    expect(configs.traffic.select).toEqual([
+      {
+        valueExpression: 'sum(toFloat64(Bytes) * (SamplingRate)) * 8 / 60',
+        alias: 'Bits per second',
+      },
     ]);
   });
 
@@ -128,12 +134,16 @@ describe('NetFlow queries', () => {
         filters: { protocol: '6' },
         where,
         whereLanguage,
+        extraFilters: [{ type: 'sql', condition: "ExporterName = 'edge-a'" }],
       });
       for (const config of Object.values(configs)) {
         expect(config).toMatchObject({
           where,
           whereLanguage,
-          filters: [{ type: 'sql', condition: "(toString(Proto) = '6')" }],
+          filters: [
+            { type: 'sql', condition: "ExporterName = 'edge-a'" },
+            { type: 'sql', condition: "(toString(Proto) = '6')" },
+          ],
         });
       }
     },

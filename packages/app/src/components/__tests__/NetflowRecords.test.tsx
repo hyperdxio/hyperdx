@@ -86,6 +86,23 @@ describe('NetFlow records', () => {
     expect(within(drawer).getByText('uplink')).toBeInTheDocument();
   });
 
+  it('does not remap the 500-row result when opening a drawer', async () => {
+    const timestamp = jest.fn(() => '2026-10-09 12:30:00');
+    const rows = Array.from({ length: 500 }, () => ({
+      get __netflow_timestamp() {
+        return timestamp();
+      },
+    }));
+    mockQuery.mockReturnValue({ data: { data: rows } });
+    renderWithMantine(
+      <NetflowRecords config={{ ...config, limit: { limit: 500 } }} />,
+    );
+    expect(timestamp).toHaveBeenCalledTimes(500);
+    fireEvent.click(screen.getByRole('button', { name: 'Inspect flow 1' }));
+    await screen.findByRole('dialog');
+    expect(timestamp).toHaveBeenCalledTimes(500);
+  });
+
   it('shows an actionable empty state for a filter with no matching records', () => {
     mockQuery.mockReturnValue({ isLoading: false, data: { data: [] } });
     renderWithMantine(<NetflowRecords config={config} />);

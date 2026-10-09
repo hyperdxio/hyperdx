@@ -16,6 +16,7 @@ import { useColumns } from '@/hooks/useMetadata';
 import {
   buildNetflowSankeyConfig,
   buildNetflowSankeyData,
+  normalizeNetflowSankeyLimit,
   SankeyDimension,
   SankeyFilterHandler,
 } from '@/netflowSankey';
@@ -115,7 +116,11 @@ export default function NetflowSankey({
     () => (source ? getSankeyDimensionOptions(source, columns ?? []) : []),
     [source, columns],
   );
-  const keys = params.sankeyDimensions ?? getDefaultSankeyDimensions(options);
+  const keys = params.sankeyDimensions?.every(key =>
+    options.some(option => option.key === key),
+  )
+    ? params.sankeyDimensions
+    : getDefaultSankeyDimensions(options);
   const dimensions = keys.flatMap(key =>
     options.filter(option => option.key === key),
   );
@@ -124,9 +129,7 @@ export default function NetflowSankey({
     dimensions.length <= 5 &&
     dimensions.length === keys.length &&
     new Set(keys).size === keys.length;
-  const limit = [10, 20, 50].includes(params.sankeyLimit)
-    ? params.sankeyLimit
-    : 20;
+  const limit = normalizeNetflowSankeyLimit(params.sankeyLimit);
   return (
     <ChartCard data-testid="netflow-sankey">
       <ChartContainer title="Traffic paths" disableReactiveContainer>

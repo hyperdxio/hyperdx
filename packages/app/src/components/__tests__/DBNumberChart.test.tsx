@@ -98,6 +98,31 @@ describe('DBNumberChart', () => {
     });
   });
 
+  it('renders a selected result column without changing the queried aggregate', () => {
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: {
+        data: [{ bytes: 1000, packets: 25 }],
+        meta: [
+          { name: 'bytes', type: 'Float64' },
+          { name: 'packets', type: 'Float64' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+    renderWithMantine(
+      <DBNumberChart
+        config={baseTestConfig}
+        valueColumn="packets"
+        numberFormat={{ output: 'number' }}
+      />,
+    );
+    expect(mockFormatNumber).toHaveBeenCalledWith(25, { output: 'number' });
+    expect(mockUseQueriedChartConfig.mock.lastCall[0]).toMatchObject({
+      select: baseTestConfig.select,
+    });
+  });
+
   it('renders the number with default formatting when no numberFormat is provided', () => {
     renderWithMantine(<DBNumberChart config={baseTestConfig} />);
     expect(mockFormatNumber).toHaveBeenCalledWith(1234, undefined);

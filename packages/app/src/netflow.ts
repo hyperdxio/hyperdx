@@ -1,3 +1,4 @@
+import { getNetflowImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -13,6 +14,60 @@ import {
   TNetflowSource,
 } from '@hyperdx/common-utils/dist/types';
 
+export const NETFLOW_DIMENSION_LABELS: Record<string, string> = {
+  srcAddr: 'Source IP',
+  dstAddr: 'Destination IP',
+  protocol: 'Protocol',
+  exporter: 'Exporter',
+  inputInterface: 'Input interface',
+  outputInterface: 'Output interface',
+} satisfies Record<NetflowFilterField, string>;
+export type NetflowFilterField = keyof ReturnType<typeof getNetflowDimensions>;
+export const netflowColumnAlias = (field: string) => `__netflow_${field}`;
+export const NETFLOW_ALIASES = {
+  name: netflowColumnAlias('name'),
+  bytes: netflowColumnAlias('bytes'),
+  value: netflowColumnAlias('value'),
+};
+const PROTOCOL_NAMES = {
+  1: 'ICMP',
+  6: 'TCP',
+  17: 'UDP',
+  47: 'GRE',
+  50: 'ESP',
+  58: 'ICMPv6',
+};
+export const NETFLOW_SUMMARY_TILES = [
+  {
+    title: 'Average bit rate',
+    column: netflowColumnAlias('bitsPerSecond'),
+    numberFormat: {
+      output: 'data_rate',
+      numericUnit: NumericUnit.BitsSecSI,
+      mantissa: 2,
+    },
+  },
+  {
+    title: 'Average packet rate',
+    column: netflowColumnAlias('packetsPerSecond'),
+    numberFormat: {
+      output: 'throughput',
+      numericUnit: NumericUnit.PacketsSec,
+      mantissa: 2,
+    },
+  },
+  {
+    title: 'Transferred bytes',
+    column: NETFLOW_ALIASES.bytes,
+    numberFormat: { output: 'byte', mantissa: 2 },
+  },
+  {
+    title: 'Flow records',
+    column: netflowColumnAlias('flowRecords'),
+    numberFormat: { output: 'number', thousandSeparated: true },
+  },
+] satisfies { title: string; column: string; numberFormat: NumberFormat }[];
+
 export type NetflowFilters = {
   exporter?: string;
   protocol?: string;
@@ -26,7 +81,13 @@ export function getNetflowDimensions(source: TNetflowSource) {
   return {
     srcAddr: address(source.srcAddrExpression),
     dstAddr: address(source.dstAddrExpression),
-    protocol: `transform(toString(${source.protocolExpression}), ['1', '6', '17', '47', '50', '58'], ['ICMP', 'TCP', 'UDP', 'GRE', 'ESP', 'ICMPv6'], toString(${source.protocolExpression}))`,
+    protocol: `transform(toString(${source.protocolExpression}), [${Object.keys(
+      PROTOCOL_NAMES,
+    )
+      .map(value => `'${value}'`)
+      .join(', ')}], [${Object.values(PROTOCOL_NAMES)
+      .map(value => `'${value}'`)
+      .join(', ')}], toString(${source.protocolExpression}))`,
     exporter: source.exporterExpression?.trim(),
     inputInterface: source.inIfExpression?.trim(),
     outputInterface: source.outIfExpression?.trim(),
@@ -90,6 +151,7 @@ export function buildNetflowQueryConfigs({
     connection: source.connection,
     source: source.id,
     timestampValueExpression: source.timestampValueExpression,
+    implicitColumnExpression: getNetflowImplicitColumnExpression(source),
     dateRange,
     dateRangeEndInclusive: false,
     alignDateRangeToGranularity: false,
@@ -101,15 +163,6 @@ export function buildNetflowQueryConfigs({
     ],
   };
   // Keep result aliases separate from common mapped column names: ClickHouse substitutes aliases in WHERE and sibling expressions.
-  const number = (
-    valueExpression: string,
-    numberFormat: NumberFormat,
-  ): BuilderChartConfigWithDateRange => ({
-    ...base,
-    select: [{ valueExpression, alias: '__netflow_value' }],
-    displayType: DisplayType.Number,
-    numberFormat,
-  });
   const byteFormat: NumberFormat = { output: 'byte', mantissa: 2 };
   const bitRateFormat: NumberFormat = {
     output: 'data_rate',
@@ -119,11 +172,11 @@ export function buildNetflowQueryConfigs({
   const top = (expression: string): BuilderChartConfigWithDateRange => ({
     ...base,
     select: [
-      { valueExpression: expression, alias: '__netflow_name' },
-      { valueExpression: `sum(${bytes})`, alias: '__netflow_bytes' },
+      { valueExpression: expression, alias: netflowColumnAlias('name') },
+      { valueExpression: `sum(${bytes})`, alias: netflowColumnAlias('bytes') },
     ],
-    groupBy: '__netflow_name',
-    orderBy: '__netflow_bytes DESC',
+    groupBy: NETFLOW_ALIASES.name,
+    orderBy: `${NETFLOW_ALIASES.bytes} DESC`,
     limit: { limit: 10 },
     displayType: DisplayType.Bar,
     numberFormat: byteFormat,
@@ -145,35 +198,47 @@ export function buildNetflowQueryConfigs({
     select: [
       {
         valueExpression: source.timestampValueExpression,
-        alias: '__netflow_timestamp',
+        alias: netflowColumnAlias('timestamp'),
       },
       {
         valueExpression: dimensions.srcAddr,
-        alias: '__netflow_srcAddr',
+        alias: netflowColumnAlias('srcAddr'),
       },
       {
         valueExpression: dimensions.dstAddr,
-        alias: '__netflow_dstAddr',
+        alias: netflowColumnAlias('dstAddr'),
       },
-      { valueExpression: source.srcPortExpression, alias: '__netflow_srcPort' },
-      { valueExpression: source.dstPortExpression, alias: '__netflow_dstPort' },
-      { valueExpression: protocol, alias: '__netflow_protocol' },
-      { valueExpression: exporter || "''", alias: '__netflow_exporter' },
-      { valueExpression: bytes, alias: '__netflow_bytes' },
-      { valueExpression: packets, alias: '__netflow_packets' },
-      { valueExpression: source.bytesExpression, alias: '__netflow_rawBytes' },
+      {
+        valueExpression: source.srcPortExpression,
+        alias: netflowColumnAlias('srcPort'),
+      },
+      {
+        valueExpression: source.dstPortExpression,
+        alias: netflowColumnAlias('dstPort'),
+      },
+      { valueExpression: protocol, alias: netflowColumnAlias('protocol') },
+      {
+        valueExpression: exporter || "''",
+        alias: netflowColumnAlias('exporter'),
+      },
+      { valueExpression: bytes, alias: netflowColumnAlias('bytes') },
+      { valueExpression: packets, alias: netflowColumnAlias('packets') },
+      {
+        valueExpression: source.bytesExpression,
+        alias: netflowColumnAlias('rawBytes'),
+      },
       {
         valueExpression: source.packetsExpression,
-        alias: '__netflow_rawPackets',
+        alias: netflowColumnAlias('rawPackets'),
       },
-      { valueExpression: sample, alias: '__netflow_samplingRate' },
+      { valueExpression: sample, alias: netflowColumnAlias('samplingRate') },
       {
         valueExpression: inputInterface || "''",
-        alias: '__netflow_inputInterface',
+        alias: netflowColumnAlias('inputInterface'),
       },
       {
         valueExpression: outputInterface || "''",
-        alias: '__netflow_outputInterface',
+        alias: netflowColumnAlias('outputInterface'),
       },
     ],
     orderBy: `${source.timestampValueExpression} DESC`,
@@ -182,17 +247,33 @@ export function buildNetflowQueryConfigs({
   };
 
   return {
-    bitsPerSecond: number(`sum(${bytes}) * 8 / ${seconds}`, bitRateFormat),
-    packetsPerSecond: number(`sum(${packets}) / ${seconds}`, {
-      output: 'throughput',
-      numericUnit: NumericUnit.PacketsSec,
-      mantissa: 2,
-    }),
-    totalBytes: number(`sum(${bytes})`, byteFormat),
-    flowRecords: number('count()', {
-      output: 'number',
-      thousandSeparated: true,
-    }),
+    summary: {
+      ...base,
+      select: [
+        {
+          valueExpression: `sum(${bytes}) * 8 / ${seconds}`,
+          alias: netflowColumnAlias('bitsPerSecond'),
+        },
+        {
+          valueExpression: `sum(${packets}) / ${seconds}`,
+          alias: netflowColumnAlias('packetsPerSecond'),
+        },
+        { valueExpression: `sum(${bytes})`, alias: NETFLOW_ALIASES.bytes },
+        {
+          valueExpression: 'count()',
+          alias: netflowColumnAlias('flowRecords'),
+        },
+      ],
+      displayType: DisplayType.Number,
+    } satisfies BuilderChartConfigWithDateRange,
+    totalBytes: {
+      ...base,
+      select: [
+        { valueExpression: `sum(${bytes})`, alias: NETFLOW_ALIASES.value },
+      ],
+      displayType: DisplayType.Number,
+      numberFormat: byteFormat,
+    } satisfies BuilderChartConfigWithDateRange,
     traffic,
     topSourceAddresses: top(dimensions.srcAddr),
     topDestinationAddresses: top(dimensions.dstAddr),

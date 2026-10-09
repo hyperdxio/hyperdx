@@ -7,6 +7,8 @@ import {
   buildNetflowSankeyConfig,
   buildNetflowSankeyData,
   SankeyDimension,
+  sankeyDimensionExpression,
+  unwrapSankeyDimensionExpression,
 } from '@/netflowSankey';
 
 const dimensions: SankeyDimension[] = [
@@ -45,7 +47,7 @@ describe('NetFlow Sankey query', () => {
     const config = buildNetflowSankeyConfig({
       baseConfig,
       dimensions,
-      limit: 30,
+      limit: 50,
     });
     expect(config).toMatchObject({
       source: baseConfig.source,
@@ -61,7 +63,7 @@ describe('NetFlow Sankey query', () => {
       groupBy:
         '__netflow_dimension_0, __netflow_dimension_1, __netflow_dimension_2',
       orderBy: '__netflow_value DESC',
-      limit: { limit: 30 },
+      limit: { limit: 50 },
     });
     expect(config.select).toEqual([
       {
@@ -89,10 +91,12 @@ describe('NetFlow Sankey query', () => {
     [undefined, 20],
     [NaN, 20],
     [Infinity, 20],
-    [-5, 1],
-    [0, 1],
-    [101, 100],
-    [2.9, 2],
+    [-5, 20],
+    [0, 20],
+    [101, 20],
+    [2.9, 20],
+    [10, 10],
+    [50, 50],
   ])('bounds the requested path limit %s to %s', (limit, expected) => {
     expect(
       buildNetflowSankeyConfig({ baseConfig, dimensions, limit }).limit,
@@ -138,7 +142,6 @@ describe('NetFlow Sankey data', () => {
       ],
       dimensions,
     );
-    expect(data.totalBytes).toBe(7000);
     expect(data.paths.map(path => path.value)).toEqual([1000, 2000, 4000]);
     expect(data.links).toHaveLength(4);
     for (const stage of [0, 1]) {
@@ -192,9 +195,19 @@ describe('NetFlow Sankey data', () => {
       nodes: [],
       links: [],
       paths: [],
-      totalBytes: 0,
     });
-    expect(buildNetflowSankeyData([], dimensions).totalBytes).toBe(0);
+    expect(buildNetflowSankeyData([], dimensions).paths).toEqual([]);
     expect(buildNetflowSankeyData([row(['a'], 5)], []).nodes).toEqual([]);
   });
+});
+
+it('unwraps its own dimension expression while preserving custom SQL', () => {
+  for (const dimension of dimensions) {
+    expect(
+      unwrapSankeyDimensionExpression(sankeyDimensionExpression(dimension)),
+    ).toBe(dimension.expression);
+    expect(unwrapSankeyDimensionExpression(dimension.expression)).toBe(
+      dimension.expression,
+    );
+  }
 });

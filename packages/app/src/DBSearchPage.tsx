@@ -188,7 +188,7 @@ const ALLOWED_SOURCE_KINDS = [
   SourceKind.Log,
   SourceKind.Trace,
   SourceKind.Netflow,
-];
+] satisfies SourceKind[];
 const SearchConfigSchema = z.object({
   select: z.string(),
   source: z.string(),
@@ -230,7 +230,7 @@ export function getDefaultSourceId(
 
   // Restrict to sources that this page can actually display.
   const searchableSources = sources.filter(
-    s => ALLOWED_SOURCE_KINDS.includes(s.kind) && !s.disabled,
+    s => ALLOWED_SOURCE_KINDS.some(kind => kind === s.kind) && !s.disabled,
   );
   if (searchableSources.length === 0) return '';
 
@@ -509,7 +509,7 @@ function SaveSearchModalComponent({
 
   const { data: sourceObj } = useSource({
     id: searchedConfig.source,
-    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
+    kinds: ALLOWED_SOURCE_KINDS,
   });
   const effectiveSelect =
     searchedConfig.select || sourceObj?.defaultTableSelectExpression || '';
@@ -800,7 +800,7 @@ function useSearchedConfigToChartConfig(
 ) {
   const { data: sourceObj, isLoading } = useSource({
     id: source,
-    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
+    kinds: ALLOWED_SOURCE_KINDS,
   });
   const defaultOrderBy = useDefaultOrderBy(source);
 
@@ -876,7 +876,7 @@ function optimizeDefaultOrderBy(
 export function useDefaultOrderBy(sourceID: string | undefined | null) {
   const { data: source } = useSource({
     id: sourceID,
-    kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
+    kinds: ALLOWED_SOURCE_KINDS,
   });
   const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
 
@@ -1056,7 +1056,7 @@ function DBSearchPageContent() {
   const { source: searchedSource } = useResolvedSourceParam(
     rawSearchedConfig.source,
     {
-      kinds: [SourceKind.Log, SourceKind.Trace, SourceKind.Netflow],
+      kinds: ALLOWED_SOURCE_KINDS,
     },
   );
 

@@ -21,6 +21,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
+  getNetflowImplicitColumnExpression,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
@@ -177,9 +178,11 @@ export async function computeAliasWithClauses(
     where: savedSearch.where,
     whereLanguage: savedSearch.whereLanguage,
     implicitColumnExpression:
-      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-        ? source.implicitColumnExpression
-        : undefined,
+      source.kind === SourceKind.Netflow
+        ? getNetflowImplicitColumnExpression(source)
+        : source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+          ? source.implicitColumnExpression
+          : undefined,
     useTextIndexForImplicitColumn:
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.useTextIndexForImplicitColumn
@@ -735,13 +738,14 @@ const buildAlertChartConfigFromSavedConfig = ({
   }
 
   if (displayTypeSupportsBuilderAlerts(savedConfig.displayType)) {
-    // Alerts can use Log, Trace, or Metric sources.
-    // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
-    // metricTables exists on Metric sources.
+    // NetFlow derives its implicit expression from mapped flow dimensions.
+    // Text-index options exist on Log and Trace; metricTables exists on Metric.
     const implicitColumnExpression =
-      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-        ? source.implicitColumnExpression
-        : undefined;
+      source.kind === SourceKind.Netflow
+        ? getNetflowImplicitColumnExpression(source)
+        : source.kind === SourceKind.Log || source.kind === SourceKind.Trace
+          ? source.implicitColumnExpression
+          : undefined;
     const useTextIndexForImplicitColumn =
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.useTextIndexForImplicitColumn

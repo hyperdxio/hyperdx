@@ -1,5 +1,5 @@
 import { NumericUnit } from '@hyperdx/common-utils/dist/types';
-import { Button, Menu, ScrollArea, Table } from '@mantine/core';
+import { ScrollArea, Table } from '@mantine/core';
 
 import {
   NetflowSankeyData,
@@ -7,6 +7,8 @@ import {
   SankeyFilterHandler,
 } from '@/netflowSankey';
 import { formatNumber } from '@/utils';
+
+import NetflowFilterMenu from './NetflowFilterMenu';
 
 export default function NetflowSankeyTable({
   data,
@@ -36,37 +38,16 @@ export default function NetflowSankeyTable({
             <Table.Tr key={JSON.stringify(path.values)}>
               {dimensions.map((dimension, index) => (
                 <Table.Td key={dimension.key}>
-                  {onFilter ? (
-                    <Menu withinPortal>
-                      <Menu.Target>
-                        <Button
-                          variant="link"
-                          size="compact-xs"
-                          aria-label={`Filter ${dimension.label}: ${path.values[index] || '(empty)'}`}
-                        >
-                          {path.values[index] || '(empty)'}
-                        </Button>
-                      </Menu.Target>
-                      <Menu.Dropdown>
-                        <Menu.Item
-                          onClick={() =>
-                            onFilter(dimension, path.values[index], false)
-                          }
-                        >
-                          Include
-                        </Menu.Item>
-                        <Menu.Item
-                          onClick={() =>
-                            onFilter(dimension, path.values[index], true)
-                          }
-                        >
-                          Exclude
-                        </Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
-                  ) : (
-                    path.values[index] || '(empty)'
-                  )}
+                  <NetflowFilterMenu
+                    label={dimension.label}
+                    value={path.values[index]}
+                    allowEmpty
+                    onSelect={
+                      onFilter &&
+                      (excluded =>
+                        onFilter(dimension, path.values[index], excluded))
+                    }
+                  />
                 </Table.Td>
               ))}
               <Table.Td>

@@ -118,13 +118,16 @@ export class ClickhouseClient extends BaseClickhouseClient {
     return super.getClient() as WebClickHouseClient;
   }
 
+  private get isLocalMode() {
+    return this.username != null && this.password != null;
+  }
+
   private buildClient() {
     let url = this.host!;
     let myFetch: typeof fetch;
-    const isLocalMode = this.username != null && this.password != null;
     const clickhouseSettings: ClickHouseSettings = {};
 
-    if (isLocalMode) {
+    if (this.isLocalMode) {
       myFetch = localModeFetch;
       clickhouseSettings.add_http_cors_header = 1;
     } else {
@@ -184,10 +187,9 @@ export class ClickhouseClient extends BaseClickhouseClient {
       clickhouseSettings = neutralSettings as ClickHouseSettings;
     }
 
-    const isLocalMode = this.username != null && this.password != null;
     const httpHeaders: { [header: string]: string } = {
       // Only the API proxy uses this header; direct requests must avoid a CORS preflight.
-      ...(!isLocalMode && connectionId && connectionId !== 'local'
+      ...(!this.isLocalMode && connectionId && connectionId !== 'local'
         ? { 'x-hyperdx-connection-id': connectionId }
         : {}),
     };

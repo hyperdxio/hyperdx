@@ -113,7 +113,12 @@ export const mcpSaveSourceSchema = z.object({
     .optional()
     .describe('Required for metric sources; optional for others.'),
   eventAttributesExpression: z.string().optional(),
-  implicitColumnExpression: z.string().optional(),
+  implicitColumnExpression: z
+    .string()
+    .optional()
+    .describe(
+      'Expression searched by bare Lucene terms. NetFlow defaults to mapped flow dimensions when omitted.',
+    ),
   knownColumnsListExpression: z.string().optional(),
   orderByExpression: z.string().optional(),
   useTextIndexForImplicitColumn: z

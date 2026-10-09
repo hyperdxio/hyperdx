@@ -12,6 +12,7 @@ import {
   SelectList,
   SortSpecificationList,
   SQLInterval,
+  TNetflowSource,
   TSource,
 } from '@/types';
 
@@ -28,6 +29,28 @@ import {
  * after adding `dateRange` without TS rejecting the timestamp field.
  */
 export type SearchChartConfig = BuilderChartConfig & Partial<DateRange>;
+
+/** Bare terms search mapped dimensions even on sources saved before this option existed. */
+export function getNetflowImplicitColumnExpression(
+  source: TNetflowSource,
+): string {
+  if (source.implicitColumnExpression?.trim()) {
+    return source.implicitColumnExpression.trim();
+  }
+  const expressions = [
+    source.srcAddrExpression,
+    source.dstAddrExpression,
+    source.srcPortExpression,
+    source.dstPortExpression,
+    source.protocolExpression,
+    source.exporterExpression,
+    source.inIfExpression,
+    source.outIfExpression,
+  ]
+    .map(expression => expression?.trim())
+    .filter(Boolean);
+  return `concatWithSeparator(' ', ${expressions.map(expression => `ifNull(toString(${expression}), '')`).join(', ')})`;
+}
 
 /**
  * Default SELECT used by alert evaluators when no caller-supplied SELECT
@@ -85,7 +108,7 @@ export type SearchChartConfigInput = {
 
 /**
  * Resolve the SELECT list, preferring caller-provided `select`, then the
- * source's `defaultTableSelectExpression` (for Log / Trace sources), falling
+ * source's `defaultTableSelectExpression` (for searchable sources), falling
  * back to an empty string.
  *
  * Both `string` and `DerivedColumn[]` SELECT shapes have a `.length` property,
@@ -139,8 +162,9 @@ export function buildSearchChartConfig(
   const userFilters: Filter[] = input.filters ?? [];
   const mergedFilters: Filter[] = [...tableFilter, ...userFilters];
 
-  const implicitColumnExpression =
-    isLogSource(source) || isTraceSource(source)
+  const implicitColumnExpression = isNetflowSource(source)
+    ? getNetflowImplicitColumnExpression(source)
+    : isLogSource(source) || isTraceSource(source)
       ? source.implicitColumnExpression
       : undefined;
   const useTextIndexForImplicitColumn =

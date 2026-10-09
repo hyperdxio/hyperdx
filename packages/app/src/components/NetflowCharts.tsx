@@ -1,6 +1,10 @@
 import { SimpleGrid, Stack } from '@mantine/core';
 
-import { buildNetflowQueryConfigs } from '@/netflow';
+import {
+  buildNetflowQueryConfigs,
+  NETFLOW_ALIASES,
+  NETFLOW_SUMMARY_TILES,
+} from '@/netflow';
 import { SankeyFilterHandler } from '@/netflowSankey';
 
 import { ChartCard } from './charts/ChartCard';
@@ -24,16 +28,14 @@ export default function NetflowCharts({
   return (
     <Stack gap="md">
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
-        {(
-          [
-            ['Average bit rate', configs.bitsPerSecond],
-            ['Average packet rate', configs.packetsPerSecond],
-            ['Transferred bytes', configs.totalBytes],
-            ['Flow records', configs.flowRecords],
-          ] as const
-        ).map(([title, config]) => (
+        {NETFLOW_SUMMARY_TILES.map(({ title, column, numberFormat }) => (
           <ChartCard key={title} style={{ height: 155 }}>
-            <DBNumberChart title={title} config={config} />
+            <DBNumberChart
+              title={title}
+              config={configs.summary}
+              valueColumn={column}
+              numberFormat={numberFormat}
+            />
           </ChartCard>
         ))}
       </SimpleGrid>
@@ -67,9 +69,9 @@ export default function NetflowCharts({
                 <DBListBarChart
                   title={title}
                   config={config}
-                  groupColumn="__netflow_name"
-                  valueColumn="__netflow_bytes"
-                  hiddenSeries={['__netflow_name', '__netflow_bytes']}
+                  groupColumn={NETFLOW_ALIASES.name}
+                  valueColumn={NETFLOW_ALIASES.bytes}
+                  hiddenSeries={[NETFLOW_ALIASES.name, NETFLOW_ALIASES.bytes]}
                   renderGroupLabel={value => (
                     <NetflowFilterMenu
                       field={field}

@@ -37,3 +37,8 @@ include/exclude actions idempotent. Format flow times using user preferences.
 Support NetFlow saved-search alerts with default aliases, previews, and flow
 samples in notifications. Keep unfinished search fields pending when applying
 click filters, and display the configured record limit.
+
+Search mapped flow dimensions with bare Lucene terms or a custom full-text
+expression. Share the summary aggregate query, reuse accessible filter menus,
+restore valid Sankey dimensions across source changes, and document source
+mappings consistently in REST and MCP.

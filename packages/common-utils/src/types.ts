@@ -2612,9 +2612,24 @@ export const PromqlSourceSchema = BaseSourceSchema.extend({
 });
 
 // NetFlow mappings support Akvorado and other flow tables without reingestion.
+export const NETFLOW_COLUMN_EXPRESSIONS = {
+  bytesExpression: 'Bytes',
+  packetsExpression: 'Packets',
+  srcAddrExpression: 'SrcAddr',
+  dstAddrExpression: 'DstAddr',
+  srcPortExpression: 'SrcPort',
+  dstPortExpression: 'DstPort',
+  protocolExpression: 'Proto',
+  samplingRateExpression: 'SamplingRate',
+  exporterExpression: 'ExporterName',
+  inIfExpression: 'InIfName',
+  outIfExpression: 'OutIfName',
+} as const;
+
 export const NetflowSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Netflow),
   defaultTableSelectExpression: z.string().min(1),
+  implicitColumnExpression: z.string().optional(),
   bytesExpression: z.string().min(1),
   packetsExpression: z.string().min(1),
   srcAddrExpression: z.string().min(1),

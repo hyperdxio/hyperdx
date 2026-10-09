@@ -318,6 +318,7 @@ export const NetflowSource = Source.discriminator<INetflowSource>(
   SourceKind.Netflow,
   new Schema<INetflowSource>({
     defaultTableSelectExpression: String,
+    implicitColumnExpression: String,
     bytesExpression: String,
     packetsExpression: String,
     samplingRateExpression: String,
