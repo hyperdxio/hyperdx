@@ -1,9 +1,4 @@
-import {
-  ReactNode,
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
@@ -56,7 +51,10 @@ import {
   TRACE_WATERFALL_ROW_LIMIT,
 } from '@/components/traceWaterfallLimits';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
-import { useRowHighlightHint } from '@/hooks/useRowHighlightHint';
+import {
+  RowHighlightHint,
+  useRowHighlightHint,
+} from '@/hooks/useRowHighlightHint';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -642,11 +640,7 @@ export function DBTraceWaterfallChartContainer({
     aliasWith: WithClause[];
   }) => void;
   highlightedRowWhere?: string | null;
-  initialRowHighlightHint?: {
-    timestamp: string;
-    spanId: string;
-    body: string;
-  };
+  initialRowHighlightHint?: RowHighlightHint;
   emptyState?: ReactNode;
   /** Extra controls rendered in the waterfall controls bar (e.g. the correlated logs source selector). */
   controlsExtra?: ReactNode;
