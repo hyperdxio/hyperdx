@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { useFormatTime } from '@/useFormatTime';
 import { formatNumber } from '@/utils';
 
 import { ChartCard } from './charts/ChartCard';
@@ -44,6 +45,7 @@ export default function NetflowRecords({
   onFilter?: NetflowFilterHandler;
 }) {
   const { data, isLoading, error } = useQueriedChartConfig(config);
+  const formatTime = useFormatTime();
   const [selected, setSelected] = useState<Record<string, unknown> | null>(
     null,
   );
@@ -106,7 +108,7 @@ export default function NetflowRecords({
                     // Flow exports may contain duplicate records without an ID; the table remounts when its query changes.
                     // eslint-disable-next-line @eslint-react/no-array-index-key
                     <Table.Tr key={index}>
-                      <Table.Td>{String(row.timestamp)}</Table.Td>
+                      <Table.Td>{formatTime(String(row.timestamp))}</Table.Td>
                       <Table.Td>
                         <NetflowFilterMenu
                           field="srcAddr"
@@ -197,6 +199,8 @@ export default function NetflowRecords({
                           value={String(selected[key] ?? '')}
                           onFilter={onFilter}
                         />
+                      ) : key === 'timestamp' ? (
+                        formatTime(String(selected[key]))
                       ) : (
                         String(selected[key] ?? '—')
                       )}

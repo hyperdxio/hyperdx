@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium, expect } from '@playwright/test';
 
-const baseUrl = process.env.NETFLOW_APP_URL || 'http://127.0.0.1:3001';
+const baseUrl = process.env.NETFLOW_APP_URL || 'http://127.0.0.1:3000';
 const artifacts = new URL(
   '../packages/app/test-results/netflow/',
   import.meta.url,

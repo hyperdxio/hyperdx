@@ -23,6 +23,7 @@ import {
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
+  usePlotArea,
   XAxis,
   YAxis,
 } from 'recharts';
@@ -89,8 +90,6 @@ const NEAREST_SERIES_MAX_DISTANCE_PX = 30;
 // tooltip's Popover `offset` so both land in the same spot.
 const TOOLTIP_POINT_OFFSET_PX = 12;
 
-const Y_AXIS_WIDTH = 40;
-const SINGLE_POINT_BAR_RIGHT_PADDING = 10;
 const SINGLE_POINT_BAR_WIDTH_RATIO = 0.8;
 // Top margin (px) reserved above the plot for annotation labels ("Alert"/"OK"),
 // added only when a chart is showing annotations so other charts keep their
@@ -1277,6 +1276,12 @@ export function computeYAxisBounds(
   };
 }
 
+function ReportPlotWidth({ onChange }: { onChange: (width: number) => void }) {
+  const width = usePlotArea()?.width ?? 0;
+  useEffect(() => onChange(width), [width, onChange]);
+  return null;
+}
+
 export const MemoChart = memo(function MemoChart({
   graphResults,
   setIsClickActive,
@@ -1493,7 +1498,7 @@ export const MemoChart = memo(function MemoChart({
   );
   const yAxisDomain = yAxisBounds.domain;
 
-  const [containerWidth, setContainerWidth] = useState(0);
+  const [plotWidth, setPlotWidth] = useState(0);
 
   // The chart's outer positioned container. Used to convert a pointer's
   // viewport clientX into a stable container-relative X for measuring
@@ -1583,16 +1588,9 @@ export const MemoChart = memo(function MemoChart({
   const singlePointBarSize = useMemo(() => {
     if (displayType !== DisplayType.StackedBar) return undefined;
     if (graphResults.length !== 1) return undefined;
-    const drawableWidth = Math.max(
-      0,
-      containerWidth - Y_AXIS_WIDTH - SINGLE_POINT_BAR_RIGHT_PADDING,
-    );
-    if (drawableWidth <= 0) return undefined;
-    return Math.max(
-      1,
-      Math.floor(drawableWidth * SINGLE_POINT_BAR_WIDTH_RATIO),
-    );
-  }, [displayType, graphResults.length, containerWidth]);
+    if (plotWidth <= 0) return undefined;
+    return Math.max(1, Math.floor(plotWidth * SINGLE_POINT_BAR_WIDTH_RATIO));
+  }, [displayType, graphResults.length, plotWidth]);
 
   const formatTime = useFormatTime();
   const xTickFormatter = useCallback(
@@ -1932,9 +1930,9 @@ export const MemoChart = memo(function MemoChart({
     }
     return layoutAnnotations(coloredAnnotations, {
       domain: xAxisDomain,
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth,
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, plotWidth]);
 
   const [hoveredAnnotation, setHoveredAnnotation] =
     useState<HoveredAnnotation | null>(null);
@@ -1946,11 +1944,11 @@ export const MemoChart = memo(function MemoChart({
     return getAnnotationElements(coloredAnnotations, {
       domain: xAxisDomain,
       // Drawable width, so markers too close together share one label. Zero on
-      // the first paint (before ResponsiveContainer measures), which the
+      // the first paint (before Recharts measures the plot), which the
       // renderer treats as "label everything".
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth,
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, plotWidth]);
 
   return (
     <div
@@ -2002,10 +2000,6 @@ export const MemoChart = memo(function MemoChart({
         // can't thrash layout (which leaves surrounding form controls never
         // "stable"); the observer otherwise fires undebounced on every frame.
         debounce={RESPONSIVE_CONTAINER_DEBOUNCE_MS}
-        onResize={width => {
-          const w = width ?? 1;
-          setContainerWidth(prev => (prev === w ? prev : w));
-        }}
         className={isLoading ? 'effect-pulse' : ''}
       >
         <ChartComponent
@@ -2027,6 +2021,7 @@ export const MemoChart = memo(function MemoChart({
           onMouseUp={handleMouseUp}
           onClick={handleClick}
         >
+          <ReportPlotWidth onChange={setPlotWidth} />
           <defs>
             {/* Gradient defs cover every hex that any <Area> fill may reference.
               `COLORS` (the unified categorical palette) is included up-front

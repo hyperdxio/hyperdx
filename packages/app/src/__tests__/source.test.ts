@@ -1,4 +1,6 @@
 import { ColumnMetaType } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptTimestamp,
   NumberFormat,
@@ -730,24 +732,30 @@ describe('getBuilderValueColumnCount', () => {
 });
 
 describe('NetFlow source inference', () => {
-  const infer = async (names: string[]) =>
-    inferTableSourceConfig({
+  const infer = async (names: string[]) => {
+    const metadata = getMetadata(
+      new ClickhouseClient({ host: 'http://localhost:8123' }),
+    );
+    jest.spyOn(metadata, 'getColumns').mockResolvedValue(
+      names.map(name => ({
+        name,
+        type: name === 'TimeReceived' ? 'DateTime' : 'UInt64',
+        codec_expression: '',
+        comment: '',
+        default_expression: '',
+        default_type: '',
+        ttl_expression: '',
+      })),
+    );
+    jest.spyOn(metadata, 'getTableMetadata').mockResolvedValue(undefined);
+    return inferTableSourceConfig({
       databaseName: 'default',
       tableName: 'flows',
       connectionId: 'connection',
       kind: SourceKind.Netflow,
-      metadata: {
-        getColumns: jest.fn().mockResolvedValue(
-          names.map(name => ({
-            name,
-            type: name === 'TimeReceived' ? 'DateTime' : 'UInt64',
-          })),
-        ),
-        getTableMetadata: jest
-          .fn()
-          .mockResolvedValue({ primary_key: 'TimeReceived' }),
-      } as any,
+      metadata,
     });
+  };
   it('maps Akvorado columns and preserves sampling semantics', async () => {
     expect(
       await infer([

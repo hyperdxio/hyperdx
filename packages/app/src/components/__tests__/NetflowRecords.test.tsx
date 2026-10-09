@@ -4,6 +4,12 @@ import { fireEvent, screen, within } from '@testing-library/react';
 import NetflowRecords from '@/components/NetflowRecords';
 
 const mockQuery = jest.fn();
+let mockTimeFormat: '12h' | '24h' = '24h';
+jest.mock('@/useUserPreferences', () => ({
+  useUserPreferences: () => ({
+    userPreferences: { isUTC: true, timeFormat: mockTimeFormat },
+  }),
+}));
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: () => mockQuery(),
 }));
@@ -21,6 +27,25 @@ const config: BuilderChartConfigWithDateRange = {
 };
 
 describe('NetFlow records', () => {
+  it.each([
+    ['24h', 'Oct 9 12:30:00'],
+    ['12h', 'Oct 9 12:30:00 PM'],
+  ] as const)(
+    'formats table and drawer times in UTC using %s preferences',
+    async (clock, expected) => {
+      mockTimeFormat = clock;
+      mockQuery.mockReturnValue({
+        data: { data: [{ __netflow_timestamp: '2026-10-09T05:30:00-07:00' }] },
+      });
+      renderWithMantine(<NetflowRecords config={config} />);
+      expect(screen.getByText(expected)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: 'Inspect flow 1' }));
+      expect(
+        within(await screen.findByRole('dialog')).getByText(expected),
+      ).toBeInTheDocument();
+    },
+  );
+
   it('shows sampled counters and exposes raw counters in flow details', async () => {
     mockQuery.mockReturnValue({
       isLoading: false,

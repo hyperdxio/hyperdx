@@ -25,3 +25,11 @@ Avoid sending API proxy headers when querying ClickHouse directly in local mode.
 Add a Sankey visualization with ordered table dimensions, sampling-adjusted path
 weights, average bit rates, configurable path limits, and clickable shared
 filters. Include interface classifications in the local demo data.
+
+Recover from invalid time ranges without crashing, clear source-specific click
+filters when switching sources, and keep chart geometry aligned with automatic
+axis widths.
+
+Preserve NetFlow mappings through MCP source tools, ignore stale source inference,
+share filter keys across visualizations, retain quoted columns, and make explicit
+include/exclude actions idempotent. Format flow times using user preferences.

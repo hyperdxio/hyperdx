@@ -1,8 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useEffectEvent, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { parseAsString, parseAsStringEnum, useQueryStates } from 'nuqs';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterSchema,
@@ -15,7 +15,6 @@ import {
   Button,
   Group,
   Loader,
-  Modal,
   Stack,
   Text,
 } from '@mantine/core';
@@ -27,9 +26,9 @@ import NetflowCharts from '@/components/NetflowCharts';
 import NetflowFilterPills, {
   useNetflowFilterState,
 } from '@/components/NetflowFilterPills';
+import NetflowSourceModal from '@/components/NetflowSourceModal';
 import { PageLayout } from '@/components/PageLayout';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
-import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
@@ -68,6 +67,18 @@ function NetflowPage() {
   const { control, handleSubmit, reset, getValues } = useForm({
     values: { ...params, source: source?.id ?? '' },
   });
+  const selectedSource = useWatch({ control, name: 'source' });
+  const syncSource = useEffectEvent((id: string) => {
+    if (id && id !== params.source) {
+      void setParams({
+        source: id,
+        ...(id !== source?.id ? { filters: [] } : {}),
+      });
+    }
+  });
+  useEffect(() => {
+    syncSource(selectedSource);
+  }, [selectedSource]);
   const clickFilters = useNetflowFilterState({
     source,
     filters: params.filters,
@@ -90,9 +101,12 @@ function NetflowPage() {
     onTimeRangeSelect,
     isLive: false,
   });
+  const duration =
+    searchedTimeRange[1].getTime() - searchedTimeRange[0].getTime();
+  const hasValidTimeRange = Number.isFinite(duration) && duration > 0;
   const configs = useMemo(
     () =>
-      source
+      source && hasValidTimeRange
         ? buildNetflowQueryConfigs({
             source,
             dateRange: searchedTimeRange,
@@ -102,7 +116,7 @@ function NetflowPage() {
             extraFilters: params.filters,
           })
         : undefined,
-    [source, searchedTimeRange, params],
+    [source, searchedTimeRange, params, hasValidTimeRange],
   );
   const run = handleSubmit(values => {
     void setParams(values);
@@ -114,27 +128,15 @@ function NetflowPage() {
       <Head>
         <title>{title}</title>
       </Head>
-      <Modal
-        opened={sourceModal !== null}
+      <NetflowSourceModal
+        mode={sourceModal}
+        sourceId={source?.id}
         onClose={() => setSourceModal(null)}
-        title={
-          sourceModal === 'edit' ? 'Edit NetFlow source' : 'Add NetFlow source'
-        }
-        size="xl"
-      >
-        <TableSourceForm
-          isNew={sourceModal === 'new'}
-          sourceId={sourceModal === 'edit' ? source?.id : undefined}
-          defaultName="NetFlow"
-          defaultKind={SourceKind.Netflow}
-          onCreate={created => {
-            void setParams({ source: created.id });
-            setSourceModal(null);
-          }}
-          onSave={() => setSourceModal(null)}
-          onCancel={() => setSourceModal(null)}
-        />
-      </Modal>
+        onCreate={created => {
+          void setParams({ source: created.id, filters: [] });
+          setSourceModal(null);
+        }}
+      />
       <form onSubmit={run}>
         <PageLayout
           title="NetFlow"
@@ -165,7 +167,7 @@ function NetflowPage() {
                 aria-label="Refresh NetFlow"
                 title="Refresh NetFlow"
                 onClick={refresh}
-                disabled={manualRefreshCooloff}
+                disabled={manualRefreshCooloff || !hasValidTimeRange}
                 loading={manualRefreshCooloff}
               >
                 <IconRefresh size={18} />
@@ -190,7 +192,7 @@ function NetflowPage() {
                   onSubmit={run}
                   enableHotkey
                   showSuggestionsOnEmpty
-                  dateRange={searchedTimeRange}
+                  dateRange={hasValidTimeRange ? searchedTimeRange : undefined}
                   lucenePlaceholder="Search flows with Lucene, e.g. Proto:6 AND DstPort:443"
                   luceneQueryHistoryType="netflow"
                   sqlQueryHistoryType="netflow-sql"
@@ -198,31 +200,25 @@ function NetflowPage() {
                 />
               )}
               <Group align="end" gap="sm">
-                <TextInputControlled
-                  control={control}
-                  name="exporter"
-                  label="Exporter"
-                  placeholder="All exporters"
-                  disabled={!source?.exporterExpression?.trim()}
-                />
-                <TextInputControlled
-                  control={control}
-                  name="protocol"
-                  label="Protocol"
-                  placeholder="6 (TCP), 17 (UDP)"
-                />
-                <TextInputControlled
-                  control={control}
-                  name="srcAddr"
-                  label="Source IP"
-                  placeholder="IPv4 or IPv6 address"
-                />
-                <TextInputControlled
-                  control={control}
-                  name="dstAddr"
-                  label="Destination IP"
-                  placeholder="IPv4 or IPv6 address"
-                />
+                {(
+                  [
+                    ['exporter', 'Exporter', 'All exporters'],
+                    ['protocol', 'Protocol', '6 (TCP), 17 (UDP)'],
+                    ['srcAddr', 'Source IP', 'IPv4 or IPv6 address'],
+                    ['dstAddr', 'Destination IP', 'IPv4 or IPv6 address'],
+                  ] as const
+                ).map(([name, label, placeholder]) => (
+                  <TextInputControlled
+                    key={name}
+                    control={control}
+                    name={name}
+                    label={label}
+                    placeholder={placeholder}
+                    disabled={
+                      name === 'exporter' && !source?.exporterExpression?.trim()
+                    }
+                  />
+                ))}
                 <Button
                   variant="secondary"
                   onClick={() => {
@@ -255,6 +251,19 @@ function NetflowPage() {
                 </Alert>
               ) : isLoading ? (
                 <Loader aria-label="Loading NetFlow sources" />
+              ) : !hasValidTimeRange ? (
+                <EmptyState
+                  title="Invalid time range"
+                  description="Choose an end time after the start time, then run the query."
+                  variant="card"
+                >
+                  <Button
+                    variant="primary"
+                    onClick={() => onSearch(DEFAULT_INTERVAL)}
+                  >
+                    Use past hour
+                  </Button>
+                </EmptyState>
               ) : configs ? (
                 <NetflowCharts
                   configs={configs}

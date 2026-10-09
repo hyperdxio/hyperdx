@@ -1,7 +1,6 @@
 import { ResponsiveContainer, Sankey } from 'recharts';
 import { Box, ScrollArea, Text, Tooltip } from '@mantine/core';
 
-import EmptyState from '@/components/EmptyState';
 import {
   NetflowSankeyData,
   SankeyDimension,
@@ -29,15 +28,6 @@ export default function NetflowSankeyChart({
     (_, stage) => data.nodes.filter(node => node.stage === stage).length,
   );
   const height = Math.max(380, Math.max(...stageCounts, 0) * 26 + 24);
-
-  if (!data.links.length) {
-    return (
-      <EmptyState
-        title="No traffic paths found"
-        description="Widen the time range or adjust your filters to find network traffic."
-      />
-    );
-  }
 
   return (
     <ScrollArea

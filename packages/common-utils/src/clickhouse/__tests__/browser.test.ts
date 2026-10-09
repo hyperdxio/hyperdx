@@ -100,17 +100,23 @@ describe('browser connection routing', () => {
       expect.objectContaining({ http_headers: {} }),
     );
   });
-  it('retains connection routing for the authenticated API proxy', async () => {
-    const client = new ClickhouseClient({ host: '/api/clickhouse-proxy' });
-    await client.query({
-      query: 'SELECT 1',
-      connectionId: 'team-connection',
-      shouldSkipApplySettings: true,
-    });
-    expect(query).toHaveBeenCalledWith(
-      expect.objectContaining({
-        http_headers: { 'x-hyperdx-connection-id': 'team-connection' },
-      }),
-    );
-  });
+  it.each([{}, { username: 'default' }, { password: '' }])(
+    'retains proxy routing with incomplete credentials %j',
+    async credentials => {
+      const client = new ClickhouseClient({
+        host: '/api/clickhouse-proxy',
+        ...credentials,
+      });
+      await client.query({
+        query: 'SELECT 1',
+        connectionId: 'team-connection',
+        shouldSkipApplySettings: true,
+      });
+      expect(query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          http_headers: { 'x-hyperdx-connection-id': 'team-connection' },
+        }),
+      );
+    },
+  );
 });

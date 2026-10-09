@@ -14,9 +14,22 @@ const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 
 try {
+  for (const [from, to] of [[1791565200000, 1791565200000], [1791565200000, 1791561600000]]) {
+    await page.goto(`${baseUrl}/netflow?from=${from}&to=${to}`);
+    await expect(page.getByText('Invalid time range', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('netflow-records')).toHaveCount(0);
+    await page.getByRole('button', { name: 'Use past hour', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Inspect flow 1', exact: true })).toBeVisible({ timeout: 60000 });
+  }
   await page.goto(`${baseUrl}/netflow`, { waitUntil: 'domcontentloaded' });
   const records = page.getByTestId('netflow-records');
   const firstFlow = () => records.locator('tbody tr').first();
+  const pills = page.getByTestId('netflow-filter-pills');
+  const addProtocolFilter = async () => {
+    await firstFlow().getByRole('button', { name: /^Filter protocol:/ }).click();
+    await page.getByRole('menuitem', { name: 'Include', exact: true }).click();
+    await expect(pills.getByRole('button', { name: 'Remove filter' })).toHaveCount(1);
+  };
   await expect(
     page.getByRole('button', { name: 'Inspect flow 1', exact: true }),
   ).toBeVisible({ timeout: 60000 });
@@ -182,6 +195,7 @@ try {
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toBeHidden();
 
+  await addProtocolFilter();
   await page
     .getByRole('button', { name: 'Source actions', exact: true })
     .click();
@@ -203,6 +217,22 @@ try {
     .getByRole('button', { name: 'Save New Source', exact: true })
     .click();
   await expect(sourceForm).toBeHidden();
+  await expect(pills.getByRole('button', { name: 'Remove filter' })).toHaveCount(0);
+  await addProtocolFilter();
+  const namedSourceUrl = new URL(page.url());
+  namedSourceUrl.searchParams.set('source', 'NetFlow browser test');
+  await page.goto(namedSourceUrl.href);
+  await expect(pills.getByRole('button', { name: 'Remove filter' })).toHaveCount(1);
+  // Source changes apply before Run, including the edit target and URL.
+  await page.getByRole('combobox', { name: 'NetFlow source', exact: true }).click();
+  await page.getByRole('option', { name: 'NetFlow demo', exact: true }).click();
+  await expect.poll(() => new URL(page.url()).searchParams.get('source')).toBe('netflow-demo');
+  await expect(pills.getByRole('button', { name: 'Remove filter' })).toHaveCount(0);
+  await expect.poll(() => JSON.parse(decodeURIComponent(new URL(page.url()).searchParams.get('filters') || '[]'))).toEqual([]);
+  await page.getByRole('button', { name: 'Source actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Edit source', exact: true }).click();
+  await expect(page.getByRole('dialog').locator('input[name=name]')).toHaveValue('NetFlow demo');
+  await page.keyboard.press('Escape');
   await page.reload();
   await expect(
     page.getByRole('button', { name: 'Inspect flow 1', exact: true }),
@@ -219,7 +249,7 @@ try {
   await expect(page.getByText('NetFlow source unavailable')).toBeVisible();
   assert.deepEqual(errors, [], 'No browser runtime errors');
   console.log(
-    'NetFlow browser checks passed: data, filters, sampling, details, refresh, source creation/reload, Search, unavailable source.',
+    'NetFlow browser checks passed: data, filters, sampling, details, refresh, source creation/reload/switching, Search, unavailable source, invalid time range recovery.',
   );
   console.log(`Screenshots: ${artifacts.pathname}`);
 } finally {

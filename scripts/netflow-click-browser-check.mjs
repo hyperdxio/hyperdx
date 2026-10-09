@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 
-const baseUrl = process.env.NETFLOW_APP_URL || 'http://127.0.0.1:3001';
+const baseUrl = process.env.NETFLOW_APP_URL || 'http://127.0.0.1:3000';
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1600, height: 1050 } });
 page.setDefaultTimeout(15000);

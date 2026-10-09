@@ -6,7 +6,13 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Controller, useFieldArray, useForm, useWatch } from 'react-hook-form';
+import {
+  Controller,
+  FieldPath,
+  useFieldArray,
+  useForm,
+  useWatch,
+} from 'react-hook-form';
 import { z } from 'zod';
 import {
   SourceKind,
@@ -95,24 +101,31 @@ export function TableSourceForm({
   const { data: source } = useSource({ id: sourceId });
   const { data: connections } = useConnections();
 
-  const { control, setValue, handleSubmit, resetField, setError, clearErrors } =
-    useForm<TSource>({
-      defaultValues: {
-        kind: defaultKind,
-        name: defaultName,
-        connection: connections?.[0]?.id,
-        from: {
-          databaseName: 'default',
-          tableName: '',
-        },
-        querySettings: source?.querySettings,
+  const {
+    control,
+    setValue,
+    handleSubmit,
+    resetField,
+    setError,
+    clearErrors,
+    getFieldState,
+  } = useForm<TSource>({
+    defaultValues: {
+      kind: defaultKind,
+      name: defaultName,
+      connection: connections?.[0]?.id,
+      from: {
+        databaseName: 'default',
+        tableName: '',
       },
-      values: source,
-      resetOptions: {
-        keepDirtyValues: true,
-        keepErrors: true,
-      },
-    });
+      querySettings: source?.querySettings,
+    },
+    values: source,
+    resetOptions: {
+      keepDirtyValues: true,
+      keepErrors: true,
+    },
+  });
 
   const watchedConnection = useWatch({
     control,
@@ -136,6 +149,8 @@ export function TableSourceForm({
   });
   const prevTableNameRef = useRef(watchedTableName);
   const prevKindRef = useRef(watchedKind);
+  const prevConnectionRef = useRef(watchedConnection);
+  const prevDatabaseNameRef = useRef(watchedDatabaseName);
 
   const selectedConnection = useMemo(
     () => connections?.find(c => c.id === watchedConnection),
@@ -165,16 +180,24 @@ export function TableSourceForm({
   ]);
 
   const metadata = useMetadataWithSettings();
+  const prevMetadataRef = useRef(metadata);
 
   useEffect(() => {
+    let cancelled = false;
     (async () => {
       try {
         if (
           watchedTableName !== prevTableNameRef.current ||
-          watchedKind !== prevKindRef.current
+          watchedKind !== prevKindRef.current ||
+          watchedConnection !== prevConnectionRef.current ||
+          watchedDatabaseName !== prevDatabaseNameRef.current ||
+          metadata !== prevMetadataRef.current
         ) {
           prevTableNameRef.current = watchedTableName;
           prevKindRef.current = watchedKind;
+          prevConnectionRef.current = watchedConnection;
+          prevDatabaseNameRef.current = watchedDatabaseName;
+          prevMetadataRef.current = metadata;
 
           if (isPrometheusOnlyConnection) {
             return;
@@ -193,6 +216,7 @@ export function TableSourceForm({
               kind: watchedKind,
               metadata,
             });
+            if (cancelled) return;
             if (Object.keys(config).length > 0) {
               notifications.show({
                 color: 'green',
@@ -201,11 +225,14 @@ export function TableSourceForm({
               });
             }
             Object.entries(config).forEach(([key, value]) => {
+              const field = key as FieldPath<TSource>;
+              // The selection and mappings edited during discovery belong to the user.
+              if (field === 'kind' || getFieldState(field).isDirty) return;
               if (value && typeof value === 'object' && !Array.isArray(value)) {
-                setValue(key as any, value);
+                setValue(field, value);
                 return;
               }
-              resetField(key as any, {
+              resetField(field, {
                 keepDirty: true,
                 defaultValue: value,
               });
@@ -213,9 +240,12 @@ export function TableSourceForm({
           }
         }
       } catch (e) {
-        console.error(e);
+        if (!cancelled) console.error(e);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [
     watchedTableName,
     watchedConnection,
@@ -224,6 +254,7 @@ export function TableSourceForm({
     resetField,
     metadata,
     setValue,
+    getFieldState,
     isPrometheusOnlyConnection,
   ]);
 
