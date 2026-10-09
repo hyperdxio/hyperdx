@@ -27,8 +27,10 @@ import {
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 
 // Mock DEFAULT_TIME_WINDOWS_SECONDS to remove the 15m window
-jest.mock('@/utils/searchWindows', () => {
-  const original = jest.requireActual('@/utils/searchWindows');
+jest.mock('@hyperdx/common-utils/dist/core/searchWindows', () => {
+  const original = jest.requireActual(
+    '@hyperdx/common-utils/dist/core/searchWindows',
+  );
   const mockWindows = [
     6 * 60 * 60, // 6h
     6 * 60 * 60, // 6h

@@ -557,4 +557,103 @@ describe('External API v2 Search', () => {
     expect(res.status).toBe(404);
     expect(res.body).toHaveProperty('message');
   });
+
+  // -------------------------------------------------------------------------
+  // Cursor pagination
+  // -------------------------------------------------------------------------
+
+  // Each test seeds its own rows: afterEach calls server.clearDBs().
+  const seedCursorRows = async () => {
+    // 40 rows one minute apart, so they span well past the newest 15m window,
+    // plus 3 rows sitting exactly on that window's boundary instant. Adjacent
+    // windows share that instant, so wrong inclusivity duplicates or drops them.
+    const boundary = DEFAULT_END_TIME - 15 * 60 * 1000;
+    await bulkInsertLogs([
+      ...Array.from({ length: 40 }, (_, i) => ({
+        ServiceName: 'cursor-test',
+        Timestamp: new Date(DEFAULT_END_TIME - i * 60 * 1000),
+        SeverityText: 'INFO',
+        Body: `row-${i}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        ServiceName: 'cursor-test',
+        Timestamp: new Date(boundary),
+        SeverityText: 'INFO',
+        Body: `boundary-${i}`,
+      })),
+    ]);
+  };
+
+  const cursorBody = () => ({
+    sourceId: logSource.id.toString(),
+    startTime: iso(DEFAULT_START_TIME),
+    endTime: iso(DEFAULT_END_TIME),
+    where: 'ServiceName:"cursor-test"',
+    select: 'Timestamp,Body',
+    maxResults: 5,
+  });
+
+  it('walks every row exactly once with cursor pagination', async () => {
+    await seedCursorRows();
+
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    let pages = 0;
+    for (; pages < 50; pages++) {
+      const res = await search({
+        ...cursorBody(),
+        cursor: cursor ?? 'start',
+      }).expect(200);
+      seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+      cursor = res.body.nextCursor;
+      if (cursor == null) break;
+    }
+
+    expect(pages).toBeLessThan(49);
+    expect(cursor).toBeNull();
+    expect(seen).toHaveLength(43);
+    expect(new Set(seen).size).toBe(43);
+  });
+
+  it('rejects a cursor reused against a different query', async () => {
+    await seedCursorRows();
+
+    const first = await search({ ...cursorBody(), cursor: 'start' }).expect(
+      200,
+    );
+    expect(first.body.nextCursor).toBeTruthy();
+
+    await search({
+      ...cursorBody(),
+      where: 'ServiceName:"other-cursor-svc"',
+      cursor: first.body.nextCursor,
+    }).expect(400);
+  });
+
+  it('leaves offset pagination behaving as before', async () => {
+    await seedCursorRows();
+
+    // Rows span ~40 minutes, so an offset past the newest 15m window must still
+    // reach older rows -- an offset-only request must not be confined to one
+    // window.
+    const first = await search({ ...cursorBody(), maxResults: 5 }).expect(200);
+    const deep = await search({
+      ...cursorBody(),
+      maxResults: 5,
+      offset: 20,
+    }).expect(200);
+
+    expect(first.body.data).toHaveLength(5);
+    expect(deep.body.data).toHaveLength(5);
+    // Offset-only callers are not driving a cursor walk.
+    expect(first.body.nextCursor).toBeNull();
+    expect(deep.body.nextCursor).toBeNull();
+    const firstBodies = first.body.data.map(
+      (r: Record<string, string>) => r.Body,
+    );
+    const deepBodies = deep.body.data.map(
+      (r: Record<string, string>) => r.Body,
+    );
+    expect(deepBodies).not.toEqual(firstBodies);
+  });
 });
