@@ -120,7 +120,6 @@ import {
   FIND_HIGHLIGHT_TEXT,
   highlightTerms,
   QUERY_HIGHLIGHT_BACKGROUND,
-  QUERY_HIGHLIGHT_TEXT,
 } from './DBTable/highlightText';
 import {
   ROW_SELECTION_COLUMN_WIDTH,
@@ -661,10 +660,6 @@ export const RawLogTable = memo(
 
               const strValue = typeof value === 'string' ? value : `${value}`;
 
-              if (column === logLevelColumn) {
-                return <LogLevel level={strValue} />;
-              }
-
               const maxLen = wrapLinesEnabled
                 ? MAX_CELL_LENGTH_WRAPPED
                 : MAX_CELL_LENGTH;
@@ -699,7 +694,6 @@ export const RawLogTable = memo(
                       {
                         terms: queryHighlightTerms[column],
                         backgroundColor: QUERY_HIGHLIGHT_BACKGROUND,
-                        textColor: QUERY_HIGHLIGHT_TEXT,
                       },
                     ]
                   : []),
@@ -708,6 +702,10 @@ export const RawLogTable = memo(
               const displayValue = highlightGroups.length
                 ? highlightTerms(truncatedStrValue, highlightGroups)
                 : truncatedStrValue;
+
+              if (column === logLevelColumn) {
+                return <LogLevel level={strValue}>{displayValue}</LogLevel>;
+              }
 
               return (
                 <span

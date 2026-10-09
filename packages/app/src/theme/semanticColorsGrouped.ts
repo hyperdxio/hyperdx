@@ -52,7 +52,6 @@ export const semanticColorsGrouped = {
     'color-text-danger',
     'color-text-warning',
     'color-text-info',
-    'color-text-highlight-query',
     'color-text-highlight-find',
   ],
   icons: ['color-icon-primary', 'color-icon-muted'],

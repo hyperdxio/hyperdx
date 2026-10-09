@@ -11,10 +11,10 @@ export const FIND_HIGHLIGHT_TEXT = 'var(--color-text-highlight-find)';
  * Terms pulled from the active Lucene query. Same yellow family as the find
  * box, but a wash rather than a solid fill: these are always on and a busy row
  * can carry a dozen of them, so they have to stay readable and stay out of the
- * find box's way.
+ * find box's way. It is paired with no text color so the cell keeps its own —
+ * a log level stays level-colored underneath the wash.
  */
 export const QUERY_HIGHLIGHT_BACKGROUND = 'var(--color-bg-highlight-query)';
-export const QUERY_HIGHLIGHT_TEXT = 'var(--color-text-highlight-query)';
 
 interface HighlightTextSettings {
   isCurrentMatch: boolean;
@@ -23,7 +23,8 @@ interface HighlightTextSettings {
   currentMatchBackgroundColor: string;
 }
 
-/** A set of terms sharing one colour. */
+/** A set of terms sharing one colour. Without `textColor` the match keeps the
+ * colour it would have had, which only works over a translucent background. */
 export type HighlightGroup = {
   terms: string[];
   backgroundColor: string;
@@ -124,7 +125,9 @@ export const highlightTerms = (
         key={`${match.start}-${match.end}-${match.groupIndex}`}
         style={{
           backgroundColor: group.backgroundColor,
-          color: group.textColor || FIND_HIGHLIGHT_TEXT,
+          // `inherit` has to be explicit: the UA stylesheet gives `mark` its
+          // own black `color`, which beats inheriting the cell's.
+          color: group.textColor ?? 'inherit',
           padding: 0,
         }}
       >
@@ -162,7 +165,7 @@ export const highlightText = (
         ? settings.currentMatchBackgroundColor ||
           FIND_CURRENT_HIGHLIGHT_BACKGROUND
         : settings.backgroundColor || FIND_HIGHLIGHT_BACKGROUND,
-      textColor: settings.textColor,
+      textColor: settings.textColor || FIND_HIGHLIGHT_TEXT,
     },
   ]);
 };
