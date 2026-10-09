@@ -9,6 +9,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -42,6 +43,17 @@ type Config struct {
 	// Reconcile TTL on already-existing tables, not just newly created ones.
 	ReconcileTableTTL bool
 
+	// Create the database with the Replicated engine and seed Replicated*
+	// table engines, unless the database already exists with another engine.
+	Replicated bool
+
+	// Database to stay on when Database does not exist yet but this one already
+	// holds ClickStack tables. Empty disables the fallback.
+	FallbackDatabase string
+
+	// Where to record the seeded database for the entrypoint (fallback only).
+	ResolvedDatabasePath string
+
 	// TLS settings
 	TLSCAFile             string
 	TLSCertFile           string
@@ -68,6 +80,9 @@ func loadConfig() (*Config, error) {
 		MetricsTTL:            getEnv("HYPERDX_OTEL_EXPORTER_METRICS_TTL", tablesTTL),
 		SessionsTTL:           getEnv("HYPERDX_OTEL_EXPORTER_SESSIONS_TTL", tablesTTL),
 		ReconcileTableTTL:     getEnv("HYPERDX_OTEL_EXPORTER_RECONCILE_TABLE_TTL", "false") == "true",
+		Replicated:            getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_REPLICATED", "false") == "true",
+		FallbackDatabase:      getEnv("HYPERDX_OTEL_EXPORTER_CLICKHOUSE_FALLBACK_DATABASE", ""),
+		ResolvedDatabasePath:  getEnv("HYPERDX_OTEL_EXPORTER_RESOLVED_DATABASE_PATH", "/tmp/hyperdx-otel-exporter-database"),
 		TLSCAFile:             getEnv("CLICKHOUSE_TLS_CA_FILE", ""),
 		TLSCertFile:           getEnv("CLICKHOUSE_TLS_CERT_FILE", ""),
 		TLSKeyFile:            getEnv("CLICKHOUSE_TLS_KEY_FILE", ""),
@@ -528,12 +543,21 @@ func reconcileTableTTLs(ctx context.Context, db *sql.DB, database string, ttlExp
 }
 
 // processSchemaDir creates a temporary directory with SQL files that have the
-// ${DATABASE} and per-signal ${*_TTL} macros replaced with actual values.
+// ${DATABASE}, ${DATABASE_ENGINE}, ${ENGINE_PREFIX} and per-signal ${*_TTL}
+// macros replaced with actual values. When replicated is set, the database is
+// created with the Replicated engine and MergeTree becomes ReplicatedMergeTree;
+// otherwise both macros are empty.
 // ttlExprs maps a macro name (e.g. "LOGS_TTL") to its ClickHouse interval expr.
-func processSchemaDir(schemaDir, database string, ttlExprs map[string]string) (string, error) {
+func processSchemaDir(schemaDir, database string, replicated bool, ttlExprs map[string]string) (string, error) {
 	tempDir, err := os.MkdirTemp("", "schema-*")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	databaseEngine, enginePrefix := "", ""
+	if replicated {
+		databaseEngine = fmt.Sprintf(" ENGINE = Replicated('/clickhouse/databases/%s', '{shard}', '{replica}')", database)
+		enginePrefix = "Replicated"
 	}
 
 	// Walk through the schema directory and process SQL files
@@ -562,6 +586,8 @@ func processSchemaDir(schemaDir, database string, ttlExprs map[string]string) (s
 
 		// Replace macros with actual values
 		processedContent := strings.ReplaceAll(string(content), "${DATABASE}", database)
+		processedContent = strings.ReplaceAll(processedContent, "${DATABASE_ENGINE}", databaseEngine)
+		processedContent = strings.ReplaceAll(processedContent, "${ENGINE_PREFIX}", enginePrefix)
 		for macro, expr := range ttlExprs {
 			processedContent = strings.ReplaceAll(processedContent, "${"+macro+"}", expr)
 		}
@@ -580,6 +606,75 @@ func processSchemaDir(schemaDir, database string, ttlExprs map[string]string) (s
 	}
 
 	return tempDir, nil
+}
+
+// planReplicated decides whether to seed Replicated engines. Argument-less
+// Replicated* table engines only work inside a Replicated database and an
+// existing database cannot change engine, so only a missing or already
+// Replicated database qualifies. Returns a warning when the flag cannot apply.
+func planReplicated(enabled, exists bool, database, engine string) (bool, string) {
+	switch {
+	case !enabled:
+		return false, ""
+	case !exists, engine == "Replicated":
+		return true, ""
+	default:
+		return false, fmt.Sprintf("database %s already exists with engine %s, so tables use non-replicated engines; "+
+			"set HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE to a new database name to seed a Replicated database", database, engine)
+	}
+}
+
+// getDatabaseEngine returns the engine of a database, or exists=false if it is missing.
+func getDatabaseEngine(ctx context.Context, db *sql.DB, database string) (engine string, exists bool, err error) {
+	err = db.QueryRowContext(ctx, "SELECT engine FROM system.databases WHERE name = ?", database).Scan(&engine)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("failed to query engine of database %s: %w", database, err)
+	}
+	return engine, true, nil
+}
+
+// legacyDatabase is where an earlier install keeps its ClickStack tables: the
+// fallback database when set, otherwise default.
+func legacyDatabase(fallback string) string {
+	if fallback != "" {
+		return fallback
+	}
+	return "default"
+}
+
+// hasClickStackTables reports whether database already holds ClickStack tables.
+func hasClickStackTables(ctx context.Context, db *sql.DB, database string) (bool, error) {
+	var n uint64
+	err := db.QueryRowContext(ctx,
+		"SELECT count() FROM system.tables WHERE database = ? AND name IN ('otel_logs', 'otel_traces')", database).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("failed to check database %s for ClickStack tables: %w", database, err)
+	}
+	return n > 0, nil
+}
+
+// resolveDatabase picks the database to seed and hand to the collector. With a
+// fallback set, a target that does not exist yet yields to a fallback that
+// already holds ClickStack tables, so an upgrade that switched databases keeps
+// writing where HyperDX sources read. Otherwise legacy tables only warrant a
+// warning, as they are not migrated.
+func resolveDatabase(target, fallback string, targetExists, legacyHasTables bool) (string, string) {
+	legacy := legacyDatabase(fallback)
+	switch {
+	case legacy == target || !legacyHasTables:
+		return target, ""
+	case fallback != "" && !targetExists:
+		return fallback, fmt.Sprintf("database %s does not exist and %s already has ClickStack tables, so staying on %s. "+
+			"Set HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE=%s to silence this, or clear HYPERDX_OTEL_EXPORTER_CLICKHOUSE_FALLBACK_DATABASE to move to %s",
+			target, fallback, fallback, fallback, target)
+	default:
+		return target, fmt.Sprintf("database %s has existing ClickStack tables that are not migrated to %s; "+
+			"HyperDX sources created earlier still point at %s. Set HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE=%s to keep using the old database",
+			legacy, target, legacy, legacy)
+	}
 }
 
 // runMigrationWithRetry runs goose seed with exponential backoff retry
@@ -788,9 +883,41 @@ func main() {
 	log.Printf("Table TTLs: logs=%s traces=%s metrics=%s sessions=%s (default %s)",
 		cfg.LogsTTL, cfg.TracesTTL, cfg.MetricsTTL, cfg.SessionsTTL, cfg.TablesTTL)
 
-	// Process schema directory (replace ${DATABASE} and ${*_TTL} macros)
-	log.Printf("Preparing SQL files with database: %s", cfg.Database)
-	tempDir, err := processSchemaDir(cfg.SchemaDir, cfg.Database, ttlExprs)
+	// The legacy tables check is best effort unless the fallback depends on it.
+	var legacyHasTables bool
+	if legacy := legacyDatabase(cfg.FallbackDatabase); legacy != cfg.Database {
+		if legacyHasTables, err = hasClickStackTables(ctx, db, legacy); err != nil && cfg.FallbackDatabase != "" {
+			log.Fatalf("Failed to check fallback database: %v", err)
+		}
+	}
+
+	var dbEngine string
+	var dbExists bool
+	if cfg.Replicated || cfg.FallbackDatabase != "" {
+		if dbEngine, dbExists, err = getDatabaseEngine(ctx, db, cfg.Database); err != nil {
+			log.Fatalf("Failed to check database engine: %v", err)
+		}
+	}
+	database, warning := resolveDatabase(cfg.Database, cfg.FallbackDatabase, dbExists, legacyHasTables)
+	if warning != "" {
+		log.Printf("WARNING: %s", warning)
+	}
+
+	// A fallback database keeps the plain engines it was seeded with.
+	replicated := false
+	if database == cfg.Database {
+		replicated, warning = planReplicated(cfg.Replicated, dbExists, database, dbEngine)
+		if warning != "" {
+			log.Printf("WARNING: %s", warning)
+		}
+		if replicated {
+			log.Printf("Using Replicated database and table engines for %s", database)
+		}
+	}
+
+	// Process schema directory (replace ${DATABASE}, ${DATABASE_ENGINE}, ${ENGINE_PREFIX} and ${*_TTL} macros)
+	log.Printf("Preparing SQL files with database: %s", database)
+	tempDir, err := processSchemaDir(cfg.SchemaDir, database, replicated, ttlExprs)
 	if err != nil {
 		log.Fatalf("Failed to process schema directory: %v", err)
 	}
@@ -841,8 +968,20 @@ func main() {
 	// CREATE TABLE IF NOT EXISTS won't update TTL on existing tables; reconcile
 	// (opt-in) applies it to them too. Non-fatal so it can't block startup.
 	if cfg.ReconcileTableTTL {
-		if err := reconcileTableTTLs(ctx, db, cfg.Database, ttlExprs); err != nil {
+		if err := reconcileTableTTLs(ctx, db, database, ttlExprs); err != nil {
 			log.Printf("WARNING: reconcile: %v", err)
+		}
+	}
+
+	// Record the seeded database so the entrypoint hands it to the collector.
+	if cfg.FallbackDatabase != "" {
+		if err := os.WriteFile(cfg.ResolvedDatabasePath, []byte(database+"\n"), 0644); err != nil {
+			// The collector would otherwise write to a database that was not seeded.
+			if database != cfg.Database {
+				log.Fatalf("Failed to write resolved database to %s: %v", cfg.ResolvedDatabasePath, err)
+			}
+
+			log.Printf("WARNING: failed to write resolved database to %s: %v", cfg.ResolvedDatabasePath, err)
 		}
 	}
 

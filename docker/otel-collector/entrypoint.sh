@@ -34,7 +34,15 @@ if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
   # - CLICKHOUSE_TLS_SERVER_NAME_OVERRIDE: Server name for TLS verification
   # - CLICKHOUSE_TLS_INSECURE_SKIP_VERIFY: Skip TLS verification (set to "true")
   echo "🚀 Using Go-based migrate tool with TLS support 🔐"
-  migrate /etc/otel/schema/seed
+  # With HYPERDX_OTEL_EXPORTER_CLICKHOUSE_FALLBACK_DATABASE set, migrate records
+  # the database it seeded here so the collector writes to the same one.
+  RESOLVED_DATABASE_PATH="${HYPERDX_OTEL_EXPORTER_RESOLVED_DATABASE_PATH:-/tmp/hyperdx-otel-exporter-database}"
+  rm -f "$RESOLVED_DATABASE_PATH"
+  HYPERDX_OTEL_EXPORTER_RESOLVED_DATABASE_PATH="$RESOLVED_DATABASE_PATH" migrate /etc/otel/schema/seed
+  if [ -s "$RESOLVED_DATABASE_PATH" ]; then
+    export HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE="$(cat "$RESOLVED_DATABASE_PATH")"
+    echo "Using ClickHouse database from migrate: $HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE"
+  fi
 fi
 
 # Check if OPAMP_SERVER_URL is defined to determine mode

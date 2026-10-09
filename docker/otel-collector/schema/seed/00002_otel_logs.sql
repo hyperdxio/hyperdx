@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_logs
   INDEX idx_log_attr_items LogAttributeItems TYPE text(tokenizer = 'array'),
   INDEX idx_lower_body lower(Body) TYPE text(tokenizer = 'splitByNonAlpha')
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(Timestamp)
 ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
 TTL toDateTime(Timestamp) + ${LOGS_TTL}
