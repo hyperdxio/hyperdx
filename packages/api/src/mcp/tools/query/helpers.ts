@@ -33,6 +33,7 @@ import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
   MCP_QUERY_MAX_EXECUTION_SEC,
   MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
 } from '@/mcp/utils/timeout';
 import {
   convertToInternalTileConfig,
@@ -90,8 +91,7 @@ export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
  * max_execution_time so ClickHouse returns a clean timeout before the HTTP
  * connection is aborted.
  */
-export const MCP_REQUEST_TIMEOUT =
-  MCP_QUERY_MAX_EXECUTION_SEC * 1000 + MCP_TIMEOUT_GRACE_MS;
+export const MCP_REQUEST_TIMEOUT = MCP_TOOL_TIMEOUT_MS + MCP_TIMEOUT_GRACE_MS;
 
 // ─── Increase top-N cap hint ────────────────────────────────────────────────
 

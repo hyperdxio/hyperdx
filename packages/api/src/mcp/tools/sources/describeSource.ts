@@ -15,6 +15,7 @@ import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
+  MCP_QUERY_MAX_EXECUTION_SEC,
   MCP_TIMEOUT_GRACE_MS,
   MCP_TOOL_TIMEOUT_MS,
   runWithTimeout,
@@ -568,7 +569,7 @@ export function registerDescribeSource({
         '(SeverityText, StatusCode, ServiceName, etc.) — use these in filters instead of guessing\n' +
         '- mapAttributeValues: sampled top values for the most common map attribute keys ' +
         "(e.g. ResourceAttributes['service.name'] top values) — requires rollup tables\n\n" +
-        `Value sampling stops after ${DESCRIBE_TIMEOUT_MS / 1000} seconds. If it is cut short, the result still includes ` +
+        `Value sampling stops after ${MCP_QUERY_MAX_EXECUTION_SEC} seconds. If it is cut short, the result still includes ` +
         'the columns and sets partial: true with skippedStages listing what is missing.\n\n' +
         'Cost: one describe call prevents 3–5 exploratory queries against non-existent columns.',
       inputSchema: z.object({

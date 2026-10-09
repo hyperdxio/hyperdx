@@ -1,12 +1,8 @@
 /** Server-side ClickHouse max_execution_time for MCP tool queries. */
 export const MCP_QUERY_MAX_EXECUTION_SEC = 30;
 
-/**
- * Default wall-clock budget for a whole MCP tool call. Kept equal to the
- * per-query cap so a single query cannot outlive the call, but set
- * separately so the two can be tuned independently.
- */
-export const MCP_TOOL_TIMEOUT_MS = 30_000;
+/** Default wall-clock budget for a whole MCP tool call. */
+export const MCP_TOOL_TIMEOUT_MS = MCP_QUERY_MAX_EXECUTION_SEC * 1000;
 
 /**
  * Extra time past a deadline to wait for ClickHouse to return its own clean
