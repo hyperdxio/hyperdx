@@ -43,7 +43,7 @@
     "express": "^4.19.2",
     "express-rate-limit": "^6.7.1",
     "express-session": "^1.17.3",
-    "handlebars": "^4.7.9",
+    "handlebars": "^4.7.10",
     "http-graceful-shutdown": "^3.1.13",
     "http-proxy-middleware": "^4.0.0",
     "ip-address": "^10.7.1",
