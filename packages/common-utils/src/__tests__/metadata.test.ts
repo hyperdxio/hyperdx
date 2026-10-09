@@ -1709,6 +1709,262 @@ describe('Metadata', () => {
         consoleWarnSpy.mockRestore();
       });
     });
+
+    describe('Map columns with a keys-only text index', () => {
+      const setupWithKeysIndex = () => {
+        setupDefaultLogsSchema();
+        jest.spyOn(metadata, 'getMapColumnTextIndexes').mockResolvedValue(
+          new Map([
+            [
+              'LogAttributes',
+              {
+                kv: {
+                  columnName: 'LogAttributeItems',
+                  mapColumn: 'LogAttributes',
+                  indexName: 'idx_log_attr_items',
+                  separator: '=',
+                  useHasAny: false,
+                },
+                key: {
+                  indexName: 'idx_log_attr_key',
+                  mapColumn: 'LogAttributes',
+                },
+              },
+            ],
+            [
+              'ResourceAttributes',
+              {
+                kv: {
+                  columnName: 'ResourceAttributeItems',
+                  mapColumn: 'ResourceAttributes',
+                  indexName: 'idx_res_attr_items',
+                  separator: '=',
+                  useHasAny: false,
+                },
+              },
+            ],
+          ]),
+        );
+      };
+
+      const mockRows = (rows: Record<string, unknown>[]) =>
+        (mockClickhouseClient.query as jest.Mock).mockImplementation(
+          ({ query }: { query: string }) =>
+            Promise.resolve({
+              json: () =>
+                Promise.resolve({
+                  data: query.includes('keys_catalog_') ? rows : [],
+                }),
+            }),
+        );
+
+      const bestPartsCall = () =>
+        (mockClickhouseClient.query as jest.Mock).mock.calls.find((c: any[]) =>
+          (c[0].query as string).includes('keys_catalog_'),
+        )?.[0];
+
+      const row = (
+        key: string,
+        value: string[],
+        { indexed = 1, covered = 4, total = 4 } = {},
+      ) => ({
+        column: 'LogAttributes',
+        key,
+        value,
+        indexed,
+        covered_parts: covered,
+        total_parts: total,
+      });
+
+      it('reads each key only from the parts the keys index lists for it', async () => {
+        setupWithKeysIndex();
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: [
+            "LogAttributes['requestId']",
+            "LogAttributes['user.id']",
+          ],
+        });
+
+        const call = bestPartsCall();
+        expect(call).toBeDefined();
+        const sql = (call.query as string).replace(/\s+/g, ' ');
+        const params = Object.values(call.query_params);
+        expect(params).toEqual(
+          expect.arrayContaining(['idx_log_attr_key', 'idx_log_attr_items']),
+        );
+        // Catalog: one pass over the keys index, restricted to the requested
+        // keys, top part by cardinality plus the newest part holding the key.
+        expect(sql).toContain(
+          "WHERE has(matching_parts, part_name) AND token IN ('requestId', 'user.id')",
+        );
+        expect(sql).toContain(
+          'arraySlice(arrayReverseSort(groupArray((cardinality, part_name))), 1, 1).2',
+        );
+        expect(sql).toContain(
+          'argMax(part_name, indexOf(matching_parts, part_name))',
+        );
+        // One LIMITed branch per key, filtered on the raw token by a
+        // constant prefix and on parts by the WITH scalar.
+        expect(sql.match(/UNION ALL/g)).toHaveLength(1);
+        for (const key of ['requestId', 'user.id']) {
+          expect(sql).toContain(
+            `WHERE has(keys_catalog_0.1['${key}'], part_name) AND startsWith(token, '${key}=') AND token != '${key}='`,
+          );
+        }
+        expect(sql).toMatch(/LIMIT \{HYPERDX_PARAM_\d+:Int32\} \)/);
+        expect(params).toContain(20);
+        expect(sql).not.toMatch(/JOIN|substringIndex|splitByChar/);
+        expect(call.clickhouse_settings).toMatchObject({ max_block_size: '1' });
+        expect(call.clickhouse_settings).not.toHaveProperty(
+          'enable_filesystem_cache',
+        );
+      });
+
+      it.each([
+        [2, ', 1, 2).2'],
+        [5, ', 1, 5).2'],
+      ])(
+        'reads the top %p parts per key when asked',
+        async (partsPerKey, expected) => {
+          setupWithKeysIndex();
+
+          await metadata.getAllKeyValues({
+            ...baseArgs,
+            keyExpressions: ["LogAttributes['requestId']"],
+            mapTextIndexPartsPerKey: partsPerKey,
+          });
+
+          expect(bestPartsCall().query).toContain(expected);
+        },
+      );
+
+      it("reads every part holding the key when parts per key is 'all'", async () => {
+        setupWithKeysIndex();
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['requestId']"],
+          mapTextIndexPartsPerKey: 'all',
+        });
+
+        const sql = bestPartsCall().query as string;
+        expect(sql).toContain('groupArray(part_name) AS parts');
+        expect(sql).not.toContain('arraySlice(');
+      });
+
+      it.each([0, 1.5, -1])('rejects %p parts per key', async partsPerKey => {
+        setupWithKeysIndex();
+
+        await expect(
+          metadata.getAllKeyValues({
+            ...baseArgs,
+            keyExpressions: ["LogAttributes['requestId']"],
+            mapTextIndexPartsPerKey: partsPerKey,
+          }),
+        ).rejects.toThrow('mapTextIndexPartsPerKey must be');
+      });
+
+      it('SQL-escapes keys inlined into the branch', async () => {
+        setupWithKeysIndex();
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['it's']"],
+        });
+
+        const sql = bestPartsCall().query as string;
+        expect(sql).toContain("startsWith(token, 'it\\'s=')");
+        expect(sql).toContain("keys_catalog_0.1['it\\'s']");
+        expect(sql).not.toContain("'it's");
+      });
+
+      it('keeps reading every part for Map columns without a keys index', async () => {
+        setupWithKeysIndex();
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: [
+            "LogAttributes['requestId']",
+            "ResourceAttributes['service.name']",
+          ],
+        });
+
+        const queries = (
+          mockClickhouseClient.query as jest.Mock
+        ).mock.calls.map((c: any[]) => c[0].query as string);
+        const scan = queries.find(q => q.includes('GROUP BY column, key'));
+        expect(scan).toContain("startsWith(token, 'service.name=')");
+        expect(scan).not.toContain('requestId');
+        expect(bestPartsCall().query).not.toContain('service.name');
+      });
+
+      it('returns the values per key and drops keys without any', async () => {
+        setupWithKeysIndex();
+        mockRows([row('requestId', ['a', 'b']), row('user.id', [])]);
+
+        const result = await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: [
+            "LogAttributes['requestId']",
+            "LogAttributes['user.id']",
+          ],
+        });
+
+        expect(result).toEqual([
+          { key: "LogAttributes['requestId']", value: ['a', 'b'] },
+        ]);
+      });
+
+      it('warns about unlisted keys while the keys index misses parts of the range', async () => {
+        setupWithKeysIndex();
+        const consoleWarnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => undefined);
+        mockRows([
+          row('requestId', ['a'], { covered: 3, total: 4 }),
+          row('old.key', [], { indexed: 0, covered: 3, total: 4 }),
+        ]);
+
+        const result = await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: [
+            "LogAttributes['requestId']",
+            "LogAttributes['old.key']",
+          ],
+        });
+
+        expect(result).toEqual([
+          { key: "LogAttributes['requestId']", value: ['a'] },
+        ]);
+        expect(consoleWarnSpy).toHaveBeenCalledTimes(1);
+        const message = consoleWarnSpy.mock.calls[0][0] as string;
+        expect(message).toContain('LogAttributes keys [old.key]');
+        expect(message).toContain(
+          'idx_log_attr_key lists the requested keys in 3 of 4 parts in the date range',
+        );
+        expect(message).toContain(
+          'ALTER TABLE default.otel_logs MATERIALIZE INDEX idx_log_attr_key',
+        );
+      });
+
+      it('does not warn about unlisted keys when the keys index lists every part', async () => {
+        setupWithKeysIndex();
+        const consoleWarnSpy = jest
+          .spyOn(console, 'warn')
+          .mockImplementation(() => undefined);
+        mockRows([row('gone.key', [], { indexed: 0 })]);
+
+        const result = await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['gone.key']"],
+        });
+
+        expect(result).toEqual([]);
+        expect(consoleWarnSpy).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe('getValuesDistribution', () => {

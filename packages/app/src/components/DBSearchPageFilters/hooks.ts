@@ -256,6 +256,9 @@ function useFacets({
           metadataMVs: tableConnection.metadataMVs,
           keyExpressions: [sqlKey],
           maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+          // One key, so reading every part that holds it stays cheap, and
+          // the best part alone may hold far fewer values than requested.
+          mapTextIndexPartsPerKey: 'all',
           dateRange,
           timestampValueExpression:
             source?.timestampValueExpression ??
