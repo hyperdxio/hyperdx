@@ -4,9 +4,18 @@
 
 Issues, bug reports and discussion are open to everyone. Pull requests are a
 little different: a maintainer has to vouch for you before we review your first
-one. Open a PR without being vouched and it stays open — a bot adds a
-`needs-vouch` label and a comment pointing you back here. Nothing gets closed,
-you just aren't in the review queue yet.
+one.
+
+**Your first pull request is how you get vouched.** There's no separate request
+to file and nothing to do up front. Pick an issue, write the change, and open
+the PR. A bot adds a `needs-vouch` label and a comment; a maintainer looks at
+the PR, and if it's a real attempt at the problem they comment `/vouch` on it
+and review it from there. Nothing gets closed while you wait.
+
+Please don't open an issue just to ask to be vouched. We vouch for people based
+on a contribution, not an introduction, and requests without a PR attached get
+closed. If you want a steer before writing code, ask on the issue you plan to
+fix or on [Discord](https://discord.gg/FErRRKU78j).
 
 **One at a time.** Outside contributors can have one pull request open at once,
 or three once vouched. Open more than that and the newest is closed with a note
@@ -15,11 +24,10 @@ don't count towards the limit. This isn't about the quality of your work — a
 handful of parallel changes from one author is more than we can review properly,
 and in practice it means none of them get merged.
 
-To get vouched, [open an issue saying
-hello](https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md):
-who you are and what you want to work on. A maintainer replies, usually within a
-day or two. Use the same issue to ask which issue to pick up, or to check an
-approach before you write code.
+What makes a first PR easy to vouch for: it references an `Accepting PR` issue,
+explains why the change is needed, includes [reproduction
+steps](#reproducing-issues-and-prs), and has [before/after
+screenshots](#ui-changes-need-beforeafter-screenshots) if it touches the UI.
 
 Good places to start: the [good first
 issue](https://github.com/hyperdxio/hyperdx/labels/good%20first%20issue) label,
@@ -27,13 +35,17 @@ and [Discord](https://discord.gg/FErRRKU78j) if the dev setup gives you trouble.
 
 Why we do this: AI tools make it cheap to open a plausible-looking PR with no
 understanding behind it, and reviewing those crowds out the contributions we
-want to spend time on. Vouching is a short introduction, not a skill test. We
-use [Vouch](https://github.com/mitchellh/vouch); the list is
-[`.github/VOUCHED.td`](./.github/VOUCHED.td).
+want to spend time on. Vouching is a check that there's a person behind the
+work, not a skill test. We use [Vouch](https://github.com/mitchellh/vouch); the
+list is [`.github/VOUCHED.td`](./.github/VOUCHED.td).
 
 ### Vouching someone (maintainers)
 
-Comment on any issue or PR with the keyword first on the first line:
+Vouch from the contributor's open pull request, once you've looked at it and
+it's a genuine attempt at the problem. Don't vouch from an issue that has no PR
+behind it; point the author here instead.
+
+Comment with the keyword first on the first line:
 
 ```
 /vouch @username optional reason
@@ -76,6 +88,85 @@ If an issue you care about is stuck in `Needs Feedback`, add the missing detail
 ask on the issue — that's usually what unblocks it. This is a convention, not a
 hard gate: it keeps effort pointed at changes we've agreed on, on top of the
 vouching trust check above.
+
+## Reproducing issues and PRs
+
+Every bug report and every PR needs steps someone else can follow to see the
+problem (or the fix) for themselves. If a maintainer can't reproduce it, they
+can't triage the issue or review the PR.
+
+**Try the demo environment first.** [play.hyperdx.io](https://play.hyperdx.io)
+is a hosted HyperDX connected to a public demo dataset (logs, traces, metrics
+and session replays from the OpenTelemetry demo app). If your bug shows up
+there, link the exact URL — search and chart explorer keep their query, filters
+and time range in the URL — and that's most of the repro.
+
+**If it needs your own setup, reproduce it locally against the demo data.** The
+quickest way is the frontend in local mode, which needs no Docker and no
+account:
+
+1. Run `yarn app:dev:local` and open the app URL it prints.
+2. On the onboarding screen, click **Connect to Demo Server**. This adds a
+   `Demo` connection and the Demo Logs, Traces, Metrics and Sessions sources,
+   the same data play.hyperdx.io uses. Connections and sources live in browser
+   storage; clear site data to start over. Connections last only for the browser
+   session, so reopening the app may require reconnecting to the demo server.
+3. Follow your steps from there.
+
+This is the same mode the Vercel preview on your PR runs in, so reviewers can
+follow the same steps there.
+
+Local mode has no API behind it (dashboards and saved searches are kept in local
+storage), so it can't reproduce anything involving alerts, webhooks, auth,
+teams, or the API itself. For those, use the full stack (`yarn dev`, see
+[Development](#development)). It sets up a `Local ClickHouse` connection and
+sources for every new team, so onboarding skips the demo server button. To
+point it at the demo data instead, add a connection in **Team Settings** with
+host `https://sql-clickhouse.clickhouse.com`, user `otel_demo`, and an empty
+password, then add sources on it from database `otel_v2` (tables `otel_logs`,
+`otel_traces`, `hyperdx_sessions`, and the `otel_metrics_*` tables). Otherwise
+it only has the data your local stack sends to itself (see `HYPERDX_API_KEY`
+under [Development](#development)).
+
+If the bug depends on your own schema or data, say so, and include the table
+definition (`SHOW CREATE TABLE ...`) and the source settings. Strip anything
+sensitive.
+
+**What good steps look like:**
+
+- Start from a known place: play.hyperdx.io, `yarn app:dev:local` connected to
+  the demo server, or a fresh `yarn dev` (say which).
+- Number each step and name the UI element you interact with by its visible
+  text: "Open **Search**, pick the **Demo Logs** source, set the time range to
+  **Last 15 minutes**, type `SeverityText:error` and press Enter."
+- End with what you expected and what happened instead.
+- For bugs, add the debug info from **Help → Copy debug info**.
+
+**In a PR**, fill in the "How to reproduce" section of the template with:
+
+- Steps that show the bug or missing behavior on `main` (or a link to the issue
+  that has them).
+- The same steps on your branch, and what's different now.
+- Anything extra the reviewer needs: env vars, a feature flag, a particular
+  source or schema, seed data.
+
+## UI changes need before/after screenshots
+
+Any PR that changes something a user can see in the app must include before and
+after screenshots, or a short video if the change involves interaction or
+animation. Put them in the "Screenshots or video" table of the PR template.
+
+- **Before** is `main`; **after** is your branch. Take both at the same
+  viewport size and theme, showing the same screen and data, so the difference
+  is obvious. The demo server data makes this easy.
+- For a brand new screen or component there's no "before"; show the place it's
+  reached from instead.
+- If the change affects both light and dark mode, or both the HyperDX and
+  ClickStack themes, include each one that looks different.
+- Keep them focused. Crop to the area that changed, or annotate the full page.
+
+This isn't enforced by a check, but reviewers won't start on a UI PR without
+them.
 
 ## Architecture Overview
 
