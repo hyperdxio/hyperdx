@@ -36,6 +36,7 @@ import {
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import useResizable from '@/hooks/useResizable';
+import { RowHighlightHint } from '@/hooks/useRowHighlightHint';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
@@ -47,11 +48,11 @@ import {
   deriveRowSidePanelContextForSource,
   RowSidePanelContext,
 } from './DBRowSidePanel';
+import { eventRowWhereParser } from './eventRowWhere';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
-import { EventRowWhere, eventRowWhereParser } from './eventRowWhere';
 
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
@@ -231,11 +232,7 @@ export default function DBTracePanel({
   // Passed in from side panel to try to identify which
   // span in the chart to highlight first without constructing
   // a full row where clause
-  initialRowHighlightHint?: {
-    timestamp: string;
-    spanId: string;
-    body: string;
-  };
+  initialRowHighlightHint?: RowHighlightHint;
   emptyState?: ReactNode;
   'data-testid'?: string;
 }) {

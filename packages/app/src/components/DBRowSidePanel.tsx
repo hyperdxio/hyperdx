@@ -38,6 +38,7 @@ import {
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
+import { useOpenedRowSpanSelection } from '@/hooks/useOpenedRowSpanSelection';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useSidePanelStack, {
@@ -78,12 +79,12 @@ import {
   DrawerFullWidthToggle,
   INITIAL_DRAWER_WIDTH_PERCENT,
 } from './DrawerUtils';
+import { eventRowWhereParser } from './eventRowWhere';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
 import TraceLogsPanel from './TraceLogsPanel';
 import { ViewTraceCalloutButton } from './ViewTraceCalloutButton';
-import { eventRowWhereParser } from './eventRowWhere';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -404,18 +405,25 @@ export const DBRowSidePanelInner = ({
     [pushSource],
   );
 
+  const clearSpanSelection = useOpenedRowSpanSelection(initialRowId);
+  const closePanel = useCallback(() => {
+    clearSpanSelection();
+    onClose();
+  }, [clearSpanSelection, onClose]);
+
   const handlePanelBack = useCallback(() => {
     // Pop one level (nav → source), restoring the tab active before that level
     // was entered. When the trail is empty, leave the panel: hand off to an
     // embedding parent (session) or close.
     if (popOne() === 'none') {
+      clearSpanSelection();
       if (onNavigateToParent) {
         onNavigateToParent();
       } else {
         onClose();
       }
     }
-  }, [popOne, onNavigateToParent, onClose]);
+  }, [popOne, onNavigateToParent, onClose, clearSpanSelection]);
 
   useHotkeys(['esc'], handlePanelBack);
 
@@ -848,13 +856,19 @@ export const DBRowSidePanelInner = ({
       <Flex align="center" justify="space-between" gap="sm" mb={8}>
         <SidePanelBreadcrumbs items={allBreadcrumbs} onBack={handlePanelBack} />
         <SidePanelHeaderActions
-          onClose={onClose}
+          onClose={closePanel}
           isFullWidth={isFullWidth}
           onToggleFullWidth={onToggleFullWidth}
         />
       </Flex>
     ),
-    [allBreadcrumbs, handlePanelBack, onClose, isFullWidth, onToggleFullWidth],
+    [
+      allBreadcrumbs,
+      handlePanelBack,
+      closePanel,
+      isFullWidth,
+      onToggleFullWidth,
+    ],
   );
 
   if (isRowLoading || isResolvingSource) {
@@ -1330,19 +1344,6 @@ export default function DBRowSidePanelErrorBoundary({
     'eventRowWhere',
     eventRowWhereParser,
   );
-
-  // The trace view unmounts while a new row loads and when the user leaves the
-  // Trace tab. A fresh mount treats the previous span as a restored selection
-  // and keeps it. Drop that span when the opened row changes; the first mount
-  // keeps a selection that arrived with the URL.
-  const openedRowIdRef = useRef(rowId);
-  useEffect(() => {
-    if (openedRowIdRef.current === rowId) {
-      return;
-    }
-    openedRowIdRef.current = rowId;
-    setEventRowWhere(null);
-  }, [rowId, setEventRowWhere]);
 
   const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
 

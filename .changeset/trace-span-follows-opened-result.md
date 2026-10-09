@@ -2,4 +2,4 @@
 '@hyperdx/app': patch
 ---
 
-Fix the trace waterfall sticking on the previously opened span when another span of the same trace is opened. Closing the result clears the selected span. Opening a different result while the drawer stays open selects that result's span, including after the trace view remounts for a load or a tab change.
+Fix the trace waterfall sticking on the previously opened span when another span of the same trace is opened, including from a session replay. Closing the result clears the selected span. Opening a different result selects that result's span, including when the waterfall stays mounted on cached data.
