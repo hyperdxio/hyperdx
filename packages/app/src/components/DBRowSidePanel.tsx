@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
+import { useQueryState } from 'nuqs';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import SqlString from 'sqlstring';
@@ -82,6 +83,7 @@ import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
 import TraceLogsPanel from './TraceLogsPanel';
 import { ViewTraceCalloutButton } from './ViewTraceCalloutButton';
+import { eventRowWhereParser } from './eventRowWhere';
 
 import styles from '@/../styles/LogSidePanel.module.scss';
 
@@ -1324,6 +1326,10 @@ export default function DBRowSidePanelErrorBoundary({
   }, [isFullWidth, setSize]);
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
+  const [, setEventRowWhere] = useQueryState(
+    'eventRowWhere',
+    eventRowWhereParser,
+  );
 
   const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
 
@@ -1333,8 +1339,16 @@ export default function DBRowSidePanelErrorBoundary({
     // Clear waterfall search state on close, so that filters don't
     // persist when reopening another trace.
     clearTraceWaterfallSearchState();
+    // The selected span is in the URL. Leaving it there makes the next open,
+    // and any shared row link, show the previous span.
+    setEventRowWhere(null);
     onClose();
-  }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
+  }, [
+    sidePanelStack,
+    onClose,
+    clearTraceWaterfallSearchState,
+    setEventRowWhere,
+  ]);
 
   useCloseOnClickOutside({
     // Only close on outside click at the root level. When the user has

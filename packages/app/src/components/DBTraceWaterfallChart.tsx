@@ -1,9 +1,7 @@
 import {
   ReactNode,
   useCallback,
-  useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import _, { omit } from 'lodash';
@@ -58,6 +56,7 @@ import {
   TRACE_WATERFALL_ROW_LIMIT,
 } from '@/components/traceWaterfallLimits';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import { useRowHighlightHint } from '@/hooks/useRowHighlightHint';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -909,53 +908,13 @@ export function DBTraceWaterfallChartContainer({
     logRowsMeta,
   ]);
 
-  // Auto-select the originating span once when the panel opens — but only if
-  // nothing is already selected. Two cases must NOT trigger a (re-)select:
-  //   - the user explicitly cleared the selection (closing the span detail), and
-  //   - a selection was restored from the URL on load (deep link / reload).
-  // We mark the hint applied as soon as a selection exists or we apply it
-  // ourselves, so it never fires twice for the same hint; it re-fires only when
-  // the hint genuinely changes (different originating span / trace).
-  const appliedHighlightHintRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    appliedHighlightHintRef.current = null;
-  }, [traceId]);
-
-  useEffect(() => {
-    if (!initialRowHighlightHint || !onClick) {
-      return;
-    }
-
-    const hintKey = `${initialRowHighlightHint.timestamp}|${initialRowHighlightHint.spanId}|${initialRowHighlightHint.body}`;
-    if (appliedHighlightHintRef.current === hintKey) {
-      return;
-    }
-
-    // A selection already exists (restored from the URL, or user-chosen). Honor
-    // it and record the hint so we never override it — now or later.
-    if (highlightedRowWhere != null) {
-      appliedHighlightHintRef.current = hintKey;
-      return;
-    }
-
-    const initialRowHighlightIndex = rows.findIndex(row => {
-      return (
-        row.Timestamp === initialRowHighlightHint.timestamp &&
-        row.SpanId === initialRowHighlightHint.spanId &&
-        row.Body === initialRowHighlightHint.body
-      );
-    });
-
-    if (initialRowHighlightIndex !== -1) {
-      appliedHighlightHintRef.current = hintKey;
-      onClick({
-        id: rows[initialRowHighlightIndex].id,
-        type: rows[initialRowHighlightIndex].type ?? '',
-        aliasWith: rows[initialRowHighlightIndex].aliasWith,
-      });
-    }
-  }, [initialRowHighlightHint, rows, onClick, highlightedRowWhere]);
+  useRowHighlightHint({
+    traceId,
+    initialRowHighlightHint,
+    highlightedRowWhere,
+    rows,
+    onClick,
+  });
 
   // 3 Edge-cases
   // 1. No spans, just logs (ex. sampling)

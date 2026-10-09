@@ -219,6 +219,35 @@ export class SidePanelComponent {
   }
 
   /**
+   * The waterfall label currently marked selected. The highlighted class sits
+   * on the span's own `role="button"` row.
+   */
+  getHighlightedWaterfallSpan(name: string) {
+    return this.panelContainer
+      .locator('[role="button"][class*="traceTimelineLabelHighlighted"]')
+      .filter({ hasText: name });
+  }
+
+  /**
+   * The span detail drawer beside the waterfall. Trace sources don't render an
+   * Overview tab of their own, so `tab-overview` plus the close control only
+   * exist together on this drawer. The drawer is the innermost container that
+   * holds both — ancestors also match, and the tab bar itself does not hold
+   * the overview body.
+   */
+  get spanDetailsPanel() {
+    const closeSpanDetails = this.page.getByRole('button', {
+      name: 'Close span details',
+    });
+    return this.panelContainer
+      .locator('div')
+      .filter({ has: closeSpanDetails })
+      .filter({ has: this.page.getByTestId('tab-overview') })
+      .filter({ has: this.page.locator('.flex-grow-1') })
+      .last();
+  }
+
+  /**
    * Rows in the span detail's "Span Links" section. Each row's open action
    * (`span-link-open-trace`) shows the linked span's name once the target
    * span is resolved, or "Open trace" as the unresolved fallback.
