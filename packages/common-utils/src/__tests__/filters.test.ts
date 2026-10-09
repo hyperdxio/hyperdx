@@ -4,6 +4,7 @@ import {
   FilterState,
   filterStateToPredicate,
   filtersToQuery,
+  getAdhocFilterAppliesToSourceIds,
   getDashboardVariableDeclarations,
   getDashboardVariableFilters,
   getFilterBroadcastTarget,
@@ -1715,6 +1716,29 @@ describe('filters', () => {
       expect(isFilterGlobalRequirement({ isGlobalRequirement: false })).toBe(
         false,
       );
+    });
+  });
+
+  describe('getAdhocFilterAppliesToSourceIds', () => {
+    it('falls back to the filter sources when no scope is set', () => {
+      expect(getAdhocFilterAppliesToSourceIds({ sources: ['logs'] })).toEqual([
+        'logs',
+      ]);
+      expect(
+        getAdhocFilterAppliesToSourceIds({
+          sources: ['logs'],
+          appliesToSourceIds: [],
+        }),
+      ).toEqual(['logs']);
+    });
+
+    it('returns the scoped sources when set', () => {
+      expect(
+        getAdhocFilterAppliesToSourceIds({
+          sources: ['logs', 'traces'],
+          appliesToSourceIds: ['traces'],
+        }),
+      ).toEqual(['traces']);
     });
   });
 
