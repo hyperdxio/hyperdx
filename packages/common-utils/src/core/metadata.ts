@@ -1018,10 +1018,10 @@ export class Metadata {
         ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
         : '';
     const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.${maxKeys}.keys`
       : alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.${maxKeys}.keys`
+        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.${maxKeys}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
