@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
+import { useQueryState } from 'nuqs';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import SqlString from 'sqlstring';
@@ -37,6 +38,7 @@ import {
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
+import { useOpenedRowSpanSelection } from '@/hooks/useOpenedRowSpanSelection';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useSidePanelStack, {
@@ -77,6 +79,7 @@ import {
   DrawerFullWidthToggle,
   INITIAL_DRAWER_WIDTH_PERCENT,
 } from './DrawerUtils';
+import { eventRowWhereParser } from './eventRowWhere';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
@@ -402,18 +405,25 @@ export const DBRowSidePanelInner = ({
     [pushSource],
   );
 
+  const clearSpanSelection = useOpenedRowSpanSelection(initialRowId);
+  const closePanel = useCallback(() => {
+    clearSpanSelection();
+    onClose();
+  }, [clearSpanSelection, onClose]);
+
   const handlePanelBack = useCallback(() => {
     // Pop one level (nav → source), restoring the tab active before that level
     // was entered. When the trail is empty, leave the panel: hand off to an
     // embedding parent (session) or close.
     if (popOne() === 'none') {
+      clearSpanSelection();
       if (onNavigateToParent) {
         onNavigateToParent();
       } else {
         onClose();
       }
     }
-  }, [popOne, onNavigateToParent, onClose]);
+  }, [popOne, onNavigateToParent, onClose, clearSpanSelection]);
 
   useHotkeys(['esc'], handlePanelBack);
 
@@ -846,13 +856,19 @@ export const DBRowSidePanelInner = ({
       <Flex align="center" justify="space-between" gap="sm" mb={8}>
         <SidePanelBreadcrumbs items={allBreadcrumbs} onBack={handlePanelBack} />
         <SidePanelHeaderActions
-          onClose={onClose}
+          onClose={closePanel}
           isFullWidth={isFullWidth}
           onToggleFullWidth={onToggleFullWidth}
         />
       </Flex>
     ),
-    [allBreadcrumbs, handlePanelBack, onClose, isFullWidth, onToggleFullWidth],
+    [
+      allBreadcrumbs,
+      handlePanelBack,
+      closePanel,
+      isFullWidth,
+      onToggleFullWidth,
+    ],
   );
 
   if (isRowLoading || isResolvingSource) {
@@ -1324,6 +1340,10 @@ export default function DBRowSidePanelErrorBoundary({
   }, [isFullWidth, setSize]);
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
+  const [, setEventRowWhere] = useQueryState(
+    'eventRowWhere',
+    eventRowWhereParser,
+  );
 
   const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
 
@@ -1333,8 +1353,16 @@ export default function DBRowSidePanelErrorBoundary({
     // Clear waterfall search state on close, so that filters don't
     // persist when reopening another trace.
     clearTraceWaterfallSearchState();
+    // The selected span is in the URL. Leaving it there makes the next open,
+    // and any shared row link, show the previous span.
+    setEventRowWhere(null);
     onClose();
-  }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
+  }, [
+    sidePanelStack,
+    onClose,
+    clearTraceWaterfallSearchState,
+    setEventRowWhere,
+  ]);
 
   useCloseOnClickOutside({
     // Only close on outside click at the root level. When the user has
