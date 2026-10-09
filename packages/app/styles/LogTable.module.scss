@@ -3,7 +3,7 @@ $button-height: 18px;
 .tableWrapper {
   overflow: auto;
   height: 100%;
-  font-size: var(--mantine-font-size-xs);
+  font-size: var(--hdx-content-font-size);
 
   /* CSS custom properties for variant support */
   --log-table-bg: var(--color-bg-body);

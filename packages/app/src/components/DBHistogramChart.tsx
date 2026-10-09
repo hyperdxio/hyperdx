@@ -17,6 +17,7 @@ import { buildMVDateRangeIndicator, INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
+import { useContentFontSize } from '@/useUserPreferences';
 import { getColorFromCSSToken } from '@/utils';
 
 import ChartContainer from './charts/ChartContainer';
@@ -28,6 +29,8 @@ import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator
 
 /** First categorical series hue (`chart-blue`). Exported for unit tests. */
 export const HISTOGRAM_BAR_COLOR = getColorFromCSSToken('chart-blue');
+
+const Y_AXIS_WIDTH = 35;
 
 /**
  * Normalize a chart click's `activeIndex` to a real, in-range bar index.
@@ -71,6 +74,11 @@ function HistogramChart({
   // tooltip is forced active on that bar via the controlled `active` +
   // `defaultIndex` props below; `undefined` lets the tooltip follow hover.
   const [pinnedIndex, setPinnedIndex] = useState<number | undefined>(undefined);
+  // The axis allocation is a character budget at the default tick font, so it
+  // scales with it rather than clipping the labels.
+  const { base: axisTickFontSize, scale: contentFontScale } =
+    useContentFontSize();
+  const yAxisWidth = Math.round(Y_AXIS_WIDTH * contentFontScale);
 
   useHotkeys(['esc'], () => {
     setPinnedIndex(undefined);
@@ -122,10 +130,13 @@ function HistogramChart({
             }).format(value)
           }
           // minTickGap={50}
-          tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+          tick={{
+            fontSize: axisTickFontSize,
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}
         />
         <YAxis
-          width={35}
+          width={yAxisWidth}
           minTickGap={25}
           tickFormatter={(value: number) =>
             new Intl.NumberFormat('en-US', {
@@ -133,7 +144,10 @@ function HistogramChart({
               compactDisplay: 'short',
             }).format(value)
           }
-          tick={{ fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}
+          tick={{
+            fontSize: axisTickFontSize,
+            fontFamily: 'IBM Plex Mono, monospace',
+          }}
         />
         <Tooltip
           // Remount when the pinned bar changes so `defaultIndex` re-seeds on a

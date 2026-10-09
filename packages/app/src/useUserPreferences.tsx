@@ -3,6 +3,13 @@ import produce from 'immer';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
+import {
+  CONTENT_FONT_SIZES,
+  type ContentFontSize,
+  DEFAULT_CONTENT_FONT_SIZE,
+  isContentFontSize,
+} from '@/config/fonts';
+
 type ColorModePreference = 'light' | 'dark' | 'system';
 
 /** What clicking the body of a search result row does. */
@@ -17,6 +24,11 @@ export type UserPreferences = {
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
+  /**
+   * Font size for content surfaces (tables, charts). Optional so preferences
+   * saved before it existed keep working; read it via `useContentFontSize`.
+   */
+  contentFontSize?: ContentFontSize;
   /**
    * Unset until the user opts in. Stored preferences that predate this field are
    * returned as-is rather than merged with `DEFAULT_PREFERENCES`, so readers must
@@ -226,6 +238,35 @@ export const useUserPreferences = () => {
   );
 
   return { userPreferences, setUserPreference };
+};
+
+/**
+ * Resolved content font size. CSS surfaces should read the
+ * `--hdx-content-font-size` / `--hdx-content-font-size-compact` custom
+ * properties set from this in `_app.tsx`; the numbers are for the charts,
+ * which take numeric `fontSize` props rather than CSS.
+ */
+export const useContentFontSize = () => {
+  const {
+    userPreferences: { contentFontSize },
+  } = useUserPreferences();
+
+  // The guard looks redundant against the declared type, but the value comes
+  // from localStorage: a hand-edited or stale blob can carry a size we no
+  // longer ship, and indexing CONTENT_FONT_SIZES with it would be undefined.
+  const size =
+    contentFontSize && isContentFontSize(contentFontSize)
+      ? contentFontSize
+      : DEFAULT_CONTENT_FONT_SIZE;
+  const { base, compact } = CONTENT_FONT_SIZES[size];
+
+  return {
+    contentFontSize: size,
+    base,
+    compact,
+    /** Ratio against the default, for px sizing that must grow with the text. */
+    scale: base / CONTENT_FONT_SIZES[DEFAULT_CONTENT_FONT_SIZE].base,
+  };
 };
 
 /**

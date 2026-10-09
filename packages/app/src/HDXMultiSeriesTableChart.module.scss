@@ -4,6 +4,10 @@
 // .rowButtons pattern from LogTable.module.scss (lines 156-172),
 // scoped down to a single icon. See HDX-4405.
 
+.tableWrapper {
+  font-size: var(--hdx-content-font-size);
+}
+
 .tableHeader {
   // Always-on 1px separator between the sticky header and the rows. An
   // inset box-shadow rather than a border because the table sets
