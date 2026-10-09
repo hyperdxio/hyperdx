@@ -1,8 +1,12 @@
 /** Server-side ClickHouse max_execution_time for MCP tool queries. */
 export const MCP_QUERY_MAX_EXECUTION_SEC = 30;
 
-/** Default wall-clock budget for a whole MCP tool call. */
-export const MCP_TOOL_TIMEOUT_MS = MCP_QUERY_MAX_EXECUTION_SEC * 1000;
+/**
+ * Default wall-clock budget for a whole MCP tool call. Kept equal to the
+ * per-query cap so a single query cannot outlive the call, but set
+ * separately so the two can be tuned independently.
+ */
+export const MCP_TOOL_TIMEOUT_MS = 30_000;
 
 /**
  * Extra time past a deadline to wait for ClickHouse to return its own clean
@@ -29,14 +33,23 @@ export async function runWithTimeout<T>(
   { timeoutMs, graceMs = 0 }: { timeoutMs: number; graceMs?: number },
 ): Promise<TimeoutOutcome<T>> {
   const controller = new AbortController();
-  const abortTimer = setTimeout(() => controller.abort(), timeoutMs);
-  let backstopTimer: ReturnType<typeof setTimeout> | undefined;
-  const backstop = new Promise<typeof TIMED_OUT>(resolve => {
-    backstopTimer = setTimeout(() => resolve(TIMED_OUT), timeoutMs + graceMs);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<typeof TIMED_OUT>(resolve => {
+    timer = setTimeout(() => {
+      if (graceMs <= 0) {
+        // Settle before aborting so a result produced by an abort listener
+        // cannot win the race and be reported as success.
+        resolve(TIMED_OUT);
+        controller.abort();
+        return;
+      }
+      controller.abort();
+      timer = setTimeout(() => resolve(TIMED_OUT), graceMs);
+    }, timeoutMs);
   });
 
   try {
-    const result = await Promise.race([work(controller.signal), backstop]);
+    const result = await Promise.race([work(controller.signal), deadline]);
     return result === TIMED_OUT
       ? { timedOut: true }
       : { timedOut: false, value: result };
@@ -44,8 +57,7 @@ export async function runWithTimeout<T>(
     if (controller.signal.aborted) return { timedOut: true };
     throw e;
   } finally {
-    clearTimeout(abortTimer);
-    clearTimeout(backstopTimer);
+    clearTimeout(timer);
     controller.abort();
   }
 }

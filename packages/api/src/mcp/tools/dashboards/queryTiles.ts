@@ -86,12 +86,8 @@ export class TileDeadlineError extends Error {
  * checked BEFORE the query is issued: once the budget is spent, tiles PQueue
  * schedules during the drain fail fast without touching ClickHouse.
  *
- * A tile that did start races the timer. When the deadline elapses we both
- * reject AND abort the `AbortSignal` handed to `startWork`, so the in-flight
- * ClickHouse query is cancelled server-side rather than left running headless
- * until it finishes on its own. The signal is also aborted on any other exit
- * (the work throwing, or resolving after we already lost the race is a no-op),
- * so a query never outlives the call it belongs to.
+ * A tile that did start runs under `runWithTimeout`: at the deadline its
+ * query is cancelled and the tile rejects with `TileDeadlineError`.
  *
  * @internal Exported for testing only.
  */

@@ -36,6 +36,31 @@ describe('runWithTimeout', () => {
     expect(captured?.aborted).toBe(true);
   });
 
+  it('reports a timeout without grace even when work resolves on abort', async () => {
+    const pending = runWithTimeout(
+      signal =>
+        new Promise<string>(resolve =>
+          signal.addEventListener('abort', () => resolve('too late')),
+        ),
+      { timeoutMs: 1000 },
+    );
+    await jest.advanceTimersByTimeAsync(1000);
+    await expect(pending).resolves.toEqual({ timedOut: true });
+  });
+
+  it('reports a timeout without grace when work rejects on abort', async () => {
+    const pending = runWithTimeout(
+      signal =>
+        new Promise<never>((_, reject) =>
+          signal.addEventListener('abort', () => reject(new Error('aborted'))),
+        ),
+      { timeoutMs: 1000 },
+    );
+    await jest.advanceTimersByTimeAsync(1000);
+    await expect(pending).resolves.toEqual({ timedOut: true });
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('keeps a result returned inside the grace window after the abort', async () => {
     const pending = runWithTimeout(
       signal =>
@@ -77,12 +102,18 @@ describe('runWithTimeout', () => {
     await expect(pending).resolves.toEqual({ timedOut: true });
   });
 
-  it('rethrows a rejection raised before the deadline', async () => {
+  it('rethrows a rejection raised before the deadline and aborts the signal', async () => {
+    let captured: AbortSignal | undefined;
     await expect(
-      runWithTimeout(() => Promise.reject(new Error('boom')), {
-        timeoutMs: 1000,
-      }),
+      runWithTimeout(
+        signal => {
+          captured = signal;
+          return Promise.reject(new Error('boom'));
+        },
+        { timeoutMs: 1000 },
+      ),
     ).rejects.toThrow('boom');
+    expect(captured?.aborted).toBe(true);
     expect(jest.getTimerCount()).toBe(0);
   });
 });
