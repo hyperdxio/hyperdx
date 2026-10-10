@@ -1882,6 +1882,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxLength: 256
  *           description: References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.
  *           example: "errors"
+ *         description:
+ *           type: string
+ *           maxLength: 1024
+ *           description: Short explanation of the tile, shown as a tooltip next to its name.
+ *           example: "Share of API requests that returned a 5xx response."
  *
  *     TileOutput:
  *       description: Response format for dashboard tiles

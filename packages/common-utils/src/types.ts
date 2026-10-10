@@ -2033,6 +2033,7 @@ export const TileSchema = z.object({
   containerId: z.string().min(1).optional(),
   // For tiles inside a tab container: which tab this tile belongs to
   tabId: z.string().min(1).optional(),
+  description: z.string().max(1024).optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({
