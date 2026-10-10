@@ -1,6 +1,7 @@
 import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   getSourceImplicitColumnExpression,
+  NETFLOW_PROTOCOL_NAMES,
   netflowProtocolNameExpression,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
@@ -85,6 +86,12 @@ export function getNetflowDimensions(source: TNetflowSource) {
   };
 }
 
+// The protocol filter also accepts the names the charts show, e.g. TCP.
+const protocolNumber = (value?: string) =>
+  Object.entries(NETFLOW_PROTOCOL_NAMES).find(
+    ([, name]) => name.toLowerCase() === value?.trim().toLowerCase(),
+  )?.[0] ?? value;
+
 export function buildNetflowWhere(
   source: TNetflowSource,
   filters: NetflowFilters,
@@ -92,7 +99,7 @@ export function buildNetflowWhere(
   const predicates: string[] = [];
   for (const [value, expression, address] of [
     [filters.exporter, source.exporterExpression, false],
-    [filters.protocol, source.protocolExpression, false],
+    [protocolNumber(filters.protocol), source.protocolExpression, false],
     [filters.srcAddr, source.srcAddrExpression, true],
     [filters.dstAddr, source.dstAddrExpression, true],
   ] as const) {

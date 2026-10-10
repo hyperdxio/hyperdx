@@ -164,6 +164,17 @@ describe('NetFlow queries', () => {
     expect(where).toContain("toString(Proto) = '6'");
   });
 
+  it.each([
+    ['tcp', '6'],
+    [' ICMPv6 ', '58'],
+    ['99', '99'],
+    ['SCTP', 'SCTP'],
+  ])('filters protocol %p as %p', (protocol, expected) => {
+    expect(buildNetflowWhere(source, { protocol })).toBe(
+      `(toString(Proto) = '${expected}')`,
+    );
+  });
+
   it('keeps the source, connection, time range and filters on every query', () => {
     const configs = buildNetflowQueryConfigs({
       source,

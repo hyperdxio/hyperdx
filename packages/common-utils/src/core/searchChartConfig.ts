@@ -30,7 +30,7 @@ import {
  */
 export type SearchChartConfig = BuilderChartConfig & Partial<DateRange>;
 
-const NETFLOW_PROTOCOL_NAMES = {
+export const NETFLOW_PROTOCOL_NAMES = {
   1: 'ICMP',
   6: 'TCP',
   17: 'UDP',
