@@ -92,6 +92,25 @@ describe('convertToInternalTileConfig', () => {
   });
 });
 
+describe('tile description', () => {
+  it('round-trips through the external and internal tile shapes', () => {
+    const internal = convertToInternalTileConfig(
+      makeMarkdownTile('# Hello', { description: 'What this tile shows.' }),
+    );
+    expect(internal.description).toBe('What this tile shows.');
+
+    const ext = convertToExternalDashboard(makeDoc({ tiles: [internal] }));
+    expect(ext.tiles[0].description).toBe('What this tile shows.');
+  });
+
+  it('omits the field when unset', () => {
+    const internal = convertToInternalTileConfig(makeMarkdownTile('# Hello'));
+    expect(internal).not.toHaveProperty('description');
+    const ext = convertToExternalDashboard(makeDoc({ tiles: [internal] }));
+    expect(ext.tiles[0]).not.toHaveProperty('description');
+  });
+});
+
 describe('dashboard container validation helpers', () => {
   // Drives the two helpers in sequence (mirroring production usage:
   // schema-level structure check, then handler-level tile-ref check)
