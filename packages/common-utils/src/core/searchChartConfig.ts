@@ -61,6 +61,7 @@ function getNetflowImplicitColumnExpression(source: TNetflowSource): string {
     source.dstAddrExpression,
     source.srcPortExpression,
     source.dstPortExpression,
+    protocol,
     protocol && netflowProtocolNameExpression(protocol),
     source.exporterExpression,
     source.inIfExpression,

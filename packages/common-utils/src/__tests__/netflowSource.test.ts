@@ -84,6 +84,9 @@ it('searches mapped NetFlow dimensions for bare Lucene terms by default', () => 
   expect(config.implicitColumnExpression).toContain('toString(ExporterName)');
   expect(config.implicitColumnExpression).toContain('toString(OutIfName)');
   expect(config.implicitColumnExpression).toContain(
+    "ifNull(toString(Proto), '')",
+  );
+  expect(config.implicitColumnExpression).toContain(
     netflowProtocolNameExpression('Proto'),
   );
   expect(netflowProtocolNameExpression('Proto')).toBe(
