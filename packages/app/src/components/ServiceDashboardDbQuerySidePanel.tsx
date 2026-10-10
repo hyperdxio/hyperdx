@@ -16,7 +16,10 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
-import { useServiceDashboardExpressions } from '@/serviceDashboard';
+import {
+  makeDbStatementCondition,
+  useServiceDashboardExpressions,
+} from '@/serviceDashboard';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -46,16 +49,23 @@ export default function ServiceDashboardDbQuerySidePanel({
   const drawerZIndex = contextZIndex + 10;
 
   const dbQueryFilters = useMemo(() => {
+    if (!expressions || !dbQuery) {
+      return [];
+    }
+
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${expressions?.dbStatement} IN ('${dbQuery}')`,
+        condition: makeDbStatementCondition({
+          expressions,
+          statement: dbQuery,
+        }),
       },
     ];
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${expressions?.service} IN ('${service}')`,
+        condition: `${expressions.service} IN ('${service}')`,
       });
     }
     return filters;

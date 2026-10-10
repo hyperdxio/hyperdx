@@ -1,11 +1,26 @@
 import { useMemo } from 'react';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { useColumns, useJsonColumns } from './hooks/useMetadata';
 
 const COALESCE_FIELDS_LIMIT = 100;
+
+// Ordered from highest to lowest precedence
+const DB_STATEMENT_KEYS = ['db.query.text', 'db.statement'];
+
+/**
+ * Where a skip index can be made to match a database statement. The OTel
+ * schemas index span attributes two ways depending on the ClickHouse version:
+ * newer ones an `<Name>AttributeItems` column of `key=value` strings, older
+ * ones `mapValues(<Name>Attributes)`.
+ */
+type DbStatementIndexHint = {
+  kind: 'items' | 'mapValues';
+  column: string;
+};
 
 // Helper function to format field access based on column type
 function formatFieldAccess(
@@ -89,18 +104,9 @@ function getDefaults({
   isAttributeFieldJSON?: boolean;
 } = {}) {
   const dbStatement = makeCoalescedFieldsAccessQuery(
-    [
-      formatFieldAccess(
-        spanAttributeField,
-        'db.query.text',
-        isAttributeFieldJSON,
-      ),
-      formatFieldAccess(
-        spanAttributeField,
-        'db.statement',
-        isAttributeFieldJSON,
-      ),
-    ],
+    DB_STATEMENT_KEYS.map(key =>
+      formatFieldAccess(spanAttributeField, key, isAttributeFieldJSON),
+    ),
     isAttributeFieldJSON,
   );
 
@@ -138,6 +144,77 @@ function getDefaults({
 
 const ENDPOINT_MATERIALIZED_COLUMN_NAME = 'endpoint';
 
+function getAttributeItemsColumn(
+  attributesField: string,
+  columns: ColumnMeta[],
+): string | undefined {
+  const itemsColumn = attributesField.replace(/Attributes$/, 'AttributeItems');
+  const exists =
+    itemsColumn !== attributesField &&
+    columns.some(column => column.name === itemsColumn);
+  return exists ? itemsColumn : undefined;
+}
+
+function getDbStatementIndexHint(
+  attributesField: string,
+  isAttributeFieldJSON: boolean,
+  columns: ColumnMeta[],
+): DbStatementIndexHint | undefined {
+  if (isAttributeFieldJSON) {
+    return undefined;
+  }
+
+  const itemsColumn = getAttributeItemsColumn(attributesField, columns);
+  if (itemsColumn) {
+    return { kind: 'items', column: itemsColumn };
+  }
+
+  const isMap = columns.some(
+    column =>
+      column.name === attributesField && column.type.startsWith('Map('),
+  );
+  return isMap ? { kind: 'mapValues', column: attributesField } : undefined;
+}
+
+function makeIndexPrefilter(
+  hint: DbStatementIndexHint,
+  statement: string,
+): string {
+  if (hint.kind === 'mapValues') {
+    return `has(mapValues(${hint.column}), '${escapeSqlString(statement)}')`;
+  }
+  return DB_STATEMENT_KEYS.map(
+    key =>
+      `has(${hint.column}, '${escapeSqlString(`${key}=${statement}`)}')`,
+  ).join(' OR ');
+}
+
+/**
+ * Condition selecting the spans of a single database statement.
+ *
+ * No skip index covers the coalesced attribute lookup, so on its own it makes
+ * ClickHouse read every granule in the time range. The prefilter matches a
+ * superset of those spans in a form an index does cover; the coalesced
+ * comparison still decides the match, so results are unchanged. It is also
+ * cheaper where no index applies, since it short-circuits the coalesce.
+ */
+export function makeDbStatementCondition({
+  expressions,
+  statement,
+}: {
+  expressions: Pick<
+    ReturnType<typeof getExpressions>,
+    'dbStatement' | 'dbStatementIndexHint'
+  >;
+  statement: string;
+}): string {
+  const equality = `${expressions.dbStatement} IN ('${escapeSqlString(statement)}')`;
+  const hint = expressions.dbStatementIndexHint;
+  return hint
+    ? `(${makeIndexPrefilter(hint, statement)}) AND ${equality}`
+    : equality;
+}
+
 export function getExpressions(
   source: TTraceSource,
   columns: ColumnMeta[],
@@ -172,6 +249,11 @@ export function getExpressions(
 
     // Database
     dbStatement: defaults.dbStatement,
+    dbStatementIndexHint: getDbStatementIndexHint(
+      spanAttributeField,
+      isAttributeFieldJSON,
+      columns,
+    ),
   };
 
   const auxExpressions = {
