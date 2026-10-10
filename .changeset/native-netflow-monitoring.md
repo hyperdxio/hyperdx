@@ -44,9 +44,9 @@ expression. Share the summary aggregate query, reuse accessible filter menus,
 restore valid Sankey dimensions across source changes, and document source
 mappings consistently in REST and MCP.
 
-Apply the same bare-term search defaults to dashboards, chart editing, alert
-details, and dashboard filters. Support timestamp expression lists in flow
-records and normalize partial traffic buckets over their selected duration.
+Apply the same bare-term search defaults to dashboards, chart editing, and alert
+details. Support timestamp expression lists in flow records and normalize
+partial traffic buckets over their selected duration.
 
 Preserve saved source mappings when connections, databases, or metadata change.
 Show removable range filters using the shared filter pills and apply configured

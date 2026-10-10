@@ -144,7 +144,8 @@ function NetflowPage() {
         sourceId={source?.id}
         onClose={() => setSourceModal(null)}
         onCreate={created => {
-          clearFilters(created.id);
+          // The form can save another kind; keep the current flows then.
+          if (created.kind === SourceKind.Netflow) clearFilters(created.id);
           setSourceModal(null);
         }}
       />

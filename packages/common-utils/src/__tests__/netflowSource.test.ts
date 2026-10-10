@@ -1,6 +1,7 @@
 import {
   buildSearchChartConfig,
   getSourceImplicitColumnExpression,
+  netflowProtocolNameExpression,
 } from '@/core/searchChartConfig';
 import {
   isSearchableSource,
@@ -82,6 +83,12 @@ it('searches mapped NetFlow dimensions for bare Lucene terms by default', () => 
   expect(config.implicitColumnExpression).toContain('toString(SrcAddr)');
   expect(config.implicitColumnExpression).toContain('toString(ExporterName)');
   expect(config.implicitColumnExpression).toContain('toString(OutIfName)');
+  expect(config.implicitColumnExpression).toContain(
+    netflowProtocolNameExpression('Proto'),
+  );
+  expect(netflowProtocolNameExpression('Proto')).toBe(
+    "transform(toString(Proto), ['1', '6', '17', '47', '50', '58'], ['ICMP', 'TCP', 'UDP', 'GRE', 'ESP', 'ICMPv6'], toString(Proto))",
+  );
   expect(getSourceImplicitColumnExpression(SourceSchema.parse(source))).toBe(
     config.implicitColumnExpression,
   );

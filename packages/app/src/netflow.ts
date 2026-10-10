@@ -1,5 +1,8 @@
 import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
-import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import {
+  getSourceImplicitColumnExpression,
+  netflowProtocolNameExpression,
+} from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -30,14 +33,6 @@ export const NETFLOW_ALIASES = {
   name: netflowColumnAlias('name'),
   bytes: netflowColumnAlias('bytes'),
   value: netflowColumnAlias('value'),
-};
-const PROTOCOL_NAMES = {
-  1: 'ICMP',
-  6: 'TCP',
-  17: 'UDP',
-  47: 'GRE',
-  50: 'ESP',
-  58: 'ICMPv6',
 };
 export const NETFLOW_SUMMARY_TILES = [
   {
@@ -83,13 +78,7 @@ export function getNetflowDimensions(source: TNetflowSource) {
   return {
     srcAddr: address(source.srcAddrExpression),
     dstAddr: address(source.dstAddrExpression),
-    protocol: `transform(toString(${source.protocolExpression}), [${Object.keys(
-      PROTOCOL_NAMES,
-    )
-      .map(value => `'${value}'`)
-      .join(', ')}], [${Object.values(PROTOCOL_NAMES)
-      .map(value => `'${value}'`)
-      .join(', ')}], toString(${source.protocolExpression}))`,
+    protocol: netflowProtocolNameExpression(source.protocolExpression),
     exporter: source.exporterExpression?.trim(),
     inputInterface: source.inIfExpression?.trim(),
     outputInterface: source.outIfExpression?.trim(),

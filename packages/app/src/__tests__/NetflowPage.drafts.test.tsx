@@ -83,7 +83,14 @@ jest.mock('@/netflow', () => ({
   buildNetflowQueryConfigs: jest.fn(() => ({})),
 }));
 jest.mock('@/components/NetflowCharts', () => () => null);
-jest.mock('@/components/NetflowSourceModal', () => () => null);
+let mockCreateSource: (source: { id: string; kind: SourceKind }) => void;
+jest.mock('@/components/NetflowSourceModal', () => ({
+  __esModule: true,
+  default: ({ onCreate }: { onCreate: typeof mockCreateSource }) => {
+    mockCreateSource = onCreate;
+    return null;
+  },
+}));
 jest.mock('@/components/SourceSelect', () => {
   const Input = jest.requireActual(
     '@/components/InputControlled',
@@ -205,6 +212,20 @@ describe('NetFlow draft search fields', () => {
       where: 'Proto:6',
       filters: { protocol: '6' },
     });
+  });
+
+  it('switches only to NetFlow sources created from the source modal', async () => {
+    renderWithMantine(<NetflowPage />);
+    await screen.findByLabelText('Query');
+    act(() => mockCreateSource({ id: 'logs', kind: SourceKind.Log }));
+    expect(screen.getByLabelText('Source')).toHaveValue('flows');
+    expect(screen.getByLabelText('Query')).toHaveValue('Proto:6');
+    act(() => mockCreateSource({ id: 'other', kind: SourceKind.Netflow }));
+    await waitFor(() =>
+      expect(
+        jest.mocked(buildNetflowQueryConfigs).mock.lastCall?.[0],
+      ).toMatchObject({ source: mockOtherSource, where: '' }),
+    );
   });
 
   it('preserves drafts until Run when clicks or migrations update filters', async () => {

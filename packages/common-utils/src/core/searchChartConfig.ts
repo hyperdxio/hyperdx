@@ -30,17 +30,38 @@ import {
  */
 export type SearchChartConfig = BuilderChartConfig & Partial<DateRange>;
 
+const NETFLOW_PROTOCOL_NAMES = {
+  1: 'ICMP',
+  6: 'TCP',
+  17: 'UDP',
+  47: 'GRE',
+  50: 'ESP',
+  58: 'ICMPv6',
+};
+
+/** Shows well-known IP protocol numbers by name, e.g. 6 as TCP. */
+export function netflowProtocolNameExpression(expression: string): string {
+  return `transform(toString(${expression}), [${Object.keys(
+    NETFLOW_PROTOCOL_NAMES,
+  )
+    .map(value => `'${value}'`)
+    .join(', ')}], [${Object.values(NETFLOW_PROTOCOL_NAMES)
+    .map(value => `'${value}'`)
+    .join(', ')}], toString(${expression}))`;
+}
+
 /** Bare terms search mapped dimensions even on sources saved before this option existed. */
 function getNetflowImplicitColumnExpression(source: TNetflowSource): string {
   if (source.implicitColumnExpression?.trim()) {
     return source.implicitColumnExpression.trim();
   }
+  const protocol = source.protocolExpression?.trim();
   const expressions = [
     source.srcAddrExpression,
     source.dstAddrExpression,
     source.srcPortExpression,
     source.dstPortExpression,
-    source.protocolExpression,
+    protocol && netflowProtocolNameExpression(protocol),
     source.exporterExpression,
     source.inIfExpression,
     source.outIfExpression,

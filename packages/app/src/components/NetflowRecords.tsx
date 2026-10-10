@@ -50,15 +50,19 @@ export default function NetflowRecords({
   const [selected, setSelected] = useState<Record<string, unknown> | null>(
     null,
   );
-  const rows = useMemo(
-    () =>
-      (data?.data ?? []).map(row =>
-        Object.fromEntries(
-          fields.map(([key]) => [key, row[netflowColumnAlias(key)]]),
-        ),
-      ),
-    [data],
-  );
+  const rows = useMemo(() => {
+    const repeats = new Map<string, number>();
+    return (data?.data ?? []).map(row => {
+      const values = Object.fromEntries(
+        fields.map(([key]) => [key, row[netflowColumnAlias(key)]]),
+      );
+      // Flow exports can repeat a record exactly and carry no ID.
+      const content = JSON.stringify(values);
+      const repeat = (repeats.get(content) ?? 0) + 1;
+      repeats.set(content, repeat);
+      return { values, key: `${content}#${repeat}` };
+    });
+  }, [data]);
 
   return (
     <>
@@ -112,10 +116,8 @@ export default function NetflowRecords({
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {rows.map((row, index) => (
-                    // Flow exports may contain duplicate records without an ID; the table remounts when its query changes.
-                    // eslint-disable-next-line @eslint-react/no-array-index-key
-                    <Table.Tr key={index}>
+                  {rows.map(({ values: row, key }, index) => (
+                    <Table.Tr key={key}>
                       <Table.Td>{formatTime(String(row.timestamp))}</Table.Td>
                       <Table.Td>
                         <NetflowFilterMenu
