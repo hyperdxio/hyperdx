@@ -1,6 +1,7 @@
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
+  getSourceImplicitColumnExpression,
 } from '@/core/searchChartConfig';
 import { DisplayType, Filter, SourceKind, TSource } from '@/types';
 
@@ -43,6 +44,43 @@ const makeMetricSource = (overrides: Record<string, unknown> = {}): TSource =>
     timestampValueExpression: 'TimeUnix',
     ...overrides,
   }) as unknown as TSource;
+
+describe('getSourceImplicitColumnExpression', () => {
+  it.each([makeLogSource, makeTraceSource])(
+    'preserves the configured expression on existing searchable kinds',
+    makeSource => {
+      const expression = " concatWithSeparator(';', Body, Message) ";
+      expect(
+        getSourceImplicitColumnExpression(
+          makeSource({
+            implicitColumnExpression: expression,
+          }),
+        ),
+      ).toBe(expression);
+      expect(
+        getSourceImplicitColumnExpression(
+          makeSource({
+            implicitColumnExpression: undefined,
+          }),
+        ),
+      ).toBeUndefined();
+    },
+  );
+
+  it.each([SourceKind.Metric, SourceKind.Session, SourceKind.Promql])(
+    'does not add implicit search to %s sources',
+    kind => {
+      expect(
+        getSourceImplicitColumnExpression(
+          makeMetricSource({
+            kind,
+            implicitColumnExpression: 'unexpected',
+          }),
+        ),
+      ).toBeUndefined();
+    },
+  );
+});
 
 describe('buildSearchChartConfig', () => {
   describe('tableFilterExpression', () => {

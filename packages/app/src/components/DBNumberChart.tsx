@@ -12,6 +12,7 @@ import {
 } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithDateRange,
+  NumberFormat,
   resolveChartPaletteToken,
 } from '@hyperdx/common-utils/dist/types';
 import { Flex, Text } from '@mantine/core';
@@ -216,6 +217,8 @@ export default function DBNumberChart({
   toolbarSuffix,
   showMVOptimizationIndicator = true,
   errorVariant,
+  valueColumn: selectedValueColumn,
+  numberFormat,
 }: {
   config: ChartConfigWithDateRange;
   queryKeyPrefix?: string;
@@ -225,6 +228,8 @@ export default function DBNumberChart({
   toolbarSuffix?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
+  valueColumn?: string;
+  numberFormat?: NumberFormat;
 }) {
   const { data: source } = useSource({
     id: config.source,
@@ -255,10 +260,12 @@ export default function DBNumberChart({
       enabled,
     });
 
-  // The value is the first numeric value in the first row of the result
-  const valueColumn = data?.meta
-    ? filterColumnMetaByType(data?.meta, [JSDataType.Number])?.[0]
-    : undefined;
+  // An explicit column lets several tiles share one aggregate query.
+  const valueColumn = selectedValueColumn
+    ? data?.meta?.find(column => column.name === selectedValueColumn)
+    : data?.meta
+      ? filterColumnMetaByType(data?.meta, [JSDataType.Number])?.[0]
+      : undefined;
   const resultError =
     data && !valueColumn && isRawSqlChartConfig(queriedConfig)
       ? new Error(
@@ -279,10 +286,15 @@ export default function DBNumberChart({
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
-  const value = valueColumn
-    ? data?.data?.[0]?.[valueColumn.name]
-    : (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN);
-  const formattedValue = formatNumber(value as number, resolvedNumberFormat);
+  const value = selectedValueColumn
+    ? (data?.data?.[0]?.[selectedValueColumn] ?? Number.NaN)
+    : valueColumn
+      ? data?.data?.[0]?.[valueColumn.name]
+      : (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN);
+  const formattedValue = formatNumber(
+    value as number,
+    numberFormat ?? resolvedNumberFormat,
+  );
 
   // Resolve the display color in three layers:
   //   1. Conditional color rules evaluated against the raw value

@@ -7,6 +7,7 @@ import {
   displayTypeSupportsReducer,
   getPromqlSeries,
 } from '@hyperdx/common-utils/dist/core/promql';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   isFormulaDisplayType,
   isFormulaSourceKind,
@@ -408,10 +409,9 @@ export function convertFormStateToChartConfig(
       connection: form.connection ?? '',
       source: form.source || undefined,
       from: source?.from,
-      implicitColumnExpression:
-        source && (isLogSource(source) || isTraceSource(source))
-          ? source.implicitColumnExpression
-          : undefined,
+      implicitColumnExpression: source
+        ? getSourceImplicitColumnExpression(source)
+        : undefined,
       // Body expression is only populated for log sources; trace sources use
       // `spanNameExpression` for display, which has a different semantic for
       // bare-text search and should not auto-fall-back.
@@ -448,10 +448,7 @@ export function convertFormStateToChartConfig(
       timestampValueExpression: source.timestampValueExpression,
       dateRange,
       connection: source.connection,
-      implicitColumnExpression:
-        isLogSource(source) || isTraceSource(source)
-          ? source.implicitColumnExpression
-          : undefined,
+      implicitColumnExpression: getSourceImplicitColumnExpression(source),
       // Logs-only body fallback (see comment above for raw-sql config).
       bodyExpression: isLogSource(source) ? source.bodyExpression : undefined,
       useTextIndexForImplicitColumn:

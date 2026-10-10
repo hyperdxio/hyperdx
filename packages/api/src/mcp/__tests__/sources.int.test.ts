@@ -1300,6 +1300,96 @@ describe('MCP Source Tools', () => {
   // ── clickstack_save_source ─────────────────────────────────────────────────
 
   describe('clickstack_save_source (create)', () => {
+    it('round-trips every NetFlow mapping through create, describe, update, and clone', async () => {
+      const mappings = {
+        implicitColumnExpression: 'SearchText',
+        bytesExpression: 'Bytes',
+        packetsExpression: 'Packets',
+        samplingRateExpression: 'SamplingRate',
+        srcAddrExpression: 'SrcAddr',
+        dstAddrExpression: 'DstAddr',
+        srcPortExpression: 'SrcPort',
+        dstPortExpression: 'DstPort',
+        protocolExpression: 'Proto',
+        exporterExpression: 'ExporterName',
+        inIfExpression: 'InIfName',
+        outIfExpression: 'OutIfName',
+      };
+      const created = await callTool(client, 'clickstack_save_source', {
+        kind: 'netflow',
+        name: 'Network traffic',
+        connection: connection._id.toString(),
+        databaseName: DEFAULT_DATABASE,
+        tableName: DEFAULT_LOGS_TABLE,
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, Body',
+        ...mappings,
+      });
+      expect(created.isError).toBeFalsy();
+      const saved = JSON.parse(getFirstText(created));
+      expect(saved).toMatchObject({ kind: SourceKind.Netflow, ...mappings });
+      const stored = await Source.findById(saved.id);
+      expect(stored?.team.toString()).toBe(team._id.toString());
+      expect(stored?.toObject()).toMatchObject(mappings);
+
+      const described = await callTool(client, 'clickstack_describe_source', {
+        sourceId: saved.id,
+      });
+      expect(described.isError).toBeFalsy();
+      const describedSource = JSON.parse(getFirstText(described)).source;
+      expect(describedSource.keyColumns).toMatchObject({
+        bytes: 'Bytes',
+        packets: 'Packets',
+        samplingRate: 'SamplingRate',
+        srcAddr: 'SrcAddr',
+        dstAddr: 'DstAddr',
+        srcPort: 'SrcPort',
+        dstPort: 'DstPort',
+        protocol: 'Proto',
+        exporter: 'ExporterName',
+        inIf: 'InIfName',
+        outIf: 'OutIfName',
+      });
+      const sourceConfig = describedSource.config;
+      expect(sourceConfig).toMatchObject({ id: saved.id, ...mappings });
+      const updatedMappings = Object.fromEntries(
+        Object.entries(mappings).map(([key, value]) => [key, `(${value})`]),
+      );
+      const updated = await callTool(client, 'clickstack_save_source', {
+        ...sourceConfig,
+        name: 'Updated network traffic',
+        ...updatedMappings,
+      });
+      expect(updated.isError).toBeFalsy();
+      expect(JSON.parse(getFirstText(updated))).toMatchObject(updatedMappings);
+      expect((await Source.findById(saved.id))?.toObject()).toMatchObject(
+        updatedMappings,
+      );
+
+      const describedUpdate = await callTool(
+        client,
+        'clickstack_describe_source',
+        {
+          sourceId: saved.id,
+        },
+      );
+      expect(describedUpdate.isError).toBeFalsy();
+      const updatedConfig = JSON.parse(getFirstText(describedUpdate)).source
+        .config;
+      expect(updatedConfig).toMatchObject(updatedMappings);
+      const { id: _id, ...cloneConfig } = updatedConfig;
+      const cloned = await callTool(client, 'clickstack_save_source', {
+        ...cloneConfig,
+        name: 'Cloned network traffic',
+      });
+      expect(cloned.isError).toBeFalsy();
+      const clone = JSON.parse(getFirstText(cloned));
+      expect(clone.id).not.toBe(saved.id);
+      expect((await Source.findById(clone.id))?.toObject()).toMatchObject(
+        updatedMappings,
+      );
+    });
+
     it('creates a log source scoped to the team', async () => {
       const result = await callTool(client, 'clickstack_save_source', {
         kind: 'log',

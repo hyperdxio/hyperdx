@@ -55,6 +55,8 @@ export type SearchWhereInputProps = {
    * Enable keyboard shortcut (/ or s) to focus the input
    */
   enableHotkey?: boolean;
+  /** Show available columns when the Lucene input or current token is empty. */
+  showSuggestionsOnEmpty?: boolean;
   /**
    * Size of the input
    */
@@ -146,6 +148,7 @@ export default function SearchWhereInput({
   onSubmit,
   onLanguageChange,
   enableHotkey,
+  showSuggestionsOnEmpty,
   size = 'sm',
   allowMultiline = true,
   sqlQueryHistoryType,
@@ -254,6 +257,7 @@ export default function SearchWhereInput({
               allowMultiline={allowMultiline}
               size={size}
               data-testid={dataTestId}
+              showSuggestionsOnEmpty={showSuggestionsOnEmpty}
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}
               sourceId={sourceId}

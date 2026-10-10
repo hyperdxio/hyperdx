@@ -23,6 +23,7 @@ import {
   IconDeviceFloppy,
   IconDeviceLaptop,
   IconLayoutGrid,
+  IconNetwork,
   IconSettings,
   IconSitemap,
   IconTable,
@@ -104,6 +105,13 @@ const NAV_LINKS: NavLinkConfig[] = [
     label: 'Service Map',
     href: '/service-map',
     icon: <IconSitemap size={16} />,
+    isBeta: true,
+  },
+  {
+    id: 'netflow',
+    label: 'NetFlow',
+    href: '/netflow',
+    icon: <IconNetwork size={16} />,
     isBeta: true,
   },
 ];

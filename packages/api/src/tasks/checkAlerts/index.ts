@@ -21,6 +21,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   ALERT_COUNT_DEFAULT_SELECT,
   buildSearchChartConfig,
+  getSourceImplicitColumnExpression,
 } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   aliasMapToWithClauses,
@@ -164,7 +165,9 @@ export async function computeAliasWithClauses(
 ): Promise<BuilderChartConfigWithOptDateRange['with']> {
   const resolvedSelect =
     savedSearch.select ||
-    ((source.kind === SourceKind.Log || source.kind === SourceKind.Trace) &&
+    ((source.kind === SourceKind.Log ||
+      source.kind === SourceKind.Trace ||
+      source.kind === SourceKind.Netflow) &&
       source.defaultTableSelectExpression) ||
     '';
   const config: BuilderChartConfigWithOptDateRange = {
@@ -174,10 +177,7 @@ export async function computeAliasWithClauses(
     select: resolvedSelect,
     where: savedSearch.where,
     whereLanguage: savedSearch.whereLanguage,
-    implicitColumnExpression:
-      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-        ? source.implicitColumnExpression
-        : undefined,
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     useTextIndexForImplicitColumn:
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.useTextIndexForImplicitColumn
@@ -733,13 +733,9 @@ const buildAlertChartConfigFromSavedConfig = ({
   }
 
   if (displayTypeSupportsBuilderAlerts(savedConfig.displayType)) {
-    // Alerts can use Log, Trace, or Metric sources.
-    // implicitColumnExpression+useTextIndexForImplicitColumn exist on Log and Trace sources;
-    // metricTables exists on Metric sources.
-    const implicitColumnExpression =
-      source.kind === SourceKind.Log || source.kind === SourceKind.Trace
-        ? source.implicitColumnExpression
-        : undefined;
+    // NetFlow derives its implicit expression from mapped flow dimensions.
+    // Text-index options exist on Log and Trace; metricTables exists on Metric.
+    const implicitColumnExpression = getSourceImplicitColumnExpression(source);
     const useTextIndexForImplicitColumn =
       source.kind === SourceKind.Log || source.kind === SourceKind.Trace
         ? source.useTextIndexForImplicitColumn

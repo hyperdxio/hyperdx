@@ -94,6 +94,11 @@ const PRESET_DASHBOARDS = [
     href: '/llm',
     description: 'LLM calls, token usage, cost, and latency by model',
   },
+  {
+    name: 'NetFlow',
+    href: '/netflow',
+    description: 'Network traffic, top talkers, exporters, and flow records',
+  },
 ];
 
 export default function DashboardsListPage() {

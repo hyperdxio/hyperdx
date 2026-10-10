@@ -65,6 +65,7 @@ export function setCorrelationFieldValue(
         return { ...source, [field]: value };
       }
       return source;
+    case SourceKind.Netflow:
     case SourceKind.Promql:
       return source;
   }
@@ -107,4 +108,5 @@ export const CORRELATION_FIELD_MAP: Record<
     ],
   },
   [SourceKind.Promql]: {},
+  [SourceKind.Netflow]: {},
 };

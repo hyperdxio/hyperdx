@@ -6,9 +6,11 @@ import {
   IconConnection,
   IconDeviceLaptop,
   IconLogs,
+  IconNetwork,
 } from '@tabler/icons-react';
 
 export const SOURCE_KIND_ICONS: Record<string, React.ReactNode> = {
+  [SourceKind.Netflow]: <IconNetwork size={16} />,
   [SourceKind.Log]: <IconLogs size={16} />,
   [SourceKind.Trace]: <IconConnection size={16} />,
   [SourceKind.Session]: <IconDeviceLaptop size={16} />,

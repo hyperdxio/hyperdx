@@ -4,6 +4,7 @@ import {
 } from '@clickhouse/client-common';
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
@@ -506,10 +507,7 @@ export async function runConfigTile(
       'defaultTableSelectExpression' in source
         ? source.defaultTableSelectExpression
         : undefined;
-    const implicitColumn =
-      'implicitColumnExpression' in source
-        ? source.implicitColumnExpression
-        : undefined;
+    const implicitColumn = getSourceImplicitColumnExpression(source);
     const useTextIndexForImplicitColumn =
       'useTextIndexForImplicitColumn' in source
         ? source.useTextIndexForImplicitColumn
@@ -630,10 +628,7 @@ export async function runConfigTile(
     if (source) {
       sourceFields = {
         from: source.from,
-        implicitColumnExpression:
-          'implicitColumnExpression' in source
-            ? source.implicitColumnExpression
-            : undefined,
+        implicitColumnExpression: getSourceImplicitColumnExpression(source),
         useTextIndexForImplicitColumn:
           'useTextIndexForImplicitColumn' in source
             ? source.useTextIndexForImplicitColumn

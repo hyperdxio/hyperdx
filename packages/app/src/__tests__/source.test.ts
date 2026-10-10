@@ -1,4 +1,6 @@
 import { ColumnMetaType } from '@hyperdx/common-utils/dist/clickhouse';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptTimestamp,
   NumberFormat,
@@ -14,6 +16,7 @@ import {
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
+  inferTableSourceConfig,
   pickTimeSeriesTable,
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
@@ -725,5 +728,74 @@ describe('getBuilderValueColumnCount', () => {
 
   it('returns 0 for raw SQL configs', () => {
     expect(getBuilderValueColumnCount(makeRawSqlConfig({}))).toBe(0);
+  });
+});
+
+describe('NetFlow source inference', () => {
+  const infer = async (names: string[]) => {
+    const metadata = getMetadata(
+      new ClickhouseClient({ host: 'http://localhost:8123' }),
+    );
+    jest.spyOn(metadata, 'getColumns').mockResolvedValue(
+      names.map(name => ({
+        name,
+        type: name === 'TimeReceived' ? 'DateTime' : 'UInt64',
+        codec_expression: '',
+        comment: '',
+        default_expression: '',
+        default_type: '',
+        ttl_expression: '',
+      })),
+    );
+    jest.spyOn(metadata, 'getTableMetadata').mockResolvedValue(undefined);
+    return inferTableSourceConfig({
+      databaseName: 'default',
+      tableName: 'flows',
+      connectionId: 'connection',
+      kind: SourceKind.Netflow,
+      metadata,
+    });
+  };
+  it('maps Akvorado columns and preserves sampling semantics', async () => {
+    expect(
+      await infer([
+        'TimeReceived',
+        'Bytes',
+        'Packets',
+        'SamplingRate',
+        'SrcAddr',
+        'DstAddr',
+        'SrcPort',
+        'DstPort',
+        'Proto',
+        'ExporterName',
+        'InIfName',
+        'OutIfName',
+      ]),
+    ).toMatchObject({
+      kind: SourceKind.Netflow,
+      timestampValueExpression: 'TimeReceived',
+      bytesExpression: 'Bytes',
+      packetsExpression: 'Packets',
+      samplingRateExpression: 'SamplingRate',
+      srcAddrExpression: 'SrcAddr',
+      dstAddrExpression: 'DstAddr',
+      protocolExpression: 'Proto',
+    });
+  });
+  it('does not invent optional columns for unenriched or unsampled tables', async () => {
+    const config = await infer([
+      'TimeReceived',
+      'Bytes',
+      'Packets',
+      'SrcAddr',
+      'DstAddr',
+      'SrcPort',
+      'DstPort',
+      'Proto',
+    ]);
+    expect(config).not.toHaveProperty('samplingRateExpression');
+    expect(config).not.toHaveProperty('exporterExpression');
+    expect(config).not.toHaveProperty('inIfExpression');
   });
 });

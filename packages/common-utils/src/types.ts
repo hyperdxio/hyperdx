@@ -2372,6 +2372,7 @@ export type Team = z.infer<typeof TeamSchema>;
 // --------------------------
 export enum SourceKind {
   Log = 'log',
+  Netflow = 'netflow',
   Trace = 'trace',
   Session = 'session',
   Metric = 'metric',
@@ -2610,6 +2611,38 @@ export const PromqlSourceSchema = BaseSourceSchema.extend({
   minAutoGranularity: MinAutoGranularitySchema,
 });
 
+// NetFlow mappings support Akvorado and other flow tables without reingestion.
+export const NETFLOW_COLUMN_EXPRESSIONS = {
+  bytesExpression: 'Bytes',
+  packetsExpression: 'Packets',
+  srcAddrExpression: 'SrcAddr',
+  dstAddrExpression: 'DstAddr',
+  srcPortExpression: 'SrcPort',
+  dstPortExpression: 'DstPort',
+  protocolExpression: 'Proto',
+  samplingRateExpression: 'SamplingRate',
+  exporterExpression: 'ExporterName',
+  inIfExpression: 'InIfName',
+  outIfExpression: 'OutIfName',
+} as const;
+
+export const NetflowSourceSchema = BaseSourceSchema.extend({
+  kind: z.literal(SourceKind.Netflow),
+  defaultTableSelectExpression: z.string().min(1),
+  implicitColumnExpression: z.string().optional(),
+  bytesExpression: z.string().min(1),
+  packetsExpression: z.string().min(1),
+  srcAddrExpression: z.string().min(1),
+  dstAddrExpression: z.string().min(1),
+  srcPortExpression: z.string().min(1),
+  dstPortExpression: z.string().min(1),
+  protocolExpression: z.string().min(1),
+  samplingRateExpression: z.string().optional(),
+  exporterExpression: z.string().optional(),
+  inIfExpression: z.string().optional(),
+  outIfExpression: z.string().optional(),
+});
+
 // Union of all source form schemas for validation
 export const SourceSchema = z.discriminatedUnion('kind', [
   LogSourceSchema,
@@ -2617,6 +2650,7 @@ export const SourceSchema = z.discriminatedUnion('kind', [
   SessionSourceSchema,
   MetricSourceSchema,
   PromqlSourceSchema,
+  NetflowSourceSchema,
 ]);
 export type TSource = z.infer<typeof SourceSchema>;
 
@@ -2626,10 +2660,12 @@ export const SourceSchemaNoId = z.discriminatedUnion('kind', [
   SessionSourceSchema.omit({ id: true }),
   MetricSourceSchema.omit({ id: true }),
   PromqlSourceSchema.omit({ id: true }),
+  NetflowSourceSchema.omit({ id: true }),
 ]);
 export type TSourceNoId = z.infer<typeof SourceSchemaNoId>;
 
 // Per-kind source types extracted from the Zod discriminated union
+export type TNetflowSource = Extract<TSource, { kind: SourceKind.Netflow }>;
 export type TLogSource = Extract<TSource, { kind: SourceKind.Log }>;
 export type TTraceSource = Extract<TSource, { kind: SourceKind.Trace }>;
 export type TSessionSource = Extract<TSource, { kind: SourceKind.Session }>;
@@ -2637,6 +2673,9 @@ export type TMetricSource = Extract<TSource, { kind: SourceKind.Metric }>;
 export type TPromqlSource = Extract<TSource, { kind: SourceKind.Promql }>;
 
 // Type guards for narrowing TSource by kind
+export function isNetflowSource(source: TSource): source is TNetflowSource {
+  return source.kind === SourceKind.Netflow;
+}
 export function isLogSource(source: TSource): source is TLogSource {
   return source.kind === SourceKind.Log;
 }
@@ -2653,7 +2692,9 @@ export function isPromqlSource(source: TSource): source is TPromqlSource {
   return source.kind === SourceKind.Promql;
 }
 export function isSearchableSource(source: TSource): boolean {
-  return isLogSource(source) || isTraceSource(source);
+  return (
+    isLogSource(source) || isTraceSource(source) || isNetflowSource(source)
+  );
 }
 
 type SourceLikeForSampleWeight = {
