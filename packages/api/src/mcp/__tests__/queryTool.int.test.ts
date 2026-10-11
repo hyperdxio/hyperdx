@@ -754,6 +754,61 @@ describe('MCP Query Tools', () => {
 
       expect(result.isError).toBeFalsy();
     });
+
+    // The tool description advertises these bucket-size parameters and
+    // macros, so each one has to resolve to a value rather than fail with
+    // "Substitution intervalSeconds is not set".
+    it('binds the interval parameters and $__interval_s to the same bucket size', async () => {
+      const result = await callTool(client, 'clickstack_sql', {
+        connectionId: connection._id.toString(),
+        sql:
+          'SELECT {intervalSeconds:Int64} AS s, ' +
+          '{intervalMilliseconds:Int64} AS ms, ' +
+          '$__interval_s AS macro_s',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const [row] = JSON.parse(getFirstText(result)).result.data;
+      const seconds = Number(row.s);
+      expect(seconds).toBeGreaterThan(0);
+      expect(Number(row.ms)).toBe(seconds * 1000);
+      expect(Number(row.macro_s)).toBe(seconds);
+    });
+
+    it.each(['$__timeInterval', '$__timeInterval_ms'])(
+      'runs a time-series query bucketed with %s',
+      async macro => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql:
+            `SELECT ${macro}(Timestamp) AS ts, count() AS cnt ` +
+            `FROM ${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE} ` +
+            'WHERE $__timeFilter(Timestamp) GROUP BY ts ORDER BY ts LIMIT 10',
+          startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+          endTime: new Date().toISOString(),
+        });
+
+        expect(getFirstText(result)).not.toContain('Substitution');
+        expect(result.isError).toBeFalsy();
+        expect(JSON.parse(getFirstText(result)).result.meta).toEqual(
+          expect.arrayContaining([expect.objectContaining({ name: 'ts' })]),
+        );
+      },
+    );
+
+    it('returns plain query rows unchanged', async () => {
+      const result = await callTool(client, 'clickstack_sql', {
+        connectionId: connection._id.toString(),
+        sql: "SELECT 1 AS value, 'a' AS label",
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(JSON.parse(getFirstText(result)).result.data).toEqual([
+        { value: 1, label: 'a' },
+      ]);
+    });
   });
 
   // ─── ClickHouse query errors ──────────────────────────────────────────────────
