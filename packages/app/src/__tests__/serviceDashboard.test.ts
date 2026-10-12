@@ -1,4 +1,5 @@
 import type { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import { rewriteSqlFilterWithKvItems } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { parseQuery } from '@hyperdx/common-utils/dist/filters';
 import type { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -148,140 +149,114 @@ describe('Service Dashboard', () => {
     });
   });
 
-  describe('dbStatementIndexHint', () => {
-    const attributesColumn = {
-      name: 'SpanAttributes',
-      type: 'Map(LowCardinality(String), String)',
-    } as ColumnMeta;
-    const itemsColumn = { name: 'SpanAttributeItems' } as ColumnMeta;
-
-    it('should prefer the attribute items column when the table has one', () => {
+  describe('dbStatementPrefilterFields', () => {
+    it('should expose the map accessors the renderer can rewrite', () => {
       expect(
-        getExpressions(mockSource, [attributesColumn, itemsColumn], [])
-          .dbStatementIndexHint,
-      ).toEqual({ kind: 'items', column: 'SpanAttributeItems' });
+        getExpressions(mockSource, [], []).dbStatementPrefilterFields,
+      ).toEqual([
+        "SpanAttributes['db.query.text']",
+        "SpanAttributes['db.statement']",
+      ]);
     });
 
-    it('should fall back to the attribute map, which older schemas index by value', () => {
+    it('should be empty for JSON attribute columns', () => {
       expect(
-        getExpressions(mockSource, [attributesColumn], []).dbStatementIndexHint,
-      ).toEqual({ kind: 'mapValues', column: 'SpanAttributes' });
-    });
-
-    it('should be undefined when the attribute field is not a map', () => {
-      expect(
-        getExpressions(
-          mockSource,
-          [{ name: 'SpanAttributes', type: 'String' } as ColumnMeta],
-          [],
-        ).dbStatementIndexHint,
-      ).toBeUndefined();
-    });
-
-    it('should be undefined for JSON attribute columns', () => {
-      expect(
-        getExpressions(
-          mockSource,
-          [attributesColumn, itemsColumn],
-          ['SpanAttributes'],
-        ).dbStatementIndexHint,
-      ).toBeUndefined();
-    });
-
-    it('should not mistake the attribute field itself for an items column', () => {
-      expect(
-        getExpressions(
-          { ...mockSource, eventAttributesExpression: 'Attrs' },
-          [{ name: 'Attrs', type: 'Map(String, String)' } as ColumnMeta],
-          [],
-        ).dbStatementIndexHint,
-      ).toEqual({ kind: 'mapValues', column: 'Attrs' });
+        getExpressions(mockSource, [], ['SpanAttributes'])
+          .dbStatementPrefilterFields,
+      ).toEqual([]);
     });
   });
 
   describe('makeDbStatementCondition', () => {
     const dbStatement =
       "coalesce(nullif(SpanAttributes['db.query.text'], ''), nullif(SpanAttributes['db.statement'], ''))";
+    const prefilterFields = [
+      "SpanAttributes['db.query.text']",
+      "SpanAttributes['db.statement']",
+    ];
     const equality = `${dbStatement} IN ('SELECT 1')`;
 
-    it('should only compare the statement when nothing is indexed', () => {
+    it('should only compare the statement when there is nothing to prefilter on', () => {
       expect(
         makeDbStatementCondition({
-          expressions: { dbStatement, dbStatementIndexHint: undefined },
+          expressions: { dbStatement, dbStatementPrefilterFields: [] },
           statement: 'SELECT 1',
         }),
       ).toBe(equality);
     });
 
-    it('should prefilter on the items column, which newer schemas index', () => {
+    it('should prefilter on each attribute the statement can come from', () => {
       expect(
         makeDbStatementCondition({
-          expressions: {
-            dbStatement,
-            dbStatementIndexHint: {
-              kind: 'items',
-              column: 'SpanAttributeItems',
-            },
-          },
+          expressions: { dbStatement, dbStatementPrefilterFields: prefilterFields },
           statement: 'SELECT 1',
         }),
       ).toBe(
-        "(has(SpanAttributeItems, 'db.query.text=SELECT 1') OR " +
-          "has(SpanAttributeItems, 'db.statement=SELECT 1')) " +
+        "(SpanAttributes['db.query.text'] IN ('SELECT 1') OR " +
+          "SpanAttributes['db.statement'] IN ('SELECT 1')) " +
           `AND ${equality}`,
       );
     });
 
-    it('should prefilter on the attribute values, which older schemas index', () => {
-      expect(
-        makeDbStatementCondition({
-          expressions: {
-            dbStatement,
-            dbStatementIndexHint: {
-              kind: 'mapValues',
-              column: 'SpanAttributes',
-            },
-          },
-          statement: 'SELECT 1',
-        }),
-      ).toBe(
-        `(has(mapValues(SpanAttributes), 'SELECT 1')) AND ${equality}`,
-      );
-    });
-
-    it.each([
-      ['items' as const, 'SpanAttributeItems'],
-      ['mapValues' as const, 'SpanAttributes'],
-    ])('should escape quotes in the %s prefilter', (kind, column) => {
+    it('should escape quotes everywhere the statement appears', () => {
       const condition = makeDbStatementCondition({
-        expressions: { dbStatement, dbStatementIndexHint: { kind, column } },
+        expressions: { dbStatement, dbStatementPrefilterFields: prefilterFields },
         statement: "SELECT 'a'",
       });
 
-      expect(condition).toContain("SELECT ''a''");
-      expect(condition).not.toContain("SELECT 'a'");
+      expect(condition.match(/SELECT ''a''/g)).toHaveLength(3);
+      expect(condition).not.toContain("IN ('SELECT 'a'')");
     });
 
-    it.each([
-      [undefined],
-      [{ kind: 'items' as const, column: 'SpanAttributeItems' }],
-      [{ kind: 'mapValues' as const, column: 'SpanAttributes' }],
-    ])(
+    it('should be rewritten onto the items column by the query renderer', () => {
+      const condition = makeDbStatementCondition({
+        expressions: { dbStatement, dbStatementPrefilterFields: prefilterFields },
+        statement: 'SELECT 1',
+      });
+
+      const rewritten = rewriteSqlFilterWithKvItems(
+        condition,
+        new Map([
+          [
+            'SpanAttributes',
+            {
+              kv: {
+                columnName: 'SpanAttributeItems',
+                indexName: 'idx_span_attr_items',
+                separator: ':',
+                useHasAny: false,
+                mapColumn: 'SpanAttributes',
+              },
+            },
+          ],
+        ]),
+      );
+
+      expect(rewritten).toContain(
+        "has(`SpanAttributeItems`, concat('db.query.text', ':', 'SELECT 1'))",
+      );
+      expect(rewritten).toContain(
+        "has(`SpanAttributeItems`, concat('db.statement', ':', 'SELECT 1'))",
+      );
+      expect(rewritten).toContain(dbStatement);
+    });
+
+    it.each([[[]], [prefilterFields]])(
       'should be read back by the search page as the same filter (%p)',
-      dbStatementIndexHint => {
+      dbStatementPrefilterFields => {
         const statement = "SELECT 'a' FROM t WHERE b IN (1) AND c = ?";
 
         const { filters } = parseQuery([
           {
             type: 'sql',
             condition: makeDbStatementCondition({
-              expressions: { dbStatement, dbStatementIndexHint },
+              expressions: { dbStatement, dbStatementPrefilterFields },
               statement,
             }),
           },
         ]);
 
-        expect(Object.keys(filters)).toEqual([dbStatement]);
+        expect(filters[dbStatement]).toBeDefined();
         expect([...filters[dbStatement].included]).toEqual([statement]);
       },
     );

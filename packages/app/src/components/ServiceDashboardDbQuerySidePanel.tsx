@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
+import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DisplayType,
   type Filter,
@@ -65,7 +66,7 @@ export default function ServiceDashboardDbQuerySidePanel({
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${expressions.service} IN ('${service}')`,
+        condition: `${expressions.service} IN ('${escapeSqlString(service)}')`,
       });
     }
     return filters;

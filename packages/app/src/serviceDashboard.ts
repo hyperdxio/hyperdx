@@ -11,16 +11,6 @@ const COALESCE_FIELDS_LIMIT = 100;
 // Ordered from highest to lowest precedence
 const DB_STATEMENT_KEYS = ['db.query.text', 'db.statement'];
 
-/**
- * Where a skip index can be made to match a database statement. The OTel
- * schemas index span attributes two ways depending on the ClickHouse version:
- * newer ones an `<Name>AttributeItems` column of `key=value` strings, older
- * ones `mapValues(<Name>Attributes)`.
- */
-type DbStatementIndexHint = {
-  kind: 'items' | 'mapValues';
-  column: string;
-};
 
 // Helper function to format field access based on column type
 function formatFieldAccess(
@@ -110,6 +100,15 @@ function getDefaults({
     isAttributeFieldJSON,
   );
 
+  // Plain map accessors: the shape `rewriteSqlFilterWithKvItems` rewrites onto
+  // an indexed items column. JSON columns have no such column, and their
+  // accessors are not map subscripts, so they get no prefilter.
+  const dbStatementPrefilterFields = isAttributeFieldJSON
+    ? []
+    : DB_STATEMENT_KEYS.map(key =>
+        formatFieldAccess(spanAttributeField, key, false),
+      );
+
   return {
     duration: 'Duration',
     durationPrecision: 9,
@@ -139,64 +138,25 @@ function getDefaults({
       isAttributeFieldJSON,
     ),
     dbStatement,
+    dbStatementPrefilterFields,
   };
 }
 
 const ENDPOINT_MATERIALIZED_COLUMN_NAME = 'endpoint';
 
-function getAttributeItemsColumn(
-  attributesField: string,
-  columns: ColumnMeta[],
-): string | undefined {
-  const itemsColumn = attributesField.replace(/Attributes$/, 'AttributeItems');
-  const exists =
-    itemsColumn !== attributesField &&
-    columns.some(column => column.name === itemsColumn);
-  return exists ? itemsColumn : undefined;
-}
-
-function getDbStatementIndexHint(
-  attributesField: string,
-  isAttributeFieldJSON: boolean,
-  columns: ColumnMeta[],
-): DbStatementIndexHint | undefined {
-  if (isAttributeFieldJSON) {
-    return undefined;
-  }
-
-  const itemsColumn = getAttributeItemsColumn(attributesField, columns);
-  if (itemsColumn) {
-    return { kind: 'items', column: itemsColumn };
-  }
-
-  const isMap = columns.some(
-    column =>
-      column.name === attributesField && column.type.startsWith('Map('),
-  );
-  return isMap ? { kind: 'mapValues', column: attributesField } : undefined;
-}
-
-function makeIndexPrefilter(
-  hint: DbStatementIndexHint,
-  statement: string,
-): string {
-  if (hint.kind === 'mapValues') {
-    return `has(mapValues(${hint.column}), '${escapeSqlString(statement)}')`;
-  }
-  return DB_STATEMENT_KEYS.map(
-    key =>
-      `has(${hint.column}, '${escapeSqlString(`${key}=${statement}`)}')`,
-  ).join(' OR ');
+function inList(expression: string, value: string): string {
+  return `${expression} IN ('${escapeSqlString(value)}')`;
 }
 
 /**
  * Condition selecting the spans of a single database statement.
  *
  * No skip index covers the coalesced attribute lookup, so on its own it makes
- * ClickHouse read every granule in the time range. The prefilter matches a
- * superset of those spans in a form an index does cover; the coalesced
- * comparison still decides the match, so results are unchanged. It is also
- * cheaper where no index applies, since it short-circuits the coalesce.
+ * ClickHouse read every granule in the time range. The prefilter compares the
+ * same keys directly, which matches a superset of those spans while the
+ * coalesced comparison still decides; `rewriteSqlFilterWithKvItems` then
+ * rewrites each comparison onto the schema's indexed items column, and older
+ * schemas serve them from their `mapValues` index as written.
  */
 export function makeDbStatementCondition({
   expressions,
@@ -204,14 +164,16 @@ export function makeDbStatementCondition({
 }: {
   expressions: Pick<
     ReturnType<typeof getExpressions>,
-    'dbStatement' | 'dbStatementIndexHint'
+    'dbStatement' | 'dbStatementPrefilterFields'
   >;
   statement: string;
 }): string {
-  const equality = `${expressions.dbStatement} IN ('${escapeSqlString(statement)}')`;
-  const hint = expressions.dbStatementIndexHint;
-  return hint
-    ? `(${makeIndexPrefilter(hint, statement)}) AND ${equality}`
+  const equality = inList(expressions.dbStatement, statement);
+  const prefilter = expressions.dbStatementPrefilterFields.map(field =>
+    inList(field, statement),
+  );
+  return prefilter.length
+    ? `(${prefilter.join(' OR ')}) AND ${equality}`
     : equality;
 }
 
@@ -249,11 +211,7 @@ export function getExpressions(
 
     // Database
     dbStatement: defaults.dbStatement,
-    dbStatementIndexHint: getDbStatementIndexHint(
-      spanAttributeField,
-      isAttributeFieldJSON,
-      columns,
-    ),
+    dbStatementPrefilterFields: defaults.dbStatementPrefilterFields,
   };
 
   const auxExpressions = {
