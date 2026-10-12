@@ -1,7 +1,8 @@
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
+
 import {
   dateParser,
   parseTimeRangeInput,
-  rangeNeedsExplicitYear,
   timeRangeInputToSeconds,
 } from '@/components/TimePicker/utils';
 
@@ -160,52 +161,33 @@ describe('parseTimeRangeInput', () => {
   });
 });
 
-describe('rangeNeedsExplicitYear', () => {
+// Mirrors how TimePicker.handleSearch builds the range text for each clock.
+describe('parseTimeRangeInput with year-qualified picker text', () => {
   beforeEach(() => {
     jest.useFakeTimers();
-    jest.setSystemTime(new Date('2025-06-15T12:00:00'));
+    jest.setSystemTime(new Date('2026-06-15T12:00:00'));
   });
 
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  it('is false for a past range in the current year', () => {
-    expect(
-      rangeNeedsExplicitYear([
-        new Date('2025-03-01T10:00:00'),
-        new Date('2025-03-02T10:00:00'),
-      ]),
-    ).toBe(false);
-  });
-
-  it('is true when either date is in another year', () => {
-    expect(
-      rangeNeedsExplicitYear([
-        new Date('2024-03-01T10:00:00'),
-        new Date('2025-03-02T10:00:00'),
-      ]),
-    ).toBe(true);
-  });
-
-  it('is true when a date in the current year is in the future', () => {
-    expect(
-      rangeNeedsExplicitYear([
-        new Date('2025-06-01T10:00:00'),
-        new Date('2025-12-25T10:00:00'),
-      ]),
-    ).toBe(true);
-  });
-
-  it('compares years in UTC when isUTC is set', () => {
-    jest.setSystemTime(new Date('2025-06-15T12:00:00Z'));
-    expect(
-      rangeNeedsExplicitYear(
-        [new Date('2024-12-31T23:00:00Z'), new Date('2025-01-01T01:00:00Z')],
-        true,
-      ),
-    ).toBe(true);
-  });
+  it.each(['12h', '24h'] as const)(
+    'round-trips past, boundary and future ranges with a %s clock',
+    clock => {
+      const ranges: [Date, Date][] = [
+        [new Date('2024-03-03T13:05:09'), new Date('2024-03-05T01:00:00')],
+        [new Date('2025-12-30T10:00:00'), new Date('2026-02-01T10:00:00')],
+        [new Date('2026-08-01T10:00:00'), new Date('2026-09-01T10:00:00')],
+      ];
+      for (const [start, end] of ranges) {
+        const text = [start, end]
+          .map(d => formatDate(d, { format: 'withYear', clock }))
+          .join(' - ');
+        expect(parseTimeRangeInput(text)).toEqual([start, end]);
+      }
+    },
+  );
 });
 
 describe('timeRangeInputToSeconds', () => {

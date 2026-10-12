@@ -1,8 +1,9 @@
 import React, { memo, useMemo, useState } from 'react';
-import { add, Duration, format, sub } from 'date-fns';
+import { add, Duration, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import {
   Button,
   Card,
@@ -36,7 +37,6 @@ import {
   LIVE_TAIL_DURATION_MS,
   LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
-  rangeNeedsExplicitYear,
   RELATIVE_TIME_OPTIONS,
 } from './utils';
 
@@ -191,13 +191,8 @@ const TimePickerComponent = ({
       if (!from || !to) {
         return;
       }
-      const datePart = rangeNeedsExplicitYear([from, to])
-        ? 'MMM d yyyy'
-        : 'MMM d';
-      const formatStr =
-        timeFormat === '24h' ? `${datePart} HH:mm:ss` : `${datePart} h:mm:ss a`;
       const rangeStr = [from, to]
-        .map(d => d && format(d, formatStr))
+        .map(d => formatDate(d, { format: 'withYear', clock: timeFormat }))
         .join(' - ');
       onChange(rangeStr);
       onSearch(rangeStr);

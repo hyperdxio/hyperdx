@@ -25,26 +25,23 @@ import {
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
-import {
-  parseTimeRangeInput,
-  rangeNeedsExplicitYear,
-} from './components/TimePicker/utils';
+import { parseTimeRangeInput } from './components/TimePicker/utils';
 import { useUserPreferences } from './useUserPreferences';
 import { usePrevious } from './utils';
 
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
+// The text is re-parsed into dates (picker input, `tq` URL param). Without a
+// year, chrono infers one and drops anything older than the current year.
 export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
-  const format = rangeNeedsExplicitYear(range, isUTC) ? 'withYear' : 'normal';
-
   return `${formatDate(range[0], {
     isUTC,
-    format,
+    format: 'withYear',
     clock: '24h',
   })} - ${formatDate(range[1], {
     isUTC,
-    format,
+    format: 'withYear',
     clock: '24h',
   })}`;
 };
