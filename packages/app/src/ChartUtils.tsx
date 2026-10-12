@@ -1105,7 +1105,7 @@ const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
   }
   // Map rate-based aggregations to their base aggregation
   if (aggFn.endsWith('_rate')) {
-    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
+    return mapV1AggFnToV2(aggFn.replace(/_rate$/, '') as AggFn);
   }
 
   // Map percentiles to quantile
