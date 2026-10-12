@@ -76,6 +76,7 @@ type CollectorConfig = {
         scrape_configs: Array<{
           job_name: string;
           scrape_interval: string;
+          scheme?: string;
           static_configs: Array<{
             targets: string[];
           }>;
@@ -216,12 +217,19 @@ export const buildOtelCollectorConfig = (
             {
               job_name: 'otelcol',
               scrape_interval: '30s',
+              static_configs: [{ targets: ['0.0.0.0:8888'] }],
+            },
+            // Separate job because the collector's own endpoint is always
+            // plain HTTP, while ClickHouse may be served over https. The
+            // default keeps collector images that predate
+            // HYPERDX_PROMETHEUS_SCHEME on http.
+            {
+              job_name: 'clickhouse',
+              scrape_interval: '30s',
+              scheme: '${env:HYPERDX_PROMETHEUS_SCHEME:-http}',
               static_configs: [
                 {
-                  targets: [
-                    '0.0.0.0:8888',
-                    '${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}',
-                  ],
+                  targets: ['${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}'],
                 },
               ],
             },
