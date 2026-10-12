@@ -780,21 +780,36 @@ describe('MCP Query Tools', () => {
     it.each(['$__timeInterval', '$__timeInterval_ms'])(
       'runs a time-series query bucketed with %s',
       async macro => {
+        const now = Date.now();
+        await bulkInsertLogs(
+          [5, 10, 15, 20].map(minutesAgo => ({
+            Body: 'bucketed',
+            ServiceName: 'sql-buckets',
+            SeverityText: 'INFO',
+            Timestamp: new Date(now - minutesAgo * 60 * 1000),
+          })),
+        );
+
         const result = await callTool(client, 'clickstack_sql', {
           connectionId: connection._id.toString(),
           sql:
-            `SELECT ${macro}(Timestamp) AS ts, count() AS cnt ` +
-            `FROM ${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE} ` +
-            'WHERE $__timeFilter(Timestamp) GROUP BY ts ORDER BY ts LIMIT 10',
-          startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-          endTime: new Date().toISOString(),
+            `SELECT ${macro}(Timestamp) AS ts, ` +
+            'toUnixTimestamp(ts) % $__interval_s AS offset, count() AS cnt ' +
+            `FROM ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE} ` +
+            "WHERE $__timeFilter(Timestamp) AND ServiceName = 'sql-buckets' " +
+            'GROUP BY ts ORDER BY ts LIMIT 10',
+          startTime: new Date(now - 60 * 60 * 1000).toISOString(),
+          endTime: new Date(now).toISOString(),
         });
 
         expect(getFirstText(result)).not.toContain('Substitution');
         expect(result.isError).toBeFalsy();
-        expect(JSON.parse(getFirstText(result)).result.meta).toEqual(
-          expect.arrayContaining([expect.objectContaining({ name: 'ts' })]),
-        );
+        const rows: { offset: unknown; cnt: unknown }[] = JSON.parse(
+          getFirstText(result),
+        ).result.data;
+        expect(rows).toHaveLength(4);
+        expect(rows.map(row => Number(row.offset))).toEqual([0, 0, 0, 0]);
+        expect(rows.map(row => Number(row.cnt))).toEqual([1, 1, 1, 1]);
       },
     );
 
