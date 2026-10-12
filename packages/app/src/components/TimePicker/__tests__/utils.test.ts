@@ -1,6 +1,7 @@
 import {
   dateParser,
   parseTimeRangeInput,
+  rangeNeedsExplicitYear,
   timeRangeInputToSeconds,
 } from '@/components/TimePicker/utils';
 
@@ -156,6 +157,54 @@ describe('parseTimeRangeInput', () => {
       new Date('2024-01-15T12:00:00'),
       new Date('2024-01-16T12:00:00'),
     ]);
+  });
+});
+
+describe('rangeNeedsExplicitYear', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2025-06-15T12:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false for a past range in the current year', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2025-03-01T10:00:00'),
+        new Date('2025-03-02T10:00:00'),
+      ]),
+    ).toBe(false);
+  });
+
+  it('is true when either date is in another year', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2024-03-01T10:00:00'),
+        new Date('2025-03-02T10:00:00'),
+      ]),
+    ).toBe(true);
+  });
+
+  it('is true when a date in the current year is in the future', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2025-06-01T10:00:00'),
+        new Date('2025-12-25T10:00:00'),
+      ]),
+    ).toBe(true);
+  });
+
+  it('compares years in UTC when isUTC is set', () => {
+    jest.setSystemTime(new Date('2025-06-15T12:00:00Z'));
+    expect(
+      rangeNeedsExplicitYear(
+        [new Date('2024-12-31T23:00:00Z'), new Date('2025-01-01T01:00:00Z')],
+        true,
+      ),
+    ).toBe(true);
   });
 });
 

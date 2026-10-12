@@ -72,6 +72,20 @@ export function parseTimeRangeInput(
   }
 }
 
+// A range string without years is re-parsed with an inferred year (the current
+// one, or the previous one for dates >1 day ahead). Only dates in the current
+// year that aren't in the future survive that round trip, so every other range
+// needs an explicit year in its text.
+export function rangeNeedsExplicitYear(
+  range: readonly [Date, Date],
+  isUTC: boolean = false,
+): boolean {
+  // eslint-disable-next-line no-restricted-syntax
+  const now = new Date();
+  const getYear = (d: Date) => (isUTC ? d.getUTCFullYear() : d.getFullYear());
+  return range.some(d => getYear(d) !== getYear(now) || d > now);
+}
+
 // Duration of a time range input in seconds, or null if it doesn't parse.
 export function timeRangeInputToSeconds(
   str: string,

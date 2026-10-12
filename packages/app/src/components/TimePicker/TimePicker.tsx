@@ -36,6 +36,7 @@ import {
   LIVE_TAIL_DURATION_MS,
   LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
+  rangeNeedsExplicitYear,
   RELATIVE_TIME_OPTIONS,
 } from './utils';
 
@@ -190,8 +191,11 @@ const TimePickerComponent = ({
       if (!from || !to) {
         return;
       }
+      const datePart = rangeNeedsExplicitYear([from, to])
+        ? 'MMM d yyyy'
+        : 'MMM d';
       const formatStr =
-        timeFormat === '24h' ? 'MMM d HH:mm:ss' : 'MMM d h:mm:ss a';
+        timeFormat === '24h' ? `${datePart} HH:mm:ss` : `${datePart} h:mm:ss a`;
       const rangeStr = [from, to]
         .map(d => d && format(d, formatStr))
         .join(' - ');
