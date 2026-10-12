@@ -1,5 +1,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import type {
+  BuilderChartConfigWithDateRange,
+  Filter,
+} from '@hyperdx/common-utils/dist/types';
 import { Flex, FlexProps, Text } from '@mantine/core';
 
 import { FilterPill, FilterValueEditor } from '@/components/FilterPill';
@@ -77,6 +80,7 @@ function SearchFilterPill({
   isInvalid,
   invalidReason,
   chartConfig,
+  pickerFilters,
   onRemove,
   onTogglePolarity,
   onReplaceValue,
@@ -85,6 +89,7 @@ function SearchFilterPill({
   isInvalid?: boolean;
   invalidReason?: string;
   chartConfig: BuilderChartConfigWithDateRange;
+  pickerFilters?: Filter[];
   onRemove: () => void;
   onTogglePolarity: () => void;
   onReplaceValue: (value: string) => void;
@@ -102,8 +107,8 @@ function SearchFilterPill({
   // list all of the field's values in range, like the sidebar facet list's
   // default "Show All Values" behavior.
   const valueChartConfig = useMemo(
-    () => ({ ...chartConfig, where: '', filters: [] }),
-    [chartConfig],
+    () => ({ ...chartConfig, where: '', filters: pickerFilters ?? [] }),
+    [chartConfig, pickerFilters],
   );
 
   const { data: keyValues, isFetching: isFetchingValues } = useGetKeyValues(
@@ -152,6 +157,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
   invalidFields,
   invalidFieldReason,
   chartConfig,
+  pickerFilters,
   dateTimeColumns = EMPTY_DATE_TIME_COLUMNS,
   ...flexProps
 }: {
@@ -179,6 +185,8 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
    * in-pill value picker can list the field's values.
    */
   chartConfig: BuilderChartConfigWithDateRange;
+  /** Filters the in-pill value picker keeps when it clears where + filters. */
+  pickerFilters?: Filter[];
 } & FlexProps) {
   const {
     filters,
@@ -282,6 +290,7 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
               isInvalid ? invalidFieldReason?.(pill.field) : undefined
             }
             chartConfig={chartConfig}
+            pickerFilters={pickerFilters}
             onRemove={() => handleRemove(pill)}
             onTogglePolarity={() => handleTogglePolarity(pill)}
             onReplaceValue={value => handleReplaceValue(pill, value)}

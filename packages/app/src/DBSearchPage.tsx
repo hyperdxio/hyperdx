@@ -122,7 +122,10 @@ import {
   useSavedSearch,
   useUpdateSavedSearch,
 } from '@/savedSearch';
-import { useSearchPageFilterState } from '@/searchFilters';
+import {
+  formatDroppedFiltersMessage,
+  useSearchPageFilterState,
+} from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
 import { useAppTheme, usePageTitle } from '@/theme/ThemeProvider';
 import {
@@ -888,12 +891,6 @@ export function useDefaultOrderBy(sourceID: string | undefined | null) {
       tableMetadata?.sorting_key,
     );
   }, [source, tableMetadata]);
-}
-
-function formatDroppedFiltersMessage(count: number): string {
-  const noun = count === 1 ? 'filter' : 'filters';
-  const verb = count === 1 ? 'was' : 'were';
-  return `${count} ${noun} didn't apply to this source and ${verb} removed.`;
 }
 
 // This is outside as it needs to be a stable reference

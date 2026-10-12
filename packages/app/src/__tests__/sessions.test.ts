@@ -5,6 +5,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
+  Filter,
   SourceKind,
   TSessionSource,
   TTraceSource,
@@ -12,8 +13,10 @@ import {
 
 import {
   buildRRWebStreamChartConfig,
-  buildSessionsQueryFilters,
+  buildSessionsSearchCondition,
   fetchServiceScopeFilters,
+  hasSessionsSearch,
+  sessionFiltersParser,
 } from '@/sessions';
 
 jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
@@ -249,30 +252,124 @@ describe('fetchServiceScopeFilters', () => {
   });
 });
 
-describe('buildSessionsQueryFilters', () => {
-  const scope = [{ type: 'sql', condition: "ServiceName IN ('web')" }] as const;
+describe('sessions ?filters= URL param', () => {
+  const encode = (value: unknown) => encodeURIComponent(JSON.stringify(value));
 
-  it('puts the scope before a lucene query', () => {
-    expect(buildSessionsQueryFilters([...scope], 'foo', 'lucene')).toEqual([
-      ...scope,
-      { type: 'lucene', condition: 'foo' },
-    ]);
+  it('parses a well-formed Filter[]', () => {
+    const value: Filter[] = [{ type: 'sql', condition: "ServiceName = 'x'" }];
+    expect(sessionFiltersParser.parse(encode(value))).toEqual(value);
   });
 
-  it('keeps a SQL query as SQL', () => {
-    expect(buildSessionsQueryFilters([...scope], 'a = 1', 'sql')).toEqual([
-      ...scope,
-      { type: 'sql', condition: 'a = 1' },
-    ]);
+  it('falls back to an empty array (never null → never spreads a non-iterable)', () => {
+    expect(sessionFiltersParser.defaultValue).toEqual([]);
   });
 
-  it('treats a missing language as lucene', () => {
-    expect(buildSessionsQueryFilters([], 'foo', undefined)).toEqual([
-      { type: 'lucene', condition: 'foo' },
-    ]);
+  it.each([
+    ['a bare number (?filters=5)', 5],
+    ['an empty object (?filters={})', {}],
+    ['a bare string (?filters="x")', 'x'],
+    ['a null literal', null],
+    ['an array of malformed frames', [{ nope: true }]],
+  ])('rejects %s so the default applies', (_label, input) => {
+    expect(sessionFiltersParser.parse(encode(input))).toBeNull();
   });
 
-  it('returns no filters with no scope and no query', () => {
-    expect(buildSessionsQueryFilters([], '', 'lucene')).toEqual([]);
+  it('rejects invalid JSON', () => {
+    expect(sessionFiltersParser.parse('not-json')).toBeNull();
+  });
+});
+
+describe('buildSessionsSearchCondition', () => {
+  const base = {
+    resourceAttributesExpression: 'ResourceAttributes',
+    sessionIdExpression: "ResourceAttributes['rum.sessionId']",
+  };
+
+  it('scopes to RUM sessions with no query', () => {
+    expect(
+      buildSessionsSearchCondition({
+        ...base,
+        where: '',
+        whereLanguage: 'sql',
+      }),
+    ).toEqual({
+      where: 'ResourceAttributes.rum.sessionId:*',
+      whereLanguage: 'lucene',
+    });
+  });
+
+  it('ANDs a lucene query with the scope', () => {
+    expect(
+      buildSessionsSearchCondition({
+        ...base,
+        where: 'foo OR bar',
+        whereLanguage: 'lucene',
+      }),
+    ).toEqual({
+      where: 'ResourceAttributes.rum.sessionId:* AND (foo OR bar)',
+      whereLanguage: 'lucene',
+    });
+  });
+
+  it('ANDs a SQL query with a SQL scope', () => {
+    expect(
+      buildSessionsSearchCondition({
+        ...base,
+        where: "a = 1 OR b = 'x'",
+        whereLanguage: 'sql',
+      }),
+    ).toEqual({
+      where:
+        "notEmpty(ResourceAttributes['rum.sessionId']) AND (a = 1 OR b = 'x'\n)",
+      whereLanguage: 'sql',
+    });
+  });
+
+  it('keeps the closing paren after a trailing SQL comment', () => {
+    expect(
+      buildSessionsSearchCondition({
+        ...base,
+        where: 'a = 1 -- note',
+        whereLanguage: 'sql',
+      }).where,
+    ).toBe(
+      "notEmpty(ResourceAttributes['rum.sessionId']) AND (a = 1 -- note\n)",
+    );
+  });
+
+  it('ignores a whitespace-only query', () => {
+    expect(
+      buildSessionsSearchCondition({
+        ...base,
+        where: '   ',
+        whereLanguage: 'sql',
+      }),
+    ).toEqual({
+      where: 'ResourceAttributes.rum.sessionId:*',
+      whereLanguage: 'lucene',
+    });
+  });
+
+  it('defaults the resource attributes column', () => {
+    expect(
+      buildSessionsSearchCondition({
+        ...base,
+        resourceAttributesExpression: undefined,
+        where: undefined,
+        whereLanguage: undefined,
+      }).where,
+    ).toBe('ResourceAttributes.rum.sessionId:*');
+  });
+});
+
+describe('hasSessionsSearch', () => {
+  it.each<[string | undefined, Filter[] | undefined, boolean]>([
+    ['', [], false],
+    [undefined, undefined, false],
+    ['foo', [], true],
+    ['   ', [], false],
+    ['', [{ type: 'sql', condition: 'a = 1' }], true],
+  ])('where=%p filters=%p -> %p', (where, filters, expected) => {
+    expect(hasSessionsSearch(where, filters)).toBe(expected);
   });
 });
