@@ -58,6 +58,12 @@ export function getPercentileAggFnLevel(
   return parsed.success ? PERCENTILE_AGG_FN_LEVELS[parsed.data] : undefined;
 }
 
+/** A select item rewritten by `resolvePercentileAggFn` as `quantile` at a level. */
+export type QuantileResolvedSelect<T> = Omit<T, 'aggFn' | 'level'> & {
+  aggFn: 'quantile';
+  level: number;
+};
+
 /**
  * Rewrites a select item with a percentile shorthand aggFn (`p50`, `p90`,
  * `p95`, `p99`) as `quantile` with the matching level. Any other select item
@@ -65,11 +71,9 @@ export function getPercentileAggFnLevel(
  */
 export function resolvePercentileAggFn<T extends { aggFn?: string }>(
   select: T,
-): T {
+): T | QuantileResolvedSelect<T> {
   const level = getPercentileAggFnLevel(select.aggFn);
-  return level == null
-    ? select
-    : ({ ...select, aggFn: 'quantile', level } as T);
+  return level == null ? select : { ...select, aggFn: 'quantile', level };
 }
 
 /**

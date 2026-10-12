@@ -1109,12 +1109,7 @@ const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
   }
 
   // Map percentiles to quantile
-  if (
-    aggFn === 'p50' ||
-    aggFn === 'p90' ||
-    aggFn === 'p95' ||
-    aggFn === 'p99'
-  ) {
+  if (getPercentileAggFnLevel(aggFn) != null) {
     return 'quantile';
   }
 
