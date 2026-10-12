@@ -229,6 +229,22 @@ describe('errorHint', () => {
     expect(hint).toBeNull();
   });
 
+  it.each([
+    "Unknown table expression identifier 'otel_logs' in scope SELECT count() FROM otel_logs",
+    'Table default.otel_traces does not exist.',
+    'Database o11y does not exist.',
+  ])('points unknown-table errors at clickstack_list_sources: %s', msg => {
+    expect(errorHint(msg)).toContain('clickstack_list_sources');
+  });
+
+  it('keeps pointing unknown-column errors at clickstack_describe_source', () => {
+    const hint = errorHint(
+      'Unknown expression or function identifier `TimestampTime` in scope SELECT TimestampTime FROM t',
+    );
+    expect(hint).toContain('clickstack_describe_source');
+    expect(hint).not.toContain('clickstack_list_sources');
+  });
+
   it('should NOT match lowercase "as" in cast expressions', () => {
     const hint = errorHint(
       'Syntax error: cannot cast as Float64 near token...',

@@ -954,6 +954,19 @@ export function errorHint(msg: string, error?: unknown): string | null {
       'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
     );
   }
+  // Checked before unknown identifiers: "Unknown table expression identifier"
+  // names a table, so describe_source's column list would not help.
+  if (
+    /Unknown table expression identifier|(Table|Database) \S+ does not exist|UNKNOWN_(TABLE|DATABASE)/.test(
+      msg,
+    )
+  ) {
+    return (
+      'Use the `table` of a source from clickstack_list_sources, which is ' +
+      'qualified with its database. Unqualified names resolve only in the ' +
+      "connection's default database."
+    );
+  }
   if (
     /Unknown (expression|identifier)|UNKNOWN_IDENTIFIER|Missing columns/i.test(
       msg,

@@ -244,6 +244,15 @@ export function registerListSources({
           timestampColumn: s.timestampValueExpression,
         };
 
+        // For clickstack_sql's FROM. An unqualified name only resolves in the
+        // connection's default database. Metric sources keep one table per
+        // kind in metricTables, so they get the database to qualify them with.
+        if (s.from.tableName) {
+          meta.table = `${s.from.databaseName}.${s.from.tableName}`;
+        } else {
+          meta.database = s.from.databaseName;
+        }
+
         if (s.section) {
           meta.section = s.section;
         }

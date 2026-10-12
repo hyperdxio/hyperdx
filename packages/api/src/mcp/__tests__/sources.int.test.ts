@@ -140,6 +140,21 @@ describe('MCP Source Tools', () => {
       expect(output.nextStep).toContain('clickstack_describe_source');
     });
 
+    // clickstack_sql callers need this for FROM. Without it they guess
+    // otel_logs, which only resolves when the tables sit in the
+    // connection's default database.
+    it('includes the database-qualified table each log and trace source reads', async () => {
+      const result = await callTool(client, 'clickstack_list_sources');
+      const output = JSON.parse(getFirstText(result));
+
+      const trace = output.sources.find(
+        (s: any) => s.kind === SourceKind.Trace,
+      );
+      const log = output.sources.find((s: any) => s.kind === SourceKind.Log);
+      expect(trace.table).toBe(`${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE}`);
+      expect(log.table).toBe(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`);
+    });
+
     it('should include keyColumns from source config without ClickHouse queries', async () => {
       const result = await callTool(client, 'clickstack_list_sources');
       const output = JSON.parse(getFirstText(result));
@@ -246,6 +261,19 @@ describe('MCP Source Tools', () => {
 
         // Top-level usage note explains direct metric querying.
         expect(output.metricsUsage).toContain('metricType + metricName');
+      });
+
+      it('includes the database its metricTables live in', async () => {
+        const metricSource = await createMetricSource();
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric.database).toBe(DEFAULT_DATABASE);
+        expect(metric.table).toBeUndefined();
       });
 
       it('falls back to a wider lookback when no metrics reported in the last 24h', async () => {
