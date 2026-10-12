@@ -152,10 +152,12 @@ function InnerHarness({
   rowId,
   onClose,
   onNavigateToParent,
+  parentBreadcrumbs,
 }: {
   rowId: string;
   onClose: () => void;
   onNavigateToParent?: () => void;
+  parentBreadcrumbs?: { label: string; onClick?: () => void }[];
 }) {
   const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
   return (
@@ -165,6 +167,7 @@ function InnerHarness({
       aliasWith={[]}
       onClose={onClose}
       onNavigateToParent={onNavigateToParent}
+      parentBreadcrumbs={parentBreadcrumbs}
       sidePanelStack={sidePanelStack}
     />
   );
@@ -204,6 +207,7 @@ describe('DBRowSidePanelErrorBoundary span selection', () => {
 
     fireEvent.click(screen.getByLabelText('Close'));
 
+    expect(setterFor('eventRowWhere')).toHaveBeenCalledTimes(1);
     expect(setterFor('eventRowWhere')).toHaveBeenCalledWith(null);
   });
 
@@ -221,7 +225,27 @@ describe('DBRowSidePanelErrorBoundary span selection', () => {
 
     fireEvent.click(screen.getByLabelText('Back'));
 
+    expect(setterFor('eventRowWhere')).toHaveBeenCalledTimes(1);
     expect(setterFor('eventRowWhere')).toHaveBeenCalledWith(null);
     expect(onNavigateToParent).toHaveBeenCalled();
+  });
+
+  it('clears the span when the session breadcrumb is clicked', () => {
+    const onSessionClick = jest.fn();
+    render(
+      <MantineProvider>
+        <InnerHarness
+          rowId="row-a"
+          onClose={jest.fn()}
+          parentBreadcrumbs={[{ label: 'Session', onClick: onSessionClick }]}
+        />
+      </MantineProvider>,
+    );
+
+    fireEvent.click(screen.getByTestId('side-panel-breadcrumb-0'));
+
+    expect(setterFor('eventRowWhere')).toHaveBeenCalledTimes(1);
+    expect(setterFor('eventRowWhere')).toHaveBeenCalledWith(null);
+    expect(onSessionClick).toHaveBeenCalled();
   });
 });

@@ -115,9 +115,17 @@ function Waterfall({ hint }: { hint: RowHighlightHint }) {
   return null;
 }
 
-function Panel({ rowId, hint }: { rowId: string; hint: RowHighlightHint }) {
+function Panel({
+  rowId,
+  hint,
+  showTrace = true,
+}: {
+  rowId: string;
+  hint: RowHighlightHint;
+  showTrace?: boolean;
+}) {
   useOpenedRowSpanSelection(rowId);
-  return <Waterfall hint={hint} />;
+  return showTrace ? <Waterfall hint={hint} /> : null;
 }
 
 describe('useOpenedRowSpanSelection', () => {
@@ -146,5 +154,18 @@ describe('useOpenedRowSpanSelection', () => {
       aliasWith: [],
       traceId: 'trace-1',
     });
+  });
+
+  it('selects the new row when the trace view remounts after the row changes', () => {
+    mockSpanStore.value = null;
+    const view = render(<Panel rowId="row-a" hint={hintA} />);
+    expect(mockSpanStore.value).toMatchObject({ id: 'where-a' });
+
+    view.rerender(<Panel rowId="row-a" hint={hintA} showTrace={false} />);
+    view.rerender(<Panel rowId="row-b" hint={hintB} showTrace={false} />);
+    expect(mockSpanStore.value).toBeNull();
+
+    view.rerender(<Panel rowId="row-b" hint={hintB} />);
+    expect(mockSpanStore.value).toMatchObject({ id: 'where-b' });
   });
 });

@@ -11,11 +11,19 @@ import { eventRowWhereParser } from '@/components/eventRowWhere';
 // useLayoutEffect, not useEffect. Child effects run first, so a parent
 // useEffect clears the span only after the waterfall has applied the new
 // hint and marked it done. The next render then skips that hint.
-export function useOpenedRowSpanSelection(rowId: string | undefined) {
+export function useClearSpanSelection() {
   const [, setEventRowWhere] = useQueryState(
     'eventRowWhere',
     eventRowWhereParser,
   );
+
+  return useCallback(() => {
+    setEventRowWhere(null);
+  }, [setEventRowWhere]);
+}
+
+export function useOpenedRowSpanSelection(rowId: string | undefined) {
+  const clearSpanSelection = useClearSpanSelection();
   const openedRowIdRef = useRef(rowId);
 
   useLayoutEffect(() => {
@@ -23,10 +31,8 @@ export function useOpenedRowSpanSelection(rowId: string | undefined) {
       return;
     }
     openedRowIdRef.current = rowId;
-    setEventRowWhere(null);
-  }, [rowId, setEventRowWhere]);
+    clearSpanSelection();
+  }, [rowId, clearSpanSelection]);
 
-  return useCallback(() => {
-    setEventRowWhere(null);
-  }, [setEventRowWhere]);
+  return clearSpanSelection;
 }

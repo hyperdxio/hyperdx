@@ -406,18 +406,15 @@ export const DBRowSidePanelInner = ({
   );
 
   const clearSpanSelection = useOpenedRowSpanSelection(initialRowId);
-  const closePanel = useCallback(() => {
-    clearSpanSelection();
-    onClose();
-  }, [clearSpanSelection, onClose]);
 
   const handlePanelBack = useCallback(() => {
     // Pop one level (nav → source), restoring the tab active before that level
     // was entered. When the trail is empty, leave the panel: hand off to an
-    // embedding parent (session) or close.
+    // embedding parent (session) or close. The search drawer clears the span
+    // in its own close handler; a parent (the session) does not.
     if (popOne() === 'none') {
-      clearSpanSelection();
       if (onNavigateToParent) {
+        clearSpanSelection();
         onNavigateToParent();
       } else {
         onClose();
@@ -765,7 +762,23 @@ export const DBRowSidePanelInner = ({
     const items: BreadcrumbItem[] = [];
 
     if (parentBreadcrumbs) {
-      items.push(...parentBreadcrumbs);
+      // A parent crumb (the session name) leaves this row without going
+      // through Back or Close. Clear the span on that click too.
+      items.push(
+        ...parentBreadcrumbs.map(item => {
+          const onClick = item.onClick;
+          if (onClick == null) {
+            return item;
+          }
+          return {
+            ...item,
+            onClick: () => {
+              clearSpanSelection();
+              onClick();
+            },
+          };
+        }),
+      );
     }
 
     const crumbSourceStack = sourceStack;
@@ -827,6 +840,7 @@ export const DBRowSidePanelInner = ({
     source.kind,
     handleBreadcrumbNavigation,
     parentBreadcrumbs,
+    clearSpanSelection,
   ]);
 
   const availableTabs = useMemo<Tab[]>(() => {
@@ -856,19 +870,13 @@ export const DBRowSidePanelInner = ({
       <Flex align="center" justify="space-between" gap="sm" mb={8}>
         <SidePanelBreadcrumbs items={allBreadcrumbs} onBack={handlePanelBack} />
         <SidePanelHeaderActions
-          onClose={closePanel}
+          onClose={onClose}
           isFullWidth={isFullWidth}
           onToggleFullWidth={onToggleFullWidth}
         />
       </Flex>
     ),
-    [
-      allBreadcrumbs,
-      handlePanelBack,
-      closePanel,
-      isFullWidth,
-      onToggleFullWidth,
-    ],
+    [allBreadcrumbs, handlePanelBack, onClose, isFullWidth, onToggleFullWidth],
   );
 
   if (isRowLoading || isResolvingSource) {
