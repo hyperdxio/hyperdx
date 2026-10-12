@@ -11,7 +11,6 @@ const COALESCE_FIELDS_LIMIT = 100;
 // Ordered from highest to lowest precedence
 const DB_STATEMENT_KEYS = ['db.query.text', 'db.statement'];
 
-
 // Helper function to format field access based on column type
 function formatFieldAccess(
   field: string,
@@ -144,7 +143,8 @@ function getDefaults({
 
 const ENDPOINT_MATERIALIZED_COLUMN_NAME = 'endpoint';
 
-function inList(expression: string, value: string): string {
+/** A quoted, escaped `IN` comparison — the only place either is spelled out. */
+export function inList(expression: string, value: string): string {
   return `${expression} IN ('${escapeSqlString(value)}')`;
 }
 

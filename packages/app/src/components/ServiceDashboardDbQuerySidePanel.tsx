@@ -1,7 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { pick } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
-import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DisplayType,
   type Filter,
@@ -18,6 +17,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
 import {
+  inList,
   makeDbStatementCondition,
   useServiceDashboardExpressions,
 } from '@/serviceDashboard';
@@ -66,7 +66,7 @@ export default function ServiceDashboardDbQuerySidePanel({
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${expressions.service} IN ('${escapeSqlString(service)}')`,
+        condition: inList(expressions.service, service),
       });
     }
     return filters;
