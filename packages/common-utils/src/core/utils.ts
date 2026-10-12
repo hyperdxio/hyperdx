@@ -29,6 +29,8 @@ import {
   DashboardTemplateSchema,
   DashboardWithoutId,
   DisplayType,
+  PERCENTILE_AGG_FN_LEVELS,
+  PercentileAggregateFunctionSchema,
   QuerySettings,
   RawSqlChartConfig,
   SavedChartConfig,
@@ -44,6 +46,31 @@ import { SkipIndexMetadata, TableMetadata } from './metadata';
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
+
+/**
+ * Returns the quantile level of a percentile shorthand aggFn (`p95` -> 0.95),
+ * or undefined for any other aggFn.
+ */
+export function getPercentileAggFnLevel(
+  aggFn: string | undefined,
+): number | undefined {
+  const parsed = PercentileAggregateFunctionSchema.safeParse(aggFn);
+  return parsed.success ? PERCENTILE_AGG_FN_LEVELS[parsed.data] : undefined;
+}
+
+/**
+ * Rewrites a select item with a percentile shorthand aggFn (`p50`, `p90`,
+ * `p95`, `p99`) as `quantile` with the matching level. Any other select item
+ * is returned unchanged.
+ */
+export function resolvePercentileAggFn<T extends { aggFn?: string }>(
+  select: T,
+): T {
+  const level = getPercentileAggFnLevel(select.aggFn);
+  return level == null
+    ? select
+    : ({ ...select, aggFn: 'quantile', level } as T);
+}
 
 /**
  * Whether a tile's `seriesLimit` should apply an actual limit. Per the schema

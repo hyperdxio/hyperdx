@@ -15,6 +15,7 @@ import {
   convertToReducedPromqlChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  convertV1ChartConfigToV2,
   findNearestSeriesKey,
   formatResponseForCategoricalChart,
   formatResponseForTimeChart,
@@ -1833,5 +1834,58 @@ describe('getSeriesColorForGroup', () => {
     const lineData = [line('api', '#dashed', true), line('api', '#solid')];
 
     expect(getSeriesColorForGroup(lineData, 'api')).toBe('#solid');
+  });
+});
+
+describe('convertV1ChartConfigToV2', () => {
+  const metricSource = {
+    id: 'metric-source',
+    kind: SourceKind.Metric,
+    connection: 'connection-id',
+    from: { databaseName: 'default', tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    resourceAttributesExpression: 'ResourceAttributes',
+    metricTables: {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+    },
+  } as unknown as Parameters<typeof convertV1ChartConfigToV2>[1]['metric'];
+
+  const convertMetricSeries = (aggFn: 'p95' | 'p99_rate' | 'avg') =>
+    convertV1ChartConfigToV2(
+      {
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn,
+            field: 'http.server.duration - Gauge',
+            where: '',
+            groupBy: [],
+          },
+        ],
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+        seriesReturnType: 'column',
+      },
+      { metric: metricSource },
+    ).select;
+
+  it('converts a percentile to quantile with its level', () => {
+    expect(convertMetricSeries('p95')).toEqual([
+      expect.objectContaining({ aggFn: 'quantile', level: 0.95 }),
+    ]);
+  });
+
+  it('converts a percentile rate to quantile with its level', () => {
+    expect(convertMetricSeries('p99_rate')).toEqual([
+      expect.objectContaining({ aggFn: 'quantile', level: 0.99 }),
+    ]);
+  });
+
+  it('sets no level for other aggregations', () => {
+    const [select] = convertMetricSeries('avg');
+    expect(select).toEqual(expect.objectContaining({ aggFn: 'avg' }));
+    expect(select).not.toHaveProperty('level');
   });
 });

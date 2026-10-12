@@ -183,6 +183,20 @@ export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
 
+// Percentile shorthands for `quantile` at a fixed level.
+export const PERCENTILE_AGG_FN_LEVELS = {
+  p50: 0.5,
+  p90: 0.9,
+  p95: 0.95,
+  p99: 0.99,
+} as const;
+export const PercentileAggregateFunctionSchema = z.enum([
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+]);
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 export const RootValueExpressionSchema = z
@@ -2676,10 +2690,11 @@ export const AssistantLineTableConfigSchema = z.object({
   select: z
     .array(
       z.object({
-        // TODO: Change percentile to fixed functions
-        aggregationFunction: AggregateFunctionSchema.describe(
-          'SQL-like function to aggregate the property by',
-        ),
+        aggregationFunction: AggregateFunctionSchema.exclude(['quantile'])
+          .or(PercentileAggregateFunctionSchema)
+          .describe(
+            'SQL-like function to aggregate the property by. Percentiles are p50, p90, p95 and p99',
+          ),
         property: z
           .string()
           .describe('Property or column to be aggregated (ex. Duration)'),

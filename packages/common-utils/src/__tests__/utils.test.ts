@@ -13,6 +13,7 @@ import {
   getAlignedDateRange,
   getDistributedTableArgs,
   getFirstOrderingItem,
+  getPercentileAggFnLevel,
   hasNonEmptyOrderBy,
   hasPositiveSeriesLimit,
   isFirstOrderByAscending,
@@ -25,6 +26,7 @@ import {
   parseToStartOfFunction,
   pickBucketTimestampColumn,
   replaceJsonExpressions,
+  resolvePercentileAggFn,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
 } from '@/core/utils';
@@ -3421,6 +3423,46 @@ describe('utils', () => {
       expect(
         convertDateRangeToGranularityString(range(30 * 60), undefined, 0),
       ).toBe('30 second');
+    });
+  });
+
+  describe('getPercentileAggFnLevel', () => {
+    it.each([
+      ['p50', 0.5],
+      ['p90', 0.9],
+      ['p95', 0.95],
+      ['p99', 0.99],
+    ])('returns the level of %s', (aggFn, level) => {
+      expect(getPercentileAggFnLevel(aggFn)).toBe(level);
+    });
+
+    it.each(['quantile', 'avg', 'p75', 'toString', undefined])(
+      'returns undefined for %s',
+      aggFn => {
+        expect(getPercentileAggFnLevel(aggFn)).toBeUndefined();
+      },
+    );
+  });
+
+  describe('resolvePercentileAggFn', () => {
+    it('rewrites a percentile shorthand as quantile with its level', () => {
+      expect(
+        resolvePercentileAggFn({
+          aggFn: 'p95',
+          valueExpression: 'Duration',
+          aggCondition: "ServiceName = 'api'",
+        }),
+      ).toEqual({
+        aggFn: 'quantile',
+        level: 0.95,
+        valueExpression: 'Duration',
+        aggCondition: "ServiceName = 'api'",
+      });
+    });
+
+    it('returns other select items unchanged', () => {
+      const select = { aggFn: 'quantile', level: 0.5, valueExpression: 'x' };
+      expect(resolvePercentileAggFn(select)).toBe(select);
     });
   });
 });

@@ -23,6 +23,7 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   getAlignedDateRange,
+  getPercentileAggFnLevel,
   Granularity,
   hasPositiveSeriesLimit,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -1212,8 +1213,12 @@ export const convertV1ChartConfigToV2 = (
         const metricDataType = z
           .nativeEnum(MetricsDataTypeV2)
           .parse(rawMetricDataType?.toLowerCase());
+        const percentileLevel = getPercentileAggFnLevel(
+          s.aggFn?.replace(/_rate$/, ''),
+        );
         return {
           aggFn: mapV1AggFnToV2(s.aggFn),
+          ...(percentileLevel != null ? { level: percentileLevel } : {}),
           metricType: metricDataType,
           valueExpression: field,
           metricName,
