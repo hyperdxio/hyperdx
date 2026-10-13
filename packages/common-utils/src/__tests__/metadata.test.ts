@@ -733,6 +733,33 @@ describe('Metadata', () => {
       ]);
     });
 
+    it('caches lookups that differ only in limit separately', async () => {
+      const cachedMetadata = new Metadata(
+        mockClickhouseClient,
+        new MetadataCache(),
+      );
+      const renderChartConfigSpy = jest.spyOn(
+        renderChartConfigModule,
+        'renderChartConfig',
+      );
+
+      for (const limit of [5, 50]) {
+        await cachedMetadata.getKeyValues({
+          chartConfig: mockChartConfig,
+          keys: ['column1'],
+          limit,
+          disableRowLimit: true,
+          source,
+        });
+        const actualConfig = renderChartConfigSpy.mock.calls.at(-1)![0];
+        if (!isBuilderChartConfig(actualConfig))
+          throw new Error('Expected builder config');
+        expect(actualConfig.select).toContain(
+          `groupUniqArray(${limit})(column1)`,
+        );
+      }
+    });
+
     it('should filter out empty and nullish values from the response', async () => {
       (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
         json: () =>

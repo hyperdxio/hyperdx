@@ -1,6 +1,6 @@
 import React from 'react';
 import * as metadataModule from '@hyperdx/app/src/metadata';
-import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import { ColumnMeta, JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
   Field,
@@ -38,7 +38,20 @@ const createMockChartConfig = (
 
 jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({
-    data: [{ id: 'source1' }, { id: 'source2' }],
+    data: [
+      { id: 'source1' },
+      { id: 'source2' },
+      {
+        id: 'logs',
+        kind: 'log',
+        metadataMaterializedViews: { kvRollupTable: 'logs_kv' },
+      },
+      {
+        id: 'traces',
+        kind: 'trace',
+        metadataMaterializedViews: { kvRollupTable: 'traces_kv' },
+      },
+    ],
     isLoading: false,
   }),
 }));
@@ -248,6 +261,53 @@ describe('useGetKeyValues', () => {
     expect(result.current.error!.message).toBe('Fetch failed');
   });
 
+  const keys = ["ResourceAttributes['service.name']"];
+  const logsConfig = createMockChartConfig({
+    source: 'logs',
+    from: { databaseName: 'db', tableName: 'logs' },
+  });
+  const tracesConfig = createMockChartConfig({
+    source: 'traces',
+    from: { databaseName: 'db', tableName: 'traces' },
+  });
+
+  const renderValues = (
+    params: Partial<Parameters<typeof useMultipleGetKeyValues>[0]> = {},
+  ) =>
+    renderHook(
+      () =>
+        useMultipleGetKeyValues({
+          chartConfigs: [logsConfig, tracesConfig],
+          keys,
+          ...params,
+        }),
+      { wrapper },
+    );
+
+  it("returns the other sources' values when one fails", async () => {
+    jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockRejectedValueOnce(new Error('timeout'))
+      .mockResolvedValueOnce([{ key: keys[0], value: ['web'] }]);
+
+    const { result } = renderValues();
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([{ key: keys[0], value: ['web'] }]);
+  });
+
+  it('errors when every source fails', async () => {
+    jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockRejectedValueOnce(new Error('fail 1'))
+      .mockRejectedValueOnce(new Error('fail 2'));
+
+    const { result } = renderValues();
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error?.message).toBe('fail 1');
+  });
+
   it('should be in a loading state while fetching sources', async () => {
     jest.mocked(useSources).mockReturnValue({
       data: undefined,
@@ -381,6 +441,40 @@ describe('useAllKeyValues', () => {
     ]);
   });
 
+  it("streams with the source's metadata MVs", async () => {
+    jest.mocked(useSources).mockReturnValue({
+      data: [
+        {
+          id: 'logs',
+          kind: 'log',
+          metadataMaterializedViews: { kvRollupTable: 'logs_kv' },
+        },
+      ],
+      isLoading: false,
+    } as any);
+    const streamAllKeyValues = jest
+      .spyOn(mockMetadata, 'streamAllKeyValues')
+      .mockImplementation(async function* () {
+        yield [];
+      });
+
+    const { result } = renderHook(
+      () =>
+        useAllKeyValues({
+          chartConfig: { ...chartConfig, source: 'logs' },
+          keys: ['ServiceName'],
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(streamAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadataMVs: { kvRollupTable: 'logs_kv' },
+      }),
+    );
+  });
+
   it('does not stream when disabled', () => {
     const streamAllKeyValues = jest.spyOn(mockMetadata, 'streamAllKeyValues');
 
@@ -426,14 +520,41 @@ describe('useMultipleAllFields', () => {
     connectionId: 'conn1',
   };
 
+  const column = (name: string, type: string): ColumnMeta => ({
+    name,
+    type,
+    codec_expression: '',
+    comment: '',
+    default_expression: '',
+    default_type: '',
+    ttl_expression: '',
+  });
+  const columnsA = [
+    column('col_a', 'String'),
+    column('attrs', 'Map(String, String)'),
+    column('json', 'JSON'),
+  ];
+  const columnsB = [column('col_b', 'String')];
+
+  let team: { fieldMetadataDisabled?: boolean };
+
   beforeEach(() => {
     jest.clearAllMocks();
+    team = {};
     mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
     jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
-    jest.spyOn(api, 'useMe').mockReturnValue({
-      data: { team: {} },
-      isFetched: true,
-    } as any);
+    jest.spyOn(api, 'useMe').mockImplementation(
+      () =>
+        ({
+          data: { team },
+          isFetched: true,
+        }) as any,
+    );
+    jest
+      .spyOn(mockMetadata, 'getColumns')
+      .mockImplementation(async ({ tableName }) =>
+        tableName === 'table_a' ? columnsA : columnsB,
+      );
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -443,7 +564,8 @@ describe('useMultipleAllFields', () => {
     );
   });
 
-  it('should return fields from successful connections and empty array for failed ones', async () => {
+  it('returns the other table connections and no error when only some fail', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
     jest
       .spyOn(mockMetadata, 'getAllFields')
       .mockResolvedValueOnce(fieldsA)
@@ -455,8 +577,14 @@ describe('useMultipleAllFields', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    // Should contain only fieldsA since fieldsB failed
     expect(result.current.data).toEqual(fieldsA);
+    expect(result.current.errorsByTableConnection).toEqual(
+      new Map([[1, new Error('connection refused')]]),
+    );
+    expect(result.current.isError).toBe(false);
+    expect(result.current.error).toBeNull();
+    // Columns loaded before the field lookup failed, so they're kept.
+    expect(result.current.columnsByTableConnection.get(1)).toEqual(columnsB);
   });
 
   it('falls back to each connection timestampValueExpression when none is passed', async () => {
@@ -515,9 +643,12 @@ describe('useMultipleAllFields', () => {
       wrapper,
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(result.current.data).toEqual([]);
+    expect([...result.current.errorsByTableConnection.keys()]).toEqual([0, 1]);
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.error).toEqual(new Error('fail 1'));
   });
 
   it('should log a warning for each failed connection', async () => {
@@ -600,6 +731,89 @@ describe('useMultipleAllFields', () => {
 
     await waitFor(() => expect(result.current.isPending).toBe(true));
     expect(getAllFields).not.toHaveBeenCalled();
+  });
+
+  it('returns the fields and columns of each table connection in input order', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockImplementation(async ({ tableName }) =>
+        tableName === 'table_a' ? fieldsA : fieldsB,
+      );
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.fieldsByTableConnection).toEqual(
+      new Map([
+        [0, fieldsA],
+        [1, fieldsB],
+      ]),
+    );
+    expect(result.current.columnsByTableConnection).toEqual(
+      new Map([
+        [0, columnsA],
+        [1, columnsB],
+      ]),
+    );
+    expect(result.current.errorsByTableConnection.size).toBe(0);
+    expect(result.current.isError).toBe(false);
+  });
+
+  it('fails closed when intersecting and one table connection fails', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockImplementation(async ({ tableName }) => {
+        if (tableName === 'table_b') throw new Error('timeout');
+        return fieldsA;
+      });
+
+    const { result } = renderHook(
+      () => useMultipleAllFields([tcA, tcB], { intersect: true }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('returns only columns when the team disables field metadata', async () => {
+    team = { fieldMetadataDisabled: true };
+    const getAllFields = jest.spyOn(mockMetadata, 'getAllFields');
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([]);
+    expect(result.current.isFieldMetadataDisabled).toBe(true);
+    expect(result.current.columnsByTableConnection.get(0)).toEqual(columnsA);
+    expect(getAllFields).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same data reference across re-renders', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockImplementation(async ({ tableName }) =>
+        tableName === 'table_a' ? fieldsA : fieldsB,
+      );
+    const tableConnections = [tcA, tcB];
+
+    const { result, rerender } = renderHook(
+      () => useMultipleAllFields(tableConnections),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const first = result.current;
+    rerender();
+    expect(result.current.data).toBe(first.data);
+    expect(result.current.fieldsByTableConnection).toBe(
+      first.fieldsByTableConnection,
+    );
   });
 
   it('should fetch a populated table connection when the caller passes enabled: true', async () => {

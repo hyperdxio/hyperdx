@@ -2923,6 +2923,7 @@ export class Metadata {
       keys,
       // Serialize rather than hashing the raw state: the selections are Sets.
       keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
+      limit,
       disableRowLimit,
     };
     return this.cache.getOrFetch(
@@ -3194,6 +3195,7 @@ export class Metadata {
       keys,
       // Serialize rather than hashing the raw state: the selections are Sets.
       keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
+      limit,
       disableRowLimit,
     };
     return this.cache.getOrFetch(

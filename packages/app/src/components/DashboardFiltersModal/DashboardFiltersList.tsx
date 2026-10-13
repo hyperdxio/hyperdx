@@ -74,6 +74,9 @@ function getValuesAttribute(
         label: `${count} custom option${count === 1 ? '' : 's'}`,
       };
     }
+    // Not shown in the dashboard UI yet
+    case 'ADHOC':
+      return { icon: <IconSearch size={14} />, label: '' };
     default:
       filter satisfies never; // exhaustive check
       return { icon: <IconSearch size={14} />, label: '' };

@@ -31,6 +31,11 @@ import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
+  MCP_QUERY_MAX_EXECUTION_SEC,
+  MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
+} from '@/mcp/utils/timeout';
+import {
   convertToInternalTileConfig,
   isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
@@ -77,7 +82,7 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 /** ClickHouse settings applied to all MCP query-tool executions.
  *  readonly=2 so max_execution_time can be set (readonly=1 rejects it). */
 export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
-  max_execution_time: 30,
+  max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
   readonly: '2',
 };
 
@@ -86,7 +91,7 @@ export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
  * max_execution_time so ClickHouse returns a clean timeout before the HTTP
  * connection is aborted.
  */
-export const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+export const MCP_REQUEST_TIMEOUT = MCP_TOOL_TIMEOUT_MS + MCP_TIMEOUT_GRACE_MS;
 
 // ─── Increase top-N cap hint ────────────────────────────────────────────────
 

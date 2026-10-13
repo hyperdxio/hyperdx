@@ -32,14 +32,16 @@ import { usePrevious } from './utils';
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
+// The text is re-parsed into dates (picker input, `tq` URL param). Without a
+// year, chrono infers one and drops anything older than the current year.
 export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
   return `${formatDate(range[0], {
     isUTC,
-    format: 'normal',
+    format: 'withYear',
     clock: '24h',
   })} - ${formatDate(range[1], {
     isUTC,
-    format: 'normal',
+    format: 'withYear',
     clock: '24h',
   })}`;
 };
