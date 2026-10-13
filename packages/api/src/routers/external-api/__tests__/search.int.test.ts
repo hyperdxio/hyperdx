@@ -14,6 +14,10 @@ import Connection from '@/models/connection';
 import type { ISource } from '@/models/source';
 import { Source } from '@/models/source';
 import type { IUser } from '@/models/user';
+import {
+  encodeSearchCursor,
+  fingerprintQuery,
+} from '@/routers/external-api/v2/utils/searchCursor';
 
 const DEFAULT_END_TIME = Math.floor(Date.now() / 60000) * 60000;
 const DEFAULT_START_TIME = DEFAULT_END_TIME - 3600 * 1000;
@@ -556,5 +560,199 @@ describe('External API v2 Search', () => {
 
     expect(res.status).toBe(404);
     expect(res.body).toHaveProperty('message');
+  });
+
+  // Each test seeds its own rows: afterEach calls server.clearDBs().
+  const seedCursorRows = async () => {
+    // 40 rows one minute apart, so they span well past the newest 15m window,
+    // plus 3 rows sitting exactly on that window's boundary instant. Adjacent
+    // windows share that instant, so wrong inclusivity duplicates or drops them.
+    const boundary = DEFAULT_END_TIME - 15 * 60 * 1000;
+    await bulkInsertLogs([
+      ...Array.from({ length: 40 }, (_, i) => ({
+        ServiceName: 'cursor-test',
+        Timestamp: new Date(DEFAULT_END_TIME - i * 60 * 1000),
+        SeverityText: 'INFO',
+        Body: `row-${i}`,
+      })),
+      ...Array.from({ length: 3 }, (_, i) => ({
+        ServiceName: 'cursor-test',
+        Timestamp: new Date(boundary),
+        SeverityText: 'INFO',
+        Body: `boundary-${i}`,
+      })),
+    ]);
+  };
+
+  const cursorBody = () => ({
+    sourceId: logSource.id.toString(),
+    startTime: iso(DEFAULT_START_TIME),
+    endTime: iso(DEFAULT_END_TIME),
+    where: 'ServiceName:"cursor-test"',
+    select: 'Timestamp,Body',
+    maxResults: 5,
+  });
+
+  it('walks every row exactly once with cursor pagination', async () => {
+    await seedCursorRows();
+
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    let pages = 0;
+    for (; pages < 50; pages++) {
+      const res = await search({
+        ...cursorBody(),
+        cursor: cursor ?? 'start',
+      }).expect(200);
+      seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+      cursor = res.body.nextCursor;
+      if (cursor == null) break;
+    }
+
+    expect(pages).toBeLessThan(49);
+    expect(cursor).toBeNull();
+    expect(seen).toHaveLength(43);
+    expect(new Set(seen).size).toBe(43);
+  });
+
+  it.each([
+    ['omitted', {}],
+    ['empty', { endTime: '' }],
+  ])(
+    'pages with a defaulted endTime (%s), which resolves to a fresh now each call',
+    async (_label, endTimeField) => {
+      await seedCursorRows();
+
+      // parseTimeRange resolves an omitted or empty endTime to `now` per request.
+      // Fingerprinting or comparing it would 400 every page after the first, and
+      // recomputing windows from it shifts boundaries mid-walk.
+      const body = {
+        sourceId: logSource.id.toString(),
+        startTime: iso(DEFAULT_START_TIME),
+        ...endTimeField,
+        where: 'ServiceName:"cursor-test"',
+        select: 'Timestamp,Body',
+        maxResults: 5,
+      };
+
+      const seen: string[] = [];
+      let cursor: string | null | undefined;
+      let pages = 0;
+      for (; pages < 50; pages++) {
+        const res = await search({ ...body, cursor: cursor ?? 'start' }).expect(
+          200,
+        );
+        seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+        cursor = res.body.nextCursor;
+        if (cursor == null) break;
+      }
+
+      expect(cursor).toBeNull();
+      expect(seen).toHaveLength(43);
+      expect(new Set(seen).size).toBe(43);
+    },
+  );
+
+  it('rejects a cursor walk over a range longer than a year', async () => {
+    await search({
+      ...cursorBody(),
+      startTime: iso(DEFAULT_END_TIME - 400 * 24 * 60 * 60 * 1000),
+      cursor: 'start',
+    }).expect(400);
+  });
+
+  const forgeCursor = (
+    body: ReturnType<typeof cursorBody> & { orderBy: string },
+    offset: number,
+  ) =>
+    encodeSearchCursor(
+      {
+        windowIndex: 0,
+        offset,
+        startTime: iso(DEFAULT_START_TIME),
+        endTime: iso(DEFAULT_END_TIME),
+      },
+      fingerprintQuery({
+        sourceId: body.sourceId,
+        where: body.where,
+        whereLanguage: 'lucene',
+        select: body.select,
+        orderBy: body.orderBy,
+      }),
+    );
+
+  it('rejects a single-window cursor at the offset cap', async () => {
+    const body = { ...cursorBody(), orderBy: 'Body DESC' };
+    const res = await search({
+      ...body,
+      cursor: forgeCursor(body, 10_000),
+    }).expect(400);
+    expect(res.body.message).toMatch(/Too many matching rows/);
+  });
+
+  it('serves a short last page just under the offset cap', async () => {
+    const body = { ...cursorBody(), orderBy: 'Body DESC' };
+    const res = await search({
+      ...body,
+      cursor: forgeCursor(body, 9_998),
+    }).expect(200);
+    expect(res.body.nextCursor).toBeNull();
+  });
+
+  it('rejects a cursor replayed with a different explicit range', async () => {
+    await seedCursorRows();
+
+    const first = await search({ ...cursorBody(), cursor: 'start' }).expect(
+      200,
+    );
+    expect(first.body.nextCursor).toBeTruthy();
+
+    await search({
+      ...cursorBody(),
+      startTime: iso(DEFAULT_START_TIME + 60 * 1000),
+      cursor: first.body.nextCursor,
+    }).expect(400);
+  });
+
+  it('rejects a cursor reused against a different query', async () => {
+    await seedCursorRows();
+
+    const first = await search({ ...cursorBody(), cursor: 'start' }).expect(
+      200,
+    );
+    expect(first.body.nextCursor).toBeTruthy();
+
+    await search({
+      ...cursorBody(),
+      where: 'ServiceName:"other-cursor-svc"',
+      cursor: first.body.nextCursor,
+    }).expect(400);
+  });
+
+  it('leaves offset pagination behaving as before', async () => {
+    await seedCursorRows();
+
+    // Rows span ~40 minutes, so an offset past the newest 15m window must still
+    // reach older rows -- an offset-only request must not be confined to one
+    // window.
+    const first = await search({ ...cursorBody(), maxResults: 5 }).expect(200);
+    const deep = await search({
+      ...cursorBody(),
+      maxResults: 5,
+      offset: 20,
+    }).expect(200);
+
+    expect(first.body.data).toHaveLength(5);
+    expect(deep.body.data).toHaveLength(5);
+    // Offset-only callers are not driving a cursor walk.
+    expect(first.body.nextCursor).toBeNull();
+    expect(deep.body.nextCursor).toBeNull();
+    const firstBodies = first.body.data.map(
+      (r: Record<string, string>) => r.Body,
+    );
+    const deepBodies = deep.body.data.map(
+      (r: Record<string, string>) => r.Body,
+    );
+    expect(deepBodies).not.toEqual(firstBodies);
   });
 });
