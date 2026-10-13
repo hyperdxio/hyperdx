@@ -4721,7 +4721,7 @@ __metadata:
     "@braintree/sanitize-url": "npm:^7.1.1"
     "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
-    "@hyperdx/common-utils": "npm:^0.30.0"
+    "@hyperdx/common-utils": "npm:^0.31.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@hyperdx/passport-local-mongoose": "npm:^9.0.1"
     "@modelcontextprotocol/sdk": "npm:^1.27.1"
@@ -4815,7 +4815,7 @@ __metadata:
     "@hookform/resolvers": "npm:^3.9.0"
     "@hyperdx/api": "workspace:*"
     "@hyperdx/browser": "npm:^0.22.1"
-    "@hyperdx/common-utils": "npm:^0.30.0"
+    "@hyperdx/common-utils": "npm:^0.31.0"
     "@hyperdx/node-opentelemetry": "npm:^0.9.0"
     "@mantine/core": "npm:^9.0.0"
     "@mantine/dates": "npm:^9.0.0"
@@ -4942,7 +4942,7 @@ __metadata:
   resolution: "@hyperdx/cli@workspace:packages/cli"
   dependencies:
     "@clickhouse/client": "npm:1.23.0-head.fae5998.1"
-    "@hyperdx/common-utils": "npm:^0.30.0"
+    "@hyperdx/common-utils": "npm:^0.31.0"
     "@jest/globals": "npm:^30.2.0"
     "@types/crypto-js": "npm:^4.2.2"
     "@types/jest": "npm:^29.5.14"
@@ -4969,7 +4969,7 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@hyperdx/common-utils@npm:^0.30.0, @hyperdx/common-utils@workspace:packages/common-utils":
+"@hyperdx/common-utils@npm:^0.31.0, @hyperdx/common-utils@workspace:packages/common-utils":
   version: 0.0.0-use.local
   resolution: "@hyperdx/common-utils@workspace:packages/common-utils"
   dependencies:
@@ -19118,7 +19118,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"handlebars@npm:^4.7.10":
+"handlebars@npm:^4.7.10, handlebars@npm:^4.7.9":
   version: 4.7.10
   resolution: "handlebars@npm:4.7.10"
   dependencies:
@@ -19133,24 +19133,6 @@ __metadata:
   bin:
     handlebars: bin/handlebars
   checksum: 10c0/9b5573584ae5836172ae3f1502d9819568ba1b92ee83b81b18223beeb4c07486595e7b0fa633102beabc66ed06fe6e7da1dd9a9ea8c7072b9550b9a88809165c
-  languageName: node
-  linkType: hard
-
-"handlebars@npm:^4.7.9":
-  version: 4.7.9
-  resolution: "handlebars@npm:4.7.9"
-  dependencies:
-    minimist: "npm:^1.2.5"
-    neo-async: "npm:^2.6.2"
-    source-map: "npm:^0.6.1"
-    uglify-js: "npm:^3.1.4"
-    wordwrap: "npm:^1.0.0"
-  dependenciesMeta:
-    uglify-js:
-      optional: true
-  bin:
-    handlebars: bin/handlebars
-  checksum: 10c0/22f8105a7e68e81aff2662bb434edf05f757d21d850731d71cec886d69c10cd33d3c43e34b2892968ec62de8241611851d3d0674c8ef324ea3e01dc66262faa9
   languageName: node
   linkType: hard
 
@@ -23447,7 +23429,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"minimist@npm:1.2.8, minimist@npm:^1.2.0, minimist@npm:^1.2.5, minimist@npm:^1.2.6, minimist@npm:^1.2.7, minimist@npm:^1.2.8":
+"minimist@npm:1.2.8, minimist@npm:^1.2.0, minimist@npm:^1.2.6, minimist@npm:^1.2.7, minimist@npm:^1.2.8":
   version: 1.2.8
   resolution: "minimist@npm:1.2.8"
   checksum: 10c0/19d3fcdca050087b84c2029841a093691a91259a47def2f18222f41e7645a0b7c44ef4b40e88a1e58a40c84d2ef0ee6047c55594d298146d0eb3f6b737c20ce6

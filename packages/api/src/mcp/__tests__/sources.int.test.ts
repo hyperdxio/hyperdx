@@ -140,6 +140,40 @@ describe('MCP Source Tools', () => {
       expect(output.nextStep).toContain('clickstack_describe_source');
     });
 
+    // clickstack_sql callers need this for FROM. Without it they guess
+    // otel_logs, which only resolves when the tables sit in the
+    // connection's default database.
+    it('includes the database-qualified table each log and trace source reads', async () => {
+      const result = await callTool(client, 'clickstack_list_sources');
+      const output = JSON.parse(getFirstText(result));
+
+      const trace = output.sources.find(
+        (s: any) => s.kind === SourceKind.Trace,
+      );
+      const log = output.sources.find((s: any) => s.kind === SourceKind.Log);
+      expect(trace.table).toBe(`${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE}`);
+      expect(log.table).toBe(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`);
+    });
+
+    it('quotes table parts that are not bare identifiers so FROM still parses', async () => {
+      const source = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: 'observability-prod', tableName: 'otel.logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Quoted logs',
+      });
+
+      const result = await callTool(client, 'clickstack_list_sources');
+      const output = JSON.parse(getFirstText(result));
+
+      const log = output.sources.find(
+        (s: any) => s.id === source._id.toString(),
+      );
+      expect(log.table).toBe('`observability-prod`.`otel.logs`');
+    });
+
     it('should include keyColumns from source config without ClickHouse queries', async () => {
       const result = await callTool(client, 'clickstack_list_sources');
       const output = JSON.parse(getFirstText(result));
@@ -246,6 +280,47 @@ describe('MCP Source Tools', () => {
 
         // Top-level usage note explains direct metric querying.
         expect(output.metricsUsage).toContain('metricType + metricName');
+      });
+
+      it('includes the database its metricTables live in', async () => {
+        const metricSource = await createMetricSource();
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric.database).toBe(DEFAULT_DATABASE);
+        expect(metric.table).toBeUndefined();
+      });
+
+      // Metric sources may also set from.tableName, but their queryable
+      // tables are still the ones in metricTables.
+      it('includes the database for a metric source that also names a table', async () => {
+        const metricSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'otel_metrics_gauge',
+          },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name: 'Named metrics',
+        });
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric.database).toBe(DEFAULT_DATABASE);
+        expect(metric.table).toBeUndefined();
       });
 
       it('falls back to a wider lookback when no metrics reported in the last 24h', async () => {

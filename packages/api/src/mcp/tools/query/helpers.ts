@@ -32,6 +32,11 @@ import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
+  MCP_QUERY_MAX_EXECUTION_SEC,
+  MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
+} from '@/mcp/utils/timeout';
+import {
   convertToInternalTileConfig,
   isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
@@ -78,7 +83,7 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 /** ClickHouse settings applied to all MCP query-tool executions.
  *  readonly=2 so max_execution_time can be set (readonly=1 rejects it). */
 export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
-  max_execution_time: 30,
+  max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
   readonly: '2',
 };
 
@@ -87,7 +92,7 @@ export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
  * max_execution_time so ClickHouse returns a clean timeout before the HTTP
  * connection is aborted.
  */
-export const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+export const MCP_REQUEST_TIMEOUT = MCP_TOOL_TIMEOUT_MS + MCP_TIMEOUT_GRACE_MS;
 
 // ─── Increase top-N cap hint ────────────────────────────────────────────────
 
@@ -674,7 +679,7 @@ export async function runConfigTile(
     });
     return formatQueryResult(result);
   } catch (e) {
-    return clickHouseErrorResult(e);
+    return clickHouseErrorResult(e, { rawSql: true });
   }
 }
 
@@ -831,11 +836,11 @@ function hasNodeErrorCode(val: unknown, codes: ReadonlySet<string>): boolean {
  */
 export function clickHouseErrorResult(
   e: unknown,
-  context?: string | { prefix?: string; suffix?: string },
+  context?: string | { prefix?: string; suffix?: string; rawSql?: boolean },
 ): McpErrorResult {
-  const { prefix, suffix } =
+  const { prefix, suffix, rawSql } =
     typeof context === 'string'
-      ? { prefix: context, suffix: undefined }
+      ? { prefix: context, suffix: undefined, rawSql: undefined }
       : (context ?? {});
 
   // Prefer .message, but fall back to .cause.message when the wrapper
@@ -847,7 +852,7 @@ export function clickHouseErrorResult(
         (e.cause instanceof Error ? e.cause.message : '') ||
         String(e)
       : String(e);
-  const hint = errorHint(raw, e);
+  const hint = errorHint(raw, e, { rawSql });
   const base = hint ? `${raw}\n\nHINT: ${hint}` : raw;
   const text = `${prefix ? `${prefix}: ` : ''}${base}${suffix ? ` ${suffix}` : ''}`;
 
@@ -887,7 +892,11 @@ export function isQueryOutOfTime(e: unknown): boolean {
 }
 
 /** @internal Exported for testing only. */
-export function errorHint(msg: string, error?: unknown): string | null {
+export function errorHint(
+  msg: string,
+  error?: unknown,
+  options?: { rawSql?: boolean },
+): string | null {
   const unknownVariableError = findCause(
     error,
     (e): e is UnknownVariableError => e instanceof UnknownVariableError,
@@ -942,6 +951,22 @@ export function errorHint(msg: string, error?: unknown): string | null {
     return (
       'The query returned too many rows. ' +
       'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
+    );
+  }
+  // Checked before unknown identifiers: "Unknown table expression identifier"
+  // names a table, so describe_source's column list would not help. Only raw
+  // SQL names its own table; source-based tools would be sent back to the
+  // same source table that just failed.
+  if (
+    options?.rawSql &&
+    /Unknown table expression identifier|(Table|Database) \S+ does not exist|UNKNOWN_(TABLE|DATABASE)/.test(
+      msg,
+    )
+  ) {
+    return (
+      'Use the `table` of a source from clickstack_list_sources, which is ' +
+      'qualified with its database. Unqualified names resolve only in the ' +
+      "connection's default database."
     );
   }
   if (

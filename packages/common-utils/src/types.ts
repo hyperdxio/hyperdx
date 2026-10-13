@@ -1247,10 +1247,49 @@ export const VariableFilterValueSchema = z.object({
 
 export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
 
+/**
+ * Operators an ad hoc filter condition can use, spelled as in PromQL so one set
+ * serves both source types. `LIKE` / `NOT LIKE` are offered for SQL sources only.
+ */
+export const AdhocFilterOperatorSchema = z.enum([
+  '=',
+  '!=',
+  '=~',
+  '!~',
+  'LIKE',
+  'NOT LIKE',
+]);
+
+export type AdhocFilterOperator = z.infer<typeof AdhocFilterOperatorSchema>;
+
+/** One `key operator value` condition picked in an ad hoc filter. */
+export const AdhocFilterConditionSchema = z.object({
+  /** A SQL expression (column or map access) or a PromQL label name. */
+  key: z.string().min(1).max(10000),
+  operator: AdhocFilterOperatorSchema,
+  value: z.string().max(10000),
+});
+
+export type AdhocFilterCondition = z.infer<typeof AdhocFilterConditionSchema>;
+
+export const ADHOC_FILTER_MAX_CONDITIONS = 100;
+
+/** The conditions selected in an ad hoc filter, keyed by its variable name. */
+export const AdhocFilterValueSchema = z.object({
+  type: z.literal('adhoc'),
+  name: VariableFilterValueSchema.shape.name,
+  conditions: z
+    .array(AdhocFilterConditionSchema)
+    .max(ADHOC_FILTER_MAX_CONDITIONS),
+});
+
+export type AdhocFilterValue = z.infer<typeof AdhocFilterValueSchema>;
+
 /** One entry in a dashboard's `filters=` param / `savedFilterValues`. */
 export const DashboardFilterValueSchema = z.union([
   FilterSchema,
   VariableFilterValueSchema,
+  AdhocFilterValueSchema,
 ]);
 
 export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
@@ -2092,6 +2131,7 @@ export const DashboardFilterType = z.enum([
   'QUERY_EXPRESSION',
   'STATIC_LIST',
   'PROMETHEUS_LABEL',
+  'ADHOC',
 ]);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
@@ -2200,10 +2240,41 @@ export const PromqlLabelDashboardFilterSchema =
     isVariableEnabled: z.literal(true),
   });
 
+/** The kind of sources an ad hoc filter reads its keys from. */
+export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
+
+export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
+
+/**
+ * A filter whose conditions (`key operator value`) are picked freely from the
+ * keys of its sources: columns and map keys for SQL sources, labels for PromQL
+ * sources. Selection limits and requirements have no meaning for a list of
+ * conditions, so the filter does not carry them. Strict because routes validate
+ * without stripping, so an omitted key would otherwise still be stored.
+ */
+export const AdhocDashboardFilterSchema = dashboardFilterBaseSchema
+  .omit({ minSelections: true, maxSelections: true, isGlobalRequirement: true })
+  .extend({
+    type: z.literal(DashboardFilterType.enum.ADHOC),
+    sourceType: AdhocFilterSourceTypeSchema,
+    /** IDs of the sources whose keys and values the filter offers, all of `sourceType`. */
+    sources: z.array(z.string().min(1)).min(1),
+    /**
+     * Sources the conditions are broadcast to, all of `sourceType`. Undefined /
+     * empty means the filter's `sources`.
+     */
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /** Undefined / missing means ENABLED, as for QUERY_EXPRESSION filters. */
+    isBroadcastEnabled: z.boolean().optional(),
+    isVariableEnabled: z.literal(true),
+  })
+  .strict();
+
 export const DashboardFilterSchema = z.discriminatedUnion('type', [
   QueryExpressionDashboardFilterSchema,
   StaticListDashboardFilterSchema,
   PromqlLabelDashboardFilterSchema,
+  AdhocDashboardFilterSchema,
 ]);
 
 export type QueryExpressionDashboardFilter = z.infer<
@@ -2215,6 +2286,7 @@ export type StaticListDashboardFilter = z.infer<
 export type PromqlLabelDashboardFilter = z.infer<
   typeof PromqlLabelDashboardFilterSchema
 >;
+export type AdhocDashboardFilter = z.infer<typeof AdhocDashboardFilterSchema>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {

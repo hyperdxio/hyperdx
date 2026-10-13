@@ -36,6 +36,7 @@ import {
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import { isAdhocFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
@@ -1976,7 +1977,11 @@ function DBDashboardPage({
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
-  const filters = dashboard?.filters ?? [];
+  // Ad hoc filters aren't rendered or applied yet
+  const filters = useMemo(
+    () => (dashboard?.filters ?? []).filter(filter => !isAdhocFilter(filter)),
+    [dashboard?.filters],
+  );
   const {
     selectionByFilterId,
     setFilterValue,
