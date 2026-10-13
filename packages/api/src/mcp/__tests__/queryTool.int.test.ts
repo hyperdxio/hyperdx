@@ -817,10 +817,14 @@ describe('MCP Query Tools', () => {
       const getExamples = async () => {
         const { tools } = await client.listTools();
         const sqlParam = tools.find(t => t.name === 'clickstack_sql')!
-          .inputSchema.properties?.sql as { description: string };
-        return [
-          ...sqlParam.description.matchAll(/^Example \(.+\):\n {2}(.+)$/gm),
-        ].map(match => match[1]);
+          .inputSchema.properties?.sql;
+        const description =
+          sqlParam && typeof sqlParam === 'object' && 'description' in sqlParam
+            ? String(sqlParam.description)
+            : '';
+        return [...description.matchAll(/^Example \(.+\):\n {2}(.+)$/gm)].map(
+          match => match[1],
+        );
       };
 
       // Agents copy examples literally. A concrete table or column in one
