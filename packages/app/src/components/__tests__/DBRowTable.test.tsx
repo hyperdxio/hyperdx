@@ -814,10 +814,10 @@ describe('getPersistedBlockColumns', () => {
     ).toEqual(['_block_offset']);
   });
 
-  it('returns nothing when only enable_block_number_column is set', () => {
+  it('returns only _block_number when only enable_block_number_column is set', () => {
     expect(
       getPersistedBlockColumns(engine(', enable_block_number_column = 1')),
-    ).toEqual([]);
+    ).toEqual(['_block_number']);
   });
 
   it('returns nothing when neither setting is present', () => {
@@ -882,6 +882,23 @@ describe('useConfigWithAdditionalSelect', () => {
         '_block_offset',
       ]),
     );
+    expect(result.current?.rowKeyColumns?.has('Body')).toBe(false);
+  });
+
+  it('restricts the row lookup to PK + _block_number when only the number column is persisted', () => {
+    mockMetadata({
+      engineFull:
+        'MergeTree ORDER BY Timestamp SETTINGS enable_block_number_column = 1',
+    });
+
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id'),
+    );
+
+    expect(result.current?.select).toBe(
+      'Timestamp,ServiceName,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_number',
+    );
+    expect(result.current?.rowKeyColumns?.has('_block_number')).toBe(true);
     expect(result.current?.rowKeyColumns?.has('Body')).toBe(false);
   });
 

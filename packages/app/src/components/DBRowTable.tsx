@@ -1483,18 +1483,20 @@ export function appendSelectWithAdditionalKeys(
 }
 
 // Block columns are only stable row identifiers when the table persists them
-// (the virtual versions are renumbered on merge). _block_offset + primary key
-// is unique enough on its own: two rows would need identical key values (incl.
-// a nanosecond timestamp) and the same offset within their insert blocks. So
-// _block_number is used when persisted but not required, which lets tables
-// with only enable_block_offset_column = 1 skip the slow full-row lookup.
+// (the virtual versions are renumbered on merge). Either one combined with the
+// primary key is unique enough: two rows would need identical key values
+// (incl. a nanosecond timestamp) plus the same insert block or the same offset
+// within their blocks. So a table that persists only one of them still skips
+// the slow full-row lookup.
 export function getPersistedBlockColumns(engineFull: string): string[] {
-  if (!engineFull.includes('enable_block_offset_column = 1')) {
-    return [];
+  const columns: string[] = [];
+  if (engineFull.includes('enable_block_number_column = 1')) {
+    columns.push('_block_number');
   }
-  return engineFull.includes('enable_block_number_column = 1')
-    ? ['_block_number', '_block_offset']
-    : ['_block_offset'];
+  if (engineFull.includes('enable_block_offset_column = 1')) {
+    columns.push('_block_offset');
+  }
+  return columns;
 }
 
 function getSelectLength(select: SelectList): number {
