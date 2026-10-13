@@ -52,4 +52,26 @@ describe('formatResponseForTimeChart', () => {
       expect(graphResults.length).toBe(2);
     },
   );
+
+  it('colors series largest first so the biggest get distinct palette colors', () => {
+    const { series } = formatResponseForTimeChart({
+      response: {
+        meta: [
+          { name: 'ts', type: 'DateTime' },
+          { name: 'count()', type: 'UInt64' },
+          { name: 'service', type: 'String' },
+        ],
+        data: [
+          { ts: '2026-07-02T00:00:00Z', 'count()': '1', service: 'small' },
+          { ts: '2026-07-02T00:00:00Z', 'count()': '900', service: 'big' },
+          { ts: '2026-07-03T00:00:00Z', 'count()': '50', service: 'mid' },
+        ],
+        rows: 3,
+      },
+      dateRange,
+      generateEmptyBuckets: false,
+    });
+    expect(series.map(s => s.displayName)).toEqual(['big', 'mid', 'small']);
+    expect(series[0].color).toBe('blue');
+  });
 });
