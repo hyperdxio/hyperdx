@@ -1482,6 +1482,21 @@ export function appendSelectWithAdditionalKeys(
   }
 }
 
+// Block columns are only stable row identifiers when the table persists them
+// (the virtual versions are renumbered on merge). _block_offset + primary key
+// is unique enough on its own: two rows would need identical key values (incl.
+// a nanosecond timestamp) and the same offset within their insert blocks. So
+// _block_number is used when persisted but not required, which lets tables
+// with only enable_block_offset_column = 1 skip the slow full-row lookup.
+export function getPersistedBlockColumns(engineFull: string): string[] {
+  if (!engineFull.includes('enable_block_offset_column = 1')) {
+    return [];
+  }
+  return engineFull.includes('enable_block_number_column = 1')
+    ? ['_block_number', '_block_offset']
+    : ['_block_offset'];
+}
+
 function getSelectLength(select: SelectList): number {
   if (typeof select === 'string') {
     return select.split(',').filter(s => s.trim().length > 0).length;
@@ -1520,16 +1535,16 @@ export function useConfigWithAdditionalSelect(
     }
 
     let extraKeys: string[] = [];
+    let hasBlockColumns = false;
 
     if (sourceId) {
-      const engineFull = tableMetadata?.engine_full ?? '';
+      const blockColumns = getPersistedBlockColumns(
+        tableMetadata?.engine_full ?? '',
+      );
 
-      const hasBlockColumns =
-        engineFull.includes('enable_block_number_column = 1') &&
-        engineFull.includes('enable_block_offset_column = 1');
-
-      if (hasBlockColumns) {
-        extraKeys = ['_block_number', '_block_offset'];
+      if (blockColumns.length > 0) {
+        extraKeys = blockColumns;
+        hasBlockColumns = true;
       } else if (columns?.some(c => c.name === '__hdx_id')) {
         extraKeys = ['__hdx_id'];
       }
@@ -1548,10 +1563,6 @@ export function useConfigWithAdditionalSelect(
     // column references like Timestamp, ServiceName) so the row WHERE clause
     // can use only these, avoiding expensive index loading on large columns
     // like Body.
-    const hasBlockColumns =
-      extraKeys.includes('_block_number') &&
-      extraKeys.includes('_block_offset');
-
     const rowKeyColumns = hasBlockColumns
       ? new Set([
           ...splitAndTrimWithBracket(partitionKey),
