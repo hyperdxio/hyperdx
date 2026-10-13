@@ -4,7 +4,10 @@ import Webhook, {
   type WebhookDocument,
   WebhookService,
 } from '@/models/webhook';
-import { validateWebhookUrl } from '@/utils/validators';
+import {
+  validateWebhookBodyTemplate,
+  validateWebhookUrl,
+} from '@/utils/validators';
 
 export interface WebhookInput {
   name: string;
@@ -25,6 +28,7 @@ export async function createWebhook(
   { name, service, url, description, queryParams, headers, body }: WebhookInput,
 ) {
   validateWebhookUrl({ service, url });
+  validateWebhookBodyTemplate({ service, body });
 
   return Webhook.create({
     team,
@@ -61,6 +65,7 @@ export async function updateWebhook(
   }
 
   validateWebhookUrl({ service, url });
+  validateWebhookBodyTemplate({ service, body });
 
   const destinationChanged =
     url !== existing.url || service !== existing.service;

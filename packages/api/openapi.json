@@ -5481,7 +5481,7 @@
           "body": {
             "type": "string",
             "maxLength": 16384,
-            "description": "Optional request body template. Only for generic/incidentio; rejected for slack.",
+            "description": "Optional Handlebars request body template. Only for generic/incidentio; rejected for slack. Rejected with a 400 if it does not compile.",
             "example": "{\"alert\": \"{{title}}\", \"severity\": \"{{level}}\"}"
           },
           "headers": {
@@ -8462,6 +8462,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/webhooks/validate": {
+      "post": {
+        "summary": "Validate Webhook",
+        "description": "Validates a webhook body against the same schema, URL rules, and body\ntemplate check used by POST /api/v2/webhooks. The webhook is **never\npersisted**. Use this endpoint at plan time (e.g. from a Terraform\nprovider) to check that a webhook configuration is valid before\napplying it. Name uniqueness is not checked.\n",
+        "operationId": "validateWebhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result. HTTP 200 is always returned for valid **and**\ninvalid bodies — a non-200 response means the request itself\nfailed (auth, server error, etc.).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "errors",
+                    "normalized"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "description": "True when the body passes all validation rules."
+                    },
+                    "errors": {
+                      "type": "array",
+                      "description": "Validation errors. Empty when valid is true.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "path",
+                          "message"
+                        ],
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "description": "Dot-separated field path, or empty string for top-level errors."
+                          },
+                          "message": {
+                            "type": "string",
+                            "description": "Human-readable error description."
+                          }
+                        }
+                      }
+                    },
+                    "normalized": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "The parsed webhook body. Populated when valid is true,\nnull when valid is false.\n"
+                    }
+                  }
+                },
+                "examples": {
+                  "valid": {
+                    "summary": "Valid webhook body",
+                    "value": {
+                      "valid": true,
+                      "errors": [],
+                      "normalized": {
+                        "name": "Alerts",
+                        "service": "generic",
+                        "url": "https://example.com/webhooks/alerts",
+                        "body": "{\"alert\": \"{{title}}\"}"
+                      }
+                    }
+                  },
+                  "invalid": {
+                    "summary": "Body template that does not compile",
+                    "value": {
+                      "valid": false,
+                      "errors": [
+                        {
+                          "path": "body",
+                          "message": "Invalid webhook body template (line 1, column 12): Parse error on line 1: ..."
+                        }
+                      ],
+                      "normalized": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
                 }
               }
             }

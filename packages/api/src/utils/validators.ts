@@ -1,3 +1,4 @@
+import { getWebhookTemplateError } from '@hyperdx/common-utils/dist/core/handlebarsEnv';
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   isValidSlackUrl,
@@ -164,6 +165,43 @@ export function validateWebhookUrl(
     );
   }
 }
+
+export class WebhookBodyValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WebhookBodyValidationError';
+  }
+}
+
+/**
+ * Rejects a body template Handlebars cannot compile, which would otherwise
+ * fail on every alert delivery. Slack never renders the body.
+ */
+export function validateWebhookBodyTemplate({
+  service,
+  body,
+}: {
+  service: WebhookService;
+  body?: string;
+}) {
+  if (service === WebhookService.Slack) return;
+  const error = getWebhookTemplateError(body);
+  if (error == null) return;
+  const location =
+    error.line == null
+      ? ''
+      : ` (line ${error.line}${error.column == null ? '' : `, column ${error.column}`})`;
+  throw new WebhookBodyValidationError(
+    `Invalid webhook body template${location}: ${error.message}`,
+  );
+}
+
+/** A 400-worthy webhook config error whose message is safe to return. */
+export const isWebhookValidationError = (
+  err: unknown,
+): err is WebhookUrlValidationError | WebhookBodyValidationError =>
+  err instanceof WebhookUrlValidationError ||
+  err instanceof WebhookBodyValidationError;
 
 export const passwordSchema = z
   .string()

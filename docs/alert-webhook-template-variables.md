@@ -71,7 +71,8 @@ The template is Handlebars, not JSON: it only has to be JSON once rendered.
 Write string arguments inside `{{ … }}` with plain or single quotes —
 `{{#if (eq state "ALERT")}}` or `{{#if (eq state 'ALERT')}}` — never JSON-escaped
 as `\"ALERT\"`, which Handlebars cannot parse. The webhook form shows where a
-body fails to compile.
+body fails to compile, and the API rejects a body that doesn't compile when a
+webhook is created, updated, or tested.
 
 The **Send test** button on the webhook form fills every variable with a sample
 value, so a template that uses them can be checked before an alert fires. The

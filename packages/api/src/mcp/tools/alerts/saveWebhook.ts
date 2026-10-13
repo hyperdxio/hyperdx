@@ -10,7 +10,7 @@ import {
   validateObjectId,
 } from '@/mcp/utils/errors';
 import { isDuplicateKeyError } from '@/utils/errors';
-import { WebhookUrlValidationError } from '@/utils/validators';
+import { isWebhookValidationError } from '@/utils/validators';
 import { externalWebhookCreateSchema } from '@/utils/zod';
 
 // Flat z.object re-validated at runtime against externalWebhookCreateSchema: the
@@ -71,8 +71,11 @@ const mcpSaveWebhookSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Optional request body template. Not supported for the slack service. ' +
-        'On update this is a full replace: omitting it clears the stored body.',
+      'Optional Handlebars request body template. Not supported for the ' +
+        'slack service. Rejected if it does not compile. Write string ' +
+        'arguments inside {{ }} with plain or single quotes, e.g. ' +
+        '{{#if (eq state "ALERT")}}, never \\"ALERT\\". On update this is ' +
+        'a full replace: omitting it clears the stored body.',
     ),
 });
 
@@ -138,7 +141,7 @@ export function registerSaveWebhook({
         const webhook = await createWebhook(mongoTeamId, parsed.data);
         return webhookResult(webhook);
       } catch (e) {
-        if (e instanceof WebhookUrlValidationError) {
+        if (isWebhookValidationError(e)) {
           return mcpUserError(e.message);
         }
         if (isDuplicateKeyError(e)) {
