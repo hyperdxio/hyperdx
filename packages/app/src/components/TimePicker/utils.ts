@@ -1,5 +1,6 @@
 import * as chrono from 'chrono-node';
 import ms from 'ms';
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 
 function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
   if (!parsed) {
@@ -70,6 +71,32 @@ export function parseTimeRangeInput(
   } else {
     return [start, end];
   }
+}
+
+// Range text without a year is re-parsed with an inferred year (the current
+// one, or the previous one for dates >1 day ahead). Only past dates in the
+// current year survive that, so every other range needs an explicit year.
+export function rangeNeedsExplicitYear(
+  range: readonly [Date, Date],
+  isUTC: boolean = false,
+): boolean {
+  // eslint-disable-next-line no-restricted-syntax
+  const now = new Date();
+  const getYear = (d: Date) => (isUTC ? d.getUTCFullYear() : d.getFullYear());
+  return range.some(d => getYear(d) !== getYear(now) || d > now);
+}
+
+// Formats a range as text that parseTimeRangeInput maps back to the same dates.
+// The year is only included when it's needed to do so, to keep the text short.
+export function formatTimeRangeText(
+  range: readonly [Date, Date],
+  {
+    isUTC = false,
+    clock = '24h',
+  }: { isUTC?: boolean; clock?: '12h' | '24h' } = {},
+): string {
+  const format = rangeNeedsExplicitYear(range, isUTC) ? 'withYear' : 'normal';
+  return range.map(d => formatDate(d, { isUTC, format, clock })).join(' - ');
 }
 
 // Duration of a time range input in seconds, or null if it doesn't parse.

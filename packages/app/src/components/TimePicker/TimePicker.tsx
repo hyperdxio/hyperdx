@@ -3,7 +3,6 @@ import { add, Duration, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import {
   Button,
   Card,
@@ -34,6 +33,7 @@ import {
   dateParser,
   DURATION_OPTIONS,
   DURATIONS,
+  formatTimeRangeText,
   LIVE_TAIL_DURATION_MS,
   LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
@@ -191,9 +191,7 @@ const TimePickerComponent = ({
       if (!from || !to) {
         return;
       }
-      const rangeStr = [from, to]
-        .map(d => formatDate(d, { format: 'withYear', clock: timeFormat }))
-        .join(' - ');
+      const rangeStr = formatTimeRangeText([from, to], { clock: timeFormat });
       onChange(rangeStr);
       onSearch(rangeStr);
       close();
