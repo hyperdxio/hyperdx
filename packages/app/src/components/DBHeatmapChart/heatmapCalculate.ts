@@ -1,4 +1,4 @@
-import { range, round } from 'lodash';
+import { clamp, range, round } from 'lodash';
 
 import { computeEffectiveMin, heatmapLowQuantile } from './heatmapBounds';
 import {
@@ -8,7 +8,8 @@ import {
 } from './heatmapGrid';
 import { HeatmapSeries, makeTimeIndexer } from './heatmapSeriesGrid';
 
-export const CALCULATED_TARGET_BUCKETS = 10;
+export const CALCULATED_MIN_BUCKETS = 10;
+export const CALCULATED_MAX_BUCKETS = 100;
 
 /** Decimal places required to represent multiples of the given nice y step */
 function yStepDecimals(yStep: number) {
@@ -40,20 +41,33 @@ function niceYStep(min: number, max: number, count: number) {
 
 /** Index of the `yStep`-tall row holding `value`. */
 function yStepIndex(value: number, yStep: number) {
-  return Math.floor(round(value / yStep, 9));
+  // The epsilon absorbs float error like 0.3 / 0.1 = 2.9999999999999996.
+  return Math.floor(value / yStep + 1e-9);
 }
 
 /**
- * Linear buckets: at least `CALCULATED_TARGET_BUCKETS` rows of a nice y step,
- * aligned to multiples of the step so edges are round numbers.
+ * Number of rows to split the values into. Fewer samples get fewer
+ * rows while many samples keep their shape.
  */
-function linearBuckets(min: number, max: number) {
+function targetBuckets(maxSamplesPerColumn: number) {
+  return clamp(
+    Math.round(Math.sqrt(maxSamplesPerColumn)),
+    CALCULATED_MIN_BUCKETS,
+    CALCULATED_MAX_BUCKETS,
+  );
+}
+
+/**
+ * Linear buckets: at least `n` rows of a nice y step, aligned to multiples of
+ * the step so edges are round numbers.
+ */
+function linearBuckets(min: number, max: number, n: number) {
   // A constant value has no range to split, so size its single row by the
   // value's magnitude instead of the smallest step, which would be invisible.
   const yStep =
     max > min
-      ? niceYStep(min, max, CALCULATED_TARGET_BUCKETS)
-      : niceYStep(0, Math.abs(min) || 1, CALCULATED_TARGET_BUCKETS);
+      ? niceYStep(min, max, n)
+      : niceYStep(0, Math.abs(min) || 1, CALCULATED_MIN_BUCKETS);
   const decimals = yStepDecimals(yStep);
   const minIdx = yStepIndex(min, yStep);
   const rows = yStepIndex(max, yStep) - minIdx + 1;
@@ -66,10 +80,10 @@ function linearBuckets(min: number, max: number) {
 
 /**
  * Log buckets over positive samples, bounded like a builder distribution
- * heatmap's: `CALCULATED_TARGET_BUCKETS` geometric rows from `effectiveMin`
- * to the max, with smaller values in the bottom row.
+ * heatmap's: `n` geometric rows from `effectiveMin` to the max, with smaller
+ * values in the bottom row.
  */
-function logBuckets(values: Float64Array) {
+function logBuckets(values: Float64Array, n: number) {
   const q = heatmapLowQuantile('log');
   const min = values[Math.floor(q * (values.length - 1))];
   const max = values[values.length - 1];
@@ -85,7 +99,6 @@ function logBuckets(values: Float64Array) {
   }
   if (!(max > effectiveMin)) return undefined;
 
-  const n = CALCULATED_TARGET_BUCKETS;
   const logRange = Math.log(max / effectiveMin);
   const edges = Array.from(
     { length: n + 1 },
@@ -135,12 +148,15 @@ export function gridFromSamples({
     scaleType === 'log'
       ? new Float64Array(series.reduce((n, s) => n + s.points.length, 0))
       : undefined;
+  const columnCounts = new Uint32Array(times.length);
   let count = 0;
+  let maxSamplesPerColumn = 0;
   let min = Infinity;
   let max = -Infinity;
-  forEachSample((_, v) => {
+  forEachSample((ti, v) => {
     if (values != null) values[count] = v;
     count++;
+    maxSamplesPerColumn = Math.max(maxSamplesPerColumn, ++columnCounts[ti]);
     min = Math.min(min, v);
     max = Math.max(max, v);
   });
@@ -148,10 +164,11 @@ export function gridFromSamples({
     return { grid: EMPTY_HEATMAP_GRID, effectiveMin: 0 };
   }
 
+  const n = targetBuckets(maxSamplesPerColumn);
   const buckets =
     values != null
-      ? logBuckets(values.subarray(0, count).sort())
-      : linearBuckets(min, max);
+      ? logBuckets(values.subarray(0, count).sort(), n)
+      : linearBuckets(min, max, n);
   if (buckets == null) {
     return { grid: EMPTY_HEATMAP_GRID, effectiveMin: 0 };
   }

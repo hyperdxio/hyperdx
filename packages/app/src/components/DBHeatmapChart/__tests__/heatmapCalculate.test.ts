@@ -1,5 +1,6 @@
 import {
-  CALCULATED_TARGET_BUCKETS,
+  CALCULATED_MAX_BUCKETS,
+  CALCULATED_MIN_BUCKETS,
   gridFromSamples,
 } from '@/components/DBHeatmapChart/heatmapCalculate';
 import { EMPTY_HEATMAP_GRID } from '@/components/DBHeatmapChart/heatmapGrid';
@@ -90,6 +91,40 @@ describe('gridFromSamples', () => {
     ]);
     expect(grid.cells.slice(0, 10)).toEqual([1, 0, 0, 1, 0, 0, 0, 0, 0, 1]);
   });
+
+  it.each([
+    ['linear', 100, CALCULATED_MIN_BUCKETS],
+    ['linear', 1600, 40],
+    ['linear', 100_000, CALCULATED_MAX_BUCKETS],
+    ['log', 100, CALCULATED_MIN_BUCKETS],
+    ['log', 1600, 40],
+    ['log', 100_000, CALCULATED_MAX_BUCKETS],
+  ] as const)(
+    'splits %s samples into rows by the square root of the busiest column (%p samples → %p rows)',
+    (scaleType, samples, rows) => {
+      const { grid } = gridFromSamples({
+        series: [
+          series(
+            'a',
+            Array.from({ length: samples }, (_, i): [number, number] => [
+              0,
+              1 + (99 * i) / (samples - 1),
+            ]),
+          ),
+          series('b', [[STEP, 50]]),
+        ],
+        times,
+        scaleType,
+      });
+      const edges = grid.yAxis.type === 'numeric' ? grid.yAxis.edges : [];
+      if (scaleType === 'log') {
+        expect(edges).toHaveLength(rows + 1);
+      } else {
+        expect(edges.length - 1).toBeGreaterThanOrEqual(rows - 1);
+        expect(edges.length - 1).toBeLessThanOrEqual(rows * 1.5 + 1);
+      }
+    },
+  );
 
   it('starts the buckets at a multiple of the bucket size', () => {
     const edges = linearEdges([-12, 75]);
@@ -183,12 +218,12 @@ describe('gridFromSamples', () => {
       expect(effectiveMin).toBe(1);
       const edges = grid.yAxis.type === 'numeric' ? grid.yAxis.edges : [];
       expect(grid.yAxis.type === 'numeric' && grid.yAxis.scale).toBe('log');
-      expect(edges).toHaveLength(CALCULATED_TARGET_BUCKETS + 1);
+      expect(edges).toHaveLength(CALCULATED_MIN_BUCKETS + 1);
       expect(edges[0]).toBe(1);
-      expect(edges[CALCULATED_TARGET_BUCKETS / 2]).toBeCloseTo(10);
-      expect(edges[CALCULATED_TARGET_BUCKETS]).toBeCloseTo(100);
+      expect(edges[CALCULATED_MIN_BUCKETS / 2]).toBeCloseTo(10);
+      expect(edges[CALCULATED_MIN_BUCKETS]).toBeCloseTo(100);
 
-      const rows = CALCULATED_TARGET_BUCKETS;
+      const rows = CALCULATED_MIN_BUCKETS;
       expect(grid.cells[0]).toBe(1);
       expect(grid.cells[rows / 2]).toBe(1);
       expect(grid.cells[rows + rows - 1]).toBe(1);
@@ -211,7 +246,7 @@ describe('gridFromSamples', () => {
 
       expect(effectiveMin).toBeCloseTo(0.1);
       expect(grid.cells[0]).toBe(1);
-      expect(grid.cells[CALCULATED_TARGET_BUCKETS - 1]).toBe(1);
+      expect(grid.cells[CALCULATED_MIN_BUCKETS - 1]).toBe(1);
       expect(grid.cells.reduce((a, b) => a + b, 0)).toBe(2);
     });
 
@@ -241,7 +276,7 @@ describe('gridFromSamples', () => {
       expect(effectiveMin).toBeCloseTo(1e-4);
       const edges = grid.yAxis.type === 'numeric' ? grid.yAxis.edges : [];
       expect(edges.at(-1)).toBeCloseTo(1);
-      expect(grid.cells[CALCULATED_TARGET_BUCKETS - 1]).toBe(2);
+      expect(grid.cells[CALCULATED_MIN_BUCKETS - 1]).toBe(2);
       expect(grid.cells.reduce((a, b) => a + b, 0)).toBe(2);
     });
 
@@ -259,7 +294,7 @@ describe('gridFromSamples', () => {
 
       expect(effectiveMin).toBe(0.5);
       expect(grid.cells[0]).toBe(1);
-      expect(grid.cells[CALCULATED_TARGET_BUCKETS - 1]).toBe(100);
+      expect(grid.cells[CALCULATED_MIN_BUCKETS - 1]).toBe(100);
     });
 
     it('is empty when there is no positive range to bucket', () => {
