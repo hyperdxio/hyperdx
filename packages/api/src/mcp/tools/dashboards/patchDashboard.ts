@@ -12,6 +12,12 @@ import {
   isConfigTile,
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
+import {
+  parseVersionToken,
+  resolveDashboardWriteMiss,
+  versionFilter,
+  versionToken,
+} from '@/utils/dashboardVersion';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
@@ -39,10 +45,13 @@ export function registerPatchDashboard({
         'You can update dashboard-level fields (name, tags) and/or replace a single ' +
         'tile by tileId \u2014 all in one call. Unmentioned tiles and fields are preserved. ' +
         'Use clickstack_get_dashboard_tile to inspect a tile before patching it. ' +
+        'A `version` is required on every call — obtain it from clickstack_get_dashboard ' +
+        '(or `dashboardVersion` from clickstack_get_dashboard_tile) and pass it back; the ' +
+        'response returns a new `version` for the next patch. ' +
         'IMPORTANT: After patching a tile, run clickstack_query_tile to confirm the query still works.',
       inputSchema: mcpPatchDashboardSchema,
     },
-    async ({ dashboardId, name, tags, tileId, tile: inputTile }) => {
+    async ({ dashboardId, name, tags, tileId, tile: inputTile, version }) => {
       // Cross-field validation (kept in handler so the inputSchema
       // stays a plain z.object and its properties are visible in the
       // JSON Schema that the MCP SDK exposes to LLMs).
@@ -58,6 +67,23 @@ export function registerPatchDashboard({
       if ((tileId === undefined) !== (inputTile === undefined)) {
         return mcpUserError(
           'tileId and tile must both be provided or both omitted.',
+        );
+      }
+      // `version` is non-optional on the Zod schema now, so the MCP SDK's
+      // generated JSON Schema lists it in `required` and the transport
+      // rejects a call missing it before this handler runs. Kept as
+      // belt-and-braces in case a caller bypasses schema validation.
+      if (version === undefined) {
+        return mcpUserError(
+          'version is required. Call clickstack_get_dashboard (or ' +
+            'clickstack_get_dashboard_tile) to read the current state and obtain it.',
+        );
+      }
+      const expectedVersion = parseVersionToken(version);
+      if (expectedVersion == null) {
+        return mcpUserError(
+          `"${version}" is not a valid dashboard version. Use the value from a ` +
+            'clickstack_get_dashboard response verbatim.',
         );
       }
 
@@ -76,6 +102,7 @@ export function registerPatchDashboard({
       const queryFilter: Record<string, unknown> = {
         _id: dashboardId,
         team: teamId,
+        ...versionFilter(expectedVersion),
       };
 
       if (name !== undefined) {
@@ -203,13 +230,30 @@ export function registerPatchDashboard({
       );
 
       if (!updatedDashboard) {
-        // When a tile patch is in flight, a null result means the tile
-        // was removed or the dashboard was deleted between our read
-        // and this write.
+        const miss = await resolveDashboardWriteMiss(
+          dashboardId,
+          teamId,
+          'mcp_patch',
+        );
+        if (miss.kind === 'deleted') {
+          return mcpUserError(
+            'Dashboard not found — it was deleted after you read it.',
+          );
+        }
+        if (miss.currentVersion !== version) {
+          return mcpUserError(
+            `Dashboard changed since you read it (you sent ${version}, current is ` +
+              `${miss.currentVersion}). Your patch was not applied. Call ` +
+              'clickstack_get_dashboard to re-read it, re-apply your change on ' +
+              'top of the current state, then retry with the new version.',
+          );
+        }
+        // Version matched, so the dashboard is current: the tile itself is gone.
         if (tileId !== undefined) {
           return mcpUserError(
-            `Tile ${tileId} was not found at write time (it may have been removed by a concurrent update). ` +
-              'The entire update was rejected — name/tags changes (if any) were not applied. Resubmit.',
+            `Tile ${tileId} was not found at write time (it may have been removed ` +
+              'by a concurrent update). The entire update was rejected — name/tags ' +
+              'changes (if any) were not applied. Resubmit.',
           );
         }
         return mcpUserError('Dashboard not found');
@@ -244,6 +288,7 @@ export function registerPatchDashboard({
         ...(frontendUrl
           ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
           : {}),
+        version: versionToken(updatedDashboard),
       };
       if (patchedTile) {
         output.patchedTile = patchedTile;

@@ -14,4 +14,23 @@ ky.create = jest.fn(() => ky);
 // @ts-expect-error this exists
 ky.extend = jest.fn(() => ky);
 
+// Mirrors real ky's HTTPError shape so app code doing `instanceof HTTPError`
+// works the same under test as it does at runtime, instead of silently
+// resolving `HTTPError` to `undefined`.
+class HTTPError extends Error {
+  response: unknown;
+  request: unknown;
+  options: unknown;
+
+  constructor(response: unknown, request?: unknown, options?: unknown) {
+    super('Request failed');
+    this.name = 'HTTPError';
+    this.response = response;
+    this.request = request;
+    this.options = options;
+  }
+}
+// @ts-expect-error this exists
+ky.HTTPError = HTTPError;
+
 module.exports = ky;

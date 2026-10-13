@@ -47,10 +47,45 @@ describe('MCP Dashboard Tools - clickstack_get_dashboard_tile', () => {
     );
 
     expect(result.isError).toBeFalsy();
-    const tile = JSON.parse(getFirstText(result));
-    expect(tile.id).toBe(tileId);
-    expect(tile.name).toBe('Line Chart');
-    expect(tile.config.displayType).toBe('line');
+    const wrapped = JSON.parse(getFirstText(result));
+    expect(wrapped.tile.id).toBe(tileId);
+    expect(wrapped.tile.name).toBe('Line Chart');
+    expect(wrapped.tile.config.displayType).toBe('line');
+  });
+
+  it('wraps the tile with the dashboard id and version', async () => {
+    const sourceId = ctx.traceSource._id.toString();
+    const created = JSON.parse(
+      getFirstText(
+        await callTool(ctx.client!, 'clickstack_save_dashboard', {
+          name: 'Tile Version Dashboard',
+          tiles: [
+            {
+              name: 'Line Chart',
+              config: {
+                displayType: 'line',
+                sourceId,
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+        }),
+      ),
+    );
+    const tileId = created.tiles[0].id;
+
+    const result = JSON.parse(
+      getFirstText(
+        await callTool(ctx.client!, 'clickstack_get_dashboard_tile', {
+          dashboardId: created.id,
+          tileId,
+        }),
+      ),
+    );
+
+    expect(result.dashboardId).toBe(created.id);
+    expect(result.dashboardVersion).toBe(created.version);
+    expect(result.tile.id).toBe(tileId);
   });
 
   it('should return error for non-existent tileId', async () => {

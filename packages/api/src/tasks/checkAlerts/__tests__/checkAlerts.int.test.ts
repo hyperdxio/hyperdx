@@ -1317,6 +1317,7 @@ describe('checkAlerts', () => {
         tags: ['test'],
         createdAt: new Date(),
         updatedAt: new Date(),
+        version: 0,
       },
       startTime: new Date('2023-03-17T22:13:03.103Z'),
       endTime: new Date('2023-03-17T22:13:59.103Z'),

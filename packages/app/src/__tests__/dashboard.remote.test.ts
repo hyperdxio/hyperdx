@@ -22,18 +22,31 @@ jest.mock('nuqs', () => ({
   useQueryState: jest.fn(),
 }));
 
-// Capture each mutation's `mutationFn` so the tests can invoke it directly
-// without standing up a full React Query provider. Each `useMutation()`
-// call appends its config to `mutationFnCalls`; tests pull the most
-// recently registered fn and invoke it as if `mutate({...})` had run.
+// Capture each mutation's whole config (not just `mutationFn`) so tests can
+// also assert on `scope` and `onSuccess`. Each `useMutation()` call appends
+// its config to `mutationConfigs`; tests pull the most recently registered
+// entry and invoke it as if `mutate({...})` had run.
+const mutationConfigs: Array<{
+  mutationFn: (input: any) => any;
+  onSuccess?: (data: any) => void;
+  scope?: { id: string };
+}> = [];
 const mutationFnCalls: Array<(input: any) => any> = [];
+const setQueryData = jest.fn();
+const invalidateQueries = jest.fn();
+const getQueryData = jest.fn();
 jest.mock('@tanstack/react-query', () => ({
   useQuery: jest.fn(),
-  useMutation: jest.fn((cfg: { mutationFn: (input: any) => any }) => {
+  useMutation: jest.fn((cfg: any) => {
+    mutationConfigs.push(cfg);
     mutationFnCalls.push(cfg.mutationFn);
     return { mutate: jest.fn(), mutateAsync: jest.fn() };
   }),
-  useQueryClient: jest.fn(() => ({ invalidateQueries: jest.fn() })),
+  useQueryClient: jest.fn(() => ({
+    setQueryData,
+    invalidateQueries,
+    getQueryData,
+  })),
 }));
 jest.mock('@/utils', () => ({ hashCode: jest.fn(() => 0) }));
 
@@ -68,7 +81,12 @@ const setRemotePayload = (payload: unknown) => {
 
 beforeEach(() => {
   hdxServerMock.mockReset();
+  mutationConfigs.length = 0;
   mutationFnCalls.length = 0;
+  setQueryData.mockReset();
+  invalidateQueries.mockReset();
+  getQueryData.mockReset();
+  getQueryData.mockReturnValue(undefined);
 });
 
 describe('fetchDashboards (remote path)', () => {
@@ -288,5 +306,103 @@ describe('normalizeRawDashboardTileColors', () => {
   it('skips tiles whose config has no color', () => {
     const input = { tiles: [{ config: { displayType: 'line' } }] };
     expect(normalizeRawDashboardTileColors(input)).toBe(input);
+  });
+});
+
+describe('useUpdateDashboard concurrency', () => {
+  const dashboard = {
+    id: 'd1',
+    name: 'A',
+    tiles: [],
+    tags: [],
+    version: 1,
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  };
+
+  // Regression guard for a real bug: mutationFn used to re-read the
+  // dashboards cache for the token instead of trusting the version that
+  // came in with the payload. That let a save whose payload was built from
+  // an older render pass the guard with a sibling save's fresher cache
+  // entry, silently overwriting the sibling's write with stale data. The
+  // payload's own version must go out even when the cache holds a newer one.
+  it('sends the version from the mutation payload, not a fresher one from the cache', async () => {
+    const json = jest.fn().mockResolvedValue({ ...dashboard });
+    hdxServerMock.mockReturnValue({ json });
+    getQueryData.mockReturnValue([{ ...dashboard, version: 9 }]);
+
+    useUpdateDashboard('d1');
+    await mutationFnCalls.at(-1)!({
+      ...dashboard,
+      version: 1,
+    });
+
+    expect(hdxServerMock).toHaveBeenCalledWith('dashboards/d1', {
+      method: 'PATCH',
+      json: expect.objectContaining({
+        expectedVersion: '1',
+      }),
+    });
+  });
+
+  // expectedVersion is a control field; sending version as document
+  // state too would be noise the server has to strip.
+  it('does not send version or updatedAt as document fields', async () => {
+    const json = jest.fn().mockResolvedValue({ ...dashboard });
+    hdxServerMock.mockReturnValue({ json });
+
+    useUpdateDashboard('d1');
+    await mutationFnCalls.at(-1)!(dashboard);
+
+    expect(hdxServerMock.mock.calls.at(-1)![1].json).not.toHaveProperty(
+      'version',
+    );
+    expect(hdxServerMock.mock.calls.at(-1)![1].json).not.toHaveProperty(
+      'updatedAt',
+    );
+  });
+
+  // invalidateQueries refetches asynchronously, so without a synchronous
+  // cache write the next save would send the old token and 409 against
+  // its own predecessor.
+  it('writes the response into the dashboards cache on success', () => {
+    useUpdateDashboard('d1');
+    const cfg = mutationConfigs.at(-1)!;
+    const updated = { ...dashboard, version: 2 };
+
+    cfg.onSuccess!(updated);
+
+    expect(setQueryData).toHaveBeenCalledWith(
+      ['dashboards'],
+      expect.any(Function),
+    );
+    const updater = setQueryData.mock.calls.at(-1)![1];
+    expect(updater([dashboard])).toEqual([updated]);
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['dashboards'],
+    });
+  });
+
+  it('leaves other dashboards in the cache alone', () => {
+    useUpdateDashboard('d1');
+    const cfg = mutationConfigs.at(-1)!;
+    const other = { ...dashboard, id: 'd2', name: 'B' };
+
+    cfg.onSuccess!({ ...dashboard, name: 'Renamed' });
+
+    const updater = setQueryData.mock.calls.at(-1)![1];
+    expect(updater([other])).toEqual([other]);
+  });
+
+  // TanStack serialises mutations sharing the same `scope.id` (HDX-4159);
+  // under this wholesale mock we can only assert the key was passed, not
+  // that serialisation actually happens.
+  it('passes a per-dashboard scope key to the mutation', () => {
+    useUpdateDashboard('d1');
+    expect(mutationConfigs.at(-1)!.scope).toEqual({ id: 'dashboard-d1' });
+  });
+
+  it('leaves the scope unset for a local dashboard', () => {
+    useUpdateDashboard(undefined);
+    expect(mutationConfigs.at(-1)!.scope).toBeUndefined();
   });
 });
