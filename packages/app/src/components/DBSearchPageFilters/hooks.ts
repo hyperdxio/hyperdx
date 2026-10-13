@@ -17,7 +17,6 @@ import {
 import {
   Facet,
   useAllFields,
-  useAllKeyValues,
   useColumns,
   useDateTimeColumns,
   useFilterKeysFetchLimit,
@@ -193,29 +192,20 @@ function useFacets({
     [chartConfig, dateRange, mode],
   );
 
-  const isValuesQueryEnabled = !!enabled && !disableValues;
-  const exactKeyValues = useGetKeyValues(
-    {
-      chartConfig: facetsChartConfig,
-      limit: INITIAL_LOAD_LIMIT,
-      keys: escapedKeysToFetch,
-    },
-    { enabled: isValuesQueryEnabled && mode === 'exact' },
-  );
-  const allKeyValues = useAllKeyValues(
-    {
-      chartConfig: facetsChartConfig,
-      limit: INITIAL_LOAD_LIMIT,
-      keys: escapedKeysToFetch,
-    },
-    { enabled: isValuesQueryEnabled && mode === 'all' },
-  );
   const {
     data: rawFacets,
     error: keyValuesError,
     isLoading: isKeyValuesLoading,
     isFetching,
-  } = mode === 'all' ? allKeyValues : exactKeyValues;
+  } = useGetKeyValues(
+    {
+      chartConfig: facetsChartConfig,
+      limit: INITIAL_LOAD_LIMIT,
+      keys: escapedKeysToFetch,
+      mode,
+    },
+    { enabled: enabled && !disableValues },
+  );
 
   const maxKeys = useFilterKeysFetchLimit();
   const { facets, pendingKeys } = useMemo(
@@ -307,9 +297,12 @@ function useFacets({
 
   return {
     error: allFieldsError ?? keyValuesError,
-    data: { keys: allFields, keyValues: facets },
-    /** Listed keys whose values haven't arrived yet; their facets are empty. */
-    pendingKeys,
+    data: {
+      keys: allFields,
+      keyValues: facets,
+      /** Listed keys whose values haven't arrived yet; their facets are empty. */
+      pendingKeys,
+    },
     isLoading: isAllFieldsLoading || isKeyValuesLoading,
     isFetching,
     loadMoreFacetsForKey,
@@ -442,7 +435,7 @@ export function useFetchFacets({
 
   return {
     ...facetsQuery,
-    data: { keys: facetsQuery.data.keys, keyValues: facets },
+    data: { ...facetsQuery.data, keyValues: facets },
     loadMoreFacetsForKey,
     areExtraFacetsLoading,
     loadMoreLoadingKeys,

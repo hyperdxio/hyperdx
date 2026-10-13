@@ -11,12 +11,7 @@ import {
   tokenizeAtCursor,
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
-import {
-  type Facet,
-  useAllFields,
-  useAllKeyValues,
-  useGetKeyValues,
-} from '@/hooks/useMetadata';
+import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 
 enableMapSet();
 
@@ -54,7 +49,6 @@ jest.mock('../useMetadata', () => {
     useAllFields: jest.fn(),
     useMultipleAllFields: jest.fn(),
     useGetKeyValues: jest.fn(),
-    useAllKeyValues: jest.fn(),
     useColumns: jest.fn().mockReturnValue({ data: [], isLoading: false }),
     useDateTimeColumns: jest.fn().mockReturnValue(new Map()),
     useJsonColumns: jest.fn().mockReturnValue({ data: [] }),
@@ -104,15 +98,6 @@ const mockTableConnection = {
   connectionId: 'conn1',
 };
 
-const mockAllKeyValues = (data?: Facet[]) =>
-  jest.mocked(useAllKeyValues).mockReturnValue({
-    data,
-    error: null,
-    isError: false,
-    isFetching: false,
-    isLoading: false,
-  });
-
 describe('useAutoCompleteOptions', () => {
   let wrapper: React.FC<{ children: React.ReactNode }>;
 
@@ -129,7 +114,6 @@ describe('useAutoCompleteOptions', () => {
       data: null,
       isFetching: false,
     });
-    mockAllKeyValues();
 
     wrapper = makeWrapper();
   });
@@ -160,12 +144,15 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should return key value options with correct lucene formatting', () => {
-    mockAllKeyValues([
-      {
-        key: 'ResourceAttributes.service.name',
-        value: ['frontend', 'backend'],
-      },
-    ]);
+    (useGetKeyValues as jest.Mock).mockReturnValue({
+      data: [
+        {
+          key: 'ResourceAttributes.service.name',
+          value: ['frontend', 'backend'],
+        },
+      ],
+      isFetching: false,
+    });
 
     const { result } = renderHook(
       () =>
@@ -204,7 +191,7 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should handle nested key value options', () => {
-    (useAllKeyValues as jest.Mock).mockReturnValue({
+    (useGetKeyValues as jest.Mock).mockReturnValue({
       data: [
         {
           key: 'ResourceAttributes',

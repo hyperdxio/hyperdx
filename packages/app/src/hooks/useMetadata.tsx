@@ -20,6 +20,7 @@ import {
   BuilderChartConfigWithDateRange,
   isLogSource,
   isTraceSource,
+  MetadataMaterializedViews,
 } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
@@ -32,7 +33,7 @@ import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
-import { useStreamingQuery } from '@/hooks/useStreamingQuery';
+import { createPartialResultPublisher } from '@/hooks/useStreamingQuery';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
@@ -432,11 +433,18 @@ async function settleAllOrThrow<T>(promises: Promise<T>[]): Promise<T[]> {
 }
 
 /**
- * Values for `keys` across one or more sources, matching the configs' filters.
- * Reads metadata MVs, else the raw table, sampling the first
- * `max_rows_to_read` rows unless `disableRowLimit` is set. `limit` caps the
- * values returned per key. For values across the whole date range, use
- * `useAllKeyValues`.
+ * Values for `keys` across one or more sources.
+ *
+ * - `'exact'` reads metadata MVs, else the raw table, sampling the first
+ *   `max_rows_to_read` rows unless `disableRowLimit` is set. Supports
+ *   `keyConditions`.
+ * - `'all'` tries text indexes, then metadata MVs, then the raw table, so it is
+ *   cheaper for typeahead. It skips JSON-column keys, and its lookups return no
+ *   values instead of failing, so it rarely errors. When no values are showing
+ *   yet, each query's values land in `data` as soon as it finishes, while
+ *   `isFetching` is still true.
+ *
+ * `limit` caps the values returned per key in both modes.
  *
  * Errors only when every source's lookup fails.
  */
@@ -447,54 +455,122 @@ export function useMultipleGetKeyValues(
     keyConditions,
     limit,
     disableRowLimit,
+    mode = 'exact',
+    metadataMVs: metadataMVsOverride,
   }: {
     chartConfigs:
       | BuilderChartConfigWithDateRange
       | BuilderChartConfigWithDateRange[];
     keys: string[];
-    /** Per-key constraints for faceted value lookups. */
+    /** Per-key constraints for faceted ('exact' mode) value lookups. */
     keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
+    mode?: 'all' | 'exact';
+    /**
+     * MVs for 'all' mode, used instead of resolving them from the config's
+     * source (e.g. when chartConfig has no source). Ignored when there is more
+     * than one config, since MVs belong to a single table.
+     */
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
+  const queryClient = useQueryClient();
   const chartConfigsArr = toArray(chartConfigs);
 
   const { enabled = true } = options || {};
   const { isLoading: isLoadingMe } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
   const maxKeys = useFilterKeysFetchLimit();
+  // Read when a fetch starts. Values already on screen (including a previous
+  // query's, kept by `keepPreviousData`) stay until the new result is
+  // complete; a partial one would blank every key that hasn't arrived yet.
+  const isShowingDataRef = useRef(false);
 
+  const queryKey = [
+    'useMetadata.useGetKeyValues',
+    mode,
+    metadataMVsOverride,
+    ...chartConfigsArr.map(cc => ({ ...cc })),
+    ...keys,
+    // Serialized: react-query hashes keys with JSON.stringify, which would
+    // flatten every distinct Set selection to `{}`.
+    keyConditions?.map(c => c && serializeFilterState(c)),
+    disableRowLimit,
+    maxKeys,
+    limit,
+  ];
   const query = useQuery<Facet[]>({
-    queryKey: [
-      'useMetadata.useGetKeyValues',
-      ...chartConfigsArr.map(cc => ({ ...cc })),
-      ...keys,
-      // Serialized: react-query hashes keys with JSON.stringify, which would
-      // flatten every distinct Set selection to `{}`.
-      keyConditions?.map(c => c && serializeFilterState(c)),
-      disableRowLimit,
-      maxKeys,
-      limit,
-    ],
+    queryKey,
     queryFn: async ({ signal }) => {
       if (keys.length === 0) return [];
-      const results = await settleAllOrThrow(
-        chartConfigsArr.map(chartConfig => {
-          const source = chartConfig.source
-            ? sources?.find(s => s.id === chartConfig.source)
-            : undefined;
-          return metadata.getKeyValuesWithMVs({
-            chartConfig,
-            keys: keys.slice(0, maxKeys),
-            keyConditions: keyConditions?.slice(0, maxKeys),
-            limit,
-            disableRowLimit,
-            source,
+      const usableMVsOverride =
+        chartConfigsArr.length === 1 ? metadataMVsOverride : undefined;
+
+      const lookups = chartConfigsArr.map(chartConfig => {
+        const source = chartConfig.source
+          ? sources?.find(s => s.id === chartConfig.source)
+          : undefined;
+        const metadataMVs =
+          usableMVsOverride ??
+          (source && (isLogSource(source) || isTraceSource(source))
+            ? source.metadataMaterializedViews
+            : undefined);
+        return { chartConfig, source, metadataMVs };
+      });
+
+      if (mode === 'exact') {
+        const results = await settleAllOrThrow(
+          lookups.map(({ chartConfig, source }) =>
+            metadata.getKeyValuesWithMVs({
+              chartConfig,
+              keys: keys.slice(0, maxKeys),
+              keyConditions: keyConditions?.slice(0, maxKeys),
+              limit,
+              disableRowLimit,
+              source,
+              signal,
+            }),
+          ),
+        );
+        return results.flat();
+      }
+
+      const publish = isShowingDataRef.current
+        ? undefined
+        : createPartialResultPublisher<Facet>({
+            queryClient,
+            queryKey,
             signal,
           });
+      // Kept per source so a source that fails partway drops out of the
+      // final result, as it would had nothing streamed.
+      const arrivedBySource = lookups.map((): Facet[] => []);
+      const results = await settleAllOrThrow(
+        lookups.map(async ({ chartConfig, metadataMVs }, i) => {
+          for await (const keyValues of metadata.streamAllKeyValues({
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+            keyExpressions: keys.slice(0, maxKeys),
+            maxValuesPerKey: limit,
+            connectionId: chartConfig.connection,
+            metadataMVs,
+            dateRange: chartConfig.dateRange,
+            timestampValueExpression: chartConfig.timestampValueExpression,
+            signal,
+          })) {
+            if (signal.aborted) break;
+            arrivedBySource[i].push(
+              ...keyValues.map(({ key, value }) => ({
+                key,
+                value: value.map(val => val.toString()),
+              })),
+            );
+            publish?.(() => arrivedBySource.flat());
+          }
+          return arrivedBySource[i];
         }),
       );
       return results.flat();
@@ -505,8 +581,16 @@ export function useMultipleGetKeyValues(
     enabled: !!enabled && !!keys.length && !isLoadingSources && !isLoadingMe,
   });
 
+  const data = mode === 'all' && query.isError ? undefined : query.data;
+  useEffect(() => {
+    isShowingDataRef.current = data !== undefined;
+  });
+
   return {
     ...query,
+    // A failed stream's partial values stay in the cache; don't hand them
+    // back as though they were complete.
+    data,
     isLoading: query.isLoading || isLoadingSources,
   };
 }
@@ -553,6 +637,8 @@ export function useGetKeyValues(
     keyConditions,
     limit,
     disableRowLimit,
+    mode,
+    metadataMVs,
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
@@ -560,6 +646,8 @@ export function useGetKeyValues(
     keyConditions?: (FilterState | undefined)[];
     limit?: number;
     disableRowLimit?: boolean;
+    mode?: 'all' | 'exact';
+    metadataMVs?: MetadataMaterializedViews;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -570,101 +658,11 @@ export function useGetKeyValues(
       keyConditions,
       limit,
       disableRowLimit,
+      mode,
+      metadataMVs,
     },
     options,
   );
-}
-
-const facetKey = (facet: Facet) => facet.key;
-
-/**
- * Values for each key across the whole date range, ignoring the search
- * filters. `Metadata.getAllKeyValues` routes each key to a text index, the
- * metadata materialized views, or a raw table scan; each of those queries'
- * values show up as soon as it lands, rather than after the slowest one.
- *
- * Facets arrive in whatever order the queries finish. While a new date range
- * streams, the previous range's values stay in place until replaced.
- */
-export function useAllKeyValues(
-  {
-    chartConfig,
-    keys,
-    limit = 20,
-  }: {
-    chartConfig: BuilderChartConfigWithDateRange;
-    keys: string[];
-    /** Values per key. */
-    limit?: number;
-  },
-  { enabled = true }: { enabled?: boolean } = {},
-) {
-  const metadata = useMetadataWithSettings();
-  const { isLoading: isLoadingMe } = api.useMe();
-  const { data: sources, isLoading: isLoadingSources } = useSources();
-  const maxKeys = useFilterKeysFetchLimit();
-  const keysToFetch = useMemo(() => keys.slice(0, maxKeys), [keys, maxKeys]);
-
-  const source = chartConfig.source
-    ? sources?.find(s => s.id === chartConfig.source)
-    : undefined;
-  const metadataMVs =
-    source && (isLogSource(source) || isTraceSource(source))
-      ? source.metadataMaterializedViews
-      : undefined;
-
-  const {
-    connection: connectionId,
-    from: { databaseName, tableName },
-    dateRange,
-    timestampValueExpression,
-  } = chartConfig;
-
-  const streamed = useStreamingQuery<Facet>({
-    queryKey: [
-      'useMetadata.useAllKeyValues',
-      connectionId,
-      databaseName,
-      tableName,
-      timestampValueExpression,
-      dateRange[0].getTime(),
-      dateRange[1].getTime(),
-      metadataMVs,
-      limit,
-      keysToFetch,
-    ],
-    // Not memoized: read when the query runs, not hashed into its key.
-    streamFactory: async function* ({ signal }) {
-      for await (const keyValues of metadata.streamAllKeyValues({
-        databaseName,
-        tableName,
-        connectionId,
-        keyExpressions: keysToFetch,
-        maxValuesPerKey: limit,
-        metadataMVs,
-        dateRange,
-        timestampValueExpression,
-        signal,
-      })) {
-        yield keyValues.map(({ key, value }) => ({
-          key,
-          value: value.map(val => val.toString()),
-        }));
-      }
-    },
-    enabled:
-      enabled && keysToFetch.length > 0 && !isLoadingSources && !isLoadingMe,
-    itemKey: facetKey,
-  });
-
-  return {
-    data: streamed.data,
-    error: streamed.error,
-    isError: streamed.isError,
-    isFetching: streamed.isStreaming,
-    // Only until the first values land; the stream then fills in.
-    isLoading: (!streamed.data && streamed.isStreaming) || isLoadingSources,
-  };
 }
 
 /**

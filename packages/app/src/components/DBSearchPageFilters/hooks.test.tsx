@@ -23,16 +23,17 @@ enableMapSet();
  * These tests focus on the two code paths inside `useFacets`:
  *
  *  1. Raw-tables pipeline: active when `mode === 'exact'`. Calls
- *     `useGetKeyValues` and scopes "Load more" through
+ *     `useGetKeyValues({ mode: 'exact' })` and scopes "Load more" through
  *     `metadata.getKeyValuesWithMVs`.
- *  2. "All" pipeline: active when `mode === 'all'`. Calls `useAllKeyValues`
- *     — which streams from `metadata.streamAllKeyValues`, whose router picks
+ *  2. "All" pipeline: active when `mode === 'all'`. Calls
+ *     `useGetKeyValues({ mode: 'all' })` — whose intelligent router picks
  *     MV/text-index/raw internally — and delegates "Load more" to
  *     `metadata.getAllKeyValues`.
  *
- * Both hooks are always called, and `mode` enables exactly one of them.
- * Selection is mode-only; the presence or absence of metadata materialized
- * views on the source does not affect which path runs.
+ * Both paths share a single `useGetKeyValues` call whose behavior is driven
+ * entirely by the `mode` argument. Selection is mode-only; the presence or
+ * absence of metadata materialized views on the source does not affect which
+ * path runs.
  *
  * Plus the shared state layer that merges "load more" results into the
  * active path (union — primary values are preserved and never overridden by
@@ -68,7 +69,6 @@ jest.mock('@/hooks/useMetadata', () => ({
   useMapColumns: jest.fn(),
   useAllFields: jest.fn(),
   useGetKeyValues: jest.fn(),
-  useAllKeyValues: jest.fn(),
   useFilterKeysFetchLimit: jest.fn(),
 }));
 
@@ -84,7 +84,6 @@ const useJsonColumns = jest.mocked(useMetadataModule.useJsonColumns);
 const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
 const useAllFields = jest.mocked(useMetadataModule.useAllFields);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
-const useAllKeyValues = jest.mocked(useMetadataModule.useAllKeyValues);
 const useFilterKeysFetchLimit = jest.mocked(
   useMetadataModule.useFilterKeysFetchLimit,
 );
@@ -127,6 +126,7 @@ const makeLogSource = (opts: { withMVs: boolean }) => ({
 
 type SourceQueryResult = ReturnType<typeof sourceModule.useSource>;
 type AllFieldsResult = ReturnType<typeof useMetadataModule.useAllFields>;
+type KeyValuesResult = ReturnType<typeof useMetadataModule.useGetKeyValues>;
 type MetadataWithSettings = ReturnType<
   typeof useMetadataModule.useMetadataWithSettings
 >;
@@ -199,14 +199,6 @@ function setupDefaultMocks({ withMVs }: { withMVs: boolean }) {
     error: null,
   } as any);
 
-  useAllKeyValues.mockReturnValue({
-    data: undefined,
-    isLoading: false,
-    isFetching: false,
-    isError: false,
-    error: null,
-  });
-
   useFilterKeysFetchLimit.mockReturnValue(100);
 }
 
@@ -216,7 +208,7 @@ describe('useFetchFacets', () => {
   });
 
   describe('pipeline selection', () => {
-    it('enables only useGetKeyValues when mode is exact', () => {
+    it('routes useGetKeyValues with mode="exact" when mode is exact', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -231,11 +223,12 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(useGetKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(true);
-      expect(useAllKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(false);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[0]?.mode).toBe('exact');
+      expect(call?.[1]?.enabled).toBe(true);
     });
 
-    it('enables only useAllKeyValues when mode is all', () => {
+    it('routes useGetKeyValues with mode="all" when mode is all', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -250,11 +243,12 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(useAllKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(true);
-      expect(useGetKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(false);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[0]?.mode).toBe('all');
+      expect(call?.[1]?.enabled).toBe(true);
     });
 
-    it('selection is mode-only: MV presence does not change which pipeline runs', () => {
+    it('selection is mode-only: MV presence does not change which mode is passed', () => {
       setupDefaultMocks({ withMVs: true });
       const { wrapper } = makeWrapper();
 
@@ -269,8 +263,8 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(useGetKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(true);
-      expect(useAllKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(false);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[0]?.mode).toBe('exact');
     });
   });
 
@@ -279,7 +273,7 @@ describe('useFetchFacets', () => {
   // query — only firing that query once the user is actively searching on
   // a fully-formed key. Guard against a regression that couples the two.
   describe('disableValues', () => {
-    it('disables the values query when disableValues is true', () => {
+    it('disables the useGetKeyValues query when disableValues is true', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -295,11 +289,11 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(useAllKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(false);
-      expect(useGetKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(false);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[1]?.enabled).toBe(false);
     });
 
-    it('enables the values query when disableValues is false or omitted', () => {
+    it('enables the useGetKeyValues query when disableValues is false or omitted', () => {
       setupDefaultMocks({ withMVs: false });
       const { wrapper } = makeWrapper();
 
@@ -315,7 +309,8 @@ describe('useFetchFacets', () => {
         { wrapper },
       );
 
-      expect(useAllKeyValues.mock.calls.at(-1)?.[1]?.enabled).toBe(true);
+      const call = useGetKeyValues.mock.calls.at(-1);
+      expect(call?.[1]?.enabled).toBe(true);
     });
 
     it('does not defer the field metadata query — useAllFields stays enabled', () => {
@@ -366,29 +361,29 @@ describe('useFetchFacets', () => {
   });
 
   describe('data selection', () => {
-    // Give each pipeline a distinct fixture, so an assertion against
-    // `data.keyValues` proves the active pipeline's response is returned.
-    function mockKeyValuesByMode(byMode: { exact: Facet[]; all: Facet[] }) {
-      useGetKeyValues.mockReturnValue({
-        data: byMode.exact,
-        isLoading: false,
-        isFetching: false,
-        error: null,
-      } as any);
-      useAllKeyValues.mockReturnValue({
-        data: byMode.all,
-        isLoading: false,
-        isFetching: false,
-        isError: false,
-        error: null,
-      });
+    // Route mock responses by the `mode` arg so each pipeline sees a
+    // distinct fixture — that way an assertion against `data.keyValues`
+    // actually proves the active pipeline's response is returned.
+    function mockGetKeyValuesByMode(byMode: { exact: unknown; all: unknown }) {
+      useGetKeyValues.mockImplementation(((args: { mode?: 'all' | 'exact' }) =>
+        args?.mode === 'all' ? byMode.all : byMode.exact) as any);
     }
 
     it('returns data from the raw-tables pipeline when mode is exact', () => {
       setupDefaultMocks({ withMVs: false });
-      mockKeyValuesByMode({
-        exact: [{ key: 'ServiceName', value: ['api', 'web'] }],
-        all: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
+      mockGetKeyValuesByMode({
+        exact: {
+          data: [{ key: 'ServiceName', value: ['api', 'web'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
+        all: {
+          data: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
       });
 
       const { wrapper } = makeWrapper();
@@ -411,9 +406,19 @@ describe('useFetchFacets', () => {
 
     it('returns data from the "all" pipeline when mode is all', () => {
       setupDefaultMocks({ withMVs: true });
-      mockKeyValuesByMode({
-        exact: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
-        all: [{ key: 'ServiceName', value: ['api', 'web'] }],
+      mockGetKeyValuesByMode({
+        exact: {
+          data: [{ key: 'ShouldNotBeUsed', value: ['x'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
+        all: {
+          data: [{ key: 'ServiceName', value: ['api', 'web'] }],
+          isLoading: false,
+          isFetching: false,
+          error: null,
+        },
       });
 
       const { wrapper } = makeWrapper();
@@ -496,14 +501,13 @@ describe('useFetchFacets', () => {
       },
     ];
 
-    const mockAllKeyValues = (data: Facet[] | undefined, isFetching: boolean) =>
-      useAllKeyValues.mockReturnValue({
+    const mockKeyValues = (data: Facet[] | undefined, isFetching: boolean) =>
+      useGetKeyValues.mockReturnValue({
         data,
         isLoading: false,
         isFetching,
-        isError: false,
         error: null,
-      });
+      } as unknown as KeyValuesResult);
 
     const renderAllMode = () =>
       renderHook(
@@ -522,7 +526,7 @@ describe('useFetchFacets', () => {
       useAllFields.mockReturnValue({
         data: TWO_FIELDS,
       } as unknown as AllFieldsResult);
-      mockAllKeyValues([{ key: 'SeverityText', value: ['info'] }], true);
+      mockKeyValues([{ key: 'SeverityText', value: ['info'] }], true);
 
       const { result } = renderAllMode();
 
@@ -530,7 +534,7 @@ describe('useFetchFacets', () => {
         { key: 'ServiceName', value: [] },
         { key: 'SeverityText', value: ['info'] },
       ]);
-      expect(result.current.pendingKeys).toEqual(new Set(['ServiceName']));
+      expect(result.current.data.pendingKeys).toEqual(new Set(['ServiceName']));
     });
 
     it('drops keys without values once the values query finishes', () => {
@@ -538,14 +542,14 @@ describe('useFetchFacets', () => {
       useAllFields.mockReturnValue({
         data: TWO_FIELDS,
       } as unknown as AllFieldsResult);
-      mockAllKeyValues([{ key: 'SeverityText', value: ['info'] }], false);
+      mockKeyValues([{ key: 'SeverityText', value: ['info'] }], false);
 
       const { result } = renderAllMode();
 
       expect(result.current.data.keyValues).toEqual([
         { key: 'SeverityText', value: ['info'] },
       ]);
-      expect(result.current.pendingKeys.size).toBe(0);
+      expect(result.current.data.pendingKeys.size).toBe(0);
     });
 
     it('does not list keys past the team key fetch limit', () => {
@@ -554,14 +558,14 @@ describe('useFetchFacets', () => {
         data: TWO_FIELDS,
       } as unknown as AllFieldsResult);
       useFilterKeysFetchLimit.mockReturnValue(1);
-      mockAllKeyValues(undefined, true);
+      mockKeyValues(undefined, true);
 
       const { result } = renderAllMode();
 
       expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: [] },
       ]);
-      expect(result.current.pendingKeys).toEqual(new Set(['ServiceName']));
+      expect(result.current.data.pendingKeys).toEqual(new Set(['ServiceName']));
     });
   });
 

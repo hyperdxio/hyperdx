@@ -1215,7 +1215,6 @@ const DBSearchPageFiltersComponent = ({
     isLoading: isFacetsLoading,
     isFetching: isFacetsFetching,
     error,
-    pendingKeys,
     loadMoreFacetsForKey,
     loadMoreLoadingKeys,
     extraFacetKeys,
@@ -1227,7 +1226,7 @@ const DBSearchPageFiltersComponent = ({
     filterState,
     showMoreFields,
   });
-  const facets = fetchFacetsData.keyValues;
+  const { keyValues: facets, pendingKeys } = fetchFacetsData;
 
   useEffect(() => {
     if (error) {
