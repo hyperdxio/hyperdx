@@ -2,13 +2,17 @@ import * as chrono from 'chrono-node';
 import ms from 'ms';
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 
+function currentDate(): Date {
+  // eslint-disable-next-line no-restricted-syntax
+  return new Date();
+}
+
 function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
   if (!parsed) {
     return null;
   }
 
-  // eslint-disable-next-line no-restricted-syntax
-  const now = new Date();
+  const now = currentDate();
   const parsedDate = parsed.date();
 
   // If all of the time components have been inferred, set the time components of now
@@ -60,8 +64,7 @@ export function parseTimeRangeInput(
       ? parsedTimeResults[0]
       : parsedTimeResults[1];
   const start = normalizeParsedDate(parsedTimeResult.start);
-  // eslint-disable-next-line no-restricted-syntax
-  const end = normalizeParsedDate(parsedTimeResult.end) || new Date();
+  const end = normalizeParsedDate(parsedTimeResult.end) || currentDate();
   if (end && start && end < start) {
     // For date range strings that omit years, the chrono parser will infer the year
     // using the current year. This can cause the start date to be in the future, and
@@ -80,8 +83,7 @@ export function rangeNeedsExplicitYear(
   range: readonly [Date, Date],
   isUTC: boolean = false,
 ): boolean {
-  // eslint-disable-next-line no-restricted-syntax
-  const now = new Date();
+  const now = currentDate();
   const getYear = (d: Date) => (isUTC ? d.getUTCFullYear() : d.getFullYear());
   return range.some(d => getYear(d) !== getYear(now) || d > now);
 }
