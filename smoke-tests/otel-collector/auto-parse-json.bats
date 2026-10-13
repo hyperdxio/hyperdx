@@ -27,6 +27,9 @@ load 'test_helpers/assertions.bash'
     assert_test_data "data/auto-parse/brace-not-json"
 
     run docker compose logs otel-collector
+    [ "$status" -eq 0 ]
+    # Prove we read the collector's output before asserting what's absent from it.
+    [[ "$output" == *"Everything is ready"* ]]
     [[ "$output" != *"invalid character"* ]]
     [[ "$output" != *"ParseJSON"* ]]
 }
