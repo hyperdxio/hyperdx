@@ -12,6 +12,7 @@ import {
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
 import {
+  type Facet,
   useAllFields,
   useAllKeyValues,
   useGetKeyValues,
@@ -103,6 +104,15 @@ const mockTableConnection = {
   connectionId: 'conn1',
 };
 
+const mockAllKeyValues = (data?: Facet[]) =>
+  jest.mocked(useAllKeyValues).mockReturnValue({
+    data,
+    error: null,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+  });
+
 describe('useAutoCompleteOptions', () => {
   let wrapper: React.FC<{ children: React.ReactNode }>;
 
@@ -119,10 +129,7 @@ describe('useAutoCompleteOptions', () => {
       data: null,
       isFetching: false,
     });
-    (useAllKeyValues as jest.Mock).mockReturnValue({
-      data: undefined,
-      isFetching: false,
-    });
+    mockAllKeyValues();
 
     wrapper = makeWrapper();
   });
@@ -153,15 +160,12 @@ describe('useAutoCompleteOptions', () => {
   });
 
   it('should return key value options with correct lucene formatting', () => {
-    (useAllKeyValues as jest.Mock).mockReturnValue({
-      data: [
-        {
-          key: 'ResourceAttributes.service.name',
-          value: ['frontend', 'backend'],
-        },
-      ],
-      isFetching: false,
-    });
+    mockAllKeyValues([
+      {
+        key: 'ResourceAttributes.service.name',
+        value: ['frontend', 'backend'],
+      },
+    ]);
 
     const { result } = renderHook(
       () =>

@@ -519,7 +519,9 @@ describe('useFetchFacets', () => {
 
     it('lists keys whose values have not arrived yet as empty, pending facets', () => {
       setupDefaultMocks({ withMVs: false });
-      useAllFields.mockReturnValue({ data: TWO_FIELDS } as any);
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
       mockAllKeyValues([{ key: 'SeverityText', value: ['info'] }], true);
 
       const { result } = renderAllMode();
@@ -533,7 +535,9 @@ describe('useFetchFacets', () => {
 
     it('drops keys without values once the values query finishes', () => {
       setupDefaultMocks({ withMVs: false });
-      useAllFields.mockReturnValue({ data: TWO_FIELDS } as any);
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
       mockAllKeyValues([{ key: 'SeverityText', value: ['info'] }], false);
 
       const { result } = renderAllMode();
@@ -546,7 +550,9 @@ describe('useFetchFacets', () => {
 
     it('does not list keys past the team key fetch limit', () => {
       setupDefaultMocks({ withMVs: false });
-      useAllFields.mockReturnValue({ data: TWO_FIELDS } as any);
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
       useFilterKeysFetchLimit.mockReturnValue(1);
       mockAllKeyValues(undefined, true);
 

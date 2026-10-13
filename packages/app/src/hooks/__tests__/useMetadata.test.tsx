@@ -36,6 +36,9 @@ const createMockChartConfig = (
     ...overrides,
   }) as BuilderChartConfigWithDateRange;
 
+const createMockMetadata = () =>
+  new Metadata({} as ClickhouseClient, {} as MetadataCache);
+
 jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({
     data: [
@@ -66,7 +69,7 @@ describe('useGetKeyValues', () => {
     jest.clearAllMocks();
 
     // initialize metadata object
-    mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
+    mockMetadata = createMockMetadata();
     jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
 
     // Create a new QueryClient for each test
@@ -347,18 +350,21 @@ describe('useAllKeyValues', () => {
     dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
   });
 
+  const mockSources = (data: object[]) =>
+    jest.mocked(useSources).mockReturnValue({
+      data,
+      isLoading: false,
+    } as unknown as ReturnType<typeof useSources>);
+
   beforeEach(() => {
     jest.clearAllMocks();
-    mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
+    mockMetadata = createMockMetadata();
     jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
     jest.spyOn(api, 'useMe').mockReturnValue({
       data: { team: {} },
       isLoading: false,
-    } as any);
-    jest.mocked(useSources).mockReturnValue({
-      data: [{ id: 'source1' }],
-      isLoading: false,
-    } as any);
+    } as unknown as ReturnType<typeof api.useMe>);
+    mockSources([{ id: 'source1' }]);
 
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -442,16 +448,13 @@ describe('useAllKeyValues', () => {
   });
 
   it("streams with the source's metadata MVs", async () => {
-    jest.mocked(useSources).mockReturnValue({
-      data: [
-        {
-          id: 'logs',
-          kind: 'log',
-          metadataMaterializedViews: { kvRollupTable: 'logs_kv' },
-        },
-      ],
-      isLoading: false,
-    } as any);
+    mockSources([
+      {
+        id: 'logs',
+        kind: 'log',
+        metadataMaterializedViews: { kvRollupTable: 'logs_kv' },
+      },
+    ]);
     const streamAllKeyValues = jest
       .spyOn(mockMetadata, 'streamAllKeyValues')
       .mockImplementation(async function* () {
@@ -541,7 +544,7 @@ describe('useMultipleAllFields', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     team = {};
-    mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
+    mockMetadata = createMockMetadata();
     jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
     jest.spyOn(api, 'useMe').mockImplementation(
       () =>
