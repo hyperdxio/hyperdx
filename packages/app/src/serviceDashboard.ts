@@ -143,7 +143,6 @@ function getDefaults({
 
 const ENDPOINT_MATERIALIZED_COLUMN_NAME = 'endpoint';
 
-/** A quoted, escaped `IN` comparison — the only place either is spelled out. */
 export function inList(expression: string, value: string): string {
   return `${expression} IN ('${escapeSqlString(value)}')`;
 }

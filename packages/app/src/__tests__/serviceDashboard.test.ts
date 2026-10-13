@@ -188,7 +188,10 @@ describe('Service Dashboard', () => {
     it('should prefilter on each attribute the statement can come from', () => {
       expect(
         makeDbStatementCondition({
-          expressions: { dbStatement, dbStatementPrefilterFields: prefilterFields },
+          expressions: {
+            dbStatement,
+            dbStatementPrefilterFields: prefilterFields,
+          },
           statement: 'SELECT 1',
         }),
       ).toBe(
@@ -200,7 +203,10 @@ describe('Service Dashboard', () => {
 
     it('should escape quotes everywhere the statement appears', () => {
       const condition = makeDbStatementCondition({
-        expressions: { dbStatement, dbStatementPrefilterFields: prefilterFields },
+        expressions: {
+          dbStatement,
+          dbStatementPrefilterFields: prefilterFields,
+        },
         statement: "SELECT 'a'",
       });
 
@@ -208,29 +214,35 @@ describe('Service Dashboard', () => {
       expect(condition).not.toContain("IN ('SELECT 'a'')");
     });
 
-    it('should be rewritten onto the items column by the query renderer', () => {
-      const condition = makeDbStatementCondition({
-        expressions: { dbStatement, dbStatementPrefilterFields: prefilterFields },
-        statement: 'SELECT 1',
-      });
+    const kvItemsLookup = new Map([
+      [
+        'SpanAttributes',
+        {
+          kv: {
+            columnName: 'SpanAttributeItems',
+            indexName: 'idx_span_attr_items',
+            separator: ':',
+            useHasAny: false,
+            mapColumn: 'SpanAttributes',
+          },
+        },
+      ],
+    ]);
 
-      const rewritten = rewriteSqlFilterWithKvItems(
-        condition,
-        new Map([
-          [
-            'SpanAttributes',
-            {
-              kv: {
-                columnName: 'SpanAttributeItems',
-                indexName: 'idx_span_attr_items',
-                separator: ':',
-                useHasAny: false,
-                mapColumn: 'SpanAttributes',
-              },
-            },
-          ],
-        ]),
+    const rewrite = (statement: string) =>
+      rewriteSqlFilterWithKvItems(
+        makeDbStatementCondition({
+          expressions: {
+            dbStatement,
+            dbStatementPrefilterFields: prefilterFields,
+          },
+          statement,
+        }),
+        kvItemsLookup,
       );
+
+    it('should be rewritten onto the items column by the query renderer', () => {
+      const rewritten = rewrite('SELECT 1');
 
       expect(rewritten).toContain(
         "has(`SpanAttributeItems`, concat('db.query.text', ':', 'SELECT 1'))",
@@ -240,6 +252,18 @@ describe('Service Dashboard', () => {
       );
       expect(rewritten).toContain(dbStatement);
     });
+
+    it.each([["SELECT 'a' FROM t"], ["SELECT 'a\\b'"], ['{"q":{"_id":"?"}}']])(
+      'should survive the rewrite with its escaping intact (%j)',
+      statement => {
+        const rewritten = rewrite(statement);
+
+        const quoteCount = rewritten.split("'").length - 1;
+
+        expect(rewritten).toContain('has(`SpanAttributeItems`');
+        expect(quoteCount % 2).toBe(0);
+      },
+    );
 
     it.each([[[]], [prefilterFields]])(
       'should be read back by the search page as the same filter (%p)',
@@ -256,7 +280,7 @@ describe('Service Dashboard', () => {
           },
         ]);
 
-        expect(filters[dbStatement]).toBeDefined();
+        expect(Object.keys(filters)).toEqual([dbStatement]);
         expect([...filters[dbStatement].included]).toEqual([statement]);
       },
     );
