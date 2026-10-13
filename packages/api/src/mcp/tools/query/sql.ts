@@ -100,9 +100,13 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         );
       }
 
+      // Raw SQL only uses displayType to pick which query params to bind, and
+      // only time-series types bind the interval params this tool advertises
+      // ({intervalSeconds}, $__interval_s, $__timeInterval). Rows come back
+      // the same either way, and ClickHouse ignores params a query never uses.
       const tile = buildTile('MCP SQL', 24, 6, {
         configType: 'sql' as const,
-        displayType: 'table' as const,
+        displayType: 'line' as const,
         connectionId: input.connectionId,
         sqlTemplate: input.sql,
       });
