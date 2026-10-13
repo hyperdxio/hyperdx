@@ -39,13 +39,18 @@ const sqlSchema = z.object({
         '  $__interval_s — raw interval in seconds\n' +
         '  $__filters — dashboard filter conditions (resolves to 1=1 when no filters)\n' +
         '  {intervalSeconds:Int64} / {intervalMilliseconds:Int64} — bucket size parameters\n\n' +
+        "In the examples, replace <table> with a source's `table` and <timestampColumn> " +
+        'with the first expression in its `timestampColumn`, both from ' +
+        'clickstack_list_sources. For a metric source, use a table from its ' +
+        'metricTables qualified with its `database`. Table and column names differ ' +
+        'between sources, so do not guess them.\n\n' +
         'Example (time-series):\n' +
-        '  SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
-        'FROM otel_logs WHERE $__timeFilter(TimestampTime) GROUP BY ServiceName, ts ORDER BY ts\n\n' +
+        '  SELECT $__timeInterval(<timestampColumn>) AS ts, ServiceName, count() ' +
+        'FROM <table> WHERE $__timeFilter(<timestampColumn>) GROUP BY ServiceName, ts ORDER BY ts\n\n' +
         'Example (table):\n' +
-        '  SELECT ServiceName, count() AS n FROM otel_logs ' +
-        'WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) ' +
-        'AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) ' +
+        '  SELECT ServiceName, count() AS n FROM <table> ' +
+        'WHERE <timestampColumn> >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) ' +
+        'AND <timestampColumn> < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) ' +
         'GROUP BY ServiceName ORDER BY n DESC LIMIT 20',
     ),
   startTime: startTimeSchema,

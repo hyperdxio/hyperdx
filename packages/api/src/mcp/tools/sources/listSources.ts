@@ -7,6 +7,7 @@ import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   Metadata,
   MetadataCache,
+  quoteIdentifierIfNeeded,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -243,6 +244,16 @@ export function registerListSources({
           connectionId: s.connection.toString(),
           timestampColumn: s.timestampValueExpression,
         };
+
+        // For clickstack_sql's FROM, so each part is quoted when it needs to
+        // be. An unqualified name only resolves in the connection's default
+        // database. Metric sources query the tables in metricTables, even
+        // when from.tableName is set, so they get the database instead.
+        if (s.kind !== SourceKind.Metric && s.from.tableName) {
+          meta.table = `${quoteIdentifierIfNeeded(s.from.databaseName)}.${quoteIdentifierIfNeeded(s.from.tableName)}`;
+        } else {
+          meta.database = quoteIdentifierIfNeeded(s.from.databaseName);
+        }
 
         if (s.section) {
           meta.section = s.section;
