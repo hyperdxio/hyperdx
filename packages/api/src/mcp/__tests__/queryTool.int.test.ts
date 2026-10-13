@@ -814,18 +814,32 @@ describe('MCP Query Tools', () => {
     );
 
     describe('sql parameter examples', () => {
-      const getExamples = async () => {
+      const getDescription = async () => {
         const { tools } = await client.listTools();
         const sqlParam = tools.find(t => t.name === 'clickstack_sql')!
           .inputSchema.properties?.sql;
-        const description =
-          sqlParam && typeof sqlParam === 'object' && 'description' in sqlParam
-            ? String(sqlParam.description)
-            : '';
-        return [...description.matchAll(/^Example \(.+\):\n {2}(.+)$/gm)].map(
-          match => match[1],
-        );
+        return sqlParam &&
+          typeof sqlParam === 'object' &&
+          'description' in sqlParam
+          ? String(sqlParam.description)
+          : '';
       };
+      const getExamples = async () =>
+        [
+          ...(await getDescription()).matchAll(/^Example \(.+\):\n {2}(.+)$/gm),
+        ].map(match => match[1]);
+
+      // timestampColumn can list several columns ("TimestampTime, Timestamp"),
+      // which breaks $__timeFilter if pasted whole. Metric sources return a
+      // database instead of a table.
+      it('say how to fill placeholders for multi-column timestamps and metric sources', async () => {
+        const description = await getDescription();
+
+        expect(description).toMatch(
+          /first expression in its `timestampColumn`/,
+        );
+        expect(description).toMatch(/metricTables.*`database`/);
+      });
 
       // Agents copy examples literally. A concrete table or column in one
       // becomes the guess, and it only exists on some schemas.
@@ -945,6 +959,31 @@ describe('MCP Query Tools', () => {
         expect(getFirstText(result)).toMatch(
           /UNKNOWN_IDENTIFIER|Missing columns|unknown/i,
         );
+      });
+
+      it('does not send a source whose table is missing back to clickstack_list_sources', async () => {
+        const missing = await Source.create({
+          kind: SourceKind.Log,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'nonexistent_table_xyz',
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection._id,
+          name: 'Missing logs',
+        });
+
+        const result = await callTool(client, 'clickstack_table', {
+          sourceId: missing._id.toString(),
+          select: [{ aggFn: 'count' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toMatch(
+          /UNKNOWN_TABLE|does(n.t| not) exist/i,
+        );
+        expect(getFirstText(result)).not.toContain('clickstack_list_sources');
       });
     });
 
