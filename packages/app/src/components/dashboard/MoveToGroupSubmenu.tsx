@@ -61,6 +61,7 @@ export function MoveToGroupSubmenu({
             (Ungrouped)
           </Menu.Item>
         )}
+        {containerId && targets.length > 0 && <Menu.Divider role="separator" />}
         {targets.map((t, i) => {
           const prev = targets[i - 1];
           // Sections key on container, since default group names repeat
@@ -68,7 +69,7 @@ export function MoveToGroupSubmenu({
           return (
             <Fragment key={`${t.containerId}-${t.tabId ?? ''}`}>
               {prev && newContainer && (prev.group || t.group) && (
-                <Menu.Divider />
+                <Menu.Divider role="separator" />
               )}
               {t.group && newContainer && <Menu.Label>{t.group}</Menu.Label>}
               <Menu.Item

@@ -1024,7 +1024,7 @@ const Tile = ({
     readOnly,
   ]);
 
-  // Flat Menu.Item list for the collapsed (narrow-tile) toolbar.
+  // Menu items for the collapsed (narrow-tile) toolbar.
   // Merges the alert action + all kebab items into a single list
   // for ChartContainer's menu.
   const collapsedMenuItems = useMemo(() => {

@@ -55,7 +55,7 @@ describe('MoveToGroupSubmenu', () => {
   ) {
     const onMoveToGroup = jest.fn();
     // jsdom has no layout, so Popover would hide the dropdown as detached
-    renderWithMantine(
+    const { unmount } = renderWithMantine(
       <Menu opened transitionProps={{ duration: 0 }} hideDetached={false}>
         <Menu.Target>
           <button>open</button>
@@ -71,7 +71,7 @@ describe('MoveToGroupSubmenu', () => {
     );
     await userEvent.hover(screen.getByText('Move to group'));
     const submenu = (await screen.findAllByRole('menu')).at(-1)!;
-    return { submenu: within(submenu), onMoveToGroup };
+    return { submenu: within(submenu), onMoveToGroup, unmount };
   }
 
   it('shows one heading per multi-tab group and hides the current location', async () => {
@@ -122,5 +122,23 @@ describe('MoveToGroupSubmenu', () => {
     expect(
       submenu.getAllByRole('menuitem', { name: 'New Group', hidden: true }),
     ).toHaveLength(2);
+  });
+
+  it('separates tabbed sections and "(Ungrouped)" from the groups around them', async () => {
+    const separatorsBefore = async (props: { containerId?: string }) => {
+      const { submenu, unmount } = await openSubmenu(props);
+      const labels = submenu
+        .getAllByRole('separator', { hidden: true })
+        .map(s => s.nextElementSibling?.textContent);
+      unmount();
+      return labels;
+    };
+
+    // Plain groups following each other share no divider
+    expect(await separatorsBefore({})).toEqual(['Single tab']);
+    expect(await separatorsBefore({ containerId: 'plain' })).toEqual([
+      'Services',
+      'Single tab',
+    ]);
   });
 });
