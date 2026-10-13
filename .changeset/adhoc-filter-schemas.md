@@ -4,4 +4,4 @@
 '@hyperdx/app': patch
 ---
 
-feat: Allow configuring dashboard filters as single-select
+feat: Add ad hoc dashboard filter schemas and types
