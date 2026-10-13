@@ -72,7 +72,7 @@ export class MongooseSessionStore extends session.Store {
 
   get(
     sid: string,
-    callback: (err: any, session?: session.SessionData | null) => void,
+    callback: (err: unknown, session?: session.SessionData | null) => void,
   ) {
     this.withStore(callback, store => store.get(sid, callback));
   }
