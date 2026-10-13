@@ -2,7 +2,7 @@
   "api": {
     "as-any": 89,
     "ts-ignore": 0,
-    "eslint-disable": 37,
+    "eslint-disable": 36,
     "@source": 0
   },
   "app": {
