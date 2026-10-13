@@ -1,5 +1,6 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
+import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
 import { Stack } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -12,12 +13,15 @@ export default {
 
 const queryClient = new QueryClient();
 
-// Mock table connection for stories
-const mockTableConnection = {
-  databaseName: 'default',
-  tableName: 'otel_logs',
-  connectionId: 'default',
-};
+const mockSource = {
+  id: 'logs',
+  name: 'Logs',
+  kind: SourceKind.Log,
+  connection: 'default',
+  from: { databaseName: 'default', tableName: 'otel_logs' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp, Body',
+} satisfies TLogSource;
 
 function SearchWhereInputWrapper({
   defaultLanguage = 'lucene',
@@ -39,7 +43,7 @@ function SearchWhereInputWrapper({
     <QueryClientProvider client={queryClient}>
       <Stack gap="md">
         <SearchWhereInput
-          tableConnection={mockTableConnection}
+          source={mockSource}
           control={control}
           name="where"
           enableHotkey

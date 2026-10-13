@@ -2,38 +2,16 @@ import { useEffect, useMemo } from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
+  getSourceTable,
   parseKeyPath,
-  TableConnection,
+  SourceTable,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
-import {
-  resolveTableConnection,
-  useFetchFacets,
-} from '@/components/DBSearchPageFilters/hooks';
+import { useFetchFacets } from '@/components/DBSearchPageFilters/hooks';
 import { NOW } from '@/config';
 import { deduplicate2dArray } from '@/hooks/useMetadata';
-import { useSource } from '@/source';
 import { mergePath, useDebounce } from '@/utils';
-
-function chartConfigFromTableConnection(
-  tc: TableConnection,
-  timestampValueExpression: string,
-  dateRange: [Date, Date],
-): BuilderChartConfigWithDateRange {
-  return {
-    from: {
-      tableName: tc.tableName,
-      databaseName: tc.databaseName,
-    },
-    connection: tc.connectionId,
-    source: undefined,
-    select: '',
-    where: '',
-    timestampValueExpression,
-    dateRange,
-  };
-}
 
 // Derive top-level Map column names from a fields list. Matches on the
 // canonical `JSDataType.Map` rather than the raw ClickHouse type string so
@@ -181,42 +159,41 @@ export function useAutoCompleteOptions(
   formatter: ILanguageFormatter,
   _value: string,
   {
-    tableConnection: _tableConnection,
+    source,
+    metricType,
+    metricName,
     additionalSuggestions,
-    sourceId,
     dateRange,
     inputRef,
-  }: {
-    tableConnection?: TableConnection | TableConnection[];
+  }: Partial<SourceTable> & {
     additionalSuggestions?: string[];
-    sourceId?: string;
     dateRange?: [Date, Date];
     inputRef?: React.RefObject<HTMLTextAreaElement | null>;
   },
 ) {
-  const { data: source } = useSource({ id: sourceId });
   const value = useDebounce(_value, 300);
 
   const effectiveDateRange: [Date, Date] = useMemo(
     () => dateRange ?? [new Date(NOW - 24 * 60 * 60 * 1000), new Date(NOW)],
     [dateRange],
   );
-  const tableConnection = _tableConnection
-    ? Array.isArray(_tableConnection)
-      ? _tableConnection[0]
-      : _tableConnection
-    : undefined;
 
   // Build chart config and keys for fetching values from rollup tables
-  const chartConfig = useMemo<BuilderChartConfigWithDateRange>(
-    () =>
-      chartConfigFromTableConnection(
-        resolveTableConnection(source, tableConnection),
-        source?.timestampValueExpression ?? '',
-        effectiveDateRange,
-      ),
-    [effectiveDateRange, source, tableConnection],
-  );
+  const chartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
+    const { databaseName, tableName, connectionId } = getSourceTable({
+      source,
+      metricType,
+    });
+    return {
+      from: { databaseName, tableName },
+      connection: connectionId,
+      source: source?.id,
+      select: '',
+      where: '',
+      timestampValueExpression: source?.timestampValueExpression ?? '',
+      dateRange: effectiveDateRange,
+    };
+  }, [effectiveDateRange, source, metricType]);
 
   const {
     data: fetchFacetsData,
@@ -224,8 +201,9 @@ export function useAutoCompleteOptions(
     loadMoreFacetsForKey,
   } = useFetchFacets({
     chartConfig,
-    sourceId: sourceId ?? null,
-    tableConnection,
+    source,
+    metricType,
+    metricName,
     dateRange: effectiveDateRange,
     mode: 'all',
     disableValues: true,

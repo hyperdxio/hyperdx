@@ -1,7 +1,6 @@
 import { Control, UseFormHandleSubmit, useWatch } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { isRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
+import { SavedChartConfig, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Box,
@@ -64,8 +63,7 @@ function DashboardFiltersToggle({
 type ChartActionBarProps = {
   control: Control<ChartEditorFormState>;
   handleSubmit: UseFormHandleSubmit<ChartEditorFormState>;
-  tableConnection: TableConnection;
-  sourceId?: string;
+  source?: TSource;
   dateRange?: [Date, Date];
   activeTab: string;
   isRawSqlInput: boolean;
@@ -99,8 +97,7 @@ type ChartActionBarProps = {
 export function ChartActionBar({
   control,
   handleSubmit,
-  tableConnection,
-  sourceId,
+  source,
   dateRange,
   activeTab,
   isRawSqlInput,
@@ -193,8 +190,7 @@ export function ChartActionBar({
             <div style={{ width: 400 }} data-testid="order-by-input">
               <SQLInlineEditorControlled
                 parentRef={parentRef}
-                tableConnection={tableConnection}
-                sourceId={sourceId}
+                source={source}
                 dateRange={dateRange}
                 // The default order by is the current group by value
                 placeholder={typeof groupBy === 'string' ? groupBy : ''}

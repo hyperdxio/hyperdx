@@ -12,6 +12,7 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { DEFAULT_DATABASE } from './constants';
 import { FormRow } from './FormRow';
 import { TableModelProps } from './types';
+import { useFormSource } from './useFormSource';
 
 export function SessionTableModelForm({ control }: TableModelProps) {
   const brandName = useBrandDisplayName();
@@ -24,6 +25,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
   const tableName = useWatch({ control, name: 'from.tableName' });
   const prevTableNameRef = useRef(tableName);
   const metadata = useMetadataWithSettings();
+  const source = useFormSource(control);
 
   useEffect(() => {
     (async () => {
@@ -68,11 +70,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
           helpText="DateTime column or expression that is part of your table's primary key."
         >
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name="timestampValueExpression"
             disableKeywordAutocomplete
@@ -80,11 +78,7 @@ export function SessionTableModelForm({ control }: TableModelProps) {
         </FormRow>
         <FormRow label={'Resource Attributes Expression'}>
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name="resourceAttributesExpression"
             placeholder="ResourceAttributes"

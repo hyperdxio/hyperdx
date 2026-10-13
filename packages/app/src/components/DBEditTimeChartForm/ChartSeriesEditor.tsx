@@ -47,7 +47,7 @@ import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import { getColorFromCSSToken, getMetricTableName } from '@/utils';
+import { getColorFromCSSToken } from '@/utils';
 
 type SeriesItem = NonNullable<
   SavedChartConfigWithSelectArray['select']
@@ -57,7 +57,6 @@ type ChartSeriesEditorProps = {
   control: Control<ChartEditorFormState>;
   databaseName: string;
   dateRange?: DateRange['dateRange'];
-  connectionId?: string;
   index: number;
   namePrefix: `series.${number}.`;
   parentRef?: HTMLElement | null;
@@ -71,7 +70,6 @@ type ChartSeriesEditorProps = {
   showDuplicate: boolean;
   showColor: boolean;
   showSeriesNumberFormat?: boolean;
-  tableName: string;
   length: number;
   tableSource?: TSource;
   errors?: FieldErrors<SeriesItem>;
@@ -82,7 +80,6 @@ export function ChartSeriesEditor({
   control,
   databaseName,
   dateRange,
-  connectionId,
   index,
   namePrefix,
   onRemoveSeries,
@@ -95,7 +92,6 @@ export function ChartSeriesEditor({
   showDuplicate,
   showColor,
   showSeriesNumberFormat = true,
-  tableName: _tableName,
   parentRef,
   length,
   tableSource,
@@ -150,11 +146,6 @@ export function ChartSeriesEditor({
       setValue(`${namePrefix}aggFn`, 'count');
     }
   }, [tableSource?.kind, metricType, aggFn, namePrefix, setValue]);
-
-  const tableName =
-    tableSource?.kind === SourceKind.Metric
-      ? getMetricTableName(tableSource, metricType)
-      : _tableName;
 
   const metricName = useWatch({ control, name: `${namePrefix}metricName` });
   const aggCondition = useWatch({
@@ -257,15 +248,12 @@ export function ChartSeriesEditor({
 
   const showWhere = aggFn !== 'none';
 
-  const tableConnection = useMemo(
-    () => ({
-      databaseName,
-      tableName: tableName ?? '',
-      connectionId: connectionId ?? '',
-      metricName:
-        tableSource?.kind === SourceKind.Metric ? metricName : undefined,
-    }),
-    [databaseName, tableName, connectionId, metricName, tableSource],
+  const sourceProps = useMemo(
+    () =>
+      tableSource?.kind === SourceKind.Metric
+        ? { source: tableSource, metricType, metricName }
+        : { source: tableSource },
+    [tableSource, metricType, metricName],
   );
 
   const seriesNumberFormat = useWatch({
@@ -422,8 +410,7 @@ export function ChartSeriesEditor({
             }}
           >
             <SQLInlineEditorControlled
-              tableConnection={tableConnection}
-              sourceId={tableSource?.id}
+              {...sourceProps}
               dateRange={dateRange}
               control={control}
               name={`${namePrefix}valueExpression`}
@@ -454,8 +441,7 @@ export function ChartSeriesEditor({
                   }}
                 >
                   <SearchWhereInput
-                    tableConnection={tableConnection}
-                    sourceId={tableSource?.id}
+                    {...sourceProps}
                     dateRange={dateRange}
                     control={control}
                     name={`${namePrefix}aggCondition`}
@@ -484,8 +470,7 @@ export function ChartSeriesEditor({
                 >
                   <SQLInlineEditorControlled
                     parentRef={parentRef}
-                    tableConnection={tableConnection}
-                    sourceId={tableSource?.id}
+                    {...sourceProps}
                     dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
@@ -504,8 +489,7 @@ export function ChartSeriesEditor({
                     </Flex>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
-                        tableConnection={tableConnection}
-                        sourceId={tableSource?.id}
+                        {...sourceProps}
                         dateRange={dateRange}
                         control={control}
                         name="having"

@@ -10,7 +10,7 @@ import {
   parseKvItemsExpression,
   SearchQueryBuilder,
 } from '@/queryParser';
-import { UseTextIndex } from '@/types';
+import { SourceKind, UseTextIndex } from '@/types';
 
 // Suppress expected console.error/warn noise from mocked setting fetches
 // and parse failures in edge-case tests
@@ -541,10 +541,10 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     async ({ lucene, english }) => {
       const actualEnglish = await genEnglishExplanation({
         query: lucene,
-        tableConnection: {
-          tableName,
-          databaseName,
-          connectionId,
+        source: {
+          kind: SourceKind.Log,
+          connection: connectionId,
+          from: { databaseName, tableName },
         },
         metadata,
       });
@@ -884,10 +884,10 @@ describe('CustomSchemaSQLSerializerV2 - range bounds', () => {
     async ({ lucene, english }) => {
       const actualEnglish = await genEnglishExplanation({
         query: lucene,
-        tableConnection: {
-          tableName,
-          databaseName,
-          connectionId,
+        source: {
+          kind: SourceKind.Log,
+          connection: connectionId,
+          from: { databaseName, tableName },
         },
         metadata,
       });
@@ -2762,10 +2762,10 @@ describe('CustomSchemaSQLSerializerV2 - Array and Nested Fields', () => {
     async ({ lucene, english }) => {
       const actualEnglish = await genEnglishExplanation({
         query: lucene,
-        tableConnection: {
-          tableName,
-          databaseName,
-          connectionId,
+        source: {
+          kind: SourceKind.Log,
+          connection: connectionId,
+          from: { databaseName, tableName },
         },
         metadata,
       });
@@ -2791,7 +2791,11 @@ describe('genEnglishExplanation', () => {
   it('serializes to english when table, database, and connection are present', async () => {
     const actual = await genEnglishExplanation({
       query,
-      tableConnection: { tableName, databaseName, connectionId },
+      source: {
+        kind: SourceKind.Log,
+        connection: connectionId,
+        from: { databaseName, tableName },
+      },
       metadata,
     });
     expect(actual).toBe('event has whole word bar');
@@ -2800,7 +2804,11 @@ describe('genEnglishExplanation', () => {
   it('falls back to the raw message when tableName is missing', async () => {
     const actual = await genEnglishExplanation({
       query,
-      tableConnection: { tableName: '', databaseName, connectionId },
+      source: {
+        kind: SourceKind.Log,
+        connection: connectionId,
+        from: { databaseName, tableName: '' },
+      },
       metadata,
     });
     expect(actual).toBe(`Message containing ${query}`);
@@ -2809,7 +2817,11 @@ describe('genEnglishExplanation', () => {
   it('falls back to the raw message when databaseName is missing', async () => {
     const actual = await genEnglishExplanation({
       query,
-      tableConnection: { tableName, databaseName: '', connectionId },
+      source: {
+        kind: SourceKind.Log,
+        connection: connectionId,
+        from: { databaseName: '', tableName },
+      },
       metadata,
     });
     expect(actual).toBe(`Message containing ${query}`);
@@ -2818,16 +2830,24 @@ describe('genEnglishExplanation', () => {
   it('falls back to the raw message when connectionId is missing', async () => {
     const actual = await genEnglishExplanation({
       query,
-      tableConnection: { tableName, databaseName, connectionId: '' },
+      source: {
+        kind: SourceKind.Log,
+        connection: '',
+        from: { databaseName, tableName },
+      },
       metadata,
     });
     expect(actual).toBe(`Message containing ${query}`);
   });
 
-  it('falls back to the raw message when all table connection fields are missing', async () => {
+  it('falls back to the raw message when all source table fields are missing', async () => {
     const actual = await genEnglishExplanation({
       query,
-      tableConnection: { tableName: '', databaseName: '', connectionId: '' },
+      source: {
+        kind: SourceKind.Log,
+        connection: '',
+        from: { databaseName: '', tableName: '' },
+      },
       metadata,
     });
     expect(actual).toBe(`Message containing ${query}`);

@@ -1,5 +1,4 @@
 import SqlString from 'sqlstring';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 
 import { useJsonColumns } from './useMetadata';
@@ -21,7 +20,7 @@ export default function useFieldExpressionGenerator(
   getFieldExpression: FieldExpressionGenerator | undefined;
 } {
   const { data: jsonColumns, isLoading: isLoadingJsonColumns } = useJsonColumns(
-    tcFromSource(source),
+    { source },
   );
 
   if (source && !isLoadingJsonColumns) {

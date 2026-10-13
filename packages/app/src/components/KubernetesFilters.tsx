@@ -4,6 +4,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
+  MetricsDataType,
   TMetricSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box, Group, Select } from '@mantine/core';
@@ -266,18 +267,6 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
     [metricSource, facetWhere, dateRange],
   );
 
-  // A metric source's `from.tableName` is empty — the rows live in the
-  // per-type tables — so `tcFromSource` would give autocomplete nothing to
-  // query. Point it at the same gauge table `chartConfig` reads.
-  const gaugeTableConnection = useMemo(
-    () => ({
-      databaseName: metricSource.from.databaseName,
-      tableName: metricSource.metricTables?.gauge || '',
-      connectionId: metricSource.connection,
-    }),
-    [metricSource],
-  );
-
   const { data, isLoading } = useGetKeyValues({
     chartConfig,
     keys,
@@ -337,8 +326,9 @@ export const KubernetesFilters: React.FC<KubernetesFiltersProps> = ({
       />
       <Box style={{ flex: 1, minWidth: 200 }}>
         <SearchInputV2
-          tableConnection={gaugeTableConnection}
-          sourceId={metricSource.id}
+          source={metricSource}
+          // Same gauge table that `chartConfig` reads
+          metricType={MetricsDataType.Gauge}
           dateRange={dateRange}
           placeholder="Search your events w/ Lucene ex. column:foo"
           name="searchQuery"

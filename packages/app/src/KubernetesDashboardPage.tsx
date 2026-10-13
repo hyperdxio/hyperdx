@@ -1258,13 +1258,7 @@ function KubernetesDashboardPage() {
   const [_searchQuery, _setSearchQuery] = React.useState<string | null>(null);
 
   const { data: logSourceJsonColumns, isLoading: isLoadingJsonColumns } =
-    useJsonColumns(
-      logSource && {
-        databaseName: logSource.from.databaseName,
-        tableName: logSource.from.tableName,
-        connectionId: logSource.connection,
-      },
-    );
+    useJsonColumns({ source: logSource });
 
   const eventAttributeExpressions = useMemo(() => {
     if (isLoadingJsonColumns || !logSource) {

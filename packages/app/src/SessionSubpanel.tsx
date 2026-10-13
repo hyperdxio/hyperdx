@@ -3,7 +3,6 @@ import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { parseAsInteger, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptDateRange,
   DateRange,
@@ -457,8 +456,7 @@ export default function SessionSubpanel({
             onSubmit={handleSubmit(handleWhereSubmit)}
           >
             <SearchWhereInput
-              tableConnection={tcFromSource(traceSource)}
-              sourceId={traceSource.id}
+              source={traceSource}
               dateRange={eventsDateRange}
               control={control}
               name="where"

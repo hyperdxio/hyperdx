@@ -47,7 +47,7 @@ export function sortTilesForDisplay<T extends { x: number; y: number }>(
 // ---- Source helpers ------------------------------------------------
 
 /**
- * @source packages/app/src/utils.ts (getMetricTableName)
+ * @source packages/common-utils/src/core/metadata.ts (getMetricTableName)
  */
 export function getMetricTableName(
   source: SourceResponse,

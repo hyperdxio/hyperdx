@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseAsFloat, parseAsString, useQueryStates } from 'nuqs';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   TTraceSource,
@@ -183,8 +182,7 @@ export function DBSearchHeatmapChart({
       <HeatmapSettingsDrawer
         opened={settingsOpened}
         onClose={settingsHandlers.close}
-        connection={tcFromSource(source)}
-        sourceId={source.id}
+        source={source}
         dateRange={chartConfig.dateRange}
         parentRef={container}
         defaultValues={heatmapSettingsDefaults}

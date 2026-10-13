@@ -8,7 +8,6 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { displayTypeSupportsBuilderAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -50,7 +49,7 @@ import { ChartFormulaEditor } from './ChartFormulaEditor';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
-import { buildGroupByConnectionProps } from './utils';
+import { buildGroupBySourceProps } from './utils';
 
 type ChartEditorControlsProps = {
   control: Control<ChartEditorFormState>;
@@ -63,10 +62,8 @@ type ChartEditorControlsProps = {
   swapSeries: (from: number, to: number) => void;
   duplicateSeries: (index: number) => void;
   tableSource?: TSource;
-  tableConnection: TableConnection;
   allowedSourceKinds: SourceKind[];
   databaseName?: string;
-  tableName?: string;
   dateRange: [Date, Date];
   select: ChartEditorFormState['select'];
   displayType: DisplayType;
@@ -100,10 +97,8 @@ export function ChartEditorControls({
   swapSeries,
   duplicateSeries,
   tableSource,
-  tableConnection,
   allowedSourceKinds,
   databaseName,
-  tableName,
   dateRange,
   select,
   displayType,
@@ -176,11 +171,11 @@ export function ChartEditorControls({
 
   // The chart-level Group By must be valid against every series query. For
   // metric sources (which fan out to per-type tables) this means offering the
-  // intersection of each series' fields; see buildGroupByConnectionProps.
+  // intersection of each series' fields; see buildGroupBySourceProps.
   const series = useWatch({ control, name: 'series' });
-  const groupByConnectionProps = useMemo(
-    () => buildGroupByConnectionProps({ tableSource, series, tableConnection }),
-    [tableSource, series, tableConnection],
+  const groupBySourceProps = useMemo(
+    () => buildGroupBySourceProps({ tableSource, series }),
+    [tableSource, series],
   );
 
   // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
@@ -244,8 +239,7 @@ export function ChartEditorControls({
       ) : displayType === DisplayType.EventPatterns ? (
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
-            tableConnection={tableConnection}
-            sourceId={tableSource?.id}
+            source={tableSource}
             dateRange={dateRange}
             control={control}
             name="select"
@@ -268,8 +262,7 @@ export function ChartEditorControls({
               </Text>
             )}
           <SearchWhereInput
-            tableConnection={tableConnection}
-            sourceId={tableSource?.id}
+            source={tableSource}
             dateRange={dateRange}
             control={control}
             name="where"
@@ -297,7 +290,6 @@ export function ChartEditorControls({
               onDuplicateSeries={duplicateSeries}
               onSubmit={onSubmit}
               setValue={setValue}
-              connectionId={tableSource?.connection}
               showGroupBy={
                 fields.length === 1 && displayType !== DisplayType.Number
               }
@@ -306,7 +298,6 @@ export function ChartEditorControls({
               }
               showDuplicate={canAddSeries}
               showColor={displayType === DisplayType.Table}
-              tableName={tableName ?? ''}
               tableSource={tableSource}
               errors={
                 errors.series && Array.isArray(errors.series)
@@ -352,8 +343,7 @@ export function ChartEditorControls({
                 </Flex>
                 <div>
                   <SQLInlineEditorControlled
-                    {...groupByConnectionProps}
-                    sourceId={tableSource?.id}
+                    {...groupBySourceProps}
                     dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
@@ -378,8 +368,7 @@ export function ChartEditorControls({
                     </Flex>
                     <div>
                       <SQLInlineEditorControlled
-                        tableConnection={tableConnection}
-                        sourceId={tableSource?.id}
+                        source={tableSource}
                         dateRange={dateRange}
                         control={control}
                         name="having"
@@ -541,8 +530,7 @@ export function ChartEditorControls({
       ) : (
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
-            tableConnection={tableConnection}
-            sourceId={tableSource?.id}
+            source={tableSource}
             dateRange={dateRange}
             control={control}
             name="select"
@@ -563,8 +551,7 @@ export function ChartEditorControls({
             enableVariables
           />
           <SearchWhereInput
-            tableConnection={tableConnection}
-            sourceId={tableSource?.id}
+            source={tableSource}
             dateRange={dateRange}
             control={control}
             name="where"

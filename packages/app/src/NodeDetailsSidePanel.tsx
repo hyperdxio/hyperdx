@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
@@ -252,7 +252,9 @@ function NodeDetailsSidePanelInner({
     return `${metricSource?.resourceAttributesExpression}.k8s.node.name:"${nodeName}"`;
   }, [nodeName, metricSource]);
 
-  const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
+  const { data: logsTableMetadata } = useTableMetadata(
+    getSourceTable({ source: logSource }),
+  );
 
   let doesPrimaryOrSortingKeysContainServiceExpression = false;
 

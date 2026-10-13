@@ -7,7 +7,6 @@ import {
   clampAlertDisplayName,
   clampAlertTags,
 } from '@hyperdx/common-utils/dist/alerts';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   type Alert,
   alertDisplayNameSchema,
@@ -313,8 +312,7 @@ const AlertForm = ({
             grouped by
           </Text>
           <SQLInlineEditorControlled
-            tableConnection={tcFromSource(source)}
-            sourceId={sourceId ?? undefined}
+            source={source}
             control={control}
             name={`groupBy`}
             placeholder="SQL Columns"

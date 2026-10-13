@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
 
 import { useJsonColumns } from '@/hooks/useMetadata';
@@ -15,10 +14,9 @@ export function useLLMDashboardExpressions({
 }: {
   source: TSource | undefined;
 }) {
-  const tableConnection = useMemo(() => tcFromSource(source), [source]);
-
-  const { data: jsonColumns, isLoading: isJsonColumnsLoading } =
-    useJsonColumns(tableConnection);
+  const { data: jsonColumns, isLoading: isJsonColumnsLoading } = useJsonColumns(
+    { source },
+  );
 
   const isLoading = !source || isJsonColumnsLoading;
 
@@ -37,10 +35,9 @@ export function useLLMLogDashboardExpressions({
 }: {
   source: TSource | undefined;
 }) {
-  const tableConnection = useMemo(() => tcFromSource(source), [source]);
-
-  const { data: jsonColumns, isLoading: isJsonColumnsLoading } =
-    useJsonColumns(tableConnection);
+  const { data: jsonColumns, isLoading: isJsonColumnsLoading } = useJsonColumns(
+    { source },
+  );
 
   const isLoading = !source || isJsonColumnsLoading;
 

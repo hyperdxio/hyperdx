@@ -149,7 +149,7 @@ describe('useFieldExpressionGenerator', () => {
     expect(expression).toBe("`ResourceAttributes`['service.name']");
   });
 
-  it('should pass correct tableConnection to useJsonColumns', () => {
+  it('should pass the source to useJsonColumns', () => {
     jest.mocked(useJsonColumns).mockReturnValue({
       data: [],
       isLoading: false,
@@ -157,11 +157,7 @@ describe('useFieldExpressionGenerator', () => {
 
     renderHook(() => useFieldExpressionGenerator(mockSource));
 
-    expect(useJsonColumns).toHaveBeenCalledWith({
-      databaseName: 'test_db',
-      tableName: 'traces',
-      connectionId: 'conn1',
-    });
+    expect(useJsonColumns).toHaveBeenCalledWith({ source: mockSource });
   });
 
   it('should handle special characters in keys correctly', () => {

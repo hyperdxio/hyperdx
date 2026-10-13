@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { noop } from 'lodash';
 import {
   Control,
@@ -6,7 +5,6 @@ import {
   UseFormClearErrors,
   UseFormSetValue,
 } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { HeatmapMode, TSource } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -66,8 +64,6 @@ export function HeatmapSeriesEditor({
   mode,
   onModeChange,
 }: HeatmapSeriesEditorProps) {
-  const connection = useMemo(() => tcFromSource(tableSource), [tableSource]);
-
   return (
     <Flex direction="column">
       <SegmentedControl
@@ -99,13 +95,11 @@ export function HeatmapSeriesEditor({
           onDuplicateSeries={noop}
           onSubmit={onSubmit}
           setValue={setValue}
-          connectionId={tableSource?.connection}
           showGroupBy
           showHaving={false}
           showDuplicate={false}
           showColor={false}
           showSeriesNumberFormat={false}
-          tableName={tableSource?.from.tableName ?? ''}
           tableSource={tableSource}
           errors={Array.isArray(errors.series) ? errors.series[0] : undefined}
           clearErrors={clearErrors}
@@ -127,8 +121,7 @@ export function HeatmapSeriesEditor({
             <div data-testid="heatmap-value-input">
               <SQLInlineEditorControlled
                 parentRef={parentRef}
-                tableConnection={connection}
-                sourceId={tableSource?.id}
+                source={tableSource}
                 dateRange={dateRange}
                 control={control}
                 name="series.0.valueExpression"
@@ -149,8 +142,7 @@ export function HeatmapSeriesEditor({
             <div data-testid="heatmap-count-input">
               <SQLInlineEditorControlled
                 parentRef={parentRef}
-                tableConnection={connection}
-                sourceId={tableSource?.id}
+                source={tableSource}
                 dateRange={dateRange}
                 control={control}
                 name="series.0.countExpression"
@@ -161,8 +153,7 @@ export function HeatmapSeriesEditor({
             </div>
           </div>
           <SearchWhereInput
-            tableConnection={connection}
-            sourceId={tableSource?.id}
+            source={tableSource}
             dateRange={dateRange}
             control={control}
             name="where"

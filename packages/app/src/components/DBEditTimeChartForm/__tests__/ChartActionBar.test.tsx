@@ -26,12 +26,6 @@ jest.mock('@/GranularityPicker', () => ({
   ),
 }));
 
-const defaultTableConnection = {
-  databaseName: 'default',
-  tableName: 'logs',
-  connectionId: 'default',
-};
-
 type WrapperProps = {
   children: (props: { control: any; handleSubmit: any }) => React.ReactNode;
   defaultValues?: Partial<ChartEditorFormState>;
@@ -76,7 +70,6 @@ const renderActionBar = (
         <ChartActionBar
           control={control}
           handleSubmit={handleSubmit}
-          tableConnection={defaultTableConnection}
           activeTab="time"
           isRawSqlInput={false}
           parentRef={null}

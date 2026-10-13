@@ -22,10 +22,7 @@ import {
 import { ErrorBoundary } from 'react-error-boundary';
 import RGL from 'react-grid-layout';
 import { useForm, useWatch } from 'react-hook-form';
-import {
-  TableConnection,
-  tcFromSource,
-} from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
@@ -1925,9 +1922,9 @@ function DBDashboardPage({
   const { data: allDashboards } = useDashboards();
 
   const [highlightedTileId] = useQueryState('highlightedTileId');
-  const tableConnections = useMemo(() => {
+  const sourceTables = useMemo(() => {
     if (!dashboard) return [];
-    const tc: TableConnection[] = [];
+    const tables: SourceTable[] = [];
 
     for (const { config } of dashboard.tiles) {
       if (!isBuilderSavedChartConfig(config)) continue;
@@ -1937,15 +1934,11 @@ function DBDashboardPage({
       const firstSelect = config.select[0];
       const metricType =
         typeof firstSelect !== 'string' ? firstSelect?.metricType : undefined;
-      const tableName = getMetricTableName(source, metricType);
-      if (!tableName) continue;
-      tc.push({
-        ...tcFromSource(source),
-        tableName,
-      });
+      if (!getMetricTableName(source, metricType)) continue;
+      tables.push({ source, metricType });
     }
 
-    return tc;
+    return tables;
   }, [dashboard, sources]);
 
   const [granularity, setGranularity] = useQueryState(
@@ -3160,7 +3153,7 @@ function DBDashboardPage({
       }}
     >
       <SearchWhereInput
-        tableConnections={tableConnections}
+        sourceTables={sourceTables}
         dateRange={searchedTimeRange}
         control={control}
         name="where"

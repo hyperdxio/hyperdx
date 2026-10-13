@@ -3006,11 +3006,13 @@ describe('Metadata', () => {
       ];
 
       await md.getAllFields({
-        databaseName: 'otel',
-        tableName: 'otel_logs',
-        connectionId: 'conn-1',
+        source: {
+          kind: SourceKind.Log,
+          connection: 'conn-1',
+          from: { databaseName: 'otel', tableName: 'otel_logs' },
+          timestampValueExpression: 'EventTime, EventDate',
+        },
         dateRange,
-        timestampValueExpression: 'EventTime, EventDate',
       });
 
       expect(getMapKeysSpy).toHaveBeenCalledWith(
@@ -3061,10 +3063,12 @@ describe('Metadata', () => {
         });
 
       const fields = await md.getAllFields({
-        databaseName: 'otel',
-        tableName: 'test_logs',
-        connectionId: 'conn-1',
-        timestampValueExpression: 'EventTime, EventDate',
+        source: {
+          kind: SourceKind.Log,
+          connection: 'conn-1',
+          from: { databaseName: 'otel', tableName: 'test_logs' },
+          timestampValueExpression: 'EventTime, EventDate',
+        },
       });
 
       // The Map column itself should be present
@@ -3145,10 +3149,12 @@ describe('Metadata', () => {
         });
 
       const fields = await md.getAllFields({
-        databaseName: 'otel',
-        tableName: 'test_logs',
-        connectionId: 'conn-1',
-        timestampValueExpression: 'EventTime, EventDate',
+        source: {
+          kind: SourceKind.Log,
+          connection: 'conn-1',
+          from: { databaseName: 'otel', tableName: 'test_logs' },
+          timestampValueExpression: 'EventTime, EventDate',
+        },
       });
 
       // Sub-fields for LogAttributes

@@ -5,21 +5,24 @@ import numbro from 'numbro';
 import type { SetStateAction } from 'react';
 import TimestampNano from 'timestamp-nano';
 import {
-  TableConnection,
+  getMetricTableName,
+  SourceTable,
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
   ColorCondition,
+  MetricsDataType,
   NumericUnit,
   SourceKind,
-  TMetricSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
-import { MetricsDataType, NumberFormat } from './types';
+import { NumberFormat } from './types';
+
+export { getMetricTableName };
 
 // From: https://usehooks.com/useWindowSize/
 export function useWindowSize() {
@@ -1338,48 +1341,13 @@ export function formatColumnEquals(
   return `${column}:"${escapeLuceneDoubleQuoted(value)}"`;
 }
 
-/**
- * Gets the appropriate table name for a source based on metric type
- * @param source The data source
- * @param metricType Optional metric type to determine which table to use
- * @returns The table name to use for the given source and metric type
- */
-export function getMetricTableName(
-  source: TSource,
-  metricType?: string,
-): string | undefined {
-  if (metricType == null) {
-    return source.from.tableName;
-  }
-  if (source.kind === SourceKind.Metric) {
-    return source.metricTables?.[
-      metricType.toLowerCase() as keyof typeof source.metricTables
-    ];
-  }
-  return undefined;
-}
-
-export function getAllMetricTables(source: TSource): TableConnection[] {
-  if (source.kind !== SourceKind.Metric || !source.metricTables) return [];
+/** One entry per metric type that the source has a table for. */
+export function getAllMetricTables(source: TSource): SourceTable[] {
+  if (source.kind !== SourceKind.Metric) return [];
 
   return Object.values(MetricsDataType)
-    .filter(
-      metricType =>
-        !!source.metricTables[
-          metricType as unknown as keyof TMetricSource['metricTables']
-        ],
-    )
-    .map(
-      metricType =>
-        ({
-          tableName:
-            source.metricTables[
-              metricType as unknown as keyof TMetricSource['metricTables']
-            ],
-          databaseName: source.from.databaseName,
-          connectionId: source.connection,
-        }) satisfies TableConnection,
-    );
+    .filter(metricType => !!getMetricTableName(source, metricType))
+    .map(metricType => ({ source, metricType }));
 }
 
 /**

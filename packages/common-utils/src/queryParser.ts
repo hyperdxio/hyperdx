@@ -16,17 +16,18 @@ import {
   supportsDirectReadMap,
 } from '@/core/clickhouseVersion';
 import {
+  getSourceTable,
   Metadata,
   parseKeyPath,
   SkipIndexMetadata,
-  TableConnection,
+  SourceTable,
   unquoteIdentifier,
 } from '@/core/metadata';
 import {
   parseTokenizerFromTextIndex,
   splitAndTrimWithBracket,
 } from '@/core/utils';
-import { UseTextIndex } from '@/types';
+import { SourceLike, UseTextIndex } from '@/types';
 
 /** Max number of tokens to pass to hasAllTokens(), which supports up to 64 tokens as of ClickHouse v25.12. */
 const HAS_ALL_TOKENS_CHUNK_SIZE = 50;
@@ -2287,14 +2288,17 @@ export class SearchQueryBuilder {
 export async function genEnglishExplanation({
   query,
   metadata,
-  tableConnection,
-}: {
+  source,
+  metricType,
+}: SourceTable<SourceLike> & {
   query: string;
-  tableConnection: TableConnection;
   metadata: Metadata;
 }): Promise<string> {
   try {
-    const { tableName, databaseName, connectionId } = tableConnection;
+    const { tableName, databaseName, connectionId } = getSourceTable({
+      source,
+      metricType,
+    });
     const parsedQ = parse(query);
 
     if (parsedQ && tableName && databaseName && connectionId) {

@@ -11,7 +11,6 @@ import { atomWithStorage } from 'jotai/utils';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
@@ -399,14 +398,13 @@ export default function DBTracePanel({
           <Text size="xs">Trace ID Expression</Text>
           <Flex align="flex-start">
             <SQLInlineEditorControlled
-              tableConnection={tcFromSource(parentSourceData)}
+              source={parentSourceData}
               name="traceIdExpression"
               placeholder="Log Trace ID Column (ex. trace_id)"
               control={traceIdControl}
               size="xs"
               parentRef={typeof document !== 'undefined' ? document.body : null}
               dateRange={dateRange}
-              sourceId={sourceId ?? undefined}
             />
             <Button
               ms="sm"

@@ -11,8 +11,9 @@ import {
 } from '@codemirror/autocomplete';
 import {
   Field,
-  TableConnectionChoice,
+  SourceTableChoice,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceLike } from '@hyperdx/common-utils/dist/types';
 import {
   Flex,
   Paper,
@@ -33,7 +34,6 @@ import CodeMirror, {
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 import { useStableCallback } from '@/hooks/useStableCallback';
-import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
 import { clickhouseSql } from '@/utils/codeMirror';
 
@@ -69,10 +69,9 @@ type SQLInlineEditorProps = {
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
   dateRange?: [Date, Date];
-  sourceId?: string;
-  // With multiple tableConnections, offer only fields present in ALL of them
+  // With multiple sourceTables, offer only fields present in ALL of them
   // (intersection) rather than the union — for an expression that must be valid
-  // against every connection, e.g. a chart-level Group By over multiple series.
+  // against every table, e.g. a chart-level Group By over multiple series.
   intersectFields?: boolean;
   // Whether the dashboard variables in scope apply to this expression: offer
   // them as completions, and warn about the references that won't work.
@@ -82,8 +81,10 @@ type SQLInlineEditorProps = {
 const MAX_EDITOR_HEIGHT = '150px';
 
 export default function SQLInlineEditor({
-  tableConnection,
-  tableConnections,
+  source,
+  metricType,
+  metricName,
+  sourceTables: sourceTablesProp,
   filterField,
   onChange,
   placeholder,
@@ -100,18 +101,17 @@ export default function SQLInlineEditor({
   parentRef,
   allowMultiline = true,
   dateRange,
-  sourceId,
   intersectFields,
   enableVariables = false,
-}: SQLInlineEditorProps & TableConnectionChoice) {
+}: SQLInlineEditorProps & SourceTableChoice<SourceLike>) {
   const { colorScheme } = useMantineColorScheme();
-  const _tableConnections = tableConnection
-    ? [tableConnection]
-    : tableConnections;
-  const { data: source } = useSource({ id: sourceId });
-  const { data: fields } = useMultipleAllFields(_tableConnections ?? [], {
+  const sourceTables = useMemo(
+    () =>
+      sourceTablesProp ?? (source ? [{ source, metricType, metricName }] : []),
+    [sourceTablesProp, source, metricType, metricName],
+  );
+  const { data: fields } = useMultipleAllFields(sourceTables, {
     dateRange,
-    timestampValueExpression: source?.timestampValueExpression,
     intersect: intersectFields,
   });
   const filteredFields = useMemo(() => {
@@ -417,7 +417,7 @@ function SQLInlineEditorControlledComponent({
   ...props
 }: Omit<SQLInlineEditorProps, 'value' | 'onChange'> &
   UseControllerProps<any> &
-  TableConnectionChoice) {
+  SourceTableChoice<SourceLike>) {
   const { field, fieldState } = useController(props);
 
   // Guard against wrongly typed values

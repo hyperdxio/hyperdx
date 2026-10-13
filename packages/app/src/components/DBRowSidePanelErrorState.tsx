@@ -3,7 +3,7 @@ import {
   ClickHouseQueryError,
   isMissingColumnError,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
@@ -118,7 +118,7 @@ export function DBRowSidePanelErrorState({
   source: TSource;
 }) {
   const [editOpened, editModal] = useDisclosure(false);
-  const { data: tableMetadata } = useTableMetadata(tcFromSource(source));
+  const { data: tableMetadata } = useTableMetadata(getSourceTable({ source }));
 
   const showHint =
     isMissingColumnError(error) && !!tableMetadata?.isPointerTable;

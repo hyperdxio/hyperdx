@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { tcFromChartConfig } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   BuilderChartConfigWithDateRange,
   Filter,
@@ -116,7 +115,14 @@ export default function DBDeltaChart({
    *  dropping the hint doesn't change results.
    */
   const { data: tableMetadata, isLoading: isTableMetadataLoading } =
-    useTableMetadata(tcFromChartConfig(config), { retry: false });
+    useTableMetadata(
+      {
+        databaseName: config.from.databaseName,
+        tableName: config.from.tableName,
+        connectionId: config.connection,
+      },
+      { retry: false },
+    );
   const isLocalTable = tableMetadata != null && !tableMetadata.isPointerTable;
   const canUsePartIdsHint = isLocalTable;
   const inOperator = isLocalTable ? 'IN' : 'GLOBAL IN';

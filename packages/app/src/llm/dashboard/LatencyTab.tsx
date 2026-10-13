@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from 'react';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { Box } from '@mantine/core';
 
 import type { AddFilterFn } from '@/components/DBDeltaChart';
@@ -38,7 +37,7 @@ export function LatencyTab(
 
   // Trim oversized attribute values (full conversation payloads) out of the
   // delta sampling rows server-side; see buildTrimmedDeltaSelect.
-  const { data: jsonColumns } = useJsonColumns(tcFromSource(source));
+  const { data: jsonColumns } = useJsonColumns({ source });
   const deltaSelectExpression = useMemo(
     () => buildTrimmedDeltaSelect(source, jsonColumns),
     [source, jsonColumns],

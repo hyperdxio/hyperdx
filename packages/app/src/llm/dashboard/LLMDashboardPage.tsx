@@ -9,7 +9,6 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
@@ -314,8 +313,7 @@ function LLMDashboardPage() {
           />
           <Box style={{ flexGrow: 1 }}>
             <SearchWhereInput
-              tableConnection={tcFromSource(source)}
-              sourceId={sourceId}
+              source={source}
               dateRange={searchedTimeRange}
               control={control}
               name="where"

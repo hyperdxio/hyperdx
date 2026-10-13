@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { useColumns, useJsonColumns } from './hooks/useMetadata';
@@ -203,12 +203,12 @@ export function useServiceDashboardExpressions({
 }: {
   source: TTraceSource | undefined;
 }) {
-  const tableConnection = useMemo(() => tcFromSource(source), [source]);
-
-  const { data: jsonColumns, isLoading: isJsonColumnsLoading } =
-    useJsonColumns(tableConnection);
-  const { data: columns = [], isLoading: isColumnsLoading } =
-    useColumns(tableConnection);
+  const { data: jsonColumns, isLoading: isJsonColumnsLoading } = useJsonColumns(
+    { source },
+  );
+  const { data: columns = [], isLoading: isColumnsLoading } = useColumns(
+    getSourceTable({ source }),
+  );
 
   const isLoading = !source || isJsonColumnsLoading || isColumnsLoading;
 

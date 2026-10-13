@@ -10,7 +10,6 @@ import {
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { isReducibleRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import {
   displayTypeSupportsBuilderAlerts,
@@ -337,7 +336,6 @@ export default function EditTimeChartForm({
   });
 
   const databaseName = tableSource?.from.databaseName;
-  const tableName = tableSource?.from.tableName;
 
   // Carry the builder config over as a SQL template when switching to SQL mode
   useBuilderToSqlConversion({
@@ -1008,11 +1006,6 @@ export default function EditTimeChartForm({
     [setValue, onDirtyChange, onSubmit, configType, displayType, heatmapMode],
   );
 
-  const tableConnection = useMemo(
-    () => tcFromSource(tableSource),
-    [tableSource],
-  );
-
   const configTypeOptions = useMemo(
     () => [
       { label: 'Builder', value: 'builder' },
@@ -1187,10 +1180,8 @@ export default function EditTimeChartForm({
             swapSeries={swapSeries}
             duplicateSeries={duplicateSeries}
             tableSource={tableSource}
-            tableConnection={tableConnection}
             allowedSourceKinds={allowedSourceKinds}
             databaseName={databaseName}
-            tableName={tableName}
             dateRange={dateRange}
             select={select}
             displayType={displayType}
@@ -1214,8 +1205,7 @@ export default function EditTimeChartForm({
         <ChartActionBar
           control={control}
           handleSubmit={handleSubmit}
-          tableConnection={tableConnection}
-          sourceId={tableSource?.id}
+          source={tableSource}
           dateRange={dateRange}
           activeTab={activeTab}
           isRawSqlInput={isRawSqlInput}

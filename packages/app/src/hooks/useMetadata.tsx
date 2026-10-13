@@ -8,8 +8,9 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
+  getSourceTable,
   MetricNames,
-  TableConnection,
+  SourceTable,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -21,6 +22,7 @@ import {
   isLogSource,
   isTraceSource,
   MetadataMaterializedViews,
+  SourceLike,
 } from '@hyperdx/common-utils/dist/types';
 import {
   keepPreviousData,
@@ -170,27 +172,46 @@ export function useResolvedDateTimeColumns(
   return { dateTimeColumns, onResolvedColumnsChange: setResultColumns };
 }
 
+function isTableReady({
+  databaseName,
+  tableName,
+  connectionId,
+}: ReturnType<typeof getSourceTable>) {
+  return !!databaseName && !!tableName && !!connectionId;
+}
+
+// Only the parts of a source that field discovery reads, so unrelated edits to
+// the source (or a fresh object identity) don't refetch.
+function fieldDiscoveryKey({
+  source,
+  metricType,
+  metricName,
+}: SourceTable<SourceLike>) {
+  return {
+    ...getSourceTable({ source, metricType }),
+    metricName,
+    timestampValueExpression: source.timestampValueExpression,
+    metadataMVs: source.metadataMaterializedViews,
+  };
+}
+
 export function useJsonColumns(
-  tableConnection: TableConnection | undefined,
+  sourceTable: Partial<SourceTable<SourceLike>>,
   options?: Partial<UseQueryOptions<string[]>>,
 ) {
   const metadata = useMetadataWithSettings();
+  const table = getSourceTable(sourceTable);
   return useQuery<string[]>({
-    queryKey: ['useMetadata.useJsonColumns', tableConnection],
+    queryKey: ['useMetadata.useJsonColumns', table],
     queryFn: async () => {
-      if (!tableConnection) return [];
-      const columns = await metadata.getColumns(tableConnection);
+      const columns = await metadata.getColumns(table);
       return (
         filterColumnMetaByType(columns, [JSDataType.JSON])?.map(
           column => column.name,
         ) ?? []
       );
     },
-    enabled:
-      tableConnection &&
-      !!tableConnection.databaseName &&
-      !!tableConnection.tableName &&
-      !!tableConnection.connectionId,
+    enabled: isTableReady(table),
     ...options,
   });
 }
@@ -200,39 +221,34 @@ export function useJsonColumns(
 // Map render as `Map['key']` instead of the illegal array `Map[N+1]`.
 // HDX-4369.
 export function useMapColumns(
-  tableConnection: TableConnection | undefined,
+  sourceTable: Partial<SourceTable<SourceLike>>,
   options?: Partial<UseQueryOptions<string[]>>,
 ) {
   const metadata = useMetadataWithSettings();
+  const table = getSourceTable(sourceTable);
   return useQuery<string[]>({
-    queryKey: ['useMetadata.useMapColumns', tableConnection],
+    queryKey: ['useMetadata.useMapColumns', table],
     queryFn: async () => {
-      if (!tableConnection) return [];
-      const columns = await metadata.getColumns(tableConnection);
+      const columns = await metadata.getColumns(table);
       return (
         filterColumnMetaByType(columns, [JSDataType.Map])?.map(
           column => column.name,
         ) ?? []
       );
     },
-    enabled:
-      tableConnection &&
-      !!tableConnection.databaseName &&
-      !!tableConnection.tableName &&
-      !!tableConnection.connectionId,
+    enabled: isTableReady(table),
     ...options,
   });
 }
 
 export function useMultipleAllFields(
-  tableConnections: TableConnection[],
+  sourceTables: SourceTable<SourceLike>[],
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
-    timestampValueExpression?: string;
-    // Return only fields present in EVERY table connection instead of the
-    // union. Use for a shared expression (e.g. a chart-level Group By over
-    // multiple series) that must be valid against all of them — the union
-    // would offer fields that exist in one table but not another.
+    // Return only fields present in EVERY source table instead of the union.
+    // Use for a shared expression (e.g. a chart-level Group By over multiple
+    // series) that must be valid against all of them — the union would offer
+    // fields that exist in one table but not another.
     intersect?: boolean;
   },
 ) {
@@ -240,7 +256,6 @@ export function useMultipleAllFields(
   const { data: me, isFetched } = api.useMe();
   const {
     dateRange,
-    timestampValueExpression,
     intersect,
     enabled: enabledOption = true,
     ...queryOptions
@@ -248,9 +263,8 @@ export function useMultipleAllFields(
   return useQuery<Field[]>({
     queryKey: [
       'useMetadata.useMultipleAllFields',
-      ...tableConnections.map(tc => ({ ...tc })),
+      ...sourceTables.map(fieldDiscoveryKey),
       dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
-      timestampValueExpression,
       intersect ?? false,
     ],
     queryFn: async () => {
@@ -260,22 +274,14 @@ export function useMultipleAllFields(
       }
 
       const promiseResults = await Promise.allSettled(
-        tableConnections.map(tc =>
-          metadata.getAllFields({
-            ...tc,
-            dateRange,
-            timestampValueExpression:
-              timestampValueExpression ?? tc.timestampValueExpression,
-          }),
+        sourceTables.map(({ source, metricType, metricName }) =>
+          metadata.getAllFields({ source, metricType, metricName, dateRange }),
         ),
       );
 
       const fields2d: Field[][] = promiseResults.map(result => {
         if (result.status === 'rejected') {
-          console.warn(
-            'Failed to fetch fields for table connection',
-            result.reason,
-          );
+          console.warn('Failed to fetch fields for source', result.reason);
           return [];
         }
         return result.value;
@@ -291,23 +297,22 @@ export function useMultipleAllFields(
     ...queryOptions,
     enabled:
       enabledOption &&
-      tableConnections.length > 0 &&
-      tableConnections.every(
-        tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
+      sourceTables.length > 0 &&
+      sourceTables.every(sourceTable =>
+        isTableReady(getSourceTable(sourceTable)),
       ) &&
       isFetched,
   });
 }
 
 export function useAllFields(
-  tableConnection: TableConnection | undefined,
+  { source, metricType, metricName }: Partial<SourceTable<SourceLike>>,
   options?: Partial<UseQueryOptions<Field[]>> & {
     dateRange?: [Date, Date];
-    timestampValueExpression?: string;
   },
 ) {
   return useMultipleAllFields(
-    tableConnection ? [tableConnection] : [],
+    source ? [{ source, metricType, metricName }] : [],
     options,
   );
 }

@@ -1,4 +1,5 @@
-import { Controller, useWatch } from 'react-hook-form';
+import { Controller } from 'react-hook-form';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Divider, Slider, Stack } from '@mantine/core';
 
@@ -8,7 +9,6 @@ import { useColumns } from '@/hooks/useMetadata';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import {
-  DEFAULT_DATABASE,
   KNOWN_COLUMNS_EXPRESSION_HELP_TEXT,
   SERVICE_VERSION_EXPRESSION_HELP_TEXT,
 } from './constants';
@@ -21,25 +21,14 @@ import {
 } from './MaterializedViews';
 import { OrderByFormRow } from './OrderByFormRow';
 import { TableModelProps } from './types';
+import { useFormSource } from './useFormSource';
 import { UseTextIndexFormRow } from './UseTextIndexFormRow';
 
 export function TraceTableModelForm(props: TableModelProps) {
   const { control, setValue } = props;
   const brandName = useBrandDisplayName();
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
-  const tableName = useWatch({ control, name: 'from.tableName' });
-  const connectionId = useWatch({ control, name: 'connection' });
-
-  const tableConnection = { databaseName, tableName, connectionId };
-  const { data: columns } = useColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  });
+  const source = useFormSource(control);
+  const { data: columns } = useColumns(getSourceTable({ source }));
 
   return (
     <Stack gap="sm">
@@ -48,11 +37,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         helpText="DateTime column or expression defines the start of the span"
       >
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="timestampValueExpression"
           placeholder="Timestamp"
@@ -64,11 +49,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         helpText="Default columns selected in search results (this can be customized per search later)"
       >
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="defaultTableSelectExpression"
           placeholder="Timestamp, ServiceName, StatusCode, Duration, SpanName"
@@ -77,11 +58,7 @@ export function TraceTableModelForm(props: TableModelProps) {
       <Divider />
       <FormRow label={'Duration Expression'}>
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="durationExpression"
           placeholder="Duration Column"
@@ -174,7 +151,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         placeholder="TraceId"
         columns={columns}
         sourceKind={SourceKind.Trace}
-        tableConnection={tableConnection}
+        source={source}
       />
       <ExpressionFormRow
         control={control}
@@ -184,15 +161,11 @@ export function TraceTableModelForm(props: TableModelProps) {
         placeholder="SpanId"
         columns={columns}
         sourceKind={SourceKind.Trace}
-        tableConnection={tableConnection}
+        source={source}
       />
       <FormRow label={'Parent Span Id Expression'}>
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="parentSpanIdExpression"
           placeholder="ParentSpanId"
@@ -200,11 +173,7 @@ export function TraceTableModelForm(props: TableModelProps) {
       </FormRow>
       <FormRow label={'Span Name Expression'}>
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="spanNameExpression"
           placeholder="SpanName"
@@ -212,11 +181,7 @@ export function TraceTableModelForm(props: TableModelProps) {
       </FormRow>
       <FormRow label={'Span Kind Expression'}>
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="spanKindExpression"
           placeholder="SpanKind"
@@ -243,11 +208,7 @@ export function TraceTableModelForm(props: TableModelProps) {
       </FormRow>
       <FormRow label={'Status Code Expression'}>
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="statusCodeExpression"
           placeholder="StatusCode"
@@ -255,11 +216,7 @@ export function TraceTableModelForm(props: TableModelProps) {
       </FormRow>
       <FormRow label={'Status Message Expression'}>
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="statusMessageExpression"
           placeholder="StatusMessage"
@@ -273,7 +230,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         placeholder="ServiceName"
         columns={columns}
         sourceKind={SourceKind.Trace}
-        tableConnection={tableConnection}
+        source={source}
       />
       <ExpressionFormRow
         control={control}
@@ -284,7 +241,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         helpText={SERVICE_VERSION_EXPRESSION_HELP_TEXT}
         columns={columns}
         sourceKind={SourceKind.Trace}
-        tableConnection={tableConnection}
+        source={source}
       />
       <ExpressionFormRow
         control={control}
@@ -294,7 +251,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         placeholder="ResourceAttributes"
         columns={columns}
         sourceKind={SourceKind.Trace}
-        tableConnection={tableConnection}
+        source={source}
       />
       <ExpressionFormRow
         control={control}
@@ -304,18 +261,14 @@ export function TraceTableModelForm(props: TableModelProps) {
         placeholder="SpanAttributes"
         columns={columns}
         sourceKind={SourceKind.Trace}
-        tableConnection={tableConnection}
+        source={source}
       />
       <FormRow
         label={'Sample Rate Expression'}
         helpText="Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation -- exact values may differ slightly. Leave empty if spans are not sampled."
       >
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="sampleRateExpression"
           placeholder="SampleRate"
@@ -326,11 +279,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         helpText="Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)"
       >
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="spanEventsValueExpression"
           placeholder="Events"
@@ -341,11 +290,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         helpText="Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )"
       >
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="spanLinksValueExpression"
           placeholder="Links"
@@ -360,18 +305,14 @@ export function TraceTableModelForm(props: TableModelProps) {
         placeholder="SpanName"
         columns={columns}
         sourceKind={SourceKind.Trace}
-        tableConnection={tableConnection}
+        source={source}
       />
       <FormRow
         label={'Known Columns List'}
         helpText={KNOWN_COLUMNS_EXPRESSION_HELP_TEXT}
       >
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="knownColumnsListExpression"
           placeholder="Timestamp, Body, ServiceName"
@@ -384,11 +325,7 @@ export function TraceTableModelForm(props: TableModelProps) {
         helpText="This DateTime column is used to display and order search results."
       >
         <SQLInlineEditorControlled
-          tableConnection={{
-            databaseName,
-            tableName,
-            connectionId,
-          }}
+          source={source}
           control={control}
           name="displayedTimestampValueExpression"
           disableKeywordAutocomplete
@@ -412,12 +349,7 @@ export function TraceTableModelForm(props: TableModelProps) {
       <Divider />
       <MetadataMaterializedViewsFormSection {...props} />
       <Divider />
-      <OrderByFormRow
-        control={control}
-        databaseName={databaseName}
-        tableName={tableName}
-        connectionId={connectionId}
-      />
+      <OrderByFormRow control={control} source={source} />
     </Stack>
   );
 }

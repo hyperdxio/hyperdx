@@ -1,9 +1,9 @@
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Metadata,
-  TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind, SourceLike } from '@hyperdx/common-utils/dist/types';
 
 import {
   getSourceTableColumn,
@@ -200,22 +200,16 @@ describe('inferMaterializedViewConfig', () => {
     jest.resetAllMocks();
   });
 
+  const source: SourceLike = {
+    kind: SourceKind.Trace,
+    connection: 'test_connection',
+    from: { databaseName: 'test_db', tableName: 'test_source_table' },
+  };
+
   it('should infer materialized view configuration when given the name of a materialized view target table', async () => {
-    const sourceTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_source_table',
-      connectionId: 'test_connection',
-    };
-
-    const mvTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_mv_target_table',
-      connectionId: 'test_connection',
-    };
-
     const actualConfig = await inferMaterializedViewConfig(
-      mvTableConnection,
-      sourceTableConnection,
+      { databaseName: 'test_db', tableName: 'test_mv_target_table' },
+      source,
       mockMetadata,
     );
 
@@ -251,21 +245,9 @@ describe('inferMaterializedViewConfig', () => {
   });
 
   it('should infer materialized view configuration when given the name of a materialized view', async () => {
-    const sourceTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_source_table',
-      connectionId: 'test_connection',
-    };
-
-    const mvTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_mv', // Same as the previous test except this line refers to the MV instead of the target table
-      connectionId: 'test_connection',
-    };
-
     const actualConfig = await inferMaterializedViewConfig(
-      mvTableConnection,
-      sourceTableConnection,
+      { databaseName: 'test_db', tableName: 'test_mv' }, // Same as the previous test except this line refers to the MV instead of the target table
+      source,
       mockMetadata,
     );
 
@@ -301,21 +283,9 @@ describe('inferMaterializedViewConfig', () => {
   });
 
   it('should infer materialized view configuration when given the name of a SummingMergeTree target table', async () => {
-    const sourceTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_source_table',
-      connectionId: 'test_connection',
-    };
-
-    const mvTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_mv_target_table_summing',
-      connectionId: 'test_connection',
-    };
-
     const actualConfig = await inferMaterializedViewConfig(
-      mvTableConnection,
-      sourceTableConnection,
+      { databaseName: 'test_db', tableName: 'test_mv_target_table_summing' },
+      source,
       mockMetadata,
     );
 
@@ -351,21 +321,9 @@ describe('inferMaterializedViewConfig', () => {
       { tableName: 'test_mv_2', databaseName: 'test_db' },
     ]);
 
-    const sourceTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_source_table',
-      connectionId: 'test_connection',
-    };
-
-    const mvTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_mv_target_table',
-      connectionId: 'test_connection',
-    };
-
     const actualConfig = await inferMaterializedViewConfig(
-      mvTableConnection,
-      sourceTableConnection,
+      { databaseName: 'test_db', tableName: 'test_mv_target_table' },
+      source,
       mockMetadata,
     );
 
@@ -401,21 +359,9 @@ describe('inferMaterializedViewConfig', () => {
   });
 
   it('should return undefined when the target table is not an AggregatingMergeTree', async () => {
-    const sourceTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_source_table',
-      connectionId: 'test_connection',
-    };
-
-    const mvTableConnection: TableConnection = {
-      databaseName: 'test_db',
-      tableName: 'test_source_table', // This table is not an AggregatingMergeTree
-      connectionId: 'test_connection',
-    };
-
     const actualConfig = await inferMaterializedViewConfig(
-      mvTableConnection,
-      sourceTableConnection,
+      { databaseName: 'test_db', tableName: 'test_source_table' }, // This table is not an AggregatingMergeTree
+      source,
       mockMetadata,
     );
 

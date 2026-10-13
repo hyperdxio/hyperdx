@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useWatch } from 'react-hook-form';
+import { getSourceTable } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Box, Button, Divider, Group, Stack } from '@mantine/core';
 import { IconSettings } from '@tabler/icons-react';
@@ -10,7 +10,6 @@ import { useColumns } from '@/hooks/useMetadata';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import {
-  DEFAULT_DATABASE,
   KNOWN_COLUMNS_EXPRESSION_HELP_TEXT,
   SERVICE_VERSION_EXPRESSION_HELP_TEXT,
 } from './constants';
@@ -23,25 +22,14 @@ import {
 } from './MaterializedViews';
 import { OrderByFormRow } from './OrderByFormRow';
 import { TableModelProps } from './types';
+import { useFormSource } from './useFormSource';
 import { UseTextIndexFormRow } from './UseTextIndexFormRow';
 
 export function LogTableModelForm(props: TableModelProps) {
   const { control, setValue } = props;
   const brandName = useBrandDisplayName();
-  const databaseName = useWatch({
-    control,
-    name: 'from.databaseName',
-    defaultValue: DEFAULT_DATABASE,
-  });
-  const tableName = useWatch({ control, name: 'from.tableName' });
-  const connectionId = useWatch({ control, name: 'connection' });
-
-  const tableConnection = { databaseName, tableName, connectionId };
-  const { data: columns } = useColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  });
+  const source = useFormSource(control);
+  const { data: columns } = useColumns(getSourceTable({ source }));
 
   const [showOptionalFields, setShowOptionalFields] = useState(false);
 
@@ -53,11 +41,7 @@ export function LogTableModelForm(props: TableModelProps) {
           helpText="DateTime column or expression that is part of your table's primary key."
         >
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name="timestampValueExpression"
             disableKeywordAutocomplete
@@ -68,11 +52,7 @@ export function LogTableModelForm(props: TableModelProps) {
           helpText="Default columns selected in search results (this can be customized per search later)"
         >
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name="defaultTableSelectExpression"
             placeholder="Timestamp, Body"
@@ -117,7 +97,7 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="ServiceName"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <ExpressionFormRow
           control={control}
@@ -128,7 +108,7 @@ export function LogTableModelForm(props: TableModelProps) {
           helpText={SERVICE_VERSION_EXPRESSION_HELP_TEXT}
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <ExpressionFormRow
           control={control}
@@ -138,7 +118,7 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="SeverityText"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <ExpressionFormRow
           control={control}
@@ -148,7 +128,7 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="Body"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <ExpressionFormRow
           control={control}
@@ -158,7 +138,7 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="LogAttributes"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <ExpressionFormRow
           control={control}
@@ -168,18 +148,14 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="ResourceAttributes"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <FormRow
           label={'Displayed Timestamp Column'}
           helpText="This DateTime column is used to display and order search results."
         >
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name="displayedTimestampValueExpression"
             disableKeywordAutocomplete
@@ -207,7 +183,7 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="TraceId"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <ExpressionFormRow
           control={control}
@@ -217,17 +193,13 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="SpanId"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
 
         <Divider />
         {/* <FormRow label={'Table Filter Expression'}>
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name="tableFilterExpression"
             placeholder="ServiceName = 'only_this_service'"
@@ -242,18 +214,14 @@ export function LogTableModelForm(props: TableModelProps) {
           placeholder="Body"
           columns={columns}
           sourceKind={SourceKind.Log}
-          tableConnection={tableConnection}
+          source={source}
         />
         <FormRow
           label={'Known Columns List'}
           helpText={KNOWN_COLUMNS_EXPRESSION_HELP_TEXT}
         >
           <SQLInlineEditorControlled
-            tableConnection={{
-              databaseName,
-              tableName,
-              connectionId,
-            }}
+            source={source}
             control={control}
             name="knownColumnsListExpression"
             placeholder="Timestamp, Body, ServiceName"
@@ -279,12 +247,7 @@ export function LogTableModelForm(props: TableModelProps) {
         <Divider />
         <MetadataMaterializedViewsFormSection {...props} />
         <Divider />
-        <OrderByFormRow
-          control={control}
-          databaseName={databaseName}
-          tableName={tableName}
-          connectionId={connectionId}
-        />
+        <OrderByFormRow control={control} source={source} />
       </Stack>
     </>
   );

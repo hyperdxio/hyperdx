@@ -19,7 +19,12 @@ import {
 // Source types that support materialized views
 type TMVSource = TLogSource | TTraceSource;
 
-import { Metadata, TableConnection } from './metadata';
+type MaterializedViewTable = Pick<
+  MaterializedViewConfiguration,
+  'databaseName' | 'tableName'
+> & { connectionId: string };
+
+import { Metadata } from './metadata';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
@@ -205,13 +210,13 @@ type SelectItem = Exclude<
 >[number];
 
 async function isSimpleAggregateFunction(
-  tableConnection: TableConnection,
+  mvTable: MaterializedViewTable,
   column: string,
   metadata: Metadata,
 ) {
   try {
     const columnMeta = await metadata.getColumn({
-      ...tableConnection,
+      ...mvTable,
       column,
     });
 
@@ -223,13 +228,13 @@ async function isSimpleAggregateFunction(
 
 // Variants of quantile (ex. quantileExact, quantileDD, etc.)
 async function getQuantileAggregateFunction(
-  tableConnection: TableConnection,
+  mvTable: MaterializedViewTable,
   column: string,
   metadata: Metadata,
 ) {
   try {
     const columnMeta = await metadata.getColumn({
-      ...tableConnection,
+      ...mvTable,
       column,
     });
 
@@ -254,7 +259,7 @@ async function getQuantileAggregateFunction(
 }
 
 async function getAggregateMergeFunction(
-  tableConnection: TableConnection,
+  mvTable: MaterializedViewTable,
   column: string,
   aggFn: string,
   metadata: Metadata,
@@ -263,9 +268,7 @@ async function getAggregateMergeFunction(
     // Counts are stored in AggregatingMergeTree as UInt64 or SimpleAggregateFunction(sum, UInt64),
     // both of which should be summed rather than count()'ed.
     return 'sum';
-  } else if (
-    await isSimpleAggregateFunction(tableConnection, column, metadata)
-  ) {
+  } else if (await isSimpleAggregateFunction(mvTable, column, metadata)) {
     return aggFn;
   } else {
     return `${aggFn}Merge`;
@@ -380,7 +383,7 @@ export function isUnsupportedCountFunction(selectItem: SelectItem): boolean {
 async function convertSelectToMaterializedViewSelect(
   mvConfig: MaterializedViewConfiguration,
   selectItem: SelectItem,
-  mvTableConnection: TableConnection,
+  mvTable: MaterializedViewTable,
   metadata: Metadata,
 ): Promise<SelectItem> {
   const { valueExpression, aggFn: initialAggFn } = selectItem;
@@ -414,7 +417,7 @@ async function convertSelectToMaterializedViewSelect(
   if (columnConfigNoSourceColumn) {
     const targetColumn = columnConfigNoSourceColumn.mvColumn;
     const aggMergeFn = await getAggregateMergeFunction(
-      mvTableConnection,
+      mvTable,
       targetColumn,
       aggFn,
       metadata,
@@ -441,7 +444,7 @@ async function convertSelectToMaterializedViewSelect(
 
   if (isQuantileSelectItem(selectItem)) {
     const quantileAggregateFunction = await getQuantileAggregateFunction(
-      mvTableConnection,
+      mvTable,
       aggregatedColumnConfig.mvColumn,
       metadata,
     );
@@ -451,7 +454,7 @@ async function convertSelectToMaterializedViewSelect(
   }
 
   const aggMergeFn = await getAggregateMergeFunction(
-    mvTableConnection,
+    mvTable,
     aggregatedColumnConfig.mvColumn,
     aggFn,
     metadata,
@@ -502,7 +505,7 @@ export async function tryConvertConfigToMaterializedViewSelect<
     return { errors: [error] };
   }
 
-  const mvTableConnection: TableConnection = {
+  const mvTable: MaterializedViewTable = {
     databaseName: mvConfig.databaseName,
     tableName: mvConfig.tableName,
     connectionId: chartConfig.connection,
@@ -513,7 +516,7 @@ export async function tryConvertConfigToMaterializedViewSelect<
       convertSelectToMaterializedViewSelect(
         mvConfig,
         selectItem,
-        mvTableConnection,
+        mvTable,
         metadata,
       ),
     ),

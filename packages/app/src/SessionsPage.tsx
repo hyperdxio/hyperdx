@@ -16,7 +16,6 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   SearchCondition,
   SearchConditionLanguage,
@@ -449,9 +448,8 @@ function SessionsPage() {
                   allowedSourceKinds={[SourceKind.Session]}
                 />
                 <SearchWhereInput
-                  tableConnection={tcFromSource(traceTrace)}
                   // The WHERE runs against the trace source
-                  sourceId={traceTrace?.id}
+                  source={traceTrace}
                   dateRange={searchedTimeRange}
                   control={control}
                   name="where"

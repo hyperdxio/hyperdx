@@ -135,7 +135,7 @@ describe('getMetricTableName', () => {
     ...createBaseSource(),
     metricTables: {
       gauge: 'gauge_table',
-      counter: 'counter_table',
+      sum: 'sum_table',
     },
   });
 
@@ -152,8 +152,8 @@ describe('getMetricTableName', () => {
     expect(getMetricTableName(source, 'gauge' as MetricsDataType)).toBe(
       'gauge_table',
     );
-    expect(getMetricTableName(source, 'counter' as MetricsDataType)).toBe(
-      'counter_table',
+    expect(getMetricTableName(source, 'sum' as MetricsDataType)).toBe(
+      'sum_table',
     );
   });
 
@@ -163,8 +163,8 @@ describe('getMetricTableName', () => {
     expect(getMetricTableName(source, 'GAUGE' as MetricsDataType)).toBe(
       'gauge_table',
     );
-    expect(getMetricTableName(source, 'Counter' as MetricsDataType)).toBe(
-      'counter_table',
+    expect(getMetricTableName(source, 'Sum' as MetricsDataType)).toBe(
+      'sum_table',
     );
   });
 
@@ -229,25 +229,17 @@ describe('getAllMetricTables', () => {
     expect(getAllMetricTables(source)).toEqual([]);
   });
 
-  it('returns TableConnection for each populated metric table', () => {
+  it('returns one entry per populated metric table', () => {
     const source = createMetricSource({
-      Gauge: 'gauge_table',
-      Sum: 'sum_table',
+      gauge: 'gauge_table',
+      sum: 'sum_table',
     });
 
     const result = getAllMetricTables(source);
     expect(result).toEqual(
       expect.arrayContaining([
-        {
-          tableName: 'gauge_table',
-          databaseName: 'test_db',
-          connectionId: 'test-conn',
-        },
-        {
-          tableName: 'sum_table',
-          databaseName: 'test_db',
-          connectionId: 'test-conn',
-        },
+        { source, metricType: 'gauge' },
+        { source, metricType: 'sum' },
       ]),
     );
     expect(result).toHaveLength(2);
@@ -255,47 +247,43 @@ describe('getAllMetricTables', () => {
 
   it('filters out metric types with no table name', () => {
     const source = createMetricSource({
-      Gauge: 'gauge_table',
-      Histogram: '',
+      gauge: 'gauge_table',
+      histogram: '',
     });
 
-    const result = getAllMetricTables(source);
-    expect(result).toEqual([
-      {
-        tableName: 'gauge_table',
-        databaseName: 'test_db',
-        connectionId: 'test-conn',
-      },
+    expect(getAllMetricTables(source)).toEqual([
+      { source, metricType: 'gauge' },
     ]);
   });
 
-  it('returns all four metric types when all are populated', () => {
+  it('returns every metric type when all are populated', () => {
     const source = createMetricSource({
-      Gauge: 'gauge_t',
-      Histogram: 'histogram_t',
-      Sum: 'sum_t',
-      Summary: 'summary_t',
+      gauge: 'gauge_t',
+      histogram: 'histogram_t',
+      sum: 'sum_t',
+      summary: 'summary_t',
+      'exponential histogram': 'exp_histogram_t',
     });
 
     const result = getAllMetricTables(source);
-    expect(result).toHaveLength(4);
-    expect(result.map(t => t.tableName).sort()).toEqual([
-      'gauge_t',
-      'histogram_t',
-      'sum_t',
-      'summary_t',
-    ]);
-    // All should share the same database and connection
-    for (const tc of result) {
-      expect(tc.databaseName).toBe('test_db');
-      expect(tc.connectionId).toBe('test-conn');
-    }
+    expect(result).toHaveLength(5);
+    expect(
+      result.map(({ metricType }) => getMetricTableName(source, metricType)),
+    ).toEqual(
+      expect.arrayContaining([
+        'gauge_t',
+        'histogram_t',
+        'sum_t',
+        'summary_t',
+        'exp_histogram_t',
+      ]),
+    );
   });
 
   it('returns empty array when all metric table values are falsy', () => {
     const source = createMetricSource({
-      Gauge: '',
-      Histogram: '',
+      gauge: '',
+      histogram: '',
     });
 
     expect(getAllMetricTables(source)).toEqual([]);

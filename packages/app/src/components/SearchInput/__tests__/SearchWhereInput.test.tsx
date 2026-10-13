@@ -1,5 +1,6 @@
 import React from 'react';
 import { useForm } from 'react-hook-form';
+import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -18,12 +19,15 @@ function renderWithMantine(ui: React.ReactElement) {
   );
 }
 
-// Mock table connection for tests
-const mockTableConnection = {
-  databaseName: 'default',
-  tableName: 'otel_logs',
-  connectionId: 'test-connection',
-};
+const mockSource = {
+  id: 'test-source',
+  name: 'Logs',
+  kind: SourceKind.Log,
+  connection: 'test-connection',
+  from: { databaseName: 'default', tableName: 'otel_logs' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp, Body',
+} satisfies TLogSource;
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,7 +64,7 @@ function TestWrapper({
         children({ control: form.control })
       ) : (
         <SearchWhereInput
-          tableConnection={mockTableConnection}
+          source={mockSource}
           control={form.control}
           name="where"
           onSubmit={onSubmit}
@@ -113,7 +117,7 @@ describe('SearchWhereInput', () => {
         <TestWrapper defaultLanguage="lucene">
           {({ control }) => (
             <SearchWhereInput
-              tableConnection={mockTableConnection}
+              source={mockSource}
               control={control}
               name="where"
               allowMultiline={false}
@@ -191,7 +195,7 @@ describe('SearchWhereInput', () => {
         <TestWrapper defaultLanguage="sql">
           {({ control }) => (
             <SearchWhereInput
-              tableConnection={mockTableConnection}
+              source={mockSource}
               control={control}
               name="where"
               width="50%"
@@ -210,7 +214,7 @@ describe('SearchWhereInput', () => {
         <TestWrapper defaultLanguage="lucene">
           {({ control }) => (
             <SearchWhereInput
-              tableConnection={mockTableConnection}
+              source={mockSource}
               control={control}
               name="where"
               lucenePlaceholder="Custom Lucene placeholder"
