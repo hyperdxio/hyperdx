@@ -81,8 +81,7 @@ test.describe(
       await dashboardPage.gotoDashboard(await seedDashboard(page));
     });
 
-    async function expectMenuFits() {
-      await expect(dashboardPage.getTileMenuItem('Edit')).toBeInViewport();
+    async function expectMoveTargetsReachable() {
       const submenu = await dashboardPage.openMoveToGroupSubmenu();
       // Fully on screen, so the last target is reached by the submenu's own scroll
       await expect(submenu).toBeInViewport({ ratio: 1 });
@@ -93,14 +92,16 @@ test.describe(
 
     test('keeps Edit on screen for a tile at the bottom of the page', async () => {
       await dashboardPage.openTileActionsMenuById('wide-tile');
-      await expectMenuFits();
+      await expect(dashboardPage.getTileMenuItem('Edit')).toBeInViewport();
+      await expectMoveTargetsReachable();
     });
 
     test('keeps Edit on screen in the narrow-tile menu', async () => {
       await dashboardPage.openTileActionsMenuById('narrow-tile', {
         narrow: true,
       });
-      await expectMenuFits();
+      await expect(dashboardPage.getTileMenuItem('Edit')).toBeInViewport();
+      await expectMoveTargetsReachable();
     });
   },
 );
