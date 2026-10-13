@@ -3,10 +3,12 @@ import dynamic from 'next/dynamic';
 import { HeatmapChartView, HeatmapChartViewProps } from './HeatmapChartView';
 import type { HeatmapQuery } from './heatmapQueries';
 import type { SelectionBounds } from './selection';
+import { useCalculatedHeatmapData } from './useCalculatedHeatmapData';
 import { useHeatmapData } from './useHeatmapData';
 import { useSeriesHeatmapData } from './useSeriesHeatmapData';
 
 type DistributionQuery = Extract<HeatmapQuery, { mode: 'distribution' }>;
+type CalculatedQuery = Extract<HeatmapQuery, { mode: 'calculated' }>;
 type SeriesQuery = Extract<HeatmapQuery, { mode: 'series' }>;
 
 type DistributionOnlyProps = {
@@ -90,6 +92,27 @@ function SeriesHeatmapChart({
   );
 }
 
+function CalculatedHeatmapChart({
+  query,
+  enabled,
+  ...viewProps
+}: HeatmapChartViewProps & { query: CalculatedQuery; enabled: boolean }) {
+  const data = useCalculatedHeatmapData({
+    config: query.config,
+    scaleType: query.scaleType,
+    enabled,
+  });
+
+  return (
+    <HeatmapChartView
+      {...viewProps}
+      data={data}
+      plotKey={JSON.stringify(query.config)}
+      numberFormat={query.config.numberFormat}
+    />
+  );
+}
+
 function DBHeatmapChart({
   query,
   enabled = true,
@@ -98,9 +121,17 @@ function DBHeatmapChart({
   selectionBounds,
   ...viewProps
 }: DBHeatmapChartProps) {
-  return query.mode === 'series' ? (
-    <SeriesHeatmapChart {...viewProps} query={query} enabled={enabled} />
-  ) : (
+  if (query.mode === 'series') {
+    return (
+      <SeriesHeatmapChart {...viewProps} query={query} enabled={enabled} />
+    );
+  }
+  if (query.mode === 'calculated') {
+    return (
+      <CalculatedHeatmapChart {...viewProps} query={query} enabled={enabled} />
+    );
+  }
+  return (
     <DistributionHeatmapChart
       {...viewProps}
       query={query}

@@ -65,7 +65,8 @@ export type ChartConfigDisplaySettings = Pick<
   // PromQL-only: Handlebars template over each series' Prometheus label set
   // that renders the legend/tooltip name.
   legendTemplate?: string;
-  // Distribution heatmaps only; stored on the heatmap's select[0].
+  // Distribution heatmaps only; stored on a builder heatmap's select[0] and
+  // on a PromQL heatmap's `heatmap.scaleType`.
   heatmapScaleType?: HeatmapScaleType;
 };
 
@@ -90,6 +91,8 @@ interface ChartDisplaySettingsDrawerProps {
   promqlUsesRange?: boolean;
   /** A builder heatmap's mode; only distribution heatmaps have a numeric y axis to scale. */
   heatmapMode?: HeatmapMode;
+  /** The heatmap scale used when the tile has none set. */
+  defaultHeatmapScaleType?: HeatmapScaleType;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
@@ -98,7 +101,8 @@ interface ChartDisplaySettingsDrawerProps {
 
 function applyDefaultSettings(
   settings: ChartConfigDisplaySettings,
-  fallbackNumberFormat?: NumberFormat,
+  fallbackNumberFormat: NumberFormat | undefined,
+  defaultHeatmapScaleType: HeatmapScaleType,
 ): DrawerFormValues {
   return {
     numberFormat:
@@ -121,7 +125,7 @@ function applyDefaultSettings(
       ? attachLocalIds(settings.colorRules)
       : undefined,
     backgroundChart: settings.backgroundChart,
-    heatmapScaleType: settings.heatmapScaleType ?? 'log',
+    heatmapScaleType: settings.heatmapScaleType ?? defaultHeatmapScaleType,
   };
 }
 
@@ -132,6 +136,7 @@ export default function ChartDisplaySettingsDrawer({
   configType,
   promqlUsesRange = false,
   heatmapMode,
+  defaultHeatmapScaleType = 'log',
   defaultNumberFormat,
   onChange,
   onClose,
@@ -139,8 +144,13 @@ export default function ChartDisplaySettingsDrawer({
   isPerSeriesNumberFormatAllowed = false,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
-    () => applyDefaultSettings(settings, defaultNumberFormat),
-    [settings, defaultNumberFormat],
+    () =>
+      applyDefaultSettings(
+        settings,
+        defaultNumberFormat,
+        defaultHeatmapScaleType,
+      ),
+    [settings, defaultNumberFormat, defaultHeatmapScaleType],
   );
 
   const {
@@ -197,9 +207,10 @@ export default function ChartDisplaySettingsDrawer({
       applyDefaultSettings(
         {} as ChartConfigDisplaySettings,
         defaultNumberFormat,
+        defaultHeatmapScaleType,
       ),
     );
-  }, [reset, defaultNumberFormat]);
+  }, [reset, defaultNumberFormat, defaultHeatmapScaleType]);
 
   const isTimeChart = isTimeSeriesDisplayType(displayType);
 
@@ -212,12 +223,17 @@ export default function ChartDisplaySettingsDrawer({
   const isClientSideSeriesLimit =
     showSeriesLimit && (configType === 'sql' || configType === 'promql');
 
+  const isDistributionHeatmap =
+    displayType === DisplayType.Heatmap && heatmapMode === 'distribution';
+
   // Every PromQL display that surfaces a series name. A number tile shows one
-  // value and a table gives each label its own column, so neither has a legend.
+  // value, a table gives each label its own column, and a distribution heatmap
+  // merges every series into one, so none has a legend.
   const showLegendTemplate =
     configType === 'promql' &&
     displayType !== DisplayType.Number &&
-    displayType !== DisplayType.Table;
+    displayType !== DisplayType.Table &&
+    !isDistributionHeatmap;
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; on PromQL it trims the reduced series client-side
@@ -254,8 +270,7 @@ export default function ChartDisplaySettingsDrawer({
       : 'Available on query-builder number tiles.';
 
   // Log scale only means something on a numeric (distribution mode) y axis
-  const showHeatmapScale =
-    displayType === DisplayType.Heatmap && heatmapMode === 'distribution';
+  const showHeatmapScale = isDistributionHeatmap;
 
   return (
     <Drawer
@@ -343,7 +358,7 @@ export default function ChartDisplaySettingsDrawer({
               name="heatmapScaleType"
               render={({ field: { onChange, value } }) => (
                 <HeatmapScaleControl
-                  value={value ?? 'log'}
+                  value={value ?? defaultHeatmapScaleType}
                   onChange={onChange}
                 />
               )}
