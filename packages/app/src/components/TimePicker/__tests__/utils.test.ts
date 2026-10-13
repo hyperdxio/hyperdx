@@ -1,3 +1,5 @@
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
+
 import {
   dateParser,
   parseTimeRangeInput,
@@ -157,6 +159,35 @@ describe('parseTimeRangeInput', () => {
       new Date('2024-01-16T12:00:00'),
     ]);
   });
+});
+
+// Mirrors how TimePicker.handleSearch builds the range text for each clock.
+describe('parseTimeRangeInput with year-qualified picker text', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-15T12:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it.each(['12h', '24h'] as const)(
+    'round-trips past, boundary and future ranges with a %s clock',
+    clock => {
+      const ranges: [Date, Date][] = [
+        [new Date('2024-03-03T13:05:09'), new Date('2024-03-05T01:00:00')],
+        [new Date('2025-12-30T10:00:00'), new Date('2026-02-01T10:00:00')],
+        [new Date('2026-08-01T10:00:00'), new Date('2026-09-01T10:00:00')],
+      ];
+      for (const [start, end] of ranges) {
+        const text = [start, end]
+          .map(d => formatDate(d, { format: 'withYear', clock }))
+          .join(' - ');
+        expect(parseTimeRangeInput(text)).toEqual([start, end]);
+      }
+    },
+  );
 });
 
 describe('timeRangeInputToSeconds', () => {
