@@ -370,10 +370,12 @@ export async function inferTableSourceConfig({
         ? { timestampValueExpression: 'TimeReceived' }
         : {}),
       defaultTableSelectExpression: selected.join(', ') || '*',
+      // A mapping for a column the table lacks is returned empty so that switching tables clears it.
       ...Object.fromEntries(
-        Object.entries(NETFLOW_COLUMN_EXPRESSIONS).filter(([, column]) =>
-          names.has(column),
-        ),
+        Object.entries(NETFLOW_COLUMN_EXPRESSIONS).map(([field, column]) => [
+          field,
+          names.has(column) ? column : '',
+        ]),
       ),
     };
   }

@@ -794,8 +794,12 @@ describe('NetFlow source inference', () => {
       'DstPort',
       'Proto',
     ]);
-    expect(config).not.toHaveProperty('samplingRateExpression');
-    expect(config).not.toHaveProperty('exporterExpression');
-    expect(config).not.toHaveProperty('inIfExpression');
+    // Empty, not omitted, so that a mapping from a previously selected table is cleared.
+    expect(config).toMatchObject({
+      samplingRateExpression: '',
+      exporterExpression: '',
+      inIfExpression: '',
+      outIfExpression: '',
+    });
   });
 });

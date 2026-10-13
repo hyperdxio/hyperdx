@@ -236,6 +236,33 @@ describe('Source form asynchronous inference', () => {
     expect(notifications.show).toHaveBeenCalledTimes(1);
   });
 
+  it('clears an inferred mapping when the new table lacks the column', async () => {
+    mockInfer
+      .mockResolvedValueOnce({
+        kind: SourceKind.Netflow,
+        bytesExpression: 'Bytes',
+      })
+      .mockResolvedValueOnce({
+        kind: SourceKind.Netflow,
+        bytesExpression: '',
+      });
+    renderWithMantine(
+      <TableSourceForm isNew defaultKind={SourceKind.Netflow} />,
+    );
+    fireEvent.change(screen.getByLabelText('from.tableName'), {
+      target: { value: 'flows_with_bytes' },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('bytesExpression')).toHaveValue('Bytes'),
+    );
+    fireEvent.change(screen.getByLabelText('from.tableName'), {
+      target: { value: 'flows_without_bytes' },
+    });
+    await waitFor(() =>
+      expect(screen.getByLabelText('bytesExpression')).toHaveValue(''),
+    );
+  });
+
   it.each([
     [
       SourceKind.Netflow,

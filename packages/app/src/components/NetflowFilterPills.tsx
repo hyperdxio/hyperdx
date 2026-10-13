@@ -102,9 +102,13 @@ export function useNetflowFilterState({
     if (normalizedFilters !== filters) onChangeRef.current(normalizedFilters);
   }, [normalizedFilters, filters]);
   const clickedExpressionsRef = useRef(new Map<string, string>());
+  // Conditions that pills cannot represent (e.g. `Bytes > 100`) stay in the search untouched.
   const emitFilters = (next: FilterState) =>
-    onChange(
-      filtersToQuery(
+    onChange([
+      ...normalizedFilters.filter(
+        filter => Object.keys(parseQuery([filter]).filters).length === 0,
+      ),
+      ...filtersToQuery(
         Object.fromEntries(
           Object.entries(next).map(([key, selection]) => [
             expressions.get(key) ??
@@ -114,7 +118,7 @@ export function useNetflowFilterState({
           ]),
         ),
       ),
-    );
+    ]);
   const state = useSearchPageFilterState({
     searchQuery: normalizedFilters,
     onFilterChange: next => emitFilters(parseQuery(next).filters),

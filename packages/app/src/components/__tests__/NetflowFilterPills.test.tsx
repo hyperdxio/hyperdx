@@ -202,6 +202,18 @@ describe('NetFlow explicit filter actions', () => {
     expect(onChange.mock.lastCall?.[0]).toContainEqual(unrelated);
   });
 
+  it('keeps conditions without a pill when Include and Exclude are clicked', () => {
+    const unrelated: Filter = { type: 'sql', condition: 'Bytes > 100' };
+    const { result, emitted, onChange } = renderFilters([unrelated]);
+    act(() => result.current.onFilter('exporter', 'edge-a', false));
+    expect(onChange.mock.lastCall?.[0]).toContainEqual(unrelated);
+    expect(Object.values(emitted())).toEqual([
+      { included: new Set(['edge-a']), excluded: new Set() },
+    ]);
+    act(() => result.current.onFilter('exporter', 'edge-b', true));
+    expect(onChange.mock.lastCall?.[0]).toContainEqual(unrelated);
+  });
+
   it('retains empty custom dimension filters and makes repeated actions idempotent', () => {
     const { result, emitted } = renderFilters();
     const dimension = {
