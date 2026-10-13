@@ -1,8 +1,8 @@
 import MongoStore from 'connect-mongo';
 import session from 'express-session';
-import mongoose from 'mongoose';
 
 import { mongooseConnection } from '@/models';
+import { isMongoConnected } from '@/utils/readiness';
 
 type MongoClient = ReturnType<typeof mongooseConnection.getClient>;
 type ConnectMongoClient = NonNullable<
@@ -36,7 +36,7 @@ export class MongooseSessionStore extends session.Store {
     if (this.store != null && this.storeClient === client) {
       return this.store;
     }
-    if (mongooseConnection.readyState !== mongoose.ConnectionStates.connected) {
+    if (!isMongoConnected()) {
       return undefined;
     }
     // mongoose bundles its own mongodb driver (4.x), so its MongoClient type

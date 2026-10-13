@@ -1,7 +1,7 @@
 import session from 'express-session';
 import mongoose from 'mongoose';
 
-// --- mocks (hoisted; names must be prefixed with `mock`) ---
+// jest.mock factories are hoisted, so the state they use must be named `mock*`.
 type MockStore = {
   client: unknown;
   collectionP: Promise<unknown>;
@@ -45,8 +45,10 @@ import { MongooseSessionStore } from '@/utils/sessionStore';
 
 const { connected, connecting, disconnected } = mongoose.ConnectionStates;
 
+type GetResult = { err: unknown; session?: session.SessionData | null };
+
 const getSession = (store: MongooseSessionStore, sid = 'sid') =>
-  new Promise<{ err: any; session: any }>(resolve =>
+  new Promise<GetResult>(resolve =>
     store.get(sid, (err, session) => resolve({ err, session })),
   );
 
