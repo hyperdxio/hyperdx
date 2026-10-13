@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { ObjectId } from 'mongodb';
 
 import * as config from '@/config';
 import {
@@ -20,6 +21,7 @@ import {
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
 import { Source, type SourceDocument } from '@/models/source';
+import Team from '@/models/team';
 
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
@@ -162,6 +164,16 @@ describe('MCP Query Tools', () => {
       expect(props).toContain('endTime');
       expect(tool!.inputSchema.required).toContain('connectionId');
       expect(tool!.inputSchema.required).toContain('sql');
+    });
+
+    it('exposes an optional sourceId on clickstack_sql', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'clickstack_sql')!;
+
+      expect(Object.keys(tool.inputSchema.properties ?? {})).toContain(
+        'sourceId',
+      );
+      expect(tool.inputSchema.required).not.toContain('sourceId');
     });
   });
 
@@ -848,10 +860,17 @@ describe('MCP Query Tools', () => {
 
         expect(examples).toHaveLength(2);
         for (const sql of examples) {
-          expect(sql).toContain('FROM <table>');
+          expect(sql).toMatch(/FROM (<table>|\$__sourceTable) /);
           expect(sql).toContain('<timestampColumn>');
           expect(sql).not.toMatch(/otel_|TimestampTime/);
         }
+      });
+
+      it('show $__sourceTable for a source and <table> for any other table', async () => {
+        const [timeSeries, table] = await getExamples();
+
+        expect(timeSeries).toContain('FROM $__sourceTable ');
+        expect(table).toContain('FROM <table> ');
       });
 
       it('run once the placeholders are filled from a source', async () => {
@@ -864,6 +883,7 @@ describe('MCP Query Tools', () => {
             .replaceAll('<timestampColumn>', 'Timestamp');
           const result = await callTool(client, 'clickstack_sql', {
             connectionId: connection._id.toString(),
+            sourceId: logSource._id.toString(),
             sql,
             startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
             endTime: new Date().toISOString(),
@@ -873,6 +893,103 @@ describe('MCP Query Tools', () => {
             error: result.isError ? getFirstText(result) : null,
           }).toEqual({ sql, error: null });
         }
+      });
+    });
+
+    describe('sourceId', () => {
+      const countSql =
+        'SELECT count() AS n FROM $__sourceTable WHERE $__timeFilter(Timestamp)';
+
+      it('resolves $__sourceTable to the table of the given source', async () => {
+        const now = Date.now();
+        await bulkInsertLogs(
+          [1, 2, 3].map(minutesAgo => ({
+            Body: 'from source',
+            ServiceName: 'sql-source',
+            SeverityText: 'INFO',
+            Timestamp: new Date(now - minutesAgo * 60 * 1000),
+          })),
+        );
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sourceId: logSource._id.toString(),
+          sql: `${countSql} AND ServiceName = 'sql-source'`,
+          startTime: new Date(now - 60 * 60 * 1000).toISOString(),
+          endTime: new Date(now).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(JSON.parse(getFirstText(result)).result.data).toEqual([
+          { n: '3' },
+        ]);
+      });
+
+      it('rejects $__sourceTable without a sourceId, saying to pass one', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          '$__sourceTable needs a sourceId',
+        );
+      });
+
+      it('rejects a sourceId that does not exist', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sourceId: new ObjectId().toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Source not found');
+      });
+
+      it("rejects another team's sourceId as not found", async () => {
+        const otherTeam = await Team.create({ name: 'Other Team' });
+        const otherSource = await Source.create({
+          kind: SourceKind.Log,
+          team: otherTeam._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_LOGS_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection._id,
+          name: 'Other Logs',
+        });
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sourceId: otherSource._id.toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Source not found');
+      });
+
+      // $__sourceTable would otherwise expand to a table on another server.
+      it('rejects a sourceId whose connection differs from connectionId', async () => {
+        const otherConnection = await Connection.create({
+          team: team._id,
+          name: 'Other',
+          host: config.CLICKHOUSE_HOST,
+          username: config.CLICKHOUSE_USER,
+          password: config.CLICKHOUSE_PASSWORD,
+        });
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: otherConnection._id.toString(),
+          sourceId: logSource._id.toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('does not match the connection');
       });
     });
 
