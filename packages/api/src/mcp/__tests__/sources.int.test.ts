@@ -155,6 +155,25 @@ describe('MCP Source Tools', () => {
       expect(log.table).toBe(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`);
     });
 
+    it('quotes table parts that are not bare identifiers so FROM still parses', async () => {
+      const source = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: 'observability-prod', tableName: 'otel.logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Quoted logs',
+      });
+
+      const result = await callTool(client, 'clickstack_list_sources');
+      const output = JSON.parse(getFirstText(result));
+
+      const log = output.sources.find(
+        (s: any) => s.id === source._id.toString(),
+      );
+      expect(log.table).toBe('`observability-prod`.`otel.logs`');
+    });
+
     it('should include keyColumns from source config without ClickHouse queries', async () => {
       const result = await callTool(client, 'clickstack_list_sources');
       const output = JSON.parse(getFirstText(result));
@@ -265,6 +284,34 @@ describe('MCP Source Tools', () => {
 
       it('includes the database its metricTables live in', async () => {
         const metricSource = await createMetricSource();
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric.database).toBe(DEFAULT_DATABASE);
+        expect(metric.table).toBeUndefined();
+      });
+
+      // Metric sources may also set from.tableName, but their queryable
+      // tables are still the ones in metricTables.
+      it('includes the database for a metric source that also names a table', async () => {
+        const metricSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'otel_metrics_gauge',
+          },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name: 'Named metrics',
+        });
 
         const result = await callTool(client, 'clickstack_list_sources');
         const output = JSON.parse(getFirstText(result));
