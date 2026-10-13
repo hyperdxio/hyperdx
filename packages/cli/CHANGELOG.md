@@ -1,5 +1,11 @@
 # @hyperdx/cli
 
+## 0.7.0
+
+### Minor Changes
+
+- 68082b67: feat: add stacked line (stacked area) time-series display type
+
 ## 0.6.4
 
 ### Patch Changes
