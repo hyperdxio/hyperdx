@@ -289,6 +289,7 @@ export function formatResponseForTimeChart({
   > = {};
 
   const firstGroupIsLogLevel = firstGroupColumnIsLogLevel(source, groupColumns);
+  const peakByKey = new Map<string, number>();
 
   for (const row of response.data) {
     const date = new Date(row[timestampColumn.name] as string | number);
@@ -319,6 +320,12 @@ export function formatResponseForTimeChart({
           : Number.parseFloat(String(rawValue));
 
       tsBucket[keyName] = value;
+      if (Number.isFinite(value)) {
+        peakByKey.set(
+          keyName,
+          Math.max(peakByKey.get(keyName) ?? 0, Math.abs(value)),
+        );
+      }
 
       // Special handling for log level / trace severity colors
       let color: string | undefined = undefined;
@@ -337,12 +344,14 @@ export function formatResponseForTimeChart({
     }
   }
 
-  // Sort log-level series info < warn < error, matching the web ordering
+  // Sort log-level series info < warn < error, then by peak like the web, so
+  // the 8-color palette goes to the largest series before it repeats.
   const logLevelColorOrder = ['green', 'yellow', 'red'];
   const sortedSeries = Object.values(seriesMap).sort((a, b) => {
     return (
       logLevelColorOrder.findIndex(color => color === a.color) -
-      logLevelColorOrder.findIndex(color => color === b.color)
+        logLevelColorOrder.findIndex(color => color === b.color) ||
+      (peakByKey.get(b.dataKey) ?? 0) - (peakByKey.get(a.dataKey) ?? 0)
     );
   });
 

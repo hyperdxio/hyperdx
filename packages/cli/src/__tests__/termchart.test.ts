@@ -297,4 +297,55 @@ describe('renderStackedBarChart', () => {
     expect(topRow).toContain('█');
     expect(topRow).toContain('100');
   });
+
+  it('leaves series too small to draw out of the legend', () => {
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({
+          big: [1000, 1000, 1000],
+          mid: [400, 400, 400],
+          tiny: [0.001, 0.001, 0.001],
+          none: [0, 0, 0],
+        }),
+        width: 60,
+        height: 14,
+      }),
+    );
+    const legend = output.split('\n').at(-1);
+    expect(legend).toContain('● big');
+    expect(legend).toContain('● mid');
+    expect(legend).not.toContain('tiny');
+    expect(legend).toContain('+2 too small to show');
+  });
+
+  it('credits a partial top cell to the series filling most of it, not a sliver on top', () => {
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({
+          base: [1000, 1000],
+          sliver: [60, 60],
+          crumb: [1, 1],
+        }),
+        width: 60,
+        height: 14,
+      }),
+    );
+    const legend = output.split('\n').at(-1);
+    expect(legend).toContain('● sliver');
+    expect(legend).not.toContain('crumb');
+  });
+
+  it('separates wide bars with a gap column', () => {
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({ events: [5, 5, 5] }),
+        width: 42,
+        height: 8,
+        showLegend: false,
+      }),
+    );
+    const bottomRow = output.split('\n').at(-2)!;
+    const bars = bottomRow.slice(bottomRow.indexOf('┤') + 1);
+    expect(bars.trimEnd().split(/ +/)).toHaveLength(3);
+  });
 });
