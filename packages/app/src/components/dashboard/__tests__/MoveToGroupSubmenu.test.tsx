@@ -125,10 +125,13 @@ describe('MoveToGroupSubmenu', () => {
   });
 
   it('separates tabbed sections and "(Ungrouped)" from the groups around them', async () => {
-    const separatorsBefore = async (props: { containerId?: string }) => {
-      const { submenu, unmount } = await openSubmenu(props);
+    const separatorsBefore = async (
+      props: { containerId?: string },
+      targets?: MoveTarget[],
+    ) => {
+      const { submenu, unmount } = await openSubmenu(props, targets);
       const labels = submenu
-        .getAllByRole('separator', { hidden: true })
+        .queryAllByRole('separator', { hidden: true })
         .map(s => s.nextElementSibling?.textContent);
       unmount();
       return labels;
@@ -140,5 +143,12 @@ describe('MoveToGroupSubmenu', () => {
       'Services',
       'Single tab',
     ]);
+    const [tabbed, single, plain] = containers;
+    expect(
+      await separatorsBefore({}, buildMoveTargets([plain, tabbed])),
+    ).toEqual(['Services']);
+    expect(
+      await separatorsBefore({}, buildMoveTargets([single, plain])),
+    ).toEqual([]);
   });
 });
