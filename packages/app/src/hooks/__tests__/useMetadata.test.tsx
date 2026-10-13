@@ -37,7 +37,20 @@ const createMockChartConfig = (
 
 jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({
-    data: [{ id: 'source1' }, { id: 'source2' }],
+    data: [
+      { id: 'source1' },
+      { id: 'source2' },
+      {
+        id: 'logs',
+        kind: 'log',
+        metadataMaterializedViews: { kvRollupTable: 'logs_kv' },
+      },
+      {
+        id: 'traces',
+        kind: 'trace',
+        metadataMaterializedViews: { kvRollupTable: 'traces_kv' },
+      },
+    ],
     isLoading: false,
   }),
 }));
@@ -246,6 +259,141 @@ describe('useGetKeyValues', () => {
     expect(result.current.error).toEqual(expect.any(Error));
     expect(result.current.error!.message).toBe('Fetch failed');
   });
+
+  const keys = ["ResourceAttributes['service.name']"];
+  const logsConfig = createMockChartConfig({
+    source: 'logs',
+    from: { databaseName: 'db', tableName: 'logs' },
+  });
+  const tracesConfig = createMockChartConfig({
+    source: 'traces',
+    from: { databaseName: 'db', tableName: 'traces' },
+  });
+
+  const renderValues = (
+    params: Partial<Parameters<typeof useMultipleGetKeyValues>[0]> = {},
+  ) =>
+    renderHook(
+      () =>
+        useMultipleGetKeyValues({
+          chartConfigs: [logsConfig, tracesConfig],
+          keys,
+          ...params,
+        }),
+      { wrapper },
+    );
+
+  it("looks up every config in 'all' mode with its own source's MVs", async () => {
+    const getAllKeyValues = jest
+      .spyOn(mockMetadata, 'getAllKeyValues')
+      .mockResolvedValueOnce([{ key: keys[0], value: ['api'] }])
+      .mockResolvedValueOnce([{ key: keys[0], value: ['web'] }]);
+
+    const { result } = renderValues({ mode: 'all' });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([
+      { key: keys[0], value: ['api'] },
+      { key: keys[0], value: ['web'] },
+    ]);
+    expect(getAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: 'logs',
+        metadataMVs: { kvRollupTable: 'logs_kv' },
+      }),
+    );
+    expect(getAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: 'traces',
+        metadataMVs: { kvRollupTable: 'traces_kv' },
+      }),
+    );
+  });
+
+  it("uses the metadataMVs override for a single config in 'all' mode", async () => {
+    const override = { kvRollupTable: 'override_kv', granularity: '15 minute' };
+    const getAllKeyValues = jest
+      .spyOn(mockMetadata, 'getAllKeyValues')
+      .mockResolvedValue([]);
+
+    const { result } = renderValues({
+      mode: 'all',
+      chartConfigs: [logsConfig],
+      metadataMVs: override,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({ metadataMVs: override }),
+    );
+  });
+
+  it("ignores the metadataMVs override for multiple configs in 'all' mode", async () => {
+    const override = { kvRollupTable: 'override_kv', granularity: '15 minute' };
+    const getAllKeyValues = jest
+      .spyOn(mockMetadata, 'getAllKeyValues')
+      .mockResolvedValue([]);
+
+    const { result } = renderValues({ mode: 'all', metadataMVs: override });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(
+      getAllKeyValues.mock.calls.map(([args]) => args.metadataMVs),
+    ).toEqual([{ kvRollupTable: 'logs_kv' }, { kvRollupTable: 'traces_kv' }]);
+  });
+
+  it("passes limit to 'all' mode lookups as maxValuesPerKey", async () => {
+    const getAllKeyValues = jest
+      .spyOn(mockMetadata, 'getAllKeyValues')
+      .mockResolvedValue([]);
+
+    const { result } = renderValues({
+      mode: 'all',
+      chartConfigs: [logsConfig],
+      limit: 100,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({ maxValuesPerKey: 100 }),
+    );
+  });
+
+  it.each([
+    ['all', 'getAllKeyValues'],
+    ['exact', 'getKeyValuesWithMVs'],
+  ] as const)(
+    "returns the other sources' values when one fails in '%s' mode",
+    async (mode, method) => {
+      jest
+        .spyOn(mockMetadata, method)
+        .mockRejectedValueOnce(new Error('timeout'))
+        .mockResolvedValueOnce([{ key: keys[0], value: ['web'] }]);
+
+      const { result } = renderValues({ mode });
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      expect(result.current.data).toEqual([{ key: keys[0], value: ['web'] }]);
+    },
+  );
+
+  it.each([
+    ['all', 'getAllKeyValues'],
+    ['exact', 'getKeyValuesWithMVs'],
+  ] as const)(
+    "errors when every source fails in '%s' mode",
+    async (mode, method) => {
+      jest
+        .spyOn(mockMetadata, method)
+        .mockRejectedValueOnce(new Error('fail 1'))
+        .mockRejectedValueOnce(new Error('fail 2'));
+
+      const { result } = renderValues({ mode });
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(result.current.error?.message).toBe('fail 1');
+    },
+  );
 
   it('should be in a loading state while fetching sources', async () => {
     jest.mocked(useSources).mockReturnValue({
