@@ -20,3 +20,19 @@ load 'test_helpers/assertions.bash'
     sleep 1
     assert_test_data "data/auto-parse/default"
 }
+
+@test "brace-delimited non-JSON bodies are not merged and don't log parse errors" {
+    emit_otel_data "http://localhost:4318" "data/auto-parse/brace-not-json"
+    wait_for_rows 9000 "SELECT count() FROM otel_logs WHERE ResourceAttributes['suite-id'] = 'auto-parse' AND ResourceAttributes['test-id'] = 'brace-not-json'" 5
+    assert_test_data "data/auto-parse/brace-not-json"
+
+    run docker compose logs otel-collector
+    [[ "$output" != *"invalid character"* ]]
+    [[ "$output" != *"ParseJSON"* ]]
+}
+
+@test "JSON objects with whitespace after the opening brace are parsed" {
+    emit_otel_data "http://localhost:4318" "data/auto-parse/json-whitespace"
+    wait_for_rows 9000 "SELECT count() FROM otel_logs WHERE ResourceAttributes['suite-id'] = 'auto-parse' AND ResourceAttributes['test-id'] = 'json-whitespace'" 3
+    assert_test_data "data/auto-parse/json-whitespace"
+}
