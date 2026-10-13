@@ -1307,6 +1307,47 @@ describe('Metadata Integration Tests', () => {
     });
   });
 
+  describe('getTimeSeriesTables', () => {
+    const database = 'test_ts_discovery';
+
+    const timeSeriesCommand = (query: string) =>
+      client.command({
+        query,
+        clickhouse_settings: { allow_experimental_time_series_table: 1 },
+      });
+
+    beforeAll(async () => {
+      await timeSeriesCommand(`DROP DATABASE IF EXISTS ${database}`);
+      await timeSeriesCommand(`CREATE DATABASE ${database}`);
+      await timeSeriesCommand(
+        `CREATE TABLE ${database}.metrics_ts ENGINE = TimeSeries`,
+      );
+      await timeSeriesCommand(
+        `CREATE TABLE ${database}.custom_ts ENGINE = TimeSeries`,
+      );
+      await timeSeriesCommand(
+        `CREATE TABLE ${database}.not_ts (ts DateTime) ENGINE = MergeTree ORDER BY ts`,
+      );
+    });
+
+    afterAll(async () => {
+      await timeSeriesCommand(`DROP DATABASE IF EXISTS ${database}`);
+    });
+
+    it('lists only TimeSeries tables, without their inner tables', async () => {
+      const metadata = new Metadata(hdxClient, new MetadataCache());
+
+      const tables = await metadata.getTimeSeriesTables({
+        connectionId: 'test_connection',
+      });
+
+      expect(tables.filter(t => t.databaseName === database)).toEqual([
+        { databaseName: database, tableName: 'custom_ts' },
+        { databaseName: database, tableName: 'metrics_ts' },
+      ]);
+    });
+  });
+
   describe('getMapKeys - unbounded scan guard (#3037)', () => {
     const tableName = 'test_map_keys_scan';
     let metadata: Metadata;

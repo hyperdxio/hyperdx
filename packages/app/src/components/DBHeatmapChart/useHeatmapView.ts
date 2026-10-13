@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 
 import { timeBucketByGranularity } from '@/ChartUtils';
 
 import type { HeatmapGrid, HeatmapScaleType } from './heatmapGrid';
+import { resolveHeatmapGranularity } from './heatmapQueries';
 
 export type HeatmapView = {
   grid: HeatmapGrid;
@@ -25,8 +25,11 @@ export type HeatmapData = {
 };
 
 /** The heatmap's time columns: bucket starts across the date range. */
-export function useHeatmapTimeBuckets(dateRange: [Date, Date]) {
-  const granularity = convertDateRangeToGranularityString(dateRange, 245);
+export function useHeatmapTimeBuckets(
+  config: Parameters<typeof resolveHeatmapGranularity>[0],
+) {
+  const { dateRange } = config;
+  const granularity = resolveHeatmapGranularity(config);
 
   // Memoize so timeBucketByGranularity's fresh Date[] doesn't defeat
   // the grid memoization downstream. dateRange itself may be a

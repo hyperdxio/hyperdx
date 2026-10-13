@@ -7,6 +7,7 @@ import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
+  isTimeSeriesDisplayType,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -29,6 +30,11 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import {
+  MCP_QUERY_MAX_EXECUTION_SEC,
+  MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
+} from '@/mcp/utils/timeout';
 import {
   convertToInternalTileConfig,
   isConfigTile,
@@ -76,7 +82,7 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 /** ClickHouse settings applied to all MCP query-tool executions.
  *  readonly=2 so max_execution_time can be set (readonly=1 rejects it). */
 export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
-  max_execution_time: 30,
+  max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
   readonly: '2',
 };
 
@@ -85,7 +91,7 @@ export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
  * max_execution_time so ClickHouse returns a clean timeout before the HTTP
  * connection is aborted.
  */
-export const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+export const MCP_REQUEST_TIMEOUT = MCP_TOOL_TIMEOUT_MS + MCP_TIMEOUT_GRACE_MS;
 
 // ─── Increase top-N cap hint ────────────────────────────────────────────────
 
@@ -257,11 +263,12 @@ export function buildTile(
 export function parseTimeRange(
   startTime?: string,
   endTime?: string,
+  defaultLookbackMs: number = ms('15m'),
 ): { error: string } | { startDate: Date; endDate: Date } {
   const endDate = endTime ? new Date(endTime) : new Date();
   const startDate = startTime
     ? new Date(startTime)
-    : new Date(endDate.getTime() - ms('15m'));
+    : new Date(endDate.getTime() - defaultLookbackMs);
   if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
     return {
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
@@ -562,9 +569,7 @@ export async function runConfigTile(
       getHeatmapMode(builderConfig) === 'series';
     const granularityOverride =
       !isSearch &&
-      (builderConfig.displayType === DisplayType.Line ||
-        builderConfig.displayType === DisplayType.StackedBar ||
-        isSeriesHeatmap)
+      (isTimeSeriesDisplayType(builderConfig.displayType) || isSeriesHeatmap)
         ? { granularity: options?.granularity ?? 'auto' }
         : {};
 

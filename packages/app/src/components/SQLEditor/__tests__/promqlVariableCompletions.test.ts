@@ -50,6 +50,7 @@ describe('buildPromqlVariableCompletions', () => {
     expect(labels([SERVICE])).toEqual([
       '$service',
       '${service}',
+      '${service:promql}',
       '${service:regex}',
       '${service:csv}',
     ]);
@@ -80,10 +81,12 @@ describe('buildPromqlVariableCompletions', () => {
     expect(labels([SERVICE, { name: 'env', values: ['prod'] }])).toEqual([
       '$service',
       '${service}',
+      '${service:promql}',
       '${service:regex}',
       '${service:csv}',
       '$env',
       '${env}',
+      '${env:promql}',
       '${env:regex}',
       '${env:csv}',
     ]);
@@ -92,6 +95,7 @@ describe('buildPromqlVariableCompletions', () => {
   it.each([
     ['$service', 'Expands to: (api|web)'],
     ['${service}', 'Expands to: (api|web)'],
+    ['${service:promql}', 'Expands to: (api|web)'],
     ['${service:regex}', 'Expands to: (api|web)'],
     ['${service:csv}', 'Expands to: api,web'],
   ])('shows what %s expands to under promql, not sql', (label, expected) => {
@@ -99,7 +103,7 @@ describe('buildPromqlVariableCompletions', () => {
   });
 
   it('previews the empty selection as the match-everything regex', () => {
-    // The reason the regex format is PromQL's default: with nothing selected a
+    // The reason a multi-select variable defaults to a regex in PromQL: with nothing selected a
     // `=~` matcher still matches, rather than becoming NULL as it would in SQL.
     const unselected: ChartVariable = { ...SERVICE, values: [] };
     expect(footnoteOf([unselected], '$service')).toBe('Expands to: .*');
@@ -107,6 +111,33 @@ describe('buildPromqlVariableCompletions', () => {
     expect(footnoteOf([unselected], '${service:csv}')).toBe(
       'Expands to: (empty string)',
     );
+  });
+
+  describe('for a single-select variable', () => {
+    const singleSelect: ChartVariable = {
+      ...SERVICE,
+      values: ['v1.2'],
+      maxSelections: 1,
+    };
+
+    it('describes $name as an exact-match value', () => {
+      const info = infoOf([singleSelect], '$service');
+      if (typeof info !== 'object') throw new Error('expected rendered markup');
+      expect(info?.firstChild?.textContent).toContain('{label="$service"}');
+    });
+
+    it('previews the default as the unescaped value and regex as escaped', () => {
+      expect(footnoteOf([singleSelect], '$service')).toBe('Expands to: v1.2');
+      expect(footnoteOf([singleSelect], '${service:regex}')).toBe(
+        'Expands to: v1\\\\.2',
+      );
+    });
+
+    it('previews the empty selection as an empty string', () => {
+      expect(footnoteOf([{ ...singleSelect, values: [] }], '$service')).toBe(
+        'Expands to: (empty string)',
+      );
+    });
   });
 
   it('puts the expansion on its own line, not appended to the prose', () => {

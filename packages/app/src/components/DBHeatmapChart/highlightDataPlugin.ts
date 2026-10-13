@@ -70,10 +70,16 @@ export function highlightDataPlugin({
         const yLo = Math.min(yA, yB);
         const yHi = Math.max(yA, yB);
 
+        // Edge cells extend past the plot area (the first and last columns
+        // are centered on the range bounds). The canvas clips them, so clip
+        // the reported box to match.
+        const plotWidth = u.over.clientWidth;
+        const plotHeight = u.over.clientHeight;
+        const clamp = (v: number, max: number) => Math.min(Math.max(v, 0), max);
+
         let closestIndex = -1;
         let closestDistance = Infinity;
-        let xSize = 0;
-        let ySize = 0;
+        let box = { left: 0, right: 0, top: 0, bottom: 0 };
 
         for (let i = 0; i < xs.length && closestDistance > 0; i++) {
           if (isEmptyHeatmapCell(counts[i], cellKind)) continue;
@@ -85,20 +91,25 @@ export function highlightDataPlugin({
           const x1 = u.valToPos(x1s[i], 'x');
           const y0 = u.valToPos(y0s[i], 'y');
           const y1 = u.valToPos(y1s[i], 'y');
+          const cell = {
+            left: clamp(Math.min(x0, x1), plotWidth),
+            right: clamp(Math.max(x0, x1), plotWidth),
+            top: clamp(Math.min(y0, y1), plotHeight),
+            bottom: clamp(Math.max(y0, y1), plotHeight),
+          };
           const distance = distanceToRect(
             left,
             top,
-            Math.min(x0, x1),
-            Math.max(x0, x1),
-            Math.min(y0, y1),
-            Math.max(y0, y1),
+            cell.left,
+            cell.right,
+            cell.top,
+            cell.bottom,
           );
 
           if (distance < closestDistance) {
             closestIndex = i;
             closestDistance = distance;
-            xSize = Math.abs(x1 - x0);
-            ySize = Math.abs(y1 - y0);
+            box = cell;
           }
         }
 
@@ -115,10 +126,10 @@ export function highlightDataPlugin({
           countVal: counts[closestIndex],
           closestDistance,
           closestIndex,
-          xCoord: u.valToPos(xs[closestIndex], 'x') + offsetLeft,
-          yCoord: u.valToPos(ys[closestIndex], 'y') + offsetTop,
-          xSize,
-          ySize,
+          xCoord: (box.left + box.right) / 2 + offsetLeft,
+          yCoord: (box.top + box.bottom) / 2 + offsetTop,
+          xSize: box.right - box.left,
+          ySize: box.bottom - box.top,
         });
       },
     },

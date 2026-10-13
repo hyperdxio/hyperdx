@@ -895,6 +895,64 @@ describe('MCP Source Tools', () => {
       }
     });
 
+    it('walks every kind across pages without repeating or dropping names', async () => {
+      const metricSource = await createMetricSource();
+      await seedMetricNames();
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 10; page++) {
+        const result = await callTool(client, 'clickstack_list_metrics', {
+          sourceId: metricSource._id.toString(),
+          limit: 1,
+          ...(cursor && { cursor }),
+        });
+        expect(result.isError).toBeFalsy();
+        const output: {
+          metrics: { kind: string; name: string }[];
+          nextCursor?: string;
+        } = JSON.parse(getFirstText(result));
+        seen.push(...output.metrics.map(m => `${m.kind}:${m.name}`));
+        cursor = output.nextCursor;
+        if (!cursor) break;
+      }
+      expect(seen).toEqual([
+        'gauge:system.cpu.utilization',
+        'gauge:system.memory.usage',
+        'sum:http.server.request.count',
+        'histogram:http.server.request.duration',
+      ]);
+    });
+
+    it('returns unit and description for each listed metric', async () => {
+      const metricSource = await createMetricSource();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'system.cpu.utilization',
+          MetricUnit: '1',
+          MetricDescription: 'CPU utilization',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: new Date(),
+          Value: 0.42,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'gauge',
+      });
+      const output = JSON.parse(getFirstText(result));
+      expect(output.metrics).toEqual([
+        {
+          name: 'system.cpu.utilization',
+          kind: 'gauge',
+          unit: '1',
+          description: 'CPU utilization',
+        },
+      ]);
+    });
+
     it('rejects a malformed cursor with an actionable error', async () => {
       const metricSource = await createMetricSource();
       const result = await callTool(client, 'clickstack_list_metrics', {

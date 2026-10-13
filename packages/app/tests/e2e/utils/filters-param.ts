@@ -29,3 +29,16 @@ export const expectFiltersParam = async (
     expect(filtersParam(page)).toEqual(expected);
   }).toPass({ timeout: 10000 });
 };
+
+/** Navigate to a dashboard with a hand-written `filters=` param. */
+export const gotoWithFilters = async (
+  page: Page,
+  dashboardId: string,
+  entries: FilterEntry[],
+) => {
+  await page.goto(
+    `/dashboards/${dashboardId}?filters=${encodeURIComponent(
+      JSON.stringify(entries),
+    )}`,
+  );
+};

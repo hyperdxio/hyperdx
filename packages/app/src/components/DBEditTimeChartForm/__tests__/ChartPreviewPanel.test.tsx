@@ -63,6 +63,9 @@ jest.mock('@/components/DBHeatmapChart', () => ({
   buildHeatmapBoundsConfig: ({ config }: { config: unknown }) => config,
   buildHeatmapBucketConfig: ({ config }: { config: unknown }) => config,
   buildHeatmapSeriesConfig: (config: unknown) => config,
+  resolveHeatmapGranularity: jest.requireActual(
+    '@/components/DBHeatmapChart/heatmapQueries',
+  ).resolveHeatmapGranularity,
   HEATMAP_N_BUCKETS: 80,
 }));
 

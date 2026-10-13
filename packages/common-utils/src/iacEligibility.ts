@@ -122,6 +122,7 @@ export function isTileAlertUnaddressable(
 const RAW_SQL_EXPORTABLE_DISPLAY_TYPES: ReadonlySet<string> = new Set([
   DisplayType.Line,
   DisplayType.StackedBar,
+  DisplayType.StackedLine,
   DisplayType.Table,
   DisplayType.Number,
   DisplayType.Pie,

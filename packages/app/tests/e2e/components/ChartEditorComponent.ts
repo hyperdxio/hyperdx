@@ -59,11 +59,13 @@ export class ChartEditorComponent {
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    // Line and StackedBar share the "Time Series" tab, and EventPatterns' tab
-    // is labelled just "Patterns"; the rest match their tab label by name
-    // (case-insensitive substring).
+    // Line, StackedBar, and StackedLine share the "Time Series" tab, and
+    // EventPatterns' tab is labelled just "Patterns"; the rest match their tab
+    // label by name (case-insensitive substring).
     const tabName =
-      name === DisplayType.Line || name === DisplayType.StackedBar
+      name === DisplayType.Line ||
+      name === DisplayType.StackedBar ||
+      name === DisplayType.StackedLine
         ? 'Time Series'
         : name === DisplayType.EventPatterns
           ? 'Patterns'
@@ -78,6 +80,16 @@ export class ChartEditorComponent {
       .locator('.mantine-SegmentedControl-label')
       .filter({ hasText: new RegExp(`^${mode}$`) })
       .click();
+  }
+
+  /** The editor's own granularity picker, not the dashboard header's. */
+  get granularityPicker(): Locator {
+    return this.editorForm().getByTestId('granularity-picker');
+  }
+
+  async setGranularity(label: string) {
+    await this.granularityPicker.click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
   }
 
   /** The distribution heatmap's "Value" (y axis) SQL input. */

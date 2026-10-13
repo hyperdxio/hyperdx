@@ -56,78 +56,125 @@ const builderConfig = (
 describe('formatVariableValues', () => {
   describe('sqlstring', () => {
     it('renders NULL when nothing is selected', () => {
-      expect(formatVariableValues([], 'sqlstring')).toBe('NULL');
+      expect(formatVariableValues({ values: [] }, 'sqlstring')).toBe('NULL');
     });
 
     it('renders a single quoted value', () => {
-      expect(formatVariableValues(['api'], 'sqlstring')).toBe("'api'");
+      expect(formatVariableValues({ values: ['api'] }, 'sqlstring')).toBe(
+        "'api'",
+      );
     });
 
     it('renders a comma-separated list', () => {
-      expect(formatVariableValues(['api', 'web'], 'sqlstring')).toBe(
-        "'api', 'web'",
-      );
+      expect(
+        formatVariableValues({ values: ['api', 'web'] }, 'sqlstring'),
+      ).toBe("'api', 'web'");
     });
 
     it('escapes quotes and backslashes the same way the broadcast path does', () => {
-      expect(formatVariableValues(["o'brien", 'a\\b'], 'sqlstring')).toBe(
-        "'o''brien', 'a\\\\b'",
-      );
+      expect(
+        formatVariableValues({ values: ["o'brien", 'a\\b'] }, 'sqlstring'),
+      ).toBe("'o''brien', 'a\\\\b'");
     });
   });
 
   describe('regex', () => {
     it('matches anything when nothing is selected', () => {
-      expect(formatVariableValues([], 'regex')).toBe('.*');
+      expect(formatVariableValues({ values: [] }, 'regex')).toBe('.*');
     });
 
     it('leaves a single value unwrapped', () => {
-      expect(formatVariableValues(['api'], 'regex')).toBe('api');
+      expect(formatVariableValues({ values: ['api'] }, 'regex')).toBe('api');
     });
 
     it('wraps an alternation of multiple values', () => {
-      expect(formatVariableValues(['api', 'web'], 'regex')).toBe('(api|web)');
+      expect(formatVariableValues({ values: ['api', 'web'] }, 'regex')).toBe(
+        '(api|web)',
+      );
     });
 
     it('escapes regex metacharacters', () => {
-      expect(formatVariableValues(['a.b+c', 'x(y)'], 'regex')).toBe(
+      expect(formatVariableValues({ values: ['a.b+c', 'x(y)'] }, 'regex')).toBe(
         '(a\\.b\\+c|x\\(y\\))',
       );
     });
   });
 
+  describe('regex for a single-select variable', () => {
+    it('still escapes regex metacharacters', () => {
+      expect(
+        formatVariableValues({ values: ['a.b'], maxSelections: 1 }, 'regex'),
+      ).toBe('a\\.b');
+    });
+  });
+
+  describe('promql', () => {
+    const single = (values: string[]) =>
+      formatVariableValues({ values, maxSelections: 1 }, 'promql');
+    const multi = (values: string[]) =>
+      formatVariableValues({ values }, 'promql');
+
+    it('renders a single-select value without regex escaping', () => {
+      expect(single(['a.b+c'])).toBe('a.b+c');
+    });
+
+    it('renders an empty string for an empty single-select variable', () => {
+      expect(single([])).toBe('');
+    });
+
+    it('renders only the first value of a single-select variable', () => {
+      expect(single(['api', 'web'])).toBe('api');
+    });
+
+    it('renders a multi-select variable as an escaped alternation', () => {
+      expect(multi(['a.b', 'web'])).toBe('(a\\.b|web)');
+    });
+
+    it('escapes a multi-select variable even with one value selected', () => {
+      expect(multi(['a.b'])).toBe('a\\.b');
+    });
+
+    it('matches anything for an empty multi-select variable', () => {
+      expect(multi([])).toBe('.*');
+    });
+  });
+
   describe('csv', () => {
     it('renders empty when nothing is selected', () => {
-      expect(formatVariableValues([], 'csv')).toBe('');
+      expect(formatVariableValues({ values: [] }, 'csv')).toBe('');
     });
 
     it('joins values with commas', () => {
-      expect(formatVariableValues(['api', 'web'], 'csv')).toBe('api,web');
+      expect(formatVariableValues({ values: ['api', 'web'] }, 'csv')).toBe(
+        'api,web',
+      );
     });
   });
 
   describe('markdown', () => {
     it('renders empty when nothing is selected', () => {
-      expect(formatVariableValues([], 'markdown')).toBe('');
+      expect(formatVariableValues({ values: [] }, 'markdown')).toBe('');
     });
 
     it('joins values with a comma and a space', () => {
-      expect(formatVariableValues(['api', 'web'], 'markdown')).toBe('api, web');
+      expect(formatVariableValues({ values: ['api', 'web'] }, 'markdown')).toBe(
+        'api, web',
+      );
     });
 
     it('escapes markdown syntax in values', () => {
       expect(
         formatVariableValues(
-          ['[x](https://e.com)', '*a_b* \\ `c`'],
+          { values: ['[x](https://e.com)', '*a_b* \\ `c`'] },
           'markdown',
         ),
       ).toBe('\\[x\\]\\(https\\:\\/\\/e\\.com\\), \\*a\\_b\\* \\\\ \\`c\\`');
     });
 
     it('replaces newlines with spaces', () => {
-      expect(formatVariableValues(['a\n# b\r\nc'], 'markdown')).toBe(
-        'a \\# b c',
-      );
+      expect(
+        formatVariableValues({ values: ['a\n# b\r\nc'] }, 'markdown'),
+      ).toBe('a \\# b c');
     });
   });
 
@@ -135,21 +182,23 @@ describe('formatVariableValues', () => {
     it('renders an empty term when nothing is selected', () => {
       // Parenthesized so it stays a no-op in a field-scoped position; see the
       // queryParser test that pins `ServiceName:("")` to `1=1`.
-      expect(formatVariableValues([], 'lucene')).toBe('("")');
+      expect(formatVariableValues({ values: [] }, 'lucene')).toBe('("")');
     });
 
     it('renders a single quoted term', () => {
-      expect(formatVariableValues(['api'], 'lucene')).toBe('("api")');
+      expect(formatVariableValues({ values: ['api'] }, 'lucene')).toBe(
+        '("api")',
+      );
     });
 
     it('ORs multiple terms', () => {
-      expect(formatVariableValues(['api', 'web'], 'lucene')).toBe(
+      expect(formatVariableValues({ values: ['api', 'web'] }, 'lucene')).toBe(
         '("api" OR "web")',
       );
     });
 
     it('escapes backslashes and double quotes', () => {
-      expect(formatVariableValues(['a"b', 'c\\d'], 'lucene')).toBe(
+      expect(formatVariableValues({ values: ['a"b', 'c\\d'] }, 'lucene')).toBe(
         '("a\\"b" OR "c\\\\d")',
       );
     });
@@ -932,10 +981,42 @@ describe('substituteVariables for promql', () => {
     });
   });
 
+  describe('a single-select variable', () => {
+    const singleSelect = (values: string[]): ChartVariable => ({
+      ...variable('service', values),
+      maxSelections: 1,
+    });
+
+    it('defaults to the unescaped value, for an exact matcher', () => {
+      expect(promql('up{service="$service"}', [singleSelect(['v1.2'])])).toBe(
+        'up{service="v1.2"}',
+      );
+    });
+
+    it('defaults to an empty string when nothing is selected', () => {
+      expect(promql('up{service="$service"}', [singleSelect([])])).toBe(
+        'up{service=""}',
+      );
+    });
+
+    it('still escapes the value for the string literal', () => {
+      expect(promql('up{service="$service"}', [singleSelect(['a"b\\c'])])).toBe(
+        'up{service="a\\"b\\\\c"}',
+      );
+    });
+
+    it('is regex escaped when the regex format is requested', () => {
+      expect(
+        promql('up{service=~"${service:regex}"}', [singleSelect(['v1.2'])]),
+      ).toBe('up{service=~"v1\\\\.2"}');
+    });
+  });
+
   describe('behaviour', () => {
-    it('uses the regex format for an unformatted reference', () => {
+    it('uses the promql format for an unformatted reference', () => {
       expect(promql('${service}', [SERVICE])).toBe('(api|web)');
       expect(promql('$service', [SERVICE])).toBe('(api|web)');
+      expect(promql('${service:promql}', [SERVICE])).toBe('(api|web)');
     });
 
     it('still honours an explicitly requested format', () => {
@@ -998,6 +1079,15 @@ describe('substituteVariables regex escaping for sql', () => {
 
   it('renders the empty selection as an unconstrained pattern', () => {
     expect(sqlMatch([])).toBe("match(x, '.*')");
+  });
+
+  it('escapes a single-select promql value for the SQL literal only', () => {
+    expect(
+      substituteVariables("x = '${service:promql}'", {
+        variables: [{ ...variable('service', ["a.b'c"]), maxSelections: 1 }],
+        inputLanguage: 'sql',
+      }),
+    ).toBe("x = 'a.b''c'");
   });
 });
 
@@ -1955,6 +2045,38 @@ describe('validateVariableReferencesInTemplate', () => {
       ]);
     });
 
+    it('suggests a regex matcher for an unquoted single-select regex reference', () => {
+      const { warnings } = promql('up{service=${service:regex}}', [
+        { ...SERVICE, maxSelections: 1 },
+      ]);
+
+      expect(warnings).toEqual([
+        '${service:regex} expands to a regular expression, which is only valid inside a quoted matcher value. Wrap it as {<label>=~"$service"}, or use ${service:csv} to interpolate the values as written.',
+      ]);
+    });
+
+    it('suggests an exact matcher for an unquoted single-select reference', () => {
+      const { warnings } = promql('up{service=$service}', [
+        { ...SERVICE, maxSelections: 1 },
+      ]);
+
+      expect(warnings).toEqual([
+        '$service expands to a string, which is only valid inside a quoted matcher value. Wrap it as {<label>="$service"}, or use ${service:csv} to interpolate the values as written.',
+      ]);
+    });
+
+    it('warns separately about unquoted single- and multi-select references', () => {
+      const { warnings } = promql('up{service=$service} / up{env=$env}', [
+        { ...SERVICE, maxSelections: 1 },
+        { name: 'env', values: ['prod'] },
+      ]);
+
+      expect(warnings).toEqual([
+        '$service expands to a string, which is only valid inside a quoted matcher value. Wrap it as {<label>="$service"}, or use ${service:csv} to interpolate the values as written.',
+        '$env expands to a regular expression, which is only valid inside a quoted matcher value. Wrap it as {<label>=~"$env"}, or use ${env:csv} to interpolate the values as written.',
+      ]);
+    });
+
     it('warns about a regex reference outside a quoted matcher value', () => {
       const { errors, warnings } = promql('up{service=~$service}', [SERVICE]);
 
@@ -2021,7 +2143,7 @@ describe('validateVariableReferencesInTemplate', () => {
     it('warns about an unknown format', () => {
       expect(markdown('${service:nope}', [SERVICE]).warnings).toEqual([
         '${service:nope} uses an unknown format, so no variables are substituted. ' +
-          'Expected one of: sqlstring, regex, csv, lucene, markdown.',
+          'Expected one of: sqlstring, regex, csv, lucene, markdown, promql.',
       ]);
     });
 

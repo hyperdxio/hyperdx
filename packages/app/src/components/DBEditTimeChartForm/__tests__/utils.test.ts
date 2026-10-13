@@ -327,6 +327,18 @@ describe('buildRenderedPromqlExpression', () => {
     );
   });
 
+  it("expands macros with a heatmap's finer auto granularity", () => {
+    expect(
+      buildRenderedPromqlExpression(
+        promqlConfig({
+          displayType: DisplayType.Heatmap,
+          granularity: 'auto',
+          promqlExpression: [{ expression: 'rate(up[$__interval])' }],
+        }),
+      )?.expressions?.[0].expression,
+    ).toBe('rate(up[900s])');
+  });
+
   it('expands macros with the granularity a table queries with', () => {
     const seventyMinutes: [Date, Date] = [
       new Date('2024-01-01T00:00:00Z'),
@@ -494,6 +506,8 @@ describe('displayTypeToActiveTab', () => {
     [DisplayType.Bar, 'bar'],
     [DisplayType.Number, 'number'],
     [DisplayType.Line, 'time'],
+    [DisplayType.StackedBar, 'time'],
+    [DisplayType.StackedLine, 'time'],
   ])('maps %s to %s', (displayType, expected) => {
     expect(displayTypeToActiveTab(displayType)).toBe(expected);
   });
@@ -1035,6 +1049,34 @@ describe('buildChartConfigForExplanations', () => {
       expect(result).toBeDefined();
     },
   );
+
+  it("carries the source's minimum auto granularity on the heatmap tab", () => {
+    const result = buildChartConfigForExplanations({
+      ...baseParams,
+      queriedConfig: builderConfig,
+      queriedSourceId: 'metric-source',
+      tableSource: {
+        kind: SourceKind.Metric,
+        id: 'metric-source',
+        name: 'Metrics',
+        from: { databaseName: 'default', tableName: '' },
+        connection: 'clickhouse',
+        timestampValueExpression: 'Timestamp',
+        resourceAttributesExpression: 'ResourceAttributes',
+        metricTables: {
+          gauge: 'metrics.gauge',
+          sum: 'metrics.sum',
+          histogram: 'metrics.histogram',
+          summary: 'metrics.summary',
+          'exponential histogram': 'metrics.exp_histogram',
+        },
+        minAutoGranularity: '5 minute',
+      } satisfies Extract<TSource, { kind: SourceKind.Metric }>,
+      activeTab: 'heatmap',
+    });
+
+    expect(result?.minGranularitySeconds).toBe(300);
+  });
 
   it('falls back to chartConfig when queriedSource does not match', () => {
     const result = buildChartConfigForExplanations({

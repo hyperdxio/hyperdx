@@ -193,8 +193,11 @@ describe('toSavedFilter', () => {
   });
 });
 
-/** The minimum a form needs to save, per filter type. */
-const byType: Record<DashboardFilter['type'], Partial<FilterFormValues>> = {
+/** The minimum a form needs to save, per filter type the form supports. */
+const byType: Record<
+  Exclude<DashboardFilter['type'], 'ADHOC'>,
+  Partial<FilterFormValues>
+> = {
   QUERY_EXPRESSION: {
     type: 'QUERY_EXPRESSION',
     name: 'Service',
@@ -221,7 +224,7 @@ describe('minSelections', () => {
     (_type, filter) => {
       const saved = toSavedFilter(formValues({ ...filter, isRequired: true }));
 
-      expect(saved.minSelections).toBe(1);
+      expect(saved).toMatchObject({ minSelections: 1 });
       expect(toFormValues(saved).isRequired).toBe(true);
     },
   );
@@ -262,7 +265,7 @@ describe('isGlobalRequirement', () => {
         formValues({ ...filter, isRequired: true, isGlobalRequirement: true }),
       );
 
-      expect(saved.isGlobalRequirement).toBe(true);
+      expect(saved).toMatchObject({ isGlobalRequirement: true });
       expect(toFormValues(saved).isGlobalRequirement).toBe(true);
     },
   );
@@ -297,4 +300,42 @@ describe('isGlobalRequirement', () => {
       ).not.toHaveProperty('isGlobalRequirement');
     },
   );
+});
+
+describe('maxSelections', () => {
+  it.each(variants)(
+    'round-trips single-select on a %s filter',
+    (_type, filter) => {
+      const saved = toSavedFilter(
+        formValues({ ...filter, isSingleSelect: true }),
+      );
+
+      expect(saved).toMatchObject({ maxSelections: 1 });
+      expect(saved).not.toHaveProperty('isSingleSelect');
+      expect(toFormValues(saved).isSingleSelect).toBe(true);
+    },
+  );
+
+  it.each(variants)(
+    'emits no key at all for a multi-select %s filter',
+    (_type, filter) => {
+      const saved = toSavedFilter(
+        formValues({ ...filter, isSingleSelect: false }),
+      );
+
+      expect(saved).not.toHaveProperty('maxSelections');
+      expect(toFormValues(saved).isSingleSelect).toBe(false);
+    },
+  );
+  it('keeps both limits on a filter that is single-select and required', () => {
+    const saved = toSavedFilter(
+      formValues({
+        ...byType.STATIC_LIST,
+        isSingleSelect: true,
+        isRequired: true,
+      }),
+    );
+
+    expect(saved).toMatchObject({ minSelections: 1, maxSelections: 1 });
+  });
 });

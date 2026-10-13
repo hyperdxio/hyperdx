@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import { formatResponseForTimeChart } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
-import { buildHeatmapSeriesConfig } from './heatmapQueries';
+import {
+  buildHeatmapSeriesConfig,
+  HeatmapSeriesChartConfig,
+} from './heatmapQueries';
 import { gridFromSeries, HeatmapSeries } from './heatmapSeriesGrid';
 import {
   HeatmapData,
@@ -56,11 +58,11 @@ export function useSeriesHeatmapData({
   config,
   enabled,
 }: {
-  config: BuilderChartConfigWithDateRange;
+  config: HeatmapSeriesChartConfig;
   enabled: boolean;
 }): HeatmapData {
   const { granularity, generatedTsBuckets, fromMs, toMs } =
-    useHeatmapTimeBuckets(config.dateRange);
+    useHeatmapTimeBuckets(config);
 
   const seriesConfig = buildHeatmapSeriesConfig(config, granularity);
   const { data, isLoading, isPlaceholderData, error } = useQueriedChartConfig(

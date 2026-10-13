@@ -6,7 +6,11 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
-import { isQueryExpressionFilter, isStaticListFilter } from '@/filters';
+import {
+  isAdhocFilter,
+  isQueryExpressionFilter,
+  isStaticListFilter,
+} from '@/filters';
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
@@ -821,19 +825,20 @@ export function convertToDashboardTemplate(
     // A static filter references nothing in the workspace
     if (isStaticListFilter(filter)) return filter;
 
-    // Extract name from source or default to '' if not found
-    filter.source =
-      sources.find(source => source.id === filter.source)?.name ?? '';
+    const getSourceName = (id: string) =>
+      sources.find(source => source.id === id)?.name ?? '';
 
-    if (isQueryExpressionFilter(filter)) {
-      if (filter.appliesToSourceIds?.length) {
-        const remapped = filter.appliesToSourceIds
-          .map(id => sources.find(source => source.id === id)?.name)
-          .filter((name): name is string => !!name && name.length > 0);
-        filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
-      } else {
-        filter.appliesToSourceIds = undefined;
-      }
+    if (isAdhocFilter(filter)) {
+      filter.sources = filter.sources.map(getSourceName);
+    } else {
+      filter.source = getSourceName(filter.source);
+    }
+
+    if (isQueryExpressionFilter(filter) || isAdhocFilter(filter)) {
+      const remapped = (filter.appliesToSourceIds ?? [])
+        .map(getSourceName)
+        .filter(name => name.length > 0);
+      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
     }
     return filter;
   };
@@ -1537,9 +1542,7 @@ export function displayTypeSupportsRawSqlAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
   return (
-    displayType === DisplayType.Line ||
-    displayType === DisplayType.StackedBar ||
-    displayType === DisplayType.Number
+    isTimeSeriesDisplayType(displayType) || displayType === DisplayType.Number
   );
 }
 
@@ -1547,9 +1550,7 @@ export function displayTypeSupportsBuilderAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
   return (
-    displayType === DisplayType.Line ||
-    displayType === DisplayType.StackedBar ||
-    displayType === DisplayType.Number
+    isTimeSeriesDisplayType(displayType) || displayType === DisplayType.Number
   );
 }
 
@@ -1564,10 +1565,12 @@ export const isFormulaDisplayType = (
 ): displayType is
   | DisplayType.Line
   | DisplayType.StackedBar
+  | DisplayType.StackedLine
   | DisplayType.Table
   | DisplayType.Number =>
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
   displayType === DisplayType.Table ||
   displayType === DisplayType.Number;
 
@@ -1800,11 +1803,20 @@ export function validateRawSqlChartConfig(
   return { errors, warnings };
 }
 
+/** Maps the time-series display type names used by the external API and v1 chart configs. */
+export const TIME_SERIES_DISPLAY_TYPE_BY_NAME = {
+  line: DisplayType.Line,
+  stacked_bar: DisplayType.StackedBar,
+  stacked_line: DisplayType.StackedLine,
+} as const satisfies Record<string, DisplayType>;
+
 export const isTimeSeriesDisplayType = (
   displayType: DisplayType | undefined,
 ): boolean => {
   return (
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.StackedLine
   );
 };
 

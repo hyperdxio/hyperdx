@@ -45,7 +45,11 @@ describe('getQueriedPromqlSeries', () => {
   ];
 
   it('keeps every expression for a time series chart', () => {
-    for (const displayType of [DisplayType.Line, DisplayType.StackedBar]) {
+    for (const displayType of [
+      DisplayType.Line,
+      DisplayType.StackedBar,
+      DisplayType.StackedLine,
+    ]) {
       expect(getQueriedPromqlSeries({ promqlExpression, displayType })).toEqual(
         promqlExpression,
       );
@@ -118,7 +122,7 @@ describe('displayTypeSupportsInstantQuery', () => {
     expect(displayTypeSupportsInstantQuery({ displayType })).toBe(true);
   });
 
-  it.each([DisplayType.Line, DisplayType.StackedBar])(
+  it.each([DisplayType.Line, DisplayType.StackedBar, DisplayType.StackedLine])(
     'always range-queries %s tiles',
     displayType => {
       expect(displayTypeSupportsInstantQuery({ displayType })).toBe(false);
