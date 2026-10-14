@@ -1,4 +1,6 @@
 import type { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
+import { rewriteSqlFilterWithKvItems } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { parseQuery } from '@hyperdx/common-utils/dist/filters';
 import type { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { renderHook } from '@testing-library/react';
@@ -7,6 +9,7 @@ import * as metadataModule from '@/hooks/useMetadata';
 import {
   getExpressions,
   makeCoalescedFieldsAccessQuery,
+  makeDbStatementCondition,
   useServiceDashboardExpressions,
 } from '@/serviceDashboard';
 
@@ -144,6 +147,143 @@ describe('Service Dashboard', () => {
         "coalesce(nullif(field1, ''), nullif(field2, ''), nullif(field3, ''))",
       );
     });
+  });
+
+  describe('dbStatementPrefilterFields', () => {
+    it('should expose the map accessors the renderer can rewrite', () => {
+      expect(
+        getExpressions(mockSource, [], []).dbStatementPrefilterFields,
+      ).toEqual([
+        "SpanAttributes['db.query.text']",
+        "SpanAttributes['db.statement']",
+      ]);
+    });
+
+    it('should be empty for JSON attribute columns', () => {
+      expect(
+        getExpressions(mockSource, [], ['SpanAttributes'])
+          .dbStatementPrefilterFields,
+      ).toEqual([]);
+    });
+  });
+
+  describe('makeDbStatementCondition', () => {
+    const dbStatement =
+      "coalesce(nullif(SpanAttributes['db.query.text'], ''), nullif(SpanAttributes['db.statement'], ''))";
+    const prefilterFields = [
+      "SpanAttributes['db.query.text']",
+      "SpanAttributes['db.statement']",
+    ];
+    const equality = `${dbStatement} IN ('SELECT 1')`;
+
+    it('should only compare the statement when there is nothing to prefilter on', () => {
+      expect(
+        makeDbStatementCondition({
+          expressions: { dbStatement, dbStatementPrefilterFields: [] },
+          statement: 'SELECT 1',
+        }),
+      ).toBe(equality);
+    });
+
+    it('should prefilter on each attribute the statement can come from', () => {
+      expect(
+        makeDbStatementCondition({
+          expressions: {
+            dbStatement,
+            dbStatementPrefilterFields: prefilterFields,
+          },
+          statement: 'SELECT 1',
+        }),
+      ).toBe(
+        "(SpanAttributes['db.query.text'] IN ('SELECT 1') OR " +
+          "SpanAttributes['db.statement'] IN ('SELECT 1')) " +
+          `AND ${equality}`,
+      );
+    });
+
+    it('should escape quotes everywhere the statement appears', () => {
+      const condition = makeDbStatementCondition({
+        expressions: {
+          dbStatement,
+          dbStatementPrefilterFields: prefilterFields,
+        },
+        statement: "SELECT 'a'",
+      });
+
+      expect(condition.match(/SELECT ''a''/g)).toHaveLength(3);
+      expect(condition).not.toContain("IN ('SELECT 'a'')");
+    });
+
+    const kvItemsLookup = new Map([
+      [
+        'SpanAttributes',
+        {
+          kv: {
+            columnName: 'SpanAttributeItems',
+            indexName: 'idx_span_attr_items',
+            separator: ':',
+            useHasAny: false,
+            mapColumn: 'SpanAttributes',
+          },
+        },
+      ],
+    ]);
+
+    const rewrite = (statement: string) =>
+      rewriteSqlFilterWithKvItems(
+        makeDbStatementCondition({
+          expressions: {
+            dbStatement,
+            dbStatementPrefilterFields: prefilterFields,
+          },
+          statement,
+        }),
+        kvItemsLookup,
+      );
+
+    it('should be rewritten onto the items column by the query renderer', () => {
+      const rewritten = rewrite('SELECT 1');
+
+      expect(rewritten).toContain(
+        "has(`SpanAttributeItems`, concat('db.query.text', ':', 'SELECT 1'))",
+      );
+      expect(rewritten).toContain(
+        "has(`SpanAttributeItems`, concat('db.statement', ':', 'SELECT 1'))",
+      );
+      expect(rewritten).toContain(dbStatement);
+    });
+
+    it.each([["SELECT 'a' FROM t"], ["SELECT 'a\\b'"], ['{"q":{"_id":"?"}}']])(
+      'should survive the rewrite with its escaping intact (%j)',
+      statement => {
+        const rewritten = rewrite(statement);
+
+        const quoteCount = rewritten.split("'").length - 1;
+
+        expect(rewritten).toContain('has(`SpanAttributeItems`');
+        expect(quoteCount % 2).toBe(0);
+      },
+    );
+
+    it.each([[[]], [prefilterFields]])(
+      'should be read back by the search page as the same filter (%p)',
+      dbStatementPrefilterFields => {
+        const statement = "SELECT 'a' FROM t WHERE b IN (1) AND c = ?";
+
+        const { filters } = parseQuery([
+          {
+            type: 'sql',
+            condition: makeDbStatementCondition({
+              expressions: { dbStatement, dbStatementPrefilterFields },
+              statement,
+            }),
+          },
+        ]);
+
+        expect(Object.keys(filters)).toEqual([dbStatement]);
+        expect([...filters[dbStatement].included]).toEqual([statement]);
+      },
+    );
   });
 
   describe('useServiceDashboardExpressions', () => {
@@ -320,7 +460,7 @@ describe('Service Dashboard', () => {
 
       expect(result.current.isLoading).toBe(false);
       expect(result.current.expressions?.isError).toBe(
-        "lower(StatusCode) = 'error'",
+        "lower(StatusCode) IN ('error', 'status_code_error')",
       );
       expect(result.current.expressions?.isSpanKindServer).toContain(
         'SpanKind IN',

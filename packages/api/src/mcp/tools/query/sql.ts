@@ -1,6 +1,8 @@
+import { hasMacro } from '@hyperdx/common-utils/dist/macros';
 import { hasVariableMacro } from '@hyperdx/common-utils/dist/variables';
 import { z } from 'zod';
 
+import { getSource } from '@/controllers/sources';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -16,6 +18,14 @@ const sqlSchema = z.object({
     .describe(
       'Connection ID (required). This is the only split tool that needs a connectionId ' +
         'instead of sourceId. Call clickstack_list_sources to find available connections.',
+    ),
+  sourceId: z
+    .string()
+    .optional()
+    .describe(
+      'Source ID. Optional. Set it when the query reads a table backed by a source, so ' +
+        "`$__sourceTable` expands to that source's database.table. The source's " +
+        'connection must match connectionId. Call clickstack_list_sources to find source IDs.',
     ),
   sql: z
     .string()
@@ -38,14 +48,21 @@ const sqlSchema = z.object({
         '  $__timeInterval_ms(column) — same with millisecond precision\n' +
         '  $__interval_s — raw interval in seconds\n' +
         '  $__filters — dashboard filter conditions (resolves to 1=1 when no filters)\n' +
+        "  $__sourceTable — the source's database.table. Requires sourceId.\n" +
         '  {intervalSeconds:Int64} / {intervalMilliseconds:Int64} — bucket size parameters\n\n' +
-        'Example (time-series):\n' +
-        '  SELECT $__timeInterval(TimestampTime) AS ts, ServiceName, count() ' +
-        'FROM otel_logs WHERE $__timeFilter(TimestampTime) GROUP BY ServiceName, ts ORDER BY ts\n\n' +
+        "In the examples, replace <table> with a source's `table` and <timestampColumn> " +
+        'with the first expression in its `timestampColumn`, both from ' +
+        'clickstack_list_sources, or pass that source as sourceId and use ' +
+        '$__sourceTable. For a metric source, use a table from its metricTables ' +
+        'qualified with its `database`. Table and column names differ between ' +
+        'sources, so do not guess them.\n\n' +
+        'Example (time-series, with sourceId):\n' +
+        '  SELECT $__timeInterval(<timestampColumn>) AS ts, ServiceName, count() ' +
+        'FROM $__sourceTable WHERE $__timeFilter(<timestampColumn>) GROUP BY ServiceName, ts ORDER BY ts\n\n' +
         'Example (table):\n' +
-        '  SELECT ServiceName, count() AS n FROM otel_logs ' +
-        'WHERE TimestampTime >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) ' +
-        'AND TimestampTime < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) ' +
+        '  SELECT ServiceName, count() AS n FROM <table> ' +
+        'WHERE <timestampColumn> >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) ' +
+        'AND <timestampColumn> < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) ' +
         'GROUP BY ServiceName ORDER BY n DESC LIMIT 20',
     ),
   startTime: startTimeSchema,
@@ -74,7 +91,8 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         'A single-table aggregation, top-N, time-series, or row browse is ALWAYS a ' +
         'builder-tool job, never raw SQL. If you are unsure, try the builder tool first and only ' +
         'fall back to SQL if it cannot express what you need.\n\n' +
-        'Requires connectionId (not sourceId) — call clickstack_list_sources to find connections. ' +
+        'Requires connectionId — call clickstack_list_sources to find connections. Pass sourceId ' +
+        'too when querying a source, so $__sourceTable resolves to its table. ' +
         'Call clickstack_describe_source to discover column names before writing SQL.\n\n' +
         'Results are always returned as table rows — for time-series semantics, ' +
         'include a time column and ORDER BY it in your SQL.',
@@ -100,6 +118,31 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         );
       }
 
+      if (input.sourceId) {
+        const source = await getSource(teamId.toString(), input.sourceId);
+        if (!source) {
+          return mcpUserError(
+            `Source not found: ${input.sourceId}. Call clickstack_list_sources to discover available source IDs.`,
+          );
+        }
+        // $__sourceTable expands to the source's table, so a mismatch would run
+        // the query against a table on another server.
+        const sourceConnectionId = source.connection.toString();
+        if (sourceConnectionId !== input.connectionId) {
+          return mcpUserError(
+            `connectionId "${input.connectionId}" does not match the connection of source ` +
+              `"${input.sourceId}" ("${sourceConnectionId}"). Use the source's own ` +
+              'connection or drop sourceId from the call.',
+          );
+        }
+      } else if (hasMacro(input.sql, 'sourceTable')) {
+        return mcpUserError(
+          '$__sourceTable needs a sourceId to know which table to expand to. ' +
+            'Pass the sourceId of a source from clickstack_list_sources, or write ' +
+            "the source's `table` in place of the macro.",
+        );
+      }
+
       // Raw SQL only uses displayType to pick which query params to bind, and
       // only time-series types bind the interval params this tool advertises
       // ({intervalSeconds}, $__interval_s, $__timeInterval). Rows come back
@@ -108,6 +151,7 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         configType: 'sql' as const,
         displayType: 'line' as const,
         connectionId: input.connectionId,
+        sourceId: input.sourceId,
         sqlTemplate: input.sql,
       });
 

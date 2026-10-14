@@ -2,6 +2,7 @@ import type { QueryAttribution } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   displayTypeSupportsInstantQuery,
   getQueriedPromqlSeries,
+  parsePromqlLe,
   promqlSeriesQueryType,
   promqlStep,
   reducePromqlSamples,
@@ -263,6 +264,51 @@ export function toTableRows(
 }
 
 /**
+ * Rows for a histogram heatmap: one per sample, grouped by the series' `le`
+ * bucket. Every series must be a distinct bucket (le).
+ */
+export function toHistogramRows(
+  expressions: ExpressionResult[],
+): ChartQueryResult {
+  const seenLe = new Set<string>();
+  const data: Record<string, string | number>[] = [];
+  for (const { result } of expressions) {
+    for (const { metric, values } of result) {
+      const le = metric.le;
+      if (Number.isNaN(parsePromqlLe(le))) {
+        throw new Error(
+          'Histogram heatmaps need series with an "le" label, e.g. sum by (le) (rate(x_bucket[$__rate_interval])).',
+        );
+      }
+      if (seenLe.has(le)) {
+        throw new Error(
+          `Several series share le="${le}". Aggregate them by bucket with sum by (le) (...).`,
+        );
+      }
+      seenLe.add(le);
+      for (const [ts, value] of values) {
+        data.push({
+          __hdx_time_bucket: new Date(ts * 1000).toISOString(),
+          le,
+          value,
+        });
+      }
+    }
+  }
+
+  return {
+    data,
+    meta: [
+      { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
+      { name: 'le', type: 'String' },
+      { name: 'value', type: 'Float64' },
+    ],
+    rows: data.length,
+    isComplete: true,
+  };
+}
+
+/**
  * Run a PromQL tile's expressions and shape the result like a ClickHouse
  * response, so the chart formatters treat it like every other source.
  */
@@ -299,6 +345,12 @@ export async function queryPromqlChartConfig(
           ),
     ),
   );
+
+  // Rows keyed by the series' `le` bucket. Done here so that
+  // alias and legend templates don't interfere with the le label.
+  if (substituted.heatmap?.mode === 'histogram') {
+    return toHistogramRows(results);
+  }
 
   return substituted.displayType === DisplayType.Table
     ? toTableRows(results)

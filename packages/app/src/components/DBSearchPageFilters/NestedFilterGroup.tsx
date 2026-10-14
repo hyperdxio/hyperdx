@@ -4,6 +4,10 @@ import { Accordion, Group, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { FilterGroup } from '@/components/DBSearchPageFilters';
+import {
+  FILTER_SEARCH_MIN_ITEMS,
+  FilterSearchInput,
+} from '@/components/DBSearchPageFilters/FilterSearchInput';
 import type { FacetEntry } from '@/components/DBSearchPageFilters/utils';
 import { isColumnInSelect } from '@/utils';
 
@@ -92,14 +96,23 @@ export const NestedFilterGroup = ({
     isDefaultExpanded ?? hasSelections,
   );
 
+  const [search, setSearch] = useState('');
+  const matchingChildFilters = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return childFilters;
+    return childFilters.filter(child =>
+      child.propertyPath.toLowerCase().includes(query),
+    );
+  }, [childFilters, search]);
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const rowVirtualizer = useVirtualizer({
-    count: isExpanded ? childFilters.length : 0,
+    count: isExpanded ? matchingChildFilters.length : 0,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => VIRTUAL_ITEM_HEIGHT_ESTIMATE,
     overscan: 10,
-    getItemKey: index => childFilters[index]?.key ?? index,
+    getItemKey: index => matchingChildFilters[index]?.key ?? index,
   });
 
   return (
@@ -154,7 +167,15 @@ export const NestedFilterGroup = ({
             pl="xs"
           >
             <div className={classes.filterGroupPanel}>
-              {childFilters.length === 0 ? (
+              {childFilters.length > FILTER_SEARCH_MIN_ITEMS && (
+                <FilterSearchInput
+                  placeholder="Search keys..."
+                  value={search}
+                  data-testid={`nested-filter-search-${name}`}
+                  onChange={setSearch}
+                />
+              )}
+              {matchingChildFilters.length === 0 ? (
                 <Group m={6} gap="xs">
                   <Text c="dimmed" size="xs">
                     No properties found
@@ -176,7 +197,7 @@ export const NestedFilterGroup = ({
                     }}
                   >
                     {rowVirtualizer.getVirtualItems().map(virtualRow => {
-                      const child = childFilters[virtualRow.index];
+                      const child = matchingChildFilters[virtualRow.index];
                       const childSelectedValues = selectedValues[child.key] || {
                         included: new Set(),
                         excluded: new Set(),
