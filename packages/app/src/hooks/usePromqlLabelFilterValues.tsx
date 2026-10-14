@@ -21,9 +21,7 @@ import { mapKeyBy } from '@/utils';
 
 type LabelValuesCall = {
   filterId: string;
-  connectionId: string;
-  database?: string;
-  table?: string;
+  sourceId: string;
   label: string;
   match?: string;
 };
@@ -76,9 +74,7 @@ export function usePromqlLabelFilterValues({
       if (resolvedMatch?.error) continue;
       resolved.push({
         filterId: filter.id,
-        connectionId: source.connection,
-        database: source.from.databaseName,
-        table: source.from.tableName,
+        sourceId: source.id,
         label: filter.label,
         match: resolvedMatch?.match,
       });
@@ -96,9 +92,7 @@ export function usePromqlLabelFilterValues({
       // values as placeholders instead of blanking the dropdown.
       const queryKeyPrefix = [
         'dashboard-filter-promql-label-values',
-        call.connectionId,
-        call.database,
-        call.table,
+        call.sourceId,
         call.label,
         call.match,
       ];
@@ -122,9 +116,7 @@ export function usePromqlLabelFilterValues({
         queryFn: async (): Promise<string[]> => {
           const resp = await prometheusApi.labelValues({
             label: call.label,
-            connectionId: call.connectionId,
-            database: call.database,
-            table: call.table,
+            sourceId: call.sourceId,
             start: startSec,
             end: endSec,
             match: call.match,

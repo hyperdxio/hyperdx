@@ -49,6 +49,21 @@ describe('cleanClickHouseExpression', () => {
   });
 });
 
+// jsdom has no layout, so the real virtualizer in NestedFilterGroup renders no
+// rows. Render every row as if visible.
+jest.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, index) => ({
+        index,
+        key: index,
+        start: index * 26,
+      })),
+    getTotalSize: () => count * 26,
+    measureElement: () => {},
+  }),
+}));
+
 jest.mock('@/hooks/useMetadata', () => ({
   useGetValuesDistribution: jest
     .fn()
@@ -849,5 +864,61 @@ describe('NestedFilterGroup', () => {
     // Reopen the group — should not be stuck closed
     await userEvent.click(control);
     expect(panel).toHaveAttribute('aria-hidden', 'false');
+  });
+
+  const manyChildFilters = [
+    'service.name',
+    'service.version',
+    'host.name',
+    'host.arch',
+    'k8s.pod.name',
+    'k8s.namespace.name',
+  ].map(propertyPath => ({
+    key: `ResourceAttributes['${propertyPath}']`,
+    value: ['val'],
+    propertyPath,
+  }));
+
+  it('should not show the key search when there are few keys', () => {
+    renderWithMantine(
+      <NestedFilterGroup {...defaultNestedProps} isDefaultExpanded={true} />,
+    );
+
+    expect(screen.queryByPlaceholderText('Search keys...')).toBeNull();
+  });
+
+  it('should filter keys when searching', async () => {
+    renderWithMantine(
+      <NestedFilterGroup
+        {...defaultNestedProps}
+        childFilters={manyChildFilters}
+        isDefaultExpanded={true}
+      />,
+    );
+
+    await userEvent.type(screen.getByPlaceholderText('Search keys...'), 'K8S');
+
+    expect(screen.getByText('k8s.pod.name')).toBeInTheDocument();
+    expect(screen.getByText('k8s.namespace.name')).toBeInTheDocument();
+    expect(screen.queryByText('service.name')).toBeNull();
+    expect(screen.queryByText('host.name')).toBeNull();
+  });
+
+  it('should show an empty state when no keys match', async () => {
+    renderWithMantine(
+      <NestedFilterGroup
+        {...defaultNestedProps}
+        childFilters={manyChildFilters}
+        isDefaultExpanded={true}
+      />,
+    );
+
+    await userEvent.type(
+      screen.getByPlaceholderText('Search keys...'),
+      'nonexistent',
+    );
+
+    expect(screen.getByText('No properties found')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Search keys...')).toBeInTheDocument();
   });
 });

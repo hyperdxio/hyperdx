@@ -310,7 +310,44 @@ describe('queryPromqlChartConfig', () => {
         status: 'success',
         data: { resultType: 'vector', result: [] },
       });
+    jest
+      .mocked(prometheusApi.queryRange)
+      .mockReset()
+      .mockResolvedValue({
+        status: 'success',
+        data: { resultType: 'matrix', result: [] },
+      });
   });
+
+  // The server resolves the table from the source, so the table a config still
+  // carries must not be sent.
+  it.each([
+    ['instant', prometheusApi.query],
+    ['range', prometheusApi.queryRange],
+  ] as const)(
+    'names only the source on a %s query',
+    async (queryType, endpoint) => {
+      await queryPromqlChartConfig(
+        {
+          configType: 'promql',
+          displayType: DisplayType.Number,
+          connection: 'conn',
+          source: 'source-promql',
+          from: { databaseName: 'db', tableName: 'tbl' },
+          promqlExpression: [{ expression: 'up', queryType }],
+        },
+        dateRange,
+        new AbortController().signal,
+        {},
+      );
+
+      const params = jest.mocked(endpoint).mock.calls[0][0];
+      expect(params).toHaveProperty('sourceId', 'source-promql');
+      expect(params).not.toHaveProperty('connectionId');
+      expect(params).not.toHaveProperty('database');
+      expect(params).not.toHaveProperty('table');
+    },
+  );
 
   it("caps an instant table query's series at the table's row cap", async () => {
     await queryPromqlChartConfig(
@@ -318,6 +355,7 @@ describe('queryPromqlChartConfig', () => {
         configType: 'promql',
         displayType: DisplayType.Table,
         connection: 'conn',
+        source: 'source-promql',
         promqlExpression: [{ expression: 'up', queryType: 'instant' }],
       },
       dateRange,
@@ -337,6 +375,7 @@ describe('queryPromqlChartConfig', () => {
         configType: 'promql',
         displayType: DisplayType.Table,
         connection: 'conn',
+        source: 'source-promql',
         promqlExpression: [{ expression: 'up', queryType: 'instant' }],
       },
       dateRange,
@@ -357,6 +396,7 @@ describe('queryPromqlChartConfig', () => {
         configType: 'promql',
         displayType: DisplayType.Number,
         connection: 'conn',
+        source: 'source-promql',
         promqlExpression: [{ expression: 'up', queryType: 'instant' }],
       },
       dateRange,
@@ -391,6 +431,7 @@ describe('queryPromqlChartConfig', () => {
         configType: 'promql',
         displayType: DisplayType.Heatmap,
         connection: 'conn',
+        source: 'source-promql',
         granularity: '5 minute',
         legendTemplate: '{{job}}',
         promqlExpression: [
@@ -446,6 +487,7 @@ describe('queryPromqlChartConfig', () => {
         configType: 'promql',
         displayType: DisplayType.Heatmap,
         connection: 'conn',
+        source: 'source-promql',
         legendTemplate: '{{job}}',
         promqlExpression: [{ expression: 'sum by (le) (x_bucket)' }],
         heatmap: { mode: 'histogram' },

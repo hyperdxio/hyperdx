@@ -3846,6 +3846,7 @@ describe('renderChartConfig', () => {
         configType: 'promql' as const,
         promqlExpression: 'rate(http_requests_total[5m])',
         connection: 'test-connection',
+        source: 'promql-source',
         displayType: DisplayType.Line,
         dateRange: [
           new Date('2025-01-01T00:00:00Z'),
