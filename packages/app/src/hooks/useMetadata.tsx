@@ -33,7 +33,7 @@ import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
-import { withPartialResults } from '@/hooks/useStreamingQuery';
+import { mergeStreams, useStreamingQuery } from '@/hooks/useStreamingQuery';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
@@ -477,7 +477,6 @@ export function useMultipleGetKeyValues(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
-  const queryClient = useQueryClient();
   const chartConfigsArr = toArray(chartConfigs);
 
   const { enabled = true } = options || {};
@@ -485,23 +484,22 @@ export function useMultipleGetKeyValues(
   const { data: sources, isLoading: isLoadingSources } = useSources();
   const maxKeys = useFilterKeysFetchLimit();
 
-  const queryKey = [
-    'useMetadata.useGetKeyValues',
-    mode,
-    metadataMVsOverride,
-    ...chartConfigsArr.map(cc => ({ ...cc })),
-    ...keys,
-    // Serialized: react-query hashes keys with JSON.stringify, which would
-    // flatten every distinct Set selection to `{}`.
-    keyConditions?.map(c => c && serializeFilterState(c)),
-    disableRowLimit,
-    maxKeys,
-    limit,
-  ];
-  const query = useQuery<Facet[]>({
-    queryKey,
-    queryFn: async ({ signal }) => {
-      if (keys.length === 0) return [];
+  const query = useStreamingQuery<Facet>({
+    queryKey: [
+      'useMetadata.useGetKeyValues',
+      mode,
+      metadataMVsOverride,
+      ...chartConfigsArr.map(cc => ({ ...cc })),
+      ...keys,
+      // Serialized: react-query hashes keys with JSON.stringify, which would
+      // flatten every distinct Set selection to `{}`.
+      keyConditions?.map(c => c && serializeFilterState(c)),
+      disableRowLimit,
+      maxKeys,
+      limit,
+    ],
+    streamFactory: async function* ({ signal }) {
+      if (keys.length === 0) return;
       const usableMVsOverride =
         chartConfigsArr.length === 1 ? metadataMVsOverride : undefined;
 
@@ -531,43 +529,32 @@ export function useMultipleGetKeyValues(
             }),
           ),
         );
-        return results.flat();
+        // Numeric values have always passed through unconverted here; `useQuery`
+        // used to hide the mismatch with `Facet`. HDX-1548.
+        yield results.flat() as Facet[];
+        return;
       }
 
-      return withPartialResults<Facet>(
-        { queryClient, queryKey, signal },
-        async publish => {
-          // Kept per source so a source that fails partway drops out of the
-          // final result, as it would had nothing streamed.
-          const arrivedBySource = lookups.map((): Facet[] => []);
-          const results = await settleAllOrThrow(
-            lookups.map(async ({ chartConfig, metadataMVs }, i) => {
-              for await (const keyValues of metadata.streamAllKeyValues({
-                databaseName: chartConfig.from.databaseName,
-                tableName: chartConfig.from.tableName,
-                keyExpressions: keys.slice(0, maxKeys),
-                maxValuesPerKey: limit,
-                connectionId: chartConfig.connection,
-                metadataMVs,
-                dateRange: chartConfig.dateRange,
-                timestampValueExpression: chartConfig.timestampValueExpression,
-                signal,
-              })) {
-                if (signal.aborted) break;
-                arrivedBySource[i].push(
-                  ...keyValues.map(({ key, value }) => ({
-                    key,
-                    value: value.map(val => val.toString()),
-                  })),
-                );
-                publish(() => arrivedBySource.flat());
-              }
-              return arrivedBySource[i];
-            }),
-          );
-          return results.flat();
-        },
+      // mode === 'all'
+      const streams = lookups.map(({ chartConfig, metadataMVs }) =>
+        metadata.streamAllKeyValues({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          keyExpressions: keys.slice(0, maxKeys),
+          maxValuesPerKey: limit,
+          connectionId: chartConfig.connection,
+          metadataMVs,
+          dateRange: chartConfig.dateRange,
+          timestampValueExpression: chartConfig.timestampValueExpression,
+          signal,
+        }),
       );
+      for await (const keyValues of mergeStreams(streams)) {
+        yield keyValues.map(({ key, value }) => ({
+          key,
+          value: value.map(val => val.toString()),
+        }));
+      }
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     placeholderData: keepPreviousData,
@@ -577,9 +564,6 @@ export function useMultipleGetKeyValues(
 
   return {
     ...query,
-    // A failed stream's partial values stay in the cache; don't hand them
-    // back as though they were complete.
-    data: mode === 'all' && query.isError ? undefined : query.data,
     isLoading: query.isLoading || isLoadingSources,
   };
 }

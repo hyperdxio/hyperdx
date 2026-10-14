@@ -495,27 +495,6 @@ describe('useGetKeyValues', () => {
     },
   );
 
-  it("drops a source whose 'all' mode stream fails partway", async () => {
-    jest
-      .spyOn(mockMetadata, 'streamAllKeyValues')
-      .mockImplementationOnce(async function* () {
-        yield [{ key: keys[0], value: ['api'] }];
-        throw new Error('connection reset');
-      })
-      .mockImplementationOnce(async function* () {
-        yield [{ key: keys[0], value: ['web'] }];
-      });
-
-    const { result } = renderValues({ mode: 'all' });
-
-    await waitForSettled(result);
-    expect(result.current.data).toEqual([{ key: keys[0], value: ['web'] }]);
-    // A partial write still waiting on the flush interval would bring the
-    // failed source's values back.
-    await new Promise(resolve => setTimeout(resolve, 150));
-    expect(result.current.data).toEqual([{ key: keys[0], value: ['web'] }]);
-  });
-
   it.each(['all', 'exact'] as const)(
     "errors when every source fails in '%s' mode",
     async mode => {

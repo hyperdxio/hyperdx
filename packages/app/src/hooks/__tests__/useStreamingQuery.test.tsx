@@ -2,7 +2,7 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
-import { useStreamingQuery } from '@/hooks/useStreamingQuery';
+import { mergeStreams, useStreamingQuery } from '@/hooks/useStreamingQuery';
 
 // One client per test, built outside the wrapper so a re-render cannot swap it
 // out from under an in-flight stream.
@@ -248,5 +248,70 @@ describe('useStreamingQuery', () => {
     await waitFor(() => expect(result.current.data).toEqual([]));
     expect(result.current.isStreaming).toBe(false);
     expect(result.current.isError).toBe(false);
+  });
+});
+
+describe('mergeStreams', () => {
+  async function drain<T>(stream: AsyncIterable<T>) {
+    const chunks: T[] = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    return chunks;
+  }
+
+  it('yields chunks in arrival order across streams', async () => {
+    let releaseSlow: () => void = () => {};
+    const slowGate = new Promise<void>(resolve => {
+      releaseSlow = resolve;
+    });
+    const slow = async function* () {
+      await slowGate;
+      yield 'slow';
+    };
+    const fast = async function* () {
+      yield 'fast-1';
+      yield 'fast-2';
+      releaseSlow();
+    };
+
+    await expect(drain(mergeStreams([slow(), fast()]))).resolves.toEqual([
+      'fast-1',
+      'fast-2',
+      'slow',
+    ]);
+  });
+
+  const failingStream = (
+    error: Error,
+    after?: Promise<void>,
+  ): AsyncIterable<string> => ({
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        await after;
+        throw error;
+      },
+    }),
+  });
+
+  it('keeps yielding from the other streams when one fails', async () => {
+    const healthy = async function* () {
+      yield 'a';
+    };
+
+    const merged = mergeStreams([failingStream(new Error('boom')), healthy()]);
+    await expect(drain(merged)).resolves.toEqual(['a']);
+  });
+
+  it("throws the first stream's error when every stream fails", async () => {
+    const afterATick = new Promise<void>(resolve => setTimeout(resolve, 0));
+
+    const merged = mergeStreams([
+      failingStream(new Error('first'), afterATick),
+      failingStream(new Error('second')),
+    ]);
+    await expect(drain(merged)).rejects.toThrow('first');
+  });
+
+  it('yields nothing for no streams', async () => {
+    await expect(drain(mergeStreams([]))).resolves.toEqual([]);
   });
 });
