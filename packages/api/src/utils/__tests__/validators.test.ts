@@ -2,6 +2,10 @@ import { WebhookService } from '@hyperdx/common-utils/dist/types';
 
 import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
 import * as validators from '@/utils/validators';
+import {
+  WEBHOOK_BODY_HELPERS,
+  WebhookBodyValidationError,
+} from '@/utils/webhookBodyTemplate';
 
 describe('validators', () => {
   describe('isPrivateIp', () => {
@@ -398,12 +402,19 @@ describe('validators', () => {
       ).toEqual([{ path: 'body', message: expect.stringContaining(message) }]);
     });
 
-    it('accepts a partial block fallback and an inline partial', () => {
+    it.each([
+      ['a partial block fallback', '{"a": "{{#> foo}}x{{/foo}}"}'],
+      ['an inline partial', '{"a": "{{#* inline "p"}}y{{/inline}}{{> p}}"}'],
+      [
+        'the built-in @partial-block',
+        '{{#*inline "layout"}}{{> @partial-block}}{{/inline}}{{#> layout}}{"a": 1}{{/layout}}',
+      ],
+    ])('accepts %s', (_label, body) => {
       expect(
         validators.getWebhookConfigErrors({
           service: WebhookService.Generic,
           url: 'https://example.com/webhook',
-          body: '{"a": "{{#> foo}}x{{/foo}}", "b": "{{#* inline "p"}}y{{/inline}}{{> p}}"}',
+          body,
         }),
       ).toEqual([]);
     });
@@ -414,9 +425,7 @@ describe('validators', () => {
       ).filter(
         name => name !== 'helperMissing' && name !== 'blockHelperMissing',
       );
-      expect([...validators.WEBHOOK_BODY_HELPERS].sort()).toEqual(
-        delivery.sort(),
-      );
+      expect([...WEBHOOK_BODY_HELPERS].sort()).toEqual(delivery.sort());
     });
 
     it('accepts registered helpers and bare lookups', () => {
@@ -460,7 +469,7 @@ describe('validators', () => {
           url: 'https://example.com/webhook',
           body: '{"text": "{{#if title}}"}',
         }),
-      ).toThrow(validators.WebhookBodyValidationError);
+      ).toThrow(WebhookBodyValidationError);
     });
   });
 
