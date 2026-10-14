@@ -20,6 +20,7 @@ const config: PromqlConfigWithDateRange = {
   displayType: DisplayType.Heatmap,
   promqlExpression: [{ expression: 'sum by (le) (rate(x_bucket[5m]))' }],
   connection: 'test-connection',
+  source: 'promql-source',
   dateRange: [new Date(T0), new Date(T0 + 2 * HOUR)],
   granularity: '1 hour',
   heatmap: { mode: 'histogram' },
