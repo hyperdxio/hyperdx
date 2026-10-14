@@ -18,9 +18,8 @@ import {
   paginationQuerySchema,
 } from '@/utils/pagination';
 import {
+  getWebhookConfigErrors,
   isWebhookValidationError,
-  validateWebhookBodyTemplate,
-  validateWebhookUrl,
 } from '@/utils/validators';
 import {
   ExternalWebhook,
@@ -39,19 +38,6 @@ const handleWebhookValidationError = (
   if (!isWebhookValidationError(err)) return false;
   res.status(400).json({ message: err.message });
   return true;
-};
-
-const collectValidationError = (
-  path: string,
-  check: () => void,
-): { path: string; message: string }[] => {
-  try {
-    check();
-    return [];
-  } catch (err) {
-    if (!isWebhookValidationError(err)) throw err;
-    return [{ path, message: err.message }];
-  }
 };
 
 // Countable log event (see agent_docs/observability.md): a webhook that was
@@ -556,15 +542,7 @@ router.post('/validate', async (req, res, next) => {
       });
     }
 
-    const { service, url, body } = parsed.data;
-    const errors = [
-      ...collectValidationError('url', () =>
-        validateWebhookUrl({ service, url }),
-      ),
-      ...collectValidationError('body', () =>
-        validateWebhookBodyTemplate({ service, body }),
-      ),
-    ];
+    const errors = getWebhookConfigErrors(parsed.data);
 
     return res.json({
       valid: errors.length === 0,

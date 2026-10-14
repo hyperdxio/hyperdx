@@ -177,7 +177,7 @@ export class WebhookBodyValidationError extends Error {
  * Rejects a body template Handlebars cannot compile, which would otherwise
  * fail on every alert delivery. Slack never renders the body.
  */
-export function validateWebhookBodyTemplate({
+function validateWebhookBodyTemplate({
   service,
   body,
 }: {
@@ -202,6 +202,38 @@ export const isWebhookValidationError = (
 ): err is WebhookUrlValidationError | WebhookBodyValidationError =>
   err instanceof WebhookUrlValidationError ||
   err instanceof WebhookBodyValidationError;
+
+type WebhookConfigInput = WebhookUrlInput & { body?: string };
+
+// The one list of checks a webhook must pass before it is saved or sent, so
+// POST /api/v2/webhooks/validate can never pass a config that create rejects.
+const WEBHOOK_CONFIG_CHECKS: {
+  path: string;
+  check: (input: WebhookConfigInput) => void;
+}[] = [
+  { path: 'url', check: input => validateWebhookUrl(input) },
+  { path: 'body', check: input => validateWebhookBodyTemplate(input) },
+];
+
+/** Throws the first webhook config error. */
+export function validateWebhookConfig(input: WebhookConfigInput) {
+  for (const { check } of WEBHOOK_CONFIG_CHECKS) check(input);
+}
+
+/** Returns every webhook config error instead of throwing the first. */
+export function getWebhookConfigErrors(
+  input: WebhookConfigInput,
+): { path: string; message: string }[] {
+  return WEBHOOK_CONFIG_CHECKS.flatMap(({ path, check }) => {
+    try {
+      check(input);
+      return [];
+    } catch (err) {
+      if (!isWebhookValidationError(err)) throw err;
+      return [{ path, message: err.message }];
+    }
+  });
+}
 
 export const passwordSchema = z
   .string()

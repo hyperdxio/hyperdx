@@ -317,6 +317,72 @@ describe('validators', () => {
     });
   });
 
+  describe('getWebhookConfigErrors', () => {
+    const BROKEN_BODY = '{"text": "{{#if title}}"}';
+
+    it('returns no errors for a valid config', () => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body: '{"status": "{{#if (eq state "ALERT")}}firing{{/if}}"}',
+        }),
+      ).toEqual([]);
+    });
+
+    it('reports URL and body errors with their paths', () => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'http://127.0.0.1/webhook',
+          body: BROKEN_BODY,
+        }),
+      ).toEqual([
+        {
+          path: 'url',
+          message: expect.stringContaining('private or reserved'),
+        },
+        {
+          path: 'body',
+          message: expect.stringMatching(
+            /^Invalid webhook body template \(line 1, column 26\): Parse error/,
+          ),
+        },
+      ]);
+    });
+
+    it.each([
+      [
+        'a slack webhook',
+        WebhookService.Slack,
+        'https://hooks.slack.com/services/T0/B0/X',
+        BROKEN_BODY,
+      ],
+      [
+        'an empty body',
+        WebhookService.Generic,
+        'https://example.com/webhook',
+        '   ',
+      ],
+    ])('skips the body check for %s', (_label, service, url, body) => {
+      expect(validators.getWebhookConfigErrors({ service, url, body })).toEqual(
+        [],
+      );
+    });
+  });
+
+  describe('validateWebhookConfig', () => {
+    it('throws the same error create returns as a 400', () => {
+      expect(() =>
+        validators.validateWebhookConfig({
+          service: WebhookService.IncidentIO,
+          url: 'https://example.com/webhook',
+          body: '{"text": "{{#if title}}"}',
+        }),
+      ).toThrow(validators.WebhookBodyValidationError);
+    });
+  });
+
   describe('validatePassword', () => {
     it('should return true if password is valid', () => {
       expect(validators.validatePassword('aB3!efghijkl')).toBe(true);

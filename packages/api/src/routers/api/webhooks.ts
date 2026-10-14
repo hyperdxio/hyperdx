@@ -29,8 +29,7 @@ import type { Message } from '@/tasks/checkAlerts/transports/types';
 import { isDuplicateKeyError } from '@/utils/errors';
 import {
   isWebhookValidationError,
-  validateWebhookBodyTemplate,
-  validateWebhookUrl,
+  validateWebhookConfig,
 } from '@/utils/validators';
 import {
   webhookHeaderNameSchema,
@@ -290,8 +289,7 @@ router.put(
         });
       }
 
-      validateWebhookUrl({ service, url: resolvedUrl });
-      validateWebhookBodyTemplate({ service, body });
+      validateWebhookConfig({ service, url: resolvedUrl, body });
 
       // When the URL is changing, use submitted values as-is (no merge).
       // An omitted field becomes undefined → $unset, so stored secrets
@@ -457,8 +455,7 @@ router.post(
         }
       }
 
-      validateWebhookUrl({ service, url });
-      validateWebhookBodyTemplate({ service, body });
+      validateWebhookConfig({ service, url, body });
 
       // Create a temporary webhook object for testing
       const testWebhook = new Webhook({
