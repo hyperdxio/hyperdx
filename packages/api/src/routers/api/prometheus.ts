@@ -130,10 +130,6 @@ function getParams(req: express.Request): Record<string, string> {
   };
 }
 
-// --------------------------
-// Source resolution
-// --------------------------
-
 type PromqlTarget = {
   connection: NonNullable<Awaited<ReturnType<typeof getConnectionById>>>;
   databaseName: string;
