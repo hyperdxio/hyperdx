@@ -33,7 +33,7 @@ import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
-import { createPartialResultPublisher } from '@/hooks/useStreamingQuery';
+import { withPartialResults } from '@/hooks/useStreamingQuery';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
@@ -441,8 +441,8 @@ async function settleAllOrThrow<T>(promises: Promise<T>[]): Promise<T[]> {
  * - `'all'` tries text indexes, then metadata MVs, then the raw table, so it is
  *   cheaper for typeahead. It skips JSON-column keys, and its lookups return no
  *   values instead of failing, so it rarely errors. When no values are showing
- *   yet, each query's values land in `data` as soon as it finishes, while
- *   `isFetching` is still true.
+ *   yet, each query's values land in `data` within 100ms of it finishing,
+ *   while `isFetching` is still true.
  *
  * `limit` caps the values returned per key in both modes.
  *
@@ -484,10 +484,6 @@ export function useMultipleGetKeyValues(
   const { isLoading: isLoadingMe } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
   const maxKeys = useFilterKeysFetchLimit();
-  // Read when a fetch starts. Values already on screen (including a previous
-  // query's, kept by `keepPreviousData`) stay until the new result is
-  // complete; a partial one would blank every key that hasn't arrived yet.
-  const isShowingDataRef = useRef(false);
 
   const queryKey = [
     'useMetadata.useGetKeyValues',
@@ -538,42 +534,40 @@ export function useMultipleGetKeyValues(
         return results.flat();
       }
 
-      const publish = isShowingDataRef.current
-        ? undefined
-        : createPartialResultPublisher<Facet>({
-            queryClient,
-            queryKey,
-            signal,
-          });
-      // Kept per source so a source that fails partway drops out of the
-      // final result, as it would had nothing streamed.
-      const arrivedBySource = lookups.map((): Facet[] => []);
-      const results = await settleAllOrThrow(
-        lookups.map(async ({ chartConfig, metadataMVs }, i) => {
-          for await (const keyValues of metadata.streamAllKeyValues({
-            databaseName: chartConfig.from.databaseName,
-            tableName: chartConfig.from.tableName,
-            keyExpressions: keys.slice(0, maxKeys),
-            maxValuesPerKey: limit,
-            connectionId: chartConfig.connection,
-            metadataMVs,
-            dateRange: chartConfig.dateRange,
-            timestampValueExpression: chartConfig.timestampValueExpression,
-            signal,
-          })) {
-            if (signal.aborted) break;
-            arrivedBySource[i].push(
-              ...keyValues.map(({ key, value }) => ({
-                key,
-                value: value.map(val => val.toString()),
-              })),
-            );
-            publish?.(() => arrivedBySource.flat());
-          }
-          return arrivedBySource[i];
-        }),
+      return withPartialResults<Facet>(
+        { queryClient, queryKey, signal },
+        async publish => {
+          // Kept per source so a source that fails partway drops out of the
+          // final result, as it would had nothing streamed.
+          const arrivedBySource = lookups.map((): Facet[] => []);
+          const results = await settleAllOrThrow(
+            lookups.map(async ({ chartConfig, metadataMVs }, i) => {
+              for await (const keyValues of metadata.streamAllKeyValues({
+                databaseName: chartConfig.from.databaseName,
+                tableName: chartConfig.from.tableName,
+                keyExpressions: keys.slice(0, maxKeys),
+                maxValuesPerKey: limit,
+                connectionId: chartConfig.connection,
+                metadataMVs,
+                dateRange: chartConfig.dateRange,
+                timestampValueExpression: chartConfig.timestampValueExpression,
+                signal,
+              })) {
+                if (signal.aborted) break;
+                arrivedBySource[i].push(
+                  ...keyValues.map(({ key, value }) => ({
+                    key,
+                    value: value.map(val => val.toString()),
+                  })),
+                );
+                publish(() => arrivedBySource.flat());
+              }
+              return arrivedBySource[i];
+            }),
+          );
+          return results.flat();
+        },
       );
-      return results.flat();
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     placeholderData: keepPreviousData,
@@ -581,16 +575,11 @@ export function useMultipleGetKeyValues(
     enabled: !!enabled && !!keys.length && !isLoadingSources && !isLoadingMe,
   });
 
-  const data = mode === 'all' && query.isError ? undefined : query.data;
-  useEffect(() => {
-    isShowingDataRef.current = data !== undefined;
-  });
-
   return {
     ...query,
     // A failed stream's partial values stay in the cache; don't hand them
     // back as though they were complete.
-    data,
+    data: mode === 'all' && query.isError ? undefined : query.data,
     isLoading: query.isLoading || isLoadingSources,
   };
 }

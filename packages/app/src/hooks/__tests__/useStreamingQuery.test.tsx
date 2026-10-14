@@ -70,6 +70,34 @@ describe('useStreamingQuery', () => {
     expect(result.current.data).toEqual(['a', 'b']);
   });
 
+  it('publishes a chunk that lands within the flush interval when it ends', async () => {
+    let releaseStream: () => void = () => {};
+    const streamGate = new Promise<void>(resolve => {
+      releaseStream = resolve;
+    });
+    const streamFactory = async function* () {
+      yield ['a'];
+      yield ['b'];
+      await streamGate;
+    };
+
+    const { result } = renderHook(
+      () =>
+        useStreamingQuery<string>({
+          queryKey: ['trailing'],
+          streamFactory,
+          flushIntervalMs: 50,
+        }),
+      { wrapper: createWrapper() },
+    );
+
+    await waitFor(() => expect(result.current.data).toEqual(['a', 'b']));
+    expect(result.current.isStreaming).toBe(true);
+
+    releaseStream();
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+  });
+
   it('discards partial results when the stream fails mid-way', async () => {
     const streamFactory = async function* () {
       yield ['a'];
@@ -156,6 +184,51 @@ describe('useStreamingQuery', () => {
 
     // Reverted on cancel; a late write would be served as complete forever.
     expect(queryClient.getQueryData(['a'])).toBeUndefined();
+  });
+
+  it('keeps the complete result in place while a refetch streams', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    let releaseRefetch: () => void = () => {};
+    const refetchGate = new Promise<void>(resolve => {
+      releaseRefetch = resolve;
+    });
+    let isRefetchWaiting = false;
+    let runs = 0;
+    const streamFactory = async function* () {
+      runs++;
+      if (runs === 1) {
+        yield ['a', 'b'];
+        return;
+      }
+      yield ['c'];
+      isRefetchWaiting = true;
+      await refetchGate;
+      yield ['d'];
+    };
+
+    const { result } = renderHook(
+      () =>
+        useStreamingQuery<string>({
+          queryKey: ['refetch'],
+          streamFactory,
+          flushIntervalMs: 0,
+        }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isStreaming).toBe(false));
+
+    const refetch = queryClient.refetchQueries({ queryKey: ['refetch'] });
+    await waitFor(() => expect(isRefetchWaiting).toBe(true));
+    expect(result.current.data).toEqual(['a', 'b']);
+
+    releaseRefetch();
+    await refetch;
+    await waitFor(() => expect(result.current.data).toEqual(['c', 'd']));
   });
 
   it('reports an empty stream as a completed empty result', async () => {
