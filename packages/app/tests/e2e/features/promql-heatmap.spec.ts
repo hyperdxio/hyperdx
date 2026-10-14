@@ -1,10 +1,11 @@
 /**
- * PromQL heatmaps draw either a distribution of every series' samples,
- * bucketed client-side, or one row per series of a range query, named by the
- * legend template.
+ * PromQL heatmaps draw a distribution of every series' samples, bucketed
+ * client-side; one row per series of a range query, named by the legend
+ * template; or one row per bucket of a Prometheus histogram.
  *
  * The seed gives `e2e_service_up` one series per `SERVICES` entry, labelled
- * `service`, one sample of 1 a minute.
+ * `service`, one sample of 1 a minute, and `e2e_request_duration_seconds` a
+ * cumulative `_bucket` series per service and `le` in 0.1, 0.5, 1 and +Inf.
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
@@ -12,13 +13,23 @@ import { HeatmapComponent } from '../components/HeatmapComponent';
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SERVICES } from '../seed-clickhouse';
 import { expect, test } from '../utils/base-test';
-import { E2E_PROMQL_METRIC_NAME, PROMQL_SOURCE_NAME } from '../utils/constants';
+import {
+  E2E_PROMQL_HISTOGRAM_METRIC_NAME,
+  E2E_PROMQL_METRIC_NAME,
+  PROMQL_SOURCE_NAME,
+} from '../utils/constants';
 
 // Ends in `)` rather than inside the selector so the autocomplete popup closes.
 const EXPRESSION = `last_over_time(${E2E_PROMQL_METRIC_NAME}{service!=""}[$__interval])`;
+// A fixed window holds several of the once-a-minute samples rate() needs.
+const BUCKET_RATE = `rate(${E2E_PROMQL_HISTOGRAM_METRIC_NAME}_bucket[5m])`;
+const HISTOGRAM_EXPRESSION = `sum by (le) (${BUCKET_RATE})`;
 
-/** Open a new tile on a new dashboard as a PromQL heatmap of `EXPRESSION`. */
-async function startPromqlHeatmapTile(dashboardPage: DashboardPage) {
+/** Open a new tile on a new dashboard as a PromQL heatmap of `expression`. */
+async function startPromqlHeatmapTile(
+  dashboardPage: DashboardPage,
+  expression = EXPRESSION,
+) {
   const editor = dashboardPage.chartEditor;
   await dashboardPage.goto();
   await dashboardPage.createNewDashboard();
@@ -29,7 +40,7 @@ async function startPromqlHeatmapTile(dashboardPage: DashboardPage) {
   await editor.switchToPromqlMode();
   await editor.selectSource(PROMQL_SOURCE_NAME);
   await editor.setChartName('PromQL heatmap tile');
-  await editor.replacePromqlExpression(EXPRESSION);
+  await editor.replacePromqlExpression(expression);
 }
 
 /** Save the tile, and check it renders before and after a reload. */
@@ -142,5 +153,63 @@ test.describe('PromQL heatmaps', { tag: ['@dashboard', '@full-stack'] }, () => {
       await editor.openDisplaySettings();
       await expect(editor.heatmapScaleOption('Log')).toBeChecked();
     });
+  });
+
+  test('draws histogram buckets, and persists', async ({ page }) => {
+    const dashboardPage = new DashboardPage(page);
+    const editor = dashboardPage.chartEditor;
+
+    const assertRendersBuckets = async (heatmap: HeatmapComponent) => {
+      await expect(heatmap.canvas.first()).toBeVisible({ timeout: 30000 });
+      await expect(heatmap.notEnoughDataText).toHaveCount(0);
+      await heatmap.hoverPopulatedCell();
+      expect(
+        Number(await heatmap.hoveredTooltipValue('Count Value')),
+      ).toBeGreaterThan(0);
+      expect(await heatmap.hoveredTooltipValue('Bucket')).toMatch(
+        /^(0 – 0\.1|0\.1 – 0\.5|0\.5 – 1|> 1)\b/,
+      );
+    };
+
+    await test.step('Create a PromQL histogram heatmap tile', async () => {
+      await startPromqlHeatmapTile(dashboardPage, HISTOGRAM_EXPRESSION);
+      await editor.setHeatmapMode('Histogram');
+      await editor.runQuery(false);
+    });
+
+    await test.step('The expression is queried as written', async () => {
+      await editor.openGeneratedPromql();
+      await expect
+        .poll(() => editor.getGeneratedPromqlText())
+        .toContain(HISTOGRAM_EXPRESSION);
+    });
+
+    await test.step('The preview draws the buckets', async () => {
+      await assertRendersBuckets(editor.previewHeatmap);
+    });
+
+    await test.step('The saved tile renders, and still renders after reload', async () => {
+      await saveAndAssertRenders(dashboardPage, assertRendersBuckets);
+    });
+
+    await test.step('Histogram mode persists', async () => {
+      await dashboardPage.editTile(0);
+      await expect(editor.nameInput).toBeVisible();
+      await expect(editor.heatmapModeOption('Histogram')).toBeChecked();
+    });
+  });
+
+  test('explains buckets that were not aggregated by le', async ({ page }) => {
+    const dashboardPage = new DashboardPage(page);
+    const editor = dashboardPage.chartEditor;
+
+    await startPromqlHeatmapTile(dashboardPage, BUCKET_RATE);
+    await editor.setHeatmapMode('Histogram');
+    await editor.runQuery(false);
+
+    await expect(editor.previewError).toContainText(
+      'Several series share le=',
+      { timeout: 30000 },
+    );
   });
 });

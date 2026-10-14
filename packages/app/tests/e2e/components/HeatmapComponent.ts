@@ -78,7 +78,7 @@ export class HeatmapComponent {
   }
 
   /** A labelled value of the open cell tooltip, e.g. `Count Value`. */
-  async hoveredTooltipValue(label: 'Count Value' | 'Y Value') {
+  async hoveredTooltipValue(label: 'Count Value' | 'Y Value' | 'Bucket') {
     const row = this.container
       .getByText(`${label}:`, { exact: true })
       .locator('..');

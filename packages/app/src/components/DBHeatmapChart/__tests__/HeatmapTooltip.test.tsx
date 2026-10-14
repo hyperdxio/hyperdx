@@ -41,6 +41,12 @@ describe('HeatmapTooltip', () => {
     expect(screen.getByText('1,234')).toBeInTheDocument();
   });
 
+  it('keeps significant digits of small counts', () => {
+    renderTooltip({ point: { ...point, countVal: 0.000278 } });
+
+    expect(screen.getByText('0.000278')).toBeInTheDocument();
+  });
+
   it('appends the percentile when known', () => {
     renderTooltip({
       cell: { kind: 'distribution', formattedY: 'y=2', percentile: 95.25 },

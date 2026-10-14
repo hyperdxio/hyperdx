@@ -32,6 +32,7 @@ import {
   isRangeThresholdType,
   isTraceSource,
   PromqlChartConfig,
+  PromqlHeatmapMode,
   PromqlSavedChartConfig,
   PromqlSeries,
   RawSqlChartConfig,
@@ -228,13 +229,13 @@ export function getAllowedSourceKinds({
 }: {
   configType: ChartEditorFormState['configType'];
   displayType: DisplayType | undefined;
-  heatmapMode?: HeatmapMode;
+  heatmapMode?: PromqlHeatmapMode;
 }): SourceKind[] {
   if (configType === 'promql' && isPromqlDisplayType(displayType)) {
     return [SourceKind.Promql];
   }
   if (displayType === DisplayType.Heatmap) {
-    return [...getHeatmapSourceKinds(heatmapMode)];
+    return [...getHeatmapSourceKinds(toBuilderHeatmapMode(heatmapMode))];
   }
   if (isStringSelectDisplayType(displayType)) {
     return ROW_LISTING_SOURCE_KINDS;
@@ -324,6 +325,7 @@ export function convertFormStateToSavedChartConfig(
         'promqlExpression',
         'promqlExpressions',
       ]),
+      heatmap: formBuilderHeatmap(form),
       select: [],
       where: form.where ?? '',
       source: source?.id ?? form.source ?? '',
@@ -342,6 +344,7 @@ export function convertFormStateToSavedChartConfig(
         'promqlExpression',
         'promqlExpressions',
       ]),
+      heatmap: formBuilderHeatmap(form),
       select: isStringSelectDisplayType(form.displayType)
         ? typeof form.select === 'string'
           ? form.select
@@ -446,6 +449,7 @@ export function convertFormStateToChartConfig(
         'promqlExpression',
         'promqlExpressions',
       ]),
+      heatmap: formBuilderHeatmap(form),
       from: source.from,
       timestampValueExpression: source.timestampValueExpression,
       dateRange,
@@ -552,6 +556,42 @@ function formPromqlExpressions(form: ChartEditorFormState): PromqlSeries[] {
     queryType: keepQueryType ? series.queryType : undefined,
     reducer: keepReducer ? series.reducer : undefined,
   }));
+}
+
+/** The form's heatmap settings, formatted for a builder tile */
+function formBuilderHeatmap(
+  form: ChartEditorFormState,
+): BuilderSavedChartConfig['heatmap'] {
+  return form.heatmap == null
+    ? undefined
+    : { mode: toBuilderHeatmapMode(form.heatmap.mode) };
+}
+
+/** A heatmap mode as a builder heatmap's, which has no histogram mode. */
+export function toBuilderHeatmapMode(
+  mode: PromqlHeatmapMode | undefined,
+): HeatmapMode | undefined {
+  return mode === 'histogram' ? undefined : mode;
+}
+
+const DEFAULT_PROMQL_PLACEHOLDER =
+  "rate(http_requests_total{service='api'}[5m])";
+
+const PROMQL_HEATMAP_PLACEHOLDERS: Record<PromqlHeatmapMode, string> = {
+  distribution:
+    'rate(http_request_duration_seconds_sum[5m]) / rate(http_request_duration_seconds_count[5m])',
+  series: 'sum by (service) (rate(http_requests_total[5m]))',
+  histogram: 'sum by (le) (rate(http_request_duration_seconds_bucket[5m]))',
+};
+
+/** An example PromQL expression suited to the display type and heatmap mode. */
+export function promqlExpressionPlaceholder(
+  displayType: DisplayType | undefined,
+  heatmapMode: PromqlHeatmapMode,
+): string {
+  return displayType === DisplayType.Heatmap
+    ? PROMQL_HEATMAP_PLACEHOLDERS[heatmapMode]
+    : DEFAULT_PROMQL_PLACEHOLDER;
 }
 
 /** Heatmap settings are dropped from PromQL tiles that are not heatmaps. */
@@ -762,7 +802,7 @@ export const validateChartForm = (
     !isRawSqlChart &&
     !isPromqlChart &&
     form.displayType === DisplayType.Heatmap &&
-    getHeatmapMode(form) === 'distribution' &&
+    getHeatmapMode({ heatmap: formBuilderHeatmap(form) }) === 'distribution' &&
     Array.isArray(form.series) &&
     form.series.length > 0 &&
     !form.series[0]?.valueExpression

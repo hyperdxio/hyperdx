@@ -26,7 +26,7 @@ import {
   DashboardFilter,
   DisplayType,
   Filter,
-  HeatmapMode,
+  PromqlHeatmapMode,
   SavedChartConfig,
   SourceKind,
   TSource,
@@ -73,6 +73,7 @@ import {
   isPromqlDisplayType,
   isRawSqlDisplayType,
   isStringSelectDisplayType,
+  toBuilderHeatmapMode,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 import {
@@ -175,7 +176,7 @@ function applyHeatmapDefaults(
     fallbackValueExpression = '',
     isPromql = false,
   }: {
-    mode: HeatmapMode;
+    mode: PromqlHeatmapMode;
     tableSource: TSource | undefined;
     fallbackValueExpression?: string;
     isPromql?: boolean;
@@ -315,7 +316,7 @@ export default function EditTimeChartForm({
   const configType = useWatch({ control, name: 'configType' });
   const connection = useWatch({ control, name: 'connection' });
   const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
-  const heatmapMode = getHeatmapMode({
+  const storedHeatmapMode = getHeatmapMode({
     heatmap: useWatch({ control, name: 'heatmap' }),
   });
 
@@ -324,6 +325,13 @@ export default function EditTimeChartForm({
     configType === 'sql' && isRawSqlDisplayType(displayType);
   const isPromqlInput =
     configType === 'promql' && isPromqlDisplayType(displayType);
+  // Switching from PromQL to builder leaves the PromQL-only histogram mode in
+  // the form, which the builder treats as distribution.
+  const builderHeatmapMode =
+    toBuilderHeatmapMode(storedHeatmapMode) ?? 'distribution';
+  const heatmapMode: PromqlHeatmapMode = isPromqlInput
+    ? storedHeatmapMode
+    : builderHeatmapMode;
 
   const { data: sources } = useSources();
 
@@ -870,7 +878,7 @@ export default function EditTimeChartForm({
 
   // Switching heatmap mode may trigger a source swap, and should apply new defaults.
   const onHeatmapModeChange = useCallback(
-    (mode: HeatmapMode) => {
+    (mode: PromqlHeatmapMode) => {
       setValue('heatmap.mode', mode);
       applyHeatmapDefaults(setValue, getValues, {
         mode,
@@ -1247,7 +1255,7 @@ export default function EditTimeChartForm({
             chartConfigForExplanations={chartConfigForExplanations}
             onSubmit={onSubmit}
             openDisplaySettings={openDisplaySettings}
-            heatmapMode={heatmapMode}
+            heatmapMode={builderHeatmapMode}
             onHeatmapModeChange={onHeatmapModeChange}
           />
         )}
