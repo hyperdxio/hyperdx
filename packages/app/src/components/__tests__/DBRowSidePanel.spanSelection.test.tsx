@@ -121,7 +121,6 @@ import DBRowSidePanelErrorBoundary, {
 } from '@/components/DBRowSidePanel';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 const ROOT_SOURCE = {
   id: 'log-src',
   kind: 'log',
