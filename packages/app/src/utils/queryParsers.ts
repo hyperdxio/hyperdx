@@ -112,12 +112,21 @@ export const parseAsSortingStateString = createParser<SortingState[number]>({
     if (!value) {
       return null;
     }
-    const keys = value.split(' ');
-    const direction = keys.pop();
-    const key = keys.join(' ');
+    // Only a single bare column followed by an explicit ASC/DESC can map onto a
+    // sortable table header. Mirrors the guard in orderByStringToSortingState
+    // (utils.ts): anything else — a multi-column tuple like
+    // "(TimestampTime, Timestamp)", a decorated expression like
+    // "x DESC NULLS LAST", or a bare expression with no direction — returns
+    // null so DBSqlRowTable leaves the raw ORDER BY string untouched instead of
+    // rebuilding a broken one.
+    const parts = value.split(' ');
+    const endsWithDirection = /\s(asc|desc)$/i.test(value);
+    if (parts.length !== 2 || !endsWithDirection) {
+      return null;
+    }
     return {
-      id: key,
-      desc: direction === 'DESC',
+      id: parts[0].trim(),
+      desc: parts[1].trim().toUpperCase() === 'DESC',
     };
   },
   serialize: value => {

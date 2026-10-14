@@ -1,6 +1,7 @@
 import {
   dashboardFilterValuesParser,
   parseAsJsonEncoded,
+  parseAsSortingStateString,
   parseAsStringEncoded,
 } from '@/utils/queryParsers';
 
@@ -154,6 +155,112 @@ describe('parseAsJsonEncoded', () => {
       expect(parser.parse('not-json')).toBeNull();
       expect(validate).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('parseAsSortingStateString', () => {
+  describe('parse', () => {
+    it('parses a single column with DESC', () => {
+      expect(parseAsSortingStateString.parse('Timestamp DESC')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('parses a single column with ASC', () => {
+      expect(parseAsSortingStateString.parse('Timestamp ASC')).toEqual({
+        id: 'Timestamp',
+        desc: false,
+      });
+    });
+
+    it('is case-insensitive on the direction', () => {
+      expect(parseAsSortingStateString.parse('Timestamp desc')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('returns null for an empty string', () => {
+      expect(parseAsSortingStateString.parse('')).toBeNull();
+    });
+
+    it('returns null when no explicit direction is present', () => {
+      expect(parseAsSortingStateString.parse('Timestamp')).toBeNull();
+    });
+
+    it('returns null for a multi-column tuple with no direction (HDX-5712)', () => {
+      // The bug: this previously parsed to { id: "(TimestampTime,", desc: false }
+      // and rendered as "(TimestampTime, ASC".
+      expect(
+        parseAsSortingStateString.parse('(TimestampTime, Timestamp)'),
+      ).toBeNull();
+    });
+
+    it('returns null for a multi-column tuple with a direction', () => {
+      expect(
+        parseAsSortingStateString.parse('(TimestampTime, Timestamp) DESC'),
+      ).toBeNull();
+    });
+
+    it('returns null for a decorated expression like NULLS LAST', () => {
+      expect(parseAsSortingStateString.parse('x DESC NULLS LAST')).toBeNull();
+    });
+  });
+
+  describe('serialize', () => {
+    it('serializes DESC', () => {
+      expect(
+        parseAsSortingStateString.serialize({ id: 'Timestamp', desc: true }),
+      ).toBe('Timestamp DESC');
+    });
+
+    it('serializes ASC', () => {
+      expect(
+        parseAsSortingStateString.serialize({ id: 'Timestamp', desc: false }),
+      ).toBe('Timestamp ASC');
+    });
+
+    it('round-trips a single-column ORDER BY string', () => {
+      const parsed = parseAsSortingStateString.parse('ServiceName ASC');
+      expect(parsed).not.toBeNull();
+      expect(parseAsSortingStateString.serialize(parsed!)).toBe(
+        'ServiceName ASC',
+      );
+    });
+  });
+
+  // Reproduces the ORDER BY data flow on the search page (DBSearchPage.tsx):
+  // the config's raw orderBy string is run through parse to build the table's
+  // sort state (initialSortBy), and a header click is serialized back with the
+  // same "<id> <ASC|DESC>" shape. A null parse means no sort state, which is
+  // the signal for DBSqlRowTable to leave the raw ORDER BY string alone.
+  describe('search page ORDER BY round-trip', () => {
+    // Mirrors DBSearchPage's onSortingChange serialization of a header click.
+    const serializeHeaderSort = (sort: { id: string; desc: boolean }) =>
+      `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`;
+
+    it('round-trips a single-column sort through the config string', () => {
+      const orderBy = serializeHeaderSort({ id: 'Timestamp', desc: true });
+      expect(orderBy).toBe('Timestamp DESC');
+
+      const sortState = parseAsSortingStateString.parse(orderBy);
+      expect(sortState).toEqual({ id: 'Timestamp', desc: true });
+      expect(serializeHeaderSort(sortState!)).toBe(orderBy);
+    });
+
+    it.each([
+      '(TimestampTime, Timestamp)',
+      '(TimestampTime, Timestamp) DESC',
+      'x DESC NULLS LAST',
+    ])(
+      'leaves a multi-column / decorated ORDER BY (%s) untouched by parsing to null',
+      orderBy => {
+        // null → initialSortBy is empty → DBSqlRowTable keeps the raw string
+        // instead of rebuilding a broken one like "(TimestampTime, ASC".
+        expect(parseAsSortingStateString.parse(orderBy)).toBeNull();
+      },
+    );
   });
 });
 
