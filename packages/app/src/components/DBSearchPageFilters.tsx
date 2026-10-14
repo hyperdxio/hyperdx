@@ -27,7 +27,6 @@ import {
   Stack,
   Tabs,
   Text,
-  TextInput,
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
@@ -43,7 +42,6 @@ import {
   IconMinus,
   IconPlus,
   IconRefresh,
-  IconSearch,
   IconShadow,
   IconSitemap,
 } from '@tabler/icons-react';
@@ -65,6 +63,10 @@ import {
 import { useSource } from '@/source';
 import { isColumnInSelect, useLocalStorage } from '@/utils';
 
+import {
+  FILTER_SEARCH_MIN_ITEMS,
+  FilterSearchInput,
+} from './DBSearchPageFilters/FilterSearchInput';
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
 import { useFetchFacets } from './DBSearchPageFilters/hooks';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
@@ -667,23 +669,13 @@ const FilterGroupBody = ({
 
   return (
     <Stack gap={0}>
-      {augmentedOptions.length > 5 && (
-        <div className="px-2 pb-2">
-          <TextInput
-            size="xs"
-            placeholder="Search values..."
-            value={search}
-            data-testid={`filter-search-${name}`}
-            onChange={(event: React.ChangeEvent<HTMLInputElement>) =>
-              handleSetSearch(event.currentTarget.value)
-            }
-            rightSectionWidth={20}
-            rightSection={<IconSearch size={12} stroke={2} />}
-            classNames={{
-              input: 'ps-0.5',
-            }}
-          />
-        </div>
+      {augmentedOptions.length > FILTER_SEARCH_MIN_ITEMS && (
+        <FilterSearchInput
+          placeholder="Search values..."
+          value={search}
+          data-testid={`filter-search-${name}`}
+          onChange={handleSetSearch}
+        />
       )}
       {displayedOptions.map(option => (
         <FilterCheckbox

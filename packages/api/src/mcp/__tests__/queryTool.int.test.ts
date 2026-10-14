@@ -1,6 +1,7 @@
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { ObjectId } from 'mongodb';
 
 import * as config from '@/config';
 import {
@@ -20,6 +21,7 @@ import {
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
 import { Source, type SourceDocument } from '@/models/source';
+import Team from '@/models/team';
 
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
@@ -162,6 +164,16 @@ describe('MCP Query Tools', () => {
       expect(props).toContain('endTime');
       expect(tool!.inputSchema.required).toContain('connectionId');
       expect(tool!.inputSchema.required).toContain('sql');
+    });
+
+    it('exposes an optional sourceId on clickstack_sql', async () => {
+      const { tools } = await client.listTools();
+      const tool = tools.find(t => t.name === 'clickstack_sql')!;
+
+      expect(Object.keys(tool.inputSchema.properties ?? {})).toContain(
+        'sourceId',
+      );
+      expect(tool.inputSchema.required).not.toContain('sourceId');
     });
   });
 
@@ -754,6 +766,244 @@ describe('MCP Query Tools', () => {
 
       expect(result.isError).toBeFalsy();
     });
+
+    // The tool description advertises these bucket-size parameters and
+    // macros, so each one has to resolve to a value rather than fail with
+    // "Substitution intervalSeconds is not set".
+    it('binds the interval parameters and $__interval_s to the same bucket size', async () => {
+      const result = await callTool(client, 'clickstack_sql', {
+        connectionId: connection._id.toString(),
+        sql:
+          'SELECT {intervalSeconds:Int64} AS s, ' +
+          '{intervalMilliseconds:Int64} AS ms, ' +
+          '$__interval_s AS macro_s',
+        startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+        endTime: new Date().toISOString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const [row] = JSON.parse(getFirstText(result)).result.data;
+      const seconds = Number(row.s);
+      expect(seconds).toBeGreaterThan(0);
+      expect(Number(row.ms)).toBe(seconds * 1000);
+      expect(Number(row.macro_s)).toBe(seconds);
+    });
+
+    it.each(['$__timeInterval', '$__timeInterval_ms'])(
+      'runs a time-series query bucketed with %s',
+      async macro => {
+        const now = Date.now();
+        await bulkInsertLogs(
+          [5, 10, 15, 20].map(minutesAgo => ({
+            Body: 'bucketed',
+            ServiceName: 'sql-buckets',
+            SeverityText: 'INFO',
+            Timestamp: new Date(now - minutesAgo * 60 * 1000),
+          })),
+        );
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql:
+            `SELECT ${macro}(Timestamp) AS ts, ` +
+            'toUnixTimestamp(ts) % $__interval_s AS offset, count() AS cnt ' +
+            `FROM ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE} ` +
+            "WHERE $__timeFilter(Timestamp) AND ServiceName = 'sql-buckets' " +
+            'GROUP BY ts ORDER BY ts LIMIT 10',
+          startTime: new Date(now - 60 * 60 * 1000).toISOString(),
+          endTime: new Date(now).toISOString(),
+        });
+
+        expect(getFirstText(result)).not.toContain('Substitution');
+        expect(result.isError).toBeFalsy();
+        const rows: { offset: unknown; cnt: unknown }[] = JSON.parse(
+          getFirstText(result),
+        ).result.data;
+        expect(rows).toHaveLength(4);
+        expect(rows.map(row => Number(row.offset))).toEqual([0, 0, 0, 0]);
+        expect(rows.map(row => Number(row.cnt))).toEqual([1, 1, 1, 1]);
+      },
+    );
+
+    describe('sql parameter examples', () => {
+      const getDescription = async () => {
+        const { tools } = await client.listTools();
+        const sqlParam = tools.find(t => t.name === 'clickstack_sql')!
+          .inputSchema.properties?.sql;
+        return sqlParam &&
+          typeof sqlParam === 'object' &&
+          'description' in sqlParam
+          ? String(sqlParam.description)
+          : '';
+      };
+      const getExamples = async () =>
+        [
+          ...(await getDescription()).matchAll(/^Example \(.+\):\n {2}(.+)$/gm),
+        ].map(match => match[1]);
+
+      // timestampColumn can list several columns ("TimestampTime, Timestamp"),
+      // which breaks $__timeFilter if pasted whole. Metric sources return a
+      // database instead of a table.
+      it('say how to fill placeholders for multi-column timestamps and metric sources', async () => {
+        const description = await getDescription();
+
+        expect(description).toMatch(
+          /first expression in its `timestampColumn`/,
+        );
+        expect(description).toMatch(/metricTables.*`database`/);
+      });
+
+      // Agents copy examples literally. A concrete table or column in one
+      // becomes the guess, and it only exists on some schemas.
+      it('leave the table and timestamp column as placeholders', async () => {
+        const examples = await getExamples();
+
+        expect(examples).toHaveLength(2);
+        for (const sql of examples) {
+          expect(sql).toMatch(/FROM (<table>|\$__sourceTable) /);
+          expect(sql).toContain('<timestampColumn>');
+          expect(sql).not.toMatch(/otel_|TimestampTime/);
+        }
+      });
+
+      it('show $__sourceTable for a source and <table> for any other table', async () => {
+        const [timeSeries, table] = await getExamples();
+
+        expect(timeSeries).toContain('FROM $__sourceTable ');
+        expect(table).toContain('FROM <table> ');
+      });
+
+      it('run once the placeholders are filled from a source', async () => {
+        const examples = await getExamples();
+
+        expect(examples).toHaveLength(2);
+        for (const example of examples) {
+          const sql = example
+            .replaceAll('<table>', `${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`)
+            .replaceAll('<timestampColumn>', 'Timestamp');
+          const result = await callTool(client, 'clickstack_sql', {
+            connectionId: connection._id.toString(),
+            sourceId: logSource._id.toString(),
+            sql,
+            startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            endTime: new Date().toISOString(),
+          });
+          expect({
+            sql,
+            error: result.isError ? getFirstText(result) : null,
+          }).toEqual({ sql, error: null });
+        }
+      });
+    });
+
+    describe('sourceId', () => {
+      const countSql =
+        'SELECT count() AS n FROM $__sourceTable WHERE $__timeFilter(Timestamp)';
+
+      it('resolves $__sourceTable to the table of the given source', async () => {
+        const now = Date.now();
+        await bulkInsertLogs(
+          [1, 2, 3].map(minutesAgo => ({
+            Body: 'from source',
+            ServiceName: 'sql-source',
+            SeverityText: 'INFO',
+            Timestamp: new Date(now - minutesAgo * 60 * 1000),
+          })),
+        );
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sourceId: logSource._id.toString(),
+          sql: `${countSql} AND ServiceName = 'sql-source'`,
+          startTime: new Date(now - 60 * 60 * 1000).toISOString(),
+          endTime: new Date(now).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        expect(JSON.parse(getFirstText(result)).result.data).toEqual([
+          { n: '3' },
+        ]);
+      });
+
+      it('rejects $__sourceTable without a sourceId, saying to pass one', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain(
+          '$__sourceTable needs a sourceId',
+        );
+      });
+
+      it('rejects a sourceId that does not exist', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sourceId: new ObjectId().toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Source not found');
+      });
+
+      it("rejects another team's sourceId as not found", async () => {
+        const otherTeam = await Team.create({ name: 'Other Team' });
+        const otherSource = await Source.create({
+          kind: SourceKind.Log,
+          team: otherTeam._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: DEFAULT_LOGS_TABLE,
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection._id,
+          name: 'Other Logs',
+        });
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sourceId: otherSource._id.toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Source not found');
+      });
+
+      // $__sourceTable would otherwise expand to a table on another server.
+      it('rejects a sourceId whose connection differs from connectionId', async () => {
+        const otherConnection = await Connection.create({
+          team: team._id,
+          name: 'Other',
+          host: config.CLICKHOUSE_HOST,
+          username: config.CLICKHOUSE_USER,
+          password: config.CLICKHOUSE_PASSWORD,
+        });
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: otherConnection._id.toString(),
+          sourceId: logSource._id.toString(),
+          sql: countSql,
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('does not match the connection');
+      });
+    });
+
+    it('returns plain query rows unchanged', async () => {
+      const result = await callTool(client, 'clickstack_sql', {
+        connectionId: connection._id.toString(),
+        sql: "SELECT 1 AS value, 'a' AS label",
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect(JSON.parse(getFirstText(result)).result.data).toEqual([
+        { value: 1, label: 'a' },
+      ]);
+    });
   });
 
   // ─── ClickHouse query errors ──────────────────────────────────────────────────
@@ -795,6 +1045,24 @@ describe('MCP Query Tools', () => {
           /UNKNOWN_TABLE|doesn.t exist|unknown/i,
         );
       });
+
+      it.each([
+        'nonexistent_table_xyz',
+        `${DEFAULT_DATABASE}.nonexistent_table_xyz`,
+      ])(
+        'hints that %s should come from clickstack_list_sources',
+        async table => {
+          const result = await callTool(client, 'clickstack_sql', {
+            connectionId: connection._id.toString(),
+            sql: `SELECT 1 FROM ${table} LIMIT 1`,
+          });
+
+          expect(result.isError).toBe(true);
+          expect(getFirstText(result)).toContain(
+            'HINT: Use the `table` of a source from clickstack_list_sources',
+          );
+        },
+      );
     });
 
     describe('clickstack_table errors', () => {
@@ -808,6 +1076,31 @@ describe('MCP Query Tools', () => {
         expect(getFirstText(result)).toMatch(
           /UNKNOWN_IDENTIFIER|Missing columns|unknown/i,
         );
+      });
+
+      it('does not send a source whose table is missing back to clickstack_list_sources', async () => {
+        const missing = await Source.create({
+          kind: SourceKind.Log,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'nonexistent_table_xyz',
+          },
+          timestampValueExpression: 'Timestamp',
+          connection: connection._id,
+          name: 'Missing logs',
+        });
+
+        const result = await callTool(client, 'clickstack_table', {
+          sourceId: missing._id.toString(),
+          select: [{ aggFn: 'count' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toMatch(
+          /UNKNOWN_TABLE|does(n.t| not) exist/i,
+        );
+        expect(getFirstText(result)).not.toContain('clickstack_list_sources');
       });
     });
 

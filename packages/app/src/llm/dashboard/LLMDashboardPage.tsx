@@ -9,11 +9,11 @@ import {
   useQueryStates,
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { Badge } from '@clickhouse/click-ui';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Anchor,
-  Badge,
   Box,
   Breadcrumbs,
   Button,
@@ -222,9 +222,7 @@ function LLMDashboardPage() {
           <Text fz="sm" c="dimmed">
             LLM
           </Text>
-          <Badge size="xs" color="blue" variant="light">
-            Beta
-          </Badge>
+          <Badge size="sm" text="Beta" state="info" />
           <HoverCard
             width={420}
             shadow="md"

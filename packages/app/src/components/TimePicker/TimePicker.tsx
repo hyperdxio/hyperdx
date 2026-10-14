@@ -1,5 +1,5 @@
 import React, { memo, useMemo, useState } from 'react';
-import { add, Duration, format, sub } from 'date-fns';
+import { add, Duration, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -33,6 +33,7 @@ import {
   dateParser,
   DURATION_OPTIONS,
   DURATIONS,
+  formatTimeRangeText,
   LIVE_TAIL_DURATION_MS,
   LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
@@ -190,11 +191,7 @@ const TimePickerComponent = ({
       if (!from || !to) {
         return;
       }
-      const formatStr =
-        timeFormat === '24h' ? 'MMM d HH:mm:ss' : 'MMM d h:mm:ss a';
-      const rangeStr = [from, to]
-        .map(d => d && format(d, formatStr))
-        .join(' - ');
+      const rangeStr = formatTimeRangeText([from, to], { clock: timeFormat });
       onChange(rangeStr);
       onSearch(rangeStr);
       close();

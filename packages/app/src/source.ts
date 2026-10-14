@@ -205,6 +205,14 @@ export function useSource({
   });
 }
 
+// PromQL lookups are cached by source ID alone, so a source pointed at another
+// table would keep serving the old table's values until they go stale.
+const PROMQL_SOURCE_QUERY_KEYS = [
+  'promql-metric-names',
+  'promql-label-names',
+  'dashboard-filter-promql-label-values',
+];
+
 export function useUpdateSource() {
   const queryClient = useQueryClient();
 
@@ -219,8 +227,11 @@ export function useUpdateSource() {
         json: source,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, { source }) => {
       queryClient.invalidateQueries({ queryKey: ['sources'] });
+      for (const key of PROMQL_SOURCE_QUERY_KEYS) {
+        queryClient.invalidateQueries({ queryKey: [key, source.id] });
+      }
     },
   });
 }
@@ -527,6 +538,20 @@ export function getDurationMsExpression(source: TTraceSource) {
 
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
+}
+
+/**
+ * The single definition of an errored span, as a SQL predicate over a span
+ * status-code expression. Matches both the short OTel status ('Error'/'ERROR')
+ * and the legacy collector form ('STATUS_CODE_ERROR'), which some collectors
+ * write instead.
+ *
+ * Span status only. Log severity text is a different vocabulary (its error
+ * values are 'fatal', 'crit' and friends, never 'status_code_error'), so log
+ * callers keep their own predicate rather than reusing this one.
+ */
+export function errorStatusPredicateSql(statusCodeExpression: string): string {
+  return `lower(${statusCodeExpression}) IN ('error', 'status_code_error')`;
 }
 
 // Aggregate functions whose output preserves the unit of the input value.
