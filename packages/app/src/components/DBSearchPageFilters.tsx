@@ -1094,6 +1094,7 @@ const DBSearchPageFiltersComponent = ({
   onColumnToggle,
   displayedColumns,
   onCollapse,
+  fill = false,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -1107,6 +1108,8 @@ const DBSearchPageFiltersComponent = ({
   onColumnToggle?: (column: string) => void;
   displayedColumns?: string[];
   onCollapse?: () => void;
+  /** Fill the parent instead of the resizable desktop width. Used in the compact drawer. */
+  fill?: boolean;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1633,8 +1636,23 @@ const DBSearchPageFiltersComponent = ({
   );
 
   return (
-    <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>
-      <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
+    <Box
+      className={classes.filtersPanel}
+      style={
+        fill
+          ? {
+              width: '100%',
+              maxWidth: 'none',
+              minWidth: 0,
+              flex: 1,
+              borderRight: 'none',
+            }
+          : { width: `${size}%` }
+      }
+    >
+      {!fill && (
+        <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
+      )}
       <ScrollArea
         h="100%"
         scrollbarSize={4}

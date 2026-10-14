@@ -88,6 +88,8 @@ import CodeMirror from '@uiw/react-codemirror';
 import api, { useCompleteOnboardingTask } from '@/api';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
+import { ResponsiveSidePanel } from '@/components/CompactViewport/ResponsiveSidePanel';
+import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
@@ -1117,6 +1119,31 @@ function DBSearchPageContent() {
 
   const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
     useLocalStorage<boolean>('isFilterSidebarCollapsed', false);
+  // Compact open state stays out of `isFilterSidebarCollapsed`. Writing that
+  // key from a phone would collapse the sidebar the next time the same
+  // browser opens the page on a desktop.
+  const [isCompactFiltersOpen, setIsCompactFiltersOpen] = useState(false);
+  // SELECT grows with its text. On a phone that pushes the logs off the
+  // screen, so the column editors stay closed until the user asks.
+  const [columnsOpen, setColumnsOpen] = useState(false);
+  const isCompact = useCompactViewport();
+  const filtersCollapsed = isCompact
+    ? !isCompactFiltersOpen
+    : isFilterSidebarCollapsed;
+  const collapseFilters = useCallback(() => {
+    if (isCompact) {
+      setIsCompactFiltersOpen(false);
+      return;
+    }
+    setIsFilterSidebarCollapsed(true);
+  }, [isCompact, setIsFilterSidebarCollapsed]);
+  const expandFilters = useCallback(() => {
+    if (isCompact) {
+      setIsCompactFiltersOpen(true);
+      return;
+    }
+    setIsFilterSidebarCollapsed(false);
+  }, [isCompact, setIsFilterSidebarCollapsed]);
 
   const [denoiseResults, _setDenoiseResults] = useQueryState(
     'denoise',
@@ -2345,7 +2372,12 @@ function DBSearchPageContent() {
         className={searchPageStyles.searchForm}
       >
         {/* <DevTool control={control} /> */}
-        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
+        <Flex
+          gap={isCompact ? 'xs' : 'sm'}
+          px="sm"
+          pt={isCompact ? 4 : 'sm'}
+          wrap={isCompact ? 'wrap' : 'nowrap'}
+        >
           <SourceSelectControlled
             key={`${savedSearchId}`}
             size="xs"
@@ -2360,7 +2392,9 @@ function DBSearchPageContent() {
             )}
             allowedSourceKinds={ALLOWED_SOURCE_KINDS}
             data-testid="source-selector"
-            style={{ minWidth: 150 }}
+            style={
+              isCompact ? { flex: '1 1 140px', minWidth: 0 } : { minWidth: 150 }
+            }
           />
           <SourceSchemaPreview
             source={inputSourceObj}
@@ -2368,34 +2402,38 @@ function DBSearchPageContent() {
             open={isSourceSchemaPreviewOpen}
             onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
-          <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="select"
-              defaultValue={defaultSearchConfig.select}
-              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
-              onSubmit={onSubmit}
-              label="SELECT"
-              size="xs"
-              allowMultiline
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-          </Box>
-          <Box style={{ maxWidth: 400, width: '20%' }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="orderBy"
-              defaultValue={defaultSearchConfig.orderBy}
-              onSubmit={onSubmit}
-              label="ORDER BY"
-              size="xs"
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-          </Box>
+          {!isCompact && (
+            <>
+              <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
+                <SQLInlineEditorControlled
+                  tableConnection={inputSourceTableConnection}
+                  control={control}
+                  name="select"
+                  defaultValue={defaultSearchConfig.select}
+                  placeholder={defaultSearchConfig.select || 'SELECT Columns'}
+                  onSubmit={onSubmit}
+                  label="SELECT"
+                  size="xs"
+                  allowMultiline
+                  dateRange={searchedTimeRange}
+                  sourceId={inputSource}
+                />
+              </Box>
+              <Box style={{ maxWidth: 400, width: '20%' }}>
+                <SQLInlineEditorControlled
+                  tableConnection={inputSourceTableConnection}
+                  control={control}
+                  name="orderBy"
+                  defaultValue={defaultSearchConfig.orderBy}
+                  onSubmit={onSubmit}
+                  label="ORDER BY"
+                  size="xs"
+                  dateRange={searchedTimeRange}
+                  sourceId={inputSource}
+                />
+              </Box>
+            </>
+          )}
           <>
             {!savedSearchId ? (
               <Button
@@ -2434,8 +2472,53 @@ function DBSearchPageContent() {
                 </Group>
               </Button>
             )}
+            {isCompact && (
+              <Button
+                variant="subtle"
+                size="xs"
+                style={{ flexShrink: 0 }}
+                aria-expanded={columnsOpen}
+                onClick={() => setColumnsOpen(open => !open)}
+              >
+                {columnsOpen ? 'Hide columns' : 'Columns'}
+              </Button>
+            )}
           </>
         </Flex>
+        {isCompact && (
+          <Flex
+            direction="column"
+            gap={4}
+            px="sm"
+            pt={4}
+            style={{ display: columnsOpen ? 'flex' : 'none' }}
+          >
+            <SQLInlineEditorControlled
+              tableConnection={inputSourceTableConnection}
+              control={control}
+              name="select"
+              defaultValue={defaultSearchConfig.select}
+              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
+              onSubmit={onSubmit}
+              label="SELECT"
+              size="xs"
+              allowMultiline={false}
+              dateRange={searchedTimeRange}
+              sourceId={inputSource}
+            />
+            <SQLInlineEditorControlled
+              tableConnection={inputSourceTableConnection}
+              control={control}
+              name="orderBy"
+              defaultValue={defaultSearchConfig.orderBy}
+              onSubmit={onSubmit}
+              label="ORDER BY"
+              size="xs"
+              dateRange={searchedTimeRange}
+              sourceId={inputSource}
+            />
+          </Flex>
+        )}
         <SourceEditModal
           opened={modelFormExpanded}
           onClose={onModelFormExpandClose}
@@ -2446,7 +2529,12 @@ function DBSearchPageContent() {
           onClose={setNewSourceModalClosed}
           onCreate={onNewSourceCreate}
         />
-        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
+        <Flex
+          gap={isCompact ? 'xs' : 'sm'}
+          mt={isCompact ? 4 : 'sm'}
+          px="sm"
+          wrap="wrap"
+        >
           <SearchWhereInput
             tableConnection={inputSourceTableConnection}
             control={control}
@@ -2532,7 +2620,7 @@ function DBSearchPageContent() {
       />
       <Flex
         direction="column"
-        style={{ overflow: 'hidden', height: '100%' }}
+        style={{ overflow: 'hidden', flex: 1, minHeight: 0 }}
         className="bg-body"
       >
         {!queryReady ? (
@@ -2544,14 +2632,12 @@ function DBSearchPageContent() {
           />
         ) : (
           <>
-            <div
+            <ResponsiveSidePanel
               className={searchPageStyles.searchPageContainer}
-              style={{
-                minHeight: 0,
-                height: '100%',
-              }}
-            >
-              {!isFilterSidebarCollapsed && (
+              opened={!filtersCollapsed}
+              onClose={collapseFilters}
+              title="Filters"
+              panel={
                 <ErrorBoundary message="Unable to render search filters">
                   <DBSearchPageFilters
                     denoiseResults={denoiseResults}
@@ -2568,11 +2654,13 @@ function DBSearchPageContent() {
                     }
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
-                    onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    onCollapse={collapseFilters}
+                    fill={isCompact}
                     {...searchFilters}
                   />
                 </ErrorBoundary>
-              )}
+              }
+            >
               {analysisMode === 'pattern' &&
                 histogramTimeChartConfig != null && (
                   <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
@@ -2583,10 +2671,8 @@ function DBSearchPageContent() {
                         style={{ width: '100%' }}
                       >
                         <SearchResultsCountGroup
-                          isFilterSidebarCollapsed={isFilterSidebarCollapsed}
-                          onExpandFilters={() =>
-                            setIsFilterSidebarCollapsed(false)
-                          }
+                          isFilterSidebarCollapsed={filtersCollapsed}
+                          onExpandFilters={expandFilters}
                           histogramTimeChartConfig={histogramTimeChartConfig}
                         />
                         <SearchNumRows
@@ -2604,7 +2690,11 @@ function DBSearchPageContent() {
                     </Box>
                     {!hasQueryError && (
                       <Box
-                        className={searchPageStyles.timeChartContainer}
+                        className={
+                          isCompact
+                            ? `${searchPageStyles.timeChartContainer} ${searchPageStyles.timeChartContainerCompact}`
+                            : searchPageStyles.timeChartContainer
+                        }
                         mih="0"
                       >
                         <DBTimeChart
@@ -2674,10 +2764,8 @@ function DBSearchPageContent() {
                           style={{ width: '100%' }}
                         >
                           <SearchResultsCountGroup
-                            isFilterSidebarCollapsed={isFilterSidebarCollapsed}
-                            onExpandFilters={() =>
-                              setIsFilterSidebarCollapsed(false)
-                            }
+                            isFilterSidebarCollapsed={filtersCollapsed}
+                            onExpandFilters={expandFilters}
                             histogramTimeChartConfig={histogramTimeChartConfig}
                             enableParallelQueries
                           />
@@ -2704,7 +2792,11 @@ function DBSearchPageContent() {
                       </Box>
                       {!hasQueryError && (
                         <Box
-                          className={searchPageStyles.timeChartContainer}
+                          className={
+                            isCompact
+                              ? `${searchPageStyles.timeChartContainer} ${searchPageStyles.timeChartContainerCompact}`
+                              : searchPageStyles.timeChartContainer
+                          }
                           mih="0"
                         >
                           <DBTimeChart
@@ -2884,7 +2976,7 @@ function DBSearchPageContent() {
                   )}
                 </Flex>
               )}
-            </div>
+            </ResponsiveSidePanel>
           </>
         )}
       </Flex>
