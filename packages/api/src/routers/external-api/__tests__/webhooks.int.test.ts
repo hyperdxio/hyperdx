@@ -864,15 +864,20 @@ describe('External API v2 Webhooks', () => {
   describe('POST /api/v2/webhooks/validate', () => {
     const VALIDATE_URL = `${WEBHOOKS_BASE_URL}/validate`;
 
-    it('should return valid with the normalized body for a valid webhook', async () => {
+    it('should return valid with the normalized body, minus write-only secrets', async () => {
       const response = await authRequest('post', VALIDATE_URL)
-        .send({ ...MOCK_GENERIC_WEBHOOK, body: CONDITIONAL_BODY })
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          queryParams: { token: 'secret' },
+          body: CONDITIONAL_BODY,
+        })
         .expect(200);
 
+      const { headers: _headers, ...readable } = MOCK_GENERIC_WEBHOOK;
       expect(response.body).toEqual({
         valid: true,
         errors: [],
-        normalized: { ...MOCK_GENERIC_WEBHOOK, body: CONDITIONAL_BODY },
+        normalized: { ...readable, body: CONDITIONAL_BODY },
       });
       expect(await Webhook.countDocuments({})).toBe(0);
     });
@@ -892,6 +897,27 @@ describe('External API v2 Webhooks', () => {
           ),
         },
       ]);
+    });
+
+    it('should report a call to a helper delivery does not register', async () => {
+      const response = await authRequest('post', VALIDATE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          body: '{"s": "{{#if (equals state "ALERT")}}x{{/if}}"}',
+        })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        valid: false,
+        errors: [
+          {
+            path: 'body',
+            message:
+              'Invalid webhook body template (line 1, column 15): Unknown helper "equals"',
+          },
+        ],
+        normalized: null,
+      });
     });
 
     it('should report URL and body errors together', async () => {

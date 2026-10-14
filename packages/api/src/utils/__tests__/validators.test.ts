@@ -1,5 +1,6 @@
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
 
+import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
 import * as validators from '@/utils/validators';
 
 describe('validators', () => {
@@ -349,6 +350,58 @@ describe('validators', () => {
           ),
         },
       ]);
+    });
+
+    it.each([
+      ['a top-level call', '{"s": "{{equals state "ALERT"}}"}', 10],
+      [
+        'a subexpression',
+        '{"s": "{{#if (equals state "ALERT")}}x{{/if}}"}',
+        15,
+      ],
+      ['a block call', '{"s": "{{#equals state "ALERT"}}x{{/equals}}"}', 11],
+      [
+        'a call in a branch a sample alert would skip',
+        '{"s": "{{#if (eq state "OK")}}{{equals a b}}{{/if}}"}',
+        33,
+      ],
+    ])('rejects an unknown helper in %s', (_label, body, column) => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body,
+        }),
+      ).toEqual([
+        {
+          path: 'body',
+          message: `Invalid webhook body template (line 1, column ${column}): Unknown helper "equals"`,
+        },
+      ]);
+    });
+
+    it('knows exactly the helpers delivery registers', () => {
+      const delivery = Object.keys(
+        createHandlebarsWithHelpers().helpers,
+      ).filter(
+        name => name !== 'helperMissing' && name !== 'blockHelperMissing',
+      );
+      expect([...validators.WEBHOOK_BODY_HELPERS].sort()).toEqual(
+        delivery.sort(),
+      );
+    });
+
+    it('accepts registered helpers and bare lookups', () => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body:
+            '{"a": "{{#if (eq state "ALERT")}}{{title}}{{/if}}", ' +
+            '"b": "{{#each tags}}{{this}}{{/each}}{{lookup this "title"}}", ' +
+            '"c": "{{#unless value}}{{missing}}{{/unless}}{{#section}}x{{/section}}"}',
+        }),
+      ).toEqual([]);
     });
 
     it.each([

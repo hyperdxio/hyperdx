@@ -1,4 +1,7 @@
-import { getWebhookTemplateError } from '@hyperdx/common-utils/dist/core/handlebarsEnv';
+import {
+  getWebhookTemplateError,
+  type WebhookTemplateError,
+} from '@hyperdx/common-utils/dist/core/handlebarsEnv';
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
 import {
   isValidSlackUrl,
@@ -7,6 +10,7 @@ import {
   PASSWORD_SPECIAL_CHARS,
   passwordValidators,
 } from '@hyperdx/common-utils/dist/validation';
+import Handlebars from 'handlebars';
 import { Address4, Address6 } from 'ip-address';
 import { z } from 'zod';
 
@@ -174,8 +178,67 @@ export class WebhookBodyValidationError extends Error {
 }
 
 /**
- * Rejects a body template Handlebars cannot compile, which would otherwise
- * fail on every alert delivery. Slack never renders the body.
+ * Helpers alert delivery registers (`createHandlebarsWithHelpers` in
+ * tasks/checkAlerts/transports/generic.ts). Listed here rather than imported
+ * because generic.ts imports this module; a unit test pins the two together.
+ */
+export const WEBHOOK_BODY_HELPERS = new Set([
+  'eq',
+  'if',
+  'unless',
+  'each',
+  'with',
+  'lookup',
+  'log',
+]);
+
+type HelperCall =
+  | hbs.AST.MustacheStatement
+  | hbs.AST.BlockStatement
+  | hbs.AST.SubExpression;
+
+/**
+ * Finds the first call with arguments to a helper delivery doesn't register.
+ * Handlebars throws "Missing helper" for those only when the call renders, so
+ * a typo inside an untaken branch would pass a test render; walk the AST.
+ */
+function findUnknownHelperCall(template: string): WebhookTemplateError | null {
+  let found: WebhookTemplateError | null = null;
+  const check = (node: HelperCall) => {
+    if (found != null || node.params.length === 0) return;
+    const { path } = node;
+    const name = 'original' in path ? String(path.original) : path.type;
+    if (path.type === 'PathExpression' && WEBHOOK_BODY_HELPERS.has(name))
+      return;
+    found = {
+      message: `Unknown helper "${name}"`,
+      line: path.loc.start.line,
+      column: path.loc.start.column + 1,
+    };
+  };
+
+  class HelperCallVisitor extends Handlebars.Visitor {
+    MustacheStatement(node: hbs.AST.MustacheStatement) {
+      check(node);
+      super.MustacheStatement(node);
+    }
+    BlockStatement(node: hbs.AST.BlockStatement) {
+      check(node);
+      super.BlockStatement(node);
+    }
+    SubExpression(node: hbs.AST.SubExpression) {
+      check(node);
+      super.SubExpression(node);
+    }
+  }
+  new HelperCallVisitor().accept(Handlebars.parse(template));
+  return found;
+}
+
+/**
+ * Rejects a body template that would fail on every alert delivery: one
+ * Handlebars cannot compile, or one that calls a helper delivery doesn't
+ * register. Slack never renders the body.
  */
 function validateWebhookBodyTemplate({
   service,
@@ -185,7 +248,9 @@ function validateWebhookBodyTemplate({
   body?: string;
 }) {
   if (service === WebhookService.Slack) return;
-  const error = getWebhookTemplateError(body);
+  const error =
+    getWebhookTemplateError(body) ??
+    (body?.trim() ? findUnknownHelperCall(body) : null);
   if (error == null) return;
   const location =
     error.line == null

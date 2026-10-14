@@ -5481,7 +5481,7 @@
           "body": {
             "type": "string",
             "maxLength": 16384,
-            "description": "Optional Handlebars request body template. Only for generic/incidentio; rejected for slack. Rejected with a 400 if it does not compile.",
+            "description": "Optional Handlebars request body template. Only for generic/incidentio; rejected for slack. Rejected with a 400 if it does not compile or calls a helper other than `eq` and the Handlebars built-ins.",
             "example": "{\"alert\": \"{{title}}\", \"severity\": \"{{level}}\"}"
           },
           "headers": {
@@ -8538,7 +8538,7 @@
                     "normalized": {
                       "type": "object",
                       "nullable": true,
-                      "description": "The parsed webhook body. Populated when valid is true,\nnull when valid is false.\n"
+                      "description": "The parsed webhook body, without the write-only\n`headers` and `queryParams`. Populated when valid is\ntrue, null when valid is false.\n"
                     }
                   }
                 },

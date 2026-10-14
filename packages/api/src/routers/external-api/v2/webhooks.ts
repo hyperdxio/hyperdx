@@ -410,7 +410,7 @@ router.get(
  *         body:
  *           type: string
  *           maxLength: 16384
- *           description: Optional Handlebars request body template. Only for generic/incidentio; rejected for slack. Rejected with a 400 if it does not compile.
+ *           description: Optional Handlebars request body template. Only for generic/incidentio; rejected for slack. Rejected with a 400 if it does not compile or calls a helper other than `eq` and the Handlebars built-ins.
  *           example: '{"alert": "{{title}}", "severity": "{{level}}"}'
  *         headers:
  *           type: object
@@ -487,8 +487,9 @@ router.get(
  *                   type: object
  *                   nullable: true
  *                   description: |
- *                     The parsed webhook body. Populated when valid is true,
- *                     null when valid is false.
+ *                     The parsed webhook body, without the write-only
+ *                     `headers` and `queryParams`. Populated when valid is
+ *                     true, null when valid is false.
  *             examples:
  *               valid:
  *                 summary: Valid webhook body
@@ -543,11 +544,17 @@ router.post('/validate', async (req, res, next) => {
     }
 
     const errors = getWebhookConfigErrors(parsed.data);
+    // Never echo write-only secrets, matching every other webhook read path.
+    const {
+      headers: _headers,
+      queryParams: _queryParams,
+      ...readable
+    } = parsed.data;
 
     return res.json({
       valid: errors.length === 0,
       errors,
-      normalized: errors.length === 0 ? parsed.data : null,
+      normalized: errors.length === 0 ? readable : null,
     });
   } catch (e) {
     next(e);

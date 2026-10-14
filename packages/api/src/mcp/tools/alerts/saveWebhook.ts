@@ -72,7 +72,8 @@ const mcpSaveWebhookSchema = z.object({
     .optional()
     .describe(
       'Optional Handlebars request body template. Not supported for the ' +
-        'slack service. Rejected if it does not compile. Write string ' +
+        'slack service. Rejected if it does not compile or calls a helper ' +
+        'other than eq and the Handlebars built-ins. Write string ' +
         'arguments inside {{ }} with plain or single quotes, e.g. ' +
         '{{#if (eq state "ALERT")}}, never \\"ALERT\\". On update this is ' +
         'a full replace: omitting it clears the stored body.',
