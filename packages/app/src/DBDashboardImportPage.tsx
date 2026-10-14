@@ -10,6 +10,7 @@ import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { uniq } from 'lodash';
 import { parseAsString, useQueryState } from 'nuqs';
 import { Controller, useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
@@ -17,8 +18,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { convertToDashboardDocument } from '@hyperdx/common-utils/dist/core/utils';
 import {
   type DashboardFilterQueryIssue,
+  getAdhocFilterSourceKinds,
   isAdhocFilter,
-  isAdhocFilterValue,
   isPrometheusLabelFilter,
   isQueryExpressionFilter,
   QUERY_EXPRESSION_FILTER_SOURCE_KINDS,
@@ -367,32 +368,26 @@ function FileSelection({
 /**
  * Resolve a filter's templated `appliesToSourceIds` (an ordered list of
  * source names from the exported file) against the current workspace's
- * sources. Names that don't match any current source are dropped.
+ * sources.
  *
- * `resolvedIndexOf(name)` returns the position of `name` in the surviving
- * `ids` array (case-insensitive), or -1 if the name wasn't present in the
- * template or didn't resolve.
+ * `slots` is aligned one-to-one with `templateNames`, with '' for names that
+ * don't match any current source. `ids` is the matched ids alone.
  */
 function resolveAppliesToSources(
   templateNames: string[] | undefined,
   sources: TSource[] | undefined,
-): { ids: string[]; resolvedIndexOf: (name: string) => number } {
-  const ids: string[] = [];
-  const resolvedIndexByLowerName = new Map<string, number>();
-  templateNames?.forEach(name => {
-    const match = sources?.find(
-      source => source.name.toLowerCase() === name.toLowerCase(),
-    );
-    if (match) {
-      resolvedIndexByLowerName.set(name.toLowerCase(), ids.length);
-      ids.push(match.id);
-    }
-  });
-  return {
-    ids,
-    resolvedIndexOf: name =>
-      resolvedIndexByLowerName.get(name.toLowerCase()) ?? -1,
-  };
+  allowedKinds?: SourceKind[],
+): { ids: string[]; slots: string[] } {
+  const slots =
+    templateNames?.map(
+      name =>
+        sources?.find(
+          source =>
+            source.name.toLowerCase() === name.toLowerCase() &&
+            (!allowedKinds || allowedKinds.includes(source.kind)),
+        )?.id ?? '',
+    ) ?? [];
+  return { ids: slots.filter(Boolean), slots };
 }
 
 /** Whether the filter names a single source that import must map. */
@@ -406,11 +401,21 @@ const sourceBackedTemplateFilter = (filter: DashboardFilter | undefined) =>
   filter && isSourceBackedTemplateFilter(filter) ? filter : undefined;
 
 /**
- * The query-expression half of a template filter, or `undefined` for any other
- * type. Only a queried filter broadcasts, so only it carries an applies-to list.
+ * The template filter if it can carry an applies-to list (query-expression and
+ * ad hoc filters), or `undefined` for any other type.
  */
-const queriedTemplateFilter = (filter: DashboardFilter | undefined) =>
-  filter && isQueryExpressionFilter(filter) ? filter : undefined;
+const appliesToTemplateFilter = (filter: DashboardFilter | undefined) =>
+  filter && (isQueryExpressionFilter(filter) || isAdhocFilter(filter))
+    ? filter
+    : undefined;
+
+/** The source kinds an applies-to list may name, or `undefined` for any kind. */
+const appliesToSourceKinds = (
+  filter: DashboardFilter,
+): SourceKind[] | undefined =>
+  isAdhocFilter(filter)
+    ? getAdhocFilterSourceKinds(filter.sourceType)
+    : undefined;
 
 /**
  * The source kinds a filter of this type can read its dropdown values from, or
@@ -461,6 +466,14 @@ export function buildMappingFormSchema(
       filterAppliesToSourceMappings: z
         .array(z.array(MappingValueSchema))
         .optional(),
+      /**
+       * Per-filter ad hoc source mappings. Each entry is an array of mapped
+       * source IDs in the same order as the ad hoc filter's `sources` names
+       * from the template. Empty for every other filter type.
+       */
+      filterAdhocSourceMappings: z
+        .array(z.array(MappingValueSchema))
+        .optional(),
       /** A list of onClick source mappings, ordered by input tile index */
       onClickSourceMappings: z.array(MappingValueSchema).optional(),
       /** A list of onClick dashboard mappings, ordered by input tile index */
@@ -494,7 +507,45 @@ export function buildMappingFormSchema(
         }
       });
 
+      const hasWrongKind = (ids: string[] | undefined, kinds: SourceKind[]) =>
+        ids?.some(id => {
+          const source = sources?.find(s => s.id === id);
+          return source != null && !kinds.includes(source.kind);
+        });
+
       input.filters?.forEach((filter, idx) => {
+        if (isAdhocFilter(filter)) {
+          const kinds = getAdhocFilterSourceKinds(filter.sourceType);
+          const kindMessage =
+            filter.sourceType === 'promql'
+              ? 'Select only PromQL sources for this filter'
+              : 'Select only log, trace, or session sources for this filter';
+          const mappedSourceIds = data.filterAdhocSourceMappings?.[idx]?.filter(
+            id => !!id,
+          );
+          if (!mappedSourceIds?.length) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['filterAdhocSourceMappings', idx],
+              message: 'Select at least one source for this filter',
+            });
+          } else if (hasWrongKind(mappedSourceIds, kinds)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['filterAdhocSourceMappings', idx],
+              message: kindMessage,
+            });
+          }
+          if (hasWrongKind(data.filterAppliesToSourceMappings?.[idx], kinds)) {
+            ctx.addIssue({
+              code: z.ZodIssueCode.custom,
+              path: ['filterAppliesToSourceMappings', idx],
+              message: kindMessage,
+            });
+          }
+          return;
+        }
+
         if (!isSourceBackedTemplateFilter(filter)) return;
         const mappedSourceId = data.filterSourceMappings?.[idx];
         if (!mappedSourceId) {
@@ -540,7 +591,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     [input, sources],
   );
 
-  const { handleSubmit, getFieldState, control, setValue, getValues } =
+  const { handleSubmit, getFieldState, control, setValue } =
     useForm<MappingFormState>({
       resolver: zodResolver(formSchema),
       mode: 'onChange',
@@ -551,6 +602,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
         connectionMappings: input.tiles.map(() => ''),
         filterSourceMappings: input.filters?.map(() => '') ?? [],
         filterAppliesToSourceMappings: input.filters?.map(() => []) ?? [],
+        filterAdhocSourceMappings: input.filters?.map(() => []) ?? [],
         onClickSourceMappings: input.tiles.map(() => ''),
         onClickDashboardMappings: input.tiles.map(() => ''),
       },
@@ -558,6 +610,11 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
 
   // The template whose names have already been auto-mapped
   const autoMappedInputRef = useRef<DashboardTemplate | null>(null);
+
+  // Per multiselect field, the mapped ids aligned one-to-one with the
+  // template's source names ('' where unmapped). The form value drops empties
+  // and duplicates, so it can't be spliced by template position itself.
+  const multiMappingSlotsRef = useRef(new Map<string, string[]>());
 
   // When the input changes, reset the form
   useEffect(() => {
@@ -599,8 +656,18 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     const filterAppliesToSourceMappings = input.filters?.map(
       filter =>
         resolveAppliesToSources(
-          queriedTemplateFilter(filter)?.appliesToSourceIds,
+          appliesToTemplateFilter(filter)?.appliesToSourceIds,
           sources,
+          appliesToSourceKinds(filter),
+        ).ids,
+    );
+
+    const filterAdhocSourceMappings = input.filters?.map(
+      filter =>
+        resolveAppliesToSources(
+          isAdhocFilter(filter) ? filter.sources : undefined,
+          sources,
+          appliesToSourceKinds(filter),
         ).ids,
     );
 
@@ -631,8 +698,12 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     setValue('tileSourceMappings', tileSourceMappings);
     setValue('connectionMappings', connectionMappings);
     setValue('filterSourceMappings', filterSourceMappings);
+    multiMappingSlotsRef.current.clear();
     filterAppliesToSourceMappings?.forEach((mapping, idx) => {
       setValue(`filterAppliesToSourceMappings.${idx}`, mapping);
+    });
+    filterAdhocSourceMappings?.forEach((mapping, idx) => {
+      setValue(`filterAdhocSourceMappings.${idx}`, mapping);
     });
     setValue('onClickSourceMappings', onClickSourceMappings);
     setValue('onClickDashboardMappings', onClickDashboardMappings);
@@ -757,30 +828,47 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
       }
     }
 
-    // Propagate changes to applies-to multiselects. Anchor the splice on
-    // the resolver's stripped-list index so it lines up with the form-state
-    // array (which has unresolved template names dropped).
-    input.filters?.forEach((filter, filterIdx) => {
-      if (!isQueryExpressionFilter(filter)) return;
-      if (!filter.appliesToSourceIds?.includes(inputSourceName)) return;
-      const key = `filterAppliesToSourceMappings.${filterIdx}` as const;
+    // Propagate changes to multiselects (applies-to lists and ad hoc source
+    // lists).
+    const propagateToMultiMapping = (
+      templateNames: string[] | undefined,
+      key:
+        | `filterAppliesToSourceMappings.${number}`
+        | `filterAdhocSourceMappings.${number}`,
+      allowedKinds: SourceKind[] | undefined,
+    ) => {
+      if (!templateNames?.includes(inputSourceName)) return;
       if (getFieldState(key).isDirty) return;
-      const currentIdMappings = getValues(key)?.slice() ?? [];
-      if (selectedSourceId && currentIdMappings.includes(selectedSourceId))
+      const selectedSource = sources?.find(s => s.id === selectedSourceId);
+      if (
+        allowedKinds &&
+        selectedSource &&
+        !allowedKinds.includes(selectedSource.kind)
+      )
         return;
-
-      const { resolvedIndexOf } = resolveAppliesToSources(
-        filter.appliesToSourceIds,
-        sources,
+      // Slot by template position, not resolved position, so a name that
+      // didn't auto-resolve can still be filled in by a remap.
+      const slots = (
+        multiMappingSlotsRef.current.get(key) ??
+        resolveAppliesToSources(templateNames, sources, allowedKinds).slots
+      ).map((id, i) =>
+        templateNames[i] === inputSourceName ? selectedSourceId : id,
       );
-      const indexToUpdate = resolvedIndexOf(inputSourceName);
-      if (indexToUpdate >= 0) {
-        const next = [
-          ...currentIdMappings.slice(0, indexToUpdate),
-          selectedSourceId,
-          ...currentIdMappings.slice(indexToUpdate + 1),
-        ];
-        setValue(key, next, { shouldValidate: true });
+      multiMappingSlotsRef.current.set(key, slots);
+      setValue(key, uniq(slots.filter(Boolean)), { shouldValidate: true });
+    };
+    input.filters?.forEach((filter, filterIdx) => {
+      propagateToMultiMapping(
+        appliesToTemplateFilter(filter)?.appliesToSourceIds,
+        `filterAppliesToSourceMappings.${filterIdx}`,
+        appliesToSourceKinds(filter),
+      );
+      if (isAdhocFilter(filter)) {
+        propagateToMultiMapping(
+          filter.sources,
+          `filterAdhocSourceMappings.${filterIdx}`,
+          appliesToSourceKinds(filter),
+        );
       }
     });
     isUpdatingRef.current = false;
@@ -791,7 +879,6 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     input.tiles,
     input.filters,
     getFieldState,
-    getValues,
     setValue,
     sources,
   ]);
@@ -954,31 +1041,34 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
       });
 
       // Zip the source mappings with the input filters
-      const zippedFilters = input.filters
-        ?.map((filter, idx) => {
-          const source = findSource(data.filterSourceMappings?.[idx]);
-          const appliesTo = data.filterAppliesToSourceMappings?.[idx]?.filter(
-            id => !!id?.length,
-          );
+      const zippedFilters = input.filters?.map((filter, idx) => {
+        const appliesTo = data.filterAppliesToSourceMappings?.[idx]?.filter(
+          id => !!id?.length,
+        );
+        const appliesToSourceIds = appliesTo?.length ? appliesTo : undefined;
+        if (isAdhocFilter(filter)) {
           return {
             ...filter,
-            // A sourceless filter (`STATIC_LIST`) gets no mapping row, so
-            // `source` is undefined here
-            ...(source ? { source: source.id } : {}),
-            appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
+            sources:
+              data.filterAdhocSourceMappings?.[idx]?.filter(id => !!id) ?? [],
+            appliesToSourceIds,
           };
-        })
-        // Ad hoc filters aren't importable yet.
-        .filter(filter => !isAdhocFilter(filter));
+        }
+        const source = findSource(data.filterSourceMappings?.[idx]);
+        return {
+          ...filter,
+          // A sourceless filter (`STATIC_LIST`) gets no mapping row, so
+          // `source` is undefined here
+          ...(source ? { source: source.id } : {}),
+          appliesToSourceIds,
+        };
+      });
 
       // Format for server
       const output = convertToDashboardDocument({
         ...input,
         tiles: zippedTiles,
         filters: zippedFilters,
-        savedFilterValues: input.savedFilterValues?.filter(
-          value => !isAdhocFilterValue(value),
-        ),
         name: data.dashboardName,
         tags: data.tags,
       });
@@ -1020,7 +1110,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
           control={control}
           render={({ field, formState }) => (
             <TextInput
-              label="Dashboard Name"
+              label="Dashboard name"
               {...field}
               error={formState.errors.dashboardName?.message}
             />
@@ -1042,7 +1132,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
           <Table.Thead>
             <Table.Tr>
               <Table.Th>Tile / Filter</Table.Th>
-              <Table.Th>Mapping Type</Table.Th>
+              <Table.Th>Mapping type</Table.Th>
               <Table.Th>From</Table.Th>
               <Table.Th>To</Table.Th>
             </Table.Tr>
@@ -1058,7 +1148,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
                   {tile.config.source && (
                     <Table.Tr>
                       <Table.Td>{tile.config.name}</Table.Td>
-                      <Table.Td>Data Source</Table.Td>
+                      <Table.Td>Data source</Table.Td>
                       <Table.Td>{config.source ?? ''}</Table.Td>
                       <Table.Td>
                         <SelectControlled
@@ -1077,7 +1167,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
                   {isRawSql && (
                     <Table.Tr>
                       <Table.Td>{tile.config.name}</Table.Td>
-                      <Table.Td>Data Connection</Table.Td>
+                      <Table.Td>Data connection</Table.Td>
                       <Table.Td>{config.connection}</Table.Td>
                       <Table.Td>
                         <SelectControlled
@@ -1096,7 +1186,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
                   {isOnClickSearchById(tile.config.onClick) && (
                     <Table.Tr>
                       <Table.Td>{tile.config.name}</Table.Td>
-                      <Table.Td>On Click - Search Source</Table.Td>
+                      <Table.Td>On click - search source</Table.Td>
                       <Table.Td>{tile.config.onClick.target.id}</Table.Td>
                       <Table.Td>
                         <SelectControlled
@@ -1117,7 +1207,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
                   {isOnClickDashboardById(tile.config.onClick) && (
                     <Table.Tr>
                       <Table.Td>{tile.config.name}</Table.Td>
-                      <Table.Td>On Click - Dashboard</Table.Td>
+                      <Table.Td>On click - dashboard</Table.Td>
                       <Table.Td>{tile.config.onClick.target.id}</Table.Td>
                       <Table.Td>
                         <SelectControlled
@@ -1137,48 +1227,75 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
             })}
 
             {/** Map filter sources */}
-            {input.filters?.map((filter, i) => (
-              <Fragment key={filter.id}>
-                {isSourceBackedTemplateFilter(filter) && (
-                  <Table.Tr>
-                    <Table.Td>{filter.name} (Filter)</Table.Td>
-                    <Table.Td>Data Source</Table.Td>
-                    <Table.Td>{filter.source}</Table.Td>
-                    <Table.Td>
-                      <SelectControlled
-                        control={control}
-                        name={`filterSourceMappings.${i}`}
-                        data={sources
-                          ?.filter(source =>
-                            filterSourceKinds(filter)?.includes(source.kind),
-                          )
-                          .map(source => ({
-                            value: source.id,
-                            label: source.name,
-                          }))}
-                        placeholder="Select a source"
-                      />
-                    </Table.Td>
-                    <Table.Td />
-                    <Table.Td />
-                  </Table.Tr>
-                )}
-                {isQueryExpressionFilter(filter) &&
-                  !!filter.appliesToSourceIds?.length && (
+            {input.filters?.map((filter, i) => {
+              const appliesToSourceIds =
+                appliesToTemplateFilter(filter)?.appliesToSourceIds;
+              return (
+                <Fragment key={filter.id}>
+                  {isSourceBackedTemplateFilter(filter) && (
+                    <Table.Tr>
+                      <Table.Td>{filter.name} (Filter)</Table.Td>
+                      <Table.Td>Data source</Table.Td>
+                      <Table.Td>{filter.source}</Table.Td>
+                      <Table.Td>
+                        <SelectControlled
+                          control={control}
+                          name={`filterSourceMappings.${i}`}
+                          data={sources
+                            ?.filter(source =>
+                              filterSourceKinds(filter)?.includes(source.kind),
+                            )
+                            .map(source => ({
+                              value: source.id,
+                              label: source.name,
+                            }))}
+                          placeholder="Select a source"
+                        />
+                      </Table.Td>
+                      <Table.Td />
+                      <Table.Td />
+                    </Table.Tr>
+                  )}
+                  {isAdhocFilter(filter) && (
+                    <Table.Tr>
+                      <Table.Td>{filter.name} (Filter)</Table.Td>
+                      <Table.Td>Data sources</Table.Td>
+                      <Table.Td>{filter.sources.join(', ')}</Table.Td>
+                      <Table.Td>
+                        <SourceMultiSelectControlled
+                          control={control}
+                          name={`filterAdhocSourceMappings.${i}`}
+                          allowedSourceKinds={getAdhocFilterSourceKinds(
+                            filter.sourceType,
+                          )}
+                          placeholder="Select sources"
+                          data-testid={`filter-adhoc-sources-mapping-${filter.name}`}
+                        />
+                      </Table.Td>
+                      <Table.Td />
+                      <Table.Td />
+                    </Table.Tr>
+                  )}
+                  {!!appliesToSourceIds?.length && (
                     <Table.Tr>
                       <Table.Td>{filter.name} (Filter)</Table.Td>
                       <Table.Td>
-                        <Tooltip label="The list of sources that this filter will be applied to. Leave empty to apply to all tiles, regardless of source.">
-                          <span>Applies to Sources</span>
+                        <Tooltip
+                          label={
+                            isAdhocFilter(filter)
+                              ? "The list of sources that this filter will be applied to. Leave empty to apply to the filter's data sources."
+                              : 'The list of sources that this filter will be applied to. Leave empty to apply to all tiles, regardless of source.'
+                          }
+                        >
+                          <span>Applies to sources</span>
                         </Tooltip>
                       </Table.Td>
-                      <Table.Td>
-                        {filter.appliesToSourceIds.join(', ')}
-                      </Table.Td>
+                      <Table.Td>{appliesToSourceIds.join(', ')}</Table.Td>
                       <Table.Td>
                         <SourceMultiSelectControlled
                           control={control}
                           name={`filterAppliesToSourceMappings.${i}`}
+                          allowedSourceKinds={appliesToSourceKinds(filter)}
                           placeholder="Select sources"
                           data-testid={`filter-applies-to-mapping-${filter.name}`}
                         />
@@ -1187,8 +1304,9 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
                       <Table.Td />
                     </Table.Tr>
                   )}
-              </Fragment>
-            ))}
+                </Fragment>
+              );
+            })}
           </Table.Tbody>
         </Table>
         {createDashboard.isError && (

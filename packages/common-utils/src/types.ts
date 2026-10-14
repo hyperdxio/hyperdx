@@ -1914,8 +1914,7 @@ export type PromqlExpressionList = z.infer<typeof PromqlExpressionListSchema>;
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
   promqlExpression: PromqlExpressionListSchema,
-  connection: z.string(),
-  source: z.string().optional(),
+  source: z.string().min(1),
   step: z.string().optional(),
   legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
   heatmap: HeatmapSettingsSchema.extend({
@@ -1926,6 +1925,9 @@ const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
 
 /** Schema describing PromQL chart configs with runtime-only fields */
 const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
+  // Copied from the source at query time and never persisted, so it cannot go
+  // stale if the source moves to another connection.
+  connection: z.string(),
   filters: z.array(FilterSchema).optional(),
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })

@@ -501,6 +501,7 @@ describe('DBTableChart', () => {
       configType: 'promql' as const,
       dateRange: [new Date(), new Date()] as [Date, Date],
       connection: 'test-connection',
+      source: 'source-promql',
       promqlExpression: [{ expression: 'up' }],
       numberFormat: { output: 'number' as const },
     };

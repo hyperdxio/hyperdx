@@ -205,6 +205,14 @@ export function useSource({
   });
 }
 
+// PromQL lookups are cached by source ID alone, so a source pointed at another
+// table would keep serving the old table's values until they go stale.
+const PROMQL_SOURCE_QUERY_KEYS = [
+  'promql-metric-names',
+  'promql-label-names',
+  'dashboard-filter-promql-label-values',
+];
+
 export function useUpdateSource() {
   const queryClient = useQueryClient();
 
@@ -219,8 +227,11 @@ export function useUpdateSource() {
         json: source,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, { source }) => {
       queryClient.invalidateQueries({ queryKey: ['sources'] });
+      for (const key of PROMQL_SOURCE_QUERY_KEYS) {
+        queryClient.invalidateQueries({ queryKey: [key, source.id] });
+      }
     },
   });
 }
