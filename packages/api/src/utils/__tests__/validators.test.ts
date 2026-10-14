@@ -380,6 +380,34 @@ describe('validators', () => {
       ]);
     });
 
+    it.each([
+      ['a partial', '{"a": "{{> foo}}"}', 'Unknown partial "foo"'],
+      ['a decorator', '{"a": "{{* foo}}"}', 'Unknown decorator "foo"'],
+      [
+        'a block decorator other than inline',
+        '{"a": "{{#* foo}}x{{/foo}}"}',
+        'Unknown decorator "foo"',
+      ],
+    ])('rejects %s delivery does not provide', (_label, body, message) => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body,
+        }),
+      ).toEqual([{ path: 'body', message: expect.stringContaining(message) }]);
+    });
+
+    it('accepts a partial block fallback and an inline partial', () => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body: '{"a": "{{#> foo}}x{{/foo}}", "b": "{{#* inline "p"}}y{{/inline}}{{> p}}"}',
+        }),
+      ).toEqual([]);
+    });
+
     it('knows exactly the helpers delivery registers', () => {
       const delivery = Object.keys(
         createHandlebarsWithHelpers().helpers,

@@ -197,48 +197,99 @@ type HelperCall =
   | hbs.AST.BlockStatement
   | hbs.AST.SubExpression;
 
+const toError = (
+  message: string,
+  node: hbs.AST.Node,
+): WebhookTemplateError => ({
+  message,
+  line: node.loc.start.line,
+  column: node.loc.start.column + 1,
+});
+
+const nameOf = (node: hbs.AST.Expression): string =>
+  'original' in node ? String(node.original) : node.type;
+
 /**
- * Finds the first call with arguments to a helper delivery doesn't register.
- * Handlebars throws "Missing helper" for those only when the call renders, so
- * a typo inside an untaken branch would pass a test render; walk the AST.
+ * Finds the first construct that compiles but throws on every delivery: a
+ * call with arguments to a helper delivery doesn't register, a partial the
+ * template doesn't define inline, or a decorator other than `inline`.
+ * Handlebars only throws for these when they render, so a typo inside an
+ * untaken branch would pass a test render; walk the AST instead.
  */
-function findUnknownHelperCall(template: string): WebhookTemplateError | null {
+function findUndeliverableConstruct(
+  template: string,
+): WebhookTemplateError | null {
   let found: WebhookTemplateError | null = null;
-  const check = (node: HelperCall) => {
+  const inlinePartials = new Set<string>();
+  const partialRefs: hbs.AST.PartialStatement[] = [];
+
+  const checkHelperCall = (node: HelperCall) => {
     if (found != null || node.params.length === 0) return;
     const { path } = node;
-    const name = 'original' in path ? String(path.original) : path.type;
-    if (path.type === 'PathExpression' && WEBHOOK_BODY_HELPERS.has(name))
+    if (
+      path.type === 'PathExpression' &&
+      WEBHOOK_BODY_HELPERS.has(nameOf(path))
+    )
       return;
-    found = {
-      message: `Unknown helper "${name}"`,
-      line: path.loc.start.line,
-      column: path.loc.start.column + 1,
-    };
+    found = toError(`Unknown helper "${nameOf(path)}"`, path);
   };
 
-  class HelperCallVisitor extends Handlebars.Visitor {
+  class Visitor extends Handlebars.Visitor {
     MustacheStatement(node: hbs.AST.MustacheStatement) {
-      check(node);
+      checkHelperCall(node);
       super.MustacheStatement(node);
     }
     BlockStatement(node: hbs.AST.BlockStatement) {
-      check(node);
+      checkHelperCall(node);
       super.BlockStatement(node);
     }
     SubExpression(node: hbs.AST.SubExpression) {
-      check(node);
+      checkHelperCall(node);
       super.SubExpression(node);
     }
+    PartialStatement(node: hbs.AST.PartialStatement) {
+      partialRefs.push(node);
+      super.PartialStatement(node);
+    }
+    Decorator(node: hbs.AST.Decorator) {
+      found ??= toError(`Unknown decorator "${nameOf(node.path)}"`, node.path);
+      super.Decorator(node);
+    }
+    DecoratorBlock(node: hbs.AST.DecoratorBlock) {
+      const [partial] = node.params;
+      if (nameOf(node.path) === 'inline' && partial?.type === 'StringLiteral') {
+        inlinePartials.add(nameOf(partial));
+      } else {
+        found ??= toError(
+          `Unknown decorator "${nameOf(node.path)}"`,
+          node.path,
+        );
+      }
+      super.DecoratorBlock(node);
+    }
   }
-  new HelperCallVisitor().accept(Handlebars.parse(template));
-  return found;
+  new Visitor().accept(Handlebars.parse(template));
+
+  // A partial block (`{{#> name}}…{{/name}}`) renders its fallback, so only a
+  // plain partial with no inline definition fails.
+  const unknownPartial = partialRefs.find(
+    ref => !inlinePartials.has(nameOf(ref.name)),
+  );
+  return (
+    found ??
+    (unknownPartial == null
+      ? null
+      : toError(
+          `Unknown partial "${nameOf(unknownPartial.name)}"`,
+          unknownPartial.name,
+        ))
+  );
 }
 
 /**
  * Rejects a body template that would fail on every alert delivery: one
- * Handlebars cannot compile, or one that calls a helper delivery doesn't
- * register. Slack never renders the body.
+ * Handlebars cannot compile, or one that uses a helper, partial, or decorator
+ * delivery doesn't provide. Slack never renders the body.
  */
 function validateWebhookBodyTemplate({
   service,
@@ -250,7 +301,7 @@ function validateWebhookBodyTemplate({
   if (service === WebhookService.Slack) return;
   const error =
     getWebhookTemplateError(body) ??
-    (body?.trim() ? findUnknownHelperCall(body) : null);
+    (body?.trim() ? findUndeliverableConstruct(body) : null);
   if (error == null) return;
   const location =
     error.line == null

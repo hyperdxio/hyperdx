@@ -662,6 +662,23 @@ describe('webhooks router', () => {
       expect(await Webhook.countDocuments({})).toBe(0);
     });
 
+    it('POST / - rejects a call to a helper delivery does not register', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...GENERIC_WEBHOOK,
+          body: '{"s": "{{#if (equals state "ALERT")}}x{{/if}}"}',
+        })
+        .expect(400);
+
+      expect(response.body.message).toBe(
+        'Invalid webhook body template (line 1, column 15): Unknown helper "equals"',
+      );
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
     it('POST / - accepts a template that compiles but is not JSON as written', async () => {
       const { agent } = await getLoggedInAgent(server);
 
