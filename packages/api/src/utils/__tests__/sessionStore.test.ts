@@ -8,6 +8,7 @@ type MockStore = {
   set: jest.Mock;
   destroy: jest.Mock;
   touch: jest.Mock;
+  close: jest.Mock;
 };
 const mockStores: MockStore[] = [];
 let mockCollectionP: () => Promise<unknown> = () => Promise.resolve({});
@@ -23,6 +24,7 @@ jest.mock('connect-mongo', () => ({
       set: jest.fn((_sid, _sess, cb) => cb?.()),
       destroy: jest.fn((_sid, cb) => cb?.()),
       touch: jest.fn((_sid, _sess, cb) => cb?.()),
+      close: jest.fn(() => Promise.resolve()),
     };
     mockStores.push(store);
     return store;
@@ -44,11 +46,20 @@ const getSession = (store: MongoSessionStore, sid = 'sid') =>
     store.get(sid, (err, session) => resolve({ err, session })),
   );
 
+const flush = () => new Promise(setImmediate);
+
 describe('MongoSessionStore', () => {
+  let nowSpy: jest.SpyInstance | undefined;
+
   beforeEach(() => {
     mockStores.length = 0;
     mockCollectionP = () => Promise.resolve({});
     mockMongoConnected = false;
+  });
+
+  afterEach(() => {
+    nowSpy?.mockRestore();
+    nowSpy = undefined;
   });
 
   it('fails session operations fast until mongoose connects', async () => {
@@ -106,17 +117,43 @@ describe('MongoSessionStore', () => {
     expect(mockStores).toHaveLength(1);
   });
 
-  it('replaces a store whose connect or setup failed', async () => {
-    mockCollectionP = () => Promise.reject(new Error('connect ECONNREFUSED'));
+  it('closes a store whose connect or setup failed', async () => {
+    mockCollectionP = () => Promise.reject(new Error('createIndex failed'));
+    mockMongoConnected = true;
+    const store = new MongoSessionStore();
+
+    await getSession(store);
+    await flush();
+
+    expect(mockStores[0].close).toHaveBeenCalled();
+  });
+
+  it('backs off exponentially before replacing a failed store', async () => {
+    const retrying = new Error('Session store setup failed, retrying');
+    nowSpy = jest.spyOn(Date, 'now').mockReturnValue(0);
+    mockCollectionP = () => Promise.reject(new Error('createIndex failed'));
     mockMongoConnected = true;
     const store = new MongoSessionStore();
     await getSession(store);
-    await new Promise(setImmediate);
+    await flush();
+
+    nowSpy.mockReturnValue(999);
+    expect((await getSession(store)).err).toEqual(retrying);
+    expect(mockStores).toHaveLength(1);
+
+    nowSpy.mockReturnValue(1000);
+    await getSession(store);
+    await flush();
+    expect(mockStores).toHaveLength(2);
+
+    nowSpy.mockReturnValue(2999);
+    expect((await getSession(store)).err).toEqual(retrying);
+    expect(mockStores).toHaveLength(2);
 
     mockCollectionP = () => Promise.resolve({});
-    await getSession(store);
-    await getSession(store);
-
-    expect(mockStores).toHaveLength(2);
+    nowSpy.mockReturnValue(3000);
+    expect((await getSession(store)).err).toBeNull();
+    expect(mockStores).toHaveLength(3);
+    expect(mockStores[2].get).toHaveBeenCalled();
   });
 });

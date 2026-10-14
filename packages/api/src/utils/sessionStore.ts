@@ -4,6 +4,10 @@ import session from 'express-session';
 import * as config from '@/config';
 import { isMongoConnected } from '@/utils/readiness';
 
+// Same schedule as connectDBWithRetry's initial-connect retries.
+const REBUILD_BASE_DELAY_MS = 1000;
+const REBUILD_MAX_DELAY_MS = 30000;
+
 /**
  * express-session store that keeps sessions in MongoDB and recovers when
  * MongoDB starts after the API.
@@ -16,25 +20,42 @@ import { isMongoConnected } from '@/utils/readiness';
  * https://github.com/hyperdxio/hyperdx/issues/2966).
  *
  * Instead, create the MongoStore once mongoose is connected, and create a new
- * one if its connect or setup fails. Until then, session operations fail fast.
+ * one, with backoff, if its connect or setup fails. Until then, session
+ * operations fail fast.
  */
 export class MongoSessionStore extends session.Store {
   private store?: MongoStore;
+  private failures = 0;
+  private retryAt = 0;
 
-  private getStore(): MongoStore | undefined {
+  private getStore(): MongoStore | Error {
     if (this.store != null) {
       return this.store;
     }
     if (!isMongoConnected()) {
-      return undefined;
+      return new Error('MongoDB is not connected');
+    }
+    // Without a delay, a persistent setup failure (e.g. a missing createIndex
+    // privilege) would open a new client on every session operation.
+    if (Date.now() < this.retryAt) {
+      return new Error('Session store setup failed, retrying');
     }
     const store = new MongoStore({ mongoUrl: config.MONGO_URI });
     // A store whose connect or setup failed would replay that error forever,
-    // so drop it and let the next session operation build a fresh one.
+    // so drop it and let a later session operation build a fresh one.
     store.collectionP.catch(() => {
       if (this.store === store) {
         this.store = undefined;
       }
+      this.failures++;
+      this.retryAt =
+        Date.now() +
+        Math.min(
+          REBUILD_BASE_DELAY_MS * 2 ** (this.failures - 1),
+          REBUILD_MAX_DELAY_MS,
+        );
+      // The client may have connected before setup failed.
+      store.close().catch(() => {});
     });
     this.store = store;
     return store;
@@ -45,8 +66,8 @@ export class MongoSessionStore extends session.Store {
     op: (store: MongoStore) => void,
   ) {
     const store = this.getStore();
-    if (store == null) {
-      callback?.(new Error('MongoDB is not connected'));
+    if (store instanceof Error) {
+      callback?.(store);
       return;
     }
     op(store);
