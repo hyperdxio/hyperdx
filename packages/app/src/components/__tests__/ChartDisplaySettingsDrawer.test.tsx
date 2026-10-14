@@ -76,6 +76,30 @@ describe('ChartDisplaySettingsDrawer', () => {
         heatmapScaleType: 'linear',
       });
     });
+
+    it.each(['linear', 'log'] as const)(
+      'selects the %s default scale when the tile has none',
+      async scale => {
+        const onChange = jest.fn();
+        const user = userEvent.setup();
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={DisplayType.Heatmap}
+            heatmapMode="distribution"
+            defaultHeatmapScaleType={scale}
+            onChange={onChange}
+          />,
+        );
+
+        await user.click(screen.getByRole('button', { name: /apply/i }));
+
+        expect(onChange.mock.calls[0][0]).toMatchObject({
+          heatmapScaleType: scale,
+        });
+      },
+    );
   });
 
   describe('color picker section', () => {
@@ -273,6 +297,80 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).not.toBeInTheDocument();
     });
 
+    describe('PromQL (client render cap)', () => {
+      const promqlProps = { ...baseProps, configType: 'promql' as const };
+
+      it.each([DisplayType.Line, DisplayType.StackedBar])(
+        'shows the Series Limit input for PromQL %s charts',
+        displayType => {
+          renderWithMantine(
+            <ChartDisplaySettingsDrawer
+              {...promqlProps}
+              displayType={displayType}
+            />,
+          );
+
+          const input = screen.getByRole('textbox', { name: /series limit/i });
+          expect(input).toHaveAttribute(
+            'placeholder',
+            `Default (${MAX_RENDERED_TIME_CHART_SERIES})`,
+          );
+        },
+      );
+
+      it('describes the limit as a render cap, not a fetch cap', () => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Line}
+          />,
+        );
+
+        expect(
+          screen.getByText(/maximum number of series rendered/i),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/fetched/i)).not.toBeInTheDocument();
+      });
+
+      it.each([DisplayType.Number, DisplayType.Table])(
+        'does not show the Series Limit input for PromQL %s charts',
+        displayType => {
+          renderWithMantine(
+            <ChartDisplaySettingsDrawer
+              {...promqlProps}
+              displayType={displayType}
+            />,
+          );
+
+          expect(
+            screen.queryByRole('textbox', { name: /series limit/i }),
+          ).not.toBeInTheDocument();
+        },
+      );
+
+      it('calls onChange with the entered seriesLimit when applied', async () => {
+        const onChange = jest.fn();
+        const user = userEvent.setup();
+
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Line}
+            onChange={onChange}
+          />,
+        );
+
+        await user.type(
+          screen.getByRole('textbox', { name: /series limit/i }),
+          '5',
+        );
+        await user.click(screen.getByRole('button', { name: /apply/i }));
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 5 });
+      });
+    });
+
     it('calls onChange with the entered seriesLimit when applied', async () => {
       const onChange = jest.fn();
       const user = userEvent.setup();
@@ -335,6 +433,23 @@ describe('ChartDisplaySettingsDrawer', () => {
         expect(
           screen.getByRole('textbox', { name: /series limit/i }),
         ).toBeInTheDocument();
+      },
+    );
+
+    it.each([DisplayType.Pie, DisplayType.Bar])(
+      'shows the Series Limit input for PromQL %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.getByRole('textbox', { name: /series limit/i }),
+        ).toHaveAttribute('placeholder', 'Disabled (e.g. 10)');
       },
     );
 
@@ -662,6 +777,26 @@ describe('ChartDisplaySettingsDrawer', () => {
         screen.queryByTestId('legend-template-input'),
       ).not.toBeInTheDocument();
     });
+
+    it.each([
+      ['hidden', 'distribution', false],
+      ['offered', 'series', true],
+    ] as const)(
+      'is %s on a PromQL %s heatmap',
+      (_label, heatmapMode, isShown) => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Heatmap}
+            heatmapMode={heatmapMode}
+          />,
+        );
+
+        expect(screen.queryByTestId('legend-template-input') != null).toBe(
+          isShown,
+        );
+      },
+    );
 
     it('blocks Apply when the template exceeds the persisted length cap', async () => {
       const onChange = jest.fn();

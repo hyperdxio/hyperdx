@@ -653,6 +653,50 @@ export class Metadata {
     );
   }
 
+  async getTimeSeriesTables({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<Pick<TableConnection, 'databaseName' | 'tableName'>[]> {
+    return this.cache.getOrFetch(
+      `${connectionId}.timeSeriesTables`,
+      async () => {
+        const sql = chSql`
+        SELECT database AS databaseName, name AS tableName
+        FROM system.tables
+        WHERE engine = 'TimeSeries'
+        ORDER BY database, name
+      `;
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res =>
+              res.json<Pick<TableConnection, 'databaseName' | 'tableName'>>(),
+            );
+          return json.data;
+        } catch (e) {
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch TimeSeries tables:',
+              e,
+            );
+            return [];
+          }
+
+          throw e;
+        }
+      },
+    );
+  }
+
   async getMaterializedColumnsLookupTable({
     databaseName,
     tableName,
@@ -974,10 +1018,10 @@ export class Metadata {
         ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
         : '';
     const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.${maxKeys}.keys`
       : alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.${maxKeys}.keys`
+        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.${maxKeys}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -1017,11 +1061,13 @@ export class Metadata {
         timestampValueExpression,
       });
       const index = textIndexInfo.key.indexName;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT token AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
@@ -1063,11 +1109,13 @@ export class Metadata {
       });
       const index = textIndexInfo.kv.indexName;
       const separator = textIndexInfo.kv.separator;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT splitByString(${{ String: separator }}, token)[1] AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
@@ -2825,6 +2873,7 @@ export class Metadata {
       keys,
       // Serialize rather than hashing the raw state: the selections are Sets.
       keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
+      limit,
       disableRowLimit,
     };
     return this.cache.getOrFetch(
@@ -3096,6 +3145,7 @@ export class Metadata {
       keys,
       // Serialize rather than hashing the raw state: the selections are Sets.
       keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
+      limit,
       disableRowLimit,
     };
     return this.cache.getOrFetch(

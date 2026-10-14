@@ -165,6 +165,7 @@ jest.mock('@/layout', () => ({
 jest.mock('@/theme/ThemeProvider', () => ({
   __esModule: true,
   useBrandDisplayName: () => 'HyperDX',
+  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
 }));
 
 import ServicesDashboardPage from '@/ServicesDashboardPage';

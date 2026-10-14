@@ -2,10 +2,11 @@
  * PromQL pie and bar tiles draw one slice or bar per series: a range query is
  * reduced to one value per series, and an instant query already is one. The
  * series come from the expression, not from a group-by, so there is no ORDER BY
- * or series limit to set.
+ * to set; a series limit keeps the largest N.
  *
  * The seed gives `e2e_service_up` one series per `SERVICES` entry, labelled
- * `service`, one sample of 1 a minute.
+ * `service`, one sample of 1 a minute. With every value equal, which series a
+ * limit keeps is arbitrary, so the limit check counts slices.
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
@@ -19,6 +20,7 @@ import { E2E_PROMQL_METRIC_NAME, PROMQL_SOURCE_NAME } from '../utils/constants';
  * popup, which would otherwise cover the query type control.
  */
 const ALL_SERIES = `${E2E_PROMQL_METRIC_NAME}{service!=""}`;
+const SERIES_LIMIT = 3;
 
 test.describe(
   'PromQL pie and bar tiles',
@@ -61,10 +63,9 @@ test.describe(
         await expect(page.getByTestId('order-by-input')).toBeHidden();
       });
 
-      await test.step('Display settings offer a legend template and number format, not a series limit', async () => {
+      await test.step('Display settings offer a legend template and number format', async () => {
         await editor.setLegendTemplate('{{service}}');
         await editor.openDisplaySettings();
-        await expect(drawer.getByLabel('Series Limit')).toBeHidden();
         await editor.setNumberFormatOutput('Currency');
         await editor.applyDisplaySettings();
         await editor.runQuery(false);
@@ -75,6 +76,23 @@ test.describe(
           );
         }
         await expect(legend.getByText('$1.00').first()).toBeVisible();
+      });
+
+      await test.step('A series limit keeps that many slices', async () => {
+        await editor.setSeriesLimit(SERIES_LIMIT);
+        await editor.runQuery(false);
+        await expect(legend.getByTitle(/.+/)).toHaveCount(SERIES_LIMIT, {
+          timeout: 30000,
+        });
+
+        // Clear it so the steps below see every series again.
+        await editor.openDisplaySettings();
+        await drawer.getByLabel('Series Limit').fill('');
+        await editor.applyDisplaySettings();
+        await editor.runQuery(false);
+        await expect(legend.getByTitle(/.+/)).toHaveCount(SERVICES.length, {
+          timeout: 30000,
+        });
       });
 
       await test.step('An instant query draws the same slices, with no granularity', async () => {

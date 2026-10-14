@@ -91,6 +91,7 @@ describe('PromqlLabelFilterEditForm', () => {
       connectionId: 'clickhouse-conn',
       database: 'telemetry',
       table: 'metrics',
+      attribution: expect.objectContaining({ surface: 'metadata' }),
     });
   });
 

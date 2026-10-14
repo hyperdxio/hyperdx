@@ -128,11 +128,13 @@ export function ChartActionBar({
   const displayType = useWatch({ control, name: 'displayType' });
   const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
 
-  // A time chart always buckets, and a PromQL tile that reduces a range query
-  // reads the same granularity even though it shows one value rather than a
-  // series. An all-instant PromQL tile has no resolution to choose.
+  // Time charts and heatmaps always bucket, and a PromQL tile that reduces a
+  // range query reads the same granularity even though it shows one value
+  // rather than a series. An all-instant PromQL tile has no resolution to
+  // choose.
   const showGranularity =
     activeTab === 'time' ||
+    activeTab === 'heatmap' ||
     (configType === 'promql' &&
       isPromqlDisplayType(displayType) &&
       isRangeQuery({

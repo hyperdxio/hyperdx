@@ -164,12 +164,14 @@ export const isRawSqlDisplayType = (
   | DisplayType.Table
   | DisplayType.Line
   | DisplayType.StackedBar
+  | DisplayType.StackedLine
   | DisplayType.Pie
   | DisplayType.Bar
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Number;
@@ -191,15 +193,19 @@ export const isPromqlDisplayType = (
   | DisplayType.Table
   | DisplayType.Line
   | DisplayType.StackedBar
+  | DisplayType.StackedLine
   | DisplayType.Pie
   | DisplayType.Bar
-  | DisplayType.Number =>
+  | DisplayType.Number
+  | DisplayType.Heatmap =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
   displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
-  displayType === DisplayType.Number;
+  displayType === DisplayType.Number ||
+  displayType === DisplayType.Heatmap;
 
 const NON_PROMQL_SOURCE_KINDS = Object.values(SourceKind).filter(
   kind => kind !== SourceKind.Promql,
@@ -267,12 +273,14 @@ export function convertFormStateToSavedChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        'seriesLimit',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: formPromqlExpressions(form),
       connection: form.connection ?? '',
       source: form.source || undefined,
       legendTemplate: form.legendTemplate?.trim() || undefined,
+      heatmap: formPromqlHeatmap(form),
     };
 
     return promqlConfig;
@@ -366,12 +374,14 @@ export function convertFormStateToChartConfig(
         'fillNulls',
         'alignDateRangeToGranularity',
         'alternateRowBackground',
+        'seriesLimit',
       ]),
       promqlExpression: formPromqlExpressions(form),
       connection: source?.connection ?? form.connection ?? '',
       source: form.source || undefined,
       from: source?.from,
       legendTemplate: form.legendTemplate?.trim() || undefined,
+      heatmap: formPromqlHeatmap(form),
     };
 
     return { ...promqlConfig, dateRange };
@@ -544,6 +554,13 @@ function formPromqlExpressions(form: ChartEditorFormState): PromqlSeries[] {
   }));
 }
 
+/** Heatmap settings are dropped from PromQL tiles that are not heatmaps. */
+function formPromqlHeatmap(
+  form: ChartEditorFormState,
+): PromqlSavedChartConfig['heatmap'] {
+  return form.displayType === DisplayType.Heatmap ? form.heatmap : undefined;
+}
+
 export const validateChartForm = (
   form: ChartEditorFormState,
   source: TSource | undefined,
@@ -563,6 +580,8 @@ export const validateChartForm = (
 
   const isRawSqlChart =
     form.configType === 'sql' && isRawSqlDisplayType(form.displayType);
+  const isPromqlChart =
+    form.configType === 'promql' && isPromqlDisplayType(form.displayType);
 
   // Validate connection is selected for raw SQL charts
   if (isRawSqlChart && !form.connection) {
@@ -741,6 +760,7 @@ export const validateChartForm = (
   // validated like any other builder series above.
   if (
     !isRawSqlChart &&
+    !isPromqlChart &&
     form.displayType === DisplayType.Heatmap &&
     getHeatmapMode(form) === 'distribution' &&
     Array.isArray(form.series) &&

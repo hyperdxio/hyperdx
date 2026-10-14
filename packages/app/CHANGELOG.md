@@ -1,5 +1,157 @@
 # @hyperdx/app
 
+## 2.41.0
+
+### Minor Changes
+
+- 6873416d: feat: Add a series mode to builder heatmaps
+- eeabaebe: feat: Support PromQL heatmaps (series-mode)
+- ff5befa8: Support "Minimum auto granularity" on PromQL sources. It floors the step of charts on auto granularity, as it does for metric sources, and `$__rate_interval` now uses it as the source's scrape interval (still 15s when unset) instead of always assuming 15s. A granularity picked on a tile is never changed.
+- d8b1cdfa: feat: Attribute PromQL queries to the dashboard, tile or search that issued them, through both the `prometheusQuery`/`prometheusQueryRange` table functions and ClickHouse's Prometheus HTTP API
+- ab703243: feat: attribute ClickHouse queries to the dashboard, tile, search or alert that
+  issued them
+
+  A row in `system.query_log` previously couldn't be attributed to the part of
+  HyperDX that produced it. Now every query HyperDX runs has a small JSON
+  `log_comment`, plus a `query_id` starting with `hdx-`.
+
+  Attribute load after the fact:
+
+  ```sql
+  SELECT
+      JSONExtractString(log_comment, 'surface') AS surface,
+      JSONExtractString(log_comment, 'dashboard') AS dashboard,
+      JSONExtractString(log_comment, 'tile') AS tile,
+      count(),
+      sum(read_rows)
+  FROM system.query_log
+  WHERE type = 'QueryFinish' AND log_comment != '' AND query_id like 'hdx-%'
+  GROUP BY ALL
+  ORDER BY sum(read_rows) DESC
+  ```
+
+  Or spot a query while it is still running, in `system.processes`, where the
+  `query_id` names the surface with no JSON parsing needed.
+
+  The payload records which part of the product asked (a dashboard, a search, an
+  alert, an MCP tool, the chart explorer, session replay, field lookups, and so
+  on), the dashboard and tile or saved search id, the source id, and on the server
+  the trace id of the request. Field lookups and autocomplete are labelled too, so
+  they can be told apart from a user's chart queries.
+
+  The exception is queries that skip settings processing: the `system.settings`,
+  server version and Cloud-detection probes, and the onboarding connection check.
+  They get a `query_id` but an empty `log_comment`.
+
+- 68082b67: feat: add stacked line (stacked area) time-series display type
+
+### Patch Changes
+
+- 766a3b08: feat: add `@clickhouse/click-ui` as a dependency and mount `ClickUIProvider`
+  next to `MantineProvider`. The provider follows the HyperDX color mode and does
+  not persist its own theme. The "open an issue on GitHub" link in error messages
+  is the first component to use click-ui (`Link`).
+- a986a03b: feat: use the click-ui `Badge` for alert state badges. A fired alert shows a
+  solid red badge, and an evaluation error shows a light red badge.
+- 46ff1fc4: feat: let users permanently dismiss the metric drill-down warning
+
+  Drilling down from a metric chart whose source has no correlated log source
+  shows a warning. Clicking its close button now hides the warning for good in
+  that browser, and repeated clicks no longer stack copies of it.
+
+- 07c93656: fix: cast FixedString columns before implicit hasToken search
+
+  A bare search term against a FixedString column such as OTel TraceId compiled to
+  hasToken(lower(TraceId), ...), which ClickHouse rejects. Those haystacks are now
+  CAST to String first.
+
+- 3e34efa0: feat: Respect explicit and minimum granularity on heatmaps
+- 3615f122: fix: Match heatmap hover to the cell under the cursor
+- bd0da16c: feat: Edit heatmap value and count inline in the chart editor
+- 51e47b12: feat: rename dashboards and saved searches by clicking the title instead of a
+  pencil button
+
+  The name is now edited in place: Enter or clicking away saves, Escape reverts.
+
+- 0c1dd866: feat: add optional `NEXT_PUBLIC_INSTANCE_LABEL` suffix to the tab title and sidebar
+
+  Operators running multiple HyperDX instances (e.g. one per region) can now set `NEXT_PUBLIC_INSTANCE_LABEL` to append a short label to the browser tab title and sidebar, e.g. "HyperDX UK". Empty by default, no behavior change if unset. The sidebar label only shows when the sidebar is expanded, and replaces the UTC badge there when both are set.
+
+- 01ea7f32: feat: choose how property keys are ordered in the row side panel
+
+  The JSON viewer sorts keys alphabetically, which is the right default for wide
+  ClickHouse `Map(...)` columns like `ProfileEvents` but hides the stored column
+  order. The properties view options menu now offers "Sort keys A–Z", "Sort keys
+  Z–A", and "Original order"; the choice persists with the viewer's other options.
+  Array elements keep their index order in every mode. In "Original order",
+  integer-like keys (e.g. HTTP status codes) still list first in ascending order,
+  since parsed JavaScript objects order keys that way.
+
+- 0b855534: fix: fall back to the Map key scan when the text index read fails
+
+  `getMapKeys` returned an empty list whenever its `mergeTreeTextIndex` query
+  failed, so the rollup and bounded `mapKeys` scan paths never ran. ClickHouse
+  refuses `mergeTreeTextIndex` with `ACCESS_DENIED` on any table with a row
+  policy, which left search autocomplete with no Map keys on those tables. A
+  failed text index read now falls through to the next strategy. After a row
+  policy denial it skips the key rollup table, which the policy doesn't cover,
+  and reads keys only from the policy-filtered source table.
+
+- 0ddfe7d7: fix: use plural source kind labels and "OTel" spelling on the Sources page
+
+  The source form's data type options and the sources list now read Logs, Traces, OTel metrics, Sessions, and PromQL.
+
+- e61461be: feat: auto-detect a PromQL source during onboarding
+
+  When PromQL is enabled (`NEXT_PUBLIC_ENABLE_PROMQL=true`), onboarding source auto-detection now also creates a PromQL source for a ClickHouse TimeSeries engine table. It prefers `prometheus.metrics` (the table the ClickHouse Prometheus docs suggest), then a table named `metrics_ts`, and otherwise picks the only TimeSeries table on the connection. A service with only a TimeSeries table is no longer sent to manual source setup.
+
+- 76e5cf78: feat: support a series limit on PromQL line, stacked bar, pie and bar charts
+
+  The Display Settings drawer now offers Series Limit for PromQL charts. On line and stacked bar charts it keeps the top N series by peak value (leave empty for the default of 250, or set 0 for unlimited). On pie and bar charts it keeps the N largest slices or bars (leave empty to show all).
+
+- 1be9de8f: feat: Add a promql variable format that escapes based on single/multi-select
+- c372a71c: fix: pulse the list-bar and histogram charts while they refresh
+
+  The Services dashboard's list-bar and latency histogram charts kept their
+  previous data during a refresh but gave no sign that new data was loading,
+  and the histogram could briefly swap its chart for "Loading Chart Data...".
+  Both now keep their previous data on screen and pulse while the refetch runs,
+  like the other charts.
+
+- 0d2425d5: feat: Allow configuring dashboard filters as single-select
+- 1ce8b88e: fix: rank Map keys by frequency when a text index serves key discovery
+
+  The two `mergeTreeTextIndex` paths in `getMapKeys` grouped keys and applied
+  `LIMIT maxKeys` with no `ORDER BY`, so on a column with more keys than the
+  limit the filter sidebar showed an arbitrary subset. They now order by
+  `sum(cardinality) DESC, key`, which keeps the most frequent keys, as the key
+  rollup path already does with `sum(count) DESC`.
+
+- 4477f304: feat: show a trace's total wall-clock duration in the waterfall controls bar
+- 01fdc5d4: ui: Extract FilterPill, add filter editor components
+- Updated dependencies [14003f08]
+- Updated dependencies [76d33d73]
+- Updated dependencies [07c93656]
+- Updated dependencies [6873416d]
+- Updated dependencies [0b855534]
+- Updated dependencies [c2e21cf5]
+- Updated dependencies [cf5b831f]
+- Updated dependencies [7aeb6215]
+- Updated dependencies [0846f3b2]
+- Updated dependencies [e61461be]
+- Updated dependencies [6ea5f52c]
+- Updated dependencies [ff5befa8]
+- Updated dependencies [d8b1cdfa]
+- Updated dependencies [1be9de8f]
+- Updated dependencies [837c6837]
+- Updated dependencies [ab703243]
+- Updated dependencies [0d2425d5]
+- Updated dependencies [68082b67]
+- Updated dependencies [1ce8b88e]
+- Updated dependencies [e88cf3d5]
+  - @hyperdx/api@2.41.0
+  - @hyperdx/common-utils@0.31.0
+
 ## 2.40.0
 
 ### Minor Changes

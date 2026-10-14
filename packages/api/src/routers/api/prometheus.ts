@@ -1,3 +1,13 @@
+import {
+  buildLogComment,
+  buildQueryId,
+  parseLogComment,
+  QUERY_ATTRIBUTION_HEADER,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  getCurrentQueryAttribution,
+  withQueryAttribution,
+} from '@hyperdx/common-utils/dist/clickhouse/node';
 import express from 'express';
 import { performance } from 'perf_hooks';
 import { Readable } from 'stream';
@@ -51,6 +61,20 @@ router.use(express.urlencoded({ extended: true }));
 router.use((_req, res, next) => {
   res.setHeader('x-content-type-options', 'nosniff');
   next();
+});
+
+// The browser reaches this router over fetch, not through a ClickHouse client,
+// so it sends the tile, dashboard or search a query belongs to in a header.
+// Its surface and ids win over the `api` scope the auth middleware opened, but
+// the trace id and route label are the server's to state: a client-sent trace
+// would link the query_log row to a request that never ran it.
+router.use((req, _res, next) => {
+  const attribution = parseLogComment(req.get(QUERY_ATTRIBUTION_HEADER));
+  if (!attribution) return next();
+  // Dropped rather than overwritten: with no active span there is no server
+  // trace to overwrite with, and the browser's would survive the merge.
+  const { label: _label, trace: _trace, ...fromBrowser } = attribution;
+  withQueryAttribution(fromBrowser, () => next());
 });
 
 // --------------------------
@@ -210,12 +234,43 @@ export function clickhousePrometheusUpstream(
   {
     maxExecutionSec = PROMETHEUS_MAX_EXECUTION_SEC,
     maxResultRows = PROMETHEUS_MAX_RESULT_ROWS,
+    logComment,
+  }: {
+    maxExecutionSec?: number;
+    maxResultRows?: number;
+    logComment?: string;
   } = {},
 ): string {
   const url = new URL(host);
   url.searchParams.set('max_execution_time', String(maxExecutionSec));
   url.searchParams.set('max_result_rows', String(maxResultRows));
+  if (logComment) url.searchParams.set('log_comment', logComment);
   return url.toString();
+}
+
+/**
+ * Where and how to proxy a PromQL request to the connection's prometheus_api_v1
+ * handler, tagged with the query attribution in scope. The handler runs the
+ * query itself rather than through our ClickHouse client, so the tags are set
+ * here. `log_comment` goes in the URL like the limits. `query_id` goes in a
+ * header: the handler reads every URL param as a setting, and `query_id` in
+ * the URL fails the request as an unknown one.
+ */
+function clickhousePrometheusRequest(connection: {
+  host: string;
+  username: string;
+  password?: string;
+}): { upstream: string; headers: Record<string, string> } {
+  const attribution = getCurrentQueryAttribution();
+  return {
+    upstream: clickhousePrometheusUpstream(connection.host, {
+      logComment: buildLogComment(attribution),
+    }),
+    headers: {
+      ...clickhouseAuthHeaders(connection),
+      'X-ClickHouse-Query-Id': buildQueryId(attribution),
+    },
+  };
 }
 
 function newClickhouseClient(connection: {
@@ -537,12 +592,13 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     // forward-compatible while TimeSeries is in preview, so it is preferred
     // wherever the server has it (26.6+); the table function is the fallback.
     if (await clickhouseServesPrometheusHttpApi(client, connection)) {
+      const { upstream, headers } = clickhousePrometheusRequest(connection);
       const status = await proxyToPrometheus(
-        clickhousePrometheusUpstream(connection.host),
+        upstream,
         `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
         params,
         res,
-        clickhouseAuthHeaders(connection),
+        headers,
       );
       recordProxyOutcome(status, 'query_range', backend);
       return;
@@ -648,12 +704,13 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     const client = newClickhouseClient(connection);
 
     if (await clickhouseServesPrometheusHttpApi(client, connection)) {
+      const { upstream, headers } = clickhousePrometheusRequest(connection);
       const status = await proxyToPrometheus(
-        clickhousePrometheusUpstream(connection.host),
+        upstream,
         `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query`,
         params,
         res,
-        clickhouseAuthHeaders(connection),
+        headers,
       );
       recordProxyOutcome(status, 'query', backend);
       return;

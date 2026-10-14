@@ -49,6 +49,21 @@ describe('prometheusApi.labelValues', () => {
     expect(params.get('end')).toBe('200');
   });
 
+  it('sends the attribution as a header', async () => {
+    await prometheusApi.labelValues({
+      label: 'pod',
+      connectionId: 'conn',
+      attribution: { surface: 'metadata', dashboard: 'd1' },
+    });
+
+    const { headers } = get.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'metadata',
+      dashboard: 'd1',
+    });
+  });
+
   it('omits the selector when there is none', async () => {
     await prometheusApi.labelValues({ label: 'pod', connectionId: 'conn' });
 
@@ -88,6 +103,23 @@ describe('prometheusApi.labels', () => {
     const resp = await prometheusApi.labels({ connectionId: 'conn' });
 
     expect(resp.data).toEqual(['byoc', 'instance']);
+  });
+
+  it('sends the attribution as a header', async () => {
+    get.mockReturnValue({
+      json: () => Promise.resolve({ status: 'success', data: [] }),
+    });
+
+    await prometheusApi.labels({
+      connectionId: 'conn',
+      attribution: { surface: 'metadata' },
+    });
+
+    const { headers } = get.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'metadata',
+    });
   });
 
   it('leaves a response without data alone', async () => {
@@ -160,6 +192,33 @@ describe('prometheusApi.query', () => {
     const params = postedParams();
     expect(params.has('database')).toBe(false);
     expect(params.has('table')).toBe(false);
+  });
+
+  it('sends the attribution as a log_comment payload in a header', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      attribution: { surface: 'dashboard', dashboard: 'd1', tile: 't1' },
+    });
+
+    const { headers } = post.mock.calls[0][1];
+    expect(JSON.parse(headers['x-hyperdx-query-attribution'])).toEqual({
+      v: 1,
+      surface: 'dashboard',
+      dashboard: 'd1',
+      tile: 't1',
+    });
+  });
+
+  it('sends no attribution header when there is nothing to say', async () => {
+    await prometheusApi.query({
+      query: 'up',
+      time: 1,
+      connectionId: 'conn',
+      attribution: {},
+    });
+    expect(post.mock.calls[0][1].headers).toBeUndefined();
   });
 
   it('reports the error a failed instant query carries', async () => {

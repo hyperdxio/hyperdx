@@ -1,3 +1,4 @@
+import type { QueryAttribution } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   displayTypeSupportsInstantQuery,
   getQueriedPromqlSeries,
@@ -84,6 +85,7 @@ async function fetchInstantExpression(
   series: PromqlSeries,
   evalTime: Date,
   signal: AbortSignal,
+  attribution: QueryAttribution,
 ): Promise<ExpressionResult> {
   const response = await prometheusApi.query({
     query: series.expression,
@@ -97,6 +99,7 @@ async function fetchInstantExpression(
     database: config.from?.databaseName,
     table: config.from?.tableName,
     signal,
+    attribution,
   });
 
   return {
@@ -111,6 +114,7 @@ async function fetchRangeExpression(
   series: PromqlSeries,
   dateRange: [Date, Date],
   signal: AbortSignal,
+  attribution: QueryAttribution,
 ): Promise<ExpressionResult> {
   const [startDate, endDate] = dateRange;
   const response = await prometheusApi.queryRange({
@@ -126,6 +130,7 @@ async function fetchRangeExpression(
     database: config.from?.databaseName,
     table: config.from?.tableName,
     signal,
+    attribution,
   });
 
   if (response.status !== 'success' || !response.data) {
@@ -265,6 +270,8 @@ export async function queryPromqlChartConfig(
   config: PromqlChartConfig & Pick<DateRange, 'minGranularitySeconds'>,
   dateRange: [Date, Date],
   signal: AbortSignal,
+  // Required so a new caller can't forget it and leave its queries untagged.
+  attribution: QueryAttribution,
 ): Promise<ChartQueryResult> {
   // Expand dashboard variables and macros before sending to Prometheus.
   const substituted = substitutePromqlChartConfigTemplates({
@@ -276,8 +283,20 @@ export async function queryPromqlChartConfig(
     getQueriedPromqlSeries(substituted).map(series =>
       displayTypeSupportsInstantQuery(substituted) &&
       promqlSeriesQueryType(series) === 'instant'
-        ? fetchInstantExpression(substituted, series, dateRange[1], signal)
-        : fetchRangeExpression(substituted, series, dateRange, signal),
+        ? fetchInstantExpression(
+            substituted,
+            series,
+            dateRange[1],
+            signal,
+            attribution,
+          )
+        : fetchRangeExpression(
+            substituted,
+            series,
+            dateRange,
+            signal,
+            attribution,
+          ),
     ),
   );
 

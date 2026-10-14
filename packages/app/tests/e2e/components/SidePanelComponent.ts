@@ -245,6 +245,51 @@ export class SidePanelComponent {
   }
 
   /**
+   * Key labels of the JSON viewer's depth-0 rows. Nested rows are excluded so
+   * the list is a flat sequence that reverses cleanly when the order flips —
+   * nested children stay grouped under their parent, so a full-tree list does
+   * not.
+   */
+  get jsonViewerTopLevelKeys() {
+    return this.panelContainer.locator(
+      '[data-testid="json-viewer-line"][data-depth="0"] [class*="keyContainer"] > [class*="key"]',
+    );
+  }
+
+  async getJsonViewerTopLevelKeys(): Promise<string[]> {
+    await this.jsonViewerTopLevelKeys
+      .first()
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    const keys = await this.jsonViewerTopLevelKeys.allInnerTexts();
+    return keys.map(key => key.trim()).filter(Boolean);
+  }
+
+  /**
+   * Sort in the browser, where the viewer's own `localeCompare` runs — Node's
+   * ICU orders mixed-case keys differently, so sorting test-side would compare
+   * against a different collation than the one under test.
+   */
+  async sortKeysLikeViewer(keys: string[]): Promise<string[]> {
+    return this.page.evaluate(
+      (ks: string[]) =>
+        [...ks].sort((a, b) =>
+          a.localeCompare(b, undefined, { numeric: true }),
+        ),
+      keys,
+    );
+  }
+
+  /** Pick a key-order option from the JSON viewer's view options menu. */
+  async selectJsonKeyOrder(order: 'asc' | 'desc' | 'original') {
+    await this.panelContainer
+      .getByTestId('json-viewer-options-menu')
+      .click({ timeout: this.defaultTimeout });
+    await this.panelContainer
+      .getByTestId(`json-viewer-key-order-${order}`)
+      .click({ timeout: this.defaultTimeout });
+  }
+
+  /**
    * Close the side panel (if it has a close button)
    */
   async close() {

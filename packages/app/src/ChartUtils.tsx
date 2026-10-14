@@ -26,6 +26,7 @@ import {
   getPercentileAggFnLevel,
   Granularity,
   hasPositiveSeriesLimit,
+  TIME_SERIES_DISPLAY_TYPE_BY_NAME,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -101,13 +102,18 @@ export const DEFAULT_CHART_CONFIG: Omit<
   alignDateRangeToGranularity: true,
 };
 
-function getTimeChartGranularity(
-  granularity: string | undefined,
+export function getTimeChartGranularity<T extends string>(
+  granularity: T | 'auto' | undefined,
   dateRange: [Date, Date],
   minGranularitySeconds?: number,
+  maxBuckets = 80,
 ) {
   return granularity === 'auto' || granularity == null
-    ? convertDateRangeToGranularityString(dateRange, 80, minGranularitySeconds)
+    ? convertDateRangeToGranularityString(
+        dateRange,
+        maxBuckets,
+        minGranularitySeconds,
+      )
     : granularity;
 }
 
@@ -551,6 +557,7 @@ export function formatResponseForCategoricalChart(
   data: ResponseJSON<Record<string, unknown>>,
   getColor: (index: number, label: string) => string,
   applyDefaultOrder: boolean = true,
+  maxGroups: number = DEFAULT_MAX_CATEGORICAL_GROUPS,
 ): Array<{ label: string; value: number; color: string }> {
   if (data.meta == null) {
     throw new Error('No meta data found in response');
@@ -588,7 +595,7 @@ export function formatResponseForCategoricalChart(
   }
 
   return labelsAndValues
-    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .slice(0, Math.min(maxGroups, DEFAULT_MAX_CATEGORICAL_GROUPS))
     .map((entry, index) => ({
       ...entry,
       color: getColor(index, entry.label),
@@ -1161,7 +1168,7 @@ export const convertV1ChartConfigToV2 = (
     granularity?: Granularity;
     dateRange: [Date, Date];
     seriesReturnType: 'ratio' | 'column';
-    displayType?: 'stacked_bar' | 'line';
+    displayType?: 'stacked_bar' | 'stacked_line' | 'line';
     name?: string;
     fillNulls?: number | false;
     sortOrder?: SortOrder;
@@ -1185,8 +1192,7 @@ export const convertV1ChartConfigToV2 = (
   }
 
   const firstSeries = series[0];
-  const convertedDisplayType =
-    displayType === 'stacked_bar' ? DisplayType.StackedBar : DisplayType.Line;
+  const convertedDisplayType = TIME_SERIES_DISPLAY_TYPE_BY_NAME[displayType];
 
   if (firstSeries.table === 'logs') {
     // TODO: this might not work properly since logs + traces are mixed in v1
@@ -1256,6 +1262,23 @@ export function tryExpandConfigVariables<
   }
 }
 
+const NO_LOG_SOURCE_WARNING_DISMISSED_KEY =
+  'drilldown-metric-correlated-log-warning';
+
+// Called while rendering (chart tooltips), so it must not throw when storage is
+// blocked (sandboxed iframe, disabled cookies) or missing (SSR).
+function isNoLogSourceWarningDismissed(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return (
+      window.localStorage.getItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY) ===
+      'true'
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Build search URL for viewing events based on group-by values
  * Used by both chart clicks and table row clicks
@@ -1291,9 +1314,21 @@ export function buildEventsSearchUrl({
         ? source.logSourceId
         : undefined;
     if (logSourceId == null) {
+      if (isNoLogSourceWarningDismissed()) return null;
       notifications.show({
         color: 'yellow',
-        message: 'No log source is associated with the selected metric source.',
+        message:
+          'Drill-down is unavailable for metric sources that lack correlated log sources',
+        id: 'no-log-source-associated',
+        closeButtonProps: {
+          onClick: () => {
+            try {
+              localStorage.setItem(NO_LOG_SOURCE_WARNING_DISMISSED_KEY, 'true');
+            } catch {
+              // don't do anything
+            }
+          },
+        },
       });
       return null;
     }

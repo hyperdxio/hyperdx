@@ -13,6 +13,7 @@ import {
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
+import { HeatmapComponent } from './HeatmapComponent';
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 import { WhereInputComponent } from './WhereInputComponent';
 
@@ -59,11 +60,13 @@ export class ChartEditorComponent {
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    // Line and StackedBar share the "Time Series" tab, and EventPatterns' tab
-    // is labelled just "Patterns"; the rest match their tab label by name
-    // (case-insensitive substring).
+    // Line, StackedBar, and StackedLine share the "Time Series" tab, and
+    // EventPatterns' tab is labelled just "Patterns"; the rest match their tab
+    // label by name (case-insensitive substring).
     const tabName =
-      name === DisplayType.Line || name === DisplayType.StackedBar
+      name === DisplayType.Line ||
+      name === DisplayType.StackedBar ||
+      name === DisplayType.StackedLine
         ? 'Time Series'
         : name === DisplayType.EventPatterns
           ? 'Patterns'
@@ -71,7 +74,7 @@ export class ChartEditorComponent {
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
   }
 
-  /** Pick the builder heatmap's mode in its segmented control. */
+  /** Pick the heatmap's mode in its segmented control. */
   async setHeatmapMode(mode: 'Distribution' | 'Series') {
     await this.editorForm()
       .getByTestId('heatmap-mode-control')
@@ -80,11 +83,26 @@ export class ChartEditorComponent {
       .click();
   }
 
+  /** The editor's own granularity picker, not the dashboard header's. */
+  get granularityPicker(): Locator {
+    return this.editorForm().getByTestId('granularity-picker');
+  }
+
+  async setGranularity(label: string) {
+    await this.granularityPicker.click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+  }
+
   /** The distribution heatmap's "Value" (y axis) SQL input. */
   get heatmapValueInput(): Locator {
     return this.editorForm()
       .getByTestId('heatmap-value-input')
       .locator('.cm-content');
+  }
+
+  /** The heatmap the editor previews. */
+  get previewHeatmap(): HeatmapComponent {
+    return new HeatmapComponent(this.page, this.editorForm());
   }
 
   /** A heatmap mode's (visually hidden) radio, for checking the selection. */
@@ -1163,8 +1181,9 @@ export class ChartEditorComponent {
 
   /**
    * Set the "Series Limit" value in the Display Settings drawer. On pie/bar
-   * builder charts this caps the number of slices/bars displayed. Opens the
-   * drawer, fills the input, then applies and closes.
+   * builder charts this caps the number of slices/bars displayed; on time
+   * charts it caps the number of series. Opens the drawer, fills the input,
+   * then applies and closes.
    */
   async setSeriesLimit(limit: number) {
     await this.openDisplaySettings();

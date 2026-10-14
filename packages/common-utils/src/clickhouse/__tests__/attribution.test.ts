@@ -5,6 +5,7 @@ import {
   buildLogComment,
   buildQueryId,
   mergeQueryAttribution,
+  parseLogComment,
   QUERY_ATTRIBUTION_VERSION,
   QueryAttribution,
   QuerySurface,
@@ -187,6 +188,43 @@ describe('buildLogComment', () => {
     // reach JSON.stringify in the first place.
     expect(() => JSON.parse(comment!)).not.toThrow();
     expect(JSON.parse(comment!).label).toBe('quote  brace  backslash  ok');
+  });
+});
+
+describe('parseLogComment', () => {
+  it('round-trips what buildLogComment emits', () => {
+    const attribution: QueryAttribution = {
+      surface: 'dashboard',
+      dashboard: 'dash-1',
+      tile: 'tile-2',
+      label: '/a/b',
+    };
+    expect(parseLogComment(buildLogComment(attribution))).toEqual(attribution);
+  });
+
+  it('drops unknown keys, non-string values and unknown surfaces', () => {
+    expect(
+      parseLogComment(
+        JSON.stringify({ v: 1, surface: 'nope', tile: 42, extra: 'x' }),
+      ),
+    ).toBeUndefined();
+    expect(
+      parseLogComment(JSON.stringify({ surface: 'search', tile: 42 })),
+    ).toEqual({ surface: 'search' });
+  });
+
+  it('returns undefined for anything that is not a JSON object', () => {
+    expect(parseLogComment(undefined)).toBeUndefined();
+    expect(parseLogComment('')).toBeUndefined();
+    expect(parseLogComment('not json')).toBeUndefined();
+    expect(parseLogComment('null')).toBeUndefined();
+    expect(parseLogComment('"dashboard"')).toBeUndefined();
+  });
+
+  it('rejects a payload over the size cap', () => {
+    expect(
+      parseLogComment(JSON.stringify({ label: 'a'.repeat(2000) })),
+    ).toBeUndefined();
   });
 });
 

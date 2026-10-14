@@ -2,6 +2,11 @@ import { useCallback } from 'react';
 import Router from 'next/router';
 import type { HTTPError, Options, ResponsePromise } from 'ky';
 import ky from 'ky-universal';
+import {
+  buildLogComment,
+  QUERY_ATTRIBUTION_HEADER,
+  type QueryAttribution,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import type {
   Alert,
   AlertApiResponse,
@@ -862,13 +867,27 @@ const uniqueLabels = (
 ): PrometheusLabelsResponse =>
   resp.data ? { ...resp, data: [...new Set(resp.data)] } : resp;
 
+const attributionHeaders = (
+  attribution: QueryAttribution | undefined,
+): Record<string, string> | undefined => {
+  const logComment = buildLogComment(attribution);
+  return logComment ? { [QUERY_ATTRIBUTION_HEADER]: logComment } : undefined;
+};
+
 const prometheusFetch = <T>(
   path: string,
   searchParams: Record<string, string>,
   signal?: AbortSignal,
+  attribution?: QueryAttribution,
 ): Promise<T> =>
   withPrometheusError(() =>
-    server.post(path, { searchParams, signal }).json<T>(),
+    server
+      .post(path, {
+        searchParams,
+        signal,
+        headers: attributionHeaders(attribution),
+      })
+      .json<T>(),
   );
 
 export const prometheusApi = {
@@ -881,6 +900,7 @@ export const prometheusApi = {
     database?: string;
     table?: string;
     signal?: AbortSignal;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusQueryRangeResponse> =>
     prometheusFetch(
       'v1/prometheus/query_range',
@@ -894,6 +914,7 @@ export const prometheusApi = {
         ...(params.table ? { table: params.table } : {}),
       },
       params.signal,
+      params.attribution,
     ),
 
   query: (params: {
@@ -905,6 +926,7 @@ export const prometheusApi = {
     /** Maximum number of series to return. */
     limit?: number;
     signal?: AbortSignal;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusInstantQueryResponse> =>
     prometheusFetch(
       'v1/prometheus/query',
@@ -917,6 +939,7 @@ export const prometheusApi = {
         ...(params.table ? { table: params.table } : {}),
       },
       params.signal,
+      params.attribution,
     ),
 
   labels: (params: {
@@ -925,10 +948,12 @@ export const prometheusApi = {
     table?: string;
     start?: number;
     end?: number;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusLabelsResponse> =>
     server
       .get('v1/prometheus/labels', {
         searchParams: labelLookupSearchParams(params),
+        headers: attributionHeaders(params.attribution),
       })
       .json<PrometheusLabelsResponse>()
       .then(uniqueLabels),
@@ -941,11 +966,13 @@ export const prometheusApi = {
     start?: number;
     end?: number;
     match?: string;
+    attribution?: QueryAttribution;
   }): Promise<PrometheusLabelsResponse> =>
     withPrometheusError(() =>
       server
         .get(`v1/prometheus/label/${params.label}/values`, {
           searchParams: labelLookupSearchParams(params),
+          headers: attributionHeaders(params.attribution),
         })
         .json<PrometheusLabelsResponse>()
         .then(uniqueLabels),

@@ -27,6 +27,7 @@ GROUP BY ServiceName;`;
 export const SQL_PLACEHOLDERS: Record<DisplayType, string> = {
   [DisplayType.Line]: TIMESERIES_PLACEHOLDER_SQL,
   [DisplayType.StackedBar]: TIMESERIES_PLACEHOLDER_SQL,
+  [DisplayType.StackedLine]: TIMESERIES_PLACEHOLDER_SQL,
   [DisplayType.Table]: `SELECT
   count()
 FROM
@@ -98,6 +99,7 @@ export const DISPLAY_TYPE_INSTRUCTIONS: Partial<
 > = {
   [DisplayType.Line]: TIMESERIES_INSTRUCTIONS,
   [DisplayType.StackedBar]: TIMESERIES_INSTRUCTIONS,
+  [DisplayType.StackedLine]: TIMESERIES_INSTRUCTIONS,
   [DisplayType.Pie]: (
     <>
       <Text size="xs" fw="bold">

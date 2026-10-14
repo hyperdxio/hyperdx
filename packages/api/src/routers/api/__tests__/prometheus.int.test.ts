@@ -1,3 +1,7 @@
+import {
+  buildLogComment,
+  QUERY_ATTRIBUTION_HEADER,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { Types } from 'mongoose';
 
@@ -746,6 +750,45 @@ describe('prometheus router', () => {
       expect(init?.headers).toMatchObject({
         'X-ClickHouse-User': config.CLICKHOUSE_USER,
         'X-ClickHouse-Key': config.CLICKHOUSE_PASSWORD,
+      });
+    });
+
+    it('tags a request proxied to prometheus_api_v1 with log_comment and query_id', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const conn = await seedClickHouseConnection(team._id);
+      mockFetch.mockResolvedValueOnce(handlerProbeResponse());
+
+      await agent
+        .get('/v1/prometheus/query_range')
+        .set(
+          QUERY_ATTRIBUTION_HEADER,
+          buildLogComment({ surface: 'dashboard', tile: 'tile-1' })!,
+        )
+        .query({
+          query: 'up',
+          start: '1700000000',
+          end: '1700000060',
+          step: '15s',
+          table: 'metrics_ts',
+          // Not caller-settable, so this never reaches the upstream.
+          log_comment: 'from-caller',
+          connectionId: conn._id.toString(),
+        })
+        .expect(200);
+
+      const [calledUrl, init] = mockFetch.mock.calls[1];
+      const url = new URL(String(calledUrl));
+      expect(url.searchParams.getAll('log_comment')).toHaveLength(1);
+      expect(JSON.parse(url.searchParams.get('log_comment')!)).toMatchObject({
+        surface: 'dashboard',
+        tile: 'tile-1',
+        label: '/v1/prometheus',
+      });
+      // In the URL, ClickHouse fails the request on query_id as an unknown
+      // setting.
+      expect(url.searchParams.has('query_id')).toBe(false);
+      expect(init?.headers).toMatchObject({
+        'X-ClickHouse-Query-Id': expect.stringMatching(/^hdx-dashboard-/),
       });
     });
 

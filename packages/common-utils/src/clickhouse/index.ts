@@ -55,6 +55,8 @@ export {
   buildLogComment,
   buildQueryId,
   mergeQueryAttribution,
+  parseLogComment,
+  QUERY_ATTRIBUTION_HEADER,
   QUERY_ATTRIBUTION_VERSION,
   QUERY_SURFACES,
   type QueryAttribution,

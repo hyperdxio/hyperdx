@@ -232,6 +232,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       config,
       config.dateRange,
       signal,
+      attribution,
     );
     return {
       data,

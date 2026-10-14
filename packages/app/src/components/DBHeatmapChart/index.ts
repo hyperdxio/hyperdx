@@ -3,10 +3,13 @@ export { default } from './DBHeatmapChart';
 export { HEATMAP_DURATION_NUMBER_FORMAT } from './heatmapAxis';
 export { HEATMAP_N_BUCKETS } from './heatmapBounds';
 export type { HeatmapScaleType } from './heatmapGrid';
+export type { HeatmapSeriesChartConfig } from './heatmapQueries';
 export {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
   buildHeatmapSeriesConfig,
+  PROMQL_DEFAULT_HEATMAP_SCALE_TYPE,
+  resolveHeatmapGranularity,
   toHeatmapQuery,
 } from './heatmapQueries';
 export { darkPalette, lightPalette } from './palette';

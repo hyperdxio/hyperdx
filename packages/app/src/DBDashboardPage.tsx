@@ -35,10 +35,12 @@ import {
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import { isAdhocFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
@@ -50,7 +52,6 @@ import {
 import { isMissingFiltersMacro } from '@hyperdx/common-utils/dist/macros';
 import {
   AlertState,
-  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   ChartVariable,
   DashboardContainer as DashboardContainerSchema,
@@ -161,6 +162,7 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
@@ -176,7 +178,10 @@ import ChartContainer, {
 } from './components/charts/ChartContainer';
 import DashboardFiltersModal from './components/DashboardFiltersModal';
 import { DBBarChart } from './components/DBBarChart';
-import DBHeatmapChart, { toHeatmapQuery } from './components/DBHeatmapChart';
+import DBHeatmapChart, {
+  HeatmapSeriesChartConfig,
+  toHeatmapQuery,
+} from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -188,7 +193,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import useTileSelection from './hooks/useTileSelection';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import {
   buildDashboardReplaySearchUrl,
@@ -243,12 +248,15 @@ function HeatmapTile({
   title: React.ReactNode;
   toolbarPrefix: React.ReactNode[];
   toolbarSuffix: React.ReactNode[];
-  queriedConfig: BuilderChartConfigWithDateRange;
+  queriedConfig: HeatmapSeriesChartConfig;
   source: TSource | undefined;
   dateRange: [Date, Date];
   enabled?: boolean;
 }) {
-  const heatmapQuery = toHeatmapQuery(queriedConfig);
+  const heatmapQuery = toHeatmapQuery({
+    ...queriedConfig,
+    minGranularitySeconds: getMinGranularitySeconds(source),
+  });
   const { mode } = heatmapQuery;
 
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(
@@ -258,7 +266,12 @@ function HeatmapTile({
 
   const eventDeltasUrl = useMemo(() => {
     // Search page event deltas only supports trace sources and distribution mode
-    if (!source || !isTraceSource(source) || mode !== 'distribution')
+    if (
+      !source ||
+      !isTraceSource(source) ||
+      mode !== 'distribution' ||
+      !isBuilderChartConfig(queriedConfig)
+    )
       return null;
     const url = buildEventsSearchUrl({
       source,
@@ -425,7 +438,7 @@ const Tile = ({
   onUpdateChart,
   onMoveToGroup,
   moveTargets,
-  granularity,
+  granularity: dashboardGranularity,
   onTimeRangeSelect,
   filters,
   variables,
@@ -484,6 +497,13 @@ const Tile = ({
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+
+  // A live dashboard's granularity is the coarse refresh interval; heatmaps
+  // ignore it and stay on their own finer auto granularity.
+  const granularity =
+    isLive && chart.config.displayType === DisplayType.Heatmap
+      ? undefined
+      : dashboardGranularity;
 
   // Lazy loading: only fetch a tile's data once it has scrolled into the
   // browser viewport. React Grid Layout mounts every tile up front, so
@@ -1283,41 +1303,40 @@ const Tile = ({
             </TilePlaceholder>
           ) : (
             <>
-              {(effectiveQueriedConfig?.displayType === DisplayType.Line ||
-                effectiveQueriedConfig?.displayType ===
-                  DisplayType.StackedBar) && (
-                <DBTimeChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbarPrefixItems}
-                  toolbarSuffix={toolbarSuffixItems}
-                  sourceId={chart.config.source}
-                  showDisplaySwitcher={!readOnly}
-                  enabled={chartEnabled}
-                  config={effectiveQueriedConfig}
-                  annotations={annotations}
-                  onTimeRangeSelect={
-                    readOnly
-                      ? undefined
-                      : isFullscreenView
-                        ? (start, end) => setFullscreenDateRange([start, end])
-                        : onTimeRangeSelect
-                  }
-                  setDisplayType={
-                    readOnly
-                      ? undefined
-                      : displayType => {
-                          onUpdateChart?.({
-                            ...chart,
-                            config: {
-                              ...chart.config,
-                              displayType,
-                            },
-                          });
-                        }
-                  }
-                />
-              )}
+              {effectiveQueriedConfig &&
+                isTimeSeriesDisplayType(effectiveQueriedConfig.displayType) && (
+                  <DBTimeChart
+                    key={`${keyPrefix}-${chart.id}`}
+                    title={title}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    sourceId={chart.config.source}
+                    showDisplaySwitcher={!readOnly}
+                    enabled={chartEnabled}
+                    config={effectiveQueriedConfig}
+                    annotations={annotations}
+                    onTimeRangeSelect={
+                      readOnly
+                        ? undefined
+                        : isFullscreenView
+                          ? (start, end) => setFullscreenDateRange([start, end])
+                          : onTimeRangeSelect
+                    }
+                    setDisplayType={
+                      readOnly
+                        ? undefined
+                        : displayType => {
+                            onUpdateChart?.({
+                              ...chart,
+                              config: {
+                                ...chart.config,
+                                displayType,
+                              },
+                            });
+                          }
+                    }
+                  />
+                )}
               {effectiveQueriedConfig?.displayType === DisplayType.Table && (
                 <Box h="100%">
                   <DBTableChart
@@ -1373,7 +1392,8 @@ const Tile = ({
                 />
               )}
               {effectiveQueriedConfig?.displayType === DisplayType.Heatmap &&
-                isBuilderChartConfig(effectiveQueriedConfig) && (
+                (isBuilderChartConfig(effectiveQueriedConfig) ||
+                  isPromqlChartConfig(effectiveQueriedConfig)) && (
                   <HeatmapTile
                     keyPrefix={keyPrefix}
                     chartId={chart.id}
@@ -1890,7 +1910,7 @@ function DBDashboardPage({
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
   } = dashboardProps;
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle(dashboard?.name ? dashboard.name : 'Dashboard');
   const confirm = useConfirm();
   const {
     userPreferences: { isUTC },
@@ -1959,7 +1979,11 @@ function DBDashboardPage({
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
-  const filters = dashboard?.filters ?? [];
+  // Ad hoc filters aren't rendered or applied yet
+  const filters = useMemo(
+    () => (dashboard?.filters ?? []).filter(filter => !isAdhocFilter(filter)),
+    [dashboard?.filters],
+  );
   const {
     selectionByFilterId,
     setFilterValue,
@@ -3226,9 +3250,7 @@ function DBDashboardPage({
   const dashboardBody = (
     <>
       <Head>
-        <title>
-          {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
-        </title>
+        <title>{title}</title>
       </Head>
       {!isKioskMode && <OnboardingModal />}
       {!isKioskMode && (

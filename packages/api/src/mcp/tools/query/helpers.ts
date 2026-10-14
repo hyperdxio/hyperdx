@@ -2,10 +2,12 @@ import {
   ClickHouseError,
   type ClickHouseSettings,
 } from '@clickhouse/client-common';
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
+  isTimeSeriesDisplayType,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
@@ -28,6 +30,11 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import {
+  MCP_QUERY_MAX_EXECUTION_SEC,
+  MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
+} from '@/mcp/utils/timeout';
 import {
   convertToInternalTileConfig,
   isConfigTile,
@@ -75,7 +82,7 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 /** ClickHouse settings applied to all MCP query-tool executions.
  *  readonly=2 so max_execution_time can be set (readonly=1 rejects it). */
 export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
-  max_execution_time: 30,
+  max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
   readonly: '2',
 };
 
@@ -84,7 +91,7 @@ export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
  * max_execution_time so ClickHouse returns a clean timeout before the HTTP
  * connection is aborted.
  */
-export const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+export const MCP_REQUEST_TIMEOUT = MCP_TOOL_TIMEOUT_MS + MCP_TIMEOUT_GRACE_MS;
 
 // ─── Increase top-N cap hint ────────────────────────────────────────────────
 
@@ -256,11 +263,12 @@ export function buildTile(
 export function parseTimeRange(
   startTime?: string,
   endTime?: string,
+  defaultLookbackMs: number = ms('15m'),
 ): { error: string } | { startDate: Date; endDate: Date } {
   const endDate = endTime ? new Date(endTime) : new Date();
   const startDate = startTime
     ? new Date(startTime)
-    : new Date(endDate.getTime() - ms('15m'));
+    : new Date(endDate.getTime() - defaultLookbackMs);
   if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
     return {
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
@@ -553,11 +561,15 @@ export async function runConfigTile(
     // collapses to one row per group. Default to "auto" so the renderer
     // picks a bucket, mirroring the REST charts path
     // (packages/api/src/routers/external-api/v2/charts.ts:289).
-    // Search tiles intentionally have no granularity (handled above).
+    // Series heatmaps bucket by time like line charts; distribution heatmaps
+    // compute their own buckets. Search tiles intentionally have no
+    // granularity (handled above).
+    const isSeriesHeatmap =
+      builderConfig.displayType === DisplayType.Heatmap &&
+      getHeatmapMode(builderConfig) === 'series';
     const granularityOverride =
       !isSearch &&
-      (builderConfig.displayType === DisplayType.Line ||
-        builderConfig.displayType === DisplayType.StackedBar)
+      (isTimeSeriesDisplayType(builderConfig.displayType) || isSeriesHeatmap)
         ? { granularity: options?.granularity ?? 'auto' }
         : {};
 
@@ -672,7 +684,7 @@ export async function runConfigTile(
     });
     return formatQueryResult(result);
   } catch (e) {
-    return clickHouseErrorResult(e);
+    return clickHouseErrorResult(e, { rawSql: true });
   }
 }
 
@@ -829,11 +841,11 @@ function hasNodeErrorCode(val: unknown, codes: ReadonlySet<string>): boolean {
  */
 export function clickHouseErrorResult(
   e: unknown,
-  context?: string | { prefix?: string; suffix?: string },
+  context?: string | { prefix?: string; suffix?: string; rawSql?: boolean },
 ): McpErrorResult {
-  const { prefix, suffix } =
+  const { prefix, suffix, rawSql } =
     typeof context === 'string'
-      ? { prefix: context, suffix: undefined }
+      ? { prefix: context, suffix: undefined, rawSql: undefined }
       : (context ?? {});
 
   // Prefer .message, but fall back to .cause.message when the wrapper
@@ -845,7 +857,7 @@ export function clickHouseErrorResult(
         (e.cause instanceof Error ? e.cause.message : '') ||
         String(e)
       : String(e);
-  const hint = errorHint(raw, e);
+  const hint = errorHint(raw, e, { rawSql });
   const base = hint ? `${raw}\n\nHINT: ${hint}` : raw;
   const text = `${prefix ? `${prefix}: ` : ''}${base}${suffix ? ` ${suffix}` : ''}`;
 
@@ -885,7 +897,11 @@ export function isQueryOutOfTime(e: unknown): boolean {
 }
 
 /** @internal Exported for testing only. */
-export function errorHint(msg: string, error?: unknown): string | null {
+export function errorHint(
+  msg: string,
+  error?: unknown,
+  options?: { rawSql?: boolean },
+): string | null {
   const unknownVariableError = findCause(
     error,
     (e): e is UnknownVariableError => e instanceof UnknownVariableError,
@@ -940,6 +956,22 @@ export function errorHint(msg: string, error?: unknown): string | null {
     return (
       'The query returned too many rows. ' +
       'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
+    );
+  }
+  // Checked before unknown identifiers: "Unknown table expression identifier"
+  // names a table, so describe_source's column list would not help. Only raw
+  // SQL names its own table; source-based tools would be sent back to the
+  // same source table that just failed.
+  if (
+    options?.rawSql &&
+    /Unknown table expression identifier|(Table|Database) \S+ does not exist|UNKNOWN_(TABLE|DATABASE)/.test(
+      msg,
+    )
+  ) {
+    return (
+      'Use the `table` of a source from clickstack_list_sources, which is ' +
+      'qualified with its database. Unqualified names resolve only in the ' +
+      "connection's default database."
     );
   }
   if (

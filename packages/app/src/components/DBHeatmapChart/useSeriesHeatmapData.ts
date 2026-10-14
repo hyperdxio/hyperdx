@@ -1,11 +1,13 @@
 import { useMemo } from 'react';
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
 import { formatResponseForTimeChart } from '@/ChartUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
-import { buildHeatmapSeriesConfig } from './heatmapQueries';
+import {
+  buildHeatmapSeriesConfig,
+  HeatmapSeriesChartConfig,
+} from './heatmapQueries';
 import { gridFromSeries, HeatmapSeries } from './heatmapSeriesGrid';
 import {
   HeatmapData,
@@ -18,18 +20,19 @@ const HEATMAP_MAX_SERIES = 50;
 
 /**
  * Group time-chart rows into one point list per series, keeping the
- * `HEATMAP_MAX_SERIES` series with the largest peaks.
+ * `maxSeries` series with the largest peaks.
  */
 function responseToHeatmapSeries(
   response: ResponseJSON<Record<string, any>>,
   dateRange: [Date, Date],
+  maxSeries: number,
 ): { series: HeatmapSeries[]; hiddenSeriesCount: number } {
   const { graphResults, timestampColumn, lineData, hiddenSeriesCount } =
     formatResponseForTimeChart({
       currentPeriodResponse: response,
       dateRange,
       generateEmptyBuckets: false,
-      maxSeries: HEATMAP_MAX_SERIES,
+      maxSeries,
     });
 
   const series = lineData.map(line => ({
@@ -48,19 +51,21 @@ function responseToHeatmapSeries(
 }
 
 /**
- * Query a series-mode heatmap. Queried like a time chart, formatting the
- * response into a heatmap grid with series on the y axis, time on the
- * x-axis, and value determining the cell value.
+ * Query a heatmap's series like a time chart, bucketed at the heatmap
+ * granularity, as one point list per series. Keeps the `maxSeries` series
+ * with the largest peaks.
  */
-export function useSeriesHeatmapData({
+export function useHeatmapSeriesPoints({
   config,
   enabled,
+  maxSeries,
 }: {
-  config: BuilderChartConfigWithDateRange;
+  config: HeatmapSeriesChartConfig;
   enabled: boolean;
-}): HeatmapData {
+  maxSeries: number;
+}) {
   const { granularity, generatedTsBuckets, fromMs, toMs } =
-    useHeatmapTimeBuckets(config.dateRange);
+    useHeatmapTimeBuckets(config);
 
   const seriesConfig = buildHeatmapSeriesConfig(config, granularity);
   const { data, isLoading, isPlaceholderData, error } = useQueriedChartConfig(
@@ -81,7 +86,11 @@ export function useSeriesHeatmapData({
   }>(() => {
     if (data == null) return { series: [], hiddenSeriesCount: 0 };
     try {
-      return responseToHeatmapSeries(data, [new Date(fromMs), new Date(toMs)]);
+      return responseToHeatmapSeries(
+        data,
+        [new Date(fromMs), new Date(toMs)],
+        maxSeries,
+      );
     } catch (e) {
       return {
         series: [],
@@ -89,26 +98,61 @@ export function useSeriesHeatmapData({
         error: e instanceof Error ? e : new Error(String(e)),
       };
     }
-  }, [data, fromMs, toMs]);
+  }, [data, fromMs, toMs, maxSeries]);
+
+  return {
+    series: parsed.series,
+    hiddenSeriesCount: parsed.hiddenSeriesCount,
+    generatedTsBuckets,
+    isLoading,
+    isPlaceholderData,
+    error: error ?? parsed.error,
+  };
+}
+
+/**
+ * Query a series-mode heatmap. Queried like a time chart, formatting the
+ * response into a heatmap grid with series on the y axis, time on the
+ * x-axis, and value determining the cell value.
+ */
+export function useSeriesHeatmapData({
+  config,
+  enabled,
+}: {
+  config: HeatmapSeriesChartConfig;
+  enabled: boolean;
+}): HeatmapData {
+  const {
+    series,
+    hiddenSeriesCount,
+    generatedTsBuckets,
+    isLoading,
+    isPlaceholderData,
+    error,
+  } = useHeatmapSeriesPoints({
+    config,
+    enabled,
+    maxSeries: HEATMAP_MAX_SERIES,
+  });
 
   const currentView = useMemo<HeatmapView>(
     () => ({
       grid: gridFromSeries(
-        parsed.series,
+        series,
         generatedTsBuckets.map(d => d.getTime()),
       ),
       generatedTsBuckets,
       scaleType: 'linear',
       effectiveMin: 0,
-      hiddenSeriesCount: parsed.hiddenSeriesCount,
+      hiddenSeriesCount,
     }),
-    [parsed, generatedTsBuckets],
+    [series, hiddenSeriesCount, generatedTsBuckets],
   );
 
   return {
     view: useSettledView(currentView, isPlaceholderData),
     isLoading,
     isRefreshing: isPlaceholderData,
-    error: error ?? parsed.error,
+    error,
   };
 }
