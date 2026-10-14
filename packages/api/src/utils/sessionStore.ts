@@ -1,52 +1,35 @@
 import MongoStore from 'connect-mongo';
 import session from 'express-session';
 
-import { mongooseConnection } from '@/models';
+import * as config from '@/config';
 import { isMongoConnected } from '@/utils/readiness';
 
-type MongoClient = ReturnType<typeof mongooseConnection.getClient>;
-type ConnectMongoClient = NonNullable<
-  ConstructorParameters<typeof MongoStore>[0]['client']
->;
-
 /**
- * express-session store that keeps sessions in MongoDB over the app's
- * mongoose connection.
+ * express-session store that keeps sessions in MongoDB and recovers when
+ * MongoDB starts after the API.
  *
- * `new MongoStore({ mongoUrl })` opens its own MongoClient once, at
- * construction, and caches that connect promise. If MongoDB is unreachable
- * when the API starts, every session read/write replays the original
- * MongoServerSelectionError (so every request with a session cookie 500s)
- * until the process restarts, even after connectDBWithRetry has connected
- * mongoose (see https://github.com/hyperdxio/hyperdx/issues/2966).
+ * `new MongoStore({ mongoUrl })` connects once, at construction, and every
+ * session read/write awaits that one promise. If MongoDB is unreachable when
+ * the API starts, the store replays the original MongoServerSelectionError
+ * (so every request with a session cookie 500s) until the process restarts,
+ * even after connectDBWithRetry has connected mongoose (see
+ * https://github.com/hyperdxio/hyperdx/issues/2966).
  *
- * Instead, build a MongoStore on mongoose's client once mongoose is connected,
- * and rebuild it whenever mongoose replaces that client: every
- * mongoose.connect() creates a new one, and a closed client can't be reused.
- * Until mongoose connects, session operations fail fast.
+ * Instead, create the MongoStore once mongoose is connected, and create a new
+ * one if its connect or setup fails. Until then, session operations fail fast.
  */
-export class MongooseSessionStore extends session.Store {
+export class MongoSessionStore extends session.Store {
   private store?: MongoStore;
-  private storeClient?: MongoClient;
 
   private getStore(): MongoStore | undefined {
-    const client = mongooseConnection.getClient();
-    // Keep using the store through a transient disconnect of the same client;
-    // the driver reconnects it on its own.
-    if (this.store != null && this.storeClient === client) {
+    if (this.store != null) {
       return this.store;
     }
     if (!isMongoConnected()) {
       return undefined;
     }
-    // mongoose bundles its own mongodb driver (4.x), so its MongoClient type
-    // differs from the hoisted 6.x one connect-mongo is typed against. 4.x is
-    // connect-mongo's declared peer and covers the collection CRUD it uses.
-    const store = new MongoStore({
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-      client: client as unknown as ConnectMongoClient,
-    });
-    // A store whose collection setup failed would replay that error forever,
+    const store = new MongoStore({ mongoUrl: config.MONGO_URI });
+    // A store whose connect or setup failed would replay that error forever,
     // so drop it and let the next session operation build a fresh one.
     store.collectionP.catch(() => {
       if (this.store === store) {
@@ -54,7 +37,6 @@ export class MongooseSessionStore extends session.Store {
       }
     });
     this.store = store;
-    this.storeClient = client;
     return store;
   }
 
