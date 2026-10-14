@@ -76,8 +76,59 @@ describe('PromQL heatmaps', () => {
     legendTemplate: '{{job}}',
   };
 
-  it('are always series heatmaps', () => {
-    expect(toHeatmapQuery(config)).toEqual({ mode: 'series', config });
+  it('are calculated distribution heatmaps by default, on a linear scale', () => {
+    expect(toHeatmapQuery(config)).toEqual({
+      mode: 'calculated',
+      config,
+      scaleType: 'linear',
+    });
+  });
+
+  it('use the configured distribution scale', () => {
+    const logConfig: PromqlConfigWithDateRange = {
+      ...config,
+      heatmap: { mode: 'distribution', scaleType: 'log' },
+    };
+    expect(toHeatmapQuery(logConfig)).toEqual({
+      mode: 'calculated',
+      config: logConfig,
+      scaleType: 'log',
+    });
+  });
+
+  it('are series heatmaps in series mode', () => {
+    const seriesModeConfig: PromqlConfigWithDateRange = {
+      ...config,
+      heatmap: { mode: 'series' },
+    };
+    expect(toHeatmapQuery(seriesModeConfig)).toEqual({
+      mode: 'series',
+      config: seriesModeConfig,
+    });
+  });
+
+  it('are histogram heatmaps in histogram mode', () => {
+    const histogramConfig: PromqlConfigWithDateRange = {
+      ...config,
+      heatmap: { mode: 'histogram' },
+    };
+    expect(toHeatmapQuery(histogramConfig)).toEqual({
+      mode: 'histogram',
+      config: histogramConfig,
+    });
+  });
+
+  it('query a histogram heatmap as a histogram, with the expression as written', () => {
+    const histogramConfig: PromqlConfigWithDateRange = {
+      ...config,
+      heatmap: { mode: 'histogram', scaleType: 'log' },
+    };
+    expect(buildHeatmapSeriesConfig(histogramConfig, '5 minute')).toMatchObject(
+      {
+        promqlExpression: config.promqlExpression,
+        heatmap: { mode: 'histogram' },
+      },
+    );
   });
 
   it('query at the heatmap granularity over a bucket-aligned range', () => {
