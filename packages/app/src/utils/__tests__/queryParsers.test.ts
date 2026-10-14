@@ -189,18 +189,40 @@ describe('parseAsSortingStateString', () => {
       expect(parseAsSortingStateString.parse('Timestamp')).toBeNull();
     });
 
-    it('returns null for a multi-column tuple with no direction (HDX-5712)', () => {
-      // The bug: this previously parsed to { id: "(TimestampTime,", desc: false }
-      // and rendered as "(TimestampTime, ASC".
+    it('returns null for a multi-column tuple with no direction', () => {
       expect(
         parseAsSortingStateString.parse('(TimestampTime, Timestamp)'),
       ).toBeNull();
     });
 
-    it('returns null for a multi-column tuple with a direction', () => {
+    it('keeps a multi-column tuple with a direction as the id', () => {
       expect(
         parseAsSortingStateString.parse('(TimestampTime, Timestamp) DESC'),
-      ).toBeNull();
+      ).toEqual({ id: '(TimestampTime, Timestamp)', desc: true });
+    });
+
+    it('parses an id that contains spaces', () => {
+      expect(
+        parseAsSortingStateString.parse('round(Duration / 1e6, 2) DESC'),
+      ).toEqual({ id: 'round(Duration / 1e6, 2)', desc: true });
+    });
+
+    it('parses a quoted alias that contains spaces', () => {
+      expect(parseAsSortingStateString.parse('"my alias" ASC')).toEqual({
+        id: '"my alias"',
+        desc: false,
+      });
+    });
+
+    it('tolerates repeated and surrounding whitespace', () => {
+      expect(parseAsSortingStateString.parse('  Timestamp   DESC  ')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('returns null for whitespace only', () => {
+      expect(parseAsSortingStateString.parse('   ')).toBeNull();
     });
 
     it('returns null for a decorated expression like NULLS LAST', () => {
@@ -240,21 +262,18 @@ describe('parseAsSortingStateString', () => {
     const serializeHeaderSort = (sort: { id: string; desc: boolean }) =>
       `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`;
 
-    it('round-trips a single-column sort through the config string', () => {
-      const orderBy = serializeHeaderSort({ id: 'Timestamp', desc: true });
-      expect(orderBy).toBe('Timestamp DESC');
+    it.each(['Timestamp', 'round(Duration / 1e6, 2)', '"my alias"'])(
+      'round-trips a header sort on %s through the config string',
+      id => {
+        const orderBy = serializeHeaderSort({ id, desc: true });
+        const sortState = parseAsSortingStateString.parse(orderBy);
+        expect(sortState).toEqual({ id, desc: true });
+        expect(serializeHeaderSort(sortState!)).toBe(orderBy);
+      },
+    );
 
-      const sortState = parseAsSortingStateString.parse(orderBy);
-      expect(sortState).toEqual({ id: 'Timestamp', desc: true });
-      expect(serializeHeaderSort(sortState!)).toBe(orderBy);
-    });
-
-    it.each([
-      '(TimestampTime, Timestamp)',
-      '(TimestampTime, Timestamp) DESC',
-      'x DESC NULLS LAST',
-    ])(
-      'leaves a multi-column / decorated ORDER BY (%s) untouched by parsing to null',
+    it.each(['(TimestampTime, Timestamp)', 'x DESC NULLS LAST'])(
+      'leaves an ORDER BY without a trailing direction (%s) untouched by parsing to null',
       orderBy => {
         // null → initialSortBy is empty → DBSqlRowTable keeps the raw string
         // instead of rebuilding a broken one like "(TimestampTime, ASC".
