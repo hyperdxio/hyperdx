@@ -45,16 +45,8 @@ export const PromqlLabelFilterEditForm = ({
   const sourceId = useWatch({ control, name: 'source' });
   const source = sources?.find(s => s.id === sourceId);
   const promqlSource = source && isPromqlSource(source) ? source : undefined;
-  const { data: labelNames } = usePromqlLabelNames(
-    promqlSource?.connection,
-    promqlSource?.from.databaseName,
-    promqlSource?.from.tableName,
-  );
-  const { data: metricNames } = usePromqlMetricNames(
-    promqlSource?.connection,
-    promqlSource?.from.databaseName,
-    promqlSource?.from.tableName,
-  );
+  const { data: labelNames } = usePromqlLabelNames(promqlSource?.id);
+  const { data: metricNames } = usePromqlMetricNames(promqlSource?.id);
 
   return (
     <>
