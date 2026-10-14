@@ -12,6 +12,7 @@ const STORY_HREFS: Record<string, string> = {
   'code_style.md': '?path=/story/guidelines-code-style--documentation',
   'themes.md': '?path=/story/guidelines-themes--documentation',
   'page_layout.md': '?path=/story/guidelines-page-layout--documentation',
+  'naming_objects.md': '?path=/story/guidelines-naming-objects--documentation',
   'data_viz_colors.md':
     '?path=/story/guidelines-data-visualization-colors--documentation',
 };

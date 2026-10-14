@@ -13,6 +13,7 @@ import {
   QueryExpressionDashboardFilter,
   StaticListDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
+import { isFilterSingleSelect } from '@hyperdx/common-utils/dist/variables';
 
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 
@@ -27,9 +28,11 @@ export type FilterFormValues = {
   isRequired: boolean;
   /** Always set, unlike the stored field, whose default lives in `isFilterGlobalRequirement`. */
   isGlobalRequirement: boolean;
+  /** Boolean version of the persisted numeric `maxSelections`. */
+  isSingleSelect: boolean;
 } & Omit<
   QueryExpressionDashboardFilter,
-  'type' | 'minSelections' | 'isGlobalRequirement'
+  'type' | 'minSelections' | 'isGlobalRequirement' | 'maxSelections'
 > &
   Omit<
     StaticListDashboardFilter,
@@ -38,6 +41,7 @@ export type FilterFormValues = {
     | 'isVariableEnabled'
     | 'minSelections'
     | 'isGlobalRequirement'
+    | 'maxSelections'
   > &
   Omit<
     PromqlLabelDashboardFilter,
@@ -46,6 +50,7 @@ export type FilterFormValues = {
     | 'isVariableEnabled'
     | 'minSelections'
     | 'isGlobalRequirement'
+    | 'maxSelections'
   >;
 
 export type FilterFormControl = Control<FilterFormValues>;
@@ -67,6 +72,7 @@ export const toFormValues = (
     isVariableEnabled: filter ? isFilterVariableEnabled(filter) : false,
     isRequired: filter ? isFilterRequired(filter) : false,
     isGlobalRequirement: filter ? isFilterGlobalRequirement(filter) : false,
+    isSingleSelect: filter ? isFilterSingleSelect(filter) : false,
 
     // QUERY_EXPRESSION fields
     expression: queried?.expression ?? '',
@@ -87,14 +93,17 @@ export const toFormValues = (
 
 /** Normalizes the form values into the filter that gets stored. */
 export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
-  // Pulled out of the spread below so neither key is stored unless it's relevant
-  const { isRequired, isGlobalRequirement, ...rest } = values;
-  const requirement = isRequired
-    ? {
-        minSelections: 1,
-        ...(isGlobalRequirement ? { isGlobalRequirement: true } : {}),
-      }
-    : {};
+  // Pulled out of the spread below so no key is stored unless it's relevant
+  const { isRequired, isGlobalRequirement, isSingleSelect, ...rest } = values;
+  const selectionLimits = {
+    ...(isRequired
+      ? {
+          minSelections: 1,
+          ...(isGlobalRequirement ? { isGlobalRequirement: true } : {}),
+        }
+      : {}),
+    ...(isSingleSelect ? { maxSelections: 1 } : {}),
+  };
 
   if (values.type === 'STATIC_LIST') {
     return DashboardFilterSchema.parse({
@@ -103,7 +112,7 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),
-      ...requirement,
+      ...selectionLimits,
     });
   }
 
@@ -115,7 +124,7 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),
-      ...requirement,
+      ...selectionLimits,
     });
   }
 
@@ -131,6 +140,6 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
     isBroadcastEnabled: isFilterBroadcastEnabled(values),
     isVariableEnabled,
     variableName: isVariableEnabled ? getFilterVariableName(values) : undefined,
-    ...requirement,
+    ...selectionLimits,
   });
 };

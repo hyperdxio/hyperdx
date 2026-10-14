@@ -6,7 +6,12 @@ interface HiddenSeriesIndicatorProps {
   renderedSeriesCount: number;
   /** Render every series, bypassing the cap. Omit to keep the notice passive. */
   onLoadAll?: () => void;
+  /** How to reduce cardinality when "load all" isn't offered. Defaults to SQL advice. */
+  reduceCardinalityHint?: string;
 }
+
+const DEFAULT_REDUCE_CARDINALITY_HINT =
+  'Add a stricter GROUP BY, a WHERE filter, or a series limit to reduce cardinality.';
 
 /**
  * Warns that the chart returned more series than the client renders. The
@@ -17,6 +22,7 @@ export default function HiddenSeriesIndicator({
   hiddenSeriesCount,
   renderedSeriesCount,
   onLoadAll,
+  reduceCardinalityHint = DEFAULT_REDUCE_CARDINALITY_HINT,
 }: HiddenSeriesIndicatorProps) {
   if (hiddenSeriesCount <= 0) {
     return null;
@@ -29,7 +35,7 @@ export default function HiddenSeriesIndicator({
     `showing the top ${renderedSeriesCount.toLocaleString()} by peak value. ` +
     (onLoadAll
       ? `Click to load all ${total.toLocaleString()} (may be slow).`
-      : 'Add a stricter GROUP BY, a WHERE filter, or a series limit to reduce cardinality.');
+      : reduceCardinalityHint);
 
   const icon = (
     <IconAlertTriangle size={16} color="var(--color-text-warning)" />

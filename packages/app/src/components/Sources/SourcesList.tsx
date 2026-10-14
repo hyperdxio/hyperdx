@@ -30,8 +30,8 @@ import {
 import { IS_LOCAL_MODE } from '@/config';
 import { useConnections } from '@/connection';
 import { useSources } from '@/source';
-import { capitalizeFirstLetter } from '@/utils';
 
+import { SOURCE_KIND_LABELS } from './SourceForm/constants';
 import { TableSourceForm } from './SourceForm';
 
 import styles from './Sources.module.scss';
@@ -213,7 +213,7 @@ export function SourcesList({
                 </Group>
                 <Text size={subtextSize} c="dimmed" mt={4}>
                   <Group gap="xs">
-                    {capitalizeFirstLetter(s.kind)}
+                    {SOURCE_KIND_LABELS[s.kind]}
                     {s.section && (
                       <Group gap={4}>
                         <IconFolder size={iconSize} />

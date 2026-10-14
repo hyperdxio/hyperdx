@@ -174,6 +174,65 @@ ORDER BY
   $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
 `;
 
+exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a stacked_line chart 1`] = `
+"WITH
+  \`__hdx_series_limit\` AS (
+    SELECT
+      \`group\`
+    FROM
+      (
+        SELECT
+          tuple(ServiceName) AS \`group\`,
+          count() AS \`__hdx_series_rank\`
+        FROM
+          $__sourceTable
+        WHERE
+          (
+            timestamp >= $__fromTime_ms
+            AND timestamp <= $__toTime_ms
+          )
+          AND ((ServiceName ILIKE '%api%'))
+          AND $__filters
+          AND ServiceName IS NOT NULL
+        GROUP BY
+          ServiceName,
+          $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+      )
+    GROUP BY
+      \`group\`
+    ORDER BY
+      max(\`__hdx_series_rank\`) DESC,
+      \`group\`
+    LIMIT
+      10
+  )
+SELECT
+  count(),
+  AVG(toFloat64OrDefault(toString(Duration))),
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+FROM
+  $__sourceTable
+WHERE
+  (
+    timestamp >= $__fromTime_ms
+    AND timestamp <= $__toTime_ms
+  )
+  AND ((ServiceName ILIKE '%api%'))
+  AND $__filters
+  AND tuple(ServiceName) IN (
+    SELECT
+      \`group\`
+    FROM
+      \`__hdx_series_limit\`
+  )
+GROUP BY
+  ServiceName,
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`
+ORDER BY
+  $__timeInterval(timestamp) AS \`__hdx_time_bucket\`"
+`;
+
 exports[`renderBuilderConfigAsSqlTemplate full SQL output per display type generates the full macro-based SQL for a table chart 1`] = `
 "SELECT
   count(),

@@ -58,30 +58,26 @@ test.describe(
 
       await test.step('Navigate to listing and verify item is not favorited', async () => {
         await dashboardsListPage.goto();
-        await expect(
-          dashboardsListPage.getFavoritedDashboardCard(name),
-        ).toBeHidden();
+        await dashboardsListPage.selectTab('favorites');
+        await expect(dashboardsListPage.getDashboardCard(name)).toBeHidden();
+        await dashboardsListPage.selectTab('all');
       });
 
       await test.step('Favorite the dashboard', async () => {
         await dashboardsListPage.toggleFavoriteOnCard(name);
       });
 
-      await test.step('Verify the dashboard appears in the favorites section', async () => {
-        await expect(dashboardsListPage.getFavoritesSection()).toBeVisible();
-        await expect(
-          dashboardsListPage.getFavoritedDashboardCard(name),
-        ).toBeVisible();
+      await test.step('Verify the dashboard appears on the favorites tab', async () => {
+        await dashboardsListPage.selectTab('favorites');
+        await expect(dashboardsListPage.getDashboardCard(name)).toBeVisible();
       });
 
-      await test.step('Unfavorite the dashboard from the favorites section', async () => {
-        await dashboardsListPage.toggleFavoriteOnFavoritedCard(name);
+      await test.step('Unfavorite the dashboard from the favorites tab', async () => {
+        await dashboardsListPage.toggleFavoriteOnCard(name);
       });
 
       await test.step('Verify the dashboard is removed from favorites', async () => {
-        await expect(
-          dashboardsListPage.getFavoritedDashboardCard(name),
-        ).toBeHidden();
+        await expect(dashboardsListPage.getDashboardCard(name)).toBeHidden();
       });
     });
 
@@ -101,11 +97,9 @@ test.describe(
         await dashboardsListPage.toggleFavoriteOnRow(name);
       });
 
-      await test.step('Verify the favorites section appears with the dashboard', async () => {
-        await expect(dashboardsListPage.getFavoritesSection()).toBeVisible();
-        await expect(
-          dashboardsListPage.getFavoritedDashboardCard(name),
-        ).toBeVisible();
+      await test.step('Verify the favorites tab lists the dashboard', async () => {
+        await dashboardsListPage.selectTab('favorites');
+        await expect(dashboardsListPage.getDashboardRow(name)).toBeVisible();
       });
     });
 
@@ -119,17 +113,12 @@ test.describe(
         await dashboardPage.editDashboardName(name);
         await dashboardsListPage.goto();
         await dashboardsListPage.toggleFavoriteOnCard(name);
-        await expect(
-          dashboardsListPage.getFavoritedDashboardCard(name),
-        ).toBeVisible();
       });
 
       await test.step('Reload the page and verify favorite persists', async () => {
         await dashboardsListPage.goto();
-        await expect(dashboardsListPage.getFavoritesSection()).toBeVisible();
-        await expect(
-          dashboardsListPage.getFavoritedDashboardCard(name),
-        ).toBeVisible();
+        await dashboardsListPage.selectTab('favorites');
+        await expect(dashboardsListPage.getDashboardCard(name)).toBeVisible();
       });
     });
 

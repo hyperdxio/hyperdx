@@ -752,6 +752,14 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
         granularity: '5 minute',
         seriesLimit: 10,
       },
+      [DisplayType.StackedLine]: {
+        ...sourceFields,
+        displayType: DisplayType.StackedLine,
+        select: twoSeries,
+        groupBy,
+        granularity: '5 minute',
+        seriesLimit: 10,
+      },
       // Table: multi-series + group by + having + order by (no time bucket).
       [DisplayType.Table]: {
         ...sourceFields,

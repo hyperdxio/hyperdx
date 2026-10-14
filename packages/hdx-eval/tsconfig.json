@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "module": "node16",
+    // node20, not node16: CJS output may import ESM-only deps (AI SDK v7) via
+    // Node's require(esm). There is no node20 moduleResolution; node16 is the
+    // resolver TypeScript pairs with it.
+    "module": "node20",
     "moduleResolution": "node16",
     "paths": {
       "@/*": ["./src/*"]

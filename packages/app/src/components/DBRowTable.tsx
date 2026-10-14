@@ -96,7 +96,10 @@ import {
   UNDEFINED_WIDTH,
 } from '@/tableUtils';
 import { FormatTime } from '@/useFormatTime';
-import { useUserPreferences } from '@/useUserPreferences';
+import {
+  DEFAULT_ROW_CLICK_ACTION,
+  useUserPreferences,
+} from '@/useUserPreferences';
 import {
   getChartColorInfo,
   getLogLevelClass,
@@ -385,7 +388,7 @@ export const RawLogTable = memo(
     rows: Record<string, any>[];
     isLoading?: boolean;
     fetchNextPage?: (options?: FetchNextPageOptions | undefined) => any;
-    onRowDetailsClick: (row: Record<string, any>) => void;
+    onRowDetailsClick?: (row: Record<string, any>) => void;
     generateRowId: (row: Record<string, any>) => RowWhereResult;
     hasNextPage?: boolean;
     highlightedLineId?: string;
@@ -453,8 +456,24 @@ export const RawLogTable = memo(
     );
 
     const {
-      userPreferences: { isUTC },
+      userPreferences: { isUTC, rowClickAction },
     } = useUserPreferences();
+
+    // The ClickHouse dashboard's slow-query list has no side panel to open, so
+    // inline expansion is the only thing a row click can do there.
+    const canOpenSidePanel = onRowDetailsClick != null;
+
+    // Inline expansion is owned by the expand-button column, so tables that hide
+    // it (surrounding context, patterns) always fall back to the side panel.
+    const prefersInlineExpand =
+      showExpandButton &&
+      (!canOpenSidePanel ||
+        (rowClickAction ?? DEFAULT_ROW_CLICK_ACTION) === 'expand');
+
+    // Once the side panel is open it stays the active surface, so clicks keep
+    // moving it from row to row instead of expanding rows behind it.
+    const expandInlineOnRowClick =
+      prefersInlineExpand && (!canOpenSidePanel || highlightedLineId == null);
 
     const [columnSizeStorage, setColumnSizeStorage] = useLocalStorage<
       Record<string, number>
@@ -1195,9 +1214,23 @@ export const RawLogTable = memo(
                             [styles.isTruncated]: !wrapLinesEnabled,
                           })}
                           onClick={() => {
-                            _onRowExpandClick(row.original);
+                            if (expandInlineOnRowClick) {
+                              toggleRowExpansion(rowId);
+                            } else {
+                              _onRowExpandClick(row.original);
+                            }
                           }}
-                          aria-label="View details for log entry"
+                          aria-expanded={
+                            expandInlineOnRowClick ? isExpanded : undefined
+                          }
+                          // Deliberately distinct from the chevron's "Expand log
+                          // details" so the two hit targets stay addressable
+                          // apart in tests and assistive tech.
+                          aria-label={
+                            expandInlineOnRowClick
+                              ? `${isExpanded ? 'Collapse' : 'Expand'} log row`
+                              : 'View details for log entry'
+                          }
                         >
                           {row
                             .getVisibleCells()
@@ -1265,6 +1298,11 @@ export const RawLogTable = memo(
                               onToggleWrap={() =>
                                 setWrapLinesEnabled(!wrapLinesEnabled)
                               }
+                              onOpenSidePanel={
+                                prefersInlineExpand && canOpenSidePanel
+                                  ? () => _onRowExpandClick(row.original)
+                                  : undefined
+                              }
                             />
                           )}
                         </button>
@@ -1278,6 +1316,7 @@ export const RawLogTable = memo(
                         virtualKey={virtualRow.key.toString()}
                         source={source}
                         rowId={rowId}
+                        canOpenSidePanel={canOpenSidePanel}
                       >
                         {renderRowDetails?.({
                           id: rowId,
@@ -1443,6 +1482,23 @@ export function appendSelectWithAdditionalKeys(
   }
 }
 
+// Block columns are only stable row identifiers when the table persists them
+// (the virtual versions are renumbered on merge). Either one combined with the
+// primary key is unique enough: two rows would need identical key values
+// (incl. a nanosecond timestamp) plus the same insert block or the same offset
+// within their blocks. So a table that persists only one of them still skips
+// the slow full-row lookup.
+export function getPersistedBlockColumns(engineFull: string): string[] {
+  const columns: string[] = [];
+  if (engineFull.includes('enable_block_number_column = 1')) {
+    columns.push('_block_number');
+  }
+  if (engineFull.includes('enable_block_offset_column = 1')) {
+    columns.push('_block_offset');
+  }
+  return columns;
+}
+
 function getSelectLength(select: SelectList): number {
   if (typeof select === 'string') {
     return select.split(',').filter(s => s.trim().length > 0).length;
@@ -1481,16 +1537,16 @@ export function useConfigWithAdditionalSelect(
     }
 
     let extraKeys: string[] = [];
+    let hasBlockColumns = false;
 
     if (sourceId) {
-      const engineFull = tableMetadata?.engine_full ?? '';
+      const blockColumns = getPersistedBlockColumns(
+        tableMetadata?.engine_full ?? '',
+      );
 
-      const hasBlockColumns =
-        engineFull.includes('enable_block_number_column = 1') &&
-        engineFull.includes('enable_block_offset_column = 1');
-
-      if (hasBlockColumns) {
-        extraKeys = ['_block_number', '_block_offset'];
+      if (blockColumns.length > 0) {
+        extraKeys = blockColumns;
+        hasBlockColumns = true;
       } else if (columns?.some(c => c.name === '__hdx_id')) {
         extraKeys = ['__hdx_id'];
       }
@@ -1509,10 +1565,6 @@ export function useConfigWithAdditionalSelect(
     // column references like Timestamp, ServiceName) so the row WHERE clause
     // can use only these, avoiding expensive index loading on large columns
     // like Body.
-    const hasBlockColumns =
-      extraKeys.includes('_block_number') &&
-      extraKeys.includes('_block_offset');
-
     const rowKeyColumns = hasBlockColumns
       ? new Set([
           ...splitAndTrimWithBracket(partitionKey),
@@ -1909,7 +1961,9 @@ function DBSqlRowTableComponent({
         fetchNextPage={fetchNextPage}
         // onPropertySearchClick={onPropertySearchClick}
         hasNextPage={hasNextPage}
-        onRowDetailsClick={_onRowDetailsClick}
+        // Passed through conditionally so tables with no side panel (the
+        // ClickHouse dashboard's slow-query list) don't offer to open one.
+        onRowDetailsClick={onRowDetailsClick ? _onRowDetailsClick : undefined}
         onScroll={onScroll}
         generateRowId={getRowWhere}
         isError={isError}

@@ -271,6 +271,15 @@ const MetricTablesSchema = new Schema(
   { _id: false },
 );
 
+// See MinAutoGranularitySchema in @hyperdx/common-utils, shared by the metric
+// and PromQL sources. The setter mirrors that schema's '' -> undefined
+// preprocess, since validateRequest doesn't write the parsed body back to
+// req.body.
+const minAutoGranularityField = {
+  type: String,
+  set: (v: string | null | undefined) => (v === '' ? undefined : v),
+};
+
 type IMetricSource = Extract<ISource, { kind: SourceKind.Metric }>;
 export const MetricSource = Source.discriminator<IMetricSource>(
   SourceKind.Metric,
@@ -284,13 +293,7 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     logSourceId: String,
     // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
     seriesTable: String,
-    // See MetricSourceSchema.minAutoGranularity in @hyperdx/common-utils.
-    // The setter mirrors that schema's '' -> undefined preprocess, since
-    // validateRequest doesn't write the parsed body back to req.body.
-    minAutoGranularity: {
-      type: String,
-      set: (v: string | null | undefined) => (v === '' ? undefined : v),
-    },
+    minAutoGranularity: minAutoGranularityField,
   }),
 );
 
@@ -300,5 +303,7 @@ export const MetricSource = Source.discriminator<IMetricSource>(
 type IPromqlSource = Extract<ISource, { kind: SourceKind.Promql }>;
 export const PromqlSource = Source.discriminator<IPromqlSource>(
   SourceKind.Promql,
-  new Schema<Extract<ISource, { kind: SourceKind.Promql }>>({}),
+  new Schema<Extract<ISource, { kind: SourceKind.Promql }>>({
+    minAutoGranularity: minAutoGranularityField,
+  }),
 );

@@ -109,6 +109,10 @@ describe('displayTypeRequiresSource', () => {
     expect(displayTypeRequiresSource(DisplayType.StackedBar)).toBe(true);
   });
 
+  it('returns true for StackedLine', () => {
+    expect(displayTypeRequiresSource(DisplayType.StackedLine)).toBe(true);
+  });
+
   it('returns true for Pie', () => {
     expect(displayTypeRequiresSource(DisplayType.Pie)).toBe(true);
   });

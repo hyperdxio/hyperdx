@@ -139,6 +139,24 @@ describe('dashboardFilterValues', () => {
       expect(parsed.byExpression).toEqual({ Env: included('prod') });
     });
 
+    it('carries ad hoc entries through a parse and serialize round trip', () => {
+      const adhoc: DashboardFilterValue = {
+        type: 'adhoc',
+        name: 'adhoc',
+        conditions: [{ key: 'ServiceName', operator: '=~', value: 'api.*' }],
+      };
+
+      const parsed = parseDashboardFilterValues([
+        adhoc,
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
+
+      expect(serializeDashboardFilterValues(parsed)).toEqual([
+        { type: 'variable', name: 'env', values: ['prod'] },
+        adhoc,
+      ]);
+    });
+
     it('drops a sql entry it can extract nothing from, rather than carrying it', () => {
       // Carrying these would grow the URL without bound: a rebuild re-emits
       // every declared filter through `filtersToQuery`, so a filter whose
@@ -488,6 +506,38 @@ describe('dashboardFilterValues', () => {
       );
       expect(resolveFilterSelection(filter({ id: 'f2' }), parsed)).toEqual(
         included('plain'),
+      );
+    });
+  });
+
+  describe('resolveFilterSelection for a single-select filter', () => {
+    it('keeps only the first value of a variable entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ]);
+
+      expect(
+        resolveFilterSelection(staticFilter({ maxSelections: 1 }), parsed),
+      ).toEqual(included('staging'));
+    });
+
+    it('keeps only the first value of an expression entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'sql', condition: "ServiceName IN ('b', 'a')" },
+      ]);
+
+      expect(
+        resolveFilterSelection(filter({ maxSelections: 1 }), parsed),
+      ).toEqual(included('b'));
+    });
+
+    it('leaves a multi-select filter untouched', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ]);
+
+      expect(resolveFilterSelection(staticFilter(), parsed)).toEqual(
+        included('staging', 'prod'),
       );
     });
   });

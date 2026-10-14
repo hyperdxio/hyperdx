@@ -60,7 +60,11 @@ import {
   PairingWarning,
 } from '@/utils/sourceFieldSuggestions';
 
-import { DEFAULT_DATABASE, PROMETHEUS_PLACEHOLDER } from './constants';
+import {
+  DEFAULT_DATABASE,
+  PROMETHEUS_PLACEHOLDER,
+  SOURCE_KIND_LABELS,
+} from './constants';
 import {
   CORRELATION_FIELD_MAP,
   CorrelationField,
@@ -626,16 +630,31 @@ export function TableSourceForm({
                 withAsterisk
               >
                 <Group>
-                  <Radio value={SourceKind.Log} label="Log" />
-                  <Radio value={SourceKind.Trace} label="Trace" />
+                  <Radio
+                    value={SourceKind.Log}
+                    label={SOURCE_KIND_LABELS[SourceKind.Log]}
+                  />
+                  <Radio
+                    value={SourceKind.Trace}
+                    label={SOURCE_KIND_LABELS[SourceKind.Trace]}
+                  />
                   {IS_METRICS_ENABLED && (
-                    <Radio value={SourceKind.Metric} label="OTEL Metrics" />
+                    <Radio
+                      value={SourceKind.Metric}
+                      label={SOURCE_KIND_LABELS[SourceKind.Metric]}
+                    />
                   )}
                   {IS_SESSIONS_ENABLED && (
-                    <Radio value={SourceKind.Session} label="Session" />
+                    <Radio
+                      value={SourceKind.Session}
+                      label={SOURCE_KIND_LABELS[SourceKind.Session]}
+                    />
                   )}
                   {IS_PROMQL_ENABLED && (
-                    <Radio value={SourceKind.Promql} label="PromQL" />
+                    <Radio
+                      value={SourceKind.Promql}
+                      label={SOURCE_KIND_LABELS[SourceKind.Promql]}
+                    />
                   )}
                 </Group>
               </Radio.Group>

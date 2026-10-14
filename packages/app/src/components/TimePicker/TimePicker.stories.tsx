@@ -22,3 +22,20 @@ export const Default = () => {
     />
   );
 };
+
+export const LiveTail = () => {
+  const [value, setValue] = React.useState('Live Tail');
+
+  return (
+    <TimePicker
+      inputValue={value}
+      setInputValue={setValue}
+      onSearch={() => {}}
+      onRelativeSearch={_rangeMs => {
+        // no-op: story only exercises the picker UI
+      }}
+      showLive
+      isLiveMode
+    />
+  );
+};

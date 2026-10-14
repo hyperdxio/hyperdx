@@ -80,6 +80,7 @@ describe('tile-level where rejection (builder tiles)', () => {
   const builderTypes = [
     { displayType: 'line' },
     { displayType: 'stacked_bar' },
+    { displayType: 'stacked_line' },
     { displayType: 'table', extra: { groupBy: 'SpanName' } },
     { displayType: 'number' },
     { displayType: 'pie', extra: { groupBy: 'SpanName' } },
@@ -379,6 +380,13 @@ describe('getRawSqlTileMacroHints', () => {
       getRawSqlTileMacroWarnings([
         makeSqlTile({
           displayType: 'stacked_bar',
+          sourceId,
+          sqlTemplate:
+            'SELECT $__timeInterval(Timestamp) AS ts, count() FROM $__sourceTable ' +
+            'WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY ts',
+        }),
+        makeSqlTile({
+          displayType: 'stacked_line',
           sourceId,
           sqlTemplate:
             'SELECT $__timeInterval(Timestamp) AS ts, count() FROM $__sourceTable ' +
@@ -790,7 +798,7 @@ describe('getTileVariableWarnings', () => {
     expect(warnings.join('\n')).toContain('(none)');
   });
 
-  it('ignores markdown tiles, which have no expressions to check', () => {
+  it('warns about an unknown variable in a markdown tile', () => {
     const markdownTile: ExternalDashboardTileWithId = {
       id: 'md',
       x: 0,
@@ -798,11 +806,11 @@ describe('getTileVariableWarnings', () => {
       w: 12,
       h: 3,
       name: 'Notes',
-      config: { displayType: 'markdown', markdown: 'Pick a $service' },
+      config: { displayType: 'markdown', markdown: '# $service on $env' },
     };
-    expect(getTileVariableWarnings([markdownTile], [variableFilter])).toEqual(
-      [],
-    );
+    expect(getTileVariableWarnings([markdownTile], [variableFilter])).toEqual([
+      'Tile "Notes": The markdown references unknown variable $env. Available variables: service.',
+    ]);
   });
 });
 

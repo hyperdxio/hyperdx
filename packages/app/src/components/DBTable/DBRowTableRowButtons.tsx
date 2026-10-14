@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { notifications } from '@mantine/notifications';
-import { IconCopy, IconLink, IconTextWrap } from '@tabler/icons-react';
+import {
+  IconCopy,
+  IconLayoutSidebarRightExpand,
+  IconLink,
+  IconTextWrap,
+} from '@tabler/icons-react';
 
 import { RowWhereResult } from '@/hooks/useRowWhere';
 import {
@@ -19,6 +24,8 @@ interface DBRowTableRowButtonsProps {
   sourceId?: string;
   isWrapped: boolean;
   onToggleWrap: () => void;
+  /** Omitted when clicking the row already opens the side panel. */
+  onOpenSidePanel?: () => void;
 }
 
 const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
@@ -27,6 +34,7 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
   sourceId,
   isWrapped,
   onToggleWrap,
+  onOpenSidePanel,
 }) => {
   const [isCopied, setIsCopied] = useState(false);
   const [isUrlCopied, setIsUrlCopied] = useState(false);
@@ -105,6 +113,15 @@ const DBRowTableRowButtons: React.FC<DBRowTableRowButtonsProps> = ({
       >
         <IconLink size={16} />
       </DBRowTableIconButton>
+      {onOpenSidePanel && (
+        <DBRowTableIconButton
+          onClick={onOpenSidePanel}
+          variant="copy"
+          title="Open in side panel"
+        >
+          <IconLayoutSidebarRightExpand size={16} />
+        </DBRowTableIconButton>
+      )}
     </div>
   );
 };

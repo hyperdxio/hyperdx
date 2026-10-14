@@ -1,0 +1,300 @@
+/**
+ * Tags each ClickHouse query with what asked for it, so a row in
+ * `system.query_log` points back to a tile, a search, or an alert.
+ *
+ * Records what was asked for, never who asked. No team, user or session id
+ * goes in here.
+ *
+ * Two places carry the tag. `log_comment` holds the JSON and is what you query
+ * later. `query_id` gets an `hdx-<surface>-<uuid>` prefix, which is readable in
+ * `system.processes` while the query is still running.
+ *
+ * None of this changes what a query returns, so it must never throw.
+ *
+ * One exception: queries that skip settings processing (the `system.settings`,
+ * server version and Cloud-detection probes, and the onboarding connection
+ * check) get a `query_id` but an empty `log_comment`.
+ */
+
+import { z } from 'zod';
+
+/**
+ * Which part of the product sent the query.
+ */
+export const QUERY_SURFACES = [
+  'alert',
+  'api',
+  'chart-explorer',
+  'chart-preview',
+  'cli',
+  'dashboard',
+  'mcp',
+  'metadata',
+  'search',
+  'service-dashboard',
+  'session-replay',
+  'unknown',
+] as const;
+
+export type QuerySurface = (typeof QUERY_SURFACES)[number];
+
+/**
+ * What we know about one query. Everything is optional; callers fill in
+ * whatever they have.
+ *
+ * These key names end up in the log, so people write queries against them.
+ * Renaming one breaks those queries, which is what `QUERY_ATTRIBUTION_VERSION`
+ * is for.
+ */
+export type QueryAttribution = {
+  surface?: QuerySurface;
+  dashboard?: string;
+  tile?: string;
+  search?: string;
+  alert?: string;
+  source?: string;
+  trace?: string;
+  /** Anything more specific than the surface, e.g. an MCP tool name. */
+  label?: string;
+};
+
+/**
+ * Written as `v` into every log comment. Callers cannot set it per query.
+ */
+export const QUERY_ATTRIBUTION_VERSION = 1;
+
+/**
+ * ClickHouse allows far more, but the browser sends settings in the URL, and a
+ * long URL pushes the request onto a path some proxies reject.
+ */
+const MAX_LOG_COMMENT_BYTES = 1024;
+
+/** Longest any single value may be. */
+const MAX_FIELD_LENGTH = 128;
+
+/**
+ * Most useful first. If the payload runs out of room, fields at the end are
+ * dropped whole, so the result is still valid JSON.
+ *
+ * Today's fields fit the budget even at full length, with only a few bytes to
+ * spare, so the next field added will need this.
+ *
+ * Pairs rather than a list of key names, so nothing below has to read a field
+ * out of the attribution through a variable key. Built from an object literal
+ * so the `satisfies` fails to compile until a new id field is listed here;
+ * `Object.entries` keeps the insertion order.
+ */
+function idFields(
+  attribution: QueryAttribution,
+): readonly (readonly [string, string | undefined])[] {
+  return Object.entries({
+    dashboard: attribution.dashboard,
+    tile: attribution.tile,
+    search: attribution.search,
+    alert: attribution.alert,
+    source: attribution.source,
+    trace: attribution.trace,
+    label: attribution.label,
+  } satisfies Record<Exclude<keyof QueryAttribution, 'surface'>, unknown>);
+}
+
+/**
+ * Keep an allowlist of characters and cap the length.
+ *
+ * An allowlist rather than a denylist because from the browser this value
+ * travels in the URL query string. An `&`, `?` or `#` reaching the proxy ends
+ * the value early and injects a bogus parameter, which ClickHouse then
+ * rejects — so one odd character in a dashboard id would fail every query on
+ * the page, not just lose its tag.
+ *
+ * Restricting to ASCII also means the length cap counts bytes as well as
+ * characters, so the payload budget is exact, and no multi-byte character can
+ * be cut in half into something ClickHouse cannot parse as JSON.
+ *
+ * Everything we put here is an id, a route or a name we chose, so nothing
+ * legitimate is lost. Values are only ever JSON strings, never SQL.
+ */
+function sanitizeField(value: string | undefined): string | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  // Checked by code point, not a regex, so no control character has to appear
+  // in this file - a stray one would make it read as binary to grep.
+  const isAllowed = (code: number) =>
+    (code >= 0x61 && code <= 0x7a) || // a-z
+    (code >= 0x41 && code <= 0x5a) || // A-Z
+    (code >= 0x30 && code <= 0x39) || // 0-9
+    code === 0x20 || // space
+    code === 0x2d || // -
+    code === 0x2e || // .
+    code === 0x2f || // /
+    code === 0x3a || // :
+    code === 0x5f; // _
+
+  let kept = '';
+  for (const char of value) {
+    const code = char.codePointAt(0) ?? 0;
+    if (isAllowed(code)) kept += char;
+  }
+
+  const cleaned = kept.trim();
+  if (!cleaned) return undefined;
+  return cleaned.slice(0, MAX_FIELD_LENGTH);
+}
+
+function isQuerySurface(value: unknown): value is QuerySurface {
+  return (
+    typeof value === 'string' &&
+    (QUERY_SURFACES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Later layers win, but only where they have a value. So a tile can add its own
+ * id without erasing the dashboard id it sits inside.
+ */
+export function mergeQueryAttribution(
+  ...layers: (QueryAttribution | undefined)[]
+): QueryAttribution {
+  let merged: QueryAttribution = {};
+  for (const layer of layers) {
+    if (!layer) continue;
+
+    // Field by field: a spread would copy an `undefined` over a real value.
+    // The `satisfies` fails to compile until a new field is merged here.
+    merged = {
+      surface: layer.surface || merged.surface,
+      dashboard: layer.dashboard || merged.dashboard,
+      tile: layer.tile || merged.tile,
+      search: layer.search || merged.search,
+      alert: layer.alert || merged.alert,
+      source: layer.source || merged.source,
+      trace: layer.trace || merged.trace,
+      label: layer.label || merged.label,
+    } satisfies Record<keyof QueryAttribution, unknown>;
+  }
+  return merged;
+}
+
+/** Returns undefined when there is nothing worth recording. */
+export function buildLogComment(
+  attribution: QueryAttribution | undefined,
+): string | undefined {
+  if (!attribution) return undefined;
+
+  // A Map, not an object literal: insertion order is the drop order, and
+  // nothing here is written through a variable key.
+  const payload = new Map<string, string | number>([
+    ['v', QUERY_ATTRIBUTION_VERSION],
+  ]);
+
+  const surface = isQuerySurface(attribution.surface)
+    ? attribution.surface
+    : undefined;
+  if (surface) {
+    payload.set('surface', surface);
+  }
+
+  let serialized = stringify(payload);
+
+  for (const [field, raw] of idFields(attribution)) {
+    const cleaned = sanitizeField(raw);
+    if (!cleaned) continue;
+
+    payload.set(field, cleaned);
+    const candidate = stringify(payload);
+    // sanitizeField keeps only ASCII, so length is the byte count.
+    if (candidate.length > MAX_LOG_COMMENT_BYTES) {
+      payload.delete(field);
+      continue;
+    }
+    serialized = candidate;
+  }
+
+  // Only the version survived, so there is nothing to say.
+  return payload.size > 1 ? serialized : undefined;
+}
+
+/**
+ * Carries a `buildLogComment` payload on requests that reach ClickHouse through
+ * an API route rather than a ClickHouse client, such as PromQL.
+ */
+export const QUERY_ATTRIBUTION_HEADER = 'x-hyperdx-query-attribution';
+
+// `.catch` per field, so one bad value drops that field rather than the lot.
+// The `satisfies` fails to compile when this and `QueryAttribution` disagree on
+// a key: zod strips keys it doesn't know, so a field missing here would vanish
+// from the header without an error.
+const optionalString = z.string().optional().catch(undefined);
+const wireAttributionSchema = z.object({
+  surface: z.enum(QUERY_SURFACES).optional().catch(undefined),
+  dashboard: optionalString,
+  tile: optionalString,
+  search: optionalString,
+  alert: optionalString,
+  source: optionalString,
+  trace: optionalString,
+  label: optionalString,
+} satisfies Record<keyof QueryAttribution, z.ZodTypeAny>);
+
+/**
+ * The inverse of `buildLogComment`, for a payload that arrived over the wire.
+ * Unknown keys and non-string values are dropped. Values are not sanitized
+ * here: they go back through `buildLogComment` before reaching ClickHouse.
+ */
+export function parseLogComment(
+  value: string | undefined,
+): QueryAttribution | undefined {
+  if (!value || value.length > MAX_LOG_COMMENT_BYTES) return undefined;
+
+  let json: unknown;
+  try {
+    json = JSON.parse(value);
+  } catch {
+    return undefined;
+  }
+  const parsed = wireAttributionSchema.safeParse(json);
+  if (!parsed.success) return undefined;
+
+  const attribution = mergeQueryAttribution(parsed.data);
+  // Every key is present after a merge, so check for a value instead.
+  return Object.values(attribution).some(Boolean) ? attribution : undefined;
+}
+
+function stringify(payload: Map<string, string | number>): string {
+  return JSON.stringify(Object.fromEntries(payload));
+}
+
+/**
+ * Browsers hide `crypto.randomUUID` on plain HTTP, which is how plenty of
+ * self-hosted HyperDX is reached, hence the fallback. These ids only need to
+ * be distinct, not unguessable.
+ */
+function randomId(): string {
+  const cryptoObj =
+    typeof globalThis !== 'undefined' ? globalThis.crypto : undefined;
+  if (cryptoObj?.randomUUID) {
+    try {
+      return cryptoObj.randomUUID();
+    } catch {
+      // fall through
+    }
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, char => {
+    const rand = (Math.random() * 16) | 0;
+    const value = char === 'x' ? rand : (rand & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
+/**
+ * The random part is required: ClickHouse rejects a query whose id matches one
+ * already running.
+ */
+export function buildQueryId(
+  attribution: QueryAttribution | undefined,
+): string {
+  const surface = isQuerySurface(attribution?.surface)
+    ? attribution.surface
+    : 'unknown';
+  return `hdx-${surface}-${randomId()}`;
+}

@@ -2856,4 +2856,72 @@ describe('queryChartConfig Integration Tests', () => {
       expect(Number(col(rows[0], 'Error rate'))).toBeCloseTo(40, 5);
     });
   });
+
+  // The row details panel selects `*` with these settings (see useRowData).
+  describe('SELECT * with MATERIALIZED and ALIAS columns', () => {
+    const ROW_TABLE = 'select_all_columns_int_test';
+    const config: ChartConfigWithOptDateRange = {
+      connection: 'test-connection',
+      from: { databaseName: DATABASE, tableName: ROW_TABLE },
+      select: [{ valueExpression: '*' }],
+      where: 'Id = 1',
+      limit: { limit: 1 },
+    };
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${ROW_TABLE} (
+          Id UInt32,
+          StatusCode UInt16,
+          StatusClass String MATERIALIZED if(StatusCode >= 500, '5xx', 'other'),
+          IsServerError Bool ALIAS StatusCode >= 500
+        )
+        ENGINE = MergeTree
+        ORDER BY Id`,
+      });
+      await client.insert({
+        table: `${DATABASE}.${ROW_TABLE}`,
+        values: [{ Id: 1, StatusCode: 503 }],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${ROW_TABLE}`,
+      });
+    });
+
+    it('leaves MATERIALIZED and ALIAS columns out of `*` by default', async () => {
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+      expect(result.meta?.map(m => m.name)).toEqual(['Id', 'StatusCode']);
+    });
+
+    it('returns MATERIALIZED and ALIAS columns with the asterisk_include_* settings', async () => {
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: [
+          { setting: 'asterisk_include_materialized_columns', value: '1' },
+          { setting: 'asterisk_include_alias_columns', value: '1' },
+        ],
+      });
+
+      expect(result.meta?.map(m => m.name)).toEqual([
+        'Id',
+        'StatusCode',
+        'StatusClass',
+        'IsServerError',
+      ]);
+      expect(result.data[0]).toMatchObject({
+        StatusClass: '5xx',
+        IsServerError: true,
+      });
+    });
+  });
 });

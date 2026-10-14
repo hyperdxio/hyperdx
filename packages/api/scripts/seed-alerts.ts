@@ -10,16 +10,14 @@
  *   yarn seed:alerts --count 2000
  *   yarn seed:alerts --purge
  *
- * The Mongo URI defaults to the dev slot of the current git worktree, derived
- * the same way scripts/dev-env.sh derives it. Override with --mongo-uri or
- * MONGO_URI. The dev stack must be up (`yarn dev`) and registered once, since
+ * The Mongo URI defaults to the dev slot of the current git worktree, from
+ * scripts/slots.sh. Override with --mongo-uri, MONGO_URI, or HDX_DEV_SLOT.
+ * The dev stack must be up (`yarn dev`) and registered once, since
  * the script attaches everything to the existing team and log source.
  */
 import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
-import { execFileSync } from 'child_process';
 import mongoose from 'mongoose';
-import path from 'path';
 
 import Alert, { AlertSource, AlertState } from '@/models/alert';
 import Dashboard from '@/models/dashboard';
@@ -122,24 +120,17 @@ function parseArgs(argv: string[]): Args {
 }
 
 /**
- * Mongo URI of the dev slot for the worktree this script lives in, matching
- * the slot derivation in scripts/dev-env.sh (cksum of the directory name).
+ * Mongo URI of this worktree's dev stack. `yarn seed:alerts` runs through
+ * scripts/with-slots.sh, which sets HDX_DEV_MONGO_PORT.
  */
 function devSlotMongoUri(): string {
-  const repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    encoding: 'utf8',
-  }).trim();
-  const slot =
-    process.env.HDX_DEV_SLOT ??
-    execFileSync(
-      'sh',
-      ['-c', `printf '%s' "$DIR" | cksum | awk '{print $1 % 100}'`],
-      {
-        encoding: 'utf8',
-        env: { ...process.env, DIR: path.basename(repoRoot) },
-      },
-    ).trim();
-  return `mongodb://localhost:${30400 + Number(slot)}/hyperdx`;
+  const port = process.env.HDX_DEV_MONGO_PORT;
+  if (!port) {
+    throw new Error(
+      'HDX_DEV_MONGO_PORT is not set. Run this with `yarn seed:alerts`, or pass --mongo-uri.',
+    );
+  }
+  return `mongodb://localhost:${port}/hyperdx`;
 }
 
 function randomInt(minInclusive: number, maxInclusive: number): number {

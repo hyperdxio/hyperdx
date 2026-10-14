@@ -1,7 +1,13 @@
 import {
+  appliesPromqlReducer,
+  displayTypeSupportsInstantQuery,
+  displayTypeSupportsReducer,
+  getPromqlMacroInputs,
   getPromqlSeries,
   getQueriedPromqlSeries,
   isRangeQuery,
+  parsePromqlLe,
+  PROMQL_MACROS,
   promqlSeriesQueryType,
   promqlStep,
   reducePromqlSamples,
@@ -40,7 +46,11 @@ describe('getQueriedPromqlSeries', () => {
   ];
 
   it('keeps every expression for a time series chart', () => {
-    for (const displayType of [DisplayType.Line, DisplayType.StackedBar]) {
+    for (const displayType of [
+      DisplayType.Line,
+      DisplayType.StackedBar,
+      DisplayType.StackedLine,
+    ]) {
       expect(getQueriedPromqlSeries({ promqlExpression, displayType })).toEqual(
         promqlExpression,
       );
@@ -100,6 +110,39 @@ describe('getQueriedPromqlSeries', () => {
         displayType: DisplayType.Number,
       }),
     ).toEqual([]);
+  });
+});
+
+describe('displayTypeSupportsInstantQuery', () => {
+  it.each([
+    DisplayType.Number,
+    DisplayType.Table,
+    DisplayType.Pie,
+    DisplayType.Bar,
+  ])('offers an instant query on %s tiles', displayType => {
+    expect(displayTypeSupportsInstantQuery({ displayType })).toBe(true);
+  });
+
+  it.each([DisplayType.Line, DisplayType.StackedBar, DisplayType.StackedLine])(
+    'always range-queries %s tiles',
+    displayType => {
+      expect(displayTypeSupportsInstantQuery({ displayType })).toBe(false);
+    },
+  );
+});
+
+describe('displayTypeSupportsReducer', () => {
+  it.each([DisplayType.Number, DisplayType.Pie, DisplayType.Bar])(
+    'reduces range buckets on %s tiles',
+    displayType => {
+      expect(displayTypeSupportsReducer({ displayType })).toBe(true);
+    },
+  );
+
+  it('keeps every sample on table tiles', () => {
+    expect(displayTypeSupportsReducer({ displayType: DisplayType.Table })).toBe(
+      false,
+    );
   });
 });
 
@@ -193,6 +236,100 @@ describe('promqlStep with a window', () => {
     expect(promqlStep(undefined, hour)).toBe('60s');
     expect(promqlStep('auto', month)).not.toBe('60s');
   });
+
+  it('floors an auto step at minGranularitySeconds', () => {
+    expect(promqlStep('auto', hour, 300)).toBe('300s');
+    expect(promqlStep(undefined, hour, 300)).toBe('300s');
+  });
+
+  it('leaves an auto step alone when it is already above the floor', () => {
+    expect(promqlStep('auto', month, 60)).toBe(promqlStep('auto', month));
+  });
+
+  it('never floors a granularity the tile picked', () => {
+    expect(promqlStep('15 second', hour, 300)).toBe('15s');
+  });
+});
+
+describe('parsePromqlLe', () => {
+  it.each([
+    ['0.5', 0.5],
+    ['10', 10],
+    ['1e+06', 1e6],
+    ['-1', -1],
+    ['+Inf', Infinity],
+  ])('parses %s', (le, expected) => {
+    expect(parsePromqlLe(le)).toBe(expected);
+  });
+
+  it.each([undefined, '', ' ', 'abc'])('is NaN for %p', le => {
+    expect(parsePromqlLe(le)).toBeNaN();
+  });
+});
+
+describe('PROMQL_MACROS', () => {
+  const hour: [Date, Date] = [
+    new Date('2024-01-01T00:00:00Z'),
+    new Date('2024-01-01T01:00:00Z'),
+  ];
+  const expandMacro = (
+    name: string,
+    granularity: string,
+    dateRange: [Date, Date],
+    minGranularitySeconds?: number,
+  ) =>
+    PROMQL_MACROS.find(macro => macro.name === name)?.expand(
+      getPromqlMacroInputs(granularity, dateRange, minGranularitySeconds),
+    );
+
+  it('uses the step for $__interval', () => {
+    expect(expandMacro('interval', '5 minute', hour)).toBe('300s');
+    expect(expandMacro('interval', 'auto', hour)).toBe(
+      promqlStep('auto', hour),
+    );
+  });
+
+  it('rounds the window length to seconds for $__range', () => {
+    expect(expandMacro('range', '1 minute', hour)).toBe('3600s');
+    expect(
+      expandMacro('range', '1 minute', [
+        new Date('2024-01-01T00:00:00.000Z'),
+        new Date('2024-01-01T00:00:10.600Z'),
+      ]),
+    ).toBe('11s');
+    expect(expandMacro('range', '1 minute', [hour[0], hour[0]])).toBe('1s');
+  });
+
+  it('floors $__rate_interval at four scrape intervals', () => {
+    expect(expandMacro('rate_interval', '15 second', hour)).toBe('60s');
+    expect(expandMacro('rate_interval', '1 minute', hour)).toBe('75s');
+    expect(expandMacro('rate_interval', '5 minute', hour)).toBe('315s');
+  });
+
+  it('floors an auto $__interval at minGranularitySeconds', () => {
+    expect(expandMacro('interval', 'auto', hour, 300)).toBe('300s');
+  });
+
+  it('sizes $__rate_interval from minGranularitySeconds as the scrape interval', () => {
+    // max(60 + 60, 4 * 60)
+    expect(expandMacro('rate_interval', '1 minute', hour, 60)).toBe('240s');
+    // max(300 + 300, 4 * 300)
+    expect(expandMacro('rate_interval', 'auto', hour, 300)).toBe('1200s');
+  });
+
+  it('sizes $__rate_interval from the floor even when the tile picked its granularity', () => {
+    // The step stays 15s, but the data only arrives every 60s:
+    // max(15 + 60, 4 * 60)
+    expect(expandMacro('interval', '15 second', hour, 60)).toBe('15s');
+    expect(expandMacro('rate_interval', '15 second', hour, 60)).toBe('240s');
+  });
+
+  it('assumes a 15s scrape interval when there is no floor', () => {
+    expect(expandMacro('rate_interval', '15 second', hour, undefined)).toBe(
+      '60s',
+    );
+    expect(expandMacro('rate_interval', '15 second', hour, 0)).toBe('60s');
+  });
 });
 
 describe('isRangeQuery', () => {
@@ -253,5 +390,39 @@ describe('isRangeQuery', () => {
 
   it('is false when nothing is queried', () => {
     expect(isRangeQuery({ displayType: DisplayType.Line })).toBe(false);
+  });
+});
+
+describe('appliesPromqlReducer', () => {
+  it.each(['instant', 'range'] as const)(
+    'applies to a %s query on a reducing display type',
+    queryType => {
+      expect(
+        appliesPromqlReducer({
+          promqlExpression: [
+            { expression: 'up', queryType, reducer: PromqlReducer.Max },
+          ],
+          displayType: DisplayType.Pie,
+        }),
+      ).toBe(true);
+    },
+  );
+
+  it('does not apply when no reducer is named', () => {
+    expect(
+      appliesPromqlReducer({
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+        displayType: DisplayType.Number,
+      }),
+    ).toBe(false);
+  });
+
+  it('does not apply to a display type that plots every sample', () => {
+    expect(
+      appliesPromqlReducer({
+        promqlExpression: [{ expression: 'up', reducer: PromqlReducer.Max }],
+        displayType: DisplayType.Line,
+      }),
+    ).toBe(false);
   });
 });

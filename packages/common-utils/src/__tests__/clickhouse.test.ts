@@ -2,6 +2,7 @@ import {
   ChSql,
   chSqlToAliasMap,
   convertCHDataTypeToJSType,
+  isCHFixedStringType,
   JSDataType,
 } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
@@ -138,6 +139,20 @@ describe('convertCHDataTypeToJSType - unit - type', () => {
     const dataType = ')@#D)#Q$J)($*()@random type should not pass';
     const res = convertCHDataTypeToJSType(dataType);
     expect(res).toBeNull();
+  });
+});
+
+describe('isCHFixedStringType', () => {
+  it('matches FixedString and wrappers, and ignores String', () => {
+    expect(isCHFixedStringType('FixedString(32)')).toBe(true);
+    expect(isCHFixedStringType('Nullable(FixedString(32))')).toBe(true);
+    expect(isCHFixedStringType('LowCardinality(FixedString(16))')).toBe(true);
+    expect(
+      isCHFixedStringType('LowCardinality(Nullable(FixedString(32)))'),
+    ).toBe(true);
+    expect(isCHFixedStringType('String')).toBe(false);
+    expect(isCHFixedStringType('Nullable(String)')).toBe(false);
+    expect(isCHFixedStringType('LowCardinality(String)')).toBe(false);
   });
 });
 
