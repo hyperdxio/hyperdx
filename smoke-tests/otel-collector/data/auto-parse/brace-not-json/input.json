@@ -1,0 +1,59 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "auto-parse"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "brace-not-json"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999580000000000",
+              "body": {
+                "stringValue": "{Name:x Code:1}"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000001",
+              "body": {
+                "stringValue": "{'a': 1}"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000002",
+              "body": {
+                "stringValue": "{}"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000003",
+              "body": {
+                "stringValue": "{ \"k\": unquoted }"
+              }
+            },
+            {
+              "timeUnixNano": "1901999580000000004",
+              "body": {
+                "stringValue": "{\"k\": \"v\""
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

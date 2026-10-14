@@ -197,7 +197,7 @@ describe('resolveTileConfig', () => {
         name: 'PromQL',
         configType: 'promql',
         promqlExpression: 'up',
-        connection: 'conn-1',
+        source: 'source-1',
         displayType: DisplayType.Line,
       } as SavedChartConfig,
       source: undefined,

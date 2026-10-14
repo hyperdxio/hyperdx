@@ -1,4 +1,7 @@
-import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
+import {
+  DashboardFilter,
+  StaticListDashboardFilter,
+} from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -369,7 +372,7 @@ describe('DashboardFiltersModal', () => {
     await user.click(screen.getByTestId('save-filter-button'));
 
     await waitFor(() => expect(onSaveFilter).toHaveBeenCalledTimes(1));
-    const saved: DashboardFilter = onSaveFilter.mock.calls[0][0];
+    const saved: StaticListDashboardFilter = onSaveFilter.mock.calls[0][0];
     expect(saved.minSelections).toBe(1);
     expect(saved.isGlobalRequirement).toBeUndefined();
 
@@ -392,7 +395,7 @@ describe('DashboardFiltersModal', () => {
     await user.click(screen.getByTestId('save-filter-button'));
 
     await waitFor(() => expect(onSaveFilter).toHaveBeenCalledTimes(1));
-    const saved: DashboardFilter = onSaveFilter.mock.calls[0][0];
+    const saved: StaticListDashboardFilter = onSaveFilter.mock.calls[0][0];
     expect(saved.maxSelections).toBe(1);
     expect(saved.minSelections).toBeUndefined();
 
@@ -433,7 +436,7 @@ describe('DashboardFiltersModal', () => {
     await user.click(screen.getByTestId('save-filter-button'));
 
     await waitFor(() => expect(onSaveFilter).toHaveBeenCalledTimes(1));
-    const saved: DashboardFilter = onSaveFilter.mock.calls[0][0];
+    const saved: StaticListDashboardFilter = onSaveFilter.mock.calls[0][0];
     expect(saved.minSelections).toBe(1);
     expect(saved.isGlobalRequirement).toBe(true);
 
