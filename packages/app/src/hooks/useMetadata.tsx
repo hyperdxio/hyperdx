@@ -477,12 +477,25 @@ export function useMultipleGetKeyValues(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
+  const queryClient = useQueryClient();
   const chartConfigsArr = toArray(chartConfigs);
 
   const { enabled = true } = options || {};
   const { isLoading: isLoadingMe } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
   const maxKeys = useFilterKeysFetchLimit();
+
+  // 'exact' lookups don't stream, so they keep the client's defaults rather
+  // than the streaming hook's. An unset default stays `undefined` here, which
+  // React Query reads as its own default. `refetchOnWindowFocus` is React
+  // Query's default outright: the client's can be a function typed against
+  // `Query<unknown>`, which doesn't fit this query's data.
+  const { retry, structuralSharing } =
+    queryClient.getDefaultOptions().queries ?? {};
+  const exactModeOptions =
+    mode === 'exact'
+      ? { retry, structuralSharing, refetchOnWindowFocus: true }
+      : {};
 
   const query = useStreamingQuery<Facet>({
     queryKey: [
@@ -558,6 +571,7 @@ export function useMultipleGetKeyValues(
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     placeholderData: keepPreviousData,
+    ...exactModeOptions,
     ...options,
     enabled: !!enabled && !!keys.length && !isLoadingSources && !isLoadingMe,
   });

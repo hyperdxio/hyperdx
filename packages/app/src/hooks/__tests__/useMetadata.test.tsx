@@ -508,6 +508,21 @@ describe('useGetKeyValues', () => {
     },
   );
 
+  it("retries a failed 'exact' mode lookup per the client's defaults", async () => {
+    queryClient.setDefaultOptions({ queries: { retry: 1, retryDelay: 0 } });
+    mockLookups.exact(new Error('transient'), [
+      { key: keys[0], value: ['api'] },
+    ]);
+
+    const { result } = renderValues({
+      mode: 'exact',
+      chartConfigs: [logsConfig],
+    });
+
+    await waitForSettled(result);
+    expect(result.current.data).toEqual([{ key: keys[0], value: ['api'] }]);
+  });
+
   it('should be in a loading state while fetching sources', async () => {
     jest.mocked(useSources).mockReturnValue({
       data: undefined,
