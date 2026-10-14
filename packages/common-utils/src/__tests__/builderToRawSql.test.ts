@@ -566,6 +566,7 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
           configType: 'promql',
           promqlExpression: 'up',
           connection: 'test-connection',
+          source: 'promql-source',
         },
         mockMetadata,
       ),

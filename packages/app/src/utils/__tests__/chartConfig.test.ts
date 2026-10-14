@@ -6,6 +6,7 @@ describe('stripClientSideConfigFields', () => {
   const promqlConfig = {
     configType: 'promql' as const,
     connection: 'conn',
+    source: 'source-promql',
     promqlExpression: [
       {
         expression: 'up',
