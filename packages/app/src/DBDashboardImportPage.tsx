@@ -368,35 +368,26 @@ function FileSelection({
 /**
  * Resolve a filter's templated `appliesToSourceIds` (an ordered list of
  * source names from the exported file) against the current workspace's
- * sources. Names that don't match any current source are dropped.
+ * sources.
  *
- * `resolvedIndexOf(name)` returns the position of `name` in the surviving
- * `ids` array (case-insensitive), or -1 if the name wasn't present in the
- * template or didn't resolve.
+ * `slots` is aligned one-to-one with `templateNames`, with '' for names that
+ * don't match any current source. `ids` is the matched ids alone.
  */
 function resolveAppliesToSources(
   templateNames: string[] | undefined,
   sources: TSource[] | undefined,
   allowedKinds?: SourceKind[],
-): { ids: string[]; resolvedIndexOf: (name: string) => number } {
-  const ids: string[] = [];
-  const resolvedIndexByLowerName = new Map<string, number>();
-  templateNames?.forEach(name => {
-    const match = sources?.find(
-      source =>
-        source.name.toLowerCase() === name.toLowerCase() &&
-        (!allowedKinds || allowedKinds.includes(source.kind)),
-    );
-    if (match) {
-      resolvedIndexByLowerName.set(name.toLowerCase(), ids.length);
-      ids.push(match.id);
-    }
-  });
-  return {
-    ids,
-    resolvedIndexOf: name =>
-      resolvedIndexByLowerName.get(name.toLowerCase()) ?? -1,
-  };
+): { ids: string[]; slots: string[] } {
+  const slots =
+    templateNames?.map(
+      name =>
+        sources?.find(
+          source =>
+            source.name.toLowerCase() === name.toLowerCase() &&
+            (!allowedKinds || allowedKinds.includes(source.kind)),
+        )?.id ?? '',
+    ) ?? [];
+  return { ids: slots.filter(Boolean), slots };
 }
 
 /** Whether the filter names a single source that import must map. */
@@ -600,7 +591,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     [input, sources],
   );
 
-  const { handleSubmit, getFieldState, control, setValue, getValues } =
+  const { handleSubmit, getFieldState, control, setValue } =
     useForm<MappingFormState>({
       resolver: zodResolver(formSchema),
       mode: 'onChange',
@@ -621,8 +612,8 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
   const autoMappedInputRef = useRef<DashboardTemplate | null>(null);
 
   // Per multiselect field, the mapped ids aligned one-to-one with the
-  // template's resolved source names. The form value drops empties and
-  // duplicates, so it can't be spliced by template position itself.
+  // template's source names ('' where unmapped). The form value drops empties
+  // and duplicates, so it can't be spliced by template position itself.
   const multiMappingSlotsRef = useRef(new Map<string, string[]>());
 
   // When the input changes, reset the form
@@ -838,8 +829,7 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     }
 
     // Propagate changes to multiselects (applies-to lists and ad hoc source
-    // lists). Anchor the splice on the resolver's stripped-list index so it
-    // lines up with the slots (which have unresolved template names dropped).
+    // lists).
     const propagateToMultiMapping = (
       templateNames: string[] | undefined,
       key:
@@ -856,24 +846,16 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
         !allowedKinds.includes(selectedSource.kind)
       )
         return;
-      const { resolvedIndexOf } = resolveAppliesToSources(
-        templateNames,
-        sources,
-        allowedKinds,
+      // Slot by template position, not resolved position, so a name that
+      // didn't auto-resolve can still be filled in by a remap.
+      const slots = (
+        multiMappingSlotsRef.current.get(key) ??
+        resolveAppliesToSources(templateNames, sources, allowedKinds).slots
+      ).map((id, i) =>
+        templateNames[i] === inputSourceName ? selectedSourceId : id,
       );
-      const indexToUpdate = resolvedIndexOf(inputSourceName);
-      if (indexToUpdate >= 0) {
-        // Until the first propagation the form value is the untouched
-        // auto-mapped list, which is still aligned with the template.
-        const slots = (
-          multiMappingSlotsRef.current.get(key) ??
-          getValues(key) ??
-          []
-        ).slice();
-        slots[indexToUpdate] = selectedSourceId;
-        multiMappingSlotsRef.current.set(key, slots);
-        setValue(key, uniq(slots.filter(Boolean)), { shouldValidate: true });
-      }
+      multiMappingSlotsRef.current.set(key, slots);
+      setValue(key, uniq(slots.filter(Boolean)), { shouldValidate: true });
     };
     input.filters?.forEach((filter, filterIdx) => {
       propagateToMultiMapping(
@@ -897,7 +879,6 @@ export function Mapping({ input }: { input: DashboardTemplate }) {
     input.tiles,
     input.filters,
     getFieldState,
-    getValues,
     setValue,
     sources,
   ]);

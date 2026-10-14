@@ -997,6 +997,64 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   );
 
   test(
+    'should fill unresolved ad hoc filter sources and applies-to sources from a tile remap',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Ad Hoc Filter Unresolved Remap ${ts}`;
+      const missingLogsName = `Exported Logs ${ts}`;
+      const template = makeAdhocFilterTemplate({
+        dashboardName,
+        tileSourceName: missingLogsName,
+        sources: [missingLogsName],
+        appliesToSourceIds: [missingLogsName],
+      });
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+      });
+
+      await test.step('Map the tile source only', async () => {
+        await dashboardImportPage.selectMapping(
+          ADHOC_TILE_NAME,
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Finish import', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the filter picked up the tile mapping', async () => {
+        const logsSourceId = await getSourceId(
+          page,
+          'log',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+
+        const dashboard = await fetchDashboardById(
+          page,
+          dashboardPage.getCurrentDashboardId(),
+        );
+        expect(dashboard.filters[0]).toMatchObject({
+          type: 'ADHOC',
+          sources: [logsSourceId],
+          appliesToSourceIds: [logsSourceId],
+        });
+      });
+    },
+  );
+
+  test(
     'should block the import until a queried filter has a source picked',
     { tag: '@full-stack' },
     async ({ page }) => {
