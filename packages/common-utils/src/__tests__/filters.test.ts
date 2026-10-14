@@ -1,4 +1,6 @@
 import {
+  adhocConditionsToFilters,
+  adhocConditionsToPromqlFilters,
   deriveVariableName,
   doesFilterApplyToSource,
   FilterState,
@@ -11,7 +13,10 @@ import {
   getFilterExpression,
   getFilterVariableName,
   getPendingFilterValuesVariables,
+  getPromqlFilters,
+  getSqlFilters,
   hasFilterEffect,
+  isAdhocConditionSupported,
   isFilterBroadcastEnabled,
   isFilterGlobalRequirement,
   isFilterRequired,
@@ -29,9 +34,12 @@ import {
 } from '@/filters';
 import type {
   AdhocDashboardFilter,
+  AdhocFilterOperator,
+  AdhocFilterSourceType,
   ChartVariable,
   DashboardFilter,
   Filter,
+  PromqlConditionFilter,
   QueryExpressionDashboardFilter,
   StaticListDashboardFilter,
 } from '@/types';
@@ -1756,6 +1764,148 @@ describe('filters', () => {
           appliesToSourceIds: ['traces'],
         }),
       ).toEqual(['traces']);
+    });
+  });
+
+  describe('adhocConditionsToFilters', () => {
+    const conditionFor = (
+      operator: AdhocFilterOperator,
+      value = 'api',
+      key = 'ServiceName',
+    ) => adhocConditionsToFilters([{ key, operator, value }]);
+
+    it.each<[AdhocFilterOperator, string]>([
+      ['=', "toString(ServiceName) = 'api'"],
+      ['!=', "toString(ServiceName) != 'api'"],
+      ['=~', "match(toString(ServiceName), 'api')"],
+      ['!~', "NOT match(toString(ServiceName), 'api')"],
+      ['LIKE', "toString(ServiceName) LIKE 'api'"],
+      ['NOT LIKE', "toString(ServiceName) NOT LIKE 'api'"],
+    ])('renders %s', (operator, condition) => {
+      expect(conditionFor(operator)).toEqual([{ type: 'sql', condition }]);
+    });
+
+    it('passes LIKE patterns through as written', () => {
+      expect(conditionFor('LIKE', '%err_r%')).toEqual([
+        { type: 'sql', condition: "toString(ServiceName) LIKE '%err_r%'" },
+      ]);
+    });
+
+    it('escapes quotes and backslashes in values', () => {
+      expect(conditionFor('=', "it's \\ here")).toEqual([
+        {
+          type: 'sql',
+          condition: "toString(ServiceName) = 'it''s \\\\ here'",
+        },
+      ]);
+    });
+
+    it('uses keys verbatim', () => {
+      expect(conditionFor('=', 'api', "`log-attrs`['service.name']")).toEqual([
+        {
+          type: 'sql',
+          condition: "toString(`log-attrs`['service.name']) = 'api'",
+        },
+      ]);
+    });
+
+    it('returns no filters for no conditions', () => {
+      expect(adhocConditionsToFilters([])).toEqual([]);
+    });
+  });
+
+  describe('adhocConditionsToPromqlFilters', () => {
+    const matcherFor = (
+      operator: AdhocFilterOperator,
+      value = 'api',
+      key = 'service',
+    ) =>
+      adhocConditionsToPromqlFilters([{ key, operator, value }]).map(
+        filter => filter.condition,
+      );
+
+    it.each<[AdhocFilterOperator, string]>([
+      ['=', 'service="api"'],
+      ['!=', 'service!="api"'],
+      ['=~', 'service=~"api"'],
+      ['!~', 'service!~"api"'],
+    ])('renders %s', (operator, matcher) => {
+      expect(matcherFor(operator)).toEqual([matcher]);
+    });
+
+    it.each<AdhocFilterOperator>(['LIKE', 'NOT LIKE'])(
+      'skips %s rather than throwing',
+      operator => {
+        expect(
+          adhocConditionsToPromqlFilters([
+            { key: 'service', operator, value: 'api' },
+            { key: 'env', operator: '=', value: 'prod' },
+          ]),
+        ).toEqual([{ type: 'promql', condition: 'env="prod"' }]);
+      },
+    );
+
+    it('escapes quotes and backslashes in values', () => {
+      expect(matcherFor('=', 'say "hi" \\ here')).toEqual([
+        'service="say \\"hi\\" \\\\ here"',
+      ]);
+    });
+
+    it('escapes newlines in values and label names', () => {
+      expect(matcherFor('=', 'a\nb', 'odd\nlabel')).toEqual([
+        '"odd\\nlabel"="a\\nb"',
+      ]);
+    });
+
+    it('quotes label names outside the legacy charset', () => {
+      expect(matcherFor('=', 'api', 'service.name')).toEqual([
+        '"service.name"="api"',
+      ]);
+    });
+
+    it('renders one PromQL filter per condition', () => {
+      expect(
+        adhocConditionsToPromqlFilters([
+          { key: 'service', operator: '=', value: 'api' },
+          { key: 'service', operator: '!=', value: 'web' },
+        ]),
+      ).toEqual([
+        { type: 'promql', condition: 'service="api"' },
+        { type: 'promql', condition: 'service!="web"' },
+      ]);
+    });
+  });
+
+  describe('isAdhocConditionSupported', () => {
+    it.each<[AdhocFilterSourceType, AdhocFilterOperator, boolean]>([
+      ['sql', 'LIKE', true],
+      ['sql', 'NOT LIKE', true],
+      ['promql', 'LIKE', false],
+      ['promql', 'NOT LIKE', false],
+      ['promql', '=~', true],
+      ['promql', '!=', true],
+    ])('%s supports %s: %s', (sourceType, operator, expected) => {
+      expect(
+        isAdhocConditionSupported(sourceType, {
+          key: 'service',
+          operator,
+          value: 'api',
+        }),
+      ).toBe(expected);
+    });
+  });
+
+  describe('getSqlFilters / getPromqlFilters', () => {
+    const sql: Filter = { type: 'sql', condition: "env = 'prod'" };
+    const lucene: Filter = { type: 'lucene', condition: 'level:error' };
+    const promql: PromqlConditionFilter = {
+      type: 'promql',
+      condition: 'job="api"',
+    };
+
+    it('splits broadcast filters by query language', () => {
+      expect(getSqlFilters([sql, promql, lucene])).toEqual([sql, lucene]);
+      expect(getPromqlFilters([sql, promql, lucene])).toEqual([promql]);
     });
   });
 

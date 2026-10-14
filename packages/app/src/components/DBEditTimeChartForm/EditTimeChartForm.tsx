@@ -21,11 +21,11 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  BroadcastFilter,
   ChartConfigWithDateRange,
   ChartVariable,
   DashboardFilter,
   DisplayType,
-  Filter,
   PromqlHeatmapMode,
   SavedChartConfig,
   SourceKind,
@@ -111,6 +111,7 @@ import {
   displayTypeToActiveTab,
   resolveTilePreviewFilters,
   TABS_WITH_GENERATED_SQL,
+  withBroadcastFilters,
   zSavedChartConfig,
 } from './utils';
 
@@ -120,7 +121,7 @@ type EditTimeChartFormProps = {
   /** Variables and their selected values, from the parent dashboard (if one exists). */
   variables?: ChartVariable[];
   /** Function returning the dashboard's broadcast filters for the given source, if any. */
-  getDashboardFilters?: (sourceId: string | undefined) => Filter[];
+  getDashboardFilters?: (sourceId: string | undefined) => BroadcastFilter[];
   /** The dashboard's required filters that have nothing selected, if any */
   unsatisfiedRequiredFilters?: DashboardFilter[];
   displayedTimeInputValue?: string;
@@ -543,8 +544,7 @@ export default function EditTimeChartForm({
       return queriedConfig;
     }
     return {
-      ...queriedConfig,
-      filters: previewDashboardFilters?.filters,
+      ...withBroadcastFilters(queriedConfig, previewDashboardFilters?.filters),
       variables: previewDashboardFilters?.variables,
     };
   }, [queriedConfig, previewDashboardFilters]);
