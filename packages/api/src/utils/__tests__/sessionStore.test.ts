@@ -156,4 +156,21 @@ describe('MongoSessionStore', () => {
     expect(mockStores).toHaveLength(3);
     expect(mockStores[2].get).toHaveBeenCalled();
   });
+
+  it('close() closes the current store and the next operation builds a new one', async () => {
+    mockMongoConnected = true;
+    const store = new MongoSessionStore();
+    await getSession(store);
+
+    await store.close();
+
+    expect(mockStores[0].close).toHaveBeenCalled();
+    expect((await getSession(store)).err).toBeNull();
+    expect(mockStores).toHaveLength(2);
+    expect(mockStores[1].get).toHaveBeenCalled();
+  });
+
+  it('close() resolves when no store was created', async () => {
+    await expect(new MongoSessionStore().close()).resolves.toBeUndefined();
+  });
 });

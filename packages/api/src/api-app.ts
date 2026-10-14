@@ -27,6 +27,9 @@ registerAITelemetry();
 
 const app: express.Application = express();
 
+// Exported so Server.shutdown can close the store's MongoClient.
+export const sessionStore = new MongoSessionStore();
+
 const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   // Use a slot-specific cookie name in dev so multiple worktrees on localhost
   // don't overwrite each other's session cookies.
@@ -42,7 +45,7 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
   },
   rolling: true,
-  store: new MongoSessionStore(),
+  store: sessionStore,
 };
 
 app.set('trust proxy', 1);
