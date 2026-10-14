@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import cx from 'classnames';
+import { inferNumericColumn } from '@hyperdx/common-utils/dist/clickhouse';
 import { isRatioChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   isBuilderChartConfig,
@@ -16,9 +17,11 @@ import { SortingState } from '@tanstack/react-table';
 
 import {
   buildMVDateRangeIndicator,
+  convertToPromqlTableChartConfig,
   convertToTableChartConfig,
 } from '@/ChartUtils';
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
@@ -86,9 +89,16 @@ export default function DBTableChart({
     [onSortingChange],
   );
 
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+
   const queriedConfig = useMemo(() => {
     if (isRawSqlChartConfig(config)) return config;
-    if (isPromqlChartConfig(config)) return config;
+    if (isPromqlChartConfig(config)) {
+      return convertToPromqlTableChartConfig({
+        ...config,
+        minGranularitySeconds,
+      });
+    }
 
     const _config = convertToTableChartConfig(config);
 
@@ -101,7 +111,7 @@ export default function DBTableChart({
       });
     }
     return _config;
-  }, [config, effectiveSort]);
+  }, [config, effectiveSort, minGranularitySeconds]);
 
   const { data: mvOptimizationData } = useMVOptimizationExplanation(
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,
@@ -206,6 +216,14 @@ export default function DBTableChart({
       const seriesCount = getBuilderValueColumnCount(queriedConfig);
       const groupByCount = allKeys.length - seriesCount;
       groupByKeys = groupByCount > 0 ? allKeys.slice(-groupByCount) : [];
+    } else if (isPromqlChartConfig(queriedConfig)) {
+      // A PromQL table projects the sample value plus a column per Prometheus
+      // label (and a timestamp for range queries). Only the value column is
+      // numeric, so only it takes the tile's number format.
+      const numericKeys = new Set(
+        inferNumericColumn(data?.meta ?? [])?.map(column => column.name),
+      );
+      groupByKeys = allKeys.filter(key => !numericKeys.has(key));
     }
 
     // Builder table configs may opt to render Group By columns
@@ -326,7 +344,9 @@ export default function DBTableChart({
             isPlaceholderData || getRowAction ? undefined : getRowSearchLink
           }
           sorting={effectiveSort}
-          enableClientSideSorting={isRawSqlChartConfig(config)}
+          enableClientSideSorting={
+            isRawSqlChartConfig(config) || isPromqlChartConfig(config)
+          }
           onSortingChange={handleSortingChange}
           variant={variant}
           alternateRowBackground={!!queriedConfig.alternateRowBackground}

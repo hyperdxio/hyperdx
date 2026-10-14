@@ -102,6 +102,7 @@ describe('usePromqlLabelFilterValues', () => {
       table: 'metrics',
       start: 1704067200,
       end: 1704153600,
+      attribution: expect.objectContaining({ surface: 'metadata' }),
     });
     expect(result.current.data.get('promql1')).toEqual({
       values: ['api', 'web'],

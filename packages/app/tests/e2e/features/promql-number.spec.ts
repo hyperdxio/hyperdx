@@ -38,7 +38,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL number tile');
         await editor.setChartType(DisplayType.Number);
       });
@@ -98,7 +98,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL range reducer tile');
         await editor.setChartType(DisplayType.Number);
         // Counts the samples in the window, so the reducer's effect on the
@@ -111,7 +111,7 @@ test.describe(
         // rather than claiming the instant query it is not running.
         await expect(
           page.getByTestId('promql-query-type-control-0'),
-        ).toContainText('Settings: Range');
+        ).toContainText('Settings: Range / Last');
       });
 
       await test.step('Count over the range reports more than one sample', async () => {
@@ -126,6 +126,27 @@ test.describe(
         await editor.setPromqlQueryType('Instant');
         await editor.runQuery(false);
 
+        // Count still applies, but an instant vector has one sample per series.
+        await expect(value).toHaveText('1', { timeout: 30000 });
+        await expect(
+          page.getByRole('combobox', { name: 'PromQL reducer' }),
+        ).toHaveValue('Count');
+      });
+
+      await test.step('An instant range selector is reduced too', async () => {
+        // A range selector evaluates to every sample in the window, even as an
+        // instant query. The expression is set after the query type: it does
+        // not end in `}`, so the autocomplete popup can stay open.
+        await editor.replacePromqlExpression(`${ONE_SERIES}[5m]`);
+        await editor.runQuery(false);
+
+        await expect(value).not.toHaveText('1', { timeout: 30000 });
+        await expect(
+          page.getByTestId('multiple-values-indicator'),
+        ).toBeHidden();
+
+        await editor.replacePromqlExpression(ONE_SERIES);
+        await editor.runQuery(false);
         await expect(value).toHaveText('1', { timeout: 30000 });
       });
 
@@ -151,6 +172,26 @@ test.describe(
         await editor.setPromqlQueryType('Instant');
         await editor.runQuery(false);
         await expect(editorGranularity).toBeHidden();
+      });
+
+      await test.step('A background chart plots the range behind the value', async () => {
+        await editor.setPromqlQueryType('Range', { reducer: 'Max' });
+        await editor.setBackgroundChart('Area');
+        await editor.runQuery(false);
+
+        await expect(
+          page.getByTestId('number-tile-background-chart'),
+        ).toBeVisible({ timeout: 30000 });
+      });
+
+      await test.step('Switching to instant drops the background chart', async () => {
+        await editor.setPromqlQueryType('Instant');
+        await editor.runQuery(false);
+
+        // An instant query has a single point, so there is no trend to plot.
+        await expect(
+          page.getByTestId('number-tile-background-chart'),
+        ).toBeHidden();
       });
 
       await test.step('The range choice round-trips through a save', async () => {

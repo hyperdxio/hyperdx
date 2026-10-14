@@ -69,6 +69,12 @@ describe('createVariableCompletionSource', () => {
       expected: { from: 0, to: 4, pattern: '$env' },
     },
     {
+      name: 'macro inside a range selector stops before the bracket',
+      doc: 'rate(x[$__ra])',
+      pos: 12, // rate(x[$__ra|])
+      expected: { from: 7, to: 12, pattern: '$__ra' },
+    },
+    {
       name: 'bare reference followed by an adjacent reference stops at it',
       doc: '$env$other',
       pos: 4, // $env|$other

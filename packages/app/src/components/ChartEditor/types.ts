@@ -28,9 +28,13 @@ export type SavedChartConfigWithSelectArray = Omit<
  * `promqlExpressions` is the PromQL counterpart, holding the array form of
  * `promqlExpression` (which a saved tile may carry as a bare string).
  **/
-export type ChartEditorFormState = Partial<BuilderSavedChartConfig> &
+export type ChartEditorFormState = Partial<
+  Omit<BuilderSavedChartConfig, 'heatmap'>
+> &
   Partial<Omit<RawSqlSavedChartConfig, 'configType'>> &
-  Partial<Omit<PromqlSavedChartConfig, 'configType'>> & {
+  Partial<Omit<PromqlSavedChartConfig, 'configType' | 'heatmap'>> & {
+    // The PromQL settings are a superset of the builder's.
+    heatmap?: PromqlSavedChartConfig['heatmap'];
     alert?: BuilderSavedChartConfig['alert'] & {
       id?: string;
       createdBy?: AlertWithCreatedBy['createdBy'];

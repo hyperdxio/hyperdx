@@ -19,6 +19,7 @@ import {
   SavedChartConfig,
   VariableFilterValue,
 } from '@/types';
+import { isFilterSingleSelect } from '@/variables';
 
 /**
  * A dashboards filter/variable state is persisted as an array of entries in one of two
@@ -146,6 +147,22 @@ export function filterSelectionKey(
  * the same filter, including when it holds no values.
  */
 export function resolveFilterSelection(
+  filter: DashboardFilter,
+  parsed: Pick<ParsedDashboardFilterValues, 'byExpression'> & {
+    byVariable: ReadonlyMap<string, string[]>;
+  },
+): FilterSelection | undefined {
+  const selection = resolveUncappedFilterSelection(filter, parsed);
+  if (!selection || !isFilterSingleSelect(filter)) return selection;
+  if (selection.included.size <= 1) return selection;
+
+  // State written before the filter became single-select (or by hand) can hold
+  // several values; only the first is honored.
+  const [first] = selection.included;
+  return { ...selection, included: new Set([first]) };
+}
+
+function resolveUncappedFilterSelection(
   filter: DashboardFilter,
   parsed: Pick<ParsedDashboardFilterValues, 'byExpression'> & {
     byVariable: ReadonlyMap<string, string[]>;

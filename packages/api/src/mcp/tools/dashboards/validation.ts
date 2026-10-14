@@ -1,3 +1,4 @@
+import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import type { FilterForVariableDeclaration } from '@hyperdx/common-utils/dist/filters';
 import {
   getDashboardVariableDeclarations,
@@ -18,11 +19,11 @@ import {
   DisplayType,
   QueryExpressionDashboardFilter,
   SavedChartConfig,
-  SearchConditionLanguage,
 } from '@hyperdx/common-utils/dist/types';
 import {
   getVariableReferences,
   mapBuilderVariableTemplates,
+  TemplateLanguage,
   validateVariableReferencesInTemplate,
 } from '@hyperdx/common-utils/dist/variables';
 
@@ -89,9 +90,6 @@ export function getRawSqlMissingSourceError(
   );
 }
 
-/** Raw SQL display types that plot a value over time. */
-const TIME_SERIES_DISPLAY_TYPES = ['line', 'stacked_bar'];
-
 /**
  * Returns one advisory string per raw SQL tile that omits a strongly
  * recommended macro:
@@ -121,7 +119,7 @@ export function getRawSqlTileMacroWarnings(
       );
     }
     if (
-      TIME_SERIES_DISPLAY_TYPES.includes(displayType) &&
+      displayType in TIME_SERIES_DISPLAY_TYPE_BY_NAME &&
       !INTERVAL_MACROS.some(macro => hasMacro(sqlTemplate, macro))
     ) {
       missing.push(
@@ -244,6 +242,19 @@ export function getFilterVariableWarnings(
   return warnings;
 }
 
+function variableIssueSubject(language: TemplateLanguage): string {
+  switch (language) {
+    case 'sql':
+      return 'SQL';
+    case 'lucene':
+      return 'The Lucene filter';
+    case 'promql':
+      return 'The PromQL expression';
+    case 'markdown':
+      return 'The markdown';
+  }
+}
+
 /**
  * Non-blocking checks on the dashboard variables a tile's expressions
  * reference, run against the variables the dashboard's filters actually
@@ -273,9 +284,9 @@ export function getTileVariableWarnings(
     }
 
     const issues: string[] = [];
-    const validate = (template: string, language: SearchConditionLanguage) => {
+    const validate = (template: string, language: TemplateLanguage) => {
       const result = validateVariableReferencesInTemplate(template, variables, {
-        subject: language === 'lucene' ? 'The Lucene filter' : 'SQL',
+        subject: variableIssueSubject(language),
         language,
       });
       issues.push(...result.errors, ...result.warnings);
@@ -285,8 +296,10 @@ export function getTileVariableWarnings(
       validate(config.sqlTemplate, 'sql');
     } else if (
       isBuilderSavedChartConfig(config) &&
-      config.displayType !== DisplayType.Markdown
+      config.displayType === DisplayType.Markdown
     ) {
+      if (config.markdown) validate(config.markdown, 'markdown');
+    } else if (isBuilderSavedChartConfig(config)) {
       mapBuilderVariableTemplates(config, (template, language) => {
         validate(template, language);
         return template;

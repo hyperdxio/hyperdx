@@ -5,6 +5,11 @@ import { atomWithStorage } from 'jotai/utils';
 
 type ColorModePreference = 'light' | 'dark' | 'system';
 
+/** What clicking the body of a search result row does. */
+export type RowClickAction = 'expand' | 'sidePanel';
+
+export const DEFAULT_ROW_CLICK_ACTION: RowClickAction = 'sidePanel';
+
 export type UserPreferences = {
   isUTC: boolean;
   timeFormat: '12h' | '24h';
@@ -12,6 +17,12 @@ export type UserPreferences = {
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
+  /**
+   * Unset until the user opts in. Stored preferences that predate this field are
+   * returned as-is rather than merged with `DEFAULT_PREFERENCES`, so readers must
+   * fall back to `DEFAULT_ROW_CLICK_ACTION`.
+   */
+  rowClickAction?: RowClickAction;
 };
 
 // Legacy type for migration

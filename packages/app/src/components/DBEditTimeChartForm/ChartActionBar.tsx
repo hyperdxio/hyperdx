@@ -62,6 +62,8 @@ function DashboardFiltersToggle({
 type ChartActionBarProps = {
   control: Control<ChartEditorFormState>;
   tableConnection: TableConnection;
+  sourceId?: string;
+  dateRange?: [Date, Date];
   activeTab: string;
   isRawSqlInput: boolean;
   dashboardId?: string;
@@ -84,6 +86,8 @@ type ChartActionBarProps = {
 export function ChartActionBar({
   control,
   tableConnection,
+  sourceId,
+  dateRange,
   activeTab,
   isRawSqlInput,
   dashboardId,
@@ -101,11 +105,13 @@ export function ChartActionBar({
   const displayType = useWatch({ control, name: 'displayType' });
   const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
 
-  // A time chart always buckets, and a PromQL tile that reduces a range query
-  // reads the same granularity even though it shows one value rather than a
-  // series. An all-instant PromQL tile has no resolution to choose.
+  // Time charts and heatmaps always bucket, and a PromQL tile that reduces a
+  // range query reads the same granularity even though it shows one value
+  // rather than a series. An all-instant PromQL tile has no resolution to
+  // choose.
   const showGranularity =
     activeTab === 'time' ||
+    activeTab === 'heatmap' ||
     (configType === 'promql' &&
       isPromqlDisplayType(displayType) &&
       isRangeQuery({
@@ -124,11 +130,14 @@ export function ChartActionBar({
         {(activeTab === 'table' ||
           activeTab === 'pie' ||
           activeTab === 'bar') &&
-          !isRawSqlInput && (
+          !isRawSqlInput &&
+          configType !== 'promql' && (
             <div style={{ width: 400 }} data-testid="order-by-input">
               <SQLInlineEditorControlled
                 parentRef={parentRef}
                 tableConnection={tableConnection}
+                sourceId={sourceId}
+                dateRange={dateRange}
                 // The default order by is the current group by value
                 placeholder={typeof groupBy === 'string' ? groupBy : ''}
                 control={control}

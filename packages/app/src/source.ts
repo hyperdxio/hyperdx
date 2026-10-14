@@ -480,12 +480,67 @@ export async function inferTableSourceConfig({
   };
 }
 
+// The TimeSeries table the ClickHouse Prometheus docs tell users to create,
+// which is what ClickHouse Cloud PromQL preview services will likely have.
+// https://clickhouse.com/docs/concepts/features/interfaces/prometheus#create-a-timeseries-table
+const DOCS_TIME_SERIES_TABLE = {
+  databaseName: 'prometheus',
+  tableName: 'metrics',
+};
+
+// The TimeSeries table name used by the collector's PromQL schema migration
+// and the dev ClickHouse remote-write handler.
+const COLLECTOR_TIME_SERIES_TABLE_NAME = 'metrics_ts';
+
+// The time column of a TimeSeries table's data inner table, which every PromQL
+// source uses.
+export const PROMQL_TIMESTAMP_EXPRESSION = 'timestamp';
+
+/**
+ * Picks the TimeSeries table to back an auto-provisioned PromQL source. Prefers
+ * the docs' `prometheus.metrics`, then the collector's `metrics_ts` in
+ * `preferredDatabase` (the OTel tables' database), then `metrics_ts` anywhere.
+ * Without either name, a sole TimeSeries table is still picked.
+ */
+export function pickTimeSeriesTable(
+  tables: TPromqlSource['from'][],
+  preferredDatabase?: string,
+): TPromqlSource['from'] | undefined {
+  const collectorNamed = tables.filter(
+    t => t.tableName === COLLECTOR_TIME_SERIES_TABLE_NAME,
+  );
+  return (
+    tables.find(
+      t =>
+        t.databaseName === DOCS_TIME_SERIES_TABLE.databaseName &&
+        t.tableName === DOCS_TIME_SERIES_TABLE.tableName,
+    ) ??
+    collectorNamed.find(t => t.databaseName === preferredDatabase) ??
+    collectorNamed[0] ??
+    (tables.length === 1 ? tables[0] : undefined)
+  );
+}
+
 export function getDurationMsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${(source.durationPrecision ?? 9) - 3}`;
 }
 
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
+}
+
+/**
+ * The single definition of an errored span, as a SQL predicate over a span
+ * status-code expression. Matches both the short OTel status ('Error'/'ERROR')
+ * and the legacy collector form ('STATUS_CODE_ERROR'), which some collectors
+ * write instead.
+ *
+ * Span status only. Log severity text is a different vocabulary (its error
+ * values are 'fatal', 'crit' and friends, never 'status_code_error'), so log
+ * callers keep their own predicate rather than reusing this one.
+ */
+export function errorStatusPredicateSql(statusCodeExpression: string): string {
+  return `lower(${statusCodeExpression}) IN ('error', 'status_code_error')`;
 }
 
 // Aggregate functions whose output preserves the unit of the input value.

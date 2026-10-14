@@ -23,13 +23,17 @@ import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from '@/components/SQLEditor/utils';
-import { usePromqlVariableCompletions } from '@/components/SQLEditor/variableCompletions';
+import {
+  PROMQL_MACRO_COMPLETIONS,
+  usePromqlVariableCompletions,
+} from '@/components/SQLEditor/variableCompletions';
 import {
   useVariableValidation,
   VariableIssueIndicator,
   variableValidationState,
 } from '@/components/SQLEditor/variableValidation';
 
+import { promqlTemplateExtension } from './templateMaskedLanguage';
 import { createVariableCompletionSource } from './variableCompletionSource';
 
 import styles from '@/components/SQLEditor/SQLInlineEditor.module.scss';
@@ -47,6 +51,8 @@ type PromQLEditorProps = {
    * modal or other scroll container, which would otherwise clip the popup.
    */
   parentRef?: HTMLElement | null;
+  /** Suggest `$__interval` and the other chart macros. */
+  enableMacros?: boolean;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -113,30 +119,37 @@ export default function PromQLEditor({
   onSubmit,
   metricNames,
   parentRef,
+  enableMacros,
 }: PromQLEditorProps) {
   const { colorScheme } = useMantineColorScheme();
   const ref = useRef<ReactCodeMirrorRef>(null);
   const compartmentRef = useRef<Compartment>(new Compartment());
   const [isFocused, setIsFocused] = useState(false);
   const variableCompletions = usePromqlVariableCompletions();
+  const templateCompletions = useMemo(
+    () =>
+      enableMacros
+        ? [...PROMQL_MACRO_COMPLETIONS, ...variableCompletions]
+        : variableCompletions,
+    [enableMacros, variableCompletions],
+  );
   const variableIssues = useVariableValidation(value, { language: 'promql' });
 
   const updateAutocomplete = useCallback(
     (viewRef: EditorView) => {
       const override: CompletionSource[] = [];
 
-      if (variableCompletions.length > 0) {
-        override.push(createVariableCompletionSource(variableCompletions));
+      if (templateCompletions.length > 0) {
+        override.push(createVariableCompletionSource(templateCompletions));
       }
 
       if (metricNames?.length) {
         override.push(debounceAndPruneAutocompleteResults(metricNames));
       }
 
-      // PromQL's own function/keyword completion, re-registered explicitly.
-      // `PromQLExtension.asExtension()` registers it through
-      // `language.data.of({ autocomplete })`, which an `override` array
-      // replaces outright — so without this it is silently lost.
+      // PromQL's own function/keyword completion. `promqlTemplateExtension`
+      // installs the language without it, and an `override` array would
+      // replace a `language.data` registration outright anyway.
       override.push(context => promqlExtension.getComplete().promQL(context));
 
       viewRef.dispatch({
@@ -145,7 +158,7 @@ export default function PromQLEditor({
         ),
       });
     },
-    [metricNames, variableCompletions],
+    [metricNames, templateCompletions],
   );
 
   useEffect(() => {
@@ -160,8 +173,10 @@ export default function PromQLEditor({
       createCodeMirrorStyleTheme(MAX_EDITOR_HEIGHT),
       EditorView.lineWrapping,
 
-      // PromQL syntax highlighting
-      promqlExtension.asExtension(),
+      // PromQL syntax highlighting and linting, variable- and macro-aware
+      promqlTemplateExtension(promqlExtension, {
+        enableMacros: !!enableMacros,
+      }),
 
       // Autocomplete sources (via compartment for hot-swapping)
       // eslint-disable-next-line react-hooks/refs
@@ -190,7 +205,7 @@ export default function PromQLEditor({
         },
       ]),
     ],
-    [onSubmit, parentRef],
+    [onSubmit, parentRef, enableMacros],
   );
 
   const onClickCodeMirror = useCallback(() => {

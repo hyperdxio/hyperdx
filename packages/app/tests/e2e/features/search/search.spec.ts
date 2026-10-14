@@ -88,6 +88,47 @@ test.describe('Search', { tag: '@search' }, () => {
     });
   });
 
+  // A row click opens the side panel by default; inline expansion is opt-in.
+  test.describe('Row click set to expand inline', () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        window.localStorage.setItem(
+          'hdx-user-preferences',
+          // `colorMode` is what marks stored preferences as already migrated.
+          JSON.stringify({ colorMode: 'dark', rowClickAction: 'expand' }),
+        );
+      });
+      searchPage = new SearchPage(page);
+      await searchPage.goto();
+    });
+
+    test('should expand a result row inline when its body is clicked', async () => {
+      await test.step('Perform search', async () => {
+        await searchPage.submitEmptySearch();
+        await expect(searchPage.table.firstRow).toBeVisible();
+      });
+
+      await test.step('Clicking the row body expands it in place', async () => {
+        await searchPage.table.expandRowByBodyClick(0);
+
+        await expect(searchPage.table.firstExpandedRow).toBeVisible();
+        await expect(searchPage.sidePanel.container).toBeHidden();
+      });
+
+      await test.step('Clicking it again collapses the row', async () => {
+        await searchPage.table.clickRowBody(0);
+
+        await expect(searchPage.table.expandedRows).toHaveCount(0);
+      });
+
+      await test.step('The row hover button opens the side panel', async () => {
+        await searchPage.table.openFirstRowSidePanel();
+
+        await expect(searchPage.sidePanel.container).toBeVisible();
+      });
+    });
+  });
+
   test.describe('Advanced Workflows', () => {
     test.beforeEach(async ({ page }) => {
       searchPage = new SearchPage(page);

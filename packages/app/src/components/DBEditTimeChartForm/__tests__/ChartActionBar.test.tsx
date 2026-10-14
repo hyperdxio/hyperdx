@@ -177,11 +177,14 @@ describe('ChartActionBar', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it('should render granularity picker for time tab', () => {
-    renderActionBar({ activeTab: 'time' });
+  it.each(['time', 'heatmap'])(
+    'should render granularity picker for %s tab',
+    activeTab => {
+      renderActionBar({ activeTab });
 
-    expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
-  });
+      expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
+    },
+  );
 
   it('should not render granularity picker for non-time tabs', () => {
     renderActionBar({ activeTab: 'table' });
@@ -254,6 +257,19 @@ describe('ChartActionBar', () => {
 
   it('should not render ORDER BY editor for pie tab when raw SQL', () => {
     renderActionBar({ activeTab: 'pie', isRawSqlInput: true });
+
+    expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
+  });
+
+  it('should not render ORDER BY editor for a PromQL table', () => {
+    renderActionBar(
+      { activeTab: 'table' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Table,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
 
     expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
   });

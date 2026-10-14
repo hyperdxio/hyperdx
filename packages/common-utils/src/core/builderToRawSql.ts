@@ -6,6 +6,7 @@ import {
   convertToCategoricalChartConfig,
   convertToNumberChartConfig,
   convertToTableChartConfig,
+  isTimeSeriesDisplayType,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
 import { format } from '@/sqlFormatter';
@@ -20,6 +21,7 @@ const RAW_SQL_DISPLAY_TYPES = new Set<DisplayType>([
   DisplayType.Table,
   DisplayType.Line,
   DisplayType.StackedBar,
+  DisplayType.StackedLine,
   DisplayType.Pie,
   DisplayType.Bar,
   DisplayType.Number,
@@ -114,8 +116,7 @@ export async function renderBuilderConfigAsSqlTemplate(
   // The intervalSeconds param behind $__timeInterval is only bound for
   // time-series display types (QUERY_PARAMS_BY_DISPLAY_TYPE), so only those
   // keep a granularity; its concrete value is resolved at query time.
-  const isTimeSeries =
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
+  const isTimeSeries = isTimeSeriesDisplayType(displayType);
 
   // Metric queries time-bucket inside their CTEs and therefore need the
   // interval macros that only time-series display types bind, so metric

@@ -9,13 +9,12 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  HEATMAP_ALLOWED_SOURCE_KINDS,
-  isBuilderChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { displayTypeSupportsBuilderAlerts } from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
+  HeatmapMode,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -62,6 +61,7 @@ type ChartEditorControlsProps = {
   duplicateSeries: (index: number) => void;
   tableSource?: TSource;
   tableConnection: TableConnection;
+  allowedSourceKinds: SourceKind[];
   databaseName?: string;
   tableName?: string;
   dateRange: [Date, Date];
@@ -82,7 +82,8 @@ type ChartEditorControlsProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
-  openHeatmapSettings: () => void;
+  heatmapMode: HeatmapMode;
+  onHeatmapModeChange: (mode: HeatmapMode) => void;
 };
 
 export function ChartEditorControls({
@@ -97,6 +98,7 @@ export function ChartEditorControls({
   duplicateSeries,
   tableSource,
   tableConnection,
+  allowedSourceKinds,
   databaseName,
   tableName,
   dateRange,
@@ -115,7 +117,8 @@ export function ChartEditorControls({
   chartConfigForExplanations,
   onSubmit,
   openDisplaySettings,
-  openHeatmapSettings,
+  heatmapMode,
+  onHeatmapModeChange,
 }: ChartEditorControlsProps) {
   // Formulas (HDX-5080): derived series computed from the chart's series via
   // letter-ref arithmetic expressions. Metric and event (log/trace) sources,
@@ -185,9 +188,7 @@ export function ChartEditorControls({
 
   const showAlertButton =
     (alert != null && !isRawSqlInput) ||
-    ((displayType === DisplayType.Line ||
-      displayType === DisplayType.StackedBar ||
-      displayType === DisplayType.Number) &&
+    (displayTypeSupportsBuilderAlerts(displayType) &&
       alertsEnabled &&
       !IS_LOCAL_MODE);
 
@@ -203,11 +204,7 @@ export function ChartEditorControls({
             control={control}
             name="source"
             data-testid="source-selector"
-            allowedSourceKinds={
-              displayType === DisplayType.Heatmap
-                ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
-                : undefined
-            }
+            allowedSourceKinds={allowedSourceKinds}
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
           />
@@ -234,17 +231,25 @@ export function ChartEditorControls({
       </Flex>
       {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
         <HeatmapSeriesEditor
+          key={fields[0]?.id}
           control={control}
           setValue={setValue}
+          clearErrors={clearErrors}
+          errors={errors}
           tableSource={tableSource}
           dateRange={dateRange}
+          parentRef={parentRef}
           onSubmit={onSubmit}
-          onOpenDisplaySettings={openHeatmapSettings}
+          onOpenDisplaySettings={openDisplaySettings}
+          mode={heatmapMode}
+          onModeChange={onHeatmapModeChange}
         />
       ) : displayType === DisplayType.EventPatterns ? (
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
@@ -351,6 +356,8 @@ export function ChartEditorControls({
                 <div>
                   <SQLInlineEditorControlled
                     {...groupByConnectionProps}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
@@ -375,6 +382,8 @@ export function ChartEditorControls({
                     <div>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
@@ -528,6 +537,8 @@ export function ChartEditorControls({
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
