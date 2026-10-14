@@ -6,6 +6,7 @@ import {
   getPromqlSeries,
   getQueriedPromqlSeries,
   isRangeQuery,
+  parsePromqlLe,
   PROMQL_MACROS,
   promqlSeriesQueryType,
   promqlStep,
@@ -247,6 +248,22 @@ describe('promqlStep with a window', () => {
 
   it('never floors a granularity the tile picked', () => {
     expect(promqlStep('15 second', hour, 300)).toBe('15s');
+  });
+});
+
+describe('parsePromqlLe', () => {
+  it.each([
+    ['0.5', 0.5],
+    ['10', 10],
+    ['1e+06', 1e6],
+    ['-1', -1],
+    ['+Inf', Infinity],
+  ])('parses %s', (le, expected) => {
+    expect(parsePromqlLe(le)).toBe(expected);
+  });
+
+  it.each([undefined, '', ' ', 'abc'])('is NaN for %p', le => {
+    expect(parsePromqlLe(le)).toBeNaN();
   });
 });
 

@@ -11,18 +11,22 @@ import {
 } from '@hyperdx/common-utils/dist/core/promql';
 import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  DisplayType,
   MAX_PROMQL_EXPRESSIONS,
+  PromqlHeatmapMode,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
-import { Button, Divider, Flex, Group, Text } from '@mantine/core';
+import { Box, Button, Divider, Flex, Group, Text } from '@mantine/core';
 import { IconCirclePlus } from '@tabler/icons-react';
 
+import { HeatmapModeControl } from '@/components/DBEditTimeChartForm/HeatmapModeControl';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { usePromqlMetricNames } from '@/hooks/usePromqlMetadata';
 import { useSource } from '@/source';
 
 import PromqlExpressionEditor from './PromqlExpressionEditor';
 import { ChartEditorFormState } from './types';
+import { promqlExpressionPlaceholder } from './utils';
 
 export default function PromqlChartEditor({
   control,
@@ -30,12 +34,16 @@ export default function PromqlChartEditor({
   allowedSourceKinds,
   onSubmit,
   onOpenDisplaySettings,
+  heatmapMode,
+  onHeatmapModeChange,
 }: {
   control: Control<ChartEditorFormState>;
   getValues: UseFormGetValues<ChartEditorFormState>;
   allowedSourceKinds: SourceKind[];
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onOpenDisplaySettings: () => void;
+  heatmapMode: PromqlHeatmapMode;
+  onHeatmapModeChange: (mode: PromqlHeatmapMode) => void;
 }) {
   const {
     fields: expressions,
@@ -106,6 +114,15 @@ export default function PromqlChartEditor({
           allowedSourceKinds={allowedSourceKinds}
         />
       </Group>
+      {displayType === DisplayType.Heatmap && (
+        <Box mt="md">
+          <HeatmapModeControl
+            mode={heatmapMode}
+            onModeChange={onHeatmapModeChange}
+            allowHistogram
+          />
+        </Box>
+      )}
       {expressions.map((field, index) => (
         <PromqlExpressionEditor
           key={field.id}
@@ -113,6 +130,7 @@ export default function PromqlChartEditor({
           index={index}
           length={expressions.length}
           metricNames={metricNames}
+          placeholder={promqlExpressionPlaceholder(displayType, heatmapMode)}
           isIgnored={!displayTypeSupportsMultiExpression && index > 0}
           isInstantQuerySupported={displayTypeSupportsInstantQuery({
             displayType,

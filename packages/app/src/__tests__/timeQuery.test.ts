@@ -13,21 +13,22 @@ describe('dateRangeToString', () => {
     jest.useRealTimers();
   });
 
-  it.each([
-    [
-      '2024-03-03T10:00:00',
-      '2024-03-05T10:00:00',
-      'Mar 3 2024 10:00:00 - Mar 5 2024 10:00:00',
-    ],
-    [
-      '2026-03-03T10:00:00',
-      '2026-03-05T10:00:00',
-      'Mar 3 2026 10:00:00 - Mar 5 2026 10:00:00',
-    ],
-  ])('always includes the year: %s - %s', (start, end, expected) => {
-    expect(dateRangeToString([new Date(start), new Date(end)], false)).toBe(
-      expected,
-    );
+  it('omits the year for a past range in the current year', () => {
+    expect(
+      dateRangeToString(
+        [new Date('2026-03-03T10:00:00'), new Date('2026-03-05T10:00:00')],
+        false,
+      ),
+    ).toBe('Mar 3 10:00:00 - Mar 5 10:00:00');
+  });
+
+  it('includes the year for ranges outside the current year', () => {
+    expect(
+      dateRangeToString(
+        [new Date('2024-03-03T10:00:00'), new Date('2024-03-05T10:00:00')],
+        false,
+      ),
+    ).toBe('Mar 3 2024 10:00:00 - Mar 5 2024 10:00:00');
   });
 
   it('formats in UTC when isUTC is set', () => {

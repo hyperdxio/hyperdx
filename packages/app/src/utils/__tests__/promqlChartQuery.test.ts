@@ -1,7 +1,11 @@
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import { prometheusApi } from '@/api';
-import { queryPromqlChartConfig, toTableRows } from '@/utils/promqlChartQuery';
+import {
+  queryPromqlChartConfig,
+  toHistogramRows,
+  toTableRows,
+} from '@/utils/promqlChartQuery';
 
 // The real module is a Mantine/TanStack table component; only the row cap is
 // needed here.
@@ -245,6 +249,53 @@ describe('toTableRows', () => {
   });
 });
 
+describe('toHistogramRows', () => {
+  const bucket = (metric: Record<string, string>, value: number) => ({
+    metric,
+    values: [[1700000000, value]] as [number, number][],
+  });
+  const rangeResult = (...result: ReturnType<typeof bucket>[]) => ({
+    expression: 'sum by (le) (rate(x_bucket[5m]))',
+    isBucketed: true,
+    result,
+  });
+
+  it('keys each sample by its le label', () => {
+    const result = toHistogramRows([
+      rangeResult(bucket({ le: '0.5' }, 2), bucket({ le: '+Inf' }, 3)),
+    ]);
+    expect(result.data).toEqual([
+      { __hdx_time_bucket: '2023-11-14T22:13:20.000Z', le: '0.5', value: 2 },
+      { __hdx_time_bucket: '2023-11-14T22:13:20.000Z', le: '+Inf', value: 3 },
+    ]);
+    expect(result.meta?.map(({ name }) => name)).toEqual([
+      '__hdx_time_bucket',
+      'le',
+      'value',
+    ]);
+  });
+
+  it.each<Record<string, string>>([{}, { le: '' }, { le: 'abc' }])(
+    'rejects a series without a numeric le: %p',
+    metric => {
+      expect(() => toHistogramRows([rangeResult(bucket(metric, 1))])).toThrow(
+        /need series with an "le" label/,
+      );
+    },
+  );
+
+  it('rejects buckets that were not aggregated by le', () => {
+    expect(() =>
+      toHistogramRows([
+        rangeResult(
+          bucket({ le: '0.5', instance: 'a' }, 1),
+          bucket({ le: '0.5', instance: 'b' }, 1),
+        ),
+      ]),
+    ).toThrow('Several series share le="0.5"');
+  });
+});
+
 describe('queryPromqlChartConfig', () => {
   const dateRange: [Date, Date] = [
     new Date('2024-01-01T00:00:00Z'),
@@ -370,6 +421,45 @@ describe('queryPromqlChartConfig', () => {
         value: 1,
         series_name: 'api',
       },
+    ]);
+  });
+
+  it('keys a histogram heatmap rows by bucket, not series name', async () => {
+    jest
+      .mocked(prometheusApi.queryRange)
+      .mockReset()
+      .mockResolvedValue({
+        status: 'success',
+        data: {
+          resultType: 'matrix',
+          result: [
+            {
+              metric: { le: '+Inf' },
+              values: [[dateRange[0].getTime() / 1000, '4']],
+            },
+          ],
+        },
+      });
+
+    const result = await queryPromqlChartConfig(
+      {
+        configType: 'promql',
+        displayType: DisplayType.Heatmap,
+        connection: 'conn',
+        legendTemplate: '{{job}}',
+        promqlExpression: [{ expression: 'sum by (le) (x_bucket)' }],
+        heatmap: { mode: 'histogram' },
+      },
+      dateRange,
+      new AbortController().signal,
+      {},
+    );
+
+    expect(prometheusApi.queryRange).toHaveBeenCalledWith(
+      expect.objectContaining({ query: 'sum by (le) (x_bucket)' }),
+    );
+    expect(result.data).toEqual([
+      { __hdx_time_bucket: dateRange[0].toISOString(), le: '+Inf', value: 4 },
     ]);
   });
 });
