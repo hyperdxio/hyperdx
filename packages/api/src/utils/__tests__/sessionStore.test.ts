@@ -36,6 +36,11 @@ jest.mock('@/config', () => ({
 jest.mock('@/utils/readiness', () => ({
   isMongoConnected: () => mockMongoConnected,
 }));
+// Keeps the simulated setup failures out of the test output.
+jest.mock('@/utils/logger', () => ({
+  __esModule: true,
+  default: { error: jest.fn() },
+}));
 
 import { MongoSessionStore } from '@/utils/sessionStore';
 

@@ -1,12 +1,20 @@
 import MongoStore from 'connect-mongo';
 import session from 'express-session';
+import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
+import { getCounter } from '@/utils/instrumentation';
+import logger from '@/utils/logger';
 import { isMongoConnected } from '@/utils/readiness';
 
 // Same schedule as connectDBWithRetry's initial-connect retries.
 const REBUILD_BASE_DELAY_MS = 1000;
 const REBUILD_MAX_DELAY_MS = 30000;
+
+const setupFailureCounter = getCounter('hyperdx.session_store.setup_failures', {
+  description:
+    'Failed session store connects or setups (TTL index); each schedules a rebuild with backoff.',
+});
 
 /**
  * express-session store that keeps sessions in MongoDB and recovers when
@@ -43,15 +51,19 @@ export class MongoSessionStore extends session.Store {
     const store = new MongoStore({ mongoUrl: config.MONGO_URI });
     // A store whose connect or setup failed would replay that error forever,
     // so drop it and let a later session operation build a fresh one.
-    store.collectionP.catch(() => {
+    store.collectionP.catch((err: unknown) => {
       this.store = undefined;
       this.failures++;
-      this.retryAt =
-        Date.now() +
-        Math.min(
-          REBUILD_BASE_DELAY_MS * 2 ** (this.failures - 1),
-          REBUILD_MAX_DELAY_MS,
-        );
+      const retryInMs = Math.min(
+        REBUILD_BASE_DELAY_MS * 2 ** (this.failures - 1),
+        REBUILD_MAX_DELAY_MS,
+      );
+      this.retryAt = Date.now() + retryInMs;
+      setupFailureCounter.add(1);
+      logger.error(
+        { err: serializeError(err), failures: this.failures, retryInMs },
+        'Session store setup failed, retrying',
+      );
       // The client may have connected before setup failed.
       store.close().catch(() => {});
     });
