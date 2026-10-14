@@ -781,6 +781,7 @@ export const RawLogTable = memo(
 
       const columnSizeProps = {
         state: {
+          ...initReactTableProps.state,
           columnSizing: columnSizeStorage,
         },
         onColumnSizingChange: onColumnSizingChange,
