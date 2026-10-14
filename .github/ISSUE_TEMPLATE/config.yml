@@ -6,6 +6,8 @@ contact_links:
     url: https://discord.gg/FErRRKU78j
     about:
       For usage questions, setup help, and general discussion, ask on Discord.
-  - name: First-time contributor? Introduce yourself
-    url: https://github.com/hyperdxio/hyperdx/issues/new?template=introduce-yourself.md
-    about: Say hello and get vouched before your first pull request.
+  - name: First-time contributor?
+    url: https://github.com/hyperdxio/hyperdx/blob/main/CONTRIBUTING.md#getting-vouched
+    about:
+      No need to open an issue to get vouched. Open your pull request and a
+      maintainer vouches from there.
