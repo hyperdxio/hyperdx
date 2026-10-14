@@ -178,4 +178,45 @@ describe('MongoSessionStore', () => {
   it('close() resolves when no store was created', async () => {
     await expect(new MongoSessionStore().close()).resolves.toBeUndefined();
   });
+
+  describe('when a store closed by close() rejects later', () => {
+    let rejectSetup: (err: Error) => void = () => {};
+
+    beforeEach(() => {
+      mockCollectionP = () =>
+        new Promise((_resolve, reject) => {
+          rejectSetup = reject;
+        });
+      mockMongoConnected = true;
+    });
+
+    it('keeps the newer store built after close()', async () => {
+      const store = new MongoSessionStore();
+      await getSession(store);
+      await store.close();
+      mockCollectionP = () => Promise.resolve({});
+      await getSession(store);
+
+      rejectSetup(new Error('client closed'));
+      await flush();
+
+      expect((await getSession(store)).err).toBeNull();
+      expect(mockStores).toHaveLength(2);
+      expect(mockStores[0].close).toHaveBeenCalledTimes(1);
+      expect(mockStores[1].close).not.toHaveBeenCalled();
+    });
+
+    it('does not back off the next store', async () => {
+      const store = new MongoSessionStore();
+      await getSession(store);
+      await store.close();
+
+      rejectSetup(new Error('client closed'));
+      await flush();
+      mockCollectionP = () => Promise.resolve({});
+
+      expect((await getSession(store)).err).toBeNull();
+      expect(mockStores).toHaveLength(2);
+    });
+  });
 });

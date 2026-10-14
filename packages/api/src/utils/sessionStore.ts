@@ -52,6 +52,12 @@ export class MongoSessionStore extends session.Store {
     // A store whose connect or setup failed would replay that error forever,
     // so drop it and let a later session operation build a fresh one.
     store.collectionP.catch((err: unknown) => {
+      // Only close() replaces the current store, and it has already closed
+      // this one: its rejection isn't a setup failure, and the current store
+      // may be a newer one.
+      if (this.store !== store) {
+        return;
+      }
       this.store = undefined;
       this.failures++;
       const retryInMs = Math.min(
@@ -73,12 +79,15 @@ export class MongoSessionStore extends session.Store {
 
   /**
    * Closes the current store's MongoClient. A closed client can't be reused,
-   * so the next session operation builds a new store; this lets the server
-   * start again after a shutdown, as the integration tests do.
+   * so the next session operation builds a new store, without waiting out
+   * any earlier backoff; this lets the server start again after a shutdown,
+   * as the integration tests do.
    */
   async close(): Promise<void> {
     const store = this.store;
     this.store = undefined;
+    this.failures = 0;
+    this.retryAt = 0;
     await store?.close();
   }
 
