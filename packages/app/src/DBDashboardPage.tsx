@@ -34,7 +34,10 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import {
+  getAdhocFilterTargetsForTile,
+  getBlockingRequiredFilterNames,
+} from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   getPromqlFilters,
   getSqlFilters,
@@ -148,6 +151,7 @@ import { DashboardKioskHeader } from '@/components/DashboardKioskHeader';
 import DashboardTableOfContents from '@/components/DashboardTableOfContents';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
+import type { RowSidePanelContextProps } from '@/components/DBRowSidePanel';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -177,6 +181,7 @@ import useDashboardContainers, {
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
 import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
 import { QueryAttributionProvider } from '@/queryAttribution';
+import type { TileFilterHandler } from '@/types';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -447,6 +452,7 @@ const Tile = ({
   showReleaseAnnotations,
   isLive,
   readOnly,
+  onFilter,
 
   // Properties forwarded by grid layout
   className,
@@ -482,6 +488,8 @@ const Tile = ({
   showReleaseAnnotations?: boolean;
   isLive?: boolean;
   readOnly?: boolean;
+  /** Set when an ad hoc filter broadcasts to this tile; clicked values update it. */
+  onFilter?: TileFilterHandler;
 
   // Properties forwarded by grid layout
   className?: string;
@@ -658,6 +666,22 @@ const Tile = ({
   const sqlFilters = useMemo(
     () => (filters ? getSqlFilters(filters) : undefined),
     [filters],
+  );
+
+  // `source` keeps the handler off rows from other sources, e.g. a linked trace
+  const searchRowContext = useMemo<RowSidePanelContextProps | undefined>(
+    () =>
+      onFilter && source && (isLogSource(source) || isTraceSource(source))
+        ? {
+            onPropertyAddClick: (key, value, action) =>
+              onFilter(
+                [{ key, value: String(value) }],
+                action === 'exclude' ? 'exclude' : 'include',
+              ),
+            source,
+          }
+        : undefined,
+    [onFilter, source],
   );
   const promqlFilters = useMemo(
     () => (filters ? getPromqlFilters(filters) : undefined),
@@ -1379,6 +1403,8 @@ const Tile = ({
                       queryKeyPrefix={'search'}
                       variant="default"
                       errorVariant="collapsible"
+                      context={searchRowContext}
+                      filterOnAliasedExpressions
                     />
                   </ChartContainer>
                 )}
@@ -1460,6 +1486,7 @@ const Tile = ({
       readOnly,
       tileVariables,
       variableNames,
+      searchRowContext,
     ],
   );
 
@@ -1910,6 +1937,7 @@ function DBDashboardPage({
     setFilterValue,
     adhocConditionsByFilterId,
     setAdhocConditions,
+    applyAdhocAction,
     setFilterValueEntries,
     filterValueEntries,
     ignoredFilterExpressions,
@@ -2348,6 +2376,25 @@ function DBDashboardPage({
     [where, whereLanguage, getFilterQueriesForSource],
   );
 
+  const getTileFilterHandler = useCallback(
+    (
+      chart: Tile,
+      sourceId: string | undefined,
+    ): TileFilterHandler | undefined => {
+      // The filter bar is hidden in kiosk mode, so a click would add conditions
+      // the viewer can't see or remove.
+      if (isKioskMode) return undefined;
+      const targetIds = getAdhocFilterTargetsForTile(
+        filters,
+        chart.config,
+        sourceId,
+      ).map(filter => filter.id);
+      if (targetIds.length === 0) return undefined;
+      return (entries, action) => applyAdhocAction(targetIds, entries, action);
+    },
+    [isKioskMode, filters, applyAdhocAction],
+  );
+
   const renderTileComponent = useCallback(
     (chart: Tile) => {
       // Resolve the tile's source ID so per-source-scoped filters can be
@@ -2367,6 +2414,7 @@ function DBDashboardPage({
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
           filters={getTileFilters(tileSourceId)}
+          onFilter={getTileFilterHandler(chart, tileSourceId)}
           variables={variables}
           unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
@@ -2469,6 +2517,7 @@ function DBDashboardPage({
       showAlertAnnotations,
       showReleaseAnnotations,
       getTileFilters,
+      getTileFilterHandler,
       variables,
       unsatisfiedRequiredFilters,
       moveTargetContainers,
