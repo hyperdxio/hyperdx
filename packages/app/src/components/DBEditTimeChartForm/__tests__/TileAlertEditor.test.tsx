@@ -1,6 +1,7 @@
 import { Control, useForm, useWatch } from 'react-hook-form';
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 import { fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import { AlertPanelLayout } from '@/components/AlertPanel';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
@@ -44,6 +45,10 @@ jest.mock('@/components/alerts/AckAlert', () => ({
   AckAlert: () => null,
 }));
 
+// The `mock` prefix is required for a jest.mock factory to close over it.
+const mockConfirm = jest.fn();
+jest.mock('@/useConfirm', () => ({ useConfirm: () => mockConfirm }));
+
 // useWatch inside the component that owns useForm doesn't re-render on
 // setValue, so the watched value is surfaced from a child component.
 function ThresholdTypeProbe({
@@ -55,7 +60,9 @@ function ThresholdTypeProbe({
   return <div data-testid="threshold-type">{thresholdType}</div>;
 }
 
-function Harness() {
+const noop = () => {};
+
+function Harness({ onRemove = noop }: { onRemove?: () => void }) {
   const { control, setValue } = useForm<ChartEditorFormState>({
     defaultValues: { alert: DEFAULT_TILE_ALERT },
   });
@@ -66,7 +73,7 @@ function Harness() {
         control={control}
         setValue={setValue}
         alert={DEFAULT_TILE_ALERT}
-        onRemove={jest.fn()}
+        onRemove={onRemove}
       />
     </>
   );
@@ -127,5 +134,33 @@ describe('TileAlertEditor in the alert panel', () => {
     expect(
       screen.queryByTestId('close-alert-panel-button'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('TileAlertEditor remove control', () => {
+  beforeEach(() => mockConfirm.mockReset());
+
+  it('removes the alert once the removal is confirmed', async () => {
+    mockConfirm.mockResolvedValue(true);
+    const onRemove = jest.fn();
+    renderWithMantine(<Harness onRemove={onRemove} />);
+
+    await userEvent.click(screen.getByTestId('remove-alert-button'));
+
+    expect(onRemove).toHaveBeenCalledTimes(1);
+    expect(mockConfirm).toHaveBeenCalledWith(expect.anything(), 'Remove', {
+      variant: 'danger',
+    });
+  });
+
+  it('keeps the alert when the removal is cancelled', async () => {
+    mockConfirm.mockResolvedValue(false);
+    const onRemove = jest.fn();
+    renderWithMantine(<Harness onRemove={onRemove} />);
+
+    await userEvent.click(screen.getByTestId('remove-alert-button'));
+
+    expect(mockConfirm).toHaveBeenCalledTimes(1);
+    expect(onRemove).not.toHaveBeenCalled();
   });
 });

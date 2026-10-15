@@ -29,6 +29,7 @@ export class ChartEditorComponent {
   private readonly aggFnSelect: Locator;
   private readonly addAlertButton: Locator;
   private readonly removeAlertButton: Locator;
+  private readonly confirmConfirmButton: Locator;
   private readonly webhookSelector: Locator;
   private readonly runQueryButton: Locator;
   private readonly saveButton: Locator;
@@ -42,6 +43,7 @@ export class ChartEditorComponent {
     this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.addAlertButton = page.getByTestId('alert-button');
     this.removeAlertButton = page.getByTestId('remove-alert-button');
+    this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.webhookSelector = page.getByTestId('select-webhook');
     this.addNewWebhookButton = page.getByTestId('add-new-webhook-button');
     this.webhookAlertModal = new WebhookAlertModalComponent(page);
@@ -386,6 +388,7 @@ export class ChartEditorComponent {
   async clickRemoveAlert() {
     await this.openAlertPanel();
     await this.removeAlertButton.click();
+    await this.confirmConfirmButton.click();
     this.removeAlertButton.waitFor({
       state: 'hidden',
       timeout: 2000,

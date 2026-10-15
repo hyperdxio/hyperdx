@@ -99,6 +99,11 @@ const metricNameSelectProps: any[] = [];
 const mockStagedWhere: string[] = [];
 const mockStagedGroupBy: string[] = [];
 
+// TileAlertEditor asks before removing an alert; these tests always confirm.
+// The `mock` prefix is required for a jest.mock factory to close over it.
+const mockConfirm = jest.fn().mockResolvedValue(true);
+jest.mock('@/useConfirm', () => ({ useConfirm: () => mockConfirm }));
+
 // The explorer has its own suite (MetricExplorer.test.tsx). Here it is stubbed
 // down to "emit a chosen metric", so these tests cover only the form wiring —
 // mounting the real tree six times pushed this suite past the 5s-per-test

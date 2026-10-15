@@ -42,6 +42,7 @@ import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
 import { AlertScheduleFields } from '@/components/AlertScheduleFields';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { useDashboards } from '@/dashboard';
+import { useConfirm } from '@/useConfirm';
 import { optionsToSelectData } from '@/utils';
 import {
   ALERT_CHANNEL_OPTIONS,
@@ -71,6 +72,19 @@ export function TileAlertEditor({
   tooltip?: string;
 }) {
   const alertPanel = useAlertPanel();
+  const confirm = useConfirm();
+
+  // Removing closes the panel along with its discard control, so the removal
+  // can't be undone from there the way other alert edits can.
+  const handleRemove = async () => {
+    if (
+      await confirm('Remove this alert and its settings?', 'Remove', {
+        variant: 'danger',
+      })
+    ) {
+      onRemove?.();
+    }
+  };
 
   const alertThresholdType = useWatch({ control, name: 'alert.thresholdType' });
   const alertThreshold = useWatch({ control, name: 'alert.threshold' });
@@ -146,7 +160,7 @@ export function TileAlertEditor({
                   variant="danger"
                   color="red"
                   size="sm"
-                  onClick={onRemove}
+                  onClick={handleRemove}
                   data-testid="remove-alert-button"
                 >
                   <IconTrash size={14} />
