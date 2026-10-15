@@ -278,8 +278,7 @@ export function convertFormStateToSavedChartConfig(
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: formPromqlExpressions(form),
-      connection: form.connection ?? '',
-      source: form.source || undefined,
+      source: source?.id ?? form.source ?? '',
       legendTemplate: form.legendTemplate?.trim() || undefined,
       heatmap: formPromqlHeatmap(form),
     };
@@ -381,7 +380,7 @@ export function convertFormStateToChartConfig(
       ]),
       promqlExpression: formPromqlExpressions(form),
       connection: source?.connection ?? form.connection ?? '',
-      source: form.source || undefined,
+      source: source?.id ?? form.source ?? '',
       from: source?.from,
       legendTemplate: form.legendTemplate?.trim() || undefined,
       heatmap: formPromqlHeatmap(form),
