@@ -16,6 +16,7 @@ import {
   getPromqlFilters,
   getSqlFilters,
   hasFilterEffect,
+  isAdhocComparableDataType,
   isAdhocConditionSupported,
   isFilterBroadcastEnabled,
   isFilterGlobalRequirement,
@@ -1814,6 +1815,25 @@ describe('filters', () => {
     it('returns no filters for no conditions', () => {
       expect(adhocConditionsToFilters([])).toEqual([]);
     });
+  });
+
+  describe('isAdhocComparableDataType', () => {
+    it.each([
+      'DateTime',
+      "DateTime('UTC')",
+      'DateTime64(9)',
+      'Nullable(DateTime64(3))',
+      'LowCardinality(Nullable(DateTime))',
+    ])('rejects %s', type => {
+      expect(isAdhocComparableDataType(type)).toBe(false);
+    });
+
+    it.each(['Date', 'Date32', 'String', 'UInt64', 'Dynamic'])(
+      'accepts %s',
+      type => {
+        expect(isAdhocComparableDataType(type)).toBe(true);
+      },
+    );
   });
 
   describe('mergeAdhocConditions', () => {
