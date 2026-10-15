@@ -2236,6 +2236,52 @@ function DBSearchPageContent() {
     [setValue, setNewSourceModalClosed],
   );
 
+  const columnFields = (allowMultiline: boolean, stacked: boolean) => {
+    const select = (
+      <SQLInlineEditorControlled
+        tableConnection={inputSourceTableConnection}
+        control={control}
+        name="select"
+        defaultValue={defaultSearchConfig.select}
+        placeholder={defaultSearchConfig.select || 'SELECT Columns'}
+        onSubmit={onSubmit}
+        label="SELECT"
+        size="xs"
+        allowMultiline={allowMultiline}
+        dateRange={searchedTimeRange}
+        sourceId={inputSource}
+      />
+    );
+    const orderBy = (
+      <SQLInlineEditorControlled
+        tableConnection={inputSourceTableConnection}
+        control={control}
+        name="orderBy"
+        defaultValue={defaultSearchConfig.orderBy}
+        onSubmit={onSubmit}
+        label="ORDER BY"
+        size="xs"
+        allowMultiline={allowMultiline}
+        dateRange={searchedTimeRange}
+        sourceId={inputSource}
+      />
+    );
+    if (stacked) {
+      return (
+        <>
+          {select}
+          {orderBy}
+        </>
+      );
+    }
+    return (
+      <>
+        <Box style={{ flex: '1 1 0%', minWidth: 100 }}>{select}</Box>
+        <Box style={{ maxWidth: 400, width: '20%' }}>{orderBy}</Box>
+      </>
+    );
+  };
+
   return (
     <Flex
       direction="column"
@@ -2402,38 +2448,7 @@ function DBSearchPageContent() {
             open={isSourceSchemaPreviewOpen}
             onClose={() => setIsSourceSchemaPreviewOpen(false)}
           />
-          {!isCompact && (
-            <>
-              <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
-                <SQLInlineEditorControlled
-                  tableConnection={inputSourceTableConnection}
-                  control={control}
-                  name="select"
-                  defaultValue={defaultSearchConfig.select}
-                  placeholder={defaultSearchConfig.select || 'SELECT Columns'}
-                  onSubmit={onSubmit}
-                  label="SELECT"
-                  size="xs"
-                  allowMultiline
-                  dateRange={searchedTimeRange}
-                  sourceId={inputSource}
-                />
-              </Box>
-              <Box style={{ maxWidth: 400, width: '20%' }}>
-                <SQLInlineEditorControlled
-                  tableConnection={inputSourceTableConnection}
-                  control={control}
-                  name="orderBy"
-                  defaultValue={defaultSearchConfig.orderBy}
-                  onSubmit={onSubmit}
-                  label="ORDER BY"
-                  size="xs"
-                  dateRange={searchedTimeRange}
-                  sourceId={inputSource}
-                />
-              </Box>
-            </>
-          )}
+          {!isCompact && columnFields(true, false)}
           <>
             {!savedSearchId ? (
               <Button
@@ -2485,38 +2500,9 @@ function DBSearchPageContent() {
             )}
           </>
         </Flex>
-        {isCompact && (
-          <Flex
-            direction="column"
-            gap={4}
-            px="sm"
-            pt={4}
-            style={{ display: columnsOpen ? 'flex' : 'none' }}
-          >
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="select"
-              defaultValue={defaultSearchConfig.select}
-              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
-              onSubmit={onSubmit}
-              label="SELECT"
-              size="xs"
-              allowMultiline={false}
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="orderBy"
-              defaultValue={defaultSearchConfig.orderBy}
-              onSubmit={onSubmit}
-              label="ORDER BY"
-              size="xs"
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
+        {isCompact && columnsOpen && (
+          <Flex direction="column" gap={4} px="sm" pt={4}>
+            {columnFields(false, true)}
           </Flex>
         )}
         <SourceEditModal

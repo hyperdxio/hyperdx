@@ -8,8 +8,11 @@ export const COMPACT_MAX_WIDTH = 900;
 
 export function useCompactViewport() {
   const { width } = useWindowSize();
-  // Width is unknown during SSR and the first paint. Treat that as desktop
-  // so the compact layout does not flash in before the viewport is measured.
-  if (width == null) return false;
-  return width < COMPACT_MAX_WIDTH;
+  // useWindowSize reports nothing until its effect runs. Read the window
+  // directly so the first paint matches the viewport. There is no window
+  // during SSR, and that stays desktop.
+  const measured =
+    width ?? (typeof window === 'undefined' ? undefined : window.innerWidth);
+  if (measured == null) return false;
+  return measured < COMPACT_MAX_WIDTH;
 }

@@ -138,7 +138,7 @@ A viewport under 900px is compact. `useCompactViewport` (`packages/app/src/compo
 A page that is a side panel plus a main pane uses `ResponsiveSidePanel` (`packages/app/src/components/CompactViewport/ResponsiveSidePanel.tsx`):
 
 - Wide: the panel sits beside the main pane.
-- Compact: the main pane uses the full width. The panel opens in a drawer and does not take horizontal space.
+- Compact: the main pane uses the full width. The panel opens in a drawer and does not take horizontal space. Pass a `title`; the drawer has no default. The panel stays unmounted until the first open, then stays mounted so closing the drawer does not drop its state.
 
 The caller owns whether the panel is open. Keep that state separate from any desktop collapse preference stored in localStorage. A phone session that wrote the desktop preference would hide the panel the next time the same browser opened the page on a desktop.
 

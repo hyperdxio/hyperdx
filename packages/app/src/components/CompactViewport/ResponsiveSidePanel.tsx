@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Drawer } from '@mantine/core';
 
 import { useZIndex } from '@/zIndex';
@@ -15,18 +15,25 @@ export function ResponsiveSidePanel({
   children,
   opened,
   onClose,
-  title = 'Filters',
+  title,
   className,
 }: {
   panel: ReactNode;
   children: ReactNode;
   opened: boolean;
   onClose: () => void;
-  title?: string;
+  title: string;
   className?: string;
 }) {
   const isCompact = useCompactViewport();
   const drawerZIndex = useZIndex() + 10;
+  // Stay unmounted until the first open, so a phone does not fetch facets
+  // before the user asks. After that, keep the panel mounted so closing the
+  // drawer does not drop facet state or repeat those queries.
+  const [keepPanelMounted, setKeepPanelMounted] = useState(opened);
+  if (opened && !keepPanelMounted) {
+    setKeepPanelMounted(true);
+  }
 
   return (
     <div
@@ -51,6 +58,7 @@ export function ResponsiveSidePanel({
           title={title}
           size="min(100vw, 360px)"
           zIndex={drawerZIndex}
+          keepMounted={keepPanelMounted}
           styles={{
             content: {
               display: 'flex',
@@ -66,7 +74,7 @@ export function ResponsiveSidePanel({
             },
           }}
         >
-          {opened ? panel : null}
+          {keepPanelMounted ? panel : null}
         </Drawer>
       )}
     </div>

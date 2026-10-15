@@ -12,13 +12,31 @@ jest.mock('@/utils', () => ({
 
 const useWindowSizeMock = jest.mocked(useWindowSize);
 
+function setInnerWidth(width: number) {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: width,
+  });
+}
+
 describe('useCompactViewport', () => {
-  it('treats an unknown width as desktop', () => {
+  const originalInnerWidth = window.innerWidth;
+
+  afterEach(() => {
+    setInnerWidth(originalInnerWidth);
+  });
+
+  it('reads the window until the resize listener reports', () => {
     useWindowSizeMock.mockReturnValue({
       width: undefined,
       height: undefined,
     });
-    const { result } = renderHook(() => useCompactViewport());
+    setInnerWidth(COMPACT_MAX_WIDTH - 1);
+    const { result, rerender } = renderHook(() => useCompactViewport());
+    expect(result.current).toBe(true);
+
+    setInnerWidth(COMPACT_MAX_WIDTH);
+    rerender();
     expect(result.current).toBe(false);
   });
 
