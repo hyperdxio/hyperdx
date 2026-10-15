@@ -542,7 +542,7 @@ function inferValueColumns(
   );
 }
 
-function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
+export function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   return filterColumnMetaByType(meta, [
     JSDataType.String,
     JSDataType.Map,

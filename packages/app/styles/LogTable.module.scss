@@ -268,6 +268,12 @@ $button-height: 18px;
   min-height: $button-height;
 }
 
+// For tables that pad their own cells
+.fieldText.inline {
+  padding: 0;
+  min-height: 0;
+}
+
 .fieldText.wrapped {
   word-break: break-word;
   white-space: pre-wrap;

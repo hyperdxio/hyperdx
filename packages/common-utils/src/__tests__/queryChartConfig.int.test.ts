@@ -2038,6 +2038,135 @@ describe('queryChartConfig Integration Tests', () => {
       });
     });
 
+    // useResultColumnFilterKeys matches a builder table's group-by
+    // expressions to its result columns by position: the value columns, then
+    // one column per group-by expression.
+    describe('builder table column order', () => {
+      const groupBy = [
+        { aggCondition: '', valueExpression: 'ServiceName' },
+        {
+          aggCondition: '',
+          valueExpression: "ResourceAttributes['service.name']",
+          alias: 'service',
+        },
+      ];
+
+      it.each<[string, number, Partial<ChartConfigWithOptDateRange>]>([
+        ['one gauge', 1, { select: [gaugeSelect('tbl.one')] }],
+        [
+          'two gauges',
+          2,
+          { select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')] },
+        ],
+        [
+          'a gauge and a sum',
+          2,
+          { select: [gaugeSelect('tbl.one'), increaseSelect('mix.requests')] },
+        ],
+        [
+          'a gauge and a histogram',
+          2,
+          {
+            select: [
+              gaugeSelect('grpmix.gauge'),
+              histQuantileSelect('grpmix.latency', 0.5),
+            ],
+          },
+        ],
+        [
+          'a ratio',
+          1,
+          {
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            seriesReturnType: 'ratio',
+          },
+        ],
+        [
+          'a formula and its operands',
+          3,
+          {
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            formulas: [{ expression: 'B / A', alias: 'ratio' }],
+          },
+        ],
+        [
+          'a formula without its operands',
+          1,
+          {
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            formulas: [{ expression: 'B / A', alias: 'ratio' }],
+            showOperandSeries: false,
+          },
+        ],
+        [
+          'a string group-by',
+          2,
+          {
+            select: [gaugeSelect('tbl.one'), gaugeSelect('tbl.two')],
+            groupBy:
+              "ServiceName, ResourceAttributes['service.name'] AS service",
+          },
+        ],
+        [
+          'a non-metric source',
+          2,
+          {
+            metricTables: undefined,
+            from: { databaseName: DATABASE, tableName: GAUGE_TABLE },
+            select: [
+              { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              { aggFn: 'max', aggCondition: '', valueExpression: 'Value' },
+            ],
+          },
+        ],
+      ])(
+        'places the group-by columns after the value columns for %s',
+        async (_case, valueCount, overrides) => {
+          const result = await runConfig(
+            baseConfig({
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              groupBy,
+              ...overrides,
+            }),
+          );
+          const names = result.meta?.map(m => m.name) ?? [];
+          expect(names.slice(valueCount, valueCount + groupBy.length)).toEqual([
+            'ServiceName',
+            'service',
+          ]);
+        },
+      );
+
+      // So it offers no filter keys for them
+      it.each<[string, MetricSelect[]]>([
+        ['one histogram', [histQuantileSelect('grpmix.latency', 0.5)]],
+        [
+          'two histograms',
+          [
+            histQuantileSelect('grpmix.latency', 0.5),
+            histCountSelect('grpmix.latency'),
+          ],
+        ],
+      ])(
+        'packs every group-by of %s into one group column',
+        async (_case, select) => {
+          const result = await runConfig(
+            baseConfig({
+              displayType: DisplayType.Table,
+              granularity: undefined,
+              groupBy,
+              select,
+            }),
+          );
+          const names = result.meta?.map(m => m.name) ?? [];
+          expect(names).toContain('group');
+          expect(names).not.toContain('ServiceName');
+          expect(names).not.toContain('service');
+        },
+      );
+    });
+
     // HAVING / ORDER BY / LIMIT apply to the final joined result and
     // reference its output columns — not each per-series branch, where the
     // output names don't exist and each series would be

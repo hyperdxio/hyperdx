@@ -15,6 +15,13 @@ import { DBRowTableIconButton } from './DBRowTableIconButton';
 
 import styles from '@styles/LogTable.module.scss';
 
+/** Filter on (`include`) or out (`exclude`) a cell's value, by its column's filter key. */
+export type CellFilterHandler = (
+  key: string,
+  value: string,
+  action: 'include' | 'exclude',
+) => void;
+
 interface DBRowTableFieldWithPopoverProps {
   children: React.ReactNode;
   cellValue: unknown;
@@ -24,6 +31,10 @@ interface DBRowTableFieldWithPopoverProps {
   filterValue?: string;
   tableContainerRef: HTMLDivElement | null;
   isChart?: boolean;
+  /** Leaves out the cell padding, for tables that pad their own cells. */
+  inline?: boolean;
+  /** Overrides the side panel context's filter handler. */
+  onPropertyAddClick?: CellFilterHandler;
 }
 
 const DBRowTableFieldWithPopover = ({
@@ -34,6 +45,8 @@ const DBRowTableFieldWithPopover = ({
   columnName,
   filterValue,
   isChart = false,
+  inline = false,
+  onPropertyAddClick: onPropertyAddClickProp,
 }: DBRowTableFieldWithPopoverProps) => {
   const [opened, { close, open }] = useDisclosure(false);
   const [isCopied, setIsCopied] = useState(false);
@@ -54,7 +67,10 @@ const DBRowTableFieldWithPopover = ({
   }, []);
 
   // Get filter functionality from context
-  const { onPropertyAddClick } = use(RowSidePanelContext);
+  const { onPropertyAddClick: onPropertyAddClickContext } =
+    use(RowSidePanelContext);
+  const onPropertyAddClick =
+    onPropertyAddClickProp ?? onPropertyAddClickContext;
 
   // Check if we have both the column name and filter function available
   const canFilter = columnName && onPropertyAddClick && cellValue != null;
@@ -151,6 +167,7 @@ const DBRowTableFieldWithPopover = ({
         [styles.truncated]: !wrapLinesEnabled && !isChart,
         [styles.wrapped]: wrapLinesEnabled,
         [styles.chart]: isChart,
+        [styles.inline]: inline,
       })}
     >
       <Popover
@@ -168,7 +185,6 @@ const DBRowTableFieldWithPopover = ({
             onMouseLeave={handleMouseLeave}
             onClick={handleClick}
             tabIndex={-1}
-            aria-hidden="true"
             style={{ cursor: 'pointer' }}
           >
             {children}
