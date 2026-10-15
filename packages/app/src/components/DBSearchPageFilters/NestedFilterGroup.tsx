@@ -48,6 +48,12 @@ type NestedFilterGroupProps = {
   isLive?: boolean;
 };
 
+type ChildState = {
+  expanded: boolean;
+  showDistributions?: boolean;
+  hadSelections: boolean;
+};
+
 const VIRTUAL_ITEM_HEIGHT_ESTIMATE = 26;
 const MAX_VIRTUAL_LIST_HEIGHT = 350;
 
@@ -107,6 +113,30 @@ export const NestedFilterGroup = ({
   }, [childFilters, search]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const keyHasSelections = (key: string) => {
+    const entry = selectedValues[key];
+    return entry != null && entry.included.size + entry.excluded.size > 0;
+  };
+  // Rows unmount when scrolled out of view, so their state lives here. Like
+  // regular filter groups, a key expands when it gains a filter (including one
+  // added outside the sidebar) and keeps its state when it loses one.
+  const [childState, setChildState] = useState<Record<string, ChildState>>({});
+  const updateChildState = (key: string, patch: Partial<ChildState>) =>
+    setChildState(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  const changedKeys = Object.keys({ ...selectedValues, ...childState }).filter(
+    key => (childState[key]?.hadSelections ?? false) !== keyHasSelections(key),
+  );
+  if (changedKeys.length > 0) {
+    setChildState(prev => {
+      const next = { ...prev };
+      for (const key of changedKeys) {
+        next[key] = keyHasSelections(key)
+          ? { ...prev[key], expanded: true, hadSelections: true }
+          : { ...prev[key], hadSelections: false };
+      }
+      return next;
+    });
+  }
 
   const rowVirtualizer = useVirtualizer({
     count: isExpanded ? matchingChildFilters.length : 0,
@@ -203,10 +233,7 @@ export const NestedFilterGroup = ({
                         included: new Set(),
                         excluded: new Set(),
                       };
-                      const childHasSelections =
-                        childSelectedValues.included.size +
-                          childSelectedValues.excluded.size >
-                        0;
+                      const childHasSelections = keyHasSelections(child.key);
 
                       return (
                         <div
@@ -275,7 +302,22 @@ export const NestedFilterGroup = ({
                             }
                             hasLoadedMore={hasLoadedMore[child.key] || false}
                             showFilterCounts={showFilterCounts}
-                            isDefaultExpanded={childHasSelections}
+                            expanded={
+                              childState[child.key]?.expanded ??
+                              childHasSelections
+                            }
+                            onExpandedChange={expanded =>
+                              updateChildState(child.key, {
+                                expanded,
+                                hadSelections: childHasSelections,
+                              })
+                            }
+                            showDistributions={
+                              childState[child.key]?.showDistributions ?? false
+                            }
+                            onShowDistributionsChange={showDistributions =>
+                              updateChildState(child.key, { showDistributions })
+                            }
                             chartConfig={chartConfig}
                             isLive={isLive}
                           />
