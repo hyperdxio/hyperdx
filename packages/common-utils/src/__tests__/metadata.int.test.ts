@@ -3,7 +3,8 @@ import { ClickHouseClient } from '@clickhouse/client';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { supportsMergeTreeTextIndex } from '@/core/clickhouseVersion';
-import { Metadata, MetadataCache } from '@/core/metadata';
+import { KeyValues, Metadata, MetadataCache } from '@/core/metadata';
+import { MapTextIndexPartsPerKey } from '@/core/utils';
 import {
   parseKvItemsCastExpression,
   parseKvItemsExpression,
@@ -1554,4 +1555,138 @@ describe('Metadata Integration Tests', () => {
       });
     },
   );
+
+  describe('getAllKeyValues - Map values from the parts a keys index lists', () => {
+    const tableName = 'test_map_values_best_parts';
+    const keyExpressions = [
+      "LogAttributes['shared']",
+      "LogAttributes['rare.key']",
+      "LogAttributes['old.only']",
+    ];
+    let metadata: Metadata;
+    let textIndexSupported = false;
+
+    beforeAll(async () => {
+      const probe = new Metadata(hdxClient, new MetadataCache());
+      textIndexSupported = supportsMergeTreeTextIndex(
+        await probe.getServerVersion({ connectionId: 'test_connection' }),
+      );
+      if (!textIndexSupported) return;
+
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${tableName} (
+            Timestamp DateTime64(9),
+            LogAttributes Map(LowCardinality(String), String),
+            LogAttributeItems Array(String) MATERIALIZED
+              arrayMap(x -> concat(x.1, '=', x.2), CAST(LogAttributes, 'Array(Tuple(String, String))')),
+            INDEX idx_log_attr_items LogAttributeItems TYPE text(tokenizer = 'array') GRANULARITY 1
+          )
+          ENGINE = MergeTree()
+          PARTITION BY toDate(Timestamp)
+          ORDER BY Timestamp
+        `,
+      });
+      // Every insert below must stay its own part.
+      await client.command({
+        query: `SYSTEM STOP MERGES default.${tableName}`,
+      });
+      const insert = (minutesAgo: number, attributes: string, rows: number) =>
+        client.command({
+          query: `INSERT INTO default.${tableName} (Timestamp, LogAttributes)
+            SELECT now64(9) - INTERVAL ${minutesAgo} MINUTE, ${attributes}
+            FROM numbers(${rows})`,
+        });
+      // Written before the keys index exists, so the index never lists it.
+      await insert(30, `map('shared', 'from-old', 'old.only', 'x')`, 5);
+      await client.command({
+        query: `ALTER TABLE default.${tableName}
+          ADD INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE text(tokenizer = 'array') GRANULARITY 1`,
+      });
+      // The part holding `shared` in the most rows, and the only one with
+      // `rare.key`.
+      await insert(
+        20,
+        `if(number = 0, map('shared', 'from-big', 'rare.key', 'r1'), map('shared', 'from-big'))`,
+        50,
+      );
+      await insert(10, `map('shared', 'from-new')`, 1);
+    });
+
+    afterAll(async () => {
+      if (!textIndexSupported) return;
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+    });
+
+    beforeEach(() => {
+      metadata = new Metadata(hdxClient, new MetadataCache());
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    const getValues = (mapTextIndexPartsPerKey?: MapTextIndexPartsPerKey) =>
+      metadata.getAllKeyValues({
+        databaseName: 'default',
+        tableName,
+        connectionId: 'test_connection',
+        keyExpressions,
+        mapTextIndexPartsPerKey,
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date(Date.now() - 60 * 60 * 1000),
+          new Date(Date.now() + 60 * 1000),
+        ],
+      });
+
+    const byKey = (result: KeyValues[]) =>
+      Object.fromEntries(result.map(({ key, value }) => [key, value]));
+
+    it('reads the best and newest part per key, and reports keys the index misses', async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const warnSpy = jest
+        .spyOn(console, 'warn')
+        .mockImplementation(() => undefined);
+
+      const values = byKey(await getValues());
+
+      expect(values["LogAttributes['shared']"]?.sort()).toEqual([
+        'from-big',
+        'from-new',
+      ]);
+      expect(values["LogAttributes['rare.key']"]).toEqual(['r1']);
+      expect(values).not.toHaveProperty("LogAttributes['old.only']");
+      const warnings = warnSpy.mock.calls.map(([message]) => String(message));
+      expect(warnings).toEqual([
+        expect.stringContaining(
+          'LogAttributes keys [old.only]: keys index idx_log_attr_key lists the requested keys in 2 of 3 parts',
+        ),
+      ]);
+    });
+
+    it("reads every part the keys index lists when parts per key is 'all'", async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+      const values = byKey(await getValues('all'));
+
+      expect(values["LogAttributes['shared']"]?.sort()).toEqual([
+        'from-big',
+        'from-new',
+      ]);
+      expect(values["LogAttributes['rare.key']"]).toEqual(['r1']);
+    });
+  });
 });

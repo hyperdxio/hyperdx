@@ -1128,6 +1128,7 @@ describe('useFetchFacets', () => {
           tableName: 'other_table',
           connectionId: 'conn2',
           keyExpressions: ['ServiceName'],
+          mapTextIndexPartsPerKey: 'all',
         }),
       );
       expect(result.current.data.keyValues).toEqual([
