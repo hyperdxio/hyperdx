@@ -965,14 +965,10 @@ export class DashboardPage {
     await this.setFilterRequirement(variableOptions);
 
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
-      for (const appliesName of appliesToSourceNames) {
-        await this.appliesToSourceSelector.click();
-        await this.page
-          .getByRole('option', { name: appliesName, exact: true })
-          .click();
-      }
-      // Close the dropdown so the save button is clickable.
-      await this.page.keyboard.press('Escape');
+      await this.selectSourcesInMultiSelect(
+        this.appliesToSourceSelector,
+        appliesToSourceNames,
+      );
     }
 
     const saveFilterButton = this.page.getByTestId('save-filter-button');
@@ -1148,6 +1144,11 @@ export class DashboardPage {
 
   getFilterItemByName(name: string) {
     return this.page.getByTestId(`dashboard-filter-item-${name}`);
+  }
+
+  /** The filters list's summary of which sources a filter broadcasts to. */
+  getFilterBroadcastTarget(name: string) {
+    return this.page.getByTestId(`dashboard-filter-applies-to-${name}`);
   }
 
   getFilterSelectByName(name: string) {
@@ -1364,7 +1365,11 @@ export class DashboardPage {
 
   /** Switch the add-filter form between the available value types. */
   async selectFilterType(
-    label: 'Queried values' | 'Static values' | 'PromQL label values',
+    label:
+      | 'Queried values'
+      | 'Static values'
+      | 'PromQL label values'
+      | 'Ad hoc keys and values',
   ) {
     await this.getFilterTypePicker().click();
     await this.getFilterOption(label).click();
@@ -1522,6 +1527,60 @@ export class DashboardPage {
       await this.variableNameInput.fill(variableOptions.variableName);
     }
     await this.setFilterRequirement(variableOptions);
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The ad hoc filter form's ClickHouse / Prometheus source type control. */
+  getAdhocFilterSourceTypeControl(): Locator {
+    return this.getFilterForm().getByTestId('adhoc-filter-source-type');
+  }
+
+  /** The ad hoc filter form's data sources multi-select. */
+  getAdhocFilterSourcesInput(): Locator {
+    return this.getFilterForm().getByTestId('adhoc-filter-sources');
+  }
+
+  /** Switch the ad hoc filter form between ClickHouse and Prometheus sources. */
+  async selectAdhocFilterSourceType(label: 'ClickHouse' | 'Prometheus') {
+    await this.getAdhocFilterSourceTypeControl()
+      .getByText(label, { exact: true })
+      .click();
+  }
+
+  /** Add `sourceNames` to a source multi-select, then close its dropdown. */
+  async selectSourcesInMultiSelect(input: Locator, sourceNames: string[]) {
+    for (const sourceName of sourceNames) {
+      await input.click();
+      await this.getFilterOption(sourceName).click();
+    }
+    // Close the dropdown so the save button is clickable.
+    await this.page.keyboard.press('Escape');
+  }
+
+  /**
+   * Add an ad hoc filter over `sourceNames` and save it. Assumes the Edit
+   * Filters modal is already open; leaves it open on the filters list, having
+   * waited for the new filter to land there.
+   */
+  async addAdhocFilterToDashboard(
+    name: string,
+    sourceNames: string[],
+    options?: { variableName?: string },
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('Ad hoc keys and values');
+    await this.getFilterNameInput().fill(name);
+    await this.selectSourcesInMultiSelect(
+      this.getAdhocFilterSourcesInput(),
+      sourceNames,
+    );
+    if (options?.variableName !== undefined) {
+      await this.variableNameInput.fill(options.variableName);
+    }
     await this.page.getByTestId('save-filter-button').click();
     await this.getFilterItemByName(name).waitFor({
       state: 'visible',

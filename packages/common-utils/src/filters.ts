@@ -3,6 +3,7 @@ import * as SQLParser from 'node-sql-parser';
 import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
 import {
+  AdhocDashboardFilter,
   AdhocFilterSourceType,
   AdhocFilterValue,
   ChartVariable,
@@ -921,6 +922,18 @@ export function isAdhocFilter<T extends { type: DashboardFilterKind }>(
   filter: T,
 ): filter is Extract<T, { type: 'ADHOC' }> {
   return filter.type === 'ADHOC';
+}
+
+/**
+ * The sources an ADHOC filter broadcasts its conditions to: its
+ * `appliesToSourceIds`, or its own `sources` when that is unset or empty.
+ */
+export function getAdhocFilterAppliesToSourceIds(
+  filter: Pick<AdhocDashboardFilter, 'sources' | 'appliesToSourceIds'>,
+): string[] {
+  return filter.appliesToSourceIds?.length
+    ? filter.appliesToSourceIds
+    : filter.sources;
 }
 
 /** Type guard for the saved conditions of an ADHOC filter. */

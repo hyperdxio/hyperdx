@@ -4,6 +4,7 @@
 const baseConfig = {
   APP_VERSION: '9.9.9',
   BASE_PATH: '',
+  IS_ADHOC_FILTERS_ENABLED: false,
   IS_ALERT_DETAILS_ENABLED: false,
   IS_CLICKHOUSE_BUILD: false,
   IS_LLM_COST_ENABLED: false,
