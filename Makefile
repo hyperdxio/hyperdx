@@ -60,7 +60,7 @@ install-tools:
 #   API server        : 30100 + slot
 #   App (Next.js)     : 30200 + slot
 #   OpAMP             : 30300 + slot
-#   MongoDB           : 30400 + slot
+#   DocumentDB        : 30400 + slot
 #   ClickHouse HTTP   : 30500 + slot
 #   ClickHouse Native : 30600 + slot
 #   OTel health       : 30700 + slot
@@ -158,7 +158,7 @@ dev-int:
 	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT) api=$(HDX_CI_API_PORT))"
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	@bash scripts/ensure-dev-portal.sh
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --build --wait --wait-timeout 300
 	bash -c 'set -o pipefail; npx nx run @hyperdx/api:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/api-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
@@ -169,7 +169,7 @@ dev-int-common-utils:
 	@echo "Using CI slot $(HDX_CI_SLOT) (project=$(HDX_CI_PROJECT) ch=$(HDX_CI_CH_PORT) mongo=$(HDX_CI_MONGO_PORT))"
 	@mkdir -p $(HDX_CI_LOGS_DIR)
 	@bash scripts/ensure-dev-portal.sh
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --build --wait --wait-timeout 300
 	bash -c 'set -o pipefail; npx nx run @hyperdx/common-utils:dev:int $(FILE) 2>&1 | tee $(HDX_CI_LOGS_DIR)/common-utils-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \
@@ -178,7 +178,7 @@ dev-int-common-utils:
 .PHONY: ci-int
 ci-int:
 	@mkdir -p $(HDX_CI_LOGS_DIR)
-	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull
+	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml up -d --quiet-pull --wait --wait-timeout 300
 	bash -c 'set -o pipefail; npx nx run-many -t ci:int --parallel=false --output-style=stream 2>&1 | tee $(HDX_CI_LOGS_DIR)/ci-int.log'; ret=$$?; \
 	docker compose -p $(HDX_CI_PROJECT) -f ./docker-compose.ci.yml down -v; \
 	$(call archive-int-logs); \

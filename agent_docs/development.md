@@ -30,7 +30,16 @@ yarn dev        # or equivalently: make dev
 ## Environment Configuration
 
 - `.env.development`: Development environment variables
-- Docker Compose manages ClickHouse, MongoDB, OTel Collector
+- Docker Compose manages ClickHouse, DocumentDB, OTel Collector
+- The metadata store is [DocumentDB](https://github.com/documentdb/documentdb)
+  (Postgres plus a Mongo wire-protocol gateway), built from
+  `docker/documentdb/Dockerfile`. The API still talks to it through Mongoose.
+  To browse it with MongoDB Compass or `mongosh`, connect to
+  `mongodb://hyperdx:hyperdx@localhost:<HDX_DEV_MONGO_PORT>/?tls=true&tlsAllowInvalidCertificates=true&authMechanism=SCRAM-SHA-256`.
+  Everything works except Compass's Performance tab (the gateway doesn't
+  implement `serverStatus` or `top`).
+  Dev data lives in `.volumes/docdb_dev_<slot>`; data from the old MongoDB
+  volumes (`.volumes/db_dev_<slot>`) is not migrated, so the dev stack starts empty.
 - Hot reload enabled for all services in development
 
 ## Worktree Isolation (Multi-Agent / Multi-Developer)
@@ -59,7 +68,7 @@ integration tests (14320-40098) and E2E tests (20320-21399).
 | API server        | 30100     | 30100 - 30199 | `HYPERDX_API_PORT`            |
 | App (Next.js)     | 30200     | 30200 - 30299 | `HYPERDX_APP_PORT`            |
 | OpAMP             | 30300     | 30300 - 30399 | `HYPERDX_OPAMP_PORT`          |
-| MongoDB           | 30400     | 30400 - 30499 | `HDX_DEV_MONGO_PORT`          |
+| DocumentDB        | 30400     | 30400 - 30499 | `HDX_DEV_MONGO_PORT`          |
 | ClickHouse HTTP   | 30500     | 30500 - 30599 | `HDX_DEV_CH_HTTP_PORT`        |
 | ClickHouse Native | 30600     | 30600 - 30699 | `HDX_DEV_CH_NATIVE_PORT`      |
 | OTel health       | 30700     | 30700 - 30799 | `HDX_DEV_OTEL_HEALTH_PORT`    |
@@ -173,7 +182,7 @@ Port mapping (base + slot):
 | Service         | Default port (slot 0) | Variable          |
 | --------------- | --------------------- | ----------------- |
 | ClickHouse HTTP | 18123                 | HDX_CI_CH_PORT    |
-| MongoDB         | 39999                 | HDX_CI_MONGO_PORT |
+| DocumentDB      | 39999                 | HDX_CI_MONGO_PORT |
 | API test server | 19000                 | HDX_CI_API_PORT   |
 | OpAMP           | 14320                 | HDX_CI_OPAMP_PORT |
 
@@ -181,7 +190,7 @@ Port mapping (base + slot):
 
 - Uses separate Docker Compose configuration (`docker-compose.ci.yml`)
 - Isolated test environment with unique `-p int-<slot>` project name
-- Includes all necessary services (ClickHouse, MongoDB, OTel Collector)
+- Includes all necessary services (ClickHouse, DocumentDB, OTel Collector)
 - Tests run against real database instances for accurate integration testing
 
 ### E2E Testing
@@ -198,7 +207,7 @@ E2E port mapping (base + slot):
 | ClickHouse HTTP   | 20500     | 20500 - 20599 | `HDX_E2E_CH_PORT`        |
 | ClickHouse Native | 20600     | 20600 - 20699 | `HDX_E2E_CH_NATIVE_PORT` |
 | API server        | 21000     | 21000 - 21099 | `HDX_E2E_API_PORT`       |
-| MongoDB           | 21100     | 21100 - 21199 | `HDX_E2E_MONGO_PORT`     |
+| DocumentDB        | 21100     | 21100 - 21199 | `HDX_E2E_MONGO_PORT`     |
 | App (local)       | 21200     | 21200 - 21299 | `HDX_E2E_APP_LOCAL_PORT` |
 | App (fullstack)   | 21300     | 21300 - 21399 | `HDX_E2E_APP_PORT`       |
 

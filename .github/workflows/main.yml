@@ -125,7 +125,7 @@ jobs:
       - name: Build dependencies
         run: make ci-build
       # Integration tests boot a MockServer on fixed ports and share a single
-      # MongoDB/ClickHouse database, so they must stay serial (--runInBand)
+      # DocumentDB/ClickHouse database, so they must stay serial (--runInBand)
       # within a runner. We shard ACROSS runners instead: each shard is its own
       # VM with its own Docker stack, and jest's --shard splits the test files
       # so the shards run in parallel.
@@ -143,7 +143,7 @@ jobs:
       # Actions streams stdout.
       - name: Run integration tests
         run: |
-          docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
+          docker compose -f ./docker-compose.ci.yml up -d --quiet-pull --wait --wait-timeout 300
           status=0
           yarn workspace @hyperdx/common-utils ci:int --shard=${{ matrix.shard }}/${{ strategy.job-total }} || status=1
           yarn workspace @hyperdx/api ci:int --shard=${{ matrix.shard }}/${{ strategy.job-total }} || status=1
