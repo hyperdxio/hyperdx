@@ -1,0 +1,11 @@
+{
+  "name": "hyperdx",
+  "owner": { "name": "HyperDX" },
+  "plugins": [
+    {
+      "name": "hyperdx-charts",
+      "description": "Draws ClickStack MCP query results as terminal charts in Claude Code",
+      "source": { "source": "npm", "package": "@hyperdx/claude-plugin" }
+    }
+  ]
+}

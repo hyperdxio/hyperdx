@@ -11,7 +11,7 @@ schema-agnostic design, and correlation across all telemetry types in one place.
 
 ## Architecture (WHAT)
 
-This is a **monorepo** with six packages:
+This is a **monorepo** with seven packages:
 
 - `packages/app` - Next.js frontend (TypeScript, Mantine UI, TanStack Query)
 - `packages/api` - Express backend (Node.js 22+, MongoDB for metadata,
@@ -23,6 +23,9 @@ This is a **monorepo** with six packages:
   tailing, and inspecting logs and traces (Ink/React). Has its own
   [`AGENTS.md`](packages/cli/AGENTS.md) with detailed architecture and
   keybindings.
+- `packages/claude-plugin` - Claude Code plugin that draws ClickStack MCP
+  query results as terminal charts, using the CLI's chart renderers. See its
+  [`README.md`](packages/claude-plugin/README.md).
 - `packages/otel-collector` - Custom-built OpenTelemetry Collector (Go, OCB).
   See its [`README.md`](packages/otel-collector/README.md) for architecture,
   included components, and upgrade procedures.
