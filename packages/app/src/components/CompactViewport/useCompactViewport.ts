@@ -8,11 +8,10 @@ export const COMPACT_MAX_WIDTH = 900;
 
 export function useCompactViewport() {
   const { width } = useWindowSize();
-  // useWindowSize reports nothing until its effect runs. Read the window
-  // directly so the first paint matches the viewport. There is no window
-  // during SSR, and that stays desktop.
-  const measured =
-    width ?? (typeof window === 'undefined' ? undefined : window.innerWidth);
-  if (measured == null) return false;
-  return measured < COMPACT_MAX_WIDTH;
+  // Width is unknown during SSR and the first client render. AppNav is
+  // prerendered, so that first render has to match the server HTML. Treat
+  // the unknown width as desktop; the compact layout applies once
+  // useWindowSize reports a width.
+  if (width == null) return false;
+  return width < COMPACT_MAX_WIDTH;
 }

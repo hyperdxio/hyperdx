@@ -2640,7 +2640,7 @@ function DBSearchPageContent() {
                     }
                     onColumnToggle={toggleColumn}
                     displayedColumns={displayedColumns}
-                    onCollapse={collapseFilters}
+                    onCollapse={isCompact ? undefined : collapseFilters}
                     fill={isCompact}
                     {...searchFilters}
                   />
@@ -2728,16 +2728,25 @@ function DBSearchPageContent() {
               {analysisMode === 'delta' &&
                 searchedSource != null &&
                 isTraceSource(searchedSource) && (
-                  <DBSearchHeatmapChart
-                    chartConfig={{
-                      ...chartConfig,
-                      dateRange: searchedTimeRange,
-                      with: aliasWith,
-                    }}
-                    isReady={isReady}
-                    source={searchedSource}
-                    onAddFilter={searchFilters.setFilterValue}
-                  />
+                  <Flex direction="column" mih="0" miw={0} flex="1">
+                    {filtersCollapsed && (
+                      <Box className={searchPageStyles.searchStatsContainer}>
+                        <ExpandFiltersButton onExpand={expandFilters} />
+                      </Box>
+                    )}
+                    <Box flex="1" mih="0">
+                      <DBSearchHeatmapChart
+                        chartConfig={{
+                          ...chartConfig,
+                          dateRange: searchedTimeRange,
+                          with: aliasWith,
+                        }}
+                        isReady={isReady}
+                        source={searchedSource}
+                        onAddFilter={searchFilters.setFilterValue}
+                      />
+                    </Box>
+                  </Flex>
                 )}
               {analysisMode === 'results' && (
                 <Flex direction="column" mih="0" miw={0}>
