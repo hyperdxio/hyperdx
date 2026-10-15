@@ -15,11 +15,13 @@ export {
   renderNumberChart,
   renderTableChart,
 } from '@/termchart/charts';
+export { renderHeatmapChart } from '@/termchart/heatmap';
 export { niceTicks, resampleSeries } from '@/termchart/scale';
 export { renderStackedBarChart } from '@/termchart/stackedBar';
 export { renderLineChart } from '@/termchart/timeseries';
 export type {
   CategoricalEntry,
+  HeatmapData,
   TableColumn,
   TimeChartData,
   TimeChartSeries,

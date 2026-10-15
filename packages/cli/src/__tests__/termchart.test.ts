@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import {
   niceTicks,
+  renderHeatmapChart,
   renderLineChart,
   renderStackedBarChart,
   resampleSeries,
@@ -347,5 +348,65 @@ describe('renderStackedBarChart', () => {
     const bottomRow = output.split('\n').at(-2)!;
     const bars = bottomRow.slice(bottomRow.indexOf('┤') + 1);
     expect(bars.trimEnd().split(/ +/)).toHaveLength(3);
+  });
+});
+
+describe('renderHeatmapChart', () => {
+  // Two time buckets, four value rows (edges 1..16 on a log axis); the second
+  // bucket has a dense band in the top row.
+  const data = {
+    times: [1_700_000_000, 1_700_000_060],
+    rowEdges: [1, 2, 4, 8, 16],
+    counts: [
+      [0, 5, 0, 0],
+      [0, 1, 0, 50],
+    ],
+  };
+
+  it('shades denser cells darker and labels the value axis', () => {
+    const output = stripAnsi(
+      renderHeatmapChart({ data, width: 40, height: 12 }),
+    );
+    const lines = output.split('\n');
+    expect(lines[0]).toContain('16');
+    expect(lines[0]).toContain('█');
+    expect(output).toContain('max 50');
+    const bottomRow = lines.at(-4)!;
+    expect(bottomRow).toMatch(/[░▒]/);
+    expect(bottomRow).not.toContain('█');
+  });
+
+  it('trims empty value rows so the populated range fills the plot', () => {
+    const output = stripAnsi(
+      renderHeatmapChart({
+        data: {
+          ...data,
+          counts: [
+            [0, 5, 5, 0],
+            [0, 5, 5, 0],
+          ],
+        },
+        width: 40,
+        height: 12,
+      }),
+    );
+    expect(output.split('\n')[0]).toContain('8');
+  });
+
+  it('says so when every cell is empty', () => {
+    const output = stripAnsi(
+      renderHeatmapChart({
+        data: {
+          ...data,
+          counts: [
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+          ],
+        },
+        width: 40,
+        height: 12,
+      }),
+    );
+    expect(output).toContain('No data');
   });
 });

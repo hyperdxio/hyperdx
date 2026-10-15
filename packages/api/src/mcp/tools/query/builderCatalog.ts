@@ -8,6 +8,7 @@
 export const BUILDER_TOOLS_LIST = [
   '  • clickstack_table — aggregations, top-N, single-value KPIs, breakdowns',
   '  • clickstack_timeseries — trends / metrics over time',
+  '  • clickstack_heatmap — how a value (e.g. latency) is distributed over time',
   '  • clickstack_search — browsing individual log/trace rows',
   '  • clickstack_event_patterns — recurring log/event pattern discovery',
   '  • clickstack_event_deltas — attributes that differ between two row groups',

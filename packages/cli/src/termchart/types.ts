@@ -51,3 +51,13 @@ export interface TableColumn {
   /** Group-by columns render left-aligned and skip numeric formatting */
   isGroupColumn: boolean;
 }
+
+/** A heatmap: one column per time bucket, one row per value range. */
+export interface HeatmapData {
+  /** Column timestamps (unix seconds), ascending. */
+  times: number[];
+  /** `rows + 1` ascending row boundaries in data space. */
+  rowEdges: number[];
+  /** `counts[timeIdx][rowIdx]`: events in that time bucket and value range. */
+  counts: number[][];
+}

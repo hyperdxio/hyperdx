@@ -129,3 +129,50 @@ test(
     expect(await ui.find({ type: 'Text', text: /^engine row$/ })).toBeDefined();
   },
 );
+
+test('draws a heatmap result as shaded cells', { options }, async ($, on) => {
+  const heatmap = {
+    scale: 'log',
+    times: ['2026-10-13T00:00:00.000Z', '2026-10-13T00:01:00.000Z'],
+    valueEdges: [1, 10, 100, 1000],
+    counts: [
+      [0, 9, 1, 0, 0],
+      [0, 0, 2, 30, 0],
+    ],
+  };
+  let id = '';
+  on('tool.call', (_, e) => {
+    id = e.tool_use_id;
+    return { result: [{ type: 'text', text: JSON.stringify({ heatmap }) }] };
+  });
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e);
+    return <Text>engine row</Text>;
+  });
+  const tool = 'mcp__clickstack__clickstack_heatmap';
+  await $.tool.call({ tool, sourceId: 's', valueExpression: 'Duration' });
+  const ui = await $.ui.mount({
+    plugin: 'hyperdx-charts',
+    surface: 'terminal',
+    component: 'ToolGroup',
+    props: {
+      calls: [
+        {
+          tool_use_id: id,
+          tool,
+          input: {},
+          isRunning: false,
+          isErrored: false,
+          isInterrupted: false,
+        },
+      ],
+      isActive: false,
+      isExpanded: false,
+    },
+    viewport: { columns: 100, rows: 40 },
+  });
+  expect(
+    await ui.find({ type: 'Text', text: /events per cell, max 30/ }),
+  ).toBeDefined();
+  expect(await ui.find({ type: 'Text', text: /[░▒▓█]/ })).toBeDefined();
+});

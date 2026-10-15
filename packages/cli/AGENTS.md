@@ -161,8 +161,10 @@ dashboard**:
    module (only dependency: chalk) — number formatting is injected via
    callbacks, and it must never import from the rest of the CLI.
 
-Supported display types: line, stacked*bar, number, table, bar, pie, markdown.
-Heatmap / search / event patterns / PromQL show a placeholder. The web's
+Supported display types: line, stacked*bar, number, table, bar, pie, markdown,
+and distribution heatmaps (queried through common-utils'
+`queryDistributionHeatmap`, the same two queries the web runs). Series
+heatmaps / search / event patterns / PromQL show a placeholder. The web's
 previous-period comparison overlay is not rendered; tiles with
 `compareToPreviousPeriod` set show a dim callout instead. Time-series charts
 stretch to the full terminal width via peak-preserving resampling

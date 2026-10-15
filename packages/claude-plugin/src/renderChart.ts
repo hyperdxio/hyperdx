@@ -8,6 +8,7 @@ import { toTileResult } from './toTileResult';
 
 const TIME_CHART_ROWS = 14;
 const MAX_TABLE_ROWS = 20;
+const HEATMAP_ROWS = 18;
 
 /** Draws a clickstack tool result with the same renderer as `hdx`, or undefined when it can't be charted. */
 export function renderChart(
@@ -26,11 +27,16 @@ export function renderChart(
   const height =
     displayType === DisplayType.Number
       ? 3
-      : displayType === DisplayType.Line ||
-          displayType === DisplayType.StackedBar ||
-          displayType === DisplayType.StackedLine
-        ? TIME_CHART_ROWS
-        : Math.min(result.data.data.length + 2, MAX_TABLE_ROWS);
+      : displayType === DisplayType.Heatmap
+        ? HEATMAP_ROWS
+        : displayType === DisplayType.Line ||
+            displayType === DisplayType.StackedBar ||
+            displayType === DisplayType.StackedLine
+          ? TIME_CHART_ROWS
+          : Math.min(
+              (result.status === 'ok' ? result.data.data.length : 0) + 2,
+              MAX_TABLE_ROWS,
+            );
 
   try {
     return ansiLines(

@@ -103,4 +103,19 @@ describe('withDeadline', () => {
     await expect(withDeadline(work, Date.now() + 1000)).resolves.toBe('done');
     expect(captured?.aborted).toBe(true);
   });
+
+  it('summarizes a distribution heatmap by its time buckets', () => {
+    const counts = [
+      [0, 2, 0],
+      [0, 0, 0],
+    ];
+    expect(summarizeRows(JSON.stringify({ heatmap: { counts } }))).toEqual({
+      hasData: true,
+      rowCount: 2,
+    });
+    expect(summarizeRows(JSON.stringify({ heatmap: null }))).toEqual({
+      hasData: false,
+      rowCount: 0,
+    });
+  });
 });
