@@ -1004,7 +1004,7 @@ export function adhocConditionsToFilters(
 }
 
 /** How a value clicked in a tile updates an ad hoc filter. */
-export type AdhocConditionAction = 'include' | 'exclude';
+export type AdhocConditionAction = 'include' | 'exclude' | 'add';
 
 /** A clicked `key = value` pair, before an action gives it an operator. */
 export type AdhocConditionEntry = Pick<AdhocFilterCondition, 'key' | 'value'>;
@@ -1016,13 +1016,14 @@ export type AdhocConditionEntry = Pick<AdhocFilterCondition, 'key' | 'value'>;
  * `include` / `exclude` add a condition per entry, replacing the opposite
  * condition on the same key and value. When every entry's condition already
  * exists, they are removed instead, so a second click undoes the first.
+ * `add` is `include` without the undo, for actions labeled as adding.
  */
 export function mergeAdhocConditions(
   existingConditions: AdhocFilterCondition[],
   newConditions: AdhocConditionEntry[],
   action: AdhocConditionAction,
 ): AdhocFilterCondition[] {
-  const operator: AdhocFilterOperator = action === 'include' ? '=' : '!=';
+  const operator: AdhocFilterOperator = action === 'exclude' ? '!=' : '=';
   const matches = (
     condition: AdhocFilterCondition,
     entry: AdhocConditionEntry,
@@ -1035,14 +1036,14 @@ export function mergeAdhocConditions(
   const isApplied = newConditions.every(entry =>
     existingConditions.some(condition => matches(condition, entry, operator)),
   );
-  if (isApplied) {
+  if (isApplied && action !== 'add') {
     return existingConditions.filter(
       condition =>
         !newConditions.some(entry => matches(condition, entry, operator)),
     );
   }
 
-  const opposite: AdhocFilterOperator = action === 'include' ? '!=' : '=';
+  const opposite: AdhocFilterOperator = action === 'exclude' ? '=' : '!=';
   const kept = existingConditions.filter(
     condition =>
       !newConditions.some(entry => matches(condition, entry, opposite)),

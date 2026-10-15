@@ -9,10 +9,12 @@ import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_SESSIONS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
   INTERESTING_FILTER_KEYS_SOURCE_NAME,
 } from '../utils/constants';
 import {
+  adhocConditionsParam,
   expectFiltersParam,
   type FilterEntry,
   filtersParam,
@@ -256,22 +258,60 @@ test.describe(
         { name: 'Conditions', sources: [DEFAULT_LOGS_SOURCE_NAME] },
       ]);
 
-      await new TableComponent(page).clickFirstRow();
-      await new SidePanelComponent(
-        page,
-        'row-side-panel',
-      ).addParsedFieldToFilter('ServiceName');
-      await expect
-        .poll(() => filtersParam(page))
-        .toEqual([
-          {
-            type: 'adhoc',
-            name: 'Conditions',
-            conditions: [
-              { key: 'ServiceName', operator: '=', value: expect.any(String) },
-            ],
-          },
-        ]);
+      const sidePanel = new SidePanelComponent(page, 'row-side-panel');
+      const serviceCondition = {
+        key: 'ServiceName',
+        operator: '=',
+        value: expect.any(String),
+      };
+      const expectServiceCondition = () =>
+        expect
+          .poll(() => filtersParam(page))
+          .toEqual([
+            {
+              type: 'adhoc',
+              name: 'Conditions',
+              conditions: [serviceCondition],
+            },
+          ]);
+
+      await test.step('Add to filters adds a condition', async () => {
+        await new TableComponent(page).clickFirstRow();
+        await sidePanel.addParsedFieldToFilter('ServiceName');
+        await expectServiceCondition();
+      });
+
+      await test.step('Adding it again keeps the condition', async () => {
+        await sidePanel.addParsedFieldToFilter('ServiceName');
+        await expectServiceCondition();
+      });
+
+      await test.step('Surrounding context cells are shaped like tile cells', async () => {
+        const [{ value: serviceName }] = adhocConditionsParam(
+          page,
+          'Conditions',
+        );
+        await sidePanel.clickTab('context');
+        const contextTable = sidePanel.contextTab.getByTestId(
+          'search-results-table',
+        );
+        const includeAction = contextTable.getByRole('button', {
+          name: 'Toggle filter for this value',
+        });
+        await contextTable
+          .getByText(serviceName, { exact: true })
+          .first()
+          .hover();
+        await expect(includeAction.last()).toBeVisible();
+        await contextTable
+          .getByText(/\d:\d{2}:\d{2}\.\d{3}/)
+          .first()
+          .hover();
+        await expect(
+          contextTable.getByRole('button', { name: 'Copy field value' }).last(),
+        ).toBeVisible();
+        await expect(includeAction).toHaveCount(0);
+      });
     });
 
     test('offers filter actions only where an ad hoc filter applies', async () => {
@@ -319,6 +359,41 @@ test.describe(
       await test.step('Kiosk mode offers none', async () => {
         await dashboardPage.enterKioskMode();
         await expectFilterActions(0);
+      });
+    });
+
+    test('session search tile cells update the ad hoc filter', async ({
+      page,
+    }) => {
+      const tile = dashboardPage.getTile(0);
+
+      await test.step('Add a session search tile and an ad hoc filter on its source', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addSearchTile({
+          chartName: 'Sessions',
+          sourceName: DEFAULT_SESSIONS_SOURCE_NAME,
+          select: 'Timestamp, ServiceName, Body',
+        });
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+        await addAdhocFilters([
+          { name: 'Sessions', sources: [DEFAULT_SESSIONS_SOURCE_NAME] },
+        ]);
+        await expect(
+          tile.getByText('browser', { exact: true }).first(),
+        ).toBeVisible({ timeout: 20000 });
+      });
+
+      await test.step('Including a value adds key = value', async () => {
+        await dashboardPage.filterTileCell(tile, 'browser', 'include');
+        await expectFiltersParam(page, [
+          {
+            type: 'adhoc',
+            name: 'Sessions',
+            conditions: [
+              { key: 'ServiceName', operator: '=', value: 'browser' },
+            ],
+          },
+        ]);
       });
     });
   },
