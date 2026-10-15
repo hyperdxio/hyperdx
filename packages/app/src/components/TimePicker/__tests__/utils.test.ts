@@ -1,8 +1,8 @@
-import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
-
 import {
   dateParser,
+  formatTimeRangeText,
   parseTimeRangeInput,
+  rangeNeedsExplicitYear,
   timeRangeInputToSeconds,
 } from '@/components/TimePicker/utils';
 
@@ -161,8 +161,55 @@ describe('parseTimeRangeInput', () => {
   });
 });
 
-// Mirrors how TimePicker.handleSearch builds the range text for each clock.
-describe('parseTimeRangeInput with year-qualified picker text', () => {
+describe('rangeNeedsExplicitYear', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2025-06-15T12:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false for a past range in the current year', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2025-03-01T10:00:00'),
+        new Date('2025-03-02T10:00:00'),
+      ]),
+    ).toBe(false);
+  });
+
+  it('is true when either date is in another year', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2024-03-01T10:00:00'),
+        new Date('2025-03-02T10:00:00'),
+      ]),
+    ).toBe(true);
+  });
+
+  it('is true when a date in the current year is in the future', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2025-06-01T10:00:00'),
+        new Date('2025-12-25T10:00:00'),
+      ]),
+    ).toBe(true);
+  });
+
+  it('compares years in UTC when isUTC is set', () => {
+    jest.setSystemTime(new Date('2025-06-15T12:00:00Z'));
+    expect(
+      rangeNeedsExplicitYear(
+        [new Date('2024-12-31T23:00:00Z'), new Date('2025-01-01T01:00:00Z')],
+        true,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('formatTimeRangeText', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-06-15T12:00:00'));
@@ -172,19 +219,46 @@ describe('parseTimeRangeInput with year-qualified picker text', () => {
     jest.useRealTimers();
   });
 
+  it('omits the year for a past range in the current year', () => {
+    expect(
+      formatTimeRangeText([
+        new Date('2026-03-03T10:00:00'),
+        new Date('2026-03-05T10:00:00'),
+      ]),
+    ).toBe('Mar 3 10:00:00 - Mar 5 10:00:00');
+  });
+
+  it('includes the year when any date is outside the current year', () => {
+    expect(
+      formatTimeRangeText([
+        new Date('2025-12-30T10:00:00'),
+        new Date('2026-02-01T10:00:00'),
+      ]),
+    ).toBe('Dec 30 2025 10:00:00 - Feb 1 2026 10:00:00');
+  });
+
+  it('uses the requested clock', () => {
+    expect(
+      formatTimeRangeText(
+        [new Date('2024-03-03T13:05:09'), new Date('2024-03-05T01:00:00')],
+        { clock: '12h' },
+      ),
+    ).toBe('Mar 3 2024 1:05:09 PM - Mar 5 2024 1:00:00 AM');
+  });
+
   it.each(['12h', '24h'] as const)(
-    'round-trips past, boundary and future ranges with a %s clock',
+    'round-trips past, boundary, current-year and future ranges with a %s clock',
     clock => {
       const ranges: [Date, Date][] = [
         [new Date('2024-03-03T13:05:09'), new Date('2024-03-05T01:00:00')],
         [new Date('2025-12-30T10:00:00'), new Date('2026-02-01T10:00:00')],
+        [new Date('2026-03-03T10:00:00'), new Date('2026-03-05T10:00:00')],
         [new Date('2026-08-01T10:00:00'), new Date('2026-09-01T10:00:00')],
       ];
-      for (const [start, end] of ranges) {
-        const text = [start, end]
-          .map(d => formatDate(d, { format: 'withYear', clock }))
-          .join(' - ');
-        expect(parseTimeRangeInput(text)).toEqual([start, end]);
+      for (const range of ranges) {
+        expect(
+          parseTimeRangeInput(formatTimeRangeText(range, { clock })),
+        ).toEqual(range);
       }
     },
   );

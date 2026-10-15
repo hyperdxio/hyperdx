@@ -733,6 +733,16 @@ describe('PromQL expressions', () => {
     ).not.toHaveProperty('heatmap', expect.anything());
   });
 
+  it('carries the PromQL source on the saved and queried configs', () => {
+    const form = promqlForm([{ expression: 'up' }]);
+    expect(
+      convertFormStateToSavedChartConfig(form, promqlSource),
+    ).toMatchObject({ source: 'source-promql' });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, promqlSource),
+    ).toMatchObject({ source: 'source-promql' });
+  });
+
   it('saves the form rows as the expression list', () => {
     expect(
       convertFormStateToSavedChartConfig(
@@ -901,7 +911,7 @@ describe('PromQL expressions', () => {
       configType: 'promql',
       displayType: DisplayType.Line,
       promqlExpression: 'up',
-      connection: 'conn-1',
+      source: 'source-promql',
       legendTemplate: '{{pod}}',
     });
     expect(result.configType).toBe('promql');
@@ -917,7 +927,7 @@ describe('PromQL expressions', () => {
       convertSavedChartConfigToFormState({
         configType: 'promql',
         displayType: DisplayType.Line,
-        connection: 'conn-1',
+        source: 'source-promql',
         promqlExpression: [],
       }).promqlExpressions,
     ).toEqual([{ expression: '', alias: '' }]);
@@ -1319,6 +1329,55 @@ describe('validateChartForm', () => {
       setError,
     );
     expect(errors.filter(e => e.path === 'source')).toHaveLength(0);
+  });
+
+  describe('PromQL charts', () => {
+    const promqlChartForm = (overrides: Partial<ChartEditorFormState>) =>
+      makeForm({
+        configType: 'promql',
+        promqlExpressions: [{ expression: 'up' }],
+        series: [],
+        ...overrides,
+      });
+
+    it('returns no errors with a PromQL source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: 'source-promql' }),
+        promqlSource,
+        jest.fn(),
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('errors without a source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: undefined }),
+        undefined,
+        jest.fn(),
+      );
+      expect(errors).toContainEqual(
+        expect.objectContaining({
+          path: 'source',
+          message: 'Source is required',
+        }),
+      );
+    });
+
+    // The editor resolves the selection against the kinds PromQL mode allows,
+    // so a leftover builder source arrives here as no source at all.
+    it('errors when the selected source is not a PromQL source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: 'source-log' }),
+        undefined,
+        jest.fn(),
+      );
+      expect(errors).toContainEqual(
+        expect.objectContaining({
+          path: 'source',
+          message: 'Source is required',
+        }),
+      );
+    });
   });
 
   // ── Series valueExpression validation ────────────────────────────────

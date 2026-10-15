@@ -264,4 +264,22 @@ export class TableComponent {
   async sortByColumn(columnName: string) {
     await this.getHeader(columnName).click();
   }
+
+  /**
+   * Get the sortable header button for a column in the row table
+   */
+  getSortButton(columnName: string) {
+    return this.page
+      .getByTestId('raw-log-table-sort-button')
+      .filter({ hasText: new RegExp(`^${columnName}$`) });
+  }
+
+  /**
+   * Get the asc/desc arrow shown on a sorted column's header
+   */
+  getSortIndicator(columnName: string) {
+    return this.getSortButton(columnName).getByTestId(
+      'raw-log-table-sort-indicator',
+    );
+  }
 }

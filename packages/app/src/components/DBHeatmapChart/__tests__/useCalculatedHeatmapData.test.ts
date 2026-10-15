@@ -22,6 +22,7 @@ const config: PromqlConfigWithDateRange = {
   displayType: DisplayType.Heatmap,
   promqlExpression: [{ expression: 'up' }],
   connection: 'test-connection',
+  source: 'promql-source',
   dateRange,
   granularity: 'auto',
 };

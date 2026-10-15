@@ -811,6 +811,7 @@ describe('dashboardFilterValues', () => {
       configType: 'promql',
       promqlExpression: 'up',
       connection: 'local',
+      source: 'promql-source',
     };
 
     it('applies to a builder tile', () => {
@@ -864,6 +865,7 @@ describe('dashboardFilterValues', () => {
       configType: 'promql',
       promqlExpression: 'up',
       connection: 'local',
+      source: 'promql-source',
     };
 
     const unsatisfied = [

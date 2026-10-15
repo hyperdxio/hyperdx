@@ -10,7 +10,10 @@ import {
   isTimeSeriesDisplayType,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import { UnknownVariableError } from '@hyperdx/common-utils/dist/macroErrors';
 import type {
   ChartConfigWithDateRange,
@@ -616,6 +619,11 @@ export async function runConfigTile(
     } catch (e) {
       return clickHouseErrorResult(e);
     }
+  }
+
+  // PromQL is evaluated by the Prometheus API, not the SQL renderer.
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    return mcpUserError('PromQL tiles cannot be queried through MCP yet.');
   }
 
   // Raw SQL tile — hydrate source fields for macro support ($__sourceTable, $__filters)

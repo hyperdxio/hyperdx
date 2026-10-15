@@ -91,14 +91,12 @@ async function fetchInstantExpression(
   const response = await prometheusApi.query({
     query: series.expression,
     time: evalTime.getTime() / 1000,
-    connectionId: config.connection,
+    sourceId: config.source,
     // A vector is one sample per series, so capping series caps a table's
     // rows exactly. Range queries go uncapped: series can be sparse, so no
     // series count bounds their samples without dropping rows that would fit.
     limit:
       config.displayType === DisplayType.Table ? MAX_TABLE_ROWS : undefined,
-    database: config.from?.databaseName,
-    table: config.from?.tableName,
     signal,
     attribution,
   });
@@ -127,9 +125,7 @@ async function fetchRangeExpression(
       dateRange,
       config.minGranularitySeconds,
     ),
-    connectionId: config.connection,
-    database: config.from?.databaseName,
-    table: config.from?.tableName,
+    sourceId: config.source,
     signal,
     attribution,
   });
