@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -413,6 +420,7 @@ export type FilterGroupProps = {
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
   showFilterCounts?: boolean;
   'data-testid'?: string;
   chartConfig: BuilderChartConfigWithDateRange;
@@ -920,6 +928,7 @@ export const FilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  onExpandedChange,
   showFilterCounts,
   'data-testid': dataTestId,
   chartConfig,
@@ -956,6 +965,13 @@ export const FilterGroup = ({
       setExpanded(true);
     }
   }, [isDefaultExpanded]);
+
+  // A virtualized parent passes the reported state back as isDefaultExpanded,
+  // so it survives the row unmounting when scrolled out of view.
+  const reportExpanded = useEffectEvent(() => onExpandedChange?.(isExpanded));
+  useEffect(() => {
+    if (isExpanded !== isDefaultExpanded) reportExpanded();
+  }, [isExpanded, isDefaultExpanded]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +

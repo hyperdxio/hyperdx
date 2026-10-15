@@ -904,6 +904,35 @@ describe('NestedFilterGroup', () => {
     expect(screen.queryByText('host.name')).toBeNull();
   });
 
+  it('should keep a child expanded after its row unmounts and remounts', async () => {
+    renderWithMantine(
+      <NestedFilterGroup
+        {...defaultNestedProps}
+        childFilters={manyChildFilters}
+        isDefaultExpanded={true}
+      />,
+    );
+    const childTestId = `nested-filter-group-${manyChildFilters[0].key}`;
+    const child = () => within(screen.getByTestId(childTestId));
+
+    await userEvent.click(child().getByTestId('filter-group-control'));
+    expect(child().getByTestId('filter-group-panel')).toHaveAttribute(
+      'aria-hidden',
+      'false',
+    );
+
+    // Filtering the row out unmounts it, like scrolling it out of view
+    const search = screen.getByPlaceholderText('Search keys...');
+    await userEvent.type(search, 'k8s');
+    expect(screen.queryByTestId(childTestId)).toBeNull();
+    await userEvent.clear(search);
+
+    expect(child().getByTestId('filter-group-panel')).toHaveAttribute(
+      'aria-hidden',
+      'false',
+    );
+  });
+
   it('should show an empty state when no keys match', async () => {
     renderWithMantine(
       <NestedFilterGroup

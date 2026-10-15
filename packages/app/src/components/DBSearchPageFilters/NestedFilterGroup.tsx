@@ -107,6 +107,10 @@ export const NestedFilterGroup = ({
   }, [childFilters, search]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Rows unmount when scrolled out of view, so their expanded state lives here
+  const [expandedChildren, setExpandedChildren] = useState<
+    Record<string, boolean>
+  >({});
 
   const rowVirtualizer = useVirtualizer({
     count: isExpanded ? matchingChildFilters.length : 0,
@@ -275,7 +279,15 @@ export const NestedFilterGroup = ({
                             }
                             hasLoadedMore={hasLoadedMore[child.key] || false}
                             showFilterCounts={showFilterCounts}
-                            isDefaultExpanded={childHasSelections}
+                            isDefaultExpanded={
+                              expandedChildren[child.key] ?? childHasSelections
+                            }
+                            onExpandedChange={expanded =>
+                              setExpandedChildren(prev => ({
+                                ...prev,
+                                [child.key]: expanded,
+                              }))
+                            }
                             chartConfig={chartConfig}
                             isLive={isLive}
                           />
