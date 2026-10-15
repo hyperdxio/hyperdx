@@ -70,11 +70,12 @@ runs:
       uses: crazy-max/ghaction-github-runtime@v4
 
     # DocumentDB is built from source; the GHA cache keeps that to the first run.
+    # The tag must match the e2e compose `db` image so `up` reuses it instead of rebuilding.
     - name: Build DocumentDB image
       shell: bash
       run: |
         docker buildx create --use --driver=docker-container
-        docker buildx bake -f packages/app/tests/e2e/docker-compose.yml db --set *.cache-to="type=gha,mode=max,scope=documentdb" --set *.cache-from="type=gha,scope=documentdb" --load
+        docker buildx build docker/documentdb -t hyperdx/documentdb:local --cache-to "type=gha,mode=max,scope=documentdb" --cache-from "type=gha,scope=documentdb" --load
 
     - name: Start E2E Docker Compose
       shell: bash

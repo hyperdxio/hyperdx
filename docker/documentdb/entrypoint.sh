@@ -10,6 +10,14 @@ if [ "$(id -u)" = 0 ]; then
   exec su-exec postgres "$0" "$@"
 fi
 
+# Postgres logs to a file; print it on a failed start so `docker logs` shows the cause.
+start_postgres() {
+  pg_ctl -D "$PGDATA" -l "$PGDATA/postgresql.log" -w start >/dev/null || {
+    tail -n 50 "$PGDATA/postgresql.log" >&2
+    exit 1
+  }
+}
+
 # The marker is written last, so a first boot killed part-way is redone, not left broken.
 if [ ! -f "$PGDATA/.documentdb-initialised" ]; then
   find "$PGDATA" -mindepth 1 -delete
@@ -25,13 +33,13 @@ documentdb.indexBuildsScheduledOnBgWorker = false
 documentdb.rum_library_load_option = 'require_documentdb_extended_rum'
 documentdb.alternate_index_handler_name = 'extended_rum'
 CONF
-  pg_ctl -D "$PGDATA" -l "$PGDATA/postgresql.log" -w start >/dev/null
+  start_postgres
   psql -h /tmp -U postgres -d postgres -qX -v ON_ERROR_STOP=1 -c "CREATE EXTENSION documentdb CASCADE; CREATE EXTENSION documentdb_extended_rum;"
   doc=$(printf '{"createUser":"%s","pwd":"%s","roles":[{"role":"readWriteAnyDatabase","db":"admin"},{"role":"clusterAdmin","db":"admin"}]}' "$DOCDB_USER" "$DOCDB_PASSWORD")
   psql -h /tmp -U postgres -d postgres -qX -v ON_ERROR_STOP=1 -v doc="$doc" <<< "SELECT documentdb_api.create_user(:'doc');" >/dev/null
   touch "$PGDATA/.documentdb-initialised"
 else
-  pg_ctl -D "$PGDATA" -l "$PGDATA/postgresql.log" -w start >/dev/null
+  start_postgres
 fi
 
 echo "postgresql://postgres@localhost:5432/postgres" > /tmp/pg-url
