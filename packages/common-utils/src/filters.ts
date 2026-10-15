@@ -954,6 +954,15 @@ export function isAdhocFilterValue(
   return value.type === 'adhoc';
 }
 
+/**
+ * Whether a SQL ad hoc condition on a value of this ClickHouse type can match.
+ * Conditions compare `toString(key)` with the value as queries return it, and
+ * queries return DateTimes as ISO UTC, unlike toString's space-separated form
+ * in the column's timezone.
+ */
+export const isAdhocComparableDataType = (type: string): boolean =>
+  !/\bDateTime/.test(type);
+
 const renderAdhocConditionSql = ({
   key,
   operator,

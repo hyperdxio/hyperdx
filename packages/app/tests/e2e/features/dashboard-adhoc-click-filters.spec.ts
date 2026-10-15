@@ -10,6 +10,7 @@ import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
+  INTERESTING_FILTER_KEYS_SOURCE_NAME,
 } from '../utils/constants';
 import {
   expectFiltersParam,
@@ -167,6 +168,79 @@ test.describe(
         );
         await expect(
           tile.getByText('ACCOUNTING', { exact: true }).first(),
+        ).toBeVisible();
+      });
+    });
+
+    test('search tile cells filter only where toString() matches the cell', async ({
+      page,
+    }) => {
+      const tile = dashboardPage.getTile(0);
+      const conditionsIn = (
+        conditions: { key: string; operator: string; value: string }[],
+      ): FilterEntry[] => [{ type: 'adhoc', name: 'Conditions', conditions }];
+
+      await test.step('Add a search tile with map, JSON path, and hyphenated columns', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addSearchTile({
+          chartName: 'Logs',
+          sourceName: INTERESTING_FILTER_KEYS_SOURCE_NAME,
+          select:
+            'Timestamp, ResourceAttributes, ResourceAttributesJSON.key.subKey.subSubKey, `service-name`',
+        });
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+        await addAdhocFilters([
+          {
+            name: 'Conditions',
+            sources: [INTERESTING_FILTER_KEYS_SOURCE_NAME],
+          },
+        ]);
+        await expect(
+          tile.getByText('svc-one', { exact: true }).first(),
+        ).toBeVisible({ timeout: 20000 });
+      });
+
+      await test.step('Map cells offer no filter actions', async () => {
+        const mapCell = /^\{"key\.subKey\.subSubKey":"value1"\}$/;
+        await expect(
+          await dashboardPage.getTileCellAction(tile, mapCell, 'copy'),
+        ).toBeVisible();
+        await expect(
+          await dashboardPage.getTileCellAction(tile, mapCell, 'include'),
+        ).toHaveCount(0);
+      });
+
+      await test.step('A JSON path filters on its unwrapped value', async () => {
+        await dashboardPage.filterTileCell(tile, '"value2"', 'include');
+        await expectFiltersParam(
+          page,
+          conditionsIn([
+            {
+              key: 'ResourceAttributesJSON.key.subKey.subSubKey',
+              operator: '=',
+              value: 'value2',
+            },
+          ]),
+        );
+        await expect(tile.getByText('svc-one', { exact: true })).toHaveCount(0);
+        await expect(
+          tile.getByText('svc-two', { exact: true }).first(),
+        ).toBeVisible();
+        await dashboardPage.filterTileCell(tile, '"value2"', 'include');
+        await expect.poll(() => filtersParam(page) ?? []).toEqual([]);
+      });
+
+      await test.step('A hyphenated column filters on its quoted name', async () => {
+        await dashboardPage.filterTileCell(tile, 'svc-one', 'exclude');
+        await expectFiltersParam(
+          page,
+          conditionsIn([
+            { key: '`service-name`', operator: '!=', value: 'svc-one' },
+          ]),
+        );
+        await expect(tile.getByText('svc-one', { exact: true })).toHaveCount(0);
+        await expect(
+          tile.getByText('svc-two', { exact: true }).first(),
         ).toBeVisible();
       });
     });

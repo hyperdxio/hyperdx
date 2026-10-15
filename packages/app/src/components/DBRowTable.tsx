@@ -29,7 +29,6 @@ import {
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { quoteResultColumnNameIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DENOISE_NOISE_THRESHOLD,
@@ -113,6 +112,7 @@ import { csvExportFilename } from '@/utils/csv';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
+import { getAdhocCellCondition } from './DBTable/adhocCellCondition';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import {
@@ -378,7 +378,7 @@ export const RawLogTable = memo(
     showExpandButton = true,
     enableRowSelection = false,
     selectionResetKey,
-    filterOnAliasedExpressions,
+    isAdhocFilterTarget,
     onSelectedRowsChange,
     getRowWhere,
     variant = 'default',
@@ -415,10 +415,11 @@ export const RawLogTable = memo(
     enableRowSelection?: boolean;
     selectionResetKey?: string;
     /**
-     * Pass the expression behind an aliased column as the cell's filter key,
-     * for filters applied outside this query, where the alias isn't defined.
+     * Cell include / exclude actions update ad hoc dashboard filters, which
+     * apply outside this query and compare `toString(key)` with the value. See
+     * getAdhocCellCondition for how that shapes each cell's key and value.
      */
-    filterOnAliasedExpressions?: boolean;
+    isAdhocFilterTarget?: boolean;
     onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
     renderRowDetails?: (row: {
       id: string;
@@ -520,17 +521,23 @@ export const RawLogTable = memo(
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
 
-    const getCellFilterKey = useCallback(
-      (column: string | undefined) => {
-        if (!filterOnAliasedExpressions || column == null) return column;
-        // Cells hold ISO UTC timestamps, which never equal toString() of a
-        // DateTime (space-separated, in the column's timezone).
-        if (/\bDateTime/.test(columnTypeMap.get(column)?.type ?? '')) {
-          return undefined;
+    const getCellFilter = useCallback(
+      (
+        column: string | undefined,
+        cellValue: unknown,
+      ): { columnName?: string; filterValue?: string } => {
+        if (!isAdhocFilterTarget || column == null) {
+          return { columnName: column };
         }
-        return aliasMap?.[column] ?? quoteResultColumnNameIfNeeded(column);
+        const condition = getAdhocCellCondition(
+          column,
+          columnTypeMap.get(column),
+          cellValue,
+          aliasMap,
+        );
+        return { columnName: condition?.key, filterValue: condition?.value };
       },
-      [filterOnAliasedExpressions, aliasMap, columnTypeMap],
+      [isAdhocFilterTarget, aliasMap, columnTypeMap],
     );
 
     // Reset scroll when live tail is enabled for the first time
@@ -1291,9 +1298,10 @@ export const RawLogTable = memo(
                                       cellValue={cellValue}
                                       wrapLinesEnabled={wrapLinesEnabled}
                                       tableContainerRef={tableContainerRef}
-                                      columnName={getCellFilterKey(
+                                      {...getCellFilter(
                                         (cell.column.columnDef.meta as any)
                                           ?.column,
+                                        cellValue,
                                       )}
                                       isChart={
                                         (cell.column.columnDef.meta as any)
@@ -1645,7 +1653,7 @@ function DBSqlRowTableComponent({
   showExpandButton = true,
   enableRowSelection = false,
   selectionResetKey,
-  filterOnAliasedExpressions,
+  isAdhocFilterTarget,
   onSelectedRowsChange,
   renderRowDetails,
   onSortingChange,
@@ -1680,7 +1688,7 @@ function DBSqlRowTableComponent({
   showExpandButton?: boolean;
   enableRowSelection?: boolean;
   selectionResetKey?: string;
-  filterOnAliasedExpressions?: boolean;
+  isAdhocFilterTarget?: boolean;
   onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
@@ -2004,7 +2012,7 @@ function DBSqlRowTableComponent({
         showExpandButton={showExpandButton}
         enableRowSelection={enableRowSelection}
         selectionResetKey={selectionResetKey}
-        filterOnAliasedExpressions={filterOnAliasedExpressions}
+        isAdhocFilterTarget={isAdhocFilterTarget}
         onSelectedRowsChange={onSelectedRowsChange}
         enableSorting={true}
         onSortingChange={_onSortingChange}
