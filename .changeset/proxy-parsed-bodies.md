@@ -2,6 +2,6 @@
 '@hyperdx/api': patch
 ---
 
-Forward parsed JSON and form request bodies through the ClickHouse proxy,
-including charset parameters and repeated form fields. Keep request framing in
-sync with serialized bytes and preserve unparsed multipart streams.
+Forward the bytes consumed by the ClickHouse proxy's body parsers without
+changing JSON values, form fields or text encodings. Keep request framing in
+sync with inflated bytes and preserve unparsed multipart streams.
