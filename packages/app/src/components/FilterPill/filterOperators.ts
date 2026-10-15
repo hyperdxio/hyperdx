@@ -32,3 +32,12 @@ export function getFilterOperators(
 ): FilterOperatorOption<FilterOperator>[] {
   return language === 'promql' ? PROMQL_FILTER_OPERATORS : SQL_FILTER_OPERATORS;
 }
+
+/** How a pill shows `operator`: its label, and whether it excludes values. */
+export function getFilterOperatorDisplay(
+  language: FilterLanguage,
+  operator: string,
+): { label: string; isExcluded: boolean } {
+  const option = getFilterOperators(language).find(op => op.value === operator);
+  return { label: option?.label ?? operator, isExcluded: !!option?.negated };
+}
