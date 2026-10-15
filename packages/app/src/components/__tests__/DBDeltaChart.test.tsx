@@ -139,6 +139,42 @@ describe('DBDeltaChart', () => {
     });
   });
 
+  describe('trace scope is stripped from delta queries', () => {
+    it('never forwards filtersScope/traceIdExpression to any delta query', () => {
+      // The heatmap spreads the search config (which may be trace-scoped) into
+      // this chart. The delta's own outlier/inlier/indexHint predicates are
+      // span-level internals; letting the trace-membership rewrite wrap them
+      // (`TraceId IN (SELECT ...)`) breaks the delta. Every query — including
+      // the nested WITH-clause subqueries — must run span-scoped.
+      renderChart({
+        config: {
+          ...baseConfig,
+          filtersScope: 'trace',
+          traceIdExpression: 'TraceId',
+        },
+        xMin: 1,
+        xMax: 2,
+        yMin: 1,
+        yMax: 2,
+      });
+
+      const calls = mockUseQueriedChartConfig.mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      for (const [cfg] of calls) {
+        expect(cfg.filtersScope).toBeUndefined();
+        expect(cfg.traceIdExpression).toBeUndefined();
+        // The user's own filters must still ride along (span-scoped).
+        expect(cfg.filters).toEqual(expect.arrayContaining([sentinelFilter]));
+        for (const withClause of cfg.with ?? []) {
+          if (withClause.chartConfig) {
+            expect(withClause.chartConfig.filtersScope).toBeUndefined();
+            expect(withClause.chartConfig.traceIdExpression).toBeUndefined();
+          }
+        }
+      }
+    });
+  });
+
   describe('partial-null selection coordinates', () => {
     // The four-null conditional that originally gated <DBDeltaChart>
     // used `&&` across xMin/xMax/yMin/yMax. A regression weakening the

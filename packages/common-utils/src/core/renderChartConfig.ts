@@ -1301,6 +1301,150 @@ async function renderWhereExpression(
   return chSql`${{ UNSAFE_RAW_SQL: _condition }}`;
 }
 
+// SQL comparison operators that flip a predicate into an exclusion: as an
+// existential trace-membership test (`TraceId IN (SELECT ... WHERE <p>)`) they
+// read as "*some* span is not X", true for almost any multi-span trace, so the
+// exclusion would stop excluding. `IS NOT` (e.g. `IS NOT NULL`) is deliberately
+// absent: "some span has a non-null X" is a legitimate positive existence test.
+const SQL_NEGATION_OPERATORS = new Set([
+  '!=',
+  '<>',
+  'NOT IN',
+  'NOT LIKE',
+  'NOT ILIKE',
+  'NOT BETWEEN',
+]);
+
+// Reused across calls: `isNegatedFilterCondition` runs once per predicate on
+// every render, and `astify` holds no cross-call state, so a single parser
+// avoids allocating one each time.
+const NEGATION_SQL_PARSER = new SQLParser.Parser();
+
+/**
+ * True when a lucene predicate carries a second top-level term after its
+ * leading negation — i.e. a term boundary (whitespace, `&&`, `||`) that sits
+ * outside quotes and any grouping/range brackets. Such a query is a mix of
+ * terms, not a sole negation. Range queries (`[1 TO 5]`, `{1 TO 5}`) and groups
+ * (`(...)`) carry internal spaces that must not read as a term boundary.
+ */
+function luceneHasSecondTerm(rest: string): boolean {
+  let inQuote = false;
+  let depth = 0;
+  let prev = '';
+  for (const ch of rest) {
+    if (ch === '"' && !(inQuote && prev === '\\')) {
+      inQuote = !inQuote;
+      prev = ch;
+      continue;
+    }
+    if (inQuote) {
+      prev = ch;
+      continue;
+    }
+    if (ch === '(' || ch === '[' || ch === '{') {
+      depth++;
+      prev = ch;
+      continue;
+    }
+    if (ch === ')' || ch === ']' || ch === '}') {
+      if (depth > 0) depth--;
+      prev = ch;
+      continue;
+    }
+    if (depth > 0) {
+      prev = ch;
+      continue;
+    }
+    if (/\s/.test(ch)) return true;
+    // The second character of a top-level `&&` / `||` operator.
+    if ((ch === '&' && prev === '&') || (ch === '|' && prev === '|')) {
+      return true;
+    }
+    prev = ch;
+  }
+  return false;
+}
+
+/**
+ * Best-effort detection of a predicate that is a single top-level exclusion /
+ * negation, derived from the raw condition (the source of truth) rather than an
+ * out-of-band flag saved searches and older URLs don't carry.
+ *
+ * Trace scope must keep such predicates off the existential trace-membership
+ * rewrite: `TraceId IN (SELECT ... WHERE <col> NOT IN (...))` asks for a trace
+ * with *some* other span, which is true for almost every multi-span trace, so
+ * the exclusion would stop excluding. Detected negations are applied to the
+ * outer rows instead.
+ *
+ * SQL is classified from the parsed AST, not substring matching, so a `!=`
+ * inside a string literal (`Body = 'a != b'`), `NOT LIKE` / `NOT BETWEEN`
+ * (whose inner `AND` no longer masks the negation), and top-level `AND`/`OR`
+ * (a mix, treated as positive) are all handled correctly. Lucene is classified
+ * as a sole negation only when the whole query is a single negated term; a
+ * mixed lucene query (e.g. `-ServiceName:cart SpanName:checkout`, implicit AND)
+ * stays positive so its positive part still drives a membership subquery — a
+ * documented conservative limitation.
+ */
+export function isNegatedFilterCondition(
+  condition: string | null | undefined,
+  language: string,
+): boolean {
+  const c = (condition ?? '').trim();
+  if (!c) return false;
+
+  if (language === 'lucene') {
+    let rest: string | null = null;
+    const notMatch = c.match(/^NOT\s+/i);
+    if (notMatch) {
+      rest = c.slice(notMatch[0].length);
+    } else if (c.startsWith('-') && c.length > 1 && !/\s/.test(c[1])) {
+      rest = c.slice(1);
+    }
+    if (rest == null || rest.trim() === '') return false;
+    return !luceneHasSecondTerm(rest);
+  }
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- astify returns a union; we read only `.where`
+    const ast = NEGATION_SQL_PARSER.astify(`SELECT * FROM t WHERE ${c}`, {
+      database: 'Postgresql',
+    }) as SQLParser.Select;
+    const where = ast.where as
+      | {
+          type?: string;
+          operator?: string;
+          name?: { name?: { value?: string }[] };
+        }
+      | null
+      | undefined;
+    if (!where) return false;
+    if (where.type === 'binary_expr') {
+      const op = String(where.operator ?? '').toUpperCase();
+      if (op === 'AND' || op === 'OR') return false;
+      return SQL_NEGATION_OPERATORS.has(op);
+    }
+    // `NOT <expr>` parses as a unary_expr, and `NOT (<expr>)` as a `NOT(...)`
+    // function node; both are a top-level negation.
+    if (
+      where.type === 'unary_expr' &&
+      String(where.operator ?? '').toUpperCase() === 'NOT'
+    ) {
+      return true;
+    }
+    if (
+      where.type === 'function' &&
+      where.name?.name?.[0]?.value?.toUpperCase() === 'NOT'
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    // Unparseable predicate: fall back to matching only the deterministic
+    // sidebar exclusion shapes, which never contain string literals.
+    return /\bNOT\s+IN\b/i.test(c) || /(?:!=|<>)/.test(c);
+  }
+}
+
 async function renderWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -1406,45 +1550,56 @@ async function renderWhere(
     ).filter(v => v !== null) as ChSql[];
   }
 
-  const filterConditions = await Promise.all(
-    (chartConfig.filters ?? []).map(async filter => {
-      if (filter.type === 'sql_ast') {
-        return wrapChSqlIfNotEmpty(
-          chSql`${{ UNSAFE_RAW_SQL: filter.left }} ${filter.operator} ${{ UNSAFE_RAW_SQL: filter.right }}`,
-          '(',
-          ')',
-        );
-      } else if (filter.type === 'lucene' || filter.type === 'sql') {
-        const condition =
-          filter.type === 'sql'
-            ? rewriteSqlFilterWithKvItems(filter.condition, textIndexInfoLookup)
-            : filter.condition;
-        return wrapChSqlIfNotEmpty(
-          await renderWhereExpression({
-            condition,
-            from: chartConfig.from,
-            language: filter.type,
-            implicitColumnExpression: chartConfig.implicitColumnExpression,
-            bodyExpression: chartConfig.bodyExpression,
-            useTextIndexForImplicitColumn:
-              chartConfig.useTextIndexForImplicitColumn,
-            metadata,
-            connectionId: chartConfig.connection,
-            with: chartConfig.with,
-          }),
-          '(',
-          ')',
-        );
-      }
+  const renderedFilters: { condition: ChSql | []; negated: boolean }[] =
+    await Promise.all(
+      (chartConfig.filters ?? []).map(async filter => {
+        if (filter.type === 'sql_ast') {
+          return {
+            condition: wrapChSqlIfNotEmpty(
+              chSql`${{ UNSAFE_RAW_SQL: filter.left }} ${filter.operator} ${{ UNSAFE_RAW_SQL: filter.right }}`,
+              '(',
+              ')',
+            ),
+            negated: filter.operator === '!=',
+          };
+        } else if (filter.type === 'lucene' || filter.type === 'sql') {
+          const condition =
+            filter.type === 'sql'
+              ? rewriteSqlFilterWithKvItems(
+                  filter.condition,
+                  textIndexInfoLookup,
+                )
+              : filter.condition;
+          return {
+            condition: wrapChSqlIfNotEmpty(
+              await renderWhereExpression({
+                condition,
+                from: chartConfig.from,
+                language: filter.type,
+                implicitColumnExpression: chartConfig.implicitColumnExpression,
+                bodyExpression: chartConfig.bodyExpression,
+                useTextIndexForImplicitColumn:
+                  chartConfig.useTextIndexForImplicitColumn,
+                metadata,
+                connectionId: chartConfig.connection,
+                with: chartConfig.with,
+              }),
+              '(',
+              ')',
+            ),
+            negated: isNegatedFilterCondition(filter.condition, filter.type),
+          };
+        }
 
-      throw new Error(`Unknown filter type: ${filter.type}`);
-    }),
-  );
+        throw new Error(`Unknown filter type: ${filter.type}`);
+      }),
+    );
 
-  return concatChSql(
-    ' AND ',
+  const filterConditions = renderedFilters.map(f => f.condition);
+
+  const timeFilter: ChSql | [] =
     chartConfig.dateRange != null &&
-      chartConfig.timestampValueExpression != null
+    chartConfig.timestampValueExpression != null
       ? await timeFilterExpr({
           timestampValueExpression: chartConfig.timestampValueExpression,
           dateRange: chartConfig.dateRange,
@@ -1458,7 +1613,121 @@ async function renderWhere(
           with: chartConfig.with,
           includedDataInterval: chartConfig.includedDataInterval,
         })
-      : [],
+      : [];
+
+  const traceIdExpression = chartConfig.traceIdExpression?.trim();
+  if (chartConfig.filtersScope === 'trace' && traceIdExpression) {
+    const aggConditionGroup = wrapChSqlIfNotEmpty(
+      concatChSql(' OR ', selectSearchConditions),
+      '(',
+      ')',
+    );
+    // The search bar is one predicate; treat it as positive (membership) unless
+    // it is itself a single negation (e.g. `-ServiceName:"cart"`), which — like
+    // an exclusion filter — must stay on the outer WHERE, never in a membership
+    // subquery.
+    const searchBarNegated = isNegatedFilterCondition(
+      chartConfig.where,
+      chartConfig.whereLanguage ?? 'sql',
+    );
+
+    // Positive predicates become existential trace-membership tests ("a trace
+    // matches when *some* span satisfies the predicate"), AND-ed together so a
+    // trace must satisfy each across (possibly different) spans.
+    const membershipPredicates = [
+      searchBarNegated ? [] : whereSearchCondition,
+      aggConditionGroup,
+      ...renderedFilters.filter(f => !f.negated).map(f => f.condition),
+    ].filter((p): p is ChSql => !Array.isArray(p) && p.sql.length > 0);
+
+    // Exclusion/negated predicates must NOT be wrapped in a membership subquery:
+    // "some span is NOT x" is true for almost any multi-span trace, so the
+    // exclusion would stop excluding. Apply them to the returned rows instead,
+    // so an excluded value genuinely disappears from the results. Negation is
+    // derived from the condition at render time, so exclusions from saved
+    // searches / older URLs (which carry no marker) are handled too.
+    const exclusionConditions = [
+      searchBarNegated ? whereSearchCondition : [],
+      ...renderedFilters.filter(f => f.negated).map(f => f.condition),
+    ].filter((p): p is ChSql => !Array.isArray(p) && p.sql.length > 0);
+
+    // Membership must be evaluated over the user's full selected range, not the
+    // paginated window the outer query uses: predicate A and predicate B can sit
+    // in spans that fall in different windows, so a per-window subquery would
+    // never intersect them. `traceScopeDateRange` carries that full range when
+    // the query is chunked (see useOffsetPaginatedQuery); absent it, dateRange
+    // already is the full range.
+    const membershipTimeFilter: ChSql | [] =
+      chartConfig.traceScopeDateRange != null &&
+      chartConfig.timestampValueExpression != null
+        ? await timeFilterExpr({
+            timestampValueExpression: chartConfig.timestampValueExpression,
+            dateRange: chartConfig.traceScopeDateRange,
+            dateRangeStartInclusive: true,
+            dateRangeEndInclusive: true,
+            isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+            metadata,
+            connectionId: chartConfig.connection,
+            databaseName: chartConfig.from.databaseName,
+            tableName: chartConfig.from.tableName,
+            with: chartConfig.with,
+            includedDataInterval: chartConfig.includedDataInterval,
+          })
+        : timeFilter;
+
+    const tid = chSql`${{ UNSAFE_RAW_SQL: traceIdExpression }}`;
+    const from = renderFrom({
+      from: chartConfig.from,
+      isRenderingRawSqlTemplate: chartConfig.isRenderingRawSqlTemplate,
+    });
+
+    // A plain `IN (subquery)` is rejected on a ClickHouse Distributed/Merge
+    // table under the default `distributed_product_mode = 'deny'`; `GLOBAL IN`
+    // is required there and is also correct on a local table (it just evaluates
+    // the subquery once and broadcasts it). Default to `GLOBAL IN` whenever the
+    // source isn't confirmed local — a CTE source, a missing database/table, or
+    // a failed lookup — so trace scope never emits an `IN` a clustered
+    // deployment rejects.
+    let membershipInOperator = 'GLOBAL IN';
+    if (
+      chartConfig.from.databaseName &&
+      chartConfig.from.tableName &&
+      !hasSubqueryCte(chartConfig.with)
+    ) {
+      try {
+        const tableMetadata = await metadata.getTableMetadata({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          connectionId: chartConfig.connection,
+        });
+        if (tableMetadata != null && !tableMetadata.isPointerTable) {
+          membershipInOperator = 'IN';
+        }
+      } catch {
+        // Keep GLOBAL IN on any lookup failure: correct on local and required
+        // on distributed, so the safe default never breaks a clustered read.
+      }
+    }
+
+    const membershipSubqueries = membershipPredicates.map(
+      predicate =>
+        chSql`${tid} ${{ UNSAFE_RAW_SQL: membershipInOperator }} (SELECT ${tid} FROM ${from} WHERE ${concatChSql(' AND ', predicate, membershipTimeFilter)})`,
+    );
+
+    // Trace scope is search-only by contract, so (unlike the span path below)
+    // it deliberately omits the `$__filters` raw-SQL-template expansion: it is
+    // never rendered in a dashboard raw-SQL context.
+    return concatChSql(
+      ' AND ',
+      timeFilter,
+      ...membershipSubqueries,
+      ...exclusionConditions,
+    );
+  }
+
+  return concatChSql(
+    ' AND ',
+    timeFilter,
     whereSearchCondition,
     // Add aggConditions to where clause to utilize index
     wrapChSqlIfNotEmpty(concatChSql(' OR ', selectSearchConditions), '(', ')'),
