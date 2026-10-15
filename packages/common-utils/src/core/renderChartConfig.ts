@@ -992,13 +992,21 @@ export async function timeFilterExpr({
         );
       }
 
+      const columnType = stripTypeWrappers(columnMeta?.type ?? '');
+      // DateTime truncates to the second, so a sub-second or exclusive start
+      // compared as-is drops the rest of that second.
+      const isSecondPrecision = /^DateTime(?:\(.*\))?$/i.test(columnType);
+      const columnStartTime = isSecondPrecision
+        ? Math.floor(startTime / 1000) * 1000
+        : startTime;
+
       const rawStartBound = isRenderingRawSqlTemplate
         ? includedDataInterval
           ? chSql`toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL $__interval_s second`
           : chSql`$__fromTime_ms`
         : includedDataInterval
-          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
-          : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
+          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: columnStartTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
+          : chSql`fromUnixTimestamp64Milli(${{ Int64: columnStartTime }})`;
 
       const rawEndBound = isRenderingRawSqlTemplate
         ? includedDataInterval
@@ -1016,13 +1024,13 @@ export async function timeFilterExpr({
         ? chSql`${toStartOf.function}(${rawEndBound}${toStartOf.formattedRemainingArgs})`
         : rawEndBound;
 
-      const isDateType =
-        /^Date(?:32)?$/i.test(stripTypeWrappers(columnMeta?.type ?? '')) ||
-        isToDateExpr;
+      const isDateType = /^Date(?:32)?$/i.test(columnType) || isToDateExpr;
 
       // toStartOf* and Date filters must stay inclusive — strict < on a rounded value drops a whole interval
       const startOp =
-        dateRangeStartInclusive || toStartOf || isDateType ? '>=' : '>';
+        dateRangeStartInclusive || toStartOf || isDateType || isSecondPrecision
+          ? '>='
+          : '>';
       const endOp =
         dateRangeEndInclusive || toStartOf || isDateType ? '<=' : '<';
 

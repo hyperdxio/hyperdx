@@ -4239,9 +4239,8 @@
           "maxResults": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 2000,
             "default": 100,
-            "description": "Maximum number of rows to return. Default is 100, max is 2000."
+            "description": "Maximum number of rows to return. Default is 100, max is 2000\nunless the server sets EXTERNAL_API_SEARCH_MAX_RESULTS.\n"
           },
           "offset": {
             "type": "integer",

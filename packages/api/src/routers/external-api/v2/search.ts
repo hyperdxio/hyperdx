@@ -3,6 +3,7 @@ import express from 'express';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 
+import { EXTERNAL_API_SEARCH_MAX_RESULTS } from '@/config';
 import { parseTimeRange } from '@/mcp/tools/query/helpers';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
@@ -117,9 +118,10 @@ const CH_USER_INPUT_ERRORS = new Set([
  *         maxResults:
  *           type: integer
  *           minimum: 1
- *           maximum: 2000
  *           default: 100
- *           description: Maximum number of rows to return. Default is 100, max is 2000.
+ *           description: |
+ *             Maximum number of rows to return. Default is 100, max is 2000
+ *             unless the server sets EXTERNAL_API_SEARCH_MAX_RESULTS.
  *         offset:
  *           type: integer
  *           minimum: 0
@@ -223,10 +225,12 @@ const searchRequestSchema = z.object({
     .number()
     .int()
     .min(1)
-    .max(2000)
+    .max(EXTERNAL_API_SEARCH_MAX_RESULTS)
     .optional()
     .default(100)
-    .describe('Maximum rows to return (1-2000). Default: 100.'),
+    .describe(
+      `Maximum rows to return (1-${EXTERNAL_API_SEARCH_MAX_RESULTS}). Default: 100.`,
+    ),
   offset: z
     .number()
     .int()

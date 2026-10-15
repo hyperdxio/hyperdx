@@ -2650,7 +2650,9 @@ describe('renderChartConfig', () => {
       mockMetadata.getColumn.mockImplementation(async ({ column }) =>
         column === 'date'
           ? ({ type: 'Date' } as ColumnMeta)
-          : ({ type: 'DateTime' } as ColumnMeta),
+          : column === 'TimestampTime'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : ({ type: 'DateTime64(3)' } as ColumnMeta),
       );
     });
 
@@ -2758,6 +2760,59 @@ describe('renderChartConfig', () => {
         `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
       );
     });
+
+    it.each([
+      ['inclusive', true],
+      ['exclusive', false],
+    ])(
+      'floors a sub-second %s start on a DateTime column and keeps it inclusive',
+      async (_, dateRangeStartInclusive) => {
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00.500Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'TimestampTime, Timestamp',
+          dateRangeEndInclusive: false,
+          dateRangeStartInclusive,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        const precise = dateRangeStartInclusive ? '>=' : '>';
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(TimestampTime >= fromUnixTimestamp64Milli(${new Date('2026-10-13T22:03:21Z').getTime()}) AND TimestampTime < fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp ${precise} fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp < fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
+
+    it.each(['DateTime', "DateTime('UTC')", 'Nullable(DateTime)'])(
+      'floors the start bound of a %s column',
+      async type => {
+        mockMetadata.getColumn.mockImplementation(
+          async () => ({ type }) as ColumnMeta,
+        );
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'ts',
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive: true,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(ts >= fromUnixTimestamp64Milli(${new Date('2026-10-13T22:03:21Z').getTime()}) AND ts <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
 
     it.each(['Date32', 'Nullable(Date)', 'LowCardinality(Date)'])(
       'wraps a %s column in toDate() and keeps the bounds inclusive',
