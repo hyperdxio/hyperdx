@@ -7255,10 +7255,12 @@ describe('External API v2 Dashboards - new format', () => {
       // check it would persist as a builder tile AND skip the builder-only
       // rules — here a formula referencing a nonexistent series.
       const res = await postTile({
-        configType: 'promql',
+        configType: 'foo',
         formulas: [{ expression: 'C * 2' }],
       }).expect(400);
-      expect(res.body.message).toContain('configType must be "sql" or omitted');
+      expect(res.body.message).toContain(
+        'configType must be "sql", "promql" or omitted',
+      );
     });
 
     it('round-trips formulas on a log/trace event source', async () => {

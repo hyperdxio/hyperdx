@@ -60,7 +60,9 @@ export function registerGetDashboard({
       if (!dashboard) {
         return mcpUserError('Dashboard not found');
       }
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromqlTiles: true,
+      });
       return {
         content: [
           {
