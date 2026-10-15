@@ -1,5 +1,6 @@
 import { buildLogComment } from '@hyperdx/common-utils/dist/clickhouse';
 import http from 'http';
+import { gzipSync } from 'zlib';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Connection from '@/models/connection';
@@ -16,14 +17,11 @@ type CapturedRequest = {
 };
 
 /**
- * Pins what /clickhouse-proxy forwards upstream: text/plain re-injection, the
- * raw-stream passthrough of multipart/form-data bodies, which
+ * Pins what /clickhouse-proxy forwards upstream: parsed body re-injection with
+ * valid framing, the raw-stream passthrough of multipart/form-data bodies, which
  * `@clickhouse/client-web` emits when query params exceed its URL budget
  * (regression context: ClickHouse support-escalation #8482), and the
  * decode/re-encode the query string goes through in `pathRewrite`.
- *
- * Known-latent cases (charset-suffixed JSON, urlencoded) are not covered;
- * tracked in https://github.com/hyperdxio/hyperdx/issues/2942.
  */
 describe('clickhouse-proxy forwarding', () => {
   const server = getServer();
@@ -66,6 +64,7 @@ describe('clickhouse-proxy forwarding', () => {
   });
 
   afterAll(async () => {
+    upstream.closeAllConnections();
     await new Promise<void>((resolve, reject) =>
       upstream.close(err => (err ? reject(err) : resolve())),
     );
@@ -101,6 +100,156 @@ describe('clickhouse-proxy forwarding', () => {
     expect(captured[0].headers['x-clickhouse-user']).toBe('default');
   });
 
+  it.each(['application/json', 'application/json; charset=utf-8'])(
+    're-serializes %s and updates Content-Length to its UTF-8 byte length',
+    async contentType => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const connectionId = await createConnection(team._id.toString());
+      const body = {
+        query: "SELECT '東京 🍰' FORMAT JSON",
+        param_name: 'café',
+      };
+      const original = JSON.stringify(body, null, 2);
+      const serialized = JSON.stringify(body);
+      expect(Buffer.byteLength(original)).toBeGreaterThan(
+        Buffer.byteLength(serialized),
+      );
+      expect(Buffer.byteLength(serialized)).toBeGreaterThan(serialized.length);
+
+      await agent
+        .post('/clickhouse-proxy/?query_id=test-json')
+        .set('x-hyperdx-connection-id', connectionId)
+        .set('Content-Type', contentType)
+        .send(original)
+        .timeout({ response: 5000, deadline: 10000 })
+        .expect(200);
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0].body).toEqual(Buffer.from(serialized));
+      expect(captured[0].headers['content-type']).toBe(contentType);
+      expect(captured[0].headers['content-length']).toBe(
+        String(Buffer.byteLength(serialized)),
+      );
+      expect(captured[0].headers['transfer-encoding']).toBeUndefined();
+    },
+  );
+
+  it('forwards parsed UTF-16LE JSON as UTF-8 with matching headers', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const connectionId = await createConnection(team._id.toString());
+    const body = { query: "SELECT '東京 🍰' FORMAT JSON" };
+    const original = Buffer.from(JSON.stringify(body, null, 2), 'utf16le');
+    const serialized = Buffer.from(JSON.stringify(body));
+
+    const proxyRequest = agent
+      .post('/clickhouse-proxy/?query_id=test-utf16-json')
+      .set('x-hyperdx-connection-id', connectionId)
+      .set('Content-Type', 'application/json; charset=utf-16le')
+      .set('Content-Length', String(original.length))
+      .timeout({ response: 5000, deadline: 10000 });
+    proxyRequest.write(original);
+    await proxyRequest.expect(200);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].body).toEqual(serialized);
+    expect(captured[0].headers['content-type']).toMatch(
+      /^application\/json;\s*charset=utf-8$/i,
+    );
+    expect(captured[0].headers['content-length']).toBe(
+      String(serialized.length),
+    );
+    expect(captured[0].headers['content-encoding']).toBeUndefined();
+  });
+
+  it('forwards parsed gzip JSON without the original content encoding', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const connectionId = await createConnection(team._id.toString());
+    const body = { query: "SELECT 'café' FORMAT JSON" };
+    const original = gzipSync(Buffer.from(JSON.stringify(body, null, 2)));
+    const serialized = Buffer.from(JSON.stringify(body));
+
+    const proxyRequest = agent
+      .post('/clickhouse-proxy/?query_id=test-gzip-json')
+      .set('x-hyperdx-connection-id', connectionId)
+      .set('Content-Type', 'application/json; charset=utf-8')
+      .set('Content-Encoding', 'gzip')
+      .set('Content-Length', String(original.length))
+      .timeout({ response: 5000, deadline: 10000 });
+    proxyRequest.write(original);
+    await proxyRequest.expect(200);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].body).toEqual(serialized);
+    expect(captured[0].headers['content-type']).toBe(
+      'application/json; charset=utf-8',
+    );
+    expect(captured[0].headers['content-length']).toBe(
+      String(serialized.length),
+    );
+    expect(captured[0].headers['content-encoding']).toBeUndefined();
+  });
+
+  it.each([
+    'application/x-www-form-urlencoded',
+    'application/x-www-form-urlencoded; charset=utf-8',
+  ])(
+    're-serializes %s without losing repeated form keys',
+    async contentType => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const connectionId = await createConnection(team._id.toString());
+      const original =
+        'query=SELECT%20%27caf%C3%A9%27&param=first&param=second%20value&empty=&literal=%2B%26%3D';
+      const entries = [
+        ['query', "SELECT 'café'"],
+        ['param', 'first'],
+        ['param', 'second value'],
+        ['empty', ''],
+        ['literal', '+&='],
+      ];
+      const serialized = new URLSearchParams(entries).toString();
+
+      await agent
+        .post('/clickhouse-proxy/?query_id=test-urlencoded')
+        .set('x-hyperdx-connection-id', connectionId)
+        .set('Content-Type', contentType)
+        .send(original)
+        .timeout({ response: 5000, deadline: 10000 })
+        .expect(200);
+
+      expect(captured).toHaveLength(1);
+      expect(captured[0].body.toString()).toBe(serialized);
+      expect([...new URLSearchParams(captured[0].body.toString())]).toEqual(
+        entries,
+      );
+      expect(captured[0].headers['content-type']).toBe(contentType);
+      expect(captured[0].headers['content-length']).toBe(
+        String(Buffer.byteLength(serialized)),
+      );
+    },
+  );
+
+  it('keeps chunked framing when re-injecting parsed JSON', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+    const connectionId = await createConnection(team._id.toString());
+    const body = { query: "SELECT 'café' FORMAT JSON" };
+    const original = JSON.stringify(body, null, 2);
+    const proxyRequest = agent
+      .post('/clickhouse-proxy/?query_id=test-chunked-json')
+      .set('x-hyperdx-connection-id', connectionId)
+      .set('Content-Type', 'application/json; charset=utf-8')
+      .set('Transfer-Encoding', 'chunked')
+      .timeout({ response: 5000, deadline: 10000 });
+
+    proxyRequest.write(original.slice(0, 10));
+    proxyRequest.write(original.slice(10));
+    await proxyRequest.expect(200);
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].body.toString()).toBe(JSON.stringify(body));
+    expect(captured[0].headers['transfer-encoding']).toBe('chunked');
+    expect(captured[0].headers['content-length']).toBeUndefined();
+  });
+
   it('forwards a large multipart/form-data body byte-for-byte (unparsed stream passthrough)', async () => {
     const { agent, team } = await getLoggedInAgent(server);
     const connectionId = await createConnection(team._id.toString());
@@ -120,25 +269,40 @@ describe('clickhouse-proxy forwarding', () => {
           `some.rather.long.map.attribute.key.number.${i}\r\n`,
       );
     }
-    parts.push(`--${boundary}--\r\n`);
-    const body = parts.join('');
+    const body = Buffer.concat([
+      Buffer.from(parts.join('')),
+      Buffer.from(
+        `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="file"; filename="bytes.bin"\r\n` +
+          `Content-Type: application/octet-stream\r\n\r\n`,
+      ),
+      Buffer.from([0x00, 0xff, 0x80, 0x0d, 0x0a]),
+      Buffer.from(`\r\n--${boundary}--\r\n`),
+    ]);
     expect(Buffer.byteLength(body)).toBeGreaterThan(4096);
 
-    await agent
-      .post('/clickhouse-proxy/?query_id=test-multipart')
-      .set('x-hyperdx-connection-id', connectionId)
-      .set('Content-Type', `multipart/form-data; boundary=${boundary}`)
-      .send(body)
-      .expect(200);
+    const consoleError = jest.spyOn(console, 'error');
+    try {
+      await agent
+        .post('/clickhouse-proxy/?query_id=test-multipart')
+        .set('x-hyperdx-connection-id', connectionId)
+        .set('Content-Type', `multipart/form-data; boundary=${boundary}`)
+        .send(body)
+        .timeout({ response: 5000, deadline: 10000 })
+        .expect(200);
 
-    expect(captured).toHaveLength(1);
-    expect(captured[0].headers['content-type']).toBe(
-      `multipart/form-data; boundary=${boundary}`,
-    );
-    expect(captured[0].body.toString()).toBe(body);
-    expect(captured[0].headers['content-length']).toBe(
-      String(Buffer.byteLength(body)),
-    );
+      expect(captured).toHaveLength(1);
+      expect(captured[0].headers['content-type']).toBe(
+        `multipart/form-data; boundary=${boundary}`,
+      );
+      expect(captured[0].body).toEqual(body);
+      expect(captured[0].headers['content-length']).toBe(
+        String(Buffer.byteLength(body)),
+      );
+      expect(consoleError).not.toHaveBeenCalled();
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   // The browser client ships `log_comment` as a URL query param, and
