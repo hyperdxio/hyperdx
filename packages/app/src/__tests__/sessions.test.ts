@@ -1,5 +1,8 @@
-import type { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
-import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import {
+  Metadata,
+  MetadataCache,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
   SourceKind,
@@ -15,7 +18,7 @@ import {
 
 jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
   ...jest.requireActual('@hyperdx/common-utils/dist/core/renderChartConfig'),
-  renderChartConfig: jest.fn(async () => ({ sql: 'SQL', params: {} })),
+  renderChartConfig: jest.fn(async () => ({ sql: 'SQL', params: { p: 1 } })),
 }));
 
 describe('buildRRWebStreamChartConfig', () => {
@@ -76,7 +79,7 @@ describe('fetchServiceScopeFilters', () => {
     name: 'Traces',
     kind: SourceKind.Trace,
     from: { databaseName: 'default', tableName: 'otel_traces' },
-    connection: 'conn',
+    connection: 'trace-conn',
     timestampValueExpression: 'Timestamp',
     defaultTableSelectExpression: 'Timestamp',
     durationExpression: 'Duration',
@@ -86,7 +89,9 @@ describe('fetchServiceScopeFilters', () => {
     parentSpanIdExpression: 'ParentSpanId',
     spanNameExpression: 'SpanName',
     spanKindExpression: 'SpanKind',
-    serviceNameExpression: 'ServiceName',
+    // Differs from the session table's ServiceName column so the tests catch
+    // the two being swapped.
+    serviceNameExpression: "ResourceAttributes['service.name']",
   };
   const sessionSource: TSessionSource = {
     id: 'sessions',
@@ -102,146 +107,144 @@ describe('fetchServiceScopeFilters', () => {
     new Date('2026-01-01T02:00:00Z'),
   ];
 
-  function setup({
-    columns = ['ServiceName', 'TimestampTime'],
-    query = jest.fn(async () => ({
-      json: async () => ({ data: [{ serviceName: 'web' }] }),
-    })),
-  }: { columns?: string[]; query?: jest.Mock } = {}) {
-    // Partial fakes: only the methods fetchServiceScopeFilters calls.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const metadata = {
-      getColumns: jest.fn(async () => columns.map(name => ({ name }))),
-    } as unknown as Metadata;
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-    const clickhouseClient = { query } as unknown as ClickhouseClient;
-    return { metadata, clickhouseClient, query };
+  function jsonResultSet(data: unknown[]) {
+    const text = JSON.stringify({ data });
+    return {
+      text: async () => text,
+      // JSON.parse returns any, which satisfies json<T>() without a cast.
+      json: async () => JSON.parse(text),
+      stream: () => {
+        throw new Error('not implemented');
+      },
+      close: () => {},
+      query_id: 'query-id',
+      response_headers: {},
+    };
   }
 
-  it('scopes to the session table services over the padded range', async () => {
-    const { metadata, clickhouseClient } = setup();
-    const filters = await fetchServiceScopeFilters({
-      traceSource,
-      sessionSource,
-      dateRange,
-      metadata,
-      clickhouseClient,
-    });
+  function setup({
+    columns = ['ServiceName', 'TimestampTime'],
+    rows = [{ serviceName: 'web' }],
+  }: { columns?: string[]; rows?: unknown[] } = {}) {
+    const clickhouseClient = new ClickhouseClient({ host: '' });
+    const metadata = new Metadata(clickhouseClient, new MetadataCache());
+    const getColumns = jest.spyOn(metadata, 'getColumns').mockResolvedValue(
+      columns.map(name => ({
+        name,
+        type: 'String',
+        codec_expression: '',
+        comment: '',
+        default_expression: '',
+        default_type: '',
+        ttl_expression: '',
+      })),
+    );
+    const query = jest
+      .spyOn(clickhouseClient, 'query')
+      .mockImplementation(async () => jsonResultSet(rows));
+    const run = (overrides: { traceSource?: TTraceSource } = {}) =>
+      fetchServiceScopeFilters({
+        traceSource,
+        sessionSource,
+        dateRange,
+        metadata,
+        clickhouseClient,
+        ...overrides,
+      });
+    return { run, metadata, getColumns, query };
+  }
 
-    expect(filters).toEqual([
-      { type: 'sql', condition: "ServiceName IN ('web')" },
+  it('queries the session table services over the padded range', async () => {
+    const { run, metadata, getColumns, query } = setup();
+
+    expect(await run()).toEqual([
+      {
+        type: 'sql',
+        condition: "ResourceAttributes['service.name'] IN ('web')",
+      },
     ]);
-    expect(jest.mocked(renderChartConfig).mock.lastCall?.[0]).toMatchObject({
-      select: [
-        { valueExpression: 'DISTINCT ServiceName', alias: 'serviceName' },
-      ],
-      dateRange: [
-        new Date('2026-01-01T00:00:00Z'),
-        new Date('2026-01-01T03:00:00Z'),
-      ],
+    expect(getColumns).toHaveBeenCalledWith({
+      databaseName: 'default',
+      tableName: 'hyperdx_sessions',
+      connectionId: 'conn',
+    });
+    expect(renderChartConfig).toHaveBeenCalledWith(
+      {
+        select: [
+          { valueExpression: 'DISTINCT ServiceName', alias: 'serviceName' },
+        ],
+        from: { databaseName: 'default', tableName: 'hyperdx_sessions' },
+        dateRange: [
+          new Date('2026-01-01T00:00:00Z'),
+          new Date('2026-01-01T03:00:00Z'),
+        ],
+        where: '',
+        timestampValueExpression: 'TimestampTime',
+        connection: 'conn',
+      },
+      metadata,
+      undefined,
+    );
+    expect(query).toHaveBeenCalledWith({
+      query: 'SQL',
+      query_params: { p: 1 },
+      connectionId: 'conn',
+      format: 'JSON',
     });
   });
 
   it('escapes and keeps empty service names', async () => {
-    const { metadata, clickhouseClient } = setup({
-      query: jest.fn(async () => ({
-        json: async () => ({
-          data: [{ serviceName: "x') OR 1=1 --" }, { serviceName: '' }],
-        }),
-      })),
+    const { run } = setup({
+      rows: [{ serviceName: "x') OR 1=1 --" }, { serviceName: '' }],
     });
-    expect(
-      await fetchServiceScopeFilters({
-        traceSource,
-        sessionSource,
-        dateRange,
-        metadata,
-        clickhouseClient,
-      }),
-    ).toEqual([
-      { type: 'sql', condition: "ServiceName IN ('x'') OR 1=1 --', '')" },
+    expect(await run()).toEqual([
+      {
+        type: 'sql',
+        condition:
+          "ResourceAttributes['service.name'] IN ('x'') OR 1=1 --', '')",
+      },
     ]);
   });
 
   it('drops null service names', async () => {
-    const { metadata, clickhouseClient } = setup({
-      query: jest.fn(async () => ({
-        json: async () => ({
-          data: [{ serviceName: 'web' }, { serviceName: null }],
-        }),
-      })),
+    const { run } = setup({
+      rows: [{ serviceName: 'web' }, { serviceName: null }],
     });
-    expect(
-      await fetchServiceScopeFilters({
-        traceSource,
-        sessionSource,
-        dateRange,
-        metadata,
-        clickhouseClient,
-      }),
-    ).toEqual([{ type: 'sql', condition: "ServiceName IN ('web')" }]);
+    expect(await run()).toEqual([
+      {
+        type: 'sql',
+        condition: "ResourceAttributes['service.name'] IN ('web')",
+      },
+    ]);
   });
 
   it('returns no filter when the lookup finds no services', async () => {
-    const { metadata, clickhouseClient } = setup({
-      query: jest.fn(async () => ({ json: async () => ({ data: [] }) })),
-    });
-    expect(
-      await fetchServiceScopeFilters({
-        traceSource,
-        sessionSource,
-        dateRange,
-        metadata,
-        clickhouseClient,
-      }),
-    ).toEqual([]);
+    const { run } = setup({ rows: [] });
+    expect(await run()).toEqual([]);
   });
 
-  it('returns no filter when the lookup throws', async () => {
-    jest.spyOn(console, 'warn').mockImplementation(() => {});
-    const { metadata, clickhouseClient } = setup({
-      query: jest.fn(async () => {
-        throw new Error('boom');
-      }),
-    });
-    expect(
-      await fetchServiceScopeFilters({
-        traceSource,
-        sessionSource,
-        dateRange,
-        metadata,
-        clickhouseClient,
-      }),
-    ).toEqual([]);
+  it('returns no filter and warns when the lookup throws', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const { run, query } = setup();
+    query.mockRejectedValue(new Error('boom'));
+    expect(await run()).toEqual([]);
+    expect(warn).toHaveBeenCalled();
   });
 
   it('skips the lookup when the session table has no ServiceName column', async () => {
-    const { metadata, clickhouseClient, query } = setup({
-      columns: ['TimestampTime'],
-    });
-    expect(
-      await fetchServiceScopeFilters({
-        traceSource,
-        sessionSource,
-        dateRange,
-        metadata,
-        clickhouseClient,
-      }),
-    ).toEqual([]);
+    const { run, query } = setup({ columns: ['TimestampTime'] });
+    expect(await run()).toEqual([]);
     expect(query).not.toHaveBeenCalled();
   });
 
   it('skips the lookup when the trace source has no service name expression', async () => {
-    const { metadata, clickhouseClient, query } = setup();
+    const { run, getColumns, query } = setup();
     expect(
-      await fetchServiceScopeFilters({
+      await run({
         traceSource: { ...traceSource, serviceNameExpression: undefined },
-        sessionSource,
-        dateRange,
-        metadata,
-        clickhouseClient,
       }),
     ).toEqual([]);
+    expect(getColumns).not.toHaveBeenCalled();
     expect(query).not.toHaveBeenCalled();
   });
 });
