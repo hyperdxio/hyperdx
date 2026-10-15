@@ -99,7 +99,6 @@ import {
   IconChevronsDown,
   IconChevronsUp,
   IconCopy,
-  IconCornerDownRight,
   IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
@@ -125,6 +124,11 @@ import {
 import { IsolatedChartSyncProvider } from '@/chartSync';
 import { mergeAnnotations } from '@/components/charts/chartAnnotations';
 import { ContactSupportText } from '@/components/ContactSupportText';
+import {
+  buildMoveTargets,
+  MoveTarget,
+  MoveToGroupSubmenu,
+} from '@/components/dashboard/MoveToGroupSubmenu';
 import SnapGridLayout from '@/components/dashboard/SnapGridLayout';
 import DashboardContainer from '@/components/DashboardContainer';
 import {
@@ -375,14 +379,6 @@ function HeatmapTile({
     </div>
   );
 }
-
-type MoveTarget = {
-  containerId: string;
-  tabId?: string;
-  label: string;
-  // For tabs: all tabs in order with the target tab ID
-  allTabs?: { id: string; title: string }[];
-};
 
 const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   i: chart.id,
@@ -990,64 +986,12 @@ const Tile = ({
               Edit
             </Menu.Item>
             {canMoveToGroup && (
-              <>
-                <Menu.Divider />
-                <Menu.Label>Move to Group</Menu.Label>
-                {chart.containerId && (
-                  <Menu.Item
-                    leftSection={<IconCornerDownRight size={14} />}
-                    onClick={() => onMoveToGroup(undefined)}
-                  >
-                    (Ungrouped)
-                  </Menu.Item>
-                )}
-                {moveTargets
-                  .filter(
-                    t =>
-                      !(
-                        t.containerId === chart.containerId &&
-                        t.tabId === chart.tabId
-                      ),
-                  )
-                  .map(t => (
-                    <Menu.Item
-                      key={`${t.containerId}-${t.tabId ?? ''}`}
-                      leftSection={<IconCornerDownRight size={14} />}
-                      onClick={() => onMoveToGroup(t.containerId, t.tabId)}
-                    >
-                      {t.allTabs ? (
-                        <span>
-                          {t.allTabs.map((tab, i) => (
-                            <span key={tab.id}>
-                              {i > 0 && (
-                                <span
-                                  style={{
-                                    color: 'var(--mantine-color-dimmed)',
-                                  }}
-                                >
-                                  {' | '}
-                                </span>
-                              )}
-                              <span
-                                style={
-                                  tab.id !== t.tabId
-                                    ? {
-                                        color: 'var(--mantine-color-dimmed)',
-                                      }
-                                    : undefined
-                                }
-                              >
-                                {tab.title}
-                              </span>
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        t.label
-                      )}
-                    </Menu.Item>
-                  ))}
-              </>
+              <MoveToGroupSubmenu
+                moveTargets={moveTargets}
+                containerId={chart.containerId}
+                tabId={chart.tabId}
+                onMoveToGroup={onMoveToGroup}
+              />
             )}
             <Menu.Divider />
             <Menu.Item
@@ -1080,9 +1024,9 @@ const Tile = ({
     readOnly,
   ]);
 
-  // Flat Menu.Item list for the collapsed (narrow-tile) toolbar.
-  // Merges the alert action + all kebab items into a single flat list
-  // so ChartContainer can render them without nested menus.
+  // Menu items for the collapsed (narrow-tile) toolbar.
+  // Merges the alert action + all kebab items into a single list
+  // for ChartContainer's menu.
   const collapsedMenuItems = useMemo(() => {
     if (readOnly) return null;
 
@@ -1137,64 +1081,12 @@ const Tile = ({
           Edit
         </Menu.Item>
         {canMoveToGroup && (
-          <>
-            <Menu.Divider />
-            <Menu.Label>Move to Group</Menu.Label>
-            {chart.containerId && (
-              <Menu.Item
-                leftSection={<IconCornerDownRight size={14} />}
-                onClick={() => onMoveToGroup(undefined)}
-              >
-                (Ungrouped)
-              </Menu.Item>
-            )}
-            {moveTargets
-              .filter(
-                t =>
-                  !(
-                    t.containerId === chart.containerId &&
-                    t.tabId === chart.tabId
-                  ),
-              )
-              .map(t => (
-                <Menu.Item
-                  key={`collapsed-${t.containerId}-${t.tabId ?? ''}`}
-                  leftSection={<IconCornerDownRight size={14} />}
-                  onClick={() => onMoveToGroup(t.containerId, t.tabId)}
-                >
-                  {t.allTabs ? (
-                    <span>
-                      {t.allTabs.map((tab, i) => (
-                        <span key={tab.id}>
-                          {i > 0 && (
-                            <span
-                              style={{
-                                color: 'var(--mantine-color-dimmed)',
-                              }}
-                            >
-                              {' | '}
-                            </span>
-                          )}
-                          <span
-                            style={
-                              tab.id !== t.tabId
-                                ? {
-                                    color: 'var(--mantine-color-dimmed)',
-                                  }
-                                : undefined
-                            }
-                          >
-                            {tab.title}
-                          </span>
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    t.label
-                  )}
-                </Menu.Item>
-              ))}
-          </>
+          <MoveToGroupSubmenu
+            moveTargets={moveTargets}
+            containerId={chart.containerId}
+            tabId={chart.tabId}
+            onMoveToGroup={onMoveToGroup}
+          />
         )}
         <Menu.Divider />
         <Menu.Item
@@ -2359,33 +2251,10 @@ function DBDashboardPage({
     setUrlActiveTabs,
   ]);
 
-  // Valid move targets: groups and individual tabs within groups
-  const moveTargetContainers = useMemo<MoveTarget[]>(() => {
-    const targets: MoveTarget[] = [];
-    for (const c of containers) {
-      const cTabs = c.tabs ?? [];
-      if (cTabs.length >= 2) {
-        for (const tab of cTabs) {
-          targets.push({
-            containerId: c.id,
-            tabId: tab.id,
-            label: tab.title,
-            allTabs: cTabs.map(t => ({ id: t.id, title: t.title })),
-          });
-        }
-      } else if (cTabs.length === 1) {
-        // 1-tab group: show just the group name, target the single tab
-        targets.push({
-          containerId: c.id,
-          tabId: cTabs[0].id,
-          label: cTabs[0].title,
-        });
-      } else {
-        targets.push({ containerId: c.id, label: c.title });
-      }
-    }
-    return targets;
-  }, [containers]);
+  const moveTargetContainers = useMemo(
+    () => buildMoveTargets(containers),
+    [containers],
+  );
 
   const hasContainers = containers.length > 0;
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
