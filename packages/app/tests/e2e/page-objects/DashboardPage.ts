@@ -1653,15 +1653,13 @@ export class DashboardPage {
   }
 
   /**
-   * The hover action on a tile cell showing `value`: `include` / `exclude`
-   * filter on it, `copy` copies it. Hovers the cell so the actions render.
+   * A hover action of the tile cell under the mouse: `include` / `exclude`
+   * filter on its value, `copy` copies it.
    */
-  async getTileCellAction(
+  getTileCellActionButton(
     tile: Locator,
-    value: string | RegExp,
     action: 'include' | 'exclude' | 'copy',
-  ): Promise<Locator> {
-    await tile.getByText(value, { exact: true }).first().hover();
+  ): Locator {
     const name = {
       include: 'Toggle filter for this value',
       exclude: 'Exclude this value',
@@ -1669,6 +1667,16 @@ export class DashboardPage {
     }[action];
     // The previous cell's popover can still be closing
     return tile.getByRole('button', { name }).last();
+  }
+
+  /** Hover a tile cell showing `value` and return one of its actions. */
+  async getTileCellAction(
+    tile: Locator,
+    value: string | RegExp,
+    action: 'include' | 'exclude' | 'copy',
+  ): Promise<Locator> {
+    await tile.getByText(value, { exact: true }).first().hover();
+    return this.getTileCellActionButton(tile, action);
   }
 
   /** Hover a tile cell showing `value` and click its include / exclude action. */
