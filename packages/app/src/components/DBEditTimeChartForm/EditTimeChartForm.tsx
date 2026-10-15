@@ -741,9 +741,13 @@ export default function EditTimeChartForm({
     alertSnapshotRef.current = structuredClone(getValues('alert'));
   }, [getValues]);
   const cancelAlertChanges = useCallback(
-    (isDraft: boolean) =>
-      setValue('alert', isDraft ? undefined : alertSnapshotRef.current),
-    [setValue],
+    (isDraft: boolean) => {
+      setValue('alert', isDraft ? undefined : alertSnapshotRef.current);
+      // setValue keeps errors from a failed confirm, which the next draft or
+      // the reverted alert would otherwise show straight away.
+      clearErrors('alert');
+    },
+    [setValue, clearErrors],
   );
 
   // Track previous values for detecting changes

@@ -192,6 +192,12 @@ export function ChartEditorControls({
       alertsEnabled &&
       !IS_LOCAL_MODE);
 
+  const alertWarning = useMemo(
+    () =>
+      additionalWarnings?.length ? additionalWarnings.join(' ') : undefined,
+    [additionalWarnings],
+  );
+
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
@@ -505,6 +511,7 @@ export function ChartEditorControls({
               {showAlertButton && (
                 <AlertPanelButton
                   hasAlert={alert != null}
+                  warning={alertWarning}
                   onAddAlert={() =>
                     setValue('alert', {
                       ...DEFAULT_TILE_ALERT,
@@ -580,11 +587,7 @@ export function ChartEditorControls({
           onRemove={
             isAlertRequired ? undefined : () => setValue('alert', undefined)
           }
-          warning={
-            additionalWarnings?.length
-              ? additionalWarnings.join(' ')
-              : undefined
-          }
+          warning={alertWarning}
         />
       )}
     </>

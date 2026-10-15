@@ -625,6 +625,23 @@ describe('DBEditTimeChartForm - Add/delete alerts for display type Number', () =
     expect(screen.getByTestId('alert-button')).toHaveTextContent('Add alert');
   });
 
+  it('starts a new alert without the errors of a discarded one', async () => {
+    renderAlertComponent();
+
+    await userEvent.click(screen.getByTestId('alert-button'));
+    await userEvent.click(screen.getByTestId('alert-panel-confirm-button'));
+    expect(
+      await screen.findByText("Webhook ID can't be empty"),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByTestId('close-alert-panel-button'));
+    await userEvent.click(screen.getByTestId('alert-button'));
+
+    expect(screen.getByTestId('alert-details')).toBeInTheDocument();
+    expect(
+      screen.queryByText("Webhook ID can't be empty"),
+    ).not.toBeInTheDocument();
+  });
+
   describe('with an existing alert', () => {
     const renderWithExistingAlert = (
       alert: NonNullable<SavedChartConfig['alert']>,
@@ -780,6 +797,25 @@ describe('DBEditTimeChartForm - Alert variable warning', () => {
       await screen.findByText(
         'This tile references $svc. Alerts run with every dashboard variable in its empty state, not the values selected here.',
       ),
+    ).toBeInTheDocument();
+  });
+
+  it('shows the warning on the alert button while the panel is closed', async () => {
+    renderComponent({
+      chartConfig: {
+        ...defaultChartConfig,
+        displayType: DisplayType.Number,
+        where: 'ServiceName:$svc',
+        alert: DEFAULT_TILE_ALERT,
+      },
+      dashboardId: 'test-dashboard-id',
+      variables: [SVC],
+    });
+
+    expect(screen.queryByTestId('alert-panel')).not.toBeInTheDocument();
+    await userEvent.hover(screen.getByTestId('alert-button'));
+    expect(
+      await screen.findByText(/^This tile references \$svc\./),
     ).toBeInTheDocument();
   });
 

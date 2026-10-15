@@ -311,6 +311,8 @@ export default function RawSqlChartEditor({
           {showAlertButton && (
             <AlertPanelButton
               hasAlert={alert != null}
+              error={alertErrorMessage}
+              warning={alertWarningMessage}
               onAddAlert={() =>
                 setValue('alert', {
                   ...DEFAULT_TILE_ALERT,
