@@ -3524,7 +3524,7 @@ function DBDashboardPage({
         <DashboardFiltersModal
           opened={showFiltersModal}
           onClose={() => setShowFiltersModal(false)}
-          filters={filters}
+          filters={dashboard?.filters ?? []}
           onSaveFilter={handleSaveFilter}
           onRemoveFilter={handleRemoveFilter}
           isLoading={isSavingDashboard || isFetchingDashboard}
