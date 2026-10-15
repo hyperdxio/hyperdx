@@ -1,11 +1,4 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useState,
-} from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -420,6 +413,7 @@ export type FilterGroupProps = {
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
   showFilterCounts?: boolean;
   'data-testid'?: string;
@@ -928,6 +922,7 @@ export const FilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  expanded,
   onExpandedChange,
   showFilterCounts,
   'data-testid': dataTestId,
@@ -936,7 +931,14 @@ export const FilterGroup = ({
   distributionKey,
   onRangeChange,
 }: FilterGroupProps) => {
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(
+    isDefaultExpanded ?? false,
+  );
+  const isExpanded = expanded ?? uncontrolledExpanded;
+  const setExpanded = (value: boolean) => {
+    setUncontrolledExpanded(value);
+    onExpandedChange?.(value);
+  };
   const [showDistributions, setShowDistributions] = useState(false);
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
@@ -947,14 +949,10 @@ export const FilterGroup = ({
 
   const hasRange = selectedValues.range != null;
 
-  const toggleShowDistributions = useCallback(() => {
-    setShowDistributions(prev => {
-      if (!prev) {
-        setExpanded(true);
-      }
-      return !prev;
-    });
-  }, []);
+  const toggleShowDistributions = () => {
+    if (!showDistributions) setExpanded(true);
+    setShowDistributions(!showDistributions);
+  };
 
   const onDistributionError = useCallback(() => {
     setShowDistributions(false);
@@ -962,16 +960,9 @@ export const FilterGroup = ({
 
   useEffect(() => {
     if (isDefaultExpanded) {
-      setExpanded(true);
+      setUncontrolledExpanded(true);
     }
   }, [isDefaultExpanded]);
-
-  // A virtualized parent passes the reported state back as isDefaultExpanded,
-  // so it survives the row unmounting when scrolled out of view.
-  const reportExpanded = useEffectEvent(() => onExpandedChange?.(isExpanded));
-  useEffect(() => {
-    if (isExpanded !== isDefaultExpanded) reportExpanded();
-  }, [isExpanded, isDefaultExpanded]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +

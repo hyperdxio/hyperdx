@@ -107,10 +107,34 @@ export const NestedFilterGroup = ({
   }, [childFilters, search]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  // Rows unmount when scrolled out of view, so their expanded state lives here
+  const keyHasSelections = (key: string) => {
+    const entry = selectedValues[key];
+    return entry != null && entry.included.size + entry.excluded.size > 0;
+  };
+  // Rows unmount when scrolled out of view, so their expanded state lives here.
+  // Like regular filter groups, a key expands when it gains a filter (including
+  // one added outside the sidebar) and keeps its state when it loses one.
   const [expandedChildren, setExpandedChildren] = useState<
-    Record<string, boolean>
+    Record<string, { expanded: boolean; hadSelections: boolean }>
   >({});
+  const changedKeys = Object.keys({
+    ...selectedValues,
+    ...expandedChildren,
+  }).filter(
+    key =>
+      (expandedChildren[key]?.hadSelections ?? false) !== keyHasSelections(key),
+  );
+  if (changedKeys.length > 0) {
+    setExpandedChildren(prev => {
+      const next = { ...prev };
+      for (const key of changedKeys) {
+        next[key] = keyHasSelections(key)
+          ? { expanded: true, hadSelections: true }
+          : { ...prev[key], hadSelections: false };
+      }
+      return next;
+    });
+  }
 
   const rowVirtualizer = useVirtualizer({
     count: isExpanded ? matchingChildFilters.length : 0,
@@ -207,10 +231,7 @@ export const NestedFilterGroup = ({
                         included: new Set(),
                         excluded: new Set(),
                       };
-                      const childHasSelections =
-                        childSelectedValues.included.size +
-                          childSelectedValues.excluded.size >
-                        0;
+                      const childHasSelections = keyHasSelections(child.key);
 
                       return (
                         <div
@@ -279,13 +300,17 @@ export const NestedFilterGroup = ({
                             }
                             hasLoadedMore={hasLoadedMore[child.key] || false}
                             showFilterCounts={showFilterCounts}
-                            isDefaultExpanded={
-                              expandedChildren[child.key] ?? childHasSelections
+                            expanded={
+                              expandedChildren[child.key]?.expanded ??
+                              childHasSelections
                             }
                             onExpandedChange={expanded =>
                               setExpandedChildren(prev => ({
                                 ...prev,
-                                [child.key]: expanded,
+                                [child.key]: {
+                                  expanded,
+                                  hadSelections: childHasSelections,
+                                },
                               }))
                             }
                             chartConfig={chartConfig}

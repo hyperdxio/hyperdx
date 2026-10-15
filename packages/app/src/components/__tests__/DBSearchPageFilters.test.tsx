@@ -933,6 +933,107 @@ describe('NestedFilterGroup', () => {
     );
   });
 
+  it('should keep a child with selections collapsed after its row unmounts and remounts', async () => {
+    const { key } = manyChildFilters[0];
+    renderWithMantine(
+      <NestedFilterGroup
+        {...defaultNestedProps}
+        childFilters={manyChildFilters}
+        selectedValues={{
+          [key]: { included: new Set(['val']), excluded: new Set() },
+        }}
+        isDefaultExpanded={true}
+      />,
+    );
+    const childTestId = `nested-filter-group-${key}`;
+    const child = () => within(screen.getByTestId(childTestId));
+    expect(child().getByTestId('filter-group-panel')).toHaveAttribute(
+      'aria-hidden',
+      'false',
+    );
+
+    await userEvent.click(child().getByTestId('filter-group-control'));
+    expect(child().getByTestId('filter-group-panel')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+
+    const search = screen.getByPlaceholderText('Search keys...');
+    await userEvent.type(search, 'k8s');
+    expect(screen.queryByTestId(childTestId)).toBeNull();
+    await userEvent.clear(search);
+
+    expect(child().getByTestId('filter-group-panel')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+  });
+
+  it('should expand a collapsed child when a filter for it is added elsewhere', async () => {
+    const props = {
+      ...defaultNestedProps,
+      childFilters: manyChildFilters,
+      isDefaultExpanded: true,
+    };
+    const { rerender } = renderWithMantine(<NestedFilterGroup {...props} />);
+    const { key } = manyChildFilters[0];
+    const child = () =>
+      within(screen.getByTestId(`nested-filter-group-${key}`));
+
+    await userEvent.click(child().getByTestId('filter-group-control'));
+    await userEvent.click(child().getByTestId('filter-group-control'));
+    expect(child().getByTestId('filter-group-panel')).toHaveAttribute(
+      'aria-hidden',
+      'true',
+    );
+
+    rerender(
+      <TestProviders>
+        <NestedFilterGroup
+          {...props}
+          selectedValues={{
+            [key]: { included: new Set(['val']), excluded: new Set() },
+          }}
+        />
+      </TestProviders>,
+    );
+
+    expect(child().getByTestId('filter-group-panel')).toHaveAttribute(
+      'aria-hidden',
+      'false',
+    );
+  });
+
+  it('should keep a child expanded when its filter is removed', () => {
+    const props = {
+      ...defaultNestedProps,
+      childFilters: manyChildFilters,
+      isDefaultExpanded: true,
+    };
+    const { key } = manyChildFilters[0];
+    const { rerender } = renderWithMantine(
+      <NestedFilterGroup
+        {...props}
+        selectedValues={{
+          [key]: { included: new Set(['val']), excluded: new Set() },
+        }}
+      />,
+    );
+    const panel = () =>
+      within(screen.getByTestId(`nested-filter-group-${key}`)).getByTestId(
+        'filter-group-panel',
+      );
+    expect(panel()).toHaveAttribute('aria-hidden', 'false');
+
+    rerender(
+      <TestProviders>
+        <NestedFilterGroup {...props} />
+      </TestProviders>,
+    );
+
+    expect(panel()).toHaveAttribute('aria-hidden', 'false');
+  });
+
   it('should show an empty state when no keys match', async () => {
     renderWithMantine(
       <NestedFilterGroup
