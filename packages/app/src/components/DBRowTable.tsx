@@ -378,7 +378,6 @@ export const RawLogTable = memo(
     showExpandButton = true,
     enableRowSelection = false,
     selectionResetKey,
-    isAdhocFilterTarget,
     onSelectedRowsChange,
     getRowWhere,
     variant = 'default',
@@ -414,12 +413,6 @@ export const RawLogTable = memo(
     showExpandButton?: boolean;
     enableRowSelection?: boolean;
     selectionResetKey?: string;
-    /**
-     * Cell include / exclude actions update ad hoc dashboard filters, which
-     * apply outside this query and compare `toString(key)` with the value. See
-     * getAdhocCellCondition for how that shapes each cell's key and value.
-     */
-    isAdhocFilterTarget?: boolean;
     onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
     renderRowDetails?: (row: {
       id: string;
@@ -520,6 +513,8 @@ export const RawLogTable = memo(
 
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
+
+    const { isAdhocFilterTarget } = use(RowSidePanelContext);
 
     const getCellFilter = useCallback(
       (
@@ -1653,7 +1648,6 @@ function DBSqlRowTableComponent({
   showExpandButton = true,
   enableRowSelection = false,
   selectionResetKey,
-  isAdhocFilterTarget,
   onSelectedRowsChange,
   renderRowDetails,
   onSortingChange,
@@ -1688,7 +1682,6 @@ function DBSqlRowTableComponent({
   showExpandButton?: boolean;
   enableRowSelection?: boolean;
   selectionResetKey?: string;
-  isAdhocFilterTarget?: boolean;
   onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   initialSortBy?: SortingState;
   onSortingChange?: (v: SortingState | null) => void;
@@ -2012,7 +2005,6 @@ function DBSqlRowTableComponent({
         showExpandButton={showExpandButton}
         enableRowSelection={enableRowSelection}
         selectionResetKey={selectionResetKey}
-        isAdhocFilterTarget={isAdhocFilterTarget}
         onSelectedRowsChange={onSelectedRowsChange}
         enableSorting={true}
         onSortingChange={_onSortingChange}

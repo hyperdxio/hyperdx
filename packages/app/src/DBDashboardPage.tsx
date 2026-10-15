@@ -129,6 +129,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
+import { getAllowedSourceKinds } from '@/components/ChartEditor/utils';
 import { mergeAnnotations } from '@/components/charts/chartAnnotations';
 import { ContactSupportText } from '@/components/ContactSupportText';
 import {
@@ -670,14 +671,22 @@ const Tile = ({
   // `source` keeps the handler off rows from other sources, e.g. a linked trace
   const searchRowContext = useMemo<RowSidePanelContextProps | undefined>(
     () =>
-      onFilter && source && (isLogSource(source) || isTraceSource(source))
+      onFilter &&
+      source &&
+      getAllowedSourceKinds({
+        configType: 'builder',
+        displayType: DisplayType.Search,
+      }).includes(source.kind)
         ? {
+            // Only the cell popover passes an action; the side panel's
+            // "Add to filters" passes none and shouldn't toggle a condition off.
             onPropertyAddClick: (key, value, action) =>
               onFilter(
                 [{ key, value: String(value) }],
-                action === 'exclude' ? 'exclude' : 'include',
+                action === 'include' || action === 'exclude' ? action : 'add',
               ),
             source,
+            isAdhocFilterTarget: true,
           }
         : undefined,
     [onFilter, source],
@@ -1392,7 +1401,6 @@ const Tile = ({
                       variant="default"
                       errorVariant="collapsible"
                       context={searchRowContext}
-                      isAdhocFilterTarget
                     />
                   </ChartContainer>
                 )}

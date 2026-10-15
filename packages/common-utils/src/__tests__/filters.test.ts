@@ -1884,6 +1884,23 @@ describe('filters', () => {
       ).toEqual([svc('=')]);
     });
 
+    it('adds a value without toggling an existing condition off', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('='), level],
+          [{ key: 'ServiceName', value: 'api' }],
+          'add',
+        ),
+      ).toEqual([svc('='), level]);
+      expect(
+        mergeAdhocConditions(
+          [svc('!=')],
+          [{ key: 'ServiceName', value: 'api' }],
+          'add',
+        ),
+      ).toEqual([svc('=')]);
+    });
+
     it('toggles an excluded value off', () => {
       expect(
         mergeAdhocConditions(
