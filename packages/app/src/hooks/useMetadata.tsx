@@ -39,6 +39,12 @@ import { toArray } from '@/utils';
 
 export type Facet = { key: string; value: string[] };
 
+/**
+ * The most values to load when one key's values are looked up in full, e.g.
+ * the search sidebar's "Load more".
+ */
+export const SINGLE_KEY_VALUES_LIMIT = 10000;
+
 // Hook to get metadata with proper settings applied
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
