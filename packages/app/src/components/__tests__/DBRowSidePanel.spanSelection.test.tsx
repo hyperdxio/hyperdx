@@ -1,4 +1,4 @@
-import { TSource } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
@@ -121,11 +121,16 @@ import DBRowSidePanelErrorBoundary, {
 } from '@/components/DBRowSidePanel';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
 
-const ROOT_SOURCE = {
+const ROOT_SOURCE: TLogSource = {
   id: 'log-src',
-  kind: 'log',
+  kind: SourceKind.Log,
+  name: 'Logs',
+  connection: 'conn',
+  from: { databaseName: 'default', tableName: 'otel_logs' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp, Body',
   traceSourceId: 'trace-src',
-} as TSource;
+};
 
 const urlSpan = {
   id: 'span-where',
