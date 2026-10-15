@@ -2650,7 +2650,9 @@ describe('renderChartConfig', () => {
       mockMetadata.getColumn.mockImplementation(async ({ column }) =>
         column === 'date'
           ? ({ type: 'Date' } as ColumnMeta)
-          : ({ type: 'DateTime' } as ColumnMeta),
+          : column === 'TimestampTime'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : ({ type: 'DateTime64(3)' } as ColumnMeta),
       );
     });
 
@@ -2758,6 +2760,129 @@ describe('renderChartConfig', () => {
         `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
       );
     });
+
+    it.each([
+      ['inclusive', true],
+      ['exclusive', false],
+    ])(
+      'floors a sub-second %s start on a DateTime column and keeps it inclusive',
+      async (_, dateRangeStartInclusive) => {
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00.500Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'TimestampTime, Timestamp',
+          dateRangeEndInclusive: false,
+          dateRangeStartInclusive,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        const precise = dateRangeStartInclusive ? '>=' : '>';
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(TimestampTime >= fromUnixTimestamp64Milli(${new Date('2026-10-13T22:03:21Z').getTime()}) AND TimestampTime < fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp ${precise} fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp < fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
+
+    it.each([
+      ['inclusive', true, '>='],
+      ['exclusive', false, '>'],
+    ])(
+      'leaves a %s start unfloored on a DateTime-only source so adjacent windows do not overlap',
+      async (_, dateRangeStartInclusive, op) => {
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'TimestampTime',
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(TimestampTime ${op} fromUnixTimestamp64Milli(${start.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
+
+    it.each([
+      ['DateTime', 'toDateTime($__fromTime_ms)'],
+      ['DateTime64(1)', 'toDateTime64($__fromTime_ms, 1)'],
+    ])(
+      'floors the start macro on a %s column in a raw SQL template',
+      async (type, expectedStart) => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'coarse'
+            ? ({ type } as ColumnMeta)
+            : ({ type: 'DateTime64(9)' } as ColumnMeta),
+        );
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'coarse, Timestamp',
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive: true,
+          dateRange: [
+            new Date('2026-10-13T22:03:21.827Z'),
+            new Date('2026-10-13T22:05:00Z'),
+          ],
+          isRenderingRawSqlTemplate: true,
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(coarse >= ${expectedStart} AND coarse <= $__toTime_ms)AND(Timestamp >= $__fromTime_ms AND Timestamp <= $__toTime_ms)`,
+        );
+      },
+    );
+
+    it.each([
+      ['DateTime', '22:03:21.000'],
+      ["DateTime('UTC')", '22:03:21.000'],
+      ['Nullable(DateTime)', '22:03:21.000'],
+      ['DateTime64(0)', '22:03:21.000'],
+      ["DateTime64(0, 'UTC')", '22:03:21.000'],
+      ['DateTime64(1)', '22:03:21.800'],
+      ['DateTime64(2)', '22:03:21.820'],
+      ['DateTime64(3)', '22:03:21.827'],
+    ])(
+      'floors the start bound of a %s column to %s when a finer column exists',
+      async (type, flooredStart) => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'coarse'
+            ? ({ type } as ColumnMeta)
+            : ({ type: 'DateTime64(9)' } as ColumnMeta),
+        );
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'coarse, Timestamp',
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive: true,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(coarse >= fromUnixTimestamp64Milli(${new Date(`2026-10-13T${flooredStart}Z`).getTime()}) AND coarse <= fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp >= fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
 
     it.each(['Date32', 'Nullable(Date)', 'LowCardinality(Date)'])(
       'wraps a %s column in toDate() and keeps the bounds inclusive',
