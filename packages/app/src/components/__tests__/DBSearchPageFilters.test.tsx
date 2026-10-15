@@ -70,11 +70,14 @@ jest.mock('@/hooks/useMetadata', () => ({
     .mockReturnValue({ data: undefined, isFetching: false, error: undefined }),
 }));
 
-const mockDistribution = (data: Map<string, number>) =>
+const mockDistribution = (
+  data: Map<string, number> | undefined,
+  error: Error | null = null,
+) =>
   jest.mocked(useGetValuesDistribution).mockReturnValue({
     data,
     isFetching: false,
-    error: null,
+    error,
   } as UseQueryResult<Map<string, number>>);
 
 describe('cleanedFacetName', () => {
@@ -967,6 +970,56 @@ describe('NestedFilterGroup', () => {
       'aria-hidden',
       'true',
     );
+  });
+
+  it('should keep distributions on after a row unmounts and remounts', async () => {
+    renderWithMantine(
+      <NestedFilterGroup
+        {...defaultNestedProps}
+        childFilters={manyChildFilters}
+        isDefaultExpanded={true}
+      />,
+    );
+    const toggleTestId = `toggle-distribution-button-${manyChildFilters[0].propertyPath}`;
+
+    await userEvent.click(screen.getByTestId(toggleTestId));
+    expect(screen.getByTestId(toggleTestId)).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+
+    const search = screen.getByPlaceholderText('Search keys...');
+    await userEvent.type(search, 'k8s');
+    expect(screen.queryByTestId(toggleTestId)).toBeNull();
+    await userEvent.clear(search);
+
+    expect(screen.getByTestId(toggleTestId)).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+  });
+
+  it('should turn distributions off and notify once when they fail to load', async () => {
+    mockDistribution(undefined, new Error('boom'));
+    renderWithMantine(
+      <NestedFilterGroup
+        {...defaultNestedProps}
+        childFilters={manyChildFilters}
+        isDefaultExpanded={true}
+      />,
+    );
+    const toggleTestId = `toggle-distribution-button-${manyChildFilters[0].propertyPath}`;
+
+    await userEvent.click(screen.getByTestId(toggleTestId));
+
+    expect(screen.getByTestId(toggleTestId)).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(
+      await screen.findAllByText('Error loading filter distribution'),
+    ).toHaveLength(1);
+    mockDistribution(undefined);
   });
 
   it('should expand a collapsed child when a filter for it is added elsewhere', async () => {

@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -415,6 +422,8 @@ export type FilterGroupProps = {
   isDefaultExpanded?: boolean;
   expanded?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
+  showDistributions?: boolean;
+  onShowDistributionsChange?: (show: boolean) => void;
   showFilterCounts?: boolean;
   'data-testid'?: string;
   chartConfig: BuilderChartConfigWithDateRange;
@@ -519,6 +528,8 @@ const FilterGroupBody = ({
     onFetchingDistributionChange(isFetchingDistribution);
   }, [isFetchingDistribution, onFetchingDistributionChange]);
 
+  // onDistributionError isn't stable; re-running on it would notify again
+  const handleDistributionError = useEffectEvent(onDistributionError);
   useEffect(() => {
     if (distributionError) {
       notifications.show({
@@ -527,9 +538,9 @@ const FilterGroupBody = ({
         message: distributionError?.message,
         autoClose: 5000,
       });
-      onDistributionError();
+      handleDistributionError();
     }
-  }, [distributionError, onDistributionError]);
+  }, [distributionError]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
@@ -924,6 +935,8 @@ export const FilterGroup = ({
   isDefaultExpanded,
   expanded,
   onExpandedChange,
+  showDistributions: _showDistributions,
+  onShowDistributionsChange,
   showFilterCounts,
   'data-testid': dataTestId,
   chartConfig,
@@ -939,7 +952,13 @@ export const FilterGroup = ({
     setUncontrolledExpanded(value);
     onExpandedChange?.(value);
   };
-  const [showDistributions, setShowDistributions] = useState(false);
+  const [uncontrolledShowDistributions, setUncontrolledShowDistributions] =
+    useState(false);
+  const showDistributions = _showDistributions ?? uncontrolledShowDistributions;
+  const setShowDistributions = (value: boolean) => {
+    setUncontrolledShowDistributions(value);
+    onShowDistributionsChange?.(value);
+  };
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
   const selectedValues: SelectedValues = useMemo(
@@ -954,9 +973,7 @@ export const FilterGroup = ({
     setShowDistributions(!showDistributions);
   };
 
-  const onDistributionError = useCallback(() => {
-    setShowDistributions(false);
-  }, []);
+  const onDistributionError = () => setShowDistributions(false);
 
   useEffect(() => {
     if (isDefaultExpanded) {
