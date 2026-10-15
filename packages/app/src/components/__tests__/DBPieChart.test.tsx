@@ -305,6 +305,7 @@ describe('DBPieChart', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Pie,
       connection: 'test-connection',
+      source: 'source-promql',
       promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
       dateRange: [
         new Date('2025-11-26T00:00:14.076Z'),

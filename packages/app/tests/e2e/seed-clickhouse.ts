@@ -22,6 +22,7 @@ import {
   E2E_METADATA_MV_LOGS_TABLE,
   E2E_METRICS_GAUGE_TABLE,
   E2E_METRICS_SUM_TABLE,
+  E2E_PROMQL_HISTOGRAM_METRIC_NAME,
   E2E_PROMQL_METRIC_NAME,
   E2E_PROMQL_TABLE,
   E2E_SESSIONS_TABLE,
@@ -1101,40 +1102,122 @@ export async function seedClickHouse(): Promise<void> {
   await seedPromqlSeries(client, startMs, endMs);
   console.log(`  Inserted ${SERVICES.length} PromQL series`);
 
+  await seedPromqlHistogram(client, startMs, endMs);
+  console.log(`  Inserted ${SERVICES.length} PromQL histograms`);
+
   console.log('ClickHouse seeding complete');
 }
 
 /**
- * Seed one `E2E_PROMQL_METRIC_NAME` series per service, one sample a minute
- * across the window. Written through the TimeSeries table itself, not its inner
- * tables: the engine derives each series' `id` and splits samples across inner
- * tables in ways that change between ClickHouse versions, and rows written
- * around it are invisible to the PromQL engine.
+ * Insert a metric family and its series into the PromQL table, one sample a
+ * minute across the window. `valueSql` computes the nth sample's value. Written
+ * through the TimeSeries table itself, not its inner tables: the engine derives
+ * each series' `id` and splits samples across inner tables in ways that change
+ * between ClickHouse versions, and rows written around it are invisible to the
+ * PromQL engine.
  */
-async function seedPromqlSeries(
+async function insertPromqlMetric(
   client: ReturnType<typeof createClickHouseClient>,
   startMs: number,
   endMs: number,
+  family: { name: string; type: string; unit: string; help: string },
+  series: {
+    metricName: string;
+    tags: Record<string, string>;
+    valueSql: string;
+  }[],
 ) {
   const table = `${E2E_CLICKHOUSE_DATABASE}.${E2E_PROMQL_TABLE}`;
 
   await client.query(`
     INSERT INTO ${table} (metric_family, type, unit, help)
-    VALUES ('${E2E_PROMQL_METRIC_NAME}', 'gauge', '', 'E2E service liveness')
+    VALUES ('${family.name}', '${family.type}', '${family.unit}', '${family.help}')
   `);
 
   const stepMs = 60000;
   const sampleCount = Math.max(1, Math.floor((endMs - startMs) / stepMs));
-  const rows = SERVICES.map(
-    service =>
-      `SELECT '${E2E_PROMQL_METRIC_NAME}', map('service', '${service}'), ` +
-      `arrayMap(n -> (fromUnixTimestamp64Milli(toInt64(${startMs} + n * ${stepMs})), 1.0), range(${sampleCount}))`,
-  ).join('\n    UNION ALL\n    ');
+  const rows = series
+    .map(({ metricName, tags, valueSql }) => {
+      const tagArgs = Object.entries(tags)
+        .flatMap(([key, value]) => [`'${key}'`, `'${value}'`])
+        .join(', ');
+      return (
+        `SELECT '${metricName}', map(${tagArgs}), ` +
+        `arrayMap(n -> (fromUnixTimestamp64Milli(toInt64(${startMs} + n * ${stepMs})), ${valueSql}), range(${sampleCount}))`
+      );
+    })
+    .join('\n    UNION ALL\n    ');
 
   await client.query(`
     INSERT INTO ${table} (metric_name, tags, time_series)
     ${rows}
   `);
+}
+
+/** Seed one `E2E_PROMQL_METRIC_NAME` series per service, always 1. */
+async function seedPromqlSeries(
+  client: ReturnType<typeof createClickHouseClient>,
+  startMs: number,
+  endMs: number,
+) {
+  await insertPromqlMetric(
+    client,
+    startMs,
+    endMs,
+    {
+      name: E2E_PROMQL_METRIC_NAME,
+      type: 'gauge',
+      unit: '',
+      help: 'E2E service liveness',
+    },
+    SERVICES.map(service => ({
+      metricName: E2E_PROMQL_METRIC_NAME,
+      tags: { service },
+      valueSql: '1.0',
+    })),
+  );
+}
+
+/**
+ * Each bucket's per-minute increase, keyed by its `le` label. Cumulative, so a
+ * minute adds 1 observation <= 0.1, 2 in (0.1, 0.5], 1 in (0.5, 1] and 1 above.
+ */
+const PROMQL_HISTOGRAM_BUCKET_INCREASES: Record<string, number> = {
+  '0.1': 1,
+  '0.5': 3,
+  '1': 4,
+  '+Inf': 5,
+};
+
+/**
+ * Seed a classic histogram, `E2E_PROMQL_HISTOGRAM_METRIC_NAME`, per service:
+ * one cumulative counter series per `le` bucket, growing at a fixed rate.
+ */
+async function seedPromqlHistogram(
+  client: ReturnType<typeof createClickHouseClient>,
+  startMs: number,
+  endMs: number,
+) {
+  await insertPromqlMetric(
+    client,
+    startMs,
+    endMs,
+    {
+      name: E2E_PROMQL_HISTOGRAM_METRIC_NAME,
+      type: 'histogram',
+      unit: 'seconds',
+      help: 'E2E request duration',
+    },
+    SERVICES.flatMap(service =>
+      Object.entries(PROMQL_HISTOGRAM_BUCKET_INCREASES).map(
+        ([le, increase]) => ({
+          metricName: `${E2E_PROMQL_HISTOGRAM_METRIC_NAME}_bucket`,
+          tags: { service, le },
+          valueSql: `toFloat64(n * ${increase})`,
+        }),
+      ),
+    ),
+  );
 }
 
 // Allow running directly for testing

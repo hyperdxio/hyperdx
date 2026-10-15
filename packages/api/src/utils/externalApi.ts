@@ -1,5 +1,7 @@
 import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isAdhocFilter,
+  isAdhocFilterValue,
   isFilterBroadcastEnabled,
   isFilterRequired,
   isFilterVariableEnabled,
@@ -225,8 +227,32 @@ export function translateExternalChartToTileConfig(
   };
 }
 
+/** Filter types the external API and MCP don't expose yet. */
+type InternalOnlyDashboardFilter = Extract<DashboardFilter, { type: 'ADHOC' }>;
+export type ExternalCompatibleDashboardFilter = Exclude<
+  DashboardFilter,
+  InternalOnlyDashboardFilter
+>;
+
+/** The filters the external API and MCP may read. */
+export function getExternalCompatibleFilters(
+  filters: DashboardFilter[] | undefined,
+): ExternalCompatibleDashboardFilter[] {
+  return (filters ?? []).filter(
+    (filter): filter is ExternalCompatibleDashboardFilter =>
+      !isAdhocFilter(filter),
+  );
+}
+
+/** Saved filter values the external API and MCP may read. */
+export function getExternalCompatibleFilterValues(
+  values: IDashboard['savedFilterValues'],
+): NonNullable<IDashboard['savedFilterValues']> {
+  return (values ?? []).filter(value => !isAdhocFilterValue(value));
+}
+
 export function translateFilterToExternalFilter(
-  filter: DashboardFilter,
+  filter: ExternalCompatibleDashboardFilter,
 ): ExternalDashboardFilterWithId {
   // Omitted from responses unless the filter is required, so a GET response
   // can be PUT back verbatim.

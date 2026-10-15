@@ -17,7 +17,10 @@ import {
   paginationMeta,
   paginationQuerySchema,
 } from '@/utils/pagination';
-import { WebhookUrlValidationError } from '@/utils/validators';
+import {
+  getWebhookConfigErrors,
+  isWebhookValidationError,
+} from '@/utils/validators';
 import {
   ExternalWebhook,
   externalWebhookCreateSchema,
@@ -28,11 +31,11 @@ import {
 const DUPLICATE_WEBHOOK_MESSAGE =
   'A webhook with this service and name already exists';
 
-const handleWebhookUrlValidationError = (
+const handleWebhookValidationError = (
   err: unknown,
   res: express.Response,
 ): boolean => {
-  if (!(err instanceof WebhookUrlValidationError)) return false;
+  if (!isWebhookValidationError(err)) return false;
   res.status(400).json({ message: err.message });
   return true;
 };
@@ -407,7 +410,7 @@ router.get(
  *         body:
  *           type: string
  *           maxLength: 16384
- *           description: Optional request body template. Only for generic/incidentio; rejected for slack.
+ *           description: Optional Handlebars request body template. Only for generic/incidentio; rejected for slack. Rejected with a 400 if it does not compile or calls a helper other than `eq` and the Handlebars built-ins.
  *           example: '{"alert": "{{title}}", "severity": "{{level}}"}'
  *         headers:
  *           type: object
@@ -432,6 +435,131 @@ router.get(
  *           $ref: '#/components/schemas/Webhook'
  *           description: The webhook object.
  */
+
+/**
+ * @openapi
+ * /api/v2/webhooks/validate:
+ *   post:
+ *     summary: Validate Webhook
+ *     description: |
+ *       Validates a webhook body against the same schema, URL rules, and body
+ *       template check used by POST /api/v2/webhooks. The webhook is **never
+ *       persisted**. Use this endpoint at plan time (e.g. from a Terraform
+ *       provider) to check that a webhook configuration is valid before
+ *       applying it. Name uniqueness is not checked.
+ *     operationId: validateWebhook
+ *     tags: [Webhooks]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/WebhookInput'
+ *     responses:
+ *       '200':
+ *         description: |
+ *           Validation result. HTTP 200 is always returned for valid **and**
+ *           invalid bodies — a non-200 response means the request itself
+ *           failed (auth, server error, etc.).
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               required: [valid, errors, normalized]
+ *               properties:
+ *                 valid:
+ *                   type: boolean
+ *                   description: True when the body passes all validation rules.
+ *                 errors:
+ *                   type: array
+ *                   description: Validation errors. Empty when valid is true.
+ *                   items:
+ *                     type: object
+ *                     required: [path, message]
+ *                     properties:
+ *                       path:
+ *                         type: string
+ *                         description: Dot-separated field path, or empty string for top-level errors.
+ *                       message:
+ *                         type: string
+ *                         description: Human-readable error description.
+ *                 normalized:
+ *                   type: object
+ *                   nullable: true
+ *                   description: |
+ *                     The parsed webhook body, without the write-only
+ *                     `headers` and `queryParams`. Populated when valid is
+ *                     true, null when valid is false.
+ *             examples:
+ *               valid:
+ *                 summary: Valid webhook body
+ *                 value:
+ *                   valid: true
+ *                   errors: []
+ *                   normalized:
+ *                     name: "Alerts"
+ *                     service: "generic"
+ *                     url: "https://example.com/webhooks/alerts"
+ *                     body: '{"alert": "{{title}}"}'
+ *               invalid:
+ *                 summary: Body template that does not compile
+ *                 value:
+ *                   valid: false
+ *                   errors:
+ *                     - path: "body"
+ *                       message: "Invalid webhook body template (line 1, column 12): Parse error on line 1: ..."
+ *                   normalized: null
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             example:
+ *               message: "Unauthorized access. API key is missing or invalid."
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/validate', async (req, res, next) => {
+  try {
+    const teamId = req.user?.team;
+    if (teamId == null) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const parsed = externalWebhookCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.json({
+        valid: false,
+        errors: parsed.error.issues.map(i => ({
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+        normalized: null,
+      });
+    }
+
+    const errors = getWebhookConfigErrors(parsed.data);
+    // Never echo write-only secrets, matching every other webhook read path.
+    const {
+      headers: _headers,
+      queryParams: _queryParams,
+      ...readable
+    } = parsed.data;
+
+    return res.json({
+      valid: errors.length === 0,
+      errors,
+      normalized: errors.length === 0 ? readable : null,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
 
 /**
  * @openapi
@@ -503,7 +631,7 @@ router.post(
 
       res.json({ data });
     } catch (e) {
-      if (handleWebhookUrlValidationError(e, res)) return;
+      if (handleWebhookValidationError(e, res)) return;
       if (isDuplicateKeyError(e)) {
         return res.status(400).json({ message: DUPLICATE_WEBHOOK_MESSAGE });
       }
@@ -623,7 +751,7 @@ router.put(
 
       res.json({ data });
     } catch (e) {
-      if (handleWebhookUrlValidationError(e, res)) return;
+      if (handleWebhookValidationError(e, res)) return;
       if (isDuplicateKeyError(e)) {
         return res.status(400).json({ message: DUPLICATE_WEBHOOK_MESSAGE });
       }

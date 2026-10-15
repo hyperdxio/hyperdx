@@ -1870,10 +1870,12 @@ function DBDashboardPage({
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
-  const filters = dashboard?.filters ?? [];
+  const filters = useMemo(() => dashboard?.filters ?? [], [dashboard?.filters]);
   const {
     selectionByFilterId,
     setFilterValue,
+    adhocConditionsByFilterId,
+    setAdhocConditions,
     setFilterValueEntries,
     filterValueEntries,
     ignoredFilterExpressions,
@@ -3215,6 +3217,8 @@ function DBDashboardPage({
           filters={filters}
           selectionByFilterId={selectionByFilterId}
           onSetFilterValue={setFilterValue}
+          adhocConditionsByFilterId={adhocConditionsByFilterId}
+          onSetAdhocConditions={setAdhocConditions}
           dateRange={searchedTimeRange}
           variables={variables}
         />

@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
+import { Badge } from '@clickhouse/click-ui';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Badge,
   Card,
   Drawer,
   Flex,
@@ -103,25 +103,9 @@ const NamespaceDetails = ({
             label="Status"
             value={
               properties.ready === 1 ? (
-                <Badge
-                  variant="light"
-                  color="green"
-                  fw="normal"
-                  tt="none"
-                  size="md"
-                >
-                  Ready
-                </Badge>
+                <Badge text="Ready" state="success" />
               ) : (
-                <Badge
-                  variant="light"
-                  color="red"
-                  fw="normal"
-                  tt="none"
-                  size="md"
-                >
-                  Not Ready
-                </Badge>
+                <Badge text="Not Ready" state="danger" />
               )
             }
           />
