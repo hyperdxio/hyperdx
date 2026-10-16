@@ -1,9 +1,13 @@
 /**
  * An `ADHOC` dashboard filter's conditions (`key operator value`) are picked
  * from the keys of its sources. The filters modal creates and edits them, and
- * the dashboard renders their conditions and keeps them in the URL; they are not
- * applied to tiles yet.
+ * the dashboard renders their conditions and keeps them in the URL. Conditions
+ * of a SQL filter are broadcast to builder tiles and to raw SQL tiles through
+ * `$__filters`; those of a PromQL filter are added to every selector of PromQL
+ * tiles.
  */
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { SERVICES } from '../seed-clickhouse';
 import { expect, test } from '../utils/base-test';
@@ -11,6 +15,7 @@ import {
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
+  E2E_PROMQL_METRIC_NAME,
   PROMQL_SOURCE_NAME,
 } from '../utils/constants';
 import { expectFiltersParam, filtersParam } from '../utils/filters-param';
@@ -512,6 +517,146 @@ test.describe(
         await expect(
           dashboardPage.getFilterItemByName('Environment'),
         ).toBeVisible();
+      });
+    });
+
+    test('narrows builder and raw SQL tiles by its conditions', async () => {
+      const filterName = 'Conditions';
+      const sql = `SELECT ServiceName, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) AND $__filters GROUP BY ServiceName LIMIT 200`;
+      const expectServices = async (shown: string[], hidden: string[]) => {
+        for (const tile of [
+          dashboardPage.getTile(0),
+          dashboardPage.getTile(1),
+        ]) {
+          for (const service of shown) {
+            await expect(tile.getByTitle(service, { exact: true })).toBeVisible(
+              { timeout: 20000 },
+            );
+          }
+          for (const service of hidden) {
+            await expect(tile.getByTitle(service, { exact: true })).toHaveCount(
+              0,
+            );
+          }
+        }
+      };
+
+      await test.step('Add a builder tile and a raw SQL tile on the logs source', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Builder tile',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+        await dashboardPage.chartEditor.setChartName('Raw SQL tile');
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+        await dashboardPage.chartEditor.typeSqlQuery(sql);
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.saveTile();
+        await expect(dashboardPage.getTiles()).toHaveCount(2);
+      });
+
+      await test.step('Create the filter on the logs source', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addAdhocFilterToDashboard(filterName, [
+          DEFAULT_LOGS_SOURCE_NAME,
+        ]);
+        await dashboardPage.closeFiltersModal();
+        await expectServices(['accounting', 'frontend'], []);
+      });
+
+      await test.step('An = condition keeps only the matching service', async () => {
+        await dashboardPage.openAddAdhocCondition(filterName);
+        await dashboardPage.fillAdhocConditionEditor(filterName, {
+          key: 'ServiceName',
+          value: 'accounting',
+        });
+        await expectServices(['accounting'], ['frontend']);
+      });
+
+      await test.step('A != condition excludes the service', async () => {
+        await dashboardPage.editAdhocCondition(
+          filterName,
+          'ServiceName = accounting',
+          { operatorLabel: '!=' },
+        );
+        await expectServices(['frontend'], ['accounting']);
+      });
+    });
+
+    test('narrows PromQL tiles by its label matchers', async () => {
+      const filterName = 'Labels';
+      // One `<g class="recharts-area">` per returned series.
+      const seriesAreas = dashboardPage.getTile(0).locator('.recharts-area');
+
+      await test.step('Add a PromQL tile with no matchers', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.switchToPromqlMode();
+        await dashboardPage.chartEditor.selectSource(PROMQL_SOURCE_NAME);
+        await dashboardPage.chartEditor.setChartName('PromQL tile');
+        await dashboardPage.chartEditor.replacePromqlExpression(
+          E2E_PROMQL_METRIC_NAME,
+        );
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+        await expect(seriesAreas).toHaveCount(SERVICES.length, {
+          timeout: 20000,
+        });
+      });
+
+      await test.step('Create the filter on the PromQL source', async () => {
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addAdhocFilterToDashboard(
+          filterName,
+          [PROMQL_SOURCE_NAME],
+          { sourceType: 'Prometheus' },
+        );
+        await dashboardPage.closeFiltersModal();
+      });
+
+      await test.step('An = condition keeps only the matching series', async () => {
+        await dashboardPage.openAddAdhocCondition(filterName);
+        await dashboardPage.fillAdhocConditionEditor(filterName, {
+          key: 'service',
+          value: 'accounting',
+        });
+        await expect(seriesAreas).toHaveCount(1, { timeout: 20000 });
+      });
+
+      await test.step('A != condition excludes the series', async () => {
+        await dashboardPage.editAdhocCondition(
+          filterName,
+          'service = accounting',
+          { operatorLabel: '!=' },
+        );
+        await expect(seriesAreas).toHaveCount(SERVICES.length - 1, {
+          timeout: 20000,
+        });
+        // The legend truncates long series names, so match on the tail.
+        await expect(
+          dashboardPage.getTile(0).getByText('accounting"}'),
+        ).toHaveCount(0);
+      });
+
+      await test.step('The tile editor previews the added matcher', async () => {
+        const editor = dashboardPage.chartEditor;
+        await dashboardPage.editTile(0);
+        await editor.runQuery();
+        await editor.openGeneratedPromql();
+        await expect
+          .poll(() => editor.getGeneratedPromqlText())
+          .toBe(`${E2E_PROMQL_METRIC_NAME}{service!="accounting"}`);
       });
     });
   },

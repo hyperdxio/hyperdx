@@ -6,6 +6,7 @@ import {
   timeFilterExpr,
 } from '@/core/renderChartConfig';
 import { convertToCategoricalChartConfig } from '@/core/utils';
+import { adhocConditionsToFilters } from '@/filters';
 import {
   BuilderChartConfig,
   ChartConfigWithOptDateRange,
@@ -1654,6 +1655,35 @@ describe('renderChartConfig', () => {
       expect(sql).not.toContain('AS service');
       expect(sql).toContain("service = 'api'");
     });
+  });
+
+  it('applies ad hoc filter conditions for every operator to a builder query', async () => {
+    const sql = parameterizedQueryToSql(
+      await renderChartConfig(
+        {
+          connection: 'test-connection',
+          from: { databaseName: 'default', tableName: 'otel_logs' },
+          select: [{ aggFn: 'count', valueExpression: '' }],
+          where: '',
+          whereLanguage: 'sql',
+          filters: adhocConditionsToFilters([
+            { key: 'ServiceName', operator: '=', value: 'api' },
+            { key: 'ServiceName', operator: '!=', value: 'web' },
+            { key: "LogAttributes['path']", operator: '=~', value: '^/api' },
+            { key: "LogAttributes['path']", operator: '!~', value: 'health' },
+            { key: 'Body', operator: 'LIKE', value: '%error%' },
+            { key: 'Body', operator: 'NOT LIKE', value: "%it's%" },
+          ]),
+          timestampValueExpression: 'Timestamp',
+          dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+        },
+        mockMetadata,
+        querySettings,
+      ),
+    );
+    expect(sql).toContain(
+      "((toString(ServiceName) = 'api') AND (toString(ServiceName) != 'web') AND (match(toString(LogAttributes['path']), '^/api')) AND (NOT match(toString(LogAttributes['path']), 'health')) AND (toString(Body) LIKE '%error%') AND (toString(Body) NOT LIKE '%it''s%'))",
+    );
   });
 
   describe('SQL filter KV items direct_read optimization', () => {
@@ -3520,6 +3550,35 @@ describe('renderChartConfig', () => {
       );
       expect(result.sql).toBe(
         "SELECT * FROM logs WHERE (((ServiceName ILIKE '%api%')) AND (duration > 100))",
+      );
+    });
+
+    it('renders ad hoc filter conditions for every operator in $__filters', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          filters: adhocConditionsToFilters([
+            { key: 'ServiceName', operator: '=', value: 'api' },
+            { key: 'ServiceName', operator: '!=', value: 'web' },
+            { key: "LogAttributes['path']", operator: '=~', value: '^/api' },
+            { key: "LogAttributes['path']", operator: '!~', value: 'health' },
+            { key: 'Body', operator: 'LIKE', value: '%error%' },
+            { key: 'Body', operator: 'NOT LIKE', value: "%it's%" },
+          ]),
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE ((toString(ServiceName) = 'api') AND (toString(ServiceName) != 'web') AND (match(toString(LogAttributes['path']), '^/api')) AND (NOT match(toString(LogAttributes['path']), 'health')) AND (toString(Body) LIKE '%error%') AND (toString(Body) NOT LIKE '%it''s%'))",
       );
     });
 
