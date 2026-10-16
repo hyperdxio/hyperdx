@@ -155,6 +155,16 @@ function SeriesRow({
   );
 }
 
+/** The series a drill-down action was invoked on. */
+export type ClickedSeries = {
+  /** Full series key, e.g. "count · error · api". */
+  dataKey?: string;
+  /** The series' value at the clicked bucket. */
+  value?: number;
+  /** Result column the series was plotted from; identifies its `select` entry. */
+  valueColumnName?: string;
+};
+
 export type ChartSeriesTooltipProps = {
   /** Bucket label (epoch seconds as a string) for the timestamp header. */
   activeLabel: string;
@@ -164,8 +174,8 @@ export type ChartSeriesTooltipProps = {
   /** Per-value-column number formats, keyed by result column name. */
   numberFormatByKey: Map<string, NumberFormat>;
   previousPeriodOffsetSeconds?: number;
-  /** Drill-down URL for the whole bucket (no args) or one series (key + value). */
-  buildSearchUrl?: (key?: string, value?: number) => string | null;
+  /** Drill-down URL for the whole bucket (no args) or for one clicked series. */
+  buildSearchUrl?: (series?: ClickedSeries) => string | null;
   /** Dismiss the tooltip (used by links + focus). */
   onDismiss?: () => void;
   /** Focus a series by its raw key + display name. */
@@ -326,10 +336,13 @@ export function ChartSeriesTooltip({
               : undefined) ?? fallbackNumberFormat;
           const seriesUrl =
             showPerSeriesActions && canDrillDown
-              ? (buildSearchUrl!(
-                  payload.dataKey,
-                  Number.isFinite(payload.value) ? payload.value : undefined,
-                ) ?? bucketSearchUrl)
+              ? (buildSearchUrl!({
+                  dataKey: payload.dataKey,
+                  value: Number.isFinite(payload.value)
+                    ? payload.value
+                    : undefined,
+                  valueColumnName: payload.valueColumnName,
+                }) ?? bucketSearchUrl)
               : undefined;
           return (
             <SeriesRow
