@@ -1,5 +1,48 @@
 # @hyperdx/api
 
+## 2.42.0
+
+### Patch Changes
+
+- 9891a791: feat: Add ad hoc dashboard filter schemas and types
+- 748315d7: feat(mcp): advertise a title, description, website URL, and SVG icon in the MCP server's initialize response
+- cdfae457: fix(mcp): `clickstack_sql` now binds the bucket-size parameters its description
+  advertises. `{intervalSeconds:Int64}`, `{intervalMilliseconds:Int64}`,
+  `$__interval_s`, `$__timeInterval` and `$__timeInterval_ms` used to fail with
+  "Substitution intervalSeconds is not set", including the tool's own time-series
+  example.
+- b00d4100: feat(mcp): `clickstack_sql` accepts an optional `sourceId`, so `$__sourceTable`
+  expands to that source's table. Unknown sources, other teams' sources, and a
+  source on a different connection than `connectionId` are rejected, as is
+  `$__sourceTable` without a `sourceId`.
+- a06b17fb: fix(mcp): stop `clickstack_sql` callers from guessing table and timestamp column
+  names. `clickstack_list_sources` now returns each source's database-qualified
+  `table` (and `database` for metric sources), the `sql` examples use `<table>`
+  and `<timestampColumn>` placeholders instead of `otel_logs` and `TimestampTime`,
+  and unknown-table errors from `clickstack_sql` point at `clickstack_list_sources`.
+- 5cabc115: feat: Support distribution heatmaps calculated from promql data
+- c94d12c3: fix: Resolve PromQL queries through the source instead of a caller-supplied connection and table
+
+  The `/api/v1/prometheus/*` routes now take `sourceId` instead of `connectionId`, and read the connection and TimeSeries table from that PromQL source. Caller-supplied `database`/`table` params are ignored for ClickHouse and no longer forwarded to external Prometheus endpoints. Saved PromQL chart configs now require `source` and no longer persist `connection`, so provisioned dashboards with PromQL tiles must set `source`.
+
+- 28168ae6: fix: Floor the time filter start to the precision of a coarse timestamp column (DateTime, DateTime64 below ms) when a finer column also filters the range, so a sub-second start no longer drops the rest of that tick; make the external API v2 search `maxResults` cap configurable via `EXTERNAL_API_SEARCH_MAX_RESULTS` (defaults to 2000, the previous hardcoded value)
+- ecddea2a: fix: reject generic and incident.io webhook body templates that don't compile,
+  or that call a helper delivery doesn't register (e.g. a typo for `eq`), with a
+  400 on create, update, and test (internal API, External API v2, and MCP
+  `clickstack_save_webhook`). Add `POST /api/v2/webhooks/validate` to check a
+  webhook config without saving it, e.g. at Terraform plan time.
+- Updated dependencies [92058236]
+- Updated dependencies [a682ce13]
+- Updated dependencies [9891a791]
+- Updated dependencies [43b09a7d]
+- Updated dependencies [5cabc115]
+- Updated dependencies [3bedfab3]
+- Updated dependencies [c94d12c3]
+- Updated dependencies [85675fc8]
+- Updated dependencies [28168ae6]
+- Updated dependencies [807cd9a5]
+  - @hyperdx/common-utils@0.31.1
+
 ## 2.41.0
 
 ### Minor Changes
