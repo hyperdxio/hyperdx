@@ -169,6 +169,37 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
     );
   });
 
+  it('range', async () => {
+    const field = 'ResourceAttributesJSON.range.test';
+    const numeric = `dynamicType(\`ResourceAttributesJSON\`.\`range\`.\`test\`) in ('Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'Int256', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UInt256', 'Float32', 'Float64') and \`ResourceAttributesJSON\`.\`range\`.\`test\``;
+    expect(await serializer.range(field, '1', '5', false, {})).toBe(
+      `(${numeric} BETWEEN 1 AND 5)`,
+    );
+    expect(await serializer.range(field, '1', '5', false, {}, 'none')).toBe(
+      `(${numeric} > 1 AND ${numeric} < 5)`,
+    );
+  });
+
+  it('range from a Lucene JSON path, including negated and open bounds', async () => {
+    const numeric = `dynamicType(\`ResourceAttributesJSON\`.\`http\`.\`status\`) in ('Int8', 'Int16', 'Int32', 'Int64', 'Int128', 'Int256', 'UInt8', 'UInt16', 'UInt32', 'UInt64', 'UInt128', 'UInt256', 'Float32', 'Float64') and \`ResourceAttributesJSON\`.\`http\`.\`status\``;
+    const build = (lucene: string) =>
+      new SearchQueryBuilder(lucene, serializer).build();
+    expect(await build('ResourceAttributesJSON.http.status:[1 TO 5]')).toBe(
+      `((${numeric} BETWEEN 1 AND 5))`,
+    );
+    // Negating must also keep rows whose value is not numeric, like the
+    // half-open form does.
+    expect(await build('-ResourceAttributesJSON.http.status:[1 TO 5]')).toBe(
+      `((NOT (${numeric} BETWEEN 1 AND 5)))`,
+    );
+    expect(await build('-ResourceAttributesJSON.http.status:[* TO 5]')).toBe(
+      `((NOT (${numeric} <= 5)))`,
+    );
+    expect(await build('ResourceAttributesJSON.http.status:[1 TO *]')).toBe(
+      `((${numeric} >= 1))`,
+    );
+  });
+
   const testCases = [
     {
       lucene: '"foo bar baz"',
