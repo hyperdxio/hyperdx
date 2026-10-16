@@ -46,7 +46,12 @@ export function RowOverviewPanel({
   'data-testid'?: string;
 }) {
   const contentPx = flush ? 0 : 'md';
-  const { data } = useRowData({ source, rowId, aliasWith, dateRange });
+  const { data, isLoading } = useRowData({
+    source,
+    rowId,
+    aliasWith,
+    dateRange,
+  });
   const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
     use(RowSidePanelContext);
 
@@ -246,6 +251,7 @@ export function RowOverviewPanel({
             // In that case suppress the body paper entirely instead of
             // rendering an "[Empty]" placeholder.
             bodyConfigured={mainContentColumn !== undefined}
+            isLoading={isLoading}
             severityText={firstRow?.__hdx_severity_text}
             rowData={firstRow}
           />
