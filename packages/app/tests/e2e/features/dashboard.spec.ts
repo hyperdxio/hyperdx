@@ -391,7 +391,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await dashboardPage.chartEditor.setChartName(tileName);
 
       await expect(dashboardPage.chartEditor.alertButton).toHaveText(
-        'Add Alert',
+        'Add alert',
       );
       await dashboardPage.chartEditor.clickAddAlert();
       await dashboardPage.chartEditor.addNewWebhookButton.click();
@@ -457,6 +457,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Hover over first tile to reveal edit button
       await dashboardPage.editTile(0);
 
+      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
+        'Edit alert',
+      );
       await dashboardPage.chartEditor.clickRemoveAlert();
 
       await dashboardPage.saveTile();
@@ -3414,7 +3417,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
             "  { $set: { tiles: [{ id: 'promql-1', x: 0, y: 0, w: 4, h: 2,",
             "      config: { configType: 'promql', promqlExpression: 'up',",
-            "                connection: 'c1', displayType: 'line' } }] } }",
+            "                connection: 'c1', source: 's1', displayType: 'line' } }] } }",
             ')));',
           ].join('\n'),
         );

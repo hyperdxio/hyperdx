@@ -21,6 +21,7 @@ import {
   ChartVariable,
   DASHBOARD_VARIABLE_NAME_PATTERN,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
+  DashboardFilter,
   DisplayType,
   SavedChartConfig,
   SearchConditionLanguage,
@@ -41,10 +42,10 @@ export const VARIABLE_FORMATS = [
 export type VariableFormat = (typeof VARIABLE_FORMATS)[number];
 
 /** Whether at most one value can be selected for the filter (or its variable). */
-export function isFilterSingleSelect(filter: {
-  maxSelections?: number;
-}): boolean {
-  return filter.maxSelections === 1;
+export function isFilterSingleSelect(
+  filter: DashboardFilter | { maxSelections?: number },
+): boolean {
+  return 'maxSelections' in filter && filter.maxSelections === 1;
 }
 
 const isVariableFormat = (format: string): format is VariableFormat =>
@@ -60,9 +61,12 @@ const escapeRegexValue = (value: string) =>
 const escapeLuceneValue = (value: string) =>
   value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-/** Escape `\` and `"` so a value survives inside a double-quoted PromQL string. */
-const escapePromqlStringValue = (value: string) =>
-  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+/**
+ * Escape `\`, `"` and newlines so a value survives inside a double-quoted
+ * PromQL string, which can't span lines.
+ */
+export const escapePromqlStringValue = (value: string) =>
+  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 
 /**
  * Backslash-escape every ASCII punctuation character (CommonMark renders each

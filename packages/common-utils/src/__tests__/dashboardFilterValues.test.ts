@@ -7,9 +7,11 @@ import {
   parseDashboardFilterValues,
   resolveFilterSelection,
   serializeDashboardFilterValues,
+  VariableEntryValue,
 } from '@/dashboardFilterValues';
 import { FilterState, filtersToQuery } from '@/filters';
 import type {
+  AdhocFilterCondition,
   ChartConfigWithOptDateRange,
   DashboardFilter,
   DashboardFilterValue,
@@ -56,6 +58,17 @@ const promqlFilter = (
   ...overrides,
 });
 
+const condition: AdhocFilterCondition = {
+  key: 'ServiceName',
+  operator: '=',
+  value: 'api',
+};
+
+const variableValue = (...values: string[]): VariableEntryValue => ({
+  type: 'variable',
+  values,
+});
+
 const included = (...values: (string | boolean)[]) => ({
   included: new Set(values),
   excluded: new Set<string | boolean>(),
@@ -79,7 +92,9 @@ describe('dashboardFilterValues', () => {
       ]);
 
       expect(parsed.byExpression).toEqual({ Env: included('prod') });
-      expect(Array.from(parsed.byVariable)).toEqual([['svc', ['accounting']]]);
+      expect(Array.from(parsed.byVariable)).toEqual([
+        ['svc', variableValue('accounting')],
+      ]);
       expect(parsed.passthrough).toEqual([]);
     });
 
@@ -91,8 +106,8 @@ describe('dashboardFilterValues', () => {
 
       expect(parsed.byExpression).toEqual({});
       expect(Array.from(parsed.byVariable)).toEqual([
-        ['svc', ['a', 'b']],
-        ['env', []],
+        ['svc', variableValue('a', 'b')],
+        ['env', variableValue()],
       ]);
     });
 
@@ -114,7 +129,9 @@ describe('dashboardFilterValues', () => {
         { type: 'variable', name: 'svc', values: ['second'] },
       ]);
 
-      expect(Array.from(parsed.byVariable)).toEqual([['svc', ['first']]]);
+      expect(Array.from(parsed.byVariable)).toEqual([
+        ['svc', variableValue('first')],
+      ]);
     });
 
     it('routes non-sql entries to passthrough', () => {
@@ -137,6 +154,29 @@ describe('dashboardFilterValues', () => {
 
       expect(parsed.passthrough).toEqual([lucene, sqlAst]);
       expect(parsed.byExpression).toEqual({ Env: included('prod') });
+    });
+
+    it('carries ad hoc entries through a parse and serialize round trip', () => {
+      const adhoc: DashboardFilterValue = {
+        type: 'adhoc',
+        name: 'adhoc',
+        conditions: [{ key: 'ServiceName', operator: '=~', value: 'api.*' }],
+      };
+
+      const parsed = parseDashboardFilterValues([
+        adhoc,
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
+
+      expect(Array.from(parsed.byVariable)).toEqual([
+        ['adhoc', { type: 'adhoc', conditions: adhoc.conditions }],
+        ['env', variableValue('prod')],
+      ]);
+      expect(parsed.passthrough).toEqual([]);
+      expect(serializeDashboardFilterValues(parsed)).toEqual([
+        adhoc,
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
     });
 
     it('drops a sql entry it can extract nothing from, rather than carrying it', () => {
@@ -171,8 +211,8 @@ describe('dashboardFilterValues', () => {
         serializeDashboardFilterValues({
           byExpression: { Env: included('prod'), Region: included('us') },
           byVariable: new Map([
-            ['svc', ['accounting']],
-            ['team', ['platform']],
+            ['svc', variableValue('accounting')],
+            ['team', variableValue('platform')],
           ]),
           passthrough: [passthrough],
         }),
@@ -192,9 +232,10 @@ describe('dashboardFilterValues', () => {
             Env: included(),
             Region: included('us'),
           },
-          byVariable: new Map([
-            ['svc', []],
-            ['team', ['platform']],
+          byVariable: new Map<string, VariableEntryValue>([
+            ['svc', variableValue()],
+            ['team', variableValue('platform')],
+            ['conds', { type: 'adhoc', conditions: [] }],
           ]),
         }),
       ).toEqual([
@@ -246,7 +287,7 @@ describe('dashboardFilterValues', () => {
       'preserves %s exactly on the variable path',
       (_label, value) => {
         const entries = serializeDashboardFilterValues({
-          byVariable: new Map([['svc', [value]]]),
+          byVariable: new Map([['svc', variableValue(value)]]),
         });
         expect(entries).toEqual([
           { type: 'variable', name: 'svc', values: [value] },
@@ -257,7 +298,7 @@ describe('dashboardFilterValues', () => {
         const parsed = parseDashboardFilterValues(
           JSON.parse(JSON.stringify(entries)),
         );
-        expect(parsed.byVariable.get('svc')).toEqual([value]);
+        expect(parsed.byVariable.get('svc')).toEqual(variableValue(value));
         expect(parsed.byExpression).toEqual({});
         expect(parsed.passthrough).toEqual([]);
       },
@@ -301,7 +342,7 @@ describe('dashboardFilterValues', () => {
       ]);
       expect(
         serializeDashboardFilterValues({
-          byVariable: new Map([['svc', ['true']]]),
+          byVariable: new Map([['svc', variableValue('true')]]),
         }),
       ).toEqual([{ type: 'variable', name: 'svc', values: ['true'] }]);
     });
@@ -410,6 +451,14 @@ describe('dashboardFilterValues', () => {
       expect(resolveFilterSelection(variableFilter, parsed)).toEqual(
         included(),
       );
+    });
+
+    it('does not read an ad hoc entry as a selection', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'adhoc', name: 'svc', conditions: [condition] },
+      ]);
+
+      expect(resolveFilterSelection(variableFilter, parsed)).toBeUndefined();
     });
 
     it('falls back to the expression entry for back-compat', () => {
@@ -793,6 +842,7 @@ describe('dashboardFilterValues', () => {
       configType: 'promql',
       promqlExpression: 'up',
       connection: 'local',
+      source: 'promql-source',
     };
 
     it('applies to a builder tile', () => {
@@ -846,6 +896,7 @@ describe('dashboardFilterValues', () => {
       configType: 'promql',
       promqlExpression: 'up',
       connection: 'local',
+      source: 'promql-source',
     };
 
     const unsatisfied = [

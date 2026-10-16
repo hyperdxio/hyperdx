@@ -5,15 +5,22 @@
 import { Locator, Page } from '@playwright/test';
 
 /**
- * Mapping type labels rendered in the Step 2 table's "Mapping Type" column.
+ * Mapping type labels rendered in the Step 2 table's "Mapping type" column.
  * Each row is keyed by (tile/filter name, mapping type).
  */
 export type MappingType =
-  | 'Data Source'
-  | 'Data Connection'
-  | 'On Click - Search Source'
-  | 'On Click - Dashboard'
-  | 'Applies to Sources';
+  | 'Data source'
+  | 'Data connection'
+  | 'On click - search source'
+  | 'On click - dashboard'
+  | 'Applies to sources'
+  | 'Data sources';
+
+/** Test ID prefixes of the multiselect mapping types, keyed by mapping type. */
+const MULTI_SELECT_TEST_ID_PREFIXES: Partial<Record<MappingType, string>> = {
+  'Applies to sources': 'filter-applies-to-mapping-',
+  'Data sources': 'filter-adhoc-sources-mapping-',
+};
 
 export class DashboardImportPage {
   readonly page: Page;
@@ -32,7 +39,7 @@ export class DashboardImportPage {
     this.page = page;
     this.templatesPageContainer = page.getByTestId('dashboard-templates-page');
     this.mappingStepHeading = page.getByText('Step 2: Map Data');
-    this.dashboardNameInput = page.getByLabel('Dashboard Name');
+    this.dashboardNameInput = page.getByLabel('Dashboard name');
     this.finishImportButton = page.getByRole('button', {
       name: 'Finish Import',
     });
@@ -119,22 +126,26 @@ export class DashboardImportPage {
     optionName: string,
   ) {
     const row = this.getMappingRow(inputName, mappingType);
+    const testIdPrefix = MULTI_SELECT_TEST_ID_PREFIXES[mappingType];
+    if (testIdPrefix) {
+      await row.getByTestId(new RegExp(`^${testIdPrefix}`)).click();
+      await this.page
+        .getByRole('option', { name: optionName, exact: true })
+        .click();
+      // Close the dropdown so it doesn't intercept future clicks.
+      await this.page.keyboard.press('Escape');
+      return;
+    }
     const placeholder =
-      mappingType === 'Data Connection'
+      mappingType === 'Data connection'
         ? 'Select a connection'
-        : mappingType === 'On Click - Dashboard'
+        : mappingType === 'On click - dashboard'
           ? 'Select a dashboard'
-          : mappingType === 'Applies to Sources'
-            ? 'Select sources'
-            : 'Select a source';
+          : 'Select a source';
     await row.getByPlaceholder(placeholder).click();
     await this.page
       .getByRole('option', { name: optionName, exact: true })
       .click();
-    if (mappingType === 'Applies to Sources') {
-      // Multiselect — close the dropdown so it doesn't intercept future clicks.
-      await this.page.keyboard.press('Escape');
-    }
   }
 
   /**
@@ -161,10 +172,10 @@ export class DashboardImportPage {
    */
   getMappingRowError(
     inputName: string,
-    mappingType: MappingType = 'Data Source',
+    mappingType: MappingType = 'Data source',
   ) {
     return this.getMappingRow(inputName, mappingType).getByText(
-      /^Select a (?:source|connection) for this (?:tile|filter)$/,
+      /^Select (?:a|at least one) (?:source|connection) for this (?:tile|filter)$/,
     );
   }
 

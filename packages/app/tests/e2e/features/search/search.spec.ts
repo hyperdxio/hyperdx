@@ -86,6 +86,30 @@ test.describe('Search', { tag: '@search' }, () => {
         });
       });
     });
+
+    // The search table persists column widths under a tableId, which once
+    // dropped the table's sort state: every header click re-sorted ascending.
+    test('should toggle sort direction when a column header is clicked', async ({
+      page,
+    }) => {
+      await searchPage.submitEmptySearch();
+      await expect(searchPage.table.firstRow).toBeVisible();
+
+      const sortButton = searchPage.table.getSortButton('ServiceName');
+      const indicator = searchPage.table.getSortIndicator('ServiceName');
+
+      await sortButton.click();
+      await expect(indicator).toHaveClass('sorted-asc');
+      await expect(page).toHaveURL(/orderBy=ServiceName%2520ASC/);
+
+      await sortButton.click();
+      await expect(indicator).toHaveClass('sorted-desc');
+      await expect(page).toHaveURL(/orderBy=ServiceName%2520DESC/);
+
+      await page.reload();
+      await expect(searchPage.table.firstRow).toBeVisible();
+      await expect(indicator).toHaveClass('sorted-desc');
+    });
   });
 
   // A row click opens the side panel by default; inline expansion is opt-in.

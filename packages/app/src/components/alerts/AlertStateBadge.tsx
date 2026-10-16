@@ -1,6 +1,6 @@
 import * as React from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import { AlertState } from '@hyperdx/common-utils/dist/types';
-import { Badge } from '@mantine/core';
 
 import { ALERT_STATE_LABELS } from '@/utils/alerts';
 
@@ -13,30 +13,14 @@ export function AlertStateBadge({ state }: AlertStateBadgeProps) {
 
   switch (state) {
     case AlertState.ALERT:
-      return (
-        <Badge variant="light" color="red">
-          {label}
-        </Badge>
-      );
+      return <Badge text={label} state="danger" type="solid" />;
     case AlertState.PENDING:
-      return (
-        <Badge variant="light" color="orange">
-          {label}
-        </Badge>
-      );
+      return <Badge text={label} state="warning" />;
     case AlertState.ERROR:
-      return (
-        <Badge variant="outline" color="red">
-          {label}
-        </Badge>
-      );
+      return <Badge text={label} state="danger" />;
     case AlertState.OK:
-      return <Badge variant="light">{label}</Badge>;
+      return <Badge text={label} state="success" />;
     default:
-      return (
-        <Badge variant="light" color="gray">
-          {label}
-        </Badge>
-      );
+      return <Badge text={label} state="neutral" />;
   }
 }

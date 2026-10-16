@@ -18,6 +18,7 @@ import {
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
   useSources,
+  useUpdateSource,
 } from '@/source';
 
 jest.mock('../api', () => ({ hdxServer: jest.fn() }));
@@ -31,7 +32,7 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
 }));
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 
@@ -228,6 +229,30 @@ describe('getTraceDurationNumberFormat', () => {
         aggFn: 'avgIf',
       }),
     ).toEqual({ output: 'duration', factor: 1e-9 });
+  });
+});
+
+describe('useUpdateSource', () => {
+  it("drops the updated source's cached PromQL lookups", () => {
+    const invalidateQueries = jest.fn();
+    // @ts-expect-error return value type
+    jest.mocked(useQueryClient).mockReturnValue({ invalidateQueries });
+    let onSuccess: ((data: unknown, vars: unknown) => void) | undefined;
+    // @ts-expect-error param type
+    jest.mocked(useMutation).mockImplementation(options => {
+      // @ts-expect-error return value type
+      onSuccess = options.onSuccess;
+    });
+
+    useUpdateSource();
+    onSuccess?.(undefined, { source: { id: 'source-promql' } });
+
+    expect(invalidateQueries.mock.calls.map(([arg]) => arg.queryKey)).toEqual([
+      ['sources'],
+      ['promql-metric-names', 'source-promql'],
+      ['promql-label-names', 'source-promql'],
+      ['dashboard-filter-promql-label-values', 'source-promql'],
+    ]);
   });
 });
 
