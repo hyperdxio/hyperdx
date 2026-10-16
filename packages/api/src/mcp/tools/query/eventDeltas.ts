@@ -186,7 +186,8 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
         PREFER_BUILDER_OVER_SQL_NUDGE +
         '\n\n' +
         'OUTPUT: properties ranked by score, the largest %-share difference of ' +
-        'any value after normalizing each group to 100%. Each has key, score, ' +
+        'any value after normalizing each group to 100%, plus a 0.1 tie-breaking ' +
+        'boost for well-known attributes. Each has key, score, ' +
         'semanticBoost (well-known OTel attribute), targetCount/baselineCount, ' +
         'and topDeltas (value, targetPct, baselinePct, diffPct): the full ' +
         'per-value comparison. ID and high-cardinality fields are hidden ' +

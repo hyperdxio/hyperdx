@@ -291,7 +291,7 @@ export const mcpSelectItemSchema = z.object({
     .optional()
     .describe(
       'Percentile for aggFn:"quantile" (0.95 = p95). Only valid with quantile; ' +
-        'required when the item is a histogram or exponential histogram metric.',
+        'required when using quantile on a histogram or exponential histogram metric.',
     ),
   metricType: mcpMetricTypeSchema
     .optional()

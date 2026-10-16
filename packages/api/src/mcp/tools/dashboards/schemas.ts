@@ -679,6 +679,37 @@ const mcpOnClickSchema = z
       '"https://grafana.example.com/d/abc?var-service={{ServiceName}}" }',
   );
 
+const mcpTimeChartDisplayFields = {
+  fillNulls: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(timeChartFillNullsDescription),
+  alignDateRangeToGranularity: z
+    .boolean()
+    .optional()
+    .describe(timeChartAlignDateRangeDescription),
+  asRatio: z.boolean().optional().describe(asRatioDescription),
+  numberFormat: mcpNumberFormatSchema
+    .optional()
+    .describe(tileLevelNumberFormatDescription),
+};
+
+const mcpRowListSourceFields = {
+  sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+  where: z
+    .string()
+    .optional()
+    .default('')
+    .describe(
+      'Row filter, in the language set by whereLanguage (Lucene by default). Example: "level:error"\n\n' +
+        variableMacroDescription,
+    ),
+  whereLanguage: SearchConditionTrimmedLanguageSchema.optional()
+    .default('lucene')
+    .describe(tileWhereLanguageDescription),
+};
+
 const mcpTileLayoutSchema = z.object({
   name: z.string().min(1).describe('Tile title shown on the dashboard'),
   x: z
@@ -768,19 +799,7 @@ export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
             "Span attributes: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
             "Resource attributes: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
         ),
-      fillNulls: z
-        .boolean()
-        .optional()
-        .default(true)
-        .describe(timeChartFillNullsDescription),
-      alignDateRangeToGranularity: z
-        .boolean()
-        .optional()
-        .describe(timeChartAlignDateRangeDescription),
-      asRatio: z.boolean().optional().describe(asRatioDescription),
-      numberFormat: mcpNumberFormatSchema
-        .optional()
-        .describe(tileLevelNumberFormatDescription),
+      ...mcpTimeChartDisplayFields,
       compareToPreviousPeriod: z
         .boolean()
         .optional()
@@ -813,19 +832,7 @@ const mcpStackedTimeChartConfigFields = {
         'Top-level columns use PascalCase (e.g. "SpanName"). ' +
         "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
     ),
-  fillNulls: z
-    .boolean()
-    .optional()
-    .default(true)
-    .describe(timeChartFillNullsDescription),
-  alignDateRangeToGranularity: z
-    .boolean()
-    .optional()
-    .describe(timeChartAlignDateRangeDescription),
-  asRatio: z.boolean().optional().describe(asRatioDescription),
-  numberFormat: mcpNumberFormatSchema
-    .optional()
-    .describe(tileLevelNumberFormatDescription),
+  ...mcpTimeChartDisplayFields,
   seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
   formulas: mcpTileFormulasSchema,
   showOperandSeries: mcpShowOperandSeriesSchema,
@@ -1165,18 +1172,7 @@ const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
       displayType: z
         .literal('search')
         .describe('Log/event search results list'),
-      sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-      where: z
-        .string()
-        .optional()
-        .default('')
-        .describe(
-          'Row filter, in the language set by whereLanguage (Lucene by default). Example: "level:error"\n\n' +
-            variableMacroDescription,
-        ),
-      whereLanguage: SearchConditionTrimmedLanguageSchema.optional()
-        .default('lucene')
-        .describe(tileWhereLanguageDescription),
+      ...mcpRowListSourceFields,
       select: z
         .string()
         .optional()
@@ -1194,18 +1190,7 @@ const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
       displayType: z
         .literal('event_patterns')
         .describe('Event pattern mining tile'),
-      sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-      where: z
-        .string()
-        .optional()
-        .default('')
-        .describe(
-          'Row filter, in the language set by whereLanguage (Lucene by default). Example: "level:error"\n\n' +
-            variableMacroDescription,
-        ),
-      whereLanguage: SearchConditionTrimmedLanguageSchema.optional()
-        .default('lucene')
-        .describe(tileWhereLanguageDescription),
+      ...mcpRowListSourceFields,
       select: z
         .string()
         .optional()
