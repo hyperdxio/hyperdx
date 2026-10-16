@@ -76,6 +76,17 @@ export const EXTERNAL_API_RATE_LIMIT_MAX = (() => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 100;
 })();
 
+export const EXTERNAL_API_SEARCH_DEFAULT_MAX_RESULTS = 100;
+
+export const EXTERNAL_API_SEARCH_MAX_RESULTS = (() => {
+  const parsed = Number(env.EXTERNAL_API_SEARCH_MAX_RESULTS);
+  // A cap below the default would make requests without maxResults invalid.
+  return Number.isSafeInteger(parsed) &&
+    parsed >= EXTERNAL_API_SEARCH_DEFAULT_MAX_RESULTS
+    ? parsed
+    : 2000;
+})();
+
 // FOR CI ONLY
 export const CLICKHOUSE_HOST = env.CLICKHOUSE_HOST as string;
 export const CLICKHOUSE_USER = env.CLICKHOUSE_USER as string;
