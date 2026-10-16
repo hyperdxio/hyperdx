@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isAdhocConditionSupported } from '@hyperdx/common-utils/dist/filters';
 import {
   ADHOC_FILTER_MAX_CONDITIONS,
   AdhocDashboardFilter as AdhocDashboardFilterType,
@@ -103,6 +104,10 @@ export function AdhocDashboardFilter({
               operator={operator.label}
               value={condition.value}
               isExcluded={operator.isExcluded}
+              isInvalid={
+                !isAdhocConditionSupported(filter.sourceType, condition)
+              }
+              invalidReason={`Filter not applied: PromQL has no ${condition.operator} operator. Remove this condition and add it again with a supported operator.`}
               onRemove={() => remove(index)}
               renderPopover={close => (
                 <AdhocConditionEditor
