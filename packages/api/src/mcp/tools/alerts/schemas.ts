@@ -60,7 +60,7 @@ const mcpAlertChartLevelWhereSchema = z
 
 const mcpAlertChartLevelWhereLanguageSchema =
   SearchConditionTrimmedLanguageSchema.optional().describe(
-    'Query language the chart-level `where` is written in.',
+    'Query language the chart-level `where` is written in. Lucene when omitted.',
   );
 
 const rejectedRawSqlAlertWhereField = z
