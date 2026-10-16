@@ -45,7 +45,8 @@ export const mcpSaveSavedSearchSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Saved search ID. Omit to create a new saved search, provide to update an existing one.',
+      'Saved search ID, from clickstack_get_saved_search. Omit to create a new ' +
+        'saved search, provide to update an existing one.',
     ),
   name: z
     .string()
@@ -69,7 +70,10 @@ export const mcpSaveSavedSearchSchema = z.object({
   whereLanguage: z
     .enum(['sql', 'lucene'])
     .optional()
-    .describe('Language for the where filter. Default: lucene.'),
+    .describe(
+      'Language for the where filter. Defaults to lucene on create; on update, ' +
+        'omitting it keeps the stored value, so resend it whenever you change where.',
+    ),
   orderBy: z
     .string()
     .optional()

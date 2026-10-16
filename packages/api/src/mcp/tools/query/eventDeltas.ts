@@ -189,8 +189,8 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
         'any value after normalizing each group to 100%, plus a 0.1 tie-breaking ' +
         'boost for well-known attributes. Each has key, score, ' +
         'semanticBoost (well-known OTel attribute), targetCount/baselineCount, ' +
-        'and topDeltas (value, targetPct, baselinePct, diffPct): the full ' +
-        'per-value comparison. ID and high-cardinality fields are hidden ' +
+        'and topDeltas (value, targetPct, baselinePct, diffPct): the ' +
+        'topValuesPerProperty values whose share shifted most. ID and high-cardinality fields are hidden ' +
         'unless includeHidden is set.\n\n' +
         'DO NOT STOP AT RANK 1. The top ~5 are often independent axes that ' +
         'together explain the shift. Read down until scores drop to noise.',

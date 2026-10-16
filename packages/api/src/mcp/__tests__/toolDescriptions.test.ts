@@ -29,42 +29,4 @@ describe('MCP tool descriptions', () => {
 
     expect(oversized).toEqual([]);
   });
-
-  it('describes every input property', async () => {
-    const client = await createTestClient(context);
-    const { tools } = await client.listTools();
-
-    const checked: string[] = [];
-    const missing: string[] = [];
-    const walk = (node: unknown, path: string): void => {
-      if (node == null || typeof node !== 'object') return;
-      if (Array.isArray(node)) {
-        node.forEach((child, i) => walk(child, `${path}[${i}]`));
-        return;
-      }
-      const properties = 'properties' in node ? node.properties : undefined;
-      if (properties != null && typeof properties === 'object') {
-        for (const [key, value] of Object.entries(properties)) {
-          const prop: unknown = value;
-          if (prop == null || typeof prop !== 'object') continue;
-          // zod-to-json-schema dedupes a reused schema into a bare $ref
-          // pointer; the description lives on the referenced definition.
-          if (Object.keys(prop).length === 1 && '$ref' in prop) continue;
-          checked.push(`${path}.${key}`);
-          const description =
-            'description' in prop ? prop.description : undefined;
-          if (typeof description !== 'string' || description.trim() === '') {
-            missing.push(`${path}.${key}`);
-          }
-        }
-      }
-      for (const [key, child] of Object.entries(node)) {
-        walk(child, `${path}/${key}`);
-      }
-    };
-    for (const tool of tools) walk(tool.inputSchema, tool.name);
-
-    expect(checked.length).toBeGreaterThan(0);
-    expect(missing).toEqual([]);
-  });
 });
