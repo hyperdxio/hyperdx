@@ -1320,10 +1320,10 @@ export const RawLogTable = memo(
                         canOpenSidePanel={canOpenSidePanel}
                       >
                         {renderRowDetails?.({
+                          ...row.original,
                           id: rowId,
                           aliasWith:
                             row.original[INTERNAL_ROW_FIELDS.ALIAS_WITH],
-                          ...row.original,
                         })}
                       </ExpandedLogRow>
                     )}
