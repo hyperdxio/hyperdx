@@ -390,6 +390,7 @@ export default function EditTimeChartForm({
     fillNulls,
     compareToPreviousPeriod,
     fitYAxisToData,
+    lineInterpolation,
     numberFormat,
     groupByColumnsOnLeft,
     alternateRowBackground,
@@ -407,6 +408,7 @@ export default function EditTimeChartForm({
       'fillNulls',
       'compareToPreviousPeriod',
       'fitYAxisToData',
+      'lineInterpolation',
       'numberFormat',
       'groupByColumnsOnLeft',
       'alternateRowBackground',
@@ -443,6 +445,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -458,6 +461,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -1020,6 +1024,7 @@ export default function EditTimeChartForm({
         fillNulls,
         compareToPreviousPeriod,
         fitYAxisToData,
+        lineInterpolation,
         groupByColumnsOnLeft,
         alternateRowBackground,
         seriesLimit,
@@ -1041,6 +1046,7 @@ export default function EditTimeChartForm({
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
+      setValue('lineInterpolation', lineInterpolation);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       setValue('alternateRowBackground', alternateRowBackground);
       // Persist `null` (not undefined) when cleared so the disabled state
