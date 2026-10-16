@@ -23,6 +23,7 @@ import {
   Divider,
   Drawer,
   Group,
+  Input,
   NumberInput,
   SegmentedControl,
   Stack,
@@ -344,27 +345,28 @@ export default function ChartDisplaySettingsDrawer({
               description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
             {showLineInterpolation && (
-              <Box>
-                <Text size="xs" mb={4}>
-                  Line interpolation
-                </Text>
+              <Input.Wrapper size="xs" label="Line interpolation">
                 <Controller
                   control={control}
                   name="lineInterpolation"
                   render={({ field: { onChange, value } }) => (
-                    <SegmentedControl
-                      size="xs"
-                      value={value ?? defaultLineInterpolation}
-                      onChange={v => {
-                        const parsed = LineInterpolationSchema.safeParse(v);
-                        if (parsed.success) onChange(parsed.data);
-                      }}
-                      data={LINE_INTERPOLATION_OPTIONS}
-                      data-testid="line-interpolation-control"
-                    />
+                    // Block wrapper so the inline-flex control sits below the
+                    // inline-block label.
+                    <Box>
+                      <SegmentedControl
+                        size="xs"
+                        value={value ?? defaultLineInterpolation}
+                        onChange={v => {
+                          const parsed = LineInterpolationSchema.safeParse(v);
+                          if (parsed.success) onChange(parsed.data);
+                        }}
+                        data={LINE_INTERPOLATION_OPTIONS}
+                        data-testid="line-interpolation-control"
+                      />
+                    </Box>
                   )}
                 />
-              </Box>
+              </Input.Wrapper>
             )}
             {showSeriesLimit && (
               <Box>
