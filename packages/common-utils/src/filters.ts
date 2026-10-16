@@ -5,6 +5,7 @@ import { parse } from '@/queryParser';
 import {
   AdhocDashboardFilter,
   AdhocFilterCondition,
+  AdhocFilterOperator,
   AdhocFilterSourceType,
   AdhocFilterValue,
   BroadcastFilter,
@@ -953,6 +954,15 @@ export function isAdhocFilterValue(
   return value.type === 'adhoc';
 }
 
+/**
+ * Whether a SQL ad hoc condition on a value of this ClickHouse type can match.
+ * Conditions compare `toString(key)` with the value as queries return it, and
+ * queries return DateTimes as ISO UTC, unlike toString's space-separated form
+ * in the column's timezone.
+ */
+export const isAdhocComparableDataType = (type: string): boolean =>
+  !/\bDateTime/.test(type);
+
 const renderAdhocConditionSql = ({
   key,
   operator,
@@ -991,6 +1001,59 @@ export function adhocConditionsToFilters(
       condition: renderAdhocConditionSql(condition),
     }),
   );
+}
+
+/** How a value clicked in a tile updates an ad hoc filter. */
+export type AdhocConditionAction = 'include' | 'exclude' | 'add';
+
+/** A clicked `key = value` pair, before an action gives it an operator. */
+export type AdhocConditionEntry = Pick<AdhocFilterCondition, 'key' | 'value'>;
+
+/**
+ * Apply a click-to-filter action for `entries` (one per key, e.g. each group-by
+ * value of a chart series) to an ad hoc filter's conditions.
+ *
+ * `include` / `exclude` add a condition per entry, replacing the opposite
+ * condition on the same key and value. When every entry's condition already
+ * exists, they are removed instead, so a second click undoes the first.
+ * `add` is `include` without the undo, for actions labeled as adding.
+ */
+export function mergeAdhocConditions(
+  existingConditions: AdhocFilterCondition[],
+  newConditions: AdhocConditionEntry[],
+  action: AdhocConditionAction,
+): AdhocFilterCondition[] {
+  const operator: AdhocFilterOperator = action === 'exclude' ? '!=' : '=';
+  const matches = (
+    condition: AdhocFilterCondition,
+    entry: AdhocConditionEntry,
+    op: AdhocFilterOperator,
+  ) =>
+    condition.key === entry.key &&
+    condition.value === entry.value &&
+    condition.operator === op;
+
+  const isApplied = newConditions.every(entry =>
+    existingConditions.some(condition => matches(condition, entry, operator)),
+  );
+  if (isApplied && action !== 'add') {
+    return existingConditions.filter(
+      condition =>
+        !newConditions.some(entry => matches(condition, entry, operator)),
+    );
+  }
+
+  const opposite: AdhocFilterOperator = action === 'exclude' ? '=' : '!=';
+  const kept = existingConditions.filter(
+    condition =>
+      !newConditions.some(entry => matches(condition, entry, opposite)),
+  );
+  const added = newConditions
+    .filter(
+      entry => !kept.some(condition => matches(condition, entry, operator)),
+    )
+    .map((entry): AdhocFilterCondition => ({ ...entry, operator }));
+  return [...kept, ...added];
 }
 
 const LEGACY_LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;

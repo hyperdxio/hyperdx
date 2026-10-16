@@ -113,6 +113,7 @@ import { csvExportFilename } from '@/utils/csv';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
+import { getAdhocCellCondition } from './DBTable/adhocCellCondition';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import {
@@ -404,7 +405,7 @@ export const RawLogTable = memo(
     tableId?: string;
     columnNameMap?: Record<string, string>;
     dedupRows?: boolean;
-    columnTypeMap: Map<string, { _type: JSDataType | null }>;
+    columnTypeMap: Map<string, { _type: JSDataType | null; type?: string }>;
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
@@ -520,6 +521,27 @@ export const RawLogTable = memo(
 
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
+
+    const { isAdhocFilterTarget } = use(RowSidePanelContext);
+
+    const getCellFilter = useCallback(
+      (
+        column: string | undefined,
+        cellValue: unknown,
+      ): { columnName?: string; filterValue?: string } => {
+        if (!isAdhocFilterTarget || column == null) {
+          return { columnName: column };
+        }
+        const condition = getAdhocCellCondition(
+          column,
+          columnTypeMap.get(column),
+          cellValue,
+          aliasMap,
+        );
+        return { columnName: condition?.key, filterValue: condition?.value };
+      },
+      [isAdhocFilterTarget, aliasMap, columnTypeMap],
+    );
 
     // Reset scroll when live tail is enabled for the first time
     const prevIsLive = usePrevious(isLive);
@@ -1291,10 +1313,11 @@ export const RawLogTable = memo(
                                       cellValue={cellValue}
                                       wrapLinesEnabled={wrapLinesEnabled}
                                       tableContainerRef={tableContainerRef}
-                                      columnName={
+                                      {...getCellFilter(
                                         (cell.column.columnDef.meta as any)
-                                          ?.column
-                                      }
+                                          ?.column,
+                                        cellValue,
+                                      )}
                                       isChart={
                                         (cell.column.columnDef.meta as any)
                                           ?.column === '__hdx_pattern_trend'
@@ -1607,6 +1630,7 @@ function selectColumnMapWithoutAdditionalKeys(
   string,
   {
     _type: JSDataType | null;
+    type: string;
   }
 > {
   if (selectMeta == null || additionalKeysLength == null) {
