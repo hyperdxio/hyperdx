@@ -13,8 +13,8 @@ async function getServerInfo(
       ...jest.requireActual('@/config'),
       FRONTEND_URL: frontendUrl,
     }));
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    ({ createTestClient } = require('./mcpTestUtils'));
+    ({ createTestClient } =
+      jest.requireActual<typeof import('./mcpTestUtils')>('./mcpTestUtils'));
   });
   jest.dontMock('@/config');
   const client = await createTestClient(context);
