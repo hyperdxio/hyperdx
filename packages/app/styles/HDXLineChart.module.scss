@@ -92,6 +92,12 @@
   overflow: hidden;
 }
 
+// Release-marker tooltip only. Its values wrap over several lines each, so the
+// shared cap above clips a cluster of releases almost immediately.
+.annotationTooltipContent {
+  max-height: 500px;
+}
+
 .chartTooltipFooter {
   padding: 6px 12px;
   border-top: 1px solid var(--color-border);
