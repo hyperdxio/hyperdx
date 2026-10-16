@@ -27,9 +27,13 @@ import {
   YAxis,
 } from 'recharts';
 import { getTickValuesFixedDomain } from 'recharts/lib/util/scale/getNiceTickValues';
+import { CurveType } from 'recharts/types/shape/Curve';
 import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  LineInterpolation,
+} from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
 
 import type { NumberFormat } from '@/types';
@@ -1148,6 +1152,24 @@ const FIT_Y_AXIS_BOUNDS: YAxisBounds = {
   ticks: undefined,
 };
 
+const CURVE_TYPE_BY_INTERPOLATION: Record<LineInterpolation, CurveType> = {
+  smooth: 'monotone',
+  linear: 'linear',
+  step: 'stepAfter',
+};
+
+// Monotone curves fit each stacked edge independently, so adjacent edges can
+// cross between points and the bands overlap; linear segments stay ordered
+// wherever the points are. Hence stacked lines default to linear.
+export function getLineCurveType(
+  displayType: DisplayType,
+  lineInterpolation: LineInterpolation | undefined,
+): CurveType {
+  const fallback =
+    displayType === DisplayType.StackedLine ? 'linear' : 'smooth';
+  return CURVE_TYPE_BY_INTERPOLATION[lineInterpolation ?? fallback];
+}
+
 // A stacked bar's rendered height sums its series at each timestamp - leave
 // that entirely to Recharts, regardless of selection/fit-to-data state.
 export function computeYAxisBounds(
@@ -1309,6 +1331,7 @@ export const MemoChart = memo(function MemoChart({
   granularity,
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
+  lineInterpolation,
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -1353,6 +1376,8 @@ export const MemoChart = memo(function MemoChart({
    * (with padding) instead of zero.
    **/
   fitYAxisToData?: boolean;
+  /** Unset follows the display type's default (see getLineCurveType). */
+  lineInterpolation?: LineInterpolation;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -1412,6 +1437,7 @@ export const MemoChart = memo(function MemoChart({
 
   const lines = useMemo(() => {
     const isStackedLine = displayType === DisplayType.StackedLine;
+    const curveType = getLineCurveType(displayType, lineInterpolation);
     return visibleLineData.map(ld => {
       const key = ld.dataKey;
       const color = ld.color;
@@ -1434,10 +1460,7 @@ export const MemoChart = memo(function MemoChart({
         <Area
           key={key}
           dataKey={key}
-          // Monotone curves fit each stacked edge independently, so adjacent
-          // edges can cross between points and the bands overlap; linear
-          // segments stay ordered wherever the points are.
-          type={isStackedLine ? 'linear' : 'monotone'}
+          type={curveType}
           stroke={color}
           fillOpacity={isStackedLine ? 0.35 : 1}
           stackId={isStackedLine ? '1' : undefined}
@@ -1463,7 +1486,13 @@ export const MemoChart = memo(function MemoChart({
         />
       );
     });
-  }, [visibleLineData, displayType, id, captureActivePointY]);
+  }, [
+    visibleLineData,
+    displayType,
+    lineInterpolation,
+    id,
+    captureActivePointY,
+  ]);
 
   // Nearest-cursor emphasis (thicken the nearest line, fade the rest) applied
   // via a tiny scoped <style> keyed to nearestSeriesKey, so hovering only swaps

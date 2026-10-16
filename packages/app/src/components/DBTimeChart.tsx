@@ -1071,6 +1071,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            lineInterpolation={queriedConfig.lineInterpolation}
           />
         </>
       )}

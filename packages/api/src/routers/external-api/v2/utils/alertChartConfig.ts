@@ -106,6 +106,7 @@ export const EVALUATION_INERT_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'backgroundChart',
   'compareToPreviousPeriod',
   'fitYAxisToData',
+  'lineInterpolation',
   'onClick',
   'alternateRowBackground',
   // Heatmap tiles carry no alerts; alert display types ignore it.

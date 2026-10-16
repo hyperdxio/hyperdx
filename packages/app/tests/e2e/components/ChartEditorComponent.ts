@@ -1242,6 +1242,27 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Set "Line interpolation" in the Display Settings drawer (line and stacked
+   * line charts). Opens the drawer, picks the mode, then applies and closes.
+   */
+  async setLineInterpolation(mode: 'Smooth' | 'Linear' | 'Step') {
+    await this.openDisplaySettings();
+    await this.page
+      .getByTestId('line-interpolation-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${mode}$`) })
+      .click();
+    await this.applyDisplaySettings();
+  }
+
+  /** A "Line interpolation" option's (visually hidden) radio in the open drawer. */
+  lineInterpolationOption(mode: 'Smooth' | 'Linear' | 'Step'): Locator {
+    return this.page
+      .getByTestId('line-interpolation-control')
+      .getByRole('radio', { name: mode, exact: true });
+  }
+
+  /**
    * Set the "Legend template" value in the Display Settings drawer (PromQL
    * charts only). Opens the drawer, fills the input, then applies and closes.
    */

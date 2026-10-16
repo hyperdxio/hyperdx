@@ -13,6 +13,7 @@ import {
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardContainerSchema,
   DashboardFilterType,
+  LineInterpolationSchema,
   MetricsDataType,
   NumberTileColorConditionSchema,
   SearchConditionTrimmedLanguageSchema,
@@ -704,6 +705,9 @@ export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
       .describe(
         'Scale the y-axis to the data range instead of starting at zero.',
       ),
+    lineInterpolation: LineInterpolationSchema.optional().describe(
+      'How points are connected: "smooth" (default), "linear", or "step".',
+    ),
     seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
     formulas: mcpTileFormulasSchema,
     showOperandSeries: mcpShowOperandSeriesSchema,
@@ -742,6 +746,9 @@ export const mcpStackedLineTileSchema = mcpTileLayoutSchema.extend({
       .literal('stacked_line')
       .describe('Stacked line (area) chart over time'),
     ...mcpStackedTimeChartConfigFields,
+    lineInterpolation: LineInterpolationSchema.optional().describe(
+      'How points are connected: "linear" (default), "smooth", or "step".',
+    ),
   }),
 });
 
@@ -1161,6 +1168,11 @@ GROUP BY ServiceName, ts
         'Scale the y-axis to the data range instead of starting at zero. ' +
           'Valid only when displayType is "line", ignored otherwise.',
       ),
+    lineInterpolation: LineInterpolationSchema.optional().describe(
+      'How points are connected: "smooth", "linear", or "step". Defaults to ' +
+        '"smooth" for "line" and "linear" for "stacked_line". ' +
+        'Valid only when displayType is "line" or "stacked_line", ignored otherwise.',
+    ),
     color: ChartPaletteTokenSchema.optional().describe(
       rawSqlNumberTileColorDescription,
     ),
