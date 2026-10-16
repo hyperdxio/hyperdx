@@ -4,7 +4,7 @@
   width: 100%;
   flex-direction: column;
   padding: var(--mantine-spacing-xs);
-  font-size: 12px;
+  font-size: var(--hdx-content-font-size);
   font-family: var(--font-ibm-plex-mono);
 }
 
@@ -232,12 +232,12 @@
 
 .object {
   color: var(--color-json-object);
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
 }
 
 .array {
   color: var(--color-json-array);
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
 }
 
 .expandMoreProps {
