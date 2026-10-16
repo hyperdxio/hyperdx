@@ -1,5 +1,6 @@
 import { screen } from '@testing-library/react';
 
+import type { HoveredAnnotation } from '@/components/charts/AnnotationHitLayer';
 import { AnnotationTooltip } from '@/components/charts/AnnotationTooltip';
 
 // A version expression that concatenates several resource attributes produces
@@ -9,13 +10,13 @@ const LONG_VERSION =
   'v2.14.7-rc.3+build.20260216.a1b2c3d4e5f6-k8s-cluster-eu-west-1-canary';
 const LONG_SERVICE = 'checkout-orchestration-service-eu-west-1-canary';
 
-const hovered = {
+const hovered: HoveredAnnotation = {
   annotation: {
+    time: 1_700_000_000_000,
     x: 1_700_000_000,
     label: LONG_VERSION,
     group: LONG_SERVICE,
     color: '#437eef',
-    labelX: 0,
   },
   point: { x: 100, y: 100 },
 };
