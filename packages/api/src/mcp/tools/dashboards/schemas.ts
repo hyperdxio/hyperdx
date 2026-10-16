@@ -174,7 +174,7 @@ const mcpNumberFormatSchema = z.object({
     .int()
     .optional()
     .describe(
-      'Number of decimal places. Not used for "time" or "duration" output.',
+      'Number of decimal places, 0 to 10. Not used for "time" or "duration" output.',
     ),
   thousandSeparated: z
     .boolean()

@@ -325,7 +325,7 @@ export function registerTraceWaterfall({
         '  1. Specific trace: pass traceId.\n' +
         '  2. Auto-pick: omit traceId and pass pickFilter + pickBy; the tool picks one ' +
         'matching trace and returns its full tree.\n\n' +
-        'Returns a `summary` (picked TraceId, span count, root span) and spans in ' +
+        'Returns traceId, spanCount, totalDurationMs, rootSpan, and spans in ' +
         'pre-order DFS, children after their parent in execution order. Each span has ' +
         'depth (root=0), spanId, parentSpanId, serviceName, spanName, spanKind, ' +
         'durationMs, statusCode, statusMessage, timestamp, and spanAttributes.\n\n' +

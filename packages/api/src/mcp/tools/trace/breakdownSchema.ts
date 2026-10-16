@@ -77,9 +77,10 @@ export const TRACE_BREAKDOWN_DESCRIPTION =
   'but frequent child can dominate even with an unremarkable p99. Children are ' +
   "not scoped to the parent's service, so slow cross-service calls (database, " +
   'cache, upstream HTTP) show up.\n\n' +
-  'RETURNS: rows of service, operation, total_time_ms, calls, in_parents ' +
-  '(parent traces containing that operation), p50_ms, p99_ms, plus a summary ' +
-  'with the matched-parent count.\n\n' +
+  'RETURNS: operations[] with service, operation, totalTimeMs, calls, ' +
+  'inParents (parent traces containing that operation), p50Ms, p99Ms, and ' +
+  'shareOfTotalTime, plus a summary with operationsReturned, topN, and ' +
+  'grandTotalTimeMs.\n\n' +
   'NEXT STEP: once a dominant slow child is found, run clickstack_event_deltas ' +
   "on that child: target = {where: SpanName='<child>' AND Duration > X}, " +
   "baseline = {where: SpanName='<child>' AND Duration <= X}.\n\n" +

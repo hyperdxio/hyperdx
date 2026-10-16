@@ -200,7 +200,9 @@ export const mcpSaveAlertSchema = z.object({
     ])
     .describe(
       'Comparison that fires the alert: above is value >= threshold, ' +
-        'above_exclusive is >, below is <, below_or_equal is <=. between ' +
+        'above_exclusive is >, below is <, below_or_equal is <=, equal is ===, ' +
+        'not_equal is !== (exact match, so avoid them for averaged or rate ' +
+        'values). between ' +
         'fires when threshold <= value <= thresholdMax; not_between fires ' +
         'outside that range.',
     ),

@@ -21,7 +21,7 @@ export function registerGetDashboardTile({
         'Retrieve a single tile from a dashboard by tileId. ' +
         'Useful for inspecting one tile without loading the full dashboard. ' +
         'Returns the tile as JSON in the same shape clickstack_get_dashboard uses ' +
-        'for tiles: id, name, layout (x, y, w, h), containerId/tabId when set, and config. ' +
+        'for tiles: id, name, x, y, w, h, containerId/tabId when set, and config. ' +
         'An unknown tileId returns an error listing the available tile IDs and names. ' +
         'Use clickstack_get_dashboard (without an ID) to list dashboards, ' +
         'then clickstack_get_dashboard (with an ID) to see all tile IDs.',
