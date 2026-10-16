@@ -88,7 +88,7 @@ const describeMetricSchema = z.object({
   kind: z
     .enum(DISCOVERABLE_METRIC_KINDS)
     .describe(
-      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram" | "summary". Required. ' +
+      'OTel metric kind of metricName, which selects the metric table to read. ' +
         'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
         'or clickstack_describe_source (which groups metric-name samples by kind). ' +
         'A metric name can legitimately live in more than one kind (e.g. ' +
@@ -110,7 +110,7 @@ const describeMetricSchema = z.object({
     .optional()
     .default(true)
     .describe(
-      'When true (default), sample up to ' +
+      'Sample up to ' +
         `${MAX_ATTR_VALUES} distinct values per attribute key for the top ${MAX_ATTR_KEYS_TO_SAMPLE} attributes. ` +
         'Set false to skip value sampling for faster responses on high-cardinality metrics.',
     ),

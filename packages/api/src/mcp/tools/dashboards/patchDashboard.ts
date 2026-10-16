@@ -38,6 +38,10 @@ export function registerPatchDashboard({
         'Make targeted updates to a dashboard without resubmitting the full object. ' +
         'You can update dashboard-level fields (name, tags) and/or replace a single ' +
         'tile by tileId \u2014 all in one call. Unmentioned tiles and fields are preserved. ' +
+        "Replacing a tile overwrites its whole config; the old config's fields are not merged in. " +
+        'If the new config cannot carry alerts (anything other than a line, ' +
+        'stacked_line, stacked_bar, or number tile), alerts attached to that ' +
+        'tile are permanently deleted. ' +
         'Use clickstack_get_dashboard_tile to inspect a tile before patching it. ' +
         'IMPORTANT: After patching a tile, run clickstack_query_tile to confirm the query still works.',
       inputSchema: mcpPatchDashboardSchema,

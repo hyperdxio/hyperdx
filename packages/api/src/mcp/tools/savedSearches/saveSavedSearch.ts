@@ -28,8 +28,15 @@ export function registerSaveSavedSearch({
       annotations: { destructiveHint: true },
       description:
         'Create a new saved search (omit id) or update an existing one (provide id). ' +
-        'A saved search stores a reusable query against a data source. ' +
-        'Use clickstack_list_sources to find the sourceId.',
+        'A saved search stores a reusable query (select, where, orderBy, filters) ' +
+        'against a data source. Use clickstack_list_sources to find the sourceId.\n\n' +
+        'UPDATES REPLACE FIELDS, they do not merge: name, sourceId, select, where, and ' +
+        'tags are overwritten, and omitted select/where/tags are reset to empty. ' +
+        'Omitted whereLanguage, orderBy, and filters keep their stored values. To ' +
+        'change one field, read the saved search with clickstack_get_saved_search ' +
+        'and resend everything you want to keep.\n\n' +
+        'Alerts can be attached to a saved search and evaluate its current query, ' +
+        'so changing where, select, or sourceId changes what those alerts check.',
       inputSchema: mcpSaveSavedSearchSchema,
     },
     async input => {

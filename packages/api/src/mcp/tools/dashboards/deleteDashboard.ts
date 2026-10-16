@@ -22,7 +22,10 @@ export function registerDeleteDashboard({
         'Permanently delete a dashboard by ID. Also removes any alerts attached to its tiles. ' +
         'Use clickstack_get_dashboard (without an ID) to list available dashboard IDs.',
       inputSchema: z.object({
-        id: objectIdSchema.describe('Dashboard ID to delete.'),
+        id: objectIdSchema.describe(
+          'ID of the dashboard to delete, from clickstack_get_dashboard (no id ' +
+            'lists dashboards) or clickstack_search_dashboards.',
+        ),
       }),
     },
     async ({ id: dashboardId }) => {

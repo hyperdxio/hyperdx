@@ -38,14 +38,15 @@ export function registerGetAlert({
           .string()
           .optional()
           .describe(
-            'Alert ID. Omit to list all alerts, provide to get full detail.',
+            'Alert ID from a previous list call or clickstack_save_alert. ' +
+              'Omit to list all alerts, provide to get full detail.',
           ),
         state: z
           .enum(['ALERT', 'OK', 'DISABLED', 'INSUFFICIENT_DATA'])
           .optional()
           .describe(
-            'Filter list by alert state (only applies when id is omitted). ' +
-              'Use "ALERT" to find currently firing alerts.',
+            'List only alerts currently in this state; ignored when id is ' +
+              'provided. Use ALERT to find alerts that are firing now.',
           ),
       }),
     },

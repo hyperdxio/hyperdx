@@ -29,9 +29,16 @@ const mcpSaveWebhookSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Webhook ID. Omit to create a new webhook, provide to update an existing one.',
+      'Webhook ID from clickstack_get_webhook. Omit to create a new ' +
+        'webhook, provide to update an existing one.',
     ),
-  name: z.string().min(1).describe('Human-friendly webhook name.'),
+  name: z
+    .string()
+    .min(1)
+    .describe(
+      "Display name for the webhook. Must be unique among the team's " +
+        'webhooks of the same service.',
+    ),
   service: z
     .enum(WEBHOOK_SERVICES)
     .describe(
@@ -48,14 +55,14 @@ const mcpSaveWebhookSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Optional description shown in the UI. On update this is a full replace: ' +
+      'Description shown in the UI. On update this is a full replace: ' +
         'omitting it clears the stored description.',
     ),
   headers: z
     .record(z.string(), z.string())
     .optional()
     .describe(
-      'Optional HTTP headers (key -> value). Not supported for the slack ' +
+      'HTTP headers sent with each request. Not supported for the slack ' +
         'service. On update these are write-only: omitting them PRESERVES the ' +
         'stored values; send an empty object ({}) to clear them. If the ' +
         'destination (url or service) changes, omitted headers are cleared.',
@@ -64,14 +71,14 @@ const mcpSaveWebhookSchema = z.object({
     .record(z.string(), z.string())
     .optional()
     .describe(
-      'Optional query parameters (key -> value). Not supported for the slack ' +
+      'Query parameters appended to the URL. Not supported for the slack ' +
         'service. Same write-only update semantics as headers.',
     ),
   body: z
     .string()
     .optional()
     .describe(
-      'Optional Handlebars request body template. Not supported for the ' +
+      'Handlebars template for the request body. Not supported for the ' +
         'slack service. Rejected if it does not compile or calls a helper ' +
         'other than eq and the Handlebars built-ins. Write string ' +
         'arguments inside {{ }} with plain or single quotes, e.g. ' +
@@ -94,12 +101,14 @@ export function registerSaveWebhook({
       description:
         'Create a new webhook (omit id) or update an existing one (provide ' +
         'id). Use the returned id as the webhookId when creating alerts with ' +
-        'clickstack_save_alert. Required: name, service (slack, generic, or ' +
-        'incidentio), and url. For the slack service the url host must end in ' +
-        'slack.com and headers/queryParams/body are not supported. On update, ' +
-        'readable fields (description, body) are a full replace while ' +
-        'write-only headers/queryParams are preserved when omitted (send {} to ' +
-        'clear); changing the destination clears omitted write-only secrets.',
+        'clickstack_save_alert. For the slack service the url host must end ' +
+        'in slack.com and headers/queryParams/body are not supported. On ' +
+        'update, every alert using this webhook sends its next notifications ' +
+        'with the new settings, including a changed url. description and body ' +
+        'are a full replace (omitting them clears them), while write-only ' +
+        'headers/queryParams are preserved when omitted (send {} to clear); ' +
+        'changing url or service clears omitted headers/queryParams. ' +
+        'url, headers, and queryParams are never returned.',
       inputSchema: mcpSaveWebhookSchema,
     },
     async input => {
