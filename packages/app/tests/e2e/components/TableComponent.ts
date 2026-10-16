@@ -68,7 +68,11 @@ export class TableComponent {
   }
 
   async clickRowContaining(text: string) {
-    await this.getRows().filter({ hasText: text }).first().click();
+    const row = this.getRows().filter({ hasText: text }).first();
+    // The open side panel covers the right side of the results table, so a
+    // click on the row's center lands on the drawer. The left edge of the
+    // first cell stays in the uncovered strip.
+    await row.locator('td').first().click({ position: { x: 4, y: 8 } });
   }
 
   /**

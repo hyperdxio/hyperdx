@@ -231,9 +231,9 @@ export class SidePanelComponent {
   /**
    * The span detail drawer beside the waterfall. Trace sources don't render an
    * Overview tab of their own, so `tab-overview` plus the close control only
-   * exist together on this drawer. The drawer is the innermost container that
-   * holds both — ancestors also match, and the tab bar itself does not hold
-   * the overview body.
+   * exist together on this drawer. The tab bar's spacer is also `flex-grow-1`,
+   * so that class alone matches the tab chrome and misses the overview body.
+   * The overview root is `flex-grow-1 overflow-auto`.
    */
   get spanDetailsPanel() {
     const closeSpanDetails = this.page.getByRole('button', {
@@ -243,7 +243,7 @@ export class SidePanelComponent {
       .locator('div')
       .filter({ has: closeSpanDetails })
       .filter({ has: this.page.getByTestId('tab-overview') })
-      .filter({ has: this.page.locator('.flex-grow-1') })
+      .filter({ has: this.page.locator('.flex-grow-1.overflow-auto') })
       .last();
   }
 
