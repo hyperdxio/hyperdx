@@ -14,10 +14,16 @@ describe('MCP tool descriptions', () => {
     const { tools } = await client.listTools();
     expect(tools.length).toBeGreaterThan(0);
 
-    const oversized = [
+    const texts = [
       ['instructions', client.getInstructions() ?? ''] as const,
       ...tools.map(tool => [tool.name, tool.description ?? ''] as const),
-    ]
+    ];
+
+    expect(
+      texts.filter(([, text]) => text.trim() === '').map(([name]) => name),
+    ).toEqual([]);
+
+    const oversized = texts
       .map(([name, text]) => [name, Buffer.byteLength(text, 'utf8')] as const)
       .filter(([, bytes]) => bytes > CLAUDE_CODE_METADATA_LIMIT);
 

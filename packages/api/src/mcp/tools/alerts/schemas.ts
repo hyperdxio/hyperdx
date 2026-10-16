@@ -164,7 +164,7 @@ export const mcpSaveAlertSchema = z.object({
     .describe(
       'Tile to monitor within the dashboard (required when source is tile). ' +
         'Get the ID from clickstack_get_dashboard with the dashboard ID. Must ' +
-        'be a line, stacked bar, or number tile.',
+        'be a line, stacked line, stacked bar, or number tile.',
     ),
   groupBy: z
     .string()

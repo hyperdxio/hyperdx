@@ -56,7 +56,7 @@ export function registerSaveAlert({
         'removed, omitted name and message are cleared, omitted displayName and tags ' +
         'are re-derived from the source, and settings this tool cannot set ' +
         '(note, consecutive-window count) are cleared. Omitting ' +
-        'scheduleStartAt keeps the stored value. Read the alert with ' +
+        'scheduleStartAt or scheduleOffsetMinutes keeps the stored value. Read the alert with ' +
         'clickstack_get_alert first and resend every field you want to keep.',
       inputSchema: mcpSaveAlertSchema,
     },

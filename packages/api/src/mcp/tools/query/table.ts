@@ -44,7 +44,7 @@ const tableSchema = z.object({
     .optional()
     .default('table')
     .describe(
-      'Output shape: "table" is grouped rows, "number" a single scalar, "bar" a categorical bar chart. ' +
+      'Output shape: "table" is grouped rows, "number" a single scalar, "pie" a pie chart, "bar" a categorical bar chart. ' +
         '"number", "pie", and "bar" are auto-upgraded to "table" when select has more than one item. ' +
         'groupBy is ignored when shape is "number".',
     ),

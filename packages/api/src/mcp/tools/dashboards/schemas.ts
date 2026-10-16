@@ -114,9 +114,11 @@ const timeChartAlignDateRangeDescription =
   'dashboard widens the queried range to whole granularity buckets so the ' +
   'first and last buckets are complete; false queries the exact selected range.';
 
-const tileWhereLanguageDescription =
-  "Query language of this tile's `where`. Use sql for the $__filter / " +
+const whereLanguageDescription = (owner: 'tile' | 'item') =>
+  `Query language of this ${owner}'s \`where\`. Use sql for the $__filter / ` +
   '$__conditionalAll variable macros.';
+
+const tileWhereLanguageDescription = whereLanguageDescription('tile');
 
 const asRatioDescription =
   'Return select[0] divided by select[1] as a single ratio series instead of ' +
@@ -151,7 +153,11 @@ const [
   orderedColorRuleSchema,
   betweenColorRuleSchema,
   equalityColorRuleSchema,
+  ...unhandledColorRuleSchemas
 ] = NumberTileColorConditionSchema.options;
+// Fails to compile when common-utils adds a color-rule variant, so the MCP
+// copy below can't silently reject it.
+const _allColorRulesHandled: [] = unhandledColorRuleSchemas;
 
 const mcpNumberTileColorRuleSchema = z.discriminatedUnion('operator', [
   orderedColorRuleSchema.extend({
@@ -319,10 +325,7 @@ const mcpTileSelectItemSchema = z
       ),
     whereLanguage: SearchConditionTrimmedLanguageSchema.optional()
       .default('lucene')
-      .describe(
-        "Query language of this item's `where`. Use sql for the $__filter / " +
-          '$__conditionalAll variable macros.',
-      ),
+      .describe(whereLanguageDescription('item')),
     alias: z
       .string()
       .optional()
