@@ -1,6 +1,7 @@
 import PQueue from '@esm2cjs/p-queue';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
@@ -166,7 +167,7 @@ export function registerQueryTiles({
     'clickstack_query_tiles',
     {
       title: 'Query Multiple Dashboard Tiles',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Run the queries for many tiles of a dashboard in ONE call and return a ' +
         'compact per-tile success/failure summary. This is the efficient way to ' +

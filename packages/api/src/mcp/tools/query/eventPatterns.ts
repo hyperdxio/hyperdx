@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -73,7 +74,7 @@ export function registerEventPatterns({
     'clickstack_event_patterns',
     {
       title: 'Event Pattern Mining',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Discover the most common log messages and event patterns. ' +
         'Samples random events, clusters them using the Drain algorithm, and returns ' +

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -205,7 +206,7 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
     'clickstack_table',
     {
       title: 'Aggregation Table',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
