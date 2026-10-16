@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { deleteWebhook } from '@/controllers/webhook';
+import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { objectIdSchema } from '@/utils/zod';
@@ -16,7 +17,7 @@ export function registerDeleteWebhook({
     'clickstack_delete_webhook',
     {
       title: 'Delete Webhook',
-      annotations: { destructiveHint: true },
+      annotations: IDEMPOTENT_DESTRUCTIVE_TOOL,
       description:
         'Permanently delete a webhook by ID. Blocked while any alert still ' +
         'references it — reassign or delete those alerts first. Use ' +

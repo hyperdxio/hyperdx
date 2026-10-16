@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
   parseTimeRange,
@@ -713,7 +714,7 @@ export function registerDescribeMetric({
     'clickstack_describe_metric',
     {
       title: 'Describe Metric',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'DRILL-DOWN: Use after clickstack_list_metrics (or after a clickstack_describe_source ' +
         'sample) to get attribute keys, sampled values, unit, and description for a ' +

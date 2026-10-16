@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -16,7 +17,7 @@ export function registerGetDashboardTile({
     'clickstack_get_dashboard_tile',
     {
       title: 'Get a Single Dashboard Tile',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Retrieve a single tile from a dashboard by tileId. ' +
         'Useful for inspecting one tile without loading the full dashboard. ' +
