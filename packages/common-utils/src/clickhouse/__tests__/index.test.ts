@@ -3,6 +3,7 @@ import {
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   isAccessDeniedError,
+  isJSDataTypeScalar,
   isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
@@ -179,6 +180,28 @@ describe('convertCHDataTypeToJSType', () => {
       convertCHDataTypeToJSType('Variant(String, Array(Int64))'),
     ).toBeNull();
     expect(convertCHDataTypeToJSType('Variant()')).toBeNull();
+  });
+});
+
+describe('isJSDataTypeScalar', () => {
+  it.each([
+    JSDataType.String,
+    JSDataType.Number,
+    JSDataType.Bool,
+    JSDataType.Date,
+    JSDataType.Dynamic,
+    null,
+  ])('treats %s as scalar', dataType => {
+    expect(isJSDataTypeScalar(dataType)).toBe(true);
+  });
+
+  it.each([
+    JSDataType.Map,
+    JSDataType.JSON,
+    JSDataType.Array,
+    JSDataType.Tuple,
+  ])('treats %s as non-scalar', dataType => {
+    expect(isJSDataTypeScalar(dataType)).toBe(false);
   });
 });
 

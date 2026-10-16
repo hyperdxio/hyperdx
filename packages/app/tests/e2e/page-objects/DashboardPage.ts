@@ -658,6 +658,33 @@ export class DashboardPage {
   }
 
   /**
+   * Open the actions menu of the tile with this id. Narrow tiles swap the
+   * toolbar for a single collapsed menu button.
+   */
+  async openTileActionsMenuById(tileId: string, { narrow = false } = {}) {
+    const tile = this.page.getByTestId(`dashboard-tile-${tileId}`);
+    await tile.scrollIntoViewIfNeeded();
+    await tile.hover();
+    const trigger = narrow
+      ? tile.locator('button').filter({ visible: true })
+      : this.page.getByTestId(`tile-actions-button-${tileId}`);
+    await trigger.click();
+  }
+
+  getTileMenuItem(name: string): Locator {
+    return this.page.getByRole('menuitem', { name, exact: true });
+  }
+
+  /**
+   * Open the "Move to group" submenu of an open tile menu.
+   */
+  async openMoveToGroupSubmenu(): Promise<Locator> {
+    const item = this.getTileMenuItem('Move to group');
+    await item.hover();
+    return this.page.locator(`#${await item.getAttribute('aria-controls')}`);
+  }
+
+  /**
    * Edit a tile
    */
   async editTile(tileIndex: number) {
@@ -1569,11 +1596,18 @@ export class DashboardPage {
   async addAdhocFilterToDashboard(
     name: string,
     sourceNames: string[],
-    options?: { variableName?: string },
+    options?: {
+      variableName?: string;
+      sourceType?: 'ClickHouse' | 'Prometheus';
+    },
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('Ad hoc keys and values');
     await this.getFilterNameInput().fill(name);
+    // Before the sources, since switching the type clears them.
+    if (options?.sourceType) {
+      await this.selectAdhocFilterSourceType(options.sourceType);
+    }
     await this.selectSourcesInMultiSelect(
       this.getAdhocFilterSourcesInput(),
       sourceNames,
@@ -1586,6 +1620,85 @@ export class DashboardPage {
       state: 'visible',
       timeout: 10000,
     });
+  }
+
+  /** The filter bar control of an ad hoc filter. */
+  getAdhocFilter(filterName: string): Locator {
+    return this.page.getByTestId(`adhoc-filter-${filterName}`);
+  }
+
+  /** The condition pills of an ad hoc filter in the filter bar. */
+  getAdhocConditionPills(filterName: string): Locator {
+    return this.getAdhocFilter(filterName).getByTestId('adhoc-condition-pill');
+  }
+
+  /** The open condition editor of an ad hoc filter. */
+  getAdhocConditionEditor(filterName: string): Locator {
+    return this.page.getByTestId(`adhoc-condition-editor-${filterName}`);
+  }
+
+  /** The key, operator, or value input of an ad hoc filter's open editor. */
+  getAdhocConditionInput(
+    filterName: string,
+    input: 'key' | 'operator' | 'value',
+  ): Locator {
+    return this.page.getByTestId(
+      `adhoc-condition-editor-${filterName}-${input}`,
+    );
+  }
+
+  /** A suggestion, matched exactly, in an ad hoc filter's open editor. */
+  getAdhocConditionOption(filterName: string, name: string): Locator {
+    return this.getAdhocConditionEditor(filterName).getByRole('option', {
+      name,
+      exact: true,
+    });
+  }
+
+  /** Open the editor that adds a condition to an ad hoc filter. */
+  async openAddAdhocCondition(filterName: string) {
+    await this.page.getByTestId(`adhoc-filter-add-${filterName}`).click();
+    await this.getAdhocConditionEditor(filterName).waitFor({
+      state: 'visible',
+    });
+  }
+
+  /** Click a condition's pill and change any part of it in the editor. */
+  async editAdhocCondition(
+    filterName: string,
+    pillText: string,
+    changes: { key?: string; operatorLabel?: string; value?: string },
+  ) {
+    await this.getAdhocConditionPills(filterName)
+      .filter({ hasText: pillText })
+      .click();
+    await this.fillAdhocConditionEditor(filterName, changes);
+  }
+
+  /** Fill the open editor's inputs, then apply it. */
+  async fillAdhocConditionEditor(
+    filterName: string,
+    {
+      key,
+      operatorLabel,
+      value,
+    }: { key?: string; operatorLabel?: string; value?: string },
+  ) {
+    if (key !== undefined) {
+      await this.getAdhocConditionInput(filterName, 'key').fill(key);
+    }
+    if (operatorLabel !== undefined) {
+      await this.getAdhocConditionInput(filterName, 'operator').click();
+      await this.getAdhocConditionOption(filterName, operatorLabel).click();
+    }
+    const valueInput = this.getAdhocConditionInput(filterName, 'value');
+    if (value !== undefined) {
+      await valueInput.fill(value);
+    }
+    // Enter applies. Escape would close the whole popover, and the value
+    // suggestions can cover the Apply button.
+    await valueInput.press('Enter');
+    await this.getAdhocConditionEditor(filterName).waitFor({ state: 'hidden' });
   }
 
   /**
