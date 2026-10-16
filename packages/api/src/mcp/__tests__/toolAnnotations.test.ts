@@ -10,16 +10,15 @@ describe('MCP tool annotations', () => {
     const { tools } = await client.listTools();
     expect(tools.length).toBeGreaterThan(0);
 
-    const hints = [
-      'readOnlyHint',
-      'destructiveHint',
-      'idempotentHint',
-      'openWorldHint',
-    ] as const;
     const missing = tools.flatMap(tool =>
-      hints
-        .filter(hint => typeof tool.annotations?.[hint] !== 'boolean')
-        .map(hint => `${tool.name}.annotations.${hint}`),
+      Object.entries({
+        readOnlyHint: tool.annotations?.readOnlyHint,
+        destructiveHint: tool.annotations?.destructiveHint,
+        idempotentHint: tool.annotations?.idempotentHint,
+        openWorldHint: tool.annotations?.openWorldHint,
+      })
+        .filter(([, value]) => typeof value !== 'boolean')
+        .map(([hint]) => `${tool.name}.annotations.${hint}`),
     );
 
     expect(missing).toEqual([]);
