@@ -67,6 +67,14 @@ export class TableComponent {
     await this.firstRow.click();
   }
 
+  async clickRowContaining(text: string) {
+    const row = this.getRows().filter({ hasText: text }).first();
+    // The open side panel covers the right side of the results table, so a
+    // click on the row's center lands on the drawer. The left edge of the
+    // first cell stays in the uncovered strip.
+    await row.locator('td').first().click({ position: { x: 4, y: 8 } });
+  }
+
   /**
    * Open a row in the side panel via its hover button. The button only exists
    * once the `expand` row-click preference is set — without it a plain
