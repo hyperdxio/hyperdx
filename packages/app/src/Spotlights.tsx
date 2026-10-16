@@ -90,6 +90,14 @@ export const useSpotlightActions = () => {
             },
           ]
         : []),
+      {
+        id: 'preset-netflow',
+        label: 'NetFlow',
+        description:
+          'Network traffic, top talkers, exporters, and flow records',
+        href: '/netflow',
+        keywords: ['netflow', 'network', 'akvorado', 'traffic', 'flows'],
+      },
     ];
 
     presetDashboards.forEach(preset => {

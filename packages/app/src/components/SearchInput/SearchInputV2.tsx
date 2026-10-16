@@ -49,6 +49,7 @@ export default function SearchInputV2({
   size = 'sm',
   zIndex,
   enableHotkey,
+  showSuggestionsOnEmpty,
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
@@ -63,6 +64,7 @@ export default function SearchInputV2({
   size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
   enableHotkey?: boolean;
+  showSuggestionsOnEmpty?: boolean;
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
@@ -147,6 +149,7 @@ export default function SearchInputV2({
       onChange={onChange}
       placeholder={placeholder}
       autocompleteOptions={autoCompleteOptions}
+      showSuggestionsOnEmpty={showSuggestionsOnEmpty}
       variableOptions={variableOptions}
       isLoadingValues={isLoadingValues}
       tokenInfo={tokenInfo}

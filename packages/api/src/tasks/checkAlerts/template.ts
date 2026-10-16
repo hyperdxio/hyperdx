@@ -15,8 +15,8 @@ import {
   ChartConfigWithOptDateRange,
   Filter,
   isRangeThresholdType,
+  isSearchableSource,
   SavedChartConfig,
-  SourceKind,
   zAlertChannelType,
 } from '@hyperdx/common-utils/dist/types';
 import Handlebars, { HelperOptions } from 'handlebars';
@@ -897,10 +897,8 @@ ${targetTemplate}`;
     if (source == null) {
       throw new Error(`Source ID is ${alert.source} but source is null`);
     }
-    if (source.kind !== SourceKind.Log && source.kind !== SourceKind.Trace) {
-      throw new Error(
-        `Expecting SourceKind 'trace' or 'log', got ${source.kind}`,
-      );
+    if (!isSearchableSource(source)) {
+      throw new Error(`Expecting a searchable source, got ${source.kind}`);
     }
     // TODO: show group + total count for group-by alerts
     // Pass query results through the view so Handlebars syntax in log lines

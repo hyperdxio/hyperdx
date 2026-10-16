@@ -20,11 +20,13 @@ import {
   ChartConfigWithOptTimestamp,
   MetricFormula,
   MetricsDataType,
+  NETFLOW_COLUMN_EXPRESSIONS,
   NumberFormat,
   SourceKind,
   SourceSchema,
   TLogSource,
   TMetricSource,
+  TNetflowSource,
   TPromqlSource,
   TSessionSource,
   TSource,
@@ -311,6 +313,7 @@ type TStrippedSource<T extends TSource> = Partial<
   Omit<T, 'id' | 'name' | 'from' | 'connection'>
 > & { kind: T['kind'] };
 type InferredSourceConfig =
+  | TStrippedSource<TNetflowSource>
   | TStrippedSource<TLogSource>
   | TStrippedSource<TTraceSource>
   | TStrippedSource<TMetricSource>
@@ -358,6 +361,35 @@ export async function inferTableSourceConfig({
       : {}),
     kind,
   };
+
+  if (kind === SourceKind.Netflow) {
+    const names = new Set(columns.map(column => column.name));
+    const selected = [
+      'TimeReceived',
+      'SrcAddr',
+      'DstAddr',
+      'SrcPort',
+      'DstPort',
+      'Proto',
+      'Bytes',
+      'Packets',
+    ].filter(name => names.has(name));
+    return {
+      ...baseConfig,
+      kind: SourceKind.Netflow,
+      ...(names.has('TimeReceived')
+        ? { timestampValueExpression: 'TimeReceived' }
+        : {}),
+      defaultTableSelectExpression: selected.join(', ') || '*',
+      // A mapping for a column the table lacks is returned empty so that switching tables clears it.
+      ...Object.fromEntries(
+        Object.entries(NETFLOW_COLUMN_EXPRESSIONS).map(([field, column]) => [
+          field,
+          names.has(column) ? column : '',
+        ]),
+      ),
+    };
+  }
 
   if (kind === SourceKind.Promql) {
     return baseConfig as TStrippedSource<TPromqlSource>;

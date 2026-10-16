@@ -214,11 +214,13 @@ export function isImportableDashboard(dashboard: {
 }
 
 /**
- * A PromQL source has no `clickhouse_clickstack_source` representation — the
+ * PromQL and NetFlow sources have no supported `clickhouse_clickstack_source` representation — the
  * provider models the ClickHouse-backed kinds. Emitting one produces an import
  * block for a resource the provider cannot read, which fails the plan. Same
  * shape as the tile-alert rule: eligibility decided once, here.
  */
 export function isImportableSource(source: { kind?: string }): boolean {
-  return source.kind !== SourceKind.Promql;
+  return (
+    source.kind !== SourceKind.Promql && source.kind !== SourceKind.Netflow
+  );
 }

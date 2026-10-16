@@ -26,6 +26,7 @@ import {
   TableConnection,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   convertToDashboardTemplate,
   displayTypeSupportsBuilderAlerts,
@@ -680,7 +681,6 @@ const Tile = ({
           ...chart.config,
           // Populate these columns from the source to support Lucene-based filters and metric table macros
           ...pick(source, [
-            'implicitColumnExpression',
             'useTextIndexForImplicitColumn',
             'from',
             'metricTables',
@@ -688,6 +688,7 @@ const Tile = ({
           ...(isLogSource(source)
             ? { bodyExpression: source.bodyExpression }
             : {}),
+          implicitColumnExpression: getSourceImplicitColumnExpression(source),
           sampleWeightExpression: getSampleWeightExpression(source),
           dateRange,
           granularity,
@@ -720,10 +721,7 @@ const Tile = ({
             databaseName: source.from?.databaseName || 'default',
             tableName: tableName || '',
           },
-          implicitColumnExpression:
-            isLogSource(source) || isTraceSource(source)
-              ? source.implicitColumnExpression
-              : undefined,
+          implicitColumnExpression: getSourceImplicitColumnExpression(source),
           useTextIndexForImplicitColumn:
             isLogSource(source) || isTraceSource(source)
               ? source.useTextIndexForImplicitColumn

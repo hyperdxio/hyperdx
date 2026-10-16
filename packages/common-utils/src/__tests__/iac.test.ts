@@ -369,6 +369,10 @@ describe('isImportableSource', () => {
     }
   });
 
+  it('rejects NetFlow mappings unsupported by the Terraform provider', () => {
+    expect(isImportableSource({ kind: SourceKind.Netflow })).toBe(false);
+  });
+
   it('rejects a PromQL source', () => {
     expect(isImportableSource({ kind: SourceKind.Promql })).toBe(false);
   });

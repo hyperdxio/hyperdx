@@ -1,4 +1,5 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithOptDateRange,
@@ -298,6 +299,7 @@ const buildChartConfigFromRequest = async (
     ],
     where: '',
     timestampValueExpression: source.timestampValueExpression,
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     ...pickSampleWeightExpressionProps(source),
     dateRange: [new Date(params.startTime), new Date(params.endTime)] as [
       Date,

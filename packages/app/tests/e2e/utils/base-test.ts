@@ -23,8 +23,13 @@ function loadE2EFixtures(): { connections: unknown[]; sources: unknown[] } {
 const e2eFixtures = loadE2EFixtures();
 
 // Extend the base test to automatically handle Tanstack devtools
-export const test = base.extend({
-  page: async ({ page }, fn) => {
+export const test = base.extend<{
+  localSources: unknown[];
+  localConnections: unknown[];
+}>({
+  localSources: [e2eFixtures.sources, { option: true }],
+  localConnections: [e2eFixtures.connections, { option: true }],
+  page: async ({ page, localSources, localConnections }, fn) => {
     // Note: page.addInitScript runs in the browser context, which cannot access Node.js
     // environment variables directly. We pass USE_FULLSTACK and connection/sources from
     // e2e-fixtures.json so local mode uses the same data as full-stack.
@@ -48,11 +53,7 @@ export const test = base.extend({
           JSON.stringify(true),
         );
       },
-      [
-        e2eFixtures.connections,
-        e2eFixtures.sources,
-        VIEW_TRACE_CALLOUT_DISMISSED_KEY,
-      ],
+      [localConnections, localSources, VIEW_TRACE_CALLOUT_DISMISSED_KEY],
     );
     await fn(page);
   },

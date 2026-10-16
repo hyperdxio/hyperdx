@@ -27,7 +27,7 @@ function ListItem({
   hoverCardContent,
   hoverCardPosition = 'right',
 }: {
-  title: string;
+  title: React.ReactNode;
   value: string;
   color: string;
   percent: number;
@@ -81,6 +81,7 @@ function ListBar({
   getRowSearchLink,
   columns,
   hoverCardPosition,
+  renderGroupLabel,
 }: {
   data: any[];
   valueColumn: string;
@@ -93,6 +94,7 @@ function ListBar({
     visible?: boolean;
   }[];
   hoverCardPosition?: FloatingPosition;
+  renderGroupLabel?: (value: string) => React.ReactNode;
 }) {
   const values = (data ?? []).map(row => row[valueColumn]);
   const maxValue = Math.max(...values);
@@ -148,7 +150,9 @@ function ListBar({
               c="inherit"
             >
               <ListItem
-                title={group}
+                title={
+                  renderGroupLabel?.(String(row[groupColumn] ?? '')) ?? group
+                }
                 value={`${percentOfTotal.toFixed(2)}%`}
                 color={semanticKeyedColor(group, index)}
                 percent={percentOfMax}
@@ -160,7 +164,9 @@ function ListBar({
         ) : (
           <Box mb="sm" key={group}>
             <ListItem
-              title={group}
+              title={
+                renderGroupLabel?.(String(row[groupColumn] ?? '')) ?? group
+              }
               value={`${percentOfTotal.toFixed(2)}%`}
               color={semanticKeyedColor(group, index)}
               percent={percentOfMax}
@@ -187,6 +193,7 @@ export default function DBListBarChart({
   toolbarItems,
   showMVOptimizationIndicator = true,
   errorVariant,
+  renderGroupLabel,
 }: {
   config: BuilderChartConfigWithDateRange;
   onSettled?: () => void;
@@ -201,6 +208,7 @@ export default function DBListBarChart({
   toolbarItems?: React.ReactNode[];
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
+  renderGroupLabel?: (value: string) => React.ReactNode;
 }) {
   const queriedConfig = omit(config, ['granularity']);
   const { data, isLoading, isPlaceholderData, isError, error } =
@@ -301,6 +309,7 @@ export default function DBListBarChart({
             hoverCardPosition={hoverCardPosition}
             groupColumn={groupColumn}
             valueColumn={valueColumn}
+            renderGroupLabel={renderGroupLabel}
           />
         </div>
       )}

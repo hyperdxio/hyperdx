@@ -10,9 +10,14 @@ import {
   MetricsDataType,
   QueryExpressionDashboardFilter,
   SourceKind,
+  TNetflowSource,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+} from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 
 import * as useMetadataModule from '@/hooks/useMetadata';
@@ -160,6 +165,64 @@ describe('useQueriedDashboardFilterValues', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('uses mapped NetFlow fields for bare Lucene terms in filter-value queries', async () => {
+    const source: TNetflowSource = {
+      id: 'flows',
+      name: 'Flows',
+      kind: SourceKind.Netflow,
+      connection: 'clickhouse-conn',
+      from: { databaseName: 'telemetry', tableName: 'flows' },
+      timestampValueExpression: 'timestamp',
+      defaultTableSelectExpression: '*',
+      bytesExpression: 'Bytes',
+      packetsExpression: 'Packets',
+      srcAddrExpression: 'ClientIP',
+      dstAddrExpression: 'ServerIP',
+      srcPortExpression: 'ClientPort',
+      dstPortExpression: 'ServerPort',
+      protocolExpression: 'Protocol',
+      exporterExpression: 'RouterName',
+    };
+    jest
+      .spyOn(sourceModule, 'useSources')
+      .mockImplementation(function useMockSources() {
+        return useQuery({
+          queryKey: ['netflow-test-sources'],
+          queryFn: async () => [source],
+          initialData: [source],
+        });
+      });
+    const { result } = renderHook(
+      () =>
+        useQueriedDashboardFilterValues({
+          filters: [
+            {
+              id: 'router',
+              type: 'QUERY_EXPRESSION',
+              name: 'Router',
+              expression: 'RouterName',
+              source: 'flows',
+              where: 'edge',
+              whereLanguage: 'lucene',
+            },
+          ],
+          dateRange: mockDateRange,
+        }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+    expect(mockMetadata.getKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        chartConfig: expect.objectContaining({
+          where: 'edge',
+          whereLanguage: 'lucene',
+          implicitColumnExpression:
+            expect.stringContaining('toString(ClientIP)'),
+        }),
+      }),
+    );
   });
 
   it('should convert non-string key values to strings', async () => {

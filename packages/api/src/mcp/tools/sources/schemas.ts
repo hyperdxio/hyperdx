@@ -9,14 +9,16 @@ import { sanitizeMetricTables } from './metricKinds';
 //
 // String literals (not SourceKind members) so z.enum narrows at the MCP SDK
 // boundary; the assertion keeps them in sync with the enum.
-const SOURCE_KINDS = ['log', 'trace', 'session', 'metric', 'promql'] as const;
-const _assertSourceKindsMatchEnum: readonly (typeof SOURCE_KINDS)[number][] = [
-  SourceKind.Log,
-  SourceKind.Trace,
-  SourceKind.Session,
-  SourceKind.Metric,
-  SourceKind.Promql,
-];
+const SOURCE_KINDS = [
+  'log',
+  'trace',
+  'session',
+  'metric',
+  'promql',
+  'netflow',
+] as const satisfies readonly `${SourceKind}`[];
+const _assertSourceKindsMatchEnum: readonly (typeof SOURCE_KINDS)[number][] =
+  Object.values(SourceKind);
 void _assertSourceKindsMatchEnum;
 
 // Advanced nested config, modeled loosely (SourceSchemaNoId does the strict
@@ -111,7 +113,12 @@ export const mcpSaveSourceSchema = z.object({
     .optional()
     .describe('Required for metric sources; optional for others.'),
   eventAttributesExpression: z.string().optional(),
-  implicitColumnExpression: z.string().optional(),
+  implicitColumnExpression: z
+    .string()
+    .optional()
+    .describe(
+      'Expression searched by bare Lucene terms. NetFlow defaults to mapped flow dimensions when omitted.',
+    ),
   knownColumnsListExpression: z.string().optional(),
   orderByExpression: z.string().optional(),
   useTextIndexForImplicitColumn: z
@@ -119,13 +126,51 @@ export const mcpSaveSourceSchema = z.object({
     .optional()
     .describe('Whether to use the text index for the implicit column.'),
 
-  // ── Log / Trace ──
+  // ── Log / Trace / NetFlow ──
   defaultTableSelectExpression: z
     .string()
     .optional()
-    .describe('Default columns to select. Required for log and trace sources.'),
+    .describe('Default columns. Required for log, trace, and netflow sources.'),
   bodyExpression: z.string().optional().describe('Log body expression.'),
   severityTextExpression: z.string().optional(),
+
+  bytesExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: observed byte counter expression.'),
+  packetsExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: observed packet counter expression.'),
+  srcAddrExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: source IP address expression.'),
+  dstAddrExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: destination IP address expression.'),
+  srcPortExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: source port expression.'),
+  dstPortExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: destination port expression.'),
+  protocolExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: IP protocol number expression.'),
+  samplingRateExpression: z
+    .string()
+    .optional()
+    .describe(
+      'NetFlow sampling multiplier. Omit for unsampled or already scaled counters. Omitted mappings and null or non-positive row values use a multiplier of one.',
+    ),
+  exporterExpression: z.string().optional(),
+  inIfExpression: z.string().optional(),
+  outIfExpression: z.string().optional(),
 
   // ── Trace (required for trace kind) ──
   durationExpression: z.string().optional(),

@@ -17,6 +17,7 @@ import {
   isTraceSource,
   SourceKind,
   TLogSource,
+  TNetflowSource,
   TSource,
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -111,7 +112,7 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TLogSource | TTraceSource;
+  source?: TLogSource | TTraceSource | TNetflowSource;
   onOpenLinkedTrace?: (link: SpanLinkData) => void;
 };
 
@@ -763,7 +764,11 @@ export const DBRowSidePanelInner = ({
     const hasStack = crumbSourceStack.length > 0 || crumbNavStack.length > 0;
     const rootLabel =
       initialMainContent ||
-      (rootSource.kind === SourceKind.Trace ? 'Trace' : 'Log');
+      (rootSource.kind === SourceKind.Trace
+        ? 'Trace'
+        : rootSource.kind === SourceKind.Netflow
+          ? 'Flow'
+          : 'Log');
 
     if (hasStack) {
       items.push({
