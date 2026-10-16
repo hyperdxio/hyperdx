@@ -103,7 +103,7 @@ echo "╠═══════════════════════�
 echo "║  App (Next.js)     http://localhost:${HYPERDX_APP_PORT}$(printf '%*s' $((22 - ${#HYPERDX_APP_PORT})) '')║"
 echo "║  API               http://localhost:${HYPERDX_API_PORT}$(printf '%*s' $((22 - ${#HYPERDX_API_PORT})) '')║"
 echo "║  ClickHouse        http://localhost:${HDX_DEV_CH_HTTP_PORT}$(printf '%*s' $((22 - ${#HDX_DEV_CH_HTTP_PORT})) '')║"
-echo "║  MongoDB           localhost:${HDX_DEV_MONGO_PORT}$(printf '%*s' $((29 - ${#HDX_DEV_MONGO_PORT})) '')║"
+echo "║  DocumentDB        localhost:${HDX_DEV_MONGO_PORT}$(printf '%*s' $((29 - ${#HDX_DEV_MONGO_PORT})) '')║"
 echo "║  OTel HTTP         http://localhost:${HDX_DEV_OTEL_HTTP_PORT}$(printf '%*s' $((22 - ${#HDX_DEV_OTEL_HTTP_PORT})) '')║"
 echo "║  OTel gRPC         localhost:${HDX_DEV_OTEL_GRPC_PORT}$(printf '%*s' $((29 - ${#HDX_DEV_OTEL_GRPC_PORT})) '')║"
 echo "║  OpAMP             localhost:${HYPERDX_OPAMP_PORT}$(printf '%*s' $((29 - ${#HYPERDX_OPAMP_PORT})) '')║"

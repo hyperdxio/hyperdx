@@ -22,6 +22,7 @@ import { AlertInterval, AlertSource } from '@/models/alert';
 import Server from '@/server';
 import logger from '@/utils/logger';
 import { MetricModel } from '@/utils/logParser';
+import { withRetry } from '@/utils/retry';
 
 import { ExternalDashboardTile } from './utils/zod';
 
@@ -141,7 +142,13 @@ export const closeDB = async () => {
   if (!config.IS_CI) {
     throw new Error('ONLY execute this in CI env 😈 !!!');
   }
-  await mongooseConnection.dropDatabase();
+  // DocumentDB intermittently fails dropDatabase while background index builds
+  // run (WriteConflict 112, or InternalError 1); a retry clears it.
+  await withRetry(() => mongooseConnection.dropDatabase(), {
+    maxRetries: 5,
+    initialDelayMs: 200,
+    retryOnlyOnStatus: [1, 112],
+  });
   await mongoose.disconnect();
 };
 
