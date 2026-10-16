@@ -8,6 +8,8 @@ import {
   useChartTooltipZIndex,
 } from './ChartTooltip';
 
+import styles from '@styles/HDXLineChart.module.scss';
+
 /** Gap below the marker so the tooltip does not sit on top of its own label. */
 const TOOLTIP_OFFSET_PX = 6;
 
@@ -21,6 +23,13 @@ const TOOLTIP_OFFSET_PX = 6;
  * element's min-content width, which is what the `wrap="nowrap"` row measures.
  */
 const wrapLongValue = { overflowWrap: 'anywhere' } as const;
+
+/**
+ * Floor for the service name column. Both values share the row's width, so
+ * without this a long version wraps the service name down to a couple of
+ * characters per line — the one thing the tooltip exists to say.
+ */
+const SERVICE_MIN_WIDTH_PX = 80;
 
 /**
  * Hover tooltip for a release marker: one row per release in the hovered
@@ -56,6 +65,7 @@ export function AnnotationTooltip({ hovered }: { hovered: HoveredAnnotation }) {
     >
       <ChartTooltipContainer
         header={<ChartTooltipHeader labelSeconds={hovered.annotation.x} />}
+        contentClassName={styles.annotationTooltipContent}
       >
         <Stack gap={4}>
           {members.map((member, i) => (
@@ -77,7 +87,11 @@ export function AnnotationTooltip({ hovered }: { hovered: HoveredAnnotation }) {
                 }}
               />
               {member.group != null && (
-                <Text size="xs" c="dimmed" style={wrapLongValue}>
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  style={{ ...wrapLongValue, minWidth: SERVICE_MIN_WIDTH_PX }}
+                >
                   {member.group}
                 </Text>
               )}

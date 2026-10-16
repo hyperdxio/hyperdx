@@ -33,4 +33,19 @@ describe('AnnotationTooltip', () => {
       expect(node).toHaveStyle({ overflowWrap: 'anywhere' });
     }
   });
+
+  it('floors the service name width so a long version cannot squeeze it away', () => {
+    renderWithMantine(<AnnotationTooltip hovered={hovered} />);
+
+    expect(screen.getByText(LONG_SERVICE)).toHaveStyle({ minWidth: '80px' });
+  });
+
+  it('gives the release list more height than the shared series-tooltip cap', () => {
+    renderWithMantine(<AnnotationTooltip hovered={hovered} />);
+
+    expect(screen.getByText(LONG_VERSION).closest('.chartTooltipContent'))
+      // Wrapped values are several lines tall, so the shared 200px cap clips a
+      // cluster of releases almost immediately.
+      .toHaveClass('annotationTooltipContent');
+  });
 });
