@@ -40,6 +40,14 @@ describe('MCP server metadata', () => {
     ]);
   });
 
+  it('keeps the FRONTEND_URL sub-path in the icon URL', async () => {
+    const info = await getServerInfo('https://host.example.com/hyperdx');
+
+    expect(info?.icons?.[0]?.src).toBe(
+      'https://host.example.com/hyperdx/favicons/hyperdx/favicon.svg',
+    );
+  });
+
   it('omits the icon when FRONTEND_URL is unset', async () => {
     const info = await getServerInfo('');
 

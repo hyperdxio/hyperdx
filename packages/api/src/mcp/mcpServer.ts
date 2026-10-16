@@ -37,9 +37,10 @@ const SERVER_INSTRUCTIONS = [
 ].join('\n');
 
 // Served by the app; omitted when FRONTEND_URL is unset because MCP icon
-// sources must be absolute URLs.
+// sources must be absolute URLs. String concatenation (not `new URL`) keeps
+// any sub-path the app is mounted under. The HyperDX logo is intentional.
 const SERVER_ICON_URL = FRONTEND_URL
-  ? new URL('/favicons/hyperdx/favicon.svg', FRONTEND_URL).toString()
+  ? `${FRONTEND_URL.replace(/\/+$/, '')}/favicons/hyperdx/favicon.svg`
   : undefined;
 
 const SERVER_INFO: Implementation = {
