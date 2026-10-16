@@ -46,7 +46,7 @@ export const traceBreakdownSchema = z.object({
     .max(100)
     .optional()
     .default(20)
-    .describe('Number of child operations to return, ranked by total_time_ms.'),
+    .describe('Number of child operations to return, ranked by totalTimeMs.'),
   maxParentTraces: z
     .number()
     .min(100)
@@ -73,7 +73,7 @@ export const TRACE_BREAKDOWN_DESCRIPTION =
   'compare the top children. A shared top child suggests a shared cause; ' +
   'different top children are independent regressions. DO NOT merge ' +
   'operations into one parentFilter — the ranking then conflates them.\n\n' +
-  'RANKING: total_time_ms = sum(Duration) of matching child spans, so a fast ' +
+  'RANKING: totalTimeMs = sum(Duration) of matching child spans, so a fast ' +
   'but frequent child can dominate even with an unremarkable p99. Children are ' +
   "not scoped to the parent's service, so slow cross-service calls (database, " +
   'cache, upstream HTTP) show up.\n\n' +
