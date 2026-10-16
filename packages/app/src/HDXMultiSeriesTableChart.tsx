@@ -408,7 +408,7 @@ export const Table = ({
 
   return (
     <div
-      className={cx('overflow-auto h-100 fs-8', className)}
+      className={cx('overflow-auto h-100', styles.tableWrapper, className)}
       ref={tableContainerRef}
     >
       <table
