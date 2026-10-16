@@ -193,6 +193,15 @@ jest.mock('@/components/SearchInput/SearchWhereInput', () => ({
   getStoredLanguage: () => 'lucene',
 }));
 jest.mock('@/components/SearchPageActionBar', () => () => <div />);
+jest.mock('@/components/SearchResultsToolbar/ColumnsPopover', () => ({
+  ColumnsPopover: () => <div />,
+}));
+jest.mock('@/components/SearchResultsToolbar/SortPopover', () => ({
+  SortPopover: () => <div />,
+}));
+jest.mock('@/components/SearchResultsToolbar/useClauseFieldOptions', () => ({
+  useClauseFieldOptions: () => [],
+}));
 jest.mock('@/components/SearchTotalCountChart', () => () => <div />);
 jest.mock('@/components/Sources/SourceForm', () => ({
   TableSourceForm: () => <div />,

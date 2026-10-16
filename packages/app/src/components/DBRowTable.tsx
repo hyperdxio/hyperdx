@@ -40,13 +40,14 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Box,
+  Divider,
   Flex,
   Group,
   Modal,
   Text,
   Tooltip as MantineTooltip,
-  UnstyledButton,
 } from '@mantine/core';
 import {
   IconCode,
@@ -996,77 +997,82 @@ export const RawLogTable = memo(
     );
 
     // Above the scroll area, so a wide table can't scroll these out of view.
+    const wrapLinesLabel = wrapLinesEnabled ? 'Unwrap lines' : 'Wrap lines';
+    const csvLabel = `Download as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ', data truncated' : ''}`;
+    const rowSelectionMenu = enableRowSelection ? (
+      <RowSelectionMenu
+        selectedCount={rowSelection.selectedCount}
+        getSelectedRows={rowSelection.getSelectedRows}
+        columns={csvColumns}
+        onClear={rowSelection.clearSelection}
+      />
+    ) : null;
+
     const tableControls = (
-      <Group gap={8} mr={8} wrap="nowrap" align="center">
+      <Group gap={4} mr={8} wrap="nowrap" align="center">
         {tableId && Object.keys(columnSizeStorage).length > 0 && (
-          <UnstyledButton
-            onClick={() => setColumnSizeStorage({})}
-            title="Reset Column Widths"
-            display="flex"
-          >
-            <MantineTooltip label="Reset Column Widths">
+          <MantineTooltip label="Reset column widths">
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              onClick={() => setColumnSizeStorage({})}
+              aria-label="Reset column widths"
+            >
               <IconRotateClockwise size={16} />
-            </MantineTooltip>
-          </UnstyledButton>
+            </ActionIcon>
+          </MantineTooltip>
         )}
-        {config && (
-          <UnstyledButton
-            onClick={() => handleSqlModalOpen(true)}
-            title="Show Generated SQL"
-            tabIndex={0}
-            display="flex"
-          >
-            <MantineTooltip label="Show Generated SQL">
-              <IconCode size={16} />
-            </MantineTooltip>
-          </UnstyledButton>
-        )}
-        <UnstyledButton
-          onClick={() => setWrapLinesEnabled(prev => !prev)}
-          title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
-          display="flex"
-        >
-          <MantineTooltip
-            label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
+        <MantineTooltip label={wrapLinesLabel}>
+          <ActionIcon
+            variant="subtle"
+            size="sm"
+            onClick={() => setWrapLinesEnabled(prev => !prev)}
+            aria-label={wrapLinesLabel}
           >
             {wrapLinesEnabled ? (
               <IconTextWrapDisabled size={16} />
             ) : (
               <IconTextWrap size={16} />
             )}
+          </ActionIcon>
+        </MantineTooltip>
+        {config && (
+          <MantineTooltip label="Show generated SQL">
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              onClick={() => handleSqlModalOpen(true)}
+              aria-label="Show generated SQL"
+            >
+              <IconCode size={16} />
+            </ActionIcon>
           </MantineTooltip>
-        </UnstyledButton>
-
-        <CsvExportButton
-          data={csvData}
-          filename={getCsvFilename}
-          className="fs-6"
-        >
-          <MantineTooltip
-            label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
-          >
-            <IconDownload size={16} />
+        )}
+        <CsvExportButton data={csvData} filename={getCsvFilename}>
+          <MantineTooltip label={csvLabel}>
+            <ActionIcon
+              component="span"
+              variant="subtle"
+              size="sm"
+              aria-label={csvLabel}
+            >
+              <IconDownload size={16} />
+            </ActionIcon>
           </MantineTooltip>
         </CsvExportButton>
         {onSettingsClick != null && (
-          <UnstyledButton
-            onClick={() => onSettingsClick()}
-            title="Settings"
-            display="flex"
-          >
-            <MantineTooltip label="Settings">
+          <MantineTooltip label="Settings">
+            <ActionIcon
+              variant="subtle"
+              size="sm"
+              onClick={() => onSettingsClick()}
+              aria-label="Settings"
+            >
               <IconSettings size={16} />
-            </MantineTooltip>
-          </UnstyledButton>
+            </ActionIcon>
+          </MantineTooltip>
         )}
-        {enableRowSelection && (
-          <RowSelectionMenu
-            selectedCount={rowSelection.selectedCount}
-            getSelectedRows={rowSelection.getSelectedRows}
-            columns={csvColumns}
-            onClear={rowSelection.clearSelection}
-          />
-        )}
+        {!controlsAboveTable && rowSelectionMenu}
       </Group>
     );
 
@@ -1080,15 +1086,15 @@ export const RawLogTable = memo(
             wrap="nowrap"
             data-testid="results-table-toolbar"
           >
-            {toolbarLeading != null && (
-              <Box style={{ flex: '1 1 auto', minWidth: 0 }}>
-                {toolbarLeading}
-              </Box>
-            )}
+            <Group gap="xs" wrap="nowrap" miw={0} style={{ flex: 1 }}>
+              {toolbarLeading}
+              {controlsAboveTable && rowSelectionMenu}
+            </Group>
             {controlsAboveTable && (
-              <Box style={{ flexShrink: 0, marginLeft: 'auto' }}>
+              <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                <Divider orientation="vertical" />
                 {tableControls}
-              </Box>
+              </Group>
             )}
           </Flex>
         )}

@@ -103,10 +103,12 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
+import { ColumnsPopover } from '@/components/SearchResultsToolbar/ColumnsPopover';
+import { SortPopover } from '@/components/SearchResultsToolbar/SortPopover';
+import { useClauseFieldOptions } from '@/components/SearchResultsToolbar/useClauseFieldOptions';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -2087,6 +2089,15 @@ function DBSearchPageContent() {
     [inputSourceObj],
   );
 
+  const inputSelect = useWatch({ name: 'select', control });
+  const inputOrderBy = useWatch({ name: 'orderBy', control });
+  const clauseFieldOptions = useClauseFieldOptions({
+    tableConnection: inputSourceTableConnection,
+    columns: inputSourceColumns,
+    dateRange: searchedTimeRange,
+    timestampValueExpression: inputSourceObj?.timestampValueExpression,
+  });
+
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -2209,46 +2220,56 @@ function DBSearchPageContent() {
     [setValue, setNewSourceModalClosed],
   );
 
+  const applySelect = useCallback(
+    (select: string, removedItems: string[]) => {
+      setValue('select', select);
+      let orderBy = getValues('orderBy') ?? '';
+      for (const item of removedItems) {
+        orderBy = orderByAfterRemovingSelectItem(
+          item,
+          orderBy,
+          defaultSearchConfig.orderBy ?? '',
+        );
+      }
+      setValue('orderBy', orderBy);
+      onSubmit();
+    },
+    [setValue, getValues, defaultSearchConfig.orderBy, onSubmit],
+  );
+
+  const applyOrderBy = useCallback(
+    (orderBy: string) => {
+      setValue('orderBy', orderBy);
+      onSubmit();
+    },
+    [setValue, onSubmit],
+  );
+
   // SELECT and ORDER BY shape the results table, so they sit on that table
   // and stay hidden on Event Deltas and Event Patterns.
   const resultsClauseEditors =
     analysisMode === 'results' ? (
-      <Flex gap="sm" wrap="nowrap" miw={0} style={{ flex: 1 }}>
-        <Box
-          style={{ flex: '1 1 0%', minWidth: 100 }}
-          data-testid="search-select-input"
-        >
-          <SQLInlineEditorControlled
-            tableConnection={inputSourceTableConnection}
-            control={control}
-            name="select"
-            defaultValue={defaultSearchConfig.select}
-            placeholder={defaultSearchConfig.select || 'SELECT Columns'}
-            onSubmit={onSubmit}
-            label="SELECT"
-            size="xs"
-            allowMultiline
-            dateRange={searchedTimeRange}
-            sourceId={inputSource}
-          />
-        </Box>
-        <Box
-          style={{ maxWidth: 400, width: '30%', minWidth: 180, flexShrink: 0 }}
-          data-testid="search-order-by-input"
-        >
-          <SQLInlineEditorControlled
-            tableConnection={inputSourceTableConnection}
-            control={control}
-            name="orderBy"
-            defaultValue={defaultSearchConfig.orderBy}
-            onSubmit={onSubmit}
-            label="ORDER BY"
-            size="xs"
-            dateRange={searchedTimeRange}
-            sourceId={inputSource}
-          />
-        </Box>
-      </Flex>
+      <Group gap="xs" wrap="nowrap">
+        <ColumnsPopover
+          value={inputSelect ?? ''}
+          defaultValue={defaultSearchConfig.select ?? ''}
+          fieldOptions={clauseFieldOptions}
+          knownColumns={knownColumns}
+          onApply={applySelect}
+          tableConnection={inputSourceTableConnection}
+          sourceId={inputSource}
+          dateRange={searchedTimeRange}
+        />
+        <SortPopover
+          value={inputOrderBy ?? ''}
+          defaultValue={defaultSearchConfig.orderBy ?? ''}
+          fieldOptions={clauseFieldOptions}
+          onApply={applyOrderBy}
+          tableConnection={inputSourceTableConnection}
+          sourceId={inputSource}
+          dateRange={searchedTimeRange}
+        />
+      </Group>
     ) : null;
 
   return (
