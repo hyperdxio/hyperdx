@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+import { findBalancedParens } from '@hyperdx/common-utils/dist/variables';
 import {
   ActionIcon,
   Autocomplete,
@@ -32,18 +33,24 @@ const toRows = (keys: SortKey[] | null): SortRow[] | null =>
 /**
  * Sort keys the picker can edit. A parenthesized list with one direction,
  * `(toDateTime(Timestamp), Timestamp) DESC`, is several fields sharing that
- * direction, including function calls. Anything without a plain ASC/DESC on
- * each field stays in SQL.
+ * direction, including function calls. The parentheses have to wrap that whole
+ * expression: `(a, b) ASC, (c, d) DESC` is two keys, not one list. Anything
+ * without a plain ASC/DESC on each field stays in SQL.
  */
 function parseSortKeys(orderBy: string): SortKey[] | null {
   const trimmed = orderBy.trim();
   if (!trimmed) return [];
 
-  const tuple = trimmed.match(/^\(([\s\S]+)\)\s+(asc|desc)$/i);
-  if (tuple) {
-    const ids = splitAndTrimWithBracket(tuple[1]);
+  const direction = trimmed.match(/^(.*)\s+(asc|desc)$/i);
+  const expr = direction?.[1].trim() ?? '';
+  if (
+    direction &&
+    expr.startsWith('(') &&
+    findBalancedParens(expr, 0) === expr.length - 1
+  ) {
+    const ids = splitAndTrimWithBracket(expr.slice(1, -1));
     if (ids.length > 1 && ids.every(id => id.length > 0)) {
-      const desc = tuple[2].toUpperCase() === 'DESC';
+      const desc = direction[2].toUpperCase() === 'DESC';
       return ids.map(id => ({ id, desc }));
     }
   }

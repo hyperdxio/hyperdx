@@ -63,6 +63,27 @@ describe('ColumnsPopover', () => {
     expect(screen.getByLabelText('Reorder Body')).toBeInTheDocument();
   });
 
+  it('stays empty after the last column is removed', async () => {
+    renderPopover({
+      value: 'Timestamp',
+      defaultValue: 'Timestamp, ServiceName, Body',
+    });
+    openPopover();
+    fireEvent.click(await screen.findByLabelText('Remove Timestamp'));
+    expect(screen.getByText('No columns selected.')).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Remove ServiceName'),
+    ).not.toBeInTheDocument();
+
+    const input = screen.getByPlaceholderText('Search columns');
+    fireEvent.change(input, { target: { value: 'Body' } });
+    fireEvent.click(screen.getByTestId('search-columns-add-button'));
+    expect(screen.getByLabelText('Remove Body')).toBeInTheDocument();
+    expect(
+      screen.queryByLabelText('Remove ServiceName'),
+    ).not.toBeInTheDocument();
+  });
+
   it('removes a column and reports it on apply', async () => {
     const { onApply } = renderPopover();
     openPopover();

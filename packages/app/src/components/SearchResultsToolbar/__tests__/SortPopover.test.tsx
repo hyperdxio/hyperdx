@@ -131,6 +131,23 @@ describe('SortPopover', () => {
     );
   });
 
+  it('keeps separate tuple keys instead of merging them', async () => {
+    const orderBy = '(a, b) ASC, (c, d) DESC';
+    const { onApply } = renderPopover({
+      value: orderBy,
+      defaultValue: orderBy,
+    });
+    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
+      'Sort: 2 fields',
+    );
+    openPopover();
+    expect(await screen.findByDisplayValue('(a, b)')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('(c, d)')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByText('Desc')[0]);
+    fireEvent.click(screen.getByTestId('search-sort-button-apply'));
+    expect(onApply).toHaveBeenCalledWith('(a, b) DESC, (c, d) DESC');
+  });
+
   it('lists every key of a multi-field sort', async () => {
     renderPopover({ value: 'ServiceName ASC, Timestamp DESC' });
     expect(screen.getByTestId('search-sort-button')).toHaveTextContent(

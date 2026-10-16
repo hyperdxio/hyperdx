@@ -118,11 +118,13 @@ export function ColumnsPopover({
   const [draft, setDraft] = useState(value);
   const [search, setSearch] = useState('');
 
-  const effective = (select: string) =>
+  // An empty stored SELECT means "use the source default". An empty draft does
+  // not: the user may have removed every column before adding a replacement.
+  const storedColumns = (select: string) =>
     splitAndTrimWithBracket(select || defaultValue);
 
-  const count = effective(value).length;
-  const items = effective(draft);
+  const count = storedColumns(value).length;
+  const items = splitAndTrimWithBracket(draft);
 
   const options = useMemo(
     () => fieldOptions.filter(option => !items.includes(option)),
@@ -187,10 +189,10 @@ export function ColumnsPopover({
             : draft === baseline
               ? value
               : draft;
-        const next = effective(submitted);
+        const next = storedColumns(submitted);
         onApply(
           submitted,
-          effective(value).filter(item => !next.includes(item)),
+          storedColumns(value).filter(item => !next.includes(item)),
         );
       }}
       data-testid="search-columns-button"
