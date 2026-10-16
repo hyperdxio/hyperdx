@@ -22,7 +22,9 @@ export function registerDeleteWebhook({
         'references it — reassign or delete those alerts first. Use ' +
         'clickstack_get_webhook to list available webhook IDs.',
       inputSchema: z.object({
-        id: objectIdSchema.describe('Webhook ID to delete.'),
+        id: objectIdSchema.describe(
+          'ID of the webhook to delete, from clickstack_get_webhook.',
+        ),
       }),
     },
     async ({ id: webhookId }) => {

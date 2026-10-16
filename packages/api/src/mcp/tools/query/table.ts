@@ -44,9 +44,8 @@ const tableSchema = z.object({
     .optional()
     .default('table')
     .describe(
-      'Output shape: "table" (grouped rows, default), "number" (single scalar), ' +
-        '"pie" (pie chart), or "bar" (categorical bar chart). ' +
-        'If "number", "pie", or "bar" is set with select.length > 1, it is auto-upgraded to "table". ' +
+      'Output shape: "table" is grouped rows, "number" a single scalar, "bar" a categorical bar chart. ' +
+        '"number", "pie", and "bar" are auto-upgraded to "table" when select has more than one item. ' +
         'groupBy is ignored when shape is "number".',
     ),
   where: whereSchema.describe(
@@ -209,31 +208,22 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
       description:
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
-        'or proportional breakdowns.\n\n' +
+        'or proportional breakdowns. For trends over time use clickstack_timeseries.\n\n' +
         PREFER_BUILDER_OVER_SQL_NUDGE +
         '\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
-        'Use the top-level "where" to scope the entire query (e.g. filter by service). ' +
-        'Each select item can also have its own "where" for per-metric cohort ' +
-        'comparisons (compiles to <aggFn>If(...)). Both can be used together.\n\n' +
-        'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
-        "Map attributes use bracket syntax: SpanAttributes['http.method']. " +
-        'Map attributes work in groupBy and valueExpression, including ' +
-        "toFloat64OrZero(SpanAttributes['key']).\n\n" +
-        'Shape auto-upgrade: if shape is "number", "pie", or "bar" but select has >1 item, ' +
-        'it is transparently upgraded to "table".\n\n' +
-        '── METRIC SOURCES ──\n' +
-        'When sourceId is a metric source, each select item MUST set ' +
-        'metricType ("gauge"|"sum"|"histogram"|"exponential histogram") and metricName (the OTel metric name). ' +
-        'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
-        'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
-        'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
-        'returns attribute keys + sampled values for a single metric.\n' +
-        'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
-        '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
-        'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
-        'summary metrics are not supported by the query renderer — query them with ' +
-        "clickstack_sql against the table in the source's metricTables.summary.",
+        'The top-level "where" scopes the whole query. Each select item can add its own ' +
+        '"where" (compiles to <aggFn>If(...)) for per-metric cohort comparisons; both are ANDed.\n\n' +
+        'Columns: top-level columns are PascalCase (Duration, StatusCode). ' +
+        "Map attributes use brackets, SpanAttributes['http.method'], and work in groupBy " +
+        "and valueExpression, e.g. toFloat64OrZero(SpanAttributes['key']).\n\n" +
+        'METRIC SOURCES: every select item MUST set metricType and metricName; ' +
+        'valueExpression defaults to "Value". Discover metrics with clickstack_describe_source ' +
+        '(sample), clickstack_list_metrics (full catalog), and clickstack_describe_metric ' +
+        '(attributes of one metric). Per kind: gauge uses last_value/avg/min/max; sum uses ' +
+        'aggFn:"increase" (capped at the top 20 groups with groupBy) or sum/avg on the rate; ' +
+        'histogram and exponential histogram use aggFn:"quantile" + level, or aggFn:"count". ' +
+        "summary metrics are unsupported — use clickstack_sql on the source's metricTables.summary table.",
       inputSchema: tableSchema,
     },
     async input => {

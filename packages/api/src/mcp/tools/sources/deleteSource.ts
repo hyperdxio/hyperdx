@@ -22,7 +22,9 @@ export function registerDeleteSource({
         'left dangling, so check dependencies first. Use clickstack_list_sources ' +
         'to find available source IDs.',
       inputSchema: z.object({
-        id: objectIdSchema.describe('Source ID to delete.'),
+        id: objectIdSchema.describe(
+          'ID of the source to delete. Get it from clickstack_list_sources.',
+        ),
       }),
     },
     async ({ id: sourceId }) => {
