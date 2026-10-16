@@ -12,6 +12,17 @@ import {
 const TOOLTIP_OFFSET_PX = 6;
 
 /**
+ * Release values are arbitrary attribute values — a version expression that
+ * concatenates several attributes easily outruns the tooltip's fixed width.
+ * Wrap rather than overflow: the tooltip is `pointer-events: none`, so the
+ * scrollbar an overflow produces can never be reached.
+ *
+ * `anywhere` rather than `break-word` because only `anywhere` shrinks the
+ * element's min-content width, which is what the `wrap="nowrap"` row measures.
+ */
+const wrapLongValue = { overflowWrap: 'anywhere' } as const;
+
+/**
  * Hover tooltip for a release marker: one row per release in the hovered
  * cluster, each naming the service it belongs to.
  *
@@ -52,6 +63,7 @@ export function AnnotationTooltip({ hovered }: { hovered: HoveredAnnotation }) {
               key={member.key ?? `annotation-row-${member.x}-${i}`}
               gap={8}
               wrap="nowrap"
+              align="flex-start"
             >
               <div
                 style={{
@@ -59,15 +71,17 @@ export function AnnotationTooltip({ hovered }: { hovered: HoveredAnnotation }) {
                   height: 8,
                   borderRadius: 2,
                   flexShrink: 0,
+                  // Centres the dot on the row's first line of text.
+                  marginTop: 5,
                   background: member.color ?? 'var(--color-border)',
                 }}
               />
               {member.group != null && (
-                <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                <Text size="xs" c="dimmed" style={wrapLongValue}>
                   {member.group}
                 </Text>
               )}
-              <Text size="xs" fw={500} style={{ whiteSpace: 'nowrap' }}>
+              <Text size="xs" fw={500} style={wrapLongValue}>
                 {member.label}
               </Text>
             </Group>
