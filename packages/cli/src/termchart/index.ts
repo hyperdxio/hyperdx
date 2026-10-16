@@ -16,7 +16,8 @@ export {
   renderTableChart,
 } from '@/termchart/charts';
 export { niceTicks, resampleSeries } from '@/termchart/scale';
-export { renderLineChart, renderStackedBarChart } from '@/termchart/timeseries';
+export { renderStackedBarChart } from '@/termchart/stackedBar';
+export { renderLineChart } from '@/termchart/timeseries';
 export type {
   CategoricalEntry,
   TableColumn,
