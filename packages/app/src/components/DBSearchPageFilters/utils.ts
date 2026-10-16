@@ -122,6 +122,31 @@ export function groupFacetsByBaseName(
   return { grouped: Array.from(grouped.values()), nonGrouped };
 }
 
+const naturalCompare = new Intl.Collator(undefined, { numeric: true }).compare;
+
+// Sorts the keys inside each nested group A–Z, keeping groups in the order they
+// first appear. Other facets keep their order and move ahead of the nested
+// ones, which is harmless because grouped and non-grouped facets render
+// separately.
+export function sortNestedFacetKeys(facets: { key: string }[]) {
+  const groupOrder = new Map<string, number>();
+  for (const { key } of facets) {
+    const baseName = parseMapFieldName(key)?.baseName;
+    if (baseName != null && !groupOrder.has(baseName)) {
+      groupOrder.set(baseName, groupOrder.size);
+    }
+  }
+  facets.sort((a, b) => {
+    const nestedA = parseMapFieldName(a.key);
+    const nestedB = parseMapFieldName(b.key);
+    if (!nestedA || !nestedB) return Number(!!nestedA) - Number(!!nestedB);
+    return (
+      groupOrder.get(nestedA.baseName)! - groupOrder.get(nestedB.baseName)! ||
+      naturalCompare(nestedA.propertyPath, nestedB.propertyPath)
+    );
+  });
+}
+
 // Look up a filterState entry by either bracket-form or dot-form map sub-key.
 // Bracket form is the canonical SQL key used in facet results; dot form is
 // what setFilterValue stores after its parseKeyPath().join('.') normalization

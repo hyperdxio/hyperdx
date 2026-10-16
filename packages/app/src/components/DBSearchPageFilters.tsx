@@ -85,6 +85,7 @@ import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
 import {
   getFilterStateEntry,
   groupFacetsByBaseName,
+  sortNestedFacetKeys,
   toQuotedClickHouseKeyExpression,
 } from './DBSearchPageFilters/utils';
 
@@ -1339,6 +1340,9 @@ const DBSearchPageFiltersComponent = ({
         value: Array.from(filterState[key].included),
       });
     }
+
+    // sort keys within nested groups alphabetically
+    sortNestedFacetKeys(_facets);
 
     // prioritize facets that are primary keys
     _facets.sort((a, b) => {

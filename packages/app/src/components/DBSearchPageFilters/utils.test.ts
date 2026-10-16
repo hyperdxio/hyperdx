@@ -4,6 +4,7 @@ import {
   cleanClickHouseExpression,
   getFilterStateEntry,
   groupFacetsByBaseName,
+  sortNestedFacetKeys,
   toClickHouseKeyExpression,
   toQuotedClickHouseKeyExpression,
 } from './utils';
@@ -74,6 +75,34 @@ describe('groupFacetsByBaseName — dot/bracket de-duplication', () => {
     ]);
 
     expect(result.grouped[0].children).toHaveLength(2);
+  });
+});
+
+describe('sortNestedFacetKeys', () => {
+  it('sorts keys A–Z within each nested group without reordering groups or other facets', () => {
+    const facets = [
+      'SeverityText',
+      "ResourceAttributes['service.name']",
+      "LogAttributes['user.id']",
+      'ServiceName',
+      "ResourceAttributes['host.name']",
+      "LogAttributes['attr10']",
+      'LogAttributes.http.method',
+      "LogAttributes['attr9']",
+    ].map(key => ({ key }));
+
+    sortNestedFacetKeys(facets);
+
+    expect(facets.map(f => f.key)).toEqual([
+      'SeverityText',
+      'ServiceName',
+      "ResourceAttributes['host.name']",
+      "ResourceAttributes['service.name']",
+      "LogAttributes['attr9']",
+      "LogAttributes['attr10']",
+      'LogAttributes.http.method',
+      "LogAttributes['user.id']",
+    ]);
   });
 });
 
