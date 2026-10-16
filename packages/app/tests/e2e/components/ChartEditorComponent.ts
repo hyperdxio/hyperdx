@@ -199,6 +199,24 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Type a multi-line SQL WHERE clause, one line per entry. Lines are split
+   * with Shift+Enter, since a bare Enter in the editor submits the query.
+   */
+  async setMultilineSqlWhere(
+    lines: string[],
+    scope: 'chart' | 'series' = 'chart',
+  ) {
+    const [first = '', ...rest] = lines;
+    await this.setWhereLanguage('SQL', scope);
+    await this.whereInput(scope).fillSql(first);
+    for (const line of rest) {
+      await this.page.keyboard.press('Shift+Enter');
+      await this.page.keyboard.type(line);
+    }
+    await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
    * Type into a WHERE input while it is in Lucene mode, where it renders as a
    * plain textarea rather than CodeMirror. Leaves the suggestion dropdown open.
    */

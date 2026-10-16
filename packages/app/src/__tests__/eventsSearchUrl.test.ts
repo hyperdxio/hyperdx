@@ -46,9 +46,18 @@ const builderConfig = {
   dateRange,
 } satisfies BuilderChartConfigWithDateRange;
 
+// The search page reads these params with nuqs, which double-encodes values.
+// Mirror that read (`URLSearchParams.get` decodes one layer, the parser's
+// `decodeURIComponent` the second) so assertions compare the recovered value.
 const searchParams = (url: string | null) => {
   expect(url).not.toBeNull();
-  return new URL(url ?? '', 'http://localhost').searchParams;
+  const raw = new URL(url ?? '', 'http://localhost').searchParams;
+  return {
+    get: (key: string) => {
+      const value = raw.get(key);
+      return value == null ? null : decodeURIComponent(value);
+    },
+  };
 };
 
 const buildUrl = (
@@ -171,11 +180,16 @@ describe('buildEventsSearchUrl variable expansion', () => {
   });
 
   it('leaves a config without variables untouched', () => {
-    expect(
+    const params = searchParams(
       buildUrl({ where: 'ServiceName = $svc', whereLanguage: 'sql' }),
-    ).toBe(
-      '/search?source=logs&where=ServiceName+%3D+%24svc&whereLanguage=sql&filters=%5B%5D&isLive=false&from=1767225600000&to=1767229200000',
     );
+    expect(params.get('source')).toBe('logs');
+    expect(params.get('where')).toBe('ServiceName = $svc');
+    expect(params.get('whereLanguage')).toBe('sql');
+    expect(params.get('filters')).toBe('[]');
+    expect(params.get('isLive')).toBe('false');
+    expect(params.get('from')).toBe('1767225600000');
+    expect(params.get('to')).toBe('1767229200000');
   });
 
   it('falls back to the clause as written when expansion fails', () => {
