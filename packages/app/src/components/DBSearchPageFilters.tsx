@@ -1032,7 +1032,7 @@ export const FilterGroup = ({
                   {totalAppliedFiltersSize === 0 && optionsLoading ? (
                     <Loader
                       size={8}
-                      color="gray"
+                      color="var(--color-text-muted)"
                       ml={6}
                       data-testid={`filter-values-loading-${name}`}
                     />
