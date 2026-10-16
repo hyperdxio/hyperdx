@@ -8,21 +8,20 @@ import {
   FILTER_SEARCH_MIN_ITEMS,
   FilterSearchInput,
 } from '@/components/DBSearchPageFilters/FilterSearchInput';
+import type { FacetEntry } from '@/components/DBSearchPageFilters/utils';
 import { isColumnInSelect } from '@/utils';
 
 import classes from '@styles/SearchPage.module.scss';
 
 type NestedFilterGroupProps = {
   name: string;
-  childFilters: {
-    key: string;
-    value: (string | boolean)[];
+  childFilters: (FacetEntry & {
     propertyPath: string;
     // Canonical (quoted/bracket) SQL form of `key`, used wherever the key
     // becomes a raw SQL expression (distribution query, "Add column" SELECT).
     // Falls back to `key` when absent.
     sqlKey?: string;
-  }[];
+  })[];
   selectedValues?: FilterState;
   onChange: (key: string, value: string | boolean) => void;
   onClearClick: (key: string) => void;
@@ -258,7 +257,7 @@ export const NestedFilterGroup = ({
                               value: value,
                               label: value.toString(),
                             }))}
-                            optionsLoading={false}
+                            optionsLoading={child.isLoading ?? false}
                             selectedValues={childSelectedValues}
                             onChange={value => onChange(child.key, value)}
                             onClearClick={() => onClearClick(child.key)}

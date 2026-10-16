@@ -2,9 +2,9 @@ import {
   ADHOC_FILTER_MAX_CONDITIONS,
   AdhocDashboardFilter,
   AdhocFilterCondition,
+  BroadcastFilter,
   DashboardFilter,
   DashboardFilterValue,
-  Filter,
   QueryExpressionDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
 import { act, renderHook } from '@testing-library/react';
@@ -65,8 +65,8 @@ describe('useDashboardFilters', () => {
     filterId: string,
   ) => result.current.selectionByFilterId.get(filterId);
 
-  const conditionsFor = (queries: Filter[]) =>
-    queries.map(q => ('condition' in q ? q.condition : ''));
+  const conditionsFor = (queries: BroadcastFilter[]) =>
+    queries.map(q => q.condition);
 
   beforeEach(() => {
     mockState = null;
@@ -1121,14 +1121,180 @@ describe('useDashboardFilters', () => {
       ]);
     });
 
-    it('exposes no variable, selection, or broadcast query', () => {
+    it('exposes no variable or selection', () => {
       mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
 
       const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
 
       expect(result.current.variables).toEqual([]);
       expect(result.current.selectionByFilterId.size).toBe(0);
-      expect(result.current.broadcastedFilters).toEqual([]);
+    });
+
+    describe('broadcast', () => {
+      const conditionSql = "toString(ServiceName) != 'api'";
+
+      it("applies conditions to tiles on the filter's sources only", () => {
+        mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+
+        const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
+
+        expect(
+          conditionsFor(result.current.getFilterQueriesForSource('logs')),
+        ).toEqual([conditionSql]);
+        expect(result.current.getFilterQueriesForSource('traces')).toEqual([]);
+        expect(result.current.getFilterQueriesForSource(undefined)).toEqual([]);
+      });
+
+      it('applies conditions to appliesToSourceIds over sources', () => {
+        mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+        const filters = [{ ...adhocFilter, appliesToSourceIds: ['traces'] }];
+
+        const { result } = renderHook(() => useDashboardFilters(filters));
+
+        expect(result.current.getFilterQueriesForSource('logs')).toEqual([]);
+        expect(
+          conditionsFor(result.current.getFilterQueriesForSource('traces')),
+        ).toEqual([conditionSql]);
+      });
+
+      it('applies nothing when broadcast is disabled', () => {
+        mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+        const filters = [{ ...adhocFilter, isBroadcastEnabled: false }];
+
+        const { result } = renderHook(() => useDashboardFilters(filters));
+
+        expect(result.current.getFilterQueriesForSource('logs')).toEqual([]);
+      });
+
+      describe('PromQL', () => {
+        const promqlFilter: AdhocDashboardFilter = {
+          ...adhocFilter,
+          sourceType: 'promql',
+          sources: ['prom'],
+        };
+        const jobMatcher = 'job="api"';
+
+        beforeEach(() => {
+          mockState = [
+            {
+              type: 'adhoc',
+              name: 'conds',
+              conditions: [{ key: 'job', operator: '=', value: 'api' }],
+            },
+          ];
+        });
+
+        it("applies conditions as label matchers to the filter's sources only", () => {
+          const { result } = renderHook(() =>
+            useDashboardFilters([promqlFilter]),
+          );
+
+          expect(result.current.getFilterQueriesForSource('prom')).toEqual([
+            { type: 'promql', condition: jobMatcher },
+          ]);
+          expect(result.current.getFilterQueriesForSource('prom2')).toEqual([]);
+          expect(result.current.getFilterQueriesForSource(undefined)).toEqual(
+            [],
+          );
+        });
+
+        it('applies conditions to appliesToSourceIds over sources', () => {
+          const filters = [{ ...promqlFilter, appliesToSourceIds: ['prom2'] }];
+
+          const { result } = renderHook(() => useDashboardFilters(filters));
+
+          expect(result.current.getFilterQueriesForSource('prom')).toEqual([]);
+          expect(
+            conditionsFor(result.current.getFilterQueriesForSource('prom2')),
+          ).toEqual([jobMatcher]);
+        });
+
+        it('applies nothing when broadcast is disabled', () => {
+          const filters = [{ ...promqlFilter, isBroadcastEnabled: false }];
+
+          const { result } = renderHook(() => useDashboardFilters(filters));
+
+          expect(result.current.getFilterQueriesForSource('prom')).toEqual([]);
+        });
+
+        it('combines conditions across filters, deduplicated', () => {
+          mockState = [
+            {
+              type: 'adhoc',
+              name: 'conds',
+              conditions: [{ key: 'job', operator: '=', value: 'api' }],
+            },
+            {
+              type: 'adhoc',
+              name: 'conds2',
+              conditions: [
+                { key: 'job', operator: '=', value: 'api' },
+                { key: 'env', operator: '!=', value: 'dev' },
+              ],
+            },
+          ];
+          const filters = [
+            promqlFilter,
+            { ...promqlFilter, id: 'adhoc2', variableName: 'conds2' },
+          ];
+
+          const { result } = renderHook(() => useDashboardFilters(filters));
+
+          expect(
+            conditionsFor(result.current.getFilterQueriesForSource('prom')),
+          ).toEqual([jobMatcher, 'env!="dev"']);
+        });
+
+        it('skips conditions PromQL cannot express rather than throwing', () => {
+          // Kept from before the filter was switched from SQL to PromQL
+          mockState = [
+            {
+              type: 'adhoc',
+              name: 'conds',
+              conditions: [
+                { key: 'job', operator: 'LIKE', value: '%api%' },
+                { key: 'job', operator: '=', value: 'api' },
+              ],
+            },
+          ];
+
+          const { result } = renderHook(() =>
+            useDashboardFilters([promqlFilter]),
+          );
+
+          expect(result.current.broadcastedFilters).toEqual([]);
+          expect(
+            conditionsFor(result.current.getFilterQueriesForSource('prom')),
+          ).toEqual([jobMatcher]);
+        });
+
+        it('leaves them out of the unscoped broadcast filters', () => {
+          const { result } = renderHook(() =>
+            useDashboardFilters([promqlFilter]),
+          );
+
+          expect(result.current.broadcastedFilters).toEqual([]);
+        });
+      });
+
+      it('combines conditions with other filters, deduplicated', () => {
+        mockState = [
+          { type: 'sql', condition: "environment IN ('production')" },
+          { type: 'adhoc', name: 'conds', conditions: [condition] },
+          { type: 'adhoc', name: 'conds2', conditions: [condition] },
+        ];
+        const filters: DashboardFilter[] = [
+          mockFilters[0],
+          adhocFilter,
+          { ...adhocFilter, id: 'adhoc2', variableName: 'conds2' },
+        ];
+
+        const { result } = renderHook(() => useDashboardFilters(filters));
+
+        expect(
+          conditionsFor(result.current.getFilterQueriesForSource('logs')),
+        ).toEqual(["toString(environment) IN ('production')", conditionSql]);
+      });
     });
 
     it('lists an ad hoc entry naming no declared filter as ignored', () => {

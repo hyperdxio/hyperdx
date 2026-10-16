@@ -86,6 +86,12 @@ describe('getSqlSourceColumnKeys', () => {
       ]),
     ).toEqual(['ServiceName']);
   });
+
+  it('quotes column names that are not bare identifiers', () => {
+    expect(getSqlSourceColumnKeys([column('service-name', 'String')])).toEqual([
+      '`service-name`',
+    ]);
+  });
 });
 
 describe('getValueSuggestions', () => {
