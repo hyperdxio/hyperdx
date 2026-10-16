@@ -44,7 +44,8 @@ describe('MCP tool descriptions', () => {
       }
       const properties = (node as { properties?: unknown }).properties;
       if (properties != null && typeof properties === 'object') {
-        for (const [key, prop] of Object.entries<unknown>(properties)) {
+        for (const [key, value] of Object.entries(properties)) {
+          const prop: unknown = value;
           if (prop == null || typeof prop !== 'object') continue;
           // zod-to-json-schema dedupes a reused schema into a bare $ref
           // pointer; the description lives on the referenced definition.
