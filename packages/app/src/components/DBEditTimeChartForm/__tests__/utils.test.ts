@@ -167,6 +167,7 @@ describe('isQueryReady', () => {
         configType: 'promql',
         promqlExpression: [{ expression: 'up' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeTruthy();
@@ -176,6 +177,7 @@ describe('isQueryReady', () => {
         configType: 'promql',
         promqlExpression: 'up',
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeTruthy();
@@ -187,6 +189,7 @@ describe('isQueryReady', () => {
         configType: 'promql',
         promqlExpression: [{ expression: '' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeFalsy();
@@ -201,6 +204,7 @@ describe('isQueryReady', () => {
         displayType: DisplayType.Number,
         promqlExpression: [{ expression: '' }, { expression: 'up' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeFalsy();
@@ -210,6 +214,7 @@ describe('isQueryReady', () => {
         displayType: DisplayType.Line,
         promqlExpression: [{ expression: '' }, { expression: 'up' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeTruthy();
@@ -227,6 +232,7 @@ describe('buildRenderedPromqlExpression', () => {
   ): ChartConfigWithDateRange => ({
     configType: 'promql',
     connection: 'local',
+    source: 'source-promql',
     displayType: DisplayType.Line,
     promqlExpression: [{ expression: 'up' }],
     dateRange,
@@ -596,6 +602,7 @@ describe('resolvePreviewVariables', () => {
     configType: 'promql',
     promqlExpression: 'up{service=~"$service"}',
     connection: 'local',
+    source: 'source-promql',
     dateRange,
   };
 
@@ -644,6 +651,7 @@ describe('resolveTilePreviewFilters', () => {
     configType: 'promql',
     promqlExpression: 'up{service=~"$service"}',
     connection: 'local',
+    source: 'source-promql',
     dateRange,
   };
 

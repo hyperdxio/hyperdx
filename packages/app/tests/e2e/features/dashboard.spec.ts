@@ -3417,7 +3417,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
             "  { $set: { tiles: [{ id: 'promql-1', x: 0, y: 0, w: 4, h: 2,",
             "      config: { configType: 'promql', promqlExpression: 'up',",
-            "                connection: 'c1', displayType: 'line' } }] } }",
+            "                connection: 'c1', source: 's1', displayType: 'line' } }] } }",
             ')));',
           ].join('\n'),
         );

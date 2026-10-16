@@ -4,6 +4,7 @@ import {
   FilterState,
   filterStateToPredicate,
   filtersToQuery,
+  getAdhocFilterAppliesToSourceIds,
   getDashboardVariableDeclarations,
   getDashboardVariableFilters,
   getFilterBroadcastTarget,
@@ -27,6 +28,7 @@ import {
   validateVariableName,
 } from '@/filters';
 import type {
+  AdhocDashboardFilter,
   ChartVariable,
   DashboardFilter,
   Filter,
@@ -1610,14 +1612,30 @@ describe('filters', () => {
       ...overrides,
     });
 
-    it('reports the expression and scope for a broadcasting filter', () => {
+    it('reports the scope for a broadcasting filter', () => {
       expect(getFilterBroadcastTarget(filter({}))).toEqual({
-        expression: 'ServiceName',
         appliesToSourceIds: undefined,
       });
       expect(
         getFilterBroadcastTarget(filter({ appliesToSourceIds: ['logs'] })),
-      ).toEqual({ expression: 'ServiceName', appliesToSourceIds: ['logs'] });
+      ).toEqual({ appliesToSourceIds: ['logs'] });
+    });
+
+    it('scopes an ad hoc filter to the sources it applies to', () => {
+      const adhoc: AdhocDashboardFilter = {
+        id: 'f4',
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources: ['logs', 'traces'],
+        isVariableEnabled: true,
+      };
+      expect(getFilterBroadcastTarget(adhoc)).toEqual({
+        appliesToSourceIds: ['logs', 'traces'],
+      });
+      expect(
+        getFilterBroadcastTarget({ ...adhoc, isBroadcastEnabled: false }),
+      ).toBeUndefined();
     });
 
     it('returns undefined when broadcasting is off', () => {
@@ -1715,6 +1733,29 @@ describe('filters', () => {
       expect(isFilterGlobalRequirement({ isGlobalRequirement: false })).toBe(
         false,
       );
+    });
+  });
+
+  describe('getAdhocFilterAppliesToSourceIds', () => {
+    it('falls back to the filter sources when no scope is set', () => {
+      expect(getAdhocFilterAppliesToSourceIds({ sources: ['logs'] })).toEqual([
+        'logs',
+      ]);
+      expect(
+        getAdhocFilterAppliesToSourceIds({
+          sources: ['logs'],
+          appliesToSourceIds: [],
+        }),
+      ).toEqual(['logs']);
+    });
+
+    it('returns the scoped sources when set', () => {
+      expect(
+        getAdhocFilterAppliesToSourceIds({
+          sources: ['logs', 'traces'],
+          appliesToSourceIds: ['traces'],
+        }),
+      ).toEqual(['traces']);
     });
   });
 

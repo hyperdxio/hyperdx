@@ -71,6 +71,7 @@ describe('PromQL heatmaps', () => {
     displayType: DisplayType.Heatmap,
     promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
     connection: 'test-connection',
+    source: 'source-promql',
     dateRange: [new Date(T0 + 90_000), new Date(T0 + HOUR + 90_000)],
     granularity: '5 minute',
     legendTemplate: '{{job}}',

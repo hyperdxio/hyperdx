@@ -7,6 +7,7 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { Badge } from '@clickhouse/click-ui';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isLogSource,
@@ -20,7 +21,6 @@ import {
   ActionIcon,
   Alert,
   Anchor,
-  Badge,
   Breadcrumbs,
   Card,
   Flex,
@@ -688,25 +688,9 @@ const NodesTable = ({
                         <Table.Td>{node.name || 'N/A'}</Table.Td>
                         <Table.Td>
                           {node.ready === 1 ? (
-                            <Badge
-                              variant="light"
-                              color="green"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Ready
-                            </Badge>
+                            <Badge text="Ready" state="success" />
                           ) : (
-                            <Badge
-                              variant="light"
-                              color="red"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Not Ready
-                            </Badge>
+                            <Badge text="Not Ready" state="danger" />
                           )}
                         </Table.Td>
                         <Table.Td>
@@ -886,25 +870,9 @@ const NamespacesTable = ({
                         <Table.Td>{namespace.name || 'N/A'}</Table.Td>
                         <Table.Td>
                           {namespace.phase === 1 ? (
-                            <Badge
-                              variant="light"
-                              color="green"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Ready
-                            </Badge>
+                            <Badge text="Ready" state="success" />
                           ) : (
-                            <Badge
-                              variant="light"
-                              color="red"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Terminating
-                            </Badge>
+                            <Badge text="Terminating" state="danger" />
                           )}
                         </Table.Td>
                         <Table.Td>
