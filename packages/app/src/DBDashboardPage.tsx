@@ -2372,24 +2372,29 @@ function DBDashboardPage({
     [where, whereLanguage, getFilterQueriesForSource],
   );
 
-  const getTileFilterHandler = useCallback(
-    (
-      chart: Tile,
-      sourceId: string | undefined,
-    ): TileFilterHandler | undefined => {
-      // The filter bar is hidden in kiosk mode, so a click would add conditions
-      // the viewer can't see or remove.
-      if (isKioskMode) return undefined;
+  // Built once per tile list so each tile's `onFilter` keeps its identity
+  // across renders; a fresh closure would rebuild the tile's row-panel context
+  // and re-render every cell in its search table.
+  const tileFilterHandlers = useMemo(() => {
+    const handlers = new Map<string, TileFilterHandler>();
+    // The filter bar is hidden in kiosk mode, so a click would add conditions
+    // the viewer can't see or remove.
+    if (isKioskMode) return handlers;
+    for (const tile of dashboard?.tiles ?? []) {
+      const sourceId = 'source' in tile.config ? tile.config.source : undefined;
       const targetIds = getAdhocFilterTargetsForTile(
         filters,
-        chart.config,
+        tile.config,
         sourceId,
       ).map(filter => filter.id);
-      if (targetIds.length === 0) return undefined;
-      return (entries, action) => applyAdhocAction(targetIds, entries, action);
-    },
-    [isKioskMode, filters, applyAdhocAction],
-  );
+      if (targetIds.length > 0) {
+        handlers.set(tile.id, (entries, action) =>
+          applyAdhocAction(targetIds, entries, action),
+        );
+      }
+    }
+    return handlers;
+  }, [isKioskMode, dashboard?.tiles, filters, applyAdhocAction]);
 
   const renderTileComponent = useCallback(
     (chart: Tile) => {
@@ -2410,7 +2415,7 @@ function DBDashboardPage({
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
           filters={getTileFilters(tileSourceId)}
-          onFilter={getTileFilterHandler(chart, tileSourceId)}
+          onFilter={tileFilterHandlers.get(chart.id)}
           variables={variables}
           unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
@@ -2513,7 +2518,7 @@ function DBDashboardPage({
       showAlertAnnotations,
       showReleaseAnnotations,
       getTileFilters,
-      getTileFilterHandler,
+      tileFilterHandlers,
       variables,
       unsatisfiedRequiredFilters,
       moveTargetContainers,
