@@ -1,7 +1,7 @@
 import * as React from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import {
   Autocomplete,
-  Badge,
   Divider,
   Group,
   Modal,
@@ -11,7 +11,6 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconFlask } from '@tabler/icons-react';
 
 import { OPTIONS_FONTS } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
@@ -143,9 +142,7 @@ export const UserPreferencesModal = ({
           label={
             <Group align="center" gap="xs">
               Appearance
-              <Badge variant="light" fw="normal" size="xs">
-                Experimental
-              </Badge>
+              <Badge size="sm" text="Experimental" state="info" />
             </Group>
           }
           labelPosition="left"
@@ -188,14 +185,12 @@ export const UserPreferencesModal = ({
                   w={220}
                 >
                   <Badge
-                    variant="light"
-                    color="violet"
-                    fw="normal"
-                    size="xs"
-                    leftSection={<IconFlask size={10} />}
-                  >
-                    Dev Only
-                  </Badge>
+                    size="sm"
+                    text="Dev only"
+                    state="neutral"
+                    icon="flask"
+                    iconDir="start"
+                  />
                 </Tooltip>
               </Group>
             }
