@@ -3,6 +3,7 @@ import * as SQLParser from 'node-sql-parser';
 import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
 import {
+  AdhocDashboardFilter,
   AdhocFilterSourceType,
   AdhocFilterValue,
   ChartVariable,
@@ -923,6 +924,18 @@ export function isAdhocFilter<T extends { type: DashboardFilterKind }>(
   return filter.type === 'ADHOC';
 }
 
+/**
+ * The sources an ADHOC filter broadcasts its conditions to: its
+ * `appliesToSourceIds`, or its own `sources` when that is unset or empty.
+ */
+export function getAdhocFilterAppliesToSourceIds(
+  filter: Pick<AdhocDashboardFilter, 'sources' | 'appliesToSourceIds'>,
+): string[] {
+  return filter.appliesToSourceIds?.length
+    ? filter.appliesToSourceIds
+    : filter.sources;
+}
+
 /** Type guard for the saved conditions of an ADHOC filter. */
 export function isAdhocFilterValue(
   value: DashboardFilterValue,
@@ -937,16 +950,16 @@ export function getFilterExpression(
   return isQueryExpressionFilter(filter) ? filter.expression : undefined;
 }
 
-/** What the filter broadcasts, or undefined when it cannot broadcast. */
+/** Where the filter broadcasts, or undefined when it cannot broadcast. */
 export function getFilterBroadcastTarget(
   filter: DashboardFilter,
-): { expression: string; appliesToSourceIds?: string[] } | undefined {
-  if (!isQueryExpressionFilter(filter) || !isFilterBroadcastEnabled(filter))
-    return undefined;
-  return {
-    expression: filter.expression,
-    appliesToSourceIds: filter.appliesToSourceIds,
-  };
+): { appliesToSourceIds?: string[] } | undefined {
+  if (!isFilterBroadcastEnabled(filter)) return undefined;
+  if (isAdhocFilter(filter)) {
+    return { appliesToSourceIds: getAdhocFilterAppliesToSourceIds(filter) };
+  }
+  if (!isQueryExpressionFilter(filter)) return undefined;
+  return { appliesToSourceIds: filter.appliesToSourceIds };
 }
 
 /**

@@ -108,6 +108,33 @@ describe('MCP Webhook Tools', () => {
       expect(result.isError).toBe(true);
     });
 
+    it('rejects a body template that does not compile', async () => {
+      const result = await callTool(client, 'clickstack_save_webhook', {
+        name: 'Broken body',
+        service: 'generic',
+        url: 'https://example.com/webhook',
+        body: '{"status": "{{#if (eq state \\"ALERT\\")}}firing{{/if}}"}',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Invalid webhook body template');
+      expect(await Webhook.countDocuments({ team: team._id })).toBe(0);
+    });
+
+    it('accepts a body template that compiles but is not JSON as written', async () => {
+      const body =
+        '{"status": "{{#if (eq state "ALERT")}}firing{{else}}resolved{{/if}}"}';
+      const result = await callTool(client, 'clickstack_save_webhook', {
+        name: 'Conditional body',
+        service: 'generic',
+        url: 'https://example.com/webhook',
+        body,
+      });
+
+      expect(result.isError).toBeFalsy();
+      expect((await Webhook.findOne({ team: team._id }))?.body).toBe(body);
+    });
+
     it('rejects a duplicate (team, service, name)', async () => {
       await Webhook.create({
         team: team._id,
@@ -160,6 +187,22 @@ describe('MCP Webhook Tools', () => {
       expect(stored?.description == null).toBe(true);
       // headers omitted + destination unchanged -> preserved
       expect(stored?.headers?.get('X-Token')).toBe('secret');
+    });
+
+    it('rejects a body template that does not compile on update', async () => {
+      const wh = await createGenericWebhook();
+
+      const result = await callTool(client, 'clickstack_save_webhook', {
+        id: wh._id.toString(),
+        name: 'Original',
+        service: 'generic',
+        url: 'https://example.com/original',
+        body: '{"text": "{{#if title}}"}',
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('Invalid webhook body template');
+      expect((await Webhook.findById(wh._id))?.body).toBeUndefined();
     });
 
     it('clears omitted write-only secrets when the destination changes', async () => {

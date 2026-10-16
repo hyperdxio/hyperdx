@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -414,6 +421,10 @@ export type FilterGroupProps = {
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  showDistributions?: boolean;
+  onShowDistributionsChange?: (show: boolean) => void;
   showFilterCounts?: boolean;
   'data-testid'?: string;
   chartConfig: BuilderChartConfigWithDateRange;
@@ -518,6 +529,8 @@ const FilterGroupBody = ({
     onFetchingDistributionChange(isFetchingDistribution);
   }, [isFetchingDistribution, onFetchingDistributionChange]);
 
+  // onDistributionError isn't stable; re-running on it would notify again
+  const handleDistributionError = useEffectEvent(onDistributionError);
   useEffect(() => {
     if (distributionError) {
       notifications.show({
@@ -526,9 +539,9 @@ const FilterGroupBody = ({
         message: distributionError?.message,
         autoClose: 5000,
       });
-      onDistributionError();
+      handleDistributionError();
     }
-  }, [distributionError, onDistributionError]);
+  }, [distributionError]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
@@ -921,6 +934,10 @@ export const FilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  expanded,
+  onExpandedChange,
+  showDistributions: _showDistributions,
+  onShowDistributionsChange,
   showFilterCounts,
   'data-testid': dataTestId,
   chartConfig,
@@ -928,8 +945,21 @@ export const FilterGroup = ({
   distributionKey,
   onRangeChange,
 }: FilterGroupProps) => {
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
-  const [showDistributions, setShowDistributions] = useState(false);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(
+    isDefaultExpanded ?? false,
+  );
+  const isExpanded = expanded ?? uncontrolledExpanded;
+  const setExpanded = (value: boolean) => {
+    setUncontrolledExpanded(value);
+    onExpandedChange?.(value);
+  };
+  const [uncontrolledShowDistributions, setUncontrolledShowDistributions] =
+    useState(false);
+  const showDistributions = _showDistributions ?? uncontrolledShowDistributions;
+  const setShowDistributions = (value: boolean) => {
+    setUncontrolledShowDistributions(value);
+    onShowDistributionsChange?.(value);
+  };
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
   const selectedValues: SelectedValues = useMemo(
@@ -939,22 +969,16 @@ export const FilterGroup = ({
 
   const hasRange = selectedValues.range != null;
 
-  const toggleShowDistributions = useCallback(() => {
-    setShowDistributions(prev => {
-      if (!prev) {
-        setExpanded(true);
-      }
-      return !prev;
-    });
-  }, []);
+  const toggleShowDistributions = () => {
+    if (!showDistributions) setExpanded(true);
+    setShowDistributions(!showDistributions);
+  };
 
-  const onDistributionError = useCallback(() => {
-    setShowDistributions(false);
-  }, []);
+  const onDistributionError = () => setShowDistributions(false);
 
   useEffect(() => {
     if (isDefaultExpanded) {
-      setExpanded(true);
+      setUncontrolledExpanded(true);
     }
   }, [isDefaultExpanded]);
 

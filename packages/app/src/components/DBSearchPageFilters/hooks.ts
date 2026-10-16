@@ -16,6 +16,7 @@ import {
 
 import {
   Facet,
+  SINGLE_KEY_VALUES_LIMIT,
   useAllFields,
   useColumns,
   useDateTimeColumns,
@@ -32,9 +33,6 @@ import { mergePath } from '@/utils';
 import { listRequestedFacets, toQuotedClickHouseKeyExpression } from './utils';
 
 const INITIAL_LOAD_LIMIT = 20;
-
-/* The maximum number of values per filter to load when "Load More" is clicked */
-const LOAD_MORE_LOAD_LIMIT = 10000;
 
 /**
  * Decide which table key-value discovery reads from.
@@ -238,7 +236,7 @@ function useFacets({
               ),
             },
             keys: [sqlKey],
-            limit: LOAD_MORE_LOAD_LIMIT,
+            limit: SINGLE_KEY_VALUES_LIMIT,
             disableRowLimit: true,
             source,
           });
@@ -263,7 +261,7 @@ function useFacets({
           connectionId: tableConnection.connectionId,
           metadataMVs: tableConnection.metadataMVs,
           keyExpressions: [sqlKey],
-          maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+          maxValuesPerKey: SINGLE_KEY_VALUES_LIMIT,
           dateRange,
           timestampValueExpression:
             source?.timestampValueExpression ??

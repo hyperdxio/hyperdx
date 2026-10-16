@@ -12,6 +12,7 @@ import {
 } from '@/core/histogram';
 import { Metadata, unquoteIdentifier } from '@/core/metadata';
 import {
+  classifyTimestampType,
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
   extractSettingsClauseFromEnd,
@@ -951,7 +952,7 @@ export async function timeFilterExpr({
     optimizedTimestampValueExpression,
   );
 
-  const whereExprs = await Promise.all(
+  const columns = await Promise.all(
     valueExpressions.map(async expr => {
       const col = expr.trim();
 
@@ -982,23 +983,67 @@ export async function timeFilterExpr({
             connectionId,
           });
 
-      const unsafeTimestampValueExpression = {
-        UNSAFE_RAW_SQL: col,
-      };
-
       if (columnMeta == null && !skipColumnLookup) {
         console.warn(
           `Column ${col} not found in ${databaseName}.${tableName} while inferring type for time filter`,
         );
       }
 
+      return {
+        col,
+        toStartOf,
+        isToDateExpr,
+        columnType: stripTypeWrappers(columnMeta?.type ?? ''),
+      };
+    }),
+  );
+
+  const MS_PRECISION = 3;
+  const timePrecisionOf = (type: string) => {
+    const classified = classifyTimestampType(type);
+    return classified && classified.kind !== 'date'
+      ? classified.precision
+      : null;
+  };
+  const hasPreciseColumn = columns.some(
+    ({ toStartOf, isToDateExpr, columnType }) =>
+      !toStartOf &&
+      !isToDateExpr &&
+      (timePrecisionOf(columnType) ?? -1) >= MS_PRECISION,
+  );
+
+  const whereExprs = columns.map(
+    ({ col, toStartOf, isToDateExpr, columnType }) => {
+      const unsafeTimestampValueExpression = {
+        UNSAFE_RAW_SQL: col,
+      };
+
+      // A column coarser than the ms bound drops the rest of the start's tick,
+      // so floor to its precision. Only when a finer column keeps the exact
+      // bound; otherwise adjacent windows would share the floored rows.
+      const columnPrecision = timePrecisionOf(columnType);
+      const flooredPrecision =
+        hasPreciseColumn &&
+        columnPrecision != null &&
+        columnPrecision < MS_PRECISION
+          ? columnPrecision
+          : null;
+      const precisionStepMs =
+        flooredPrecision == null ? 1 : 10 ** (MS_PRECISION - flooredPrecision);
+      const columnStartTime =
+        Math.floor(startTime / precisionStepMs) * precisionStepMs;
+
       const rawStartBound = isRenderingRawSqlTemplate
         ? includedDataInterval
           ? chSql`toStartOfInterval($__fromTime_ms, INTERVAL $__interval_s second) - INTERVAL $__interval_s second`
-          : chSql`$__fromTime_ms`
+          : flooredPrecision == null
+            ? chSql`$__fromTime_ms`
+            : flooredPrecision === 0
+              ? chSql`toDateTime($__fromTime_ms)`
+              : chSql`toDateTime64($__fromTime_ms, ${{ UNSAFE_RAW_SQL: String(flooredPrecision) }})`
         : includedDataInterval
-          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: startTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
-          : chSql`fromUnixTimestamp64Milli(${{ Int64: startTime }})`;
+          ? chSql`toStartOfInterval(fromUnixTimestamp64Milli(${{ Int64: columnStartTime }}), INTERVAL ${includedDataInterval}) - INTERVAL ${includedDataInterval}`
+          : chSql`fromUnixTimestamp64Milli(${{ Int64: columnStartTime }})`;
 
       const rawEndBound = isRenderingRawSqlTemplate
         ? includedDataInterval
@@ -1016,13 +1061,16 @@ export async function timeFilterExpr({
         ? chSql`${toStartOf.function}(${rawEndBound}${toStartOf.formattedRemainingArgs})`
         : rawEndBound;
 
-      const isDateType =
-        /^Date(?:32)?$/i.test(stripTypeWrappers(columnMeta?.type ?? '')) ||
-        isToDateExpr;
+      const isDateType = /^Date(?:32)?$/i.test(columnType) || isToDateExpr;
 
       // toStartOf* and Date filters must stay inclusive — strict < on a rounded value drops a whole interval
       const startOp =
-        dateRangeStartInclusive || toStartOf || isDateType ? '>=' : '>';
+        dateRangeStartInclusive ||
+        toStartOf ||
+        isDateType ||
+        flooredPrecision != null
+          ? '>='
+          : '>';
       const endOp =
         dateRangeEndInclusive || toStartOf || isDateType ? '<=' : '<';
 
@@ -1031,7 +1079,7 @@ export async function timeFilterExpr({
       } else {
         return chSql`(${unsafeTimestampValueExpression} ${startOp} ${startTimeCond} AND ${unsafeTimestampValueExpression} ${endOp} ${endTimeCond})`;
       }
-    }),
+    },
   );
 
   return concatChSql('AND', ...whereExprs);
