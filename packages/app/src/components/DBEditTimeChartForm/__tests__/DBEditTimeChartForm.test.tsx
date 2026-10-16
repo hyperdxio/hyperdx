@@ -1546,6 +1546,33 @@ describe('DBEditTimeChartForm - Inline alerts', () => {
     expect(screen.getByTestId('chart-save-alert-button')).toBeInTheDocument();
   });
 
+  // The edit-alert modal saves the alert by saving the chart, so the panel's
+  // action saves instead of only closing the panel.
+  it('saves from the panel when the alert saves with the chart', async () => {
+    const onSave = jest.fn();
+    renderInlineAlertForm({
+      chartConfig: {
+        ...validNumberConfig,
+        alert: {
+          ...DEFAULT_TILE_ALERT,
+          displayName: 'Prod error rate',
+          channels: [{ type: 'webhook', webhookId: 'hook-1' }],
+        },
+      },
+      isAlertRequired: true,
+      onSave,
+    });
+
+    expect(
+      screen.queryByTestId('alert-panel-confirm-button'),
+    ).not.toBeInTheDocument();
+    const saveAlertButton = screen.getByTestId('chart-save-alert-button');
+    expect(saveAlertButton).toHaveTextContent('Save alert');
+    await userEvent.click(saveAlertButton);
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+  });
+
   // The editor requires an alert on this surface, so removing it would leave
   // the save button with nothing to write.
   it('hides the remove control when the alert is required', async () => {

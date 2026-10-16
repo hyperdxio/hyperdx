@@ -38,7 +38,6 @@ export function AlertPanelButton({
       <Button
         variant="subtle"
         size="sm"
-        color="gray"
         onClick={() => {
           if (hasAlert) {
             // Only opens: closing from here would cancel the panel's changes

@@ -1,15 +1,11 @@
-import { Control, useForm, useWatch } from 'react-hook-form';
-import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
+import { useForm } from 'react-hook-form';
 import { fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { AlertPanelLayout } from '@/components/AlertPanel';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
-import {
-  DEFAULT_TILE_ALERT,
-  TILE_ALERT_THRESHOLD_TYPE_OPTIONS,
-} from '@/utils/alerts';
+import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 jest.mock('@/api', () => ({
   __esModule: true,
@@ -49,17 +45,6 @@ jest.mock('@/components/alerts/AckAlert', () => ({
 const mockConfirm = jest.fn();
 jest.mock('@/useConfirm', () => ({ useConfirm: () => mockConfirm }));
 
-// useWatch inside the component that owns useForm doesn't re-render on
-// setValue, so the watched value is surfaced from a child component.
-function ThresholdTypeProbe({
-  control,
-}: {
-  control: Control<ChartEditorFormState>;
-}) {
-  const thresholdType = useWatch({ control, name: 'alert.thresholdType' });
-  return <div data-testid="threshold-type">{thresholdType}</div>;
-}
-
 const noop = () => {};
 
 function Harness({ onRemove = noop }: { onRemove?: () => void }) {
@@ -67,15 +52,12 @@ function Harness({ onRemove = noop }: { onRemove?: () => void }) {
     defaultValues: { alert: DEFAULT_TILE_ALERT },
   });
   return (
-    <>
-      <ThresholdTypeProbe control={control} />
-      <TileAlertEditor
-        control={control}
-        setValue={setValue}
-        alert={DEFAULT_TILE_ALERT}
-        onRemove={onRemove}
-      />
-    </>
+    <TileAlertEditor
+      control={control}
+      setValue={setValue}
+      alert={DEFAULT_TILE_ALERT}
+      onRemove={onRemove}
+    />
   );
 }
 
@@ -111,20 +93,19 @@ describe('TileAlertEditor in the alert panel', () => {
     expect(screen.queryByTestId('alert-panel')).not.toBeInTheDocument();
   });
 
-  it('keeps edits made in the panel after it closes', () => {
-    renderInPanel({ defaultOpened: true });
-
-    fireEvent.change(
-      screen.getByDisplayValue(
-        TILE_ALERT_THRESHOLD_TYPE_OPTIONS[AlertThresholdType.ABOVE],
-      ),
-      { target: { value: AlertThresholdType.BELOW } },
+  // Reverting is the layout owner's job (EditTimeChartForm restores its
+  // snapshot), so closing only has to hand over to it.
+  it('cancels the panel changes through the layout when closed', () => {
+    const onCancel = jest.fn();
+    renderWithMantine(
+      <AlertPanelLayout defaultOpened onCancel={onCancel}>
+        <Harness />
+      </AlertPanelLayout>,
     );
+
     fireEvent.click(screen.getByTestId('close-alert-panel-button'));
 
-    expect(screen.getByTestId('threshold-type')).toHaveTextContent(
-      AlertThresholdType.BELOW,
-    );
+    expect(onCancel).toHaveBeenCalledWith(false);
   });
 
   it('has no close control outside a panel', () => {

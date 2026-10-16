@@ -24,9 +24,10 @@ export function useShowAlertErrors() {
 
 /**
  * The alert's primary action, shown under its inputs in the alert panel.
- * Where the alert saves on its own (the chart explorer) it saves it. Elsewhere
- * the alert saves with the chart, so this keeps the panel's changes (adding a
- * new alert, or updating an existing one) and closes the panel.
+ * Where the alert saves on its own (the chart explorer, or the edit-alert
+ * modal) it saves it. Elsewhere the alert saves with the chart, so this keeps
+ * the panel's changes (adding a new alert, or updating an existing one) and
+ * closes the panel.
  */
 export function AlertPanelPrimaryAction({
   trigger,

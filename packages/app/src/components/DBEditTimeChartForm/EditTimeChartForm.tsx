@@ -734,6 +734,15 @@ export default function EditTimeChartForm({
     [validateAndNormalize, onSaveAlert],
   );
 
+  // The edit-alert modal requires the alert and saves it by saving the chart,
+  // so there the panel's action saves too instead of only closing the panel.
+  const panelSaveAlert =
+    onSaveAlert != null
+      ? handleSaveAlert
+      : isAlertRequired && onSave != null
+        ? handleSave
+        : undefined;
+
   // The alert as it was when its panel opened, restored if the panel is closed
   // without confirming. Cloned: the form updates nested values in place.
   const alertSnapshotRef = useRef(formValue.alert);
@@ -1103,9 +1112,9 @@ export default function EditTimeChartForm({
         <AlertPanelPrimaryAction
           trigger={trigger}
           handleSubmit={handleSubmit}
-          handleSaveAlert={onSaveAlert != null ? handleSaveAlert : undefined}
+          handleSaveAlert={panelSaveAlert}
           saveAlertLabel={saveAlertLabel}
-          isSavingAlert={isSavingAlert}
+          isSavingAlert={onSaveAlert != null ? isSavingAlert : isSaving}
         />
       }
     >
