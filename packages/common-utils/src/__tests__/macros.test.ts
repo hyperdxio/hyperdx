@@ -7,6 +7,7 @@ import {
   substitutePromqlChartConfigTemplates,
 } from '@/macros';
 import type { ChartVariable, MetricTable } from '@/types';
+import { DisplayType } from '@/types';
 
 const variable = (name: string, values: string[]): ChartVariable => ({
   name,
@@ -676,6 +677,79 @@ describe('substitutePromqlChartConfigTemplates', () => {
       ],
       variables: undefined,
     });
+  });
+
+  it('adds its filters to every selector after expanding variables', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [
+          { expression: 'up' },
+          { expression: 'rate(errors{service=~"$service"}[5m])' },
+        ],
+        variables: [SERVICE],
+        filters: [
+          { type: 'promql', condition: 'job="api"' },
+          { type: 'promql', condition: 'env!="dev"' },
+        ],
+        displayType: DisplayType.Line,
+        dateRange: PROMQL_DATE_RANGE,
+      }),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up{job="api", env!="dev"}' },
+        {
+          expression:
+            'rate(errors{service=~"(api|web)", job="api", env!="dev"}[5m])',
+        },
+      ],
+      filters: undefined,
+    });
+  });
+
+  it('rejects an unparseable expression when there are filters', () => {
+    expect(() =>
+      substitutePromqlChartConfigTemplates({
+        ...promqlConfig('up{job=}'),
+        filters: [{ type: 'promql', condition: 'job="api"' }],
+      }),
+    ).toThrow(/failed to parse/);
+  });
+
+  it('adds filters only to the expressions the display queries', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [{ expression: 'up' }, { expression: 'up{job=}' }],
+        filters: [{ type: 'promql', condition: 'env="prod"' }],
+        displayType: DisplayType.Number,
+        dateRange: PROMQL_DATE_RANGE,
+      }).promqlExpression,
+    ).toEqual([{ expression: 'up{env="prod"}' }, { expression: 'up{job=}' }]);
+  });
+
+  it('leaves blank rows blank when there are filters', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [{ expression: 'up' }, { expression: '  ' }],
+        filters: [{ type: 'promql', condition: 'env="prod"' }],
+        displayType: DisplayType.Line,
+        dateRange: PROMQL_DATE_RANGE,
+      }).promqlExpression,
+    ).toEqual([{ expression: 'up{env="prod"}' }, { expression: '  ' }]);
+  });
+
+  it('leaves an unparseable expression alone when there are no filters', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        ...promqlConfig('up{job=}'),
+        filters: [],
+      }).promqlExpression,
+    ).toBe('up{job=}');
   });
 });
 

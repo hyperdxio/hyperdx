@@ -12,12 +12,15 @@ import {
   VariableEntryValue,
 } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  adhocConditionsToFilters,
+  adhocConditionsToPromqlFilters,
   doesFilterApplyToSource,
   FilterState,
   filtersToQuery,
   getDashboardVariableFilters,
   getFilterExpression,
   getFilterVariableName,
+  getSqlFilters,
   isAdhocFilter,
   isFilterBroadcastEnabled,
   isQueryExpressionFilter,
@@ -25,9 +28,9 @@ import {
 import {
   AdhocFilterCondition,
   AdhocFilterValueSchema,
+  BroadcastFilter,
   ChartVariable,
   DashboardFilter,
-  Filter,
 } from '@hyperdx/common-utils/dist/types';
 
 import { dashboardFilterValuesParser } from '@/utils/queryParsers';
@@ -256,21 +259,10 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
 
   /** Returns the set of rendered filter conditions corresponding to filters matching the given predicate */
   const getFiltersQueriesFor = useCallback(
-    (predicate: (filter: DashboardFilter) => boolean): Filter[] => {
+    (predicate: (filter: DashboardFilter) => boolean): BroadcastFilter[] => {
       const seen = new Set<string>();
-      const queries: Filter[] = [];
-      for (const filter of filters) {
-        if (!predicate(filter)) continue;
-        const expression = getFilterExpression(filter);
-        if (expression == null) continue;
-        const selection = selectionByFilterId.get(filter.id);
-        if (!selection) continue;
-        // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
-        // All keys can be stringified, since filter select values are stringified as well.
-        const emitted = filtersToQuery(
-          { [expression]: selection },
-          { stringifyKeys: true },
-        );
+      const queries: BroadcastFilter[] = [];
+      const emit = (emitted: BroadcastFilter[]) => {
         for (const query of emitted) {
           // Two definitions resolving to the same selection would otherwise
           // emit an identical condition twice, churning react-query keys.
@@ -280,14 +272,38 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
             queries.push(query);
           }
         }
+      };
+
+      for (const filter of filters) {
+        if (!predicate(filter)) continue;
+        if (isAdhocFilter(filter)) {
+          const conditions = adhocConditionsByFilterId.get(filter.id);
+          if (!conditions) continue;
+          emit(
+            filter.sourceType === 'promql'
+              ? adhocConditionsToPromqlFilters(conditions)
+              : adhocConditionsToFilters(conditions),
+          );
+          continue;
+        }
+        const expression = getFilterExpression(filter);
+        if (expression == null) continue;
+        const selection = selectionByFilterId.get(filter.id);
+        if (!selection) continue;
+        // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
+        // All keys can be stringified, since filter select values are stringified as well.
+        emit(
+          filtersToQuery({ [expression]: selection }, { stringifyKeys: true }),
+        );
       }
       return queries;
     },
-    [filters, selectionByFilterId],
+    [filters, selectionByFilterId, adhocConditionsByFilterId],
   );
 
+  // Its consumers apply it as SQL; PromQL conditions reach tiles by source only.
   const broadcastedFilters = useMemo(
-    () => getFiltersQueriesFor(isFilterBroadcastEnabled),
+    () => getSqlFilters(getFiltersQueriesFor(isFilterBroadcastEnabled)),
     [getFiltersQueriesFor],
   );
 
@@ -296,7 +312,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
    * broadcast to tiles with the given sourceId
    **/
   const getFilterQueriesForSource = useCallback(
-    (sourceId: string | undefined): Filter[] =>
+    (sourceId: string | undefined): BroadcastFilter[] =>
       getFiltersQueriesFor(definition =>
         doesFilterApplyToSource(definition, sourceId),
       ),
@@ -338,7 +354,8 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * source is `sourceId`. Filters with no `appliesToSourceIds` apply to all
      * tiles. Filters with `appliesToSourceIds` defined apply only to tiles
      * whose source ID is in the list. Filters with broadcasting disabled
-     * apply to no tiles at all.
+     * apply to no tiles at all. PromQL ad hoc filters yield `promql` label
+     * matchers; the rest yield SQL or Lucene conditions.
      */
     getFilterQueriesForSource,
     /** The dashboard's variable-enabled filters and their currently selected values. */
