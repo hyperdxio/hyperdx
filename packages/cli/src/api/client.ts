@@ -415,9 +415,13 @@ export class ProxyClickhouseClient extends BaseClickhouseClient {
 // Response types (matching the internal API shapes)
 // ------------------------------------------------------------------
 
+import type { QueryLanguage } from '@hyperdx/common-utils/dist/types';
+
 export interface MeTeam {
   id: string;
   name: string;
+  defaultQueryLanguage?: QueryLanguage;
+  allowedQueryLanguages?: QueryLanguage[];
 }
 
 interface MeResponse {

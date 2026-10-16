@@ -1,9 +1,15 @@
+import { useCallback, useEffect, useMemo } from 'react';
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  DEFAULT_QUERY_LANGUAGES,
+  type QueryLanguage,
+} from '@hyperdx/common-utils/dist/types';
 import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
 
+import api from '@/api';
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
@@ -19,20 +25,48 @@ const STORAGE_KEY = 'hdx-search-where-language';
  * Returns the user's stored WHERE language preference, or null if none or unavailable.
  * Use when building form/URL defaults so the same selection applies across pages and on navigation.
  */
-export function getStoredLanguage(): 'sql' | 'lucene' | null {
+export function getStoredLanguage(
+  team?: {
+    allowedQueryLanguages?: QueryLanguage[];
+    defaultQueryLanguage?: QueryLanguage;
+  } | null,
+): QueryLanguage | null {
+  let stored: QueryLanguage | null = null;
   try {
-    const stored =
+    const val =
       typeof window !== 'undefined'
         ? window.localStorage.getItem(STORAGE_KEY)
         : null;
-    if (stored === 'sql' || stored === 'lucene') return stored;
+    if (val === 'sql' || val === 'lucene') {
+      stored = val;
+    }
   } catch {
     // localStorage may throw in private browsing
   }
-  return null;
+
+  if (!team) {
+    return stored;
+  }
+
+  const allowed: QueryLanguage[] = team.allowedQueryLanguages?.length
+    ? team.allowedQueryLanguages
+    : DEFAULT_QUERY_LANGUAGES;
+
+  if (stored && allowed.includes(stored)) {
+    return stored;
+  }
+
+  if (
+    team.defaultQueryLanguage &&
+    allowed.includes(team.defaultQueryLanguage)
+  ) {
+    return team.defaultQueryLanguage;
+  }
+
+  return allowed[0] ?? null;
 }
 
-function setStoredLanguage(lang: 'sql' | 'lucene'): void {
+function setStoredLanguage(lang: QueryLanguage): void {
   try {
     if (typeof window !== 'undefined')
       window.localStorage.setItem(STORAGE_KEY, lang);
@@ -50,7 +84,7 @@ export type SearchWhereInputProps = {
    * Callback when language changes - typically used to update form state
    * If not provided, language switching will be handled internally
    */
-  onLanguageChange?: (lang: 'sql' | 'lucene') => void;
+  onLanguageChange?: (lang: QueryLanguage) => void;
   /**
    * Enable keyboard shortcut (/ or s) to focus the input
    */
@@ -166,19 +200,46 @@ export default function SearchWhereInput({
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
     useDisclosure(false);
 
+  const { data: me } = api.useMe();
+  const teamAllowedLanguages = me?.team?.allowedQueryLanguages;
+  const allowedLanguages: QueryLanguage[] = useMemo(
+    () => teamAllowedLanguages ?? DEFAULT_QUERY_LANGUAGES,
+    [teamAllowedLanguages],
+  );
+  const defaultLanguage = me?.team?.defaultQueryLanguage ?? 'lucene';
+
   const { field: languageField } = useController({
     control,
     name: languageName as FieldPath<any>,
   });
 
-  const language: 'sql' | 'lucene' = languageField.value ?? 'lucene';
+  const language: QueryLanguage = allowedLanguages.includes(languageField.value)
+    ? languageField.value
+    : allowedLanguages.includes(defaultLanguage)
+      ? defaultLanguage
+      : (allowedLanguages[0] ?? 'lucene');
+
   const isSql = language === 'sql';
 
-  const handleLanguageChange = (lang: 'sql' | 'lucene') => {
-    setStoredLanguage(lang);
-    languageField.onChange(lang);
-    onLanguageChange?.(lang);
-  };
+  const handleLanguageChange = useCallback(
+    (lang: QueryLanguage, options?: { isUserSelection?: boolean }) => {
+      if (options?.isUserSelection) {
+        setStoredLanguage(lang);
+      }
+      languageField.onChange(lang);
+      onLanguageChange?.(lang);
+    },
+    [languageField, onLanguageChange],
+  );
+
+  useEffect(() => {
+    if (languageField.value && allowedLanguages.includes(languageField.value)) {
+      return;
+    }
+    const target =
+      getStoredLanguage(me?.team) ?? allowedLanguages[0] ?? 'lucene';
+    handleLanguageChange(target, { isUserSelection: false });
+  }, [languageField.value, allowedLanguages, me?.team, handleLanguageChange]);
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
   const baseHeight =
@@ -209,7 +270,10 @@ export default function SearchWhereInput({
           <Flex align="center" className={styles.languageSwitchRow}>
             <InputLanguageSwitch
               language={language}
-              onLanguageChange={handleLanguageChange}
+              onLanguageChange={lang =>
+                handleLanguageChange(lang, { isUserSelection: true })
+              }
+              allowedLanguages={allowedLanguages}
             />
             <Tooltip label="Syntax reference" withArrow position="top">
               <ActionIcon
