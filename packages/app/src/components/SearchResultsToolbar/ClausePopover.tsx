@@ -20,6 +20,8 @@ export function ClausePopover({
   initialMode,
   onOpen,
   onApply,
+  onReset,
+  resetDisabled,
   renderPick,
   renderSql,
   'data-testid': testId,
@@ -33,6 +35,9 @@ export function ClausePopover({
   /** Reset the caller's draft to the current value. */
   onOpen: () => void;
   onApply: () => void;
+  /** Restore the source default in the draft. Apply still has to confirm it. */
+  onReset: () => void;
+  resetDisabled?: boolean;
   renderPick: (apply: () => void) => ReactNode;
   renderSql: (apply: () => void) => ReactNode;
   'data-testid': string;
@@ -84,22 +89,33 @@ export function ClausePopover({
             data-testid={`${testId}-mode`}
           />
           {mode === 'pick' ? renderPick(apply) : renderSql(apply)}
-          <Group justify="flex-end" gap="xs">
+          <Group justify="space-between" gap="xs" wrap="nowrap">
             <Button
-              variant="secondary"
+              variant="link"
               size="xs"
-              onClick={() => setOpened(false)}
+              onClick={onReset}
+              disabled={resetDisabled}
+              data-testid={`${testId}-reset`}
             >
-              Cancel
+              Reset to default
             </Button>
-            <Button
-              variant="primary"
-              size="xs"
-              onClick={apply}
-              data-testid={`${testId}-apply`}
-            >
-              Apply
-            </Button>
+            <Group gap="xs" wrap="nowrap">
+              <Button
+                variant="secondary"
+                size="xs"
+                onClick={() => setOpened(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                size="xs"
+                onClick={apply}
+                data-testid={`${testId}-apply`}
+              >
+                Apply
+              </Button>
+            </Group>
           </Group>
         </Stack>
       </Popover.Dropdown>

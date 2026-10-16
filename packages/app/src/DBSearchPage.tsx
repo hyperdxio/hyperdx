@@ -2408,7 +2408,7 @@ function DBSearchPageContent() {
         className={searchPageStyles.searchForm}
       >
         {/* <DevTool control={control} /> */}
-        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
+        <Flex gap="sm" px="sm" pt="sm" justify="space-between" align="center">
           <SourceSelectControlled
             key={`${savedSearchId}`}
             size="xs"
@@ -2425,20 +2425,13 @@ function DBSearchPageContent() {
             data-testid="source-selector"
             style={{ minWidth: 150 }}
           />
-          <SourceSchemaPreview
-            source={inputSourceObj}
-            controlled
-            open={isSourceSchemaPreviewOpen}
-            onClose={() => setIsSourceSchemaPreviewOpen(false)}
-          />
-          <>
+          <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
             {!savedSearchId ? (
               <Button
                 data-testid="save-search-button"
                 variant="secondary"
                 size="xs"
                 onClick={onSaveSearch}
-                style={{ flexShrink: 0 }}
               >
                 Save
               </Button>
@@ -2450,7 +2443,6 @@ function DBSearchPageContent() {
                 onClick={() => {
                   setSaveSearchModalState('update');
                 }}
-                style={{ flexShrink: 0 }}
               >
                 Update
               </Button>
@@ -2461,7 +2453,6 @@ function DBSearchPageContent() {
                 variant="secondary"
                 size="xs"
                 onClick={openAlertModal}
-                style={{ flexShrink: 0 }}
               >
                 <Group gap={4}>
                   Alerts
@@ -2469,33 +2460,25 @@ function DBSearchPageContent() {
                 </Group>
               </Button>
             )}
-          </>
+          </Group>
         </Flex>
-        <SourceEditModal
-          opened={modelFormExpanded}
-          onClose={onModelFormExpandClose}
-          inputSource={inputSource}
-        />
-        <NewSourceModal
-          opened={newSourceModalOpened}
-          onClose={setNewSourceModalClosed}
-          onCreate={onNewSourceCreate}
-        />
         <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
-          <SearchWhereInput
-            tableConnection={inputSourceTableConnection}
-            control={control}
-            name="where"
-            onSubmit={onSubmit}
-            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
-            enableHotkey
-            data-testid="search-input"
-            minWidth="min(600px, 100%)"
-            dateRange={searchedTimeRange}
-            sourceId={inputSource}
-            size="xs"
-          />
+          <Box style={{ flex: '1 1 600px', minWidth: 'min(600px, 100%)' }}>
+            <SearchWhereInput
+              tableConnection={inputSourceTableConnection}
+              control={control}
+              name="where"
+              onSubmit={onSubmit}
+              sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+              luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
+              enableHotkey
+              data-testid="search-input"
+              minWidth="100%"
+              dateRange={searchedTimeRange}
+              sourceId={inputSource}
+              size="xs"
+            />
+          </Box>
           <Flex
             gap="sm"
             style={{ flex: '0 1 500px', minWidth: 0 }}
@@ -2539,6 +2522,22 @@ function DBSearchPageContent() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
+        <SourceSchemaPreview
+          source={inputSourceObj}
+          controlled
+          open={isSourceSchemaPreviewOpen}
+          onClose={() => setIsSourceSchemaPreviewOpen(false)}
+        />
+        <SourceEditModal
+          opened={modelFormExpanded}
+          onClose={onModelFormExpandClose}
+          inputSource={inputSource}
+        />
+        <NewSourceModal
+          opened={newSourceModalOpened}
+          onClose={setNewSourceModalClosed}
+          onCreate={onNewSourceCreate}
+        />
         <ActiveFilterPills
           searchFilters={searchFilters}
           chartConfig={filtersChartConfig}

@@ -54,6 +54,15 @@ describe('ColumnsPopover', () => {
     );
   });
 
+  it('offers a drag handle for each column', async () => {
+    renderPopover();
+    openPopover();
+    expect(
+      await screen.findByLabelText('Reorder Timestamp'),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Reorder Body')).toBeInTheDocument();
+  });
+
   it('removes a column and reports it on apply', async () => {
     const { onApply } = renderPopover();
     openPopover();
@@ -62,14 +71,61 @@ describe('ColumnsPopover', () => {
     expect(onApply).toHaveBeenCalledWith('Timestamp', ['Body']);
   });
 
-  it('adds a picked field', async () => {
+  it('fills the input from a suggestion and adds only on Add', async () => {
     const { onApply } = renderPopover();
     openPopover();
-    const input = await screen.findByPlaceholderText('Add column');
+    const input = await screen.findByPlaceholderText('Search columns');
     fireEvent.change(input, { target: { value: 'Severity' } });
     fireEvent.click(await screen.findByText('SeverityText'));
+    expect(input).toHaveValue('SeverityText');
+    expect(
+      screen.queryByLabelText('Remove SeverityText'),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('search-columns-add-button'));
+    expect(input).toHaveValue('');
+    expect(screen.getByLabelText('Remove SeverityText')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('search-columns-button-apply'));
     expect(onApply).toHaveBeenCalledWith('Timestamp, Body, SeverityText', []);
+  });
+
+  it('adds a typed expression such as an alias', async () => {
+    const { onApply } = renderPopover();
+    openPopover();
+    const input = await screen.findByPlaceholderText('Search columns');
+    fireEvent.change(input, {
+      target: { value: 'upper(Body) as message' },
+    });
+    fireEvent.click(screen.getByTestId('search-columns-add-button'));
+    expect(input).toHaveValue('');
+    expect(screen.getByText('upper(Body) as message')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('search-columns-button-apply'));
+    expect(onApply).toHaveBeenCalledWith(
+      'Timestamp, Body, upper(Body) as message',
+      [],
+    );
+  });
+
+  it('resets a changed column list to the source default', async () => {
+    const { onApply } = renderPopover();
+    openPopover();
+    fireEvent.click(await screen.findByLabelText('Remove Body'));
+    fireEvent.click(screen.getByTestId('search-columns-button-reset'));
+    expect(screen.getByLabelText('Remove ServiceName')).toBeInTheDocument();
+    expect(screen.getByTestId('search-columns-button-reset')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('search-columns-button-apply'));
+    expect(onApply).toHaveBeenCalledWith('', []);
+  });
+
+  it('shows the default SELECT as the SQL value', async () => {
+    renderPopover({ value: '' });
+    openPopover();
+    expect(
+      await screen.findByTestId('search-columns-button-reset'),
+    ).toBeDisabled();
+    fireEvent.click(await screen.findByText('SQL'));
+    expect(screen.getByLabelText('SELECT')).toHaveValue(
+      'Timestamp, ServiceName, Body',
+    );
   });
 
   it('edits the SELECT on the SQL tab', async () => {

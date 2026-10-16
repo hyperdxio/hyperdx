@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  ActionIcon,
   Autocomplete,
   Group,
+  ScrollArea,
   SegmentedControl,
   Stack,
   Text,
 } from '@mantine/core';
-import { IconArrowsSort } from '@tabler/icons-react';
+import { IconArrowsSort, IconX } from '@tabler/icons-react';
 
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 import { parseAsSortingStateString } from '@/utils/queryParsers';
@@ -20,17 +22,67 @@ const DIRECTION_OPTIONS = [
   { label: 'Desc', value: 'desc' },
 ];
 
-/** A single `field ASC|DESC` key, or null for anything the picker can't edit. */
-function parseSimpleSort(orderBy: string) {
-  const parsed = parseAsSortingStateString.parse(orderBy);
-  if (
-    parsed == null ||
-    parsed.id.startsWith('(') ||
-    splitAndTrimWithBracket(orderBy).length !== 1
-  ) {
-    return null;
+type SortKey = { id: string; desc: boolean };
+type SortRow = SortKey & { rowId: string };
+
+let rowSeq = 0;
+const toRows = (keys: SortKey[] | null): SortRow[] | null =>
+  keys?.map(key => ({ ...key, rowId: `sort-${rowSeq++}` })) ?? null;
+
+/**
+ * Sort keys the picker can edit. A parenthesized list with one direction,
+ * `(toDateTime(Timestamp), Timestamp) DESC`, is several fields sharing that
+ * direction, including function calls. Anything without a plain ASC/DESC on
+ * each field stays in SQL.
+ */
+function parseSortKeys(orderBy: string): SortKey[] | null {
+  const trimmed = orderBy.trim();
+  if (!trimmed) return [];
+
+  const tuple = trimmed.match(/^\(([\s\S]+)\)\s+(asc|desc)$/i);
+  if (tuple) {
+    const ids = splitAndTrimWithBracket(tuple[1]);
+    if (ids.length > 1 && ids.every(id => id.length > 0)) {
+      const desc = tuple[2].toUpperCase() === 'DESC';
+      return ids.map(id => ({ id, desc }));
+    }
   }
-  return parsed;
+
+  const keys: SortKey[] = [];
+  for (const part of splitAndTrimWithBracket(trimmed)) {
+    const parsed = parseAsSortingStateString.parse(part);
+    if (parsed == null || parsed.id.length === 0) return null;
+    keys.push({ id: parsed.id, desc: parsed.desc });
+  }
+  return keys;
+}
+
+function serializeSortKeys(keys: SortKey[]) {
+  return keys
+    .filter(key => key.id.trim())
+    .map(key =>
+      parseAsSortingStateString.serialize({
+        id: key.id.trim(),
+        desc: key.desc,
+      }),
+    )
+    .join(', ');
+}
+
+function sameKeys(a: SortKey[], b: SortKey[]) {
+  return (
+    a.length === b.length &&
+    a.every((key, i) => key.id === b[i].id && key.desc === b[i].desc)
+  );
+}
+
+function sortLabel(orderBy: string) {
+  const keys = parseSortKeys(orderBy);
+  if (keys == null || keys.length === 0) return 'Sort';
+  if (keys.length === 1) {
+    return `Sort: ${keys[0].id} ${keys[0].desc ? 'desc' : 'asc'}`;
+  }
+  return `Sort: ${keys.length} fields`;
 }
 
 export function SortPopover({
@@ -52,63 +104,152 @@ export function SortPopover({
   sourceId?: string;
   dateRange?: [Date, Date];
 }) {
-  const [draft, setDraft] = useState(value);
+  const shown = value || defaultValue;
+  const [draft, setDraft] = useState(shown);
+  const [keys, setKeys] = useState<SortRow[] | null>(() =>
+    toRows(parseSortKeys(shown)),
+  );
+  const [search, setSearch] = useState('');
+  // Autocomplete writes the chosen option back into the input after
+  // onOptionSubmit. Ignore that write so the field clears.
+  const ignoreNextChangeRef = useRef(false);
 
-  const current = parseSimpleSort(value || defaultValue);
-  const parsed = parseSimpleSort(draft || defaultValue);
-  const [field, setField] = useState(parsed?.id ?? '');
+  const baseline = value || defaultValue;
+  const used = new Set((keys ?? []).map(key => key.id));
+  const addOptions = fieldOptions.filter(option => !used.has(option));
 
-  const setPick = (id: string, desc: boolean) => {
-    setField(id);
-    if (id.trim()) {
-      setDraft(parseAsSortingStateString.serialize({ id: id.trim(), desc }));
-    }
+  const reset = () => {
+    const next = value || defaultValue;
+    setDraft(next);
+    setKeys(toRows(parseSortKeys(next)));
+    setSearch('');
+  };
+
+  const commitKeys = (next: SortRow[]) => {
+    setKeys(next);
+    const originalKeys = parseSortKeys(baseline);
+    // Keep `(a, b) DESC` until a field actually changes, so Apply doesn't
+    // rewrite the source default into separate keys.
+    setDraft(
+      originalKeys != null && sameKeys(next, originalKeys)
+        ? baseline
+        : serializeSortKeys(next),
+    );
+  };
+
+  const addKey = (id: string) => {
+    const trimmed = id.trim();
+    if (!trimmed || used.has(trimmed)) return;
+    commitKeys([
+      ...(keys ?? []),
+      { id: trimmed, desc: true, rowId: `sort-${rowSeq++}` },
+    ]);
+    setSearch('');
   };
 
   return (
     <ClausePopover
-      label={
-        current != null
-          ? `Sort: ${current.id} ${current.desc ? 'desc' : 'asc'}`
-          : 'Sort'
-      }
-      title={value || defaultValue}
+      label={sortLabel(baseline)}
+      title={baseline}
       icon={<IconArrowsSort size={14} />}
-      initialMode={current != null ? 'pick' : 'sql'}
-      onOpen={() => {
-        setDraft(value);
-        setField(current?.id ?? '');
+      initialMode={parseSortKeys(baseline) != null ? 'pick' : 'sql'}
+      onOpen={reset}
+      onReset={() => {
+        setDraft(defaultValue);
+        setKeys(toRows(parseSortKeys(defaultValue)));
+        setSearch('');
       }}
-      onApply={() => onApply(draft)}
+      resetDisabled={draft.trim() === defaultValue.trim()}
+      onApply={() =>
+        onApply(
+          draft.trim() === defaultValue.trim()
+            ? ''
+            : draft === baseline
+              ? value
+              : draft,
+        )
+      }
       data-testid="search-sort-button"
       renderPick={() => (
         <Stack gap="xs">
-          {parsed == null && (
+          {keys == null && (
             <Text size="xs" c="dimmed" data-testid="search-sort-custom">
-              Custom sort. Edit it in SQL, or pick a field to replace it.
+              Custom sort. Edit it in SQL.
             </Text>
           )}
-          <Group gap="xs" wrap="nowrap" align="flex-end">
-            <Autocomplete
-              size="xs"
-              label="Field"
-              placeholder="Field"
-              value={field}
-              onChange={id => setPick(id, parsed?.desc ?? true)}
-              data={fieldOptions}
-              limit={50}
-              comboboxProps={{ withinPortal: false }}
-              style={{ flex: 1 }}
-              data-testid="search-sort-field-input"
-            />
-            <SegmentedControl
-              size="xs"
-              value={parsed?.desc === false ? 'asc' : 'desc'}
-              onChange={direction => setPick(field, direction === 'desc')}
-              data={DIRECTION_OPTIONS}
-              data-testid="search-sort-direction"
-            />
-          </Group>
+          {keys != null && keys.length > 0 && (
+            <ScrollArea.Autosize mah={220}>
+              <Stack gap="xs" data-testid="search-sort-list">
+                {keys.map((key, index) => (
+                  <Group
+                    key={key.rowId}
+                    gap="xs"
+                    wrap="nowrap"
+                    align="flex-end"
+                  >
+                    <Autocomplete
+                      size="xs"
+                      label={index === 0 ? 'Field' : undefined}
+                      aria-label={`Sort field ${index + 1}`}
+                      value={key.id}
+                      onChange={id => {
+                        const next = keys.slice();
+                        next[index] = { ...key, id };
+                        commitKeys(next);
+                      }}
+                      data={fieldOptions.filter(
+                        option => option === key.id || !used.has(option),
+                      )}
+                      limit={50}
+                      comboboxProps={{ withinPortal: false }}
+                      style={{ flex: 1 }}
+                    />
+                    <SegmentedControl
+                      size="xs"
+                      value={key.desc ? 'desc' : 'asc'}
+                      onChange={direction => {
+                        const next = keys.slice();
+                        next[index] = { ...key, desc: direction === 'desc' };
+                        commitKeys(next);
+                      }}
+                      data={DIRECTION_OPTIONS}
+                      data-testid="search-sort-direction"
+                    />
+                    <ActionIcon
+                      variant="subtle"
+                      size="sm"
+                      onClick={() =>
+                        commitKeys(keys.filter((_, i) => i !== index))
+                      }
+                      aria-label={`Remove ${key.id}`}
+                    >
+                      <IconX size={12} />
+                    </ActionIcon>
+                  </Group>
+                ))}
+              </Stack>
+            </ScrollArea.Autosize>
+          )}
+          <Autocomplete
+            size="xs"
+            placeholder="Add sort"
+            value={search}
+            onChange={next => {
+              if (ignoreNextChangeRef.current) {
+                ignoreNextChangeRef.current = false;
+                return;
+              }
+              setSearch(next);
+            }}
+            data={addOptions}
+            limit={50}
+            onOptionSubmit={id => {
+              ignoreNextChangeRef.current = true;
+              addKey(id);
+            }}
+            comboboxProps={{ withinPortal: false }}
+            data-testid="search-sort-add-input"
+          />
         </Stack>
       )}
       renderSql={apply => (
@@ -116,8 +257,11 @@ export function SortPopover({
           <SQLInlineEditor
             tableConnection={tableConnection}
             value={draft}
-            onChange={setDraft}
-            placeholder={defaultValue}
+            onChange={sql => {
+              setDraft(sql);
+              setKeys(toRows(parseSortKeys(sql)));
+            }}
+            placeholder="ORDER BY"
             onSubmit={apply}
             label="ORDER BY"
             size="xs"
