@@ -240,6 +240,7 @@ export const convertToExternalTileChartConfig = (
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
           fitYAxisToData: config.fitYAxisToData,
+          lineInterpolation: config.lineInterpolation,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
           // Three-state passthrough: 0 (unlimited) and positive N round-trip;
@@ -262,7 +263,11 @@ export const convertToExternalTileChartConfig = (
         };
         // A union-typed displayType doesn't narrow to one union member.
         return config.displayType === DisplayType.StackedLine
-          ? { displayType: DisplayType.StackedLine, ...stacked }
+          ? {
+              displayType: DisplayType.StackedLine,
+              lineInterpolation: config.lineInterpolation,
+              ...stacked,
+            }
           : { displayType: DisplayType.StackedBar, ...stacked };
       }
       case DisplayType.Table:
@@ -357,6 +362,7 @@ export const convertToExternalTileChartConfig = (
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
         fitYAxisToData: config.fitYAxisToData,
+        lineInterpolation: config.lineInterpolation,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
@@ -391,7 +397,11 @@ export const convertToExternalTileChartConfig = (
         ...externalShowOperandSeriesField,
       };
       return config.displayType === DisplayType.StackedLine
-        ? { displayType: DisplayType.StackedLine, ...stacked }
+        ? {
+            displayType: DisplayType.StackedLine,
+            lineInterpolation: config.lineInterpolation,
+            ...stacked,
+          }
         : { displayType: DisplayType.StackedBar, ...stacked };
     }
     case DisplayType.Number:
@@ -747,6 +757,7 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            'lineInterpolation',
             // Round-trip the render cap so a GET→PUT does not silently wipe it.
             'seriesLimit',
           ]),
@@ -812,6 +823,7 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            'lineInterpolation',
             // Formulas round-trip as-is; the input schema has already
             // validated the expressions against `select`.
             'formulas',

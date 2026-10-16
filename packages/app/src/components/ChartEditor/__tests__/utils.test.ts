@@ -2145,6 +2145,31 @@ describe('color round-trip (sql/promql Number tile)', () => {
   });
 });
 
+describe('lineInterpolation round-trip (sql/promql line tile)', () => {
+  it.each([
+    {
+      configType: 'sql' as const,
+      sqlTemplate: 'SELECT count() FROM logs',
+    },
+    { configType: 'promql' as const, promqlExpression: 'up' },
+  ])('preserves lineInterpolation for $configType tiles', fields => {
+    const form: ChartEditorFormState = {
+      ...fields,
+      displayType: DisplayType.Line,
+      connection: 'conn-1',
+      lineInterpolation: 'step',
+      series: [],
+    };
+
+    expect(convertFormStateToSavedChartConfig(form, undefined)).toMatchObject({
+      lineInterpolation: 'step',
+    });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, undefined),
+    ).toMatchObject({ lineInterpolation: 'step' });
+  });
+});
+
 describe('heatmap round-trip', () => {
   it('preserves countExpression and heatmapScaleType through form state conversion', () => {
     const form: ChartEditorFormState = {

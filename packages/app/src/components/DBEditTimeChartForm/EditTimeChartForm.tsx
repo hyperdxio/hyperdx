@@ -15,6 +15,7 @@ import { isReducibleRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   displayTypeRequiresSource,
@@ -389,6 +390,7 @@ export default function EditTimeChartForm({
     fillNulls,
     compareToPreviousPeriod,
     fitYAxisToData,
+    lineInterpolation,
     numberFormat,
     groupByColumnsOnLeft,
     alternateRowBackground,
@@ -406,6 +408,7 @@ export default function EditTimeChartForm({
       'fillNulls',
       'compareToPreviousPeriod',
       'fitYAxisToData',
+      'lineInterpolation',
       'numberFormat',
       'groupByColumnsOnLeft',
       'alternateRowBackground',
@@ -442,6 +445,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -457,6 +461,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -1019,6 +1024,7 @@ export default function EditTimeChartForm({
         fillNulls,
         compareToPreviousPeriod,
         fitYAxisToData,
+        lineInterpolation,
         groupByColumnsOnLeft,
         alternateRowBackground,
         seriesLimit,
@@ -1040,6 +1046,7 @@ export default function EditTimeChartForm({
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
+      setValue('lineInterpolation', lineInterpolation);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       setValue('alternateRowBackground', alternateRowBackground);
       // Persist `null` (not undefined) when cleared so the disabled state
@@ -1162,8 +1169,16 @@ export default function EditTimeChartForm({
             name="displayType"
             render={({ field: { onChange, value } }) => (
               <Tabs
-                value={value}
-                onChange={onChange}
+                // Stacked variants are picked from the preview's display
+                // switcher and live under the Time Series tab.
+                value={
+                  isTimeSeriesDisplayType(value) ? DisplayType.Line : value
+                }
+                onChange={v => {
+                  if (v === DisplayType.Line && isTimeSeriesDisplayType(value))
+                    return;
+                  onChange(v);
+                }}
                 radius={'xs'}
                 mb="md"
                 data-testid="chart-type-input"
@@ -1346,6 +1361,9 @@ export default function EditTimeChartForm({
             previewDashboardFilters?.missingRequiredFilterNames
           }
           setValue={(name, value) => setValue(name, value)}
+          setDisplayType={type =>
+            setValue('displayType', type, { shouldDirty: true })
+          }
           onSubmit={onSubmit}
         />
         <SaveToDashboardModal

@@ -1668,6 +1668,23 @@ export const BackgroundChartSchema = z.object({
 
 export type BackgroundChart = z.infer<typeof BackgroundChartSchema>;
 
+/**
+ * How a line / stacked line chart connects its points. Unset follows the
+ * display type's default: `smooth` for line, `linear` for stacked line.
+ */
+export const LineInterpolationSchema = z.enum(['smooth', 'linear', 'step']);
+
+export type LineInterpolation = z.infer<typeof LineInterpolationSchema>;
+
+// Monotone curves fit each stacked edge independently, so adjacent edges can
+// cross between points and the bands overlap; linear segments stay ordered
+// wherever the points are. Hence stacked lines default to linear.
+export function getDefaultLineInterpolation(
+  displayType: DisplayType | undefined,
+): LineInterpolation {
+  return displayType === DisplayType.StackedLine ? 'linear' : 'smooth';
+}
+
 // When making changes here, consider if they need to be made to the external API
 // as well: the Zod schema (packages/api/src/utils/zod.ts) and the hand-written
 // OpenAPI JSDoc (packages/api/src/routers/external-api/v2/dashboards.ts), which
@@ -1684,6 +1701,7 @@ const SharedChartSettingsSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
   fitYAxisToData: z.boolean().optional(),
+  lineInterpolation: LineInterpolationSchema.optional(),
   onClick: OnClickSchema.optional(),
   // Palette-token color override. Applied by the renderer for number
   // tiles only (gated in `ChartDisplaySettingsDrawer`); other display
