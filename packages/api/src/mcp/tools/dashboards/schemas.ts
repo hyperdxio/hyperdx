@@ -11,7 +11,6 @@ import {
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardContainerSchema,
-  DashboardContainerTabSchema,
   DashboardFilterType,
   MetricsDataType,
   NumberTileColorConditionSchema,
@@ -145,79 +144,12 @@ const rawSqlNumberTileColorRulesDescription =
   `${numberTileColorRulesDescription} Valid only when displayType is ` +
   '"number", ignored otherwise.';
 
-const colorRuleColorDescription =
-  'Palette color applied when this rule matches.';
-const colorRuleLabelDescription = 'Short label describing the rule.';
-
-const [
-  orderedColorRuleSchema,
-  betweenColorRuleSchema,
-  equalityColorRuleSchema,
-  ...unhandledColorRuleSchemas
-] = NumberTileColorConditionSchema.options;
-// Fails to compile when common-utils adds a color-rule variant, so the MCP
-// copy below can't silently reject it.
-const _allColorRulesHandled: [] = unhandledColorRuleSchemas;
-
-const mcpNumberTileColorRuleSchema = z.discriminatedUnion('operator', [
-  orderedColorRuleSchema.extend({
-    operator: orderedColorRuleSchema.shape.operator.describe(
-      'Compares the displayed value against `value`: greater than, greater ' +
-        'than or equal, less than, or less than or equal.',
-    ),
-    value: orderedColorRuleSchema.shape.value.describe(
-      'Numeric bound the displayed value is compared against.',
-    ),
-    color: orderedColorRuleSchema.shape.color.describe(
-      colorRuleColorDescription,
-    ),
-    label: orderedColorRuleSchema.shape.label.describe(
-      colorRuleLabelDescription,
-    ),
-  }),
-  betweenColorRuleSchema.extend({
-    operator: betweenColorRuleSchema.shape.operator.describe(
-      'Matches when the displayed value falls within the `value` range.',
-    ),
-    value: betweenColorRuleSchema.shape.value.describe(
-      'Inclusive [min, max] range.',
-    ),
-    color: betweenColorRuleSchema.shape.color.describe(
-      colorRuleColorDescription,
-    ),
-    label: betweenColorRuleSchema.shape.label.describe(
-      colorRuleLabelDescription,
-    ),
-  }),
-  equalityColorRuleSchema.extend({
-    operator: equalityColorRuleSchema.shape.operator.describe(
-      'Matches when the displayed value equals (eq) or does not equal (neq) `value`.',
-    ),
-    value: equalityColorRuleSchema.shape.value.describe(
-      'Number or string to compare the displayed value with.',
-    ),
-    color: equalityColorRuleSchema.shape.color.describe(
-      colorRuleColorDescription,
-    ),
-    label: equalityColorRuleSchema.shape.label.describe(
-      colorRuleLabelDescription,
-    ),
-  }),
-]);
-
 const numberTileBackgroundChartDescription =
   'Background trend sparkline drawn behind the number, derived ' +
   'from a time-bucketed version of the same query (useful for SLO / ' +
   'error-budget tiles where the trend over the window matters). ' +
   'Builder number tiles only; raw SQL number tiles have no time ' +
   'dimension to bucket. Example: { type: "area", color: "chart-blue" }.';
-
-const mcpBackgroundChartSchema = BackgroundChartSchema.extend({
-  type: BackgroundChartSchema.shape.type.describe('Sparkline shape.'),
-  color: BackgroundChartSchema.shape.color.describe(
-    "Palette color for the sparkline. Inherits the tile's color when unset.",
-  ),
-});
 
 const mcpNumberFormatSchema = z.object({
   output: z
@@ -951,13 +883,13 @@ export const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
         numberTileColorDescription,
       ),
       colorRules: z
-        .array(mcpNumberTileColorRuleSchema)
+        .array(NumberTileColorConditionSchema)
         .max(10)
         .optional()
         .describe(numberTileColorRulesDescription),
-      backgroundChart: mcpBackgroundChartSchema
-        .optional()
-        .describe(numberTileBackgroundChartDescription),
+      backgroundChart: BackgroundChartSchema.optional().describe(
+        numberTileBackgroundChartDescription,
+      ),
     })
     .describe('Number tile query and display settings.'),
 });
@@ -1318,7 +1250,7 @@ GROUP BY ServiceName, ts
         rawSqlNumberTileColorDescription,
       ),
       colorRules: z
-        .array(mcpNumberTileColorRuleSchema)
+        .array(NumberTileColorConditionSchema)
         .max(10)
         .optional()
         .describe(rawSqlNumberTileColorRulesDescription),
@@ -1768,47 +1700,8 @@ export const mcpSearchDashboardsSchema = z.object({
     ),
 });
 
-const mcpContainerTabSchema = DashboardContainerTabSchema.extend({
-  id: DashboardContainerTabSchema.shape.id.describe(
-    'Tab identifier that tiles reference via tile.tabId. Unique within its container.',
-  ),
-  title: DashboardContainerTabSchema.shape.title.describe(
-    'Label shown on the tab.',
-  ),
-});
-
-const containerTabsArraySchema = DashboardContainerSchema.shape.tabs.unwrap();
-
-const mcpContainerSchema = DashboardContainerSchema.extend({
-  id: DashboardContainerSchema.shape.id.describe(
-    'Container identifier that tiles reference via tile.containerId. Unique on the dashboard.',
-  ),
-  title: DashboardContainerSchema.shape.title.describe(
-    'Heading shown on the container.',
-  ),
-  collapsed: DashboardContainerSchema.shape.collapsed.describe(
-    'Whether the container starts collapsed when the dashboard opens. ' +
-      'Viewers can still expand it; ignored when collapsible is false.',
-  ),
-  collapsible: DashboardContainerSchema.shape.collapsible.describe(
-    'Whether viewers can collapse the container. Treated as true when omitted.',
-  ),
-  bordered: DashboardContainerSchema.shape.bordered.describe(
-    'Whether to draw a border around the container. Treated as true when omitted.',
-  ),
-  tabs: new z.ZodArray({
-    ...containerTabsArraySchema._def,
-    type: mcpContainerTabSchema,
-  })
-    .optional()
-    .describe(
-      'Tabs inside the container. Two or more render as a tab bar; zero or ' +
-        'one renders as a plain group header.',
-    ),
-});
-
 export const mcpContainersParam = z
-  .array(mcpContainerSchema)
+  .array(DashboardContainerSchema)
   .max(DASHBOARD_MAX_CONTAINERS)
   .describe(
     'Optional dashboard organization layer. Each container groups one or more tiles ' +
