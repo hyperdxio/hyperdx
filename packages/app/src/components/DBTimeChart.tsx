@@ -166,6 +166,9 @@ export function decodeSeriesGroupFilters({
  * ratio column, or a formula column — fall back to the union of every series'
  * condition, which is the scan scope the chart itself used
  * (`aggConditionScopeFilter` yields nothing once any series is unfiltered).
+ * Series mixing SQL and Lucene conditions also yield nothing: the search URL
+ * ANDs its filters and carries one `where` language, so it has no way to OR
+ * them, and an unscoped search is the safe superset.
  */
 export function resolveSeriesConditionFilter({
   config,

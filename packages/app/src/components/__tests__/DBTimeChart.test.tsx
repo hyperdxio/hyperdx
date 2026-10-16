@@ -764,6 +764,43 @@ describe('DBTimeChart', () => {
       ).toBeUndefined();
     });
 
+    // The search URL can't OR a SQL condition with a Lucene one.
+    it('returns nothing when the series conditions mix languages', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: configWith({
+            select: [
+              series("ServiceName:'foo'", 'foo'),
+              {
+                ...series("ServiceName = 'bar'", 'bar'),
+                aggConditionLanguage: 'sql',
+              },
+            ],
+          }),
+          resultColumns: ['foo', 'bar', '__hdx_time_bucket'],
+        }),
+      ).toBeUndefined();
+    });
+
+    // A clicked series still resolves even when its siblings use another language.
+    it('resolves the clicked series in a mixed-language chart', () => {
+      expect(
+        resolveSeriesConditionFilter({
+          config: configWith({
+            select: [
+              series("ServiceName:'foo'", 'foo'),
+              {
+                ...series("ServiceName = 'bar'", 'bar'),
+                aggConditionLanguage: 'sql',
+              },
+            ],
+          }),
+          resultColumns: ['foo', 'bar', '__hdx_time_bucket'],
+          valueColumnName: 'bar',
+        }),
+      ).toEqual({ type: 'sql', condition: "ServiceName = 'bar'" });
+    });
+
     // Both series feed the single merged column, so neither can be singled out.
     it('unions both series of a ratio config rather than attributing one', () => {
       expect(
