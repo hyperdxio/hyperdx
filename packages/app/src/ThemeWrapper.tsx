@@ -1,4 +1,5 @@
 import React from 'react';
+import { ClickUIProvider } from '@clickhouse/click-ui';
 import { MantineProvider, MantineThemeOverride } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 
@@ -36,8 +37,11 @@ export const ThemeWrapper = ({
 
   return (
     <MantineProvider forceColorScheme={colorScheme} theme={mantineTheme}>
-      <Notifications zIndex={999999} />
-      {children}
+      {/* HyperDX user preferences determine the color mode, so click-ui should not persist preferences to localstorage. */}
+      <ClickUIProvider theme={colorScheme} persistTheme={false}>
+        <Notifications zIndex={999999} />
+        {children}
+      </ClickUIProvider>
     </MantineProvider>
   );
 };

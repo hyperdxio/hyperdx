@@ -229,6 +229,38 @@ describe('errorHint', () => {
     expect(hint).toBeNull();
   });
 
+  const unknownTableErrors = [
+    "Unknown table expression identifier 'otel_logs' in scope SELECT count() FROM otel_logs",
+    'Table default.otel_traces does not exist.',
+    'Database o11y does not exist.',
+  ];
+
+  it.each(unknownTableErrors)(
+    'points unknown-table errors in raw SQL at clickstack_list_sources: %s',
+    msg => {
+      expect(errorHint(msg, undefined, { rawSql: true })).toContain(
+        'clickstack_list_sources',
+      );
+    },
+  );
+
+  // Source-based tools take a sourceId, so the failing table is the source's
+  // own and listing sources would only hand it back.
+  it.each(unknownTableErrors)(
+    'does not point source-based tools at clickstack_list_sources: %s',
+    msg => {
+      expect(errorHint(msg) ?? '').not.toContain('clickstack_list_sources');
+    },
+  );
+
+  it('keeps pointing unknown-column errors at clickstack_describe_source', () => {
+    const hint = errorHint(
+      'Unknown expression or function identifier `TimestampTime` in scope SELECT TimestampTime FROM t',
+    );
+    expect(hint).toContain('clickstack_describe_source');
+    expect(hint).not.toContain('clickstack_list_sources');
+  });
+
   it('should NOT match lowercase "as" in cast expressions', () => {
     const hint = errorHint(
       'Syntax error: cannot cast as Float64 near token...',
@@ -300,6 +332,26 @@ describe('errorHint', () => {
     expect(hint).toContain('too many rows');
   });
 
+  it('should match TIMEOUT_EXCEEDED errors', () => {
+    const hint = errorHint(
+      'Code: 159. DB::Exception: Timeout exceeded: elapsed 30s (TIMEOUT_EXCEEDED)',
+    );
+    expect(hint).not.toBeNull();
+    expect(hint).toContain('execution-time limit');
+    expect(hint).toContain('Narrow the time range');
+  });
+
+  it('should match the client-side request timeout', () => {
+    const error = new Error('Timeout error.');
+    expect(errorHint(error.message, error)).toContain('execution-time limit');
+  });
+
+  it('should not give query-tuning advice for a socket timeout', () => {
+    const error: NodeJS.ErrnoException = new Error('connect ETIMEDOUT');
+    error.code = 'ETIMEDOUT';
+    expect(errorHint(error.message, error)).toBeNull();
+  });
+
   it('should match SETTING_CONSTRAINT_VIOLATION errors', () => {
     const hint = errorHint(
       "Setting max_result_rows shouldn't be greater than 1000. (SETTING_CONSTRAINT_VIOLATION)",
@@ -307,6 +359,14 @@ describe('errorHint', () => {
     expect(hint).not.toBeNull();
     expect(hint).toContain('profile');
     expect(hint).toContain('constraint');
+  });
+
+  it('routes a max_execution_time constraint error to the constraint hint, not the timeout hint', () => {
+    const hint = errorHint(
+      "Setting max_execution_time shouldn't be greater than 10. (SETTING_CONSTRAINT_VIOLATION)",
+    );
+    expect(hint).toContain('constraint');
+    expect(hint).not.toContain('execution-time limit');
   });
 
   it('should return null for unrecognized errors', () => {
@@ -414,6 +474,17 @@ describe('isServerError', () => {
     });
     const err = new Error('query failed', { cause });
     expect(isServerError(err)).toBe(false);
+  });
+
+  it('returns true for TIMEOUT_EXCEEDED (max_execution_time overrun)', () => {
+    // Query timeouts are a resource failure, not a user mistake.
+    const cause = new ClickHouseError({
+      message: 'Timeout exceeded: elapsed 30s',
+      code: '159',
+      type: 'TIMEOUT_EXCEEDED',
+    });
+    const err = new Error('query failed', { cause });
+    expect(isServerError(err)).toBe(true);
   });
 
   it('returns true for ECONNREFUSED (TCP connection failure)', () => {

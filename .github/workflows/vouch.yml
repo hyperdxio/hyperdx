@@ -9,11 +9,12 @@ name: Vouch
 #      are on the vouch list. Anything over that is closed, asking them to
 #      finish what they have open first. Drafts don't count.
 #   2. Authenticity. A PR from someone not in .github/VOUCHED.td stays open but
-#      gets a `needs-vouch` label and a comment asking them to introduce
-#      themselves.
+#      gets a `needs-vouch` label and a comment saying a maintainer will vouch
+#      from the PR itself. The first PR is the introduction; we don't ask for
+#      a separate issue, which mostly attracted vouch requests with no code.
 #
 # Authors explicitly denounced in the list are always closed. Issues are NOT
-# gated — opening one is how a new contributor introduces themselves.
+# gated.
 #
 # Maintainers manage the list from any issue or PR comment. The keyword has to
 # be first on the first line:
@@ -145,13 +146,15 @@ jobs:
             const body = [
               `Hi @${pr.user.login}, thanks for the pull request!`,
               ``,
-              `Before we review code from a first-time contributor we ask that a maintainer vouches for you, and you're not on our list yet. **This PR stays open** — it just isn't in the review queue until someone vouches.`,
+              `Before we review code from a first-time contributor, a maintainer vouches for them, and you're not on our list yet. **There's nothing else to file and this PR stays open** — a maintainer will look at it, usually within a day or two, and vouch for you right here if it's a genuine attempt at the problem.`,
               ``,
-              `To get vouched, open an issue saying hello and what you're working on:`,
+              `To make that quick, check the PR description has:`,
               ``,
-              `https://github.com/${owner}/${repo}/issues/new?template=introduce-yourself.md`,
+              `- The issue it addresses (ideally one labelled \`Accepting PR\`) and why the change is needed`,
+              `- Steps to reproduce the problem and verify the fix, starting from https://play.hyperdx.io or \`yarn app:dev:local\` connected to the demo server`,
+              `- Before/after screenshots if anything in the UI changed`,
               ``,
-              `A maintainer will usually reply within a day or two, and then this PR gets picked up as normal. More detail in [our contributing guide](https://github.com/${owner}/${repo}/blob/${pr.base.repo.default_branch}/CONTRIBUTING.md#getting-vouched).`,
+              `More detail in [our contributing guide](https://github.com/${owner}/${repo}/blob/${pr.base.repo.default_branch}/CONTRIBUTING.md#getting-vouched).`,
             ].join('\n');
             await github.rest.issues.createComment({
               owner, repo, issue_number: pr.number, body,

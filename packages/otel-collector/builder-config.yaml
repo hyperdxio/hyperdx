@@ -51,6 +51,9 @@ receivers:
   - gomod:
       github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusreceiver
       v__OTEL_COLLECTOR_VERSION__
+  - gomod:
+      github.com/open-telemetry/opentelemetry-collector-contrib/receiver/statsdreceiver
+      v__OTEL_COLLECTOR_VERSION__
 
 processors:
   # Core

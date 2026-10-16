@@ -823,6 +823,77 @@ describe('MCP Dashboard Tools - clickstack_patch_dashboard', () => {
     expect(tile.config.seriesLimit).toBe(3);
   });
 
+  it('should patch a series heatmap tile without losing its mode', async () => {
+    const logSource = await Source.create({
+      kind: SourceKind.Log,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+      timestampValueExpression: 'Timestamp',
+      connection: ctx.connection._id,
+      name: 'Logs',
+    });
+    const sourceId = logSource._id.toString();
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Series Heatmap Patch Test',
+        tiles: [
+          {
+            name: 'Original',
+            config: {
+              displayType: 'heatmap',
+              heatmapMode: 'series',
+              sourceId,
+              select: [{ aggFn: 'count' }],
+              groupBy: 'ServiceName',
+            },
+          },
+        ],
+      },
+    );
+    expect(createResult.isError).toBeFalsy();
+    const created = JSON.parse(getFirstText(createResult));
+    const tileId = created.tiles[0].id;
+
+    // A valueExpression also satisfies the distribution schema, so this
+    // guards the patch union order.
+    const patchedConfig = {
+      displayType: 'heatmap',
+      heatmapMode: 'series',
+      sourceId,
+      select: [
+        {
+          aggFn: 'avg',
+          valueExpression: 'Duration',
+          where: 'SeverityText:error',
+          whereLanguage: 'lucene',
+        },
+      ],
+      groupBy: 'SeverityText',
+    };
+    const patchResult = await callTool(
+      ctx.client!,
+      'clickstack_patch_dashboard',
+      {
+        dashboardId: created.id,
+        tileId,
+        tile: { name: 'Patched', config: patchedConfig },
+      },
+    );
+    expect(patchResult.isError).toBeFalsy();
+
+    const getResult = await callTool(
+      ctx.client!,
+      'clickstack_get_dashboard_tile',
+      { dashboardId: created.id, tileId },
+    );
+    expect(getResult.isError).toBeFalsy();
+    const tile = JSON.parse(getFirstText(getResult));
+    expect(tile.name).toBe('Patched');
+    expect(tile.config).toMatchObject(patchedConfig);
+  });
+
   describe('raw SQL macro warnings', () => {
     // Patching a tile to a macro-less raw SQL config succeeds (non-blocking)
     // but surfaces an advisory `warnings` array on the response.

@@ -22,7 +22,10 @@ export CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT="${CLICKHOUSE_PROMETHEUS_METRICS_E
 # (IS_LOCAL_IMAGE / IS_ALL_IN_ONE_IMAGE). The auth variant must report
 # "all-in-one-auth" so that the INGESTION_API_KEY bootstrap path is enabled.
 export HYPERDX_IMAGE=$([[ "${IS_LOCAL_APP_MODE}" == "DANGEROUSLY_is_local_app_mode💀" ]] && echo "all-in-one-noauth" || echo "all-in-one-auth")
-export EXPRESS_SESSION_SECRET="hyperdx is cool 👋"
+# Keep the public demo default only when authentication is disabled.
+if [[ "${IS_LOCAL_APP_MODE}" == "DANGEROUSLY_is_local_app_mode💀" ]]; then
+  export EXPRESS_SESSION_SECRET="${EXPRESS_SESSION_SECRET:-hyperdx is cool 👋}"
+fi
 # IS_LOCAL_APP_MODE should be set by the calling script
 # Default to dangerous mode if not set
 export IS_LOCAL_APP_MODE="${IS_LOCAL_APP_MODE}"

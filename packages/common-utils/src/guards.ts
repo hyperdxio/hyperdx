@@ -4,6 +4,7 @@ import {
   ChartConfig,
   ChartConfigWithOptDateRange,
   DisplayType,
+  HeatmapMode,
   PromqlChartConfig,
   PromqlSavedChartConfig,
   RawSqlChartConfig,
@@ -13,28 +14,34 @@ import {
   TSource,
 } from './types';
 
-/**
- * Source kinds that can back a heatmap tile. The HeatmapSeriesEditor
- * defaults to `Duration` for traces, and the editor's source picker
- * filters with `allowedSourceKinds={[SourceKind.Trace]}` when the
- * selected display type is heatmap (see
- * `packages/app/src/components/DBEditTimeChartForm/ChartEditorControls.tsx`).
- *
- * The external dashboards API uses the same set so UI and API gates
- * move together; expanding heatmap to a new source kind only requires
- * adding it here.
- */
-export const HEATMAP_ALLOWED_SOURCE_KINDS: ReadonlyArray<SourceKind> = [
+/** Source kinds that can back a distribution-mode heatmap tile. */
+export const HEATMAP_DISTRIBUTION_SOURCE_KINDS: ReadonlyArray<SourceKind> = [
   SourceKind.Trace,
 ];
 
+/** Source kinds that can back a series-mode heatmap tile. */
+export const HEATMAP_SERIES_SOURCE_KINDS: ReadonlyArray<SourceKind> = [
+  SourceKind.Trace,
+  SourceKind.Log,
+  SourceKind.Metric,
+];
+
+export function getHeatmapSourceKinds(
+  mode: HeatmapMode = 'distribution',
+): ReadonlyArray<SourceKind> {
+  return mode === 'series'
+    ? HEATMAP_SERIES_SOURCE_KINDS
+    : HEATMAP_DISTRIBUTION_SOURCE_KINDS;
+}
+
 /**
- * Whether a source can back a heatmap tile.
+ * Whether a source can back a heatmap tile in the given mode.
  */
 export function isHeatmapCompatibleSource(
   source: Pick<TSource, 'kind'>,
+  mode: HeatmapMode = 'distribution',
 ): boolean {
-  return HEATMAP_ALLOWED_SOURCE_KINDS.includes(source.kind);
+  return getHeatmapSourceKinds(mode).includes(source.kind);
 }
 
 export function isRawSqlChartConfig(

@@ -566,6 +566,7 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
           configType: 'promql',
           promqlExpression: 'up',
           connection: 'test-connection',
+          source: 'promql-source',
         },
         mockMetadata,
       ),
@@ -747,6 +748,14 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
       [DisplayType.StackedBar]: {
         ...sourceFields,
         displayType: DisplayType.StackedBar,
+        select: twoSeries,
+        groupBy,
+        granularity: '5 minute',
+        seriesLimit: 10,
+      },
+      [DisplayType.StackedLine]: {
+        ...sourceFields,
+        displayType: DisplayType.StackedLine,
         select: twoSeries,
         groupBy,
         granularity: '5 minute',

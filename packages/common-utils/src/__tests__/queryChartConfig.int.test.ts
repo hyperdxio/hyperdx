@@ -2856,4 +2856,147 @@ describe('queryChartConfig Integration Tests', () => {
       expect(Number(col(rows[0], 'Error rate'))).toBeCloseTo(40, 5);
     });
   });
+
+  // The row details panel selects `*` with these settings (see useRowData).
+  describe('SELECT * with MATERIALIZED and ALIAS columns', () => {
+    const ROW_TABLE = 'select_all_columns_int_test';
+    const config: ChartConfigWithOptDateRange = {
+      connection: 'test-connection',
+      from: { databaseName: DATABASE, tableName: ROW_TABLE },
+      select: [{ valueExpression: '*' }],
+      where: 'Id = 1',
+      limit: { limit: 1 },
+    };
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${ROW_TABLE} (
+          Id UInt32,
+          StatusCode UInt16,
+          StatusClass String MATERIALIZED if(StatusCode >= 500, '5xx', 'other'),
+          IsServerError Bool ALIAS StatusCode >= 500
+        )
+        ENGINE = MergeTree
+        ORDER BY Id`,
+      });
+      await client.insert({
+        table: `${DATABASE}.${ROW_TABLE}`,
+        values: [{ Id: 1, StatusCode: 503 }],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${ROW_TABLE}`,
+      });
+    });
+
+    it('leaves MATERIALIZED and ALIAS columns out of `*` by default', async () => {
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+
+      expect(result.meta?.map(m => m.name)).toEqual(['Id', 'StatusCode']);
+    });
+
+    it('returns MATERIALIZED and ALIAS columns with the asterisk_include_* settings', async () => {
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: [
+          { setting: 'asterisk_include_materialized_columns', value: '1' },
+          { setting: 'asterisk_include_alias_columns', value: '1' },
+        ],
+      });
+
+      expect(result.meta?.map(m => m.name)).toEqual([
+        'Id',
+        'StatusCode',
+        'StatusClass',
+        'IsServerError',
+      ]);
+      expect(result.data[0]).toMatchObject({
+        StatusClass: '5xx',
+        IsServerError: true,
+      });
+    });
+  });
+
+  // Mirrors the OTel logs schema, where a DateTime column precedes the
+  // DateTime64(9) column in the timestamp expression for primary-key pruning.
+  describe('sub-second start on a DateTime + DateTime64 source', () => {
+    const LOGS_TABLE = 'logs_subsecond_start_int_test';
+    const start = new Date('2026-10-13T22:03:21.827Z');
+    const end = new Date('2026-10-13T22:05:00Z');
+
+    const searchConfig = (
+      dateRange: [Date, Date],
+      dateRangeEndInclusive = true,
+    ): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: DATABASE, tableName: LOGS_TABLE },
+      select: 'Body',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimestampTime, Timestamp',
+      orderBy: 'Timestamp ASC',
+      dateRange,
+      dateRangeEndInclusive,
+    });
+
+    const bodies = async (config: ChartConfigWithOptDateRange) => {
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+      return (result.data as Array<{ Body: string }>).map(r => r.Body);
+    };
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${LOGS_TABLE} (
+          Timestamp DateTime64(9, 'UTC'),
+          TimestampTime DateTime('UTC') DEFAULT toDateTime(Timestamp),
+          Body String
+        )
+        ENGINE = MergeTree
+        ORDER BY (TimestampTime, Timestamp)`,
+      });
+      await client.insert({
+        table: `${DATABASE}.${LOGS_TABLE}`,
+        values: [
+          { Timestamp: '2026-10-13 22:03:21.500000000', Body: 'before-start' },
+          { Timestamp: '2026-10-13 22:03:21.900000000', Body: 'same-second' },
+          { Timestamp: '2026-10-13 22:03:22.100000000', Body: 'next-second' },
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${LOGS_TABLE}`,
+      });
+    });
+
+    it('returns rows in the rest of the start second', async () => {
+      expect(await bodies(searchConfig([start, end]))).toEqual([
+        'same-second',
+        'next-second',
+      ]);
+    });
+
+    it('does not return the same row from the preceding window', async () => {
+      const previousWindow = searchConfig(
+        [new Date('2026-10-13T22:00:00Z'), start],
+        false,
+      );
+
+      expect(await bodies(previousWindow)).toEqual(['before-start']);
+    });
+  });
 });

@@ -7,6 +7,7 @@ import cx from 'classnames';
 import sub from 'date-fns/sub';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
+import { Badge } from '@clickhouse/click-ui';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isLogSource,
@@ -20,7 +21,6 @@ import {
   ActionIcon,
   Alert,
   Anchor,
-  Badge,
   Breadcrumbs,
   Card,
   Flex,
@@ -58,13 +58,13 @@ import { SourceSelectControlled } from './components/SourceSelect';
 import { useQueriedChartConfig } from './hooks/useChartConfig';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import { useJsonColumns } from './hooks/useMetadata';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import {
   convertV1ChartConfigToV2,
   K8S_CPU_PERCENTAGE_NUMBER_FORMAT,
   K8S_MEM_NUMBER_FORMAT,
 } from './ChartUtils';
-import { withAppNav } from './layout';
+import { withAppNavForSurface } from './layout';
 import NamespaceDetailsSidePanel from './NamespaceDetailsSidePanel';
 import NodeDetailsSidePanel from './NodeDetailsSidePanel';
 import PodDetailsSidePanel from './PodDetailsSidePanel';
@@ -688,25 +688,9 @@ const NodesTable = ({
                         <Table.Td>{node.name || 'N/A'}</Table.Td>
                         <Table.Td>
                           {node.ready === 1 ? (
-                            <Badge
-                              variant="light"
-                              color="green"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Ready
-                            </Badge>
+                            <Badge text="Ready" state="success" />
                           ) : (
-                            <Badge
-                              variant="light"
-                              color="red"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Not Ready
-                            </Badge>
+                            <Badge text="Not Ready" state="danger" />
                           )}
                         </Table.Td>
                         <Table.Td>
@@ -886,25 +870,9 @@ const NamespacesTable = ({
                         <Table.Td>{namespace.name || 'N/A'}</Table.Td>
                         <Table.Td>
                           {namespace.phase === 1 ? (
-                            <Badge
-                              variant="light"
-                              color="green"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Ready
-                            </Badge>
+                            <Badge text="Ready" state="success" />
                           ) : (
-                            <Badge
-                              variant="light"
-                              color="red"
-                              fw="normal"
-                              tt="none"
-                              size="md"
-                            >
-                              Terminating
-                            </Badge>
+                            <Badge text="Terminating" state="danger" />
                           )}
                         </Table.Td>
                         <Table.Td>
@@ -1049,7 +1017,7 @@ const DEFAULT_INTERVAL = 'Past 1h';
 
 function KubernetesDashboardPage() {
   const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Kubernetes Dashboard');
   const { data: sources } = useSources();
 
   const [_logSourceId, setLogSourceId] = useQueryState('logSource');
@@ -1378,7 +1346,7 @@ function KubernetesDashboardPage() {
   const dashboardBody = (
     <>
       <Head>
-        <title>Kubernetes Dashboard – {brandName}</title>
+        <title>{title}</title>
       </Head>
       <OnboardingModal requireSource={false} />
       {metricSource && logSource && (
@@ -1762,6 +1730,9 @@ const KubernetesDashboardPageDynamic = dynamic(
 );
 
 // @ts-expect-error next/dynamic component type does not include the getLayout static
-KubernetesDashboardPageDynamic.getLayout = withAppNav;
+KubernetesDashboardPageDynamic.getLayout = withAppNavForSurface(
+  'dashboard',
+  'kubernetes',
+);
 
 export default KubernetesDashboardPageDynamic;

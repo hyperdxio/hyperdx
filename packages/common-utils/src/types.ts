@@ -34,6 +34,7 @@ export const UseTextIndexSchema = z.nativeEnum(UseTextIndex);
 export enum DisplayType {
   Line = 'line',
   StackedBar = 'stacked_bar',
+  StackedLine = 'stacked_line',
   Table = 'table',
   Pie = 'pie',
   Bar = 'bar',
@@ -396,6 +397,8 @@ export const ColorConditionSchema = z.discriminatedUnion('operator', [
 
 export type ColorCondition = z.infer<typeof ColorConditionSchema>;
 
+export const HeatmapScaleTypeSchema = z.enum(['log', 'linear']);
+
 export const DerivedColumnSchema = z.intersection(
   RootValueExpressionSchema,
   z.object({
@@ -405,7 +408,7 @@ export const DerivedColumnSchema = z.intersection(
     metricNameSql: z.string().optional(),
     // Heatmap-specific fields (optional, only used when displayType is Heatmap)
     countExpression: z.string().optional(),
-    heatmapScaleType: z.enum(['log', 'linear']).optional(),
+    heatmapScaleType: HeatmapScaleTypeSchema.optional(),
     numberFormat: NumberFormatSchema.optional(),
     // Per-column palette-token color, applied by the renderer to this
     // column's cells on table tiles only (gated in the series editor by
@@ -1228,15 +1231,34 @@ export const SqlAstFilterSchema = z.object({
 
 export type SqlAstFilter = z.infer<typeof SqlAstFilterSchema>;
 
+export const ConditionFilterSchema = z.object({
+  type: z.enum(['lucene', 'sql']),
+  condition: z.string(),
+});
+
+export type ConditionFilter = z.infer<typeof ConditionFilterSchema>;
+
 export const FilterSchema = z.union([
-  z.object({
-    type: z.enum(['lucene', 'sql']),
-    condition: z.string(),
-  }),
+  ConditionFilterSchema,
   SqlAstFilterSchema,
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+/**
+ * A PromQL label matcher (e.g. `job="api"`) added to every selector of a
+ * PromQL tile. Kept out of `FilterSchema` because saved searches, alerts and
+ * the APIs only take SQL and Lucene conditions.
+ */
+export const PromqlConditionFilterSchema = z.object({
+  type: z.literal('promql'),
+  condition: z.string(),
+});
+
+export type PromqlConditionFilter = z.infer<typeof PromqlConditionFilterSchema>;
+
+/** A dashboard filter condition broadcast to tiles, in the tile's query language. */
+export type BroadcastFilter = ConditionFilter | PromqlConditionFilter;
 
 export const VariableFilterValueSchema = z.object({
   type: z.literal('variable'),
@@ -1246,10 +1268,65 @@ export const VariableFilterValueSchema = z.object({
 
 export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
 
+/** The kind of sources an ad hoc filter reads its keys from. */
+export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
+
+export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
+
+/**
+ * Operators an ad hoc filter condition can use, spelled as in PromQL so one set
+ * serves both source types. See `SQL_ADHOC_FILTER_OPERATORS` and
+ * `PROMQL_ADHOC_FILTER_OPERATORS` for which ones each source type supports.
+ */
+export const AdhocFilterOperatorSchema = z.enum([
+  '=',
+  '!=',
+  '=~',
+  '!~',
+  'LIKE',
+  'NOT LIKE',
+]);
+
+export type AdhocFilterOperator = z.infer<typeof AdhocFilterOperatorSchema>;
+
+export const SQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] =
+  AdhocFilterOperatorSchema.options;
+
+export const PROMQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] = [
+  '=',
+  '!=',
+  '=~',
+  '!~',
+];
+
+/** One `key operator value` condition picked in an ad hoc filter. */
+export const AdhocFilterConditionSchema = z.object({
+  /** A SQL expression (column or map access) or a PromQL label name. */
+  key: z.string().min(1).max(10000),
+  operator: AdhocFilterOperatorSchema,
+  value: z.string().max(10000),
+});
+
+export type AdhocFilterCondition = z.infer<typeof AdhocFilterConditionSchema>;
+
+export const ADHOC_FILTER_MAX_CONDITIONS = 100;
+
+/** The conditions selected in an ad hoc filter, keyed by its variable name. */
+export const AdhocFilterValueSchema = z.object({
+  type: z.literal('adhoc'),
+  name: VariableFilterValueSchema.shape.name,
+  conditions: z
+    .array(AdhocFilterConditionSchema)
+    .max(ADHOC_FILTER_MAX_CONDITIONS),
+});
+
+export type AdhocFilterValue = z.infer<typeof AdhocFilterValueSchema>;
+
 /** One entry in a dashboard's `filters=` param / `savedFilterValues`. */
 export const DashboardFilterValueSchema = z.union([
   FilterSchema,
   VariableFilterValueSchema,
+  AdhocFilterValueSchema,
 ]);
 
 export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
@@ -1662,7 +1739,24 @@ const SharedChartSettingsSchema = z.object({
 export const RatioModeSchema = z.enum(['per_group', 'share_of_total']);
 export type RatioMode = z.infer<typeof RatioModeSchema>;
 
+// Heatmap y-axis may be a numeric distribution or series/groups.
+export const HeatmapModeSchema = z.enum(['distribution', 'series']);
+export type HeatmapMode = z.infer<typeof HeatmapModeSchema>;
+
+// PromQL heatmaps can also draw pre-bucketed Prometheus histograms (`le` buckets).
+export const PromqlHeatmapModeSchema = z.enum([
+  ...HeatmapModeSchema.options,
+  'histogram',
+]);
+export type PromqlHeatmapMode = z.infer<typeof PromqlHeatmapModeSchema>;
+
+export const HeatmapSettingsSchema = z.object({
+  mode: HeatmapModeSchema.optional(),
+});
+
 export const _ChartConfigSchema = SharedChartSettingsSchema.extend({
+  // Heatmap tiles only; an absent mode is 'distribution' (see getHeatmapMode).
+  heatmap: HeatmapSettingsSchema.optional(),
   timestampValueExpression: z.string(),
   implicitColumnExpression: z.string().optional(),
   // Fallback expression for bare-text Lucene search when no implicit column is
@@ -1710,6 +1804,8 @@ export const ChartVariableSchema = z.object({
   expression: z.string().optional(),
   /** Empty means nothing is selected. */
   values: z.array(z.string()),
+  /** The filter's selection cap; 1 means the variable is single-select. */
+  maxSelections: z.number().optional(),
 });
 
 export type ChartVariable = z.infer<typeof ChartVariableSchema>;
@@ -1786,11 +1882,53 @@ export const MAX_LEGEND_TEMPLATE_LENGTH = 1024;
 // Caps the number of expressions on one PromQL tile
 export const MAX_PROMQL_EXPRESSIONS = 10;
 
+/**
+ * Whether a PromQL expression is evaluated at a single moment (`instant`)
+ * or at intervals over a range of time (`range`).
+ */
+export const PromqlQueryTypeSchema = z.enum(['instant', 'range']);
+
+export type PromqlQueryType = z.infer<typeof PromqlQueryTypeSchema>;
+
+/** A Prometheus series' label set, `__name__` included. */
+export type PrometheusMetric = Record<string, string>;
+
+/**
+ * One series of a Prometheus matrix result: its samples over time. Values
+ * cross the wire as strings, as the Prometheus HTTP API returns them.
+ */
+export type PrometheusMatrixResult = {
+  metric: PrometheusMetric;
+  values: [number, string][];
+};
+
+/** One series of a Prometheus vector result: a single `[unix seconds, value]`. */
+export type PrometheusVectorResult = {
+  metric: PrometheusMetric;
+  value: [number, string];
+};
+
+/** How a range query's samples are client-side aggregated to a single value. */
+export enum PromqlReducer {
+  LastNotNull = 'lastNotNull',
+  Min = 'min',
+  Max = 'max',
+  Mean = 'mean',
+  Sum = 'sum',
+  Count = 'count',
+}
+
+export const PromqlReducerSchema = z.nativeEnum(PromqlReducer);
+
 /** One of the expressions a PromQL chart plots. */
 export const PromqlSeriesSchema = z.object({
   expression: z.string(),
   /** Prefixed to every series name this expression produces. */
   alias: z.string().optional(),
+  /** Whether to evaluate with query or query_range. Instant is not supported for timeseries charts */
+  queryType: PromqlQueryTypeSchema.optional(),
+  /** Only read when `queryType` is `range`. Defaults to last non-null. */
+  reducer: PromqlReducerSchema.optional(),
 });
 
 export type PromqlSeries = z.infer<typeof PromqlSeriesSchema>;
@@ -1811,15 +1949,21 @@ export type PromqlExpressionList = z.infer<typeof PromqlExpressionListSchema>;
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
   promqlExpression: PromqlExpressionListSchema,
-  connection: z.string(),
-  source: z.string().optional(),
+  source: z.string().min(1),
   step: z.string().optional(),
   legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
+  heatmap: HeatmapSettingsSchema.extend({
+    mode: PromqlHeatmapModeSchema.optional(),
+    scaleType: HeatmapScaleTypeSchema.optional(),
+  }).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
 const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
-  filters: z.array(FilterSchema).optional(),
+  // Copied from the source at query time and never persisted, so it cannot go
+  // stale if the source moves to another connection.
+  connection: z.string(),
+  filters: z.array(PromqlConditionFilterSchema).optional(),
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
@@ -1845,10 +1989,11 @@ export type DateRange = {
   // `__hdx_series_limit` CTE so every chunk ranks (and keeps) the same
   // top-N series. Never persisted.
   seriesLimitDateRange?: [Date, Date];
-  // Runtime-only, populated from the queried MetricSource's
+  // Runtime-only, populated from the queried Metric or PromQL source's
   // `minAutoGranularity` (when set) by whichever caller resolves the source
   // before rendering. Floors "auto" granularity resolution; see
-  // `convertDateRangeToGranularityString`. Never persisted.
+  // `convertDateRangeToGranularityString`. PromQL also reads it as the
+  // source's scrape interval for `$__rate_interval`. Never persisted.
   minGranularitySeconds?: number;
 };
 
@@ -2040,6 +2185,7 @@ export const DashboardFilterType = z.enum([
   'QUERY_EXPRESSION',
   'STATIC_LIST',
   'PROMETHEUS_LABEL',
+  'ADHOC',
 ]);
 
 /** Allowed variable names for dashboard filters. Alphanumeric + underscore, must start with a letter. */
@@ -2070,6 +2216,11 @@ const dashboardFilterBaseSchema = z.object({
    * undefined and 0 both imply no minimum selection requirement.
    */
   minSelections: z.number().int().min(0).max(1).optional(),
+  /**
+   * The most values that can be selected at once. Only 1 is currently allowed,
+   * which makes the filter single-select. undefined implies no cap.
+   */
+  maxSelections: z.number().int().min(1).max(1).optional(),
   /**
    * Whether an unsatisfied requirement blocks every tile on the dashboard,
    * rather than only the tiles that read this filter (via variable or broadcast).
@@ -2143,10 +2294,36 @@ export const PromqlLabelDashboardFilterSchema =
     isVariableEnabled: z.literal(true),
   });
 
+/**
+ * A filter whose conditions (`key operator value`) are picked freely from the
+ * keys of its sources: columns and map keys for SQL sources, labels for PromQL
+ * sources. Selection limits and requirements have no meaning for a list of
+ * conditions, so the filter does not carry them. Strict because routes validate
+ * without stripping, so an omitted key would otherwise still be stored.
+ */
+export const AdhocDashboardFilterSchema = dashboardFilterBaseSchema
+  .omit({ minSelections: true, maxSelections: true, isGlobalRequirement: true })
+  .extend({
+    type: z.literal(DashboardFilterType.enum.ADHOC),
+    sourceType: AdhocFilterSourceTypeSchema,
+    /** IDs of the sources whose keys and values the filter offers, all of `sourceType`. */
+    sources: z.array(z.string().min(1)).min(1),
+    /**
+     * Sources the conditions are broadcast to, all of `sourceType`. Undefined /
+     * empty means the filter's `sources`.
+     */
+    appliesToSourceIds: z.array(z.string().min(1)).optional(),
+    /** Undefined / missing means ENABLED, as for QUERY_EXPRESSION filters. */
+    isBroadcastEnabled: z.boolean().optional(),
+    isVariableEnabled: z.literal(true),
+  })
+  .strict();
+
 export const DashboardFilterSchema = z.discriminatedUnion('type', [
   QueryExpressionDashboardFilterSchema,
   StaticListDashboardFilterSchema,
   PromqlLabelDashboardFilterSchema,
+  AdhocDashboardFilterSchema,
 ]);
 
 export type QueryExpressionDashboardFilter = z.infer<
@@ -2158,6 +2335,7 @@ export type StaticListDashboardFilter = z.infer<
 export type PromqlLabelDashboardFilter = z.infer<
   typeof PromqlLabelDashboardFilterSchema
 >;
+export type AdhocDashboardFilter = z.infer<typeof AdhocDashboardFilterSchema>;
 export type DashboardFilter = z.infer<typeof DashboardFilterSchema>;
 
 export enum PresetDashboard {
@@ -2506,6 +2684,24 @@ export const SessionSourceSchema = BaseSourceSchema.extend({
   resourceAttributesExpression: z.string().optional(),
 });
 
+/**
+ * Floor for "Auto Granularity" on charts querying a metric or PromQL source.
+ * Without this, a short selected date range can auto-infer a bucket smaller
+ * than the metric's actual scrape/report interval, producing sparse/steppy
+ * series. Unset preserves the previous unfloored behavior. Only
+ * constrains auto-inference - an explicit (non-"auto") granularity
+ * picked on a tile is never overridden. PromQL sources also use it as the
+ * scrape interval that `$__rate_interval` is computed from.
+ *
+ * Preprocessed so the form's "No minimum" option (stored as `''`, since a
+ * Mantine Select needs a string value for every entry including the unset
+ * one) round-trips through the schema as `undefined`.
+ */
+export const MinAutoGranularitySchema = z.preprocess(
+  v => (v === '' ? undefined : v),
+  SQLIntervalSchema.optional(),
+);
+
 // Metric source form schema
 export const MetricSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Metric),
@@ -2526,27 +2722,13 @@ export const MetricSourceSchema = BaseSourceSchema.extend({
   logSourceId: z.string().optional(),
   // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
   seriesTable: z.string().optional(),
-  /**
-   * Floor for "Auto Granularity" on charts querying this source. Without
-   * this, a short selected date range can auto-infer a bucket smaller than
-   * the metric's actual scrape/report interval, producing sparse/steppy
-   * series. Unset preserves the previous unfloored behavior. Only
-   * constrains auto-inference - an explicit (non-"auto") granularity
-   * picked on a tile is never overridden.
-   *
-   * Preprocessed so the form's "No minimum" option (stored as `''`, since a
-   * Mantine Select needs a string value for every entry including the unset
-   * one) round-trips through the schema as `undefined`.
-   */
-  minAutoGranularity: z.preprocess(
-    v => (v === '' ? undefined : v),
-    SQLIntervalSchema.optional(),
-  ),
+  minAutoGranularity: MinAutoGranularitySchema,
 });
 
 // PromQL source form schema
 export const PromqlSourceSchema = BaseSourceSchema.extend({
   kind: z.literal(SourceKind.Promql),
+  minAutoGranularity: MinAutoGranularitySchema,
 });
 
 // Union of all source form schemas for validation

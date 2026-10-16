@@ -2,7 +2,7 @@ import React from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind, TLogSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 
 import { DBRowSidePanelErrorState } from '@/components/DBRowSidePanelErrorState';
 
@@ -128,5 +128,42 @@ describe('DBRowSidePanelErrorState', () => {
         /Failed to load row details from distributed or merge table/i,
       ),
     ).toBeNull();
+  });
+
+  describe('materialized and alias columns hint', () => {
+    const OPTION_KEY = 'hdx-row-show-materialized-alias-columns';
+    // The hint does not depend on the error, so any error shows it.
+    const error = new ClickHouseQueryError(
+      'Timeout exceeded: elapsed 30 seconds',
+      'SELECT * FROM logs LIMIT 1',
+    );
+
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('offers to hide the columns while the option is on', () => {
+      localStorage.setItem(OPTION_KEY, 'true');
+      renderErrorState(error);
+
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Hide materialized and alias columns',
+        }),
+      );
+
+      expect(localStorage.getItem(OPTION_KEY)).toBe('false');
+      expect(
+        screen.queryByTestId('materialized-alias-columns-hint'),
+      ).toBeNull();
+    });
+
+    it('is not shown while the option is off', () => {
+      renderErrorState(error);
+
+      expect(
+        screen.queryByTestId('materialized-alias-columns-hint'),
+      ).toBeNull();
+    });
   });
 });

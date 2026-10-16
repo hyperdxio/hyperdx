@@ -11,10 +11,10 @@ import {
   getAIMetadata,
   getAIModel,
   getChartConfigFromResolvedConfig,
-  llmTelemetry,
 } from '@/controllers/ai';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { llmTelemetry } from '@/utils/aiTelemetry';
 import { Api404Error, Api500Error } from '@/utils/errors';
 import { withOperationMetrics } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
@@ -106,11 +106,7 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
               output: Output.object({
                 schema: AssistantLineTableConfigSchema,
               }),
-              // teamId/userId flatten to ai.telemetry.metadata.* span
-              // attributes for attribution on the LLM dashboard. Callers
-              // with a conversation-scoped id should also pass sessionId so
-              // their calls group into a session (see llmTelemetry).
-              experimental_telemetry: llmTelemetry({
+              ...llmTelemetry({
                 teamId: teamId.toString(),
                 userId: userId.toString(),
               }),

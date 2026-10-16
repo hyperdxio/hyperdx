@@ -14,9 +14,11 @@ import {
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
+  pickTimeSeriesTable,
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
   useSources,
+  useUpdateSource,
 } from '@/source';
 
 jest.mock('../api', () => ({ hdxServer: jest.fn() }));
@@ -30,7 +32,7 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
 }));
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 
@@ -53,6 +55,60 @@ const TRACE_SOURCE: TTraceSource = {
   spanKindExpression: 'SpanKind',
   defaultTableSelectExpression: 'Timestamp, ServiceName',
 } as TTraceSource;
+
+describe('pickTimeSeriesTable', () => {
+  const table = (databaseName: string, tableName: string) => ({
+    databaseName,
+    tableName,
+  });
+
+  it('prefers metrics_ts in the preferred database', () => {
+    const tables = [
+      table('default', 'metrics_ts'),
+      table('otel', 'metrics_ts'),
+    ];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('otel', 'metrics_ts'),
+    );
+  });
+
+  it('prefers prometheus.metrics over metrics_ts', () => {
+    const tables = [
+      table('otel', 'metrics_ts'),
+      table('prometheus', 'metrics'),
+    ];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('prometheus', 'metrics'),
+    );
+  });
+
+  it('only treats metrics in the prometheus database as the docs table', () => {
+    const tables = [table('default', 'metrics'), table('otel', 'metrics_ts')];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('otel', 'metrics_ts'),
+    );
+  });
+
+  it('falls back to metrics_ts in any database', () => {
+    const tables = [table('a_db', 'custom_ts'), table('b_db', 'metrics_ts')];
+    expect(pickTimeSeriesTable(tables)).toEqual(table('b_db', 'metrics_ts'));
+  });
+
+  it('picks a sole TimeSeries table without the default name', () => {
+    expect(pickTimeSeriesTable([table('otel', 'prom')])).toEqual(
+      table('otel', 'prom'),
+    );
+  });
+
+  it('picks nothing from several tables without the default name', () => {
+    const tables = [table('otel', 'prom_a'), table('otel', 'prom_b')];
+    expect(pickTimeSeriesTable(tables, 'otel')).toBeUndefined();
+  });
+
+  it('picks nothing from no tables', () => {
+    expect(pickTimeSeriesTable([])).toBeUndefined();
+  });
+});
 
 describe('getEventBody', () => {
   it('returns spanNameExpression for trace kind source when both bodyExpression and spanNameExpression are present', () => {
@@ -173,6 +229,30 @@ describe('getTraceDurationNumberFormat', () => {
         aggFn: 'avgIf',
       }),
     ).toEqual({ output: 'duration', factor: 1e-9 });
+  });
+});
+
+describe('useUpdateSource', () => {
+  it("drops the updated source's cached PromQL lookups", () => {
+    const invalidateQueries = jest.fn();
+    // @ts-expect-error return value type
+    jest.mocked(useQueryClient).mockReturnValue({ invalidateQueries });
+    let onSuccess: ((data: unknown, vars: unknown) => void) | undefined;
+    // @ts-expect-error param type
+    jest.mocked(useMutation).mockImplementation(options => {
+      // @ts-expect-error return value type
+      onSuccess = options.onSuccess;
+    });
+
+    useUpdateSource();
+    onSuccess?.(undefined, { source: { id: 'source-promql' } });
+
+    expect(invalidateQueries.mock.calls.map(([arg]) => arg.queryKey)).toEqual([
+      ['sources'],
+      ['promql-metric-names', 'source-promql'],
+      ['promql-label-names', 'source-promql'],
+      ['dashboard-filter-promql-label-values', 'source-promql'],
+    ]);
   });
 });
 

@@ -79,7 +79,7 @@ COPY --chown=10001:10001 docker/otel-collector/config.standalone.promql.yaml /et
 COPY --chown=10001:10001 docker/otel-collector/supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 
-EXPOSE 4317 4318 13133
+EXPOSE 4317 4318 13133 8125/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -q --spider http://localhost:13133/ || exit 1
@@ -103,7 +103,7 @@ COPY --chown=10001:10001 docker/otel-collector/config.standalone.promql.yaml /et
 COPY --chown=10001:10001 docker/otel-collector/supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 
-EXPOSE 4317 4318 13133
+EXPOSE 4317 4318 13133 8125/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -q --spider http://localhost:13133/ || exit 1

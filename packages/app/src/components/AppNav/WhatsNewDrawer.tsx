@@ -1,7 +1,7 @@
 import ReactMarkdown from 'react-markdown';
+import { Badge } from '@clickhouse/click-ui';
 import {
   Anchor,
-  Badge,
   Card,
   Center,
   Divider,
@@ -107,11 +107,7 @@ export const WhatsNewDrawer = ({
               >
                 <Group gap="xs">
                   <Title order={4}>v{release.version}</Title>
-                  {idx === 0 && (
-                    <Badge variant="light" color="blue">
-                      Latest
-                    </Badge>
-                  )}
+                  {idx === 0 && <Badge text="Latest" state="info" />}
                   {release.date && (
                     <Text size="xs" c="dimmed">
                       {release.date}

@@ -5,9 +5,13 @@ import {
   chSql,
   streamToAsyncIterator,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import type { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   DateRange,
+  Filter,
   pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
@@ -16,6 +20,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
+import { useQueryAttribution } from '@/queryAttribution';
 import { usePrevious } from '@/utils';
 
 import useFieldExpressionGenerator, {
@@ -39,6 +44,96 @@ export type Session = {
   userEmail: string;
   userName: string;
 };
+
+// Recording rows are written throughout a session, so the range only needs
+// padding for skew between recording and span timestamps.
+const SERVICE_SCOPE_PADDING_MS = 60 * 60 * 1000;
+
+// Trace tables sorted by ServiceName first can't prune on time alone, so the
+// sessions query is scoped to the services in the session table. Returns []
+// (unscoped) when that isn't possible or the lookup fails.
+export async function fetchServiceScopeFilters({
+  traceSource,
+  sessionSource,
+  dateRange,
+  metadata,
+  clickhouseClient,
+}: {
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
+  dateRange: [Date, Date];
+  metadata: Metadata;
+  clickhouseClient: ClickhouseClient;
+}): Promise<Filter[]> {
+  if (!traceSource.serviceNameExpression) {
+    return [];
+  }
+  try {
+    const columns = await metadata.getColumns({
+      databaseName: sessionSource.from.databaseName,
+      tableName: sessionSource.from.tableName,
+      connectionId: sessionSource.connection,
+    });
+    if (!columns.some(c => c.name === 'ServiceName')) {
+      return [];
+    }
+    const query = await renderChartConfig(
+      {
+        select: [
+          { valueExpression: 'DISTINCT ServiceName', alias: 'serviceName' },
+        ],
+        from: sessionSource.from,
+        dateRange: [
+          new Date(dateRange[0].getTime() - SERVICE_SCOPE_PADDING_MS),
+          new Date(dateRange[1].getTime() + SERVICE_SCOPE_PADDING_MS),
+        ],
+        where: '',
+        timestampValueExpression: sessionSource.timestampValueExpression,
+        connection: sessionSource.connection,
+      },
+      metadata,
+      sessionSource.querySettings,
+    );
+    const json = await clickhouseClient
+      .query({
+        query: query.sql,
+        query_params: query.params,
+        connectionId: sessionSource.connection,
+        format: 'JSON',
+      })
+      .then(res => res.json<{ serviceName: string }>());
+    const serviceNames = (json.data ?? [])
+      .map(row => row.serviceName)
+      .filter(name => name != null);
+    return filtersToQuery({
+      [traceSource.serviceNameExpression]: {
+        included: new Set(serviceNames),
+        excluded: new Set(),
+      },
+    });
+  } catch (e) {
+    console.warn('Sessions service scope lookup failed', e);
+    return [];
+  }
+}
+
+export function buildSessionsQueryFilters(
+  serviceScopeFilters: Filter[],
+  where: SearchCondition | undefined,
+  whereLanguage: SearchConditionLanguage | undefined,
+): Filter[] {
+  return [
+    ...serviceScopeFilters,
+    ...(where
+      ? [
+          {
+            type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+            condition: where,
+          } satisfies Filter,
+        ]
+      : []),
+  ];
+}
 
 export function useSessions(
   {
@@ -94,6 +189,20 @@ export function useSessions(
       const traceSessionIdExpression = getTraceSourceFieldExpression(
         traceSource.resourceAttributesExpression ?? 'ResourceAttributes',
         'rum.sessionId',
+      );
+
+      const serviceScopeFilters = await fetchServiceScopeFilters({
+        traceSource,
+        sessionSource,
+        dateRange,
+        metadata,
+        clickhouseClient,
+      });
+
+      const sessionsQueryFilters = buildSessionsQueryFilters(
+        serviceScopeFilters,
+        where,
+        whereLanguage,
       );
 
       const [
@@ -156,15 +265,8 @@ export function useSessions(
             dateRange,
             where: `${traceSource.resourceAttributesExpression}.rum.sessionId:*`,
             whereLanguage: 'lucene',
-            ...(where && {
-              filters: [
-                {
-                  type:
-                    (whereLanguage === 'promql' ? 'lucene' : whereLanguage) ??
-                    'lucene',
-                  condition: where,
-                },
-              ],
+            ...(sessionsQueryFilters.length > 0 && {
+              filters: sessionsQueryFilters,
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -427,6 +529,7 @@ export function useRRWebEventStream(
   const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>(undefined);
 
   const { data: source } = useSource({ id: sourceId });
+  const attribution = useQueryAttribution();
 
   const fetchResults = useCallback(
     async ({
@@ -471,7 +574,7 @@ export function useRRWebEventStream(
 
       const format = 'JSONEachRow';
       const fetchPromise = (async () => {
-        const clickhouseClient = getClickhouseClient();
+        const clickhouseClient = getClickhouseClient({ attribution });
         const resultSet = await clickhouseClient.query({
           query: query.sql,
           query_params: query.params,
@@ -570,6 +673,7 @@ export function useRRWebEventStream(
       resultsKey,
       metadata,
       getSessionSourceFieldExpression,
+      attribution,
     ],
   );
 

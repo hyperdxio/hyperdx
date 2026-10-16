@@ -117,6 +117,7 @@ services:
     volumes:
       - ../../docker/clickhouse/local/config.xml:/etc/clickhouse-server/config.xml
       - ../../docker/clickhouse/local/users.xml:/etc/clickhouse-server/users.xml
+      - ./ch-compat-config.d/remove-prometheus-api.xml:/etc/clickhouse-server/config.d/remove-prometheus-api.xml:ro
     ports:
       - 29000:9000
       - 28123:8123

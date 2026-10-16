@@ -407,47 +407,46 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
   // default cap, 0 = unlimited, positive N = top-N. All three must survive a
   // GET->PUT round-trip: 0 and N pass through, null maps to absent (the
   // default-cap state).
-  describe.each([DisplayType.Line, DisplayType.StackedBar])(
-    'seriesLimit serialization for %s tiles',
-    displayType => {
-      function readSeriesLimit(seriesLimit: number | null): unknown {
-        const doc = makeDoc({
-          tiles: [
-            makeTile({
-              id: 'series-limit-tile',
-              config: {
-                displayType,
-                source: new mongoose.Types.ObjectId().toString(),
-                name: 'Series limit tile',
-                select: [{ aggFn: 'count', valueExpression: '' }],
-                where: '',
-                seriesLimit,
-              },
-            }),
-          ],
-        });
-        // Round-trip through JSON to observe what the wire body actually
-        // carries: `undefined` fields are dropped, so an omitted seriesLimit
-        // reads back as `undefined` here.
-        const wire = JSON.parse(
-          JSON.stringify(convertToExternalDashboard(doc)),
-        );
-        return wire.tiles[0].config.seriesLimit;
-      }
-
-      it('round-trips 0 (unlimited) rather than dropping it', () => {
-        expect(readSeriesLimit(0)).toBe(0);
+  describe.each([
+    DisplayType.Line,
+    DisplayType.StackedBar,
+    DisplayType.StackedLine,
+  ])('seriesLimit serialization for %s tiles', displayType => {
+    function readSeriesLimit(seriesLimit: number | null): unknown {
+      const doc = makeDoc({
+        tiles: [
+          makeTile({
+            id: 'series-limit-tile',
+            config: {
+              displayType,
+              source: new mongoose.Types.ObjectId().toString(),
+              name: 'Series limit tile',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              seriesLimit,
+            },
+          }),
+        ],
       });
+      // Round-trip through JSON to observe what the wire body actually
+      // carries: `undefined` fields are dropped, so an omitted seriesLimit
+      // reads back as `undefined` here.
+      const wire = JSON.parse(JSON.stringify(convertToExternalDashboard(doc)));
+      return wire.tiles[0].config.seriesLimit;
+    }
 
-      it('emits seriesLimit as absent when stored as null (default cap)', () => {
-        expect(readSeriesLimit(null)).toBeUndefined();
-      });
+    it('round-trips 0 (unlimited) rather than dropping it', () => {
+      expect(readSeriesLimit(0)).toBe(0);
+    });
 
-      it('passes a positive seriesLimit through unchanged', () => {
-        expect(readSeriesLimit(25)).toBe(25);
-      });
-    },
-  );
+    it('emits seriesLimit as absent when stored as null (default cap)', () => {
+      expect(readSeriesLimit(null)).toBeUndefined();
+    });
+
+    it('passes a positive seriesLimit through unchanged', () => {
+      expect(readSeriesLimit(25)).toBe(25);
+    });
+  });
 });
 
 describe('convertToExternalDashboard stale aggregation params', () => {

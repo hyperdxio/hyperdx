@@ -41,11 +41,11 @@ const timeseriesSchema = z.object({
         'Example: [{ aggFn: "count" }, { aggFn: "avg", valueExpression: "Duration" }]',
     ),
   shape: z
-    .enum(['line', 'stacked_bar'])
+    .enum(['line', 'stacked_bar', 'stacked_line'])
     .optional()
     .default('line')
     .describe(
-      'Chart shape. "line" for line chart (default), "stacked_bar" for stacked bar chart.',
+      'Chart shape. "line" for line chart (default), "stacked_bar" for stacked bar chart, "stacked_line" for stacked line (area) chart.',
     ),
   where: whereSchema.describe(
     'Row filter applied to ALL select items. ' +

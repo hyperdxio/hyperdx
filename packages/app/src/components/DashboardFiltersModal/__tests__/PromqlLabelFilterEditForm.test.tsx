@@ -88,9 +88,8 @@ describe('PromqlLabelFilterEditForm', () => {
     expect(await screen.findByText('instance')).toBeInTheDocument();
     expect(screen.getByText('job')).toBeInTheDocument();
     expect(mockLabels).toHaveBeenCalledWith({
-      connectionId: 'clickhouse-conn',
-      database: 'telemetry',
-      table: 'metrics',
+      sourceId: 'promql-source',
+      attribution: expect.objectContaining({ surface: 'metadata' }),
     });
   });
 
