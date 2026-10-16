@@ -42,7 +42,7 @@ describe('MCP tool descriptions', () => {
         node.forEach((child, i) => walk(child, `${path}[${i}]`));
         return;
       }
-      const properties = (node as { properties?: unknown }).properties;
+      const properties = 'properties' in node ? node.properties : undefined;
       if (properties != null && typeof properties === 'object') {
         for (const [key, value] of Object.entries(properties)) {
           const prop: unknown = value;
