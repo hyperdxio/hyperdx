@@ -1,4 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Implementation } from '@modelcontextprotocol/sdk/types.js';
 
 import { CODE_VERSION } from '@/config';
 
@@ -35,16 +36,41 @@ const SERVER_INSTRUCTIONS = [
   'dashboard authoring.',
 ].join('\n');
 
+// Inlined as a data URI so the icon resolves no matter where the server is
+// hosted. Mirrors packages/app/public/favicons/clickstack/favicon.svg.
+const SERVER_ICON_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="260" height="260" fill="none" viewBox="0 0 260 260">' +
+  '<rect width="260" height="260" fill="#F9F9F9" rx="40"/>' +
+  '<g clip-path="url(#c)">' +
+  '<rect width="19.499" height="175.494" x="42.25" y="42.25" fill="#151515" rx="2.051"/>' +
+  '<rect width="19.499" height="175.494" x="81.251" y="42.25" fill="#151515" rx="2.051"/>' +
+  '<rect width="19.499" height="175.494" x="120.252" y="42.25" fill="#151515" rx="2.051"/>' +
+  '<rect width="19.499" height="175.494" x="159.243" y="42.25" fill="#151515" rx="2.051"/>' +
+  '<rect width="19.499" height="38.999" x="198.254" y="110.501" fill="#151515" rx="2.051"/>' +
+  '</g><defs><clipPath id="c"><path d="M26 26h208v208H26z"/></clipPath></defs></svg>';
+
+const SERVER_INFO: Implementation = {
+  name: 'clickstack',
+  title: 'ClickStack',
+  version: `${CODE_VERSION}-beta`,
+  description:
+    'Query and investigate logs, metrics, traces, and sessions stored in ' +
+    'ClickHouse, and manage ClickStack dashboards, alerts, data sources, ' +
+    'and saved searches.',
+  websiteUrl: 'https://clickhouse.com/docs/use-cases/observability/clickstack',
+  icons: [
+    {
+      src: `data:image/svg+xml;base64,${Buffer.from(SERVER_ICON_SVG).toString('base64')}`,
+      mimeType: 'image/svg+xml',
+      sizes: ['any'],
+    },
+  ],
+};
+
 export function createServer(context: McpContext) {
-  const server = new McpServer(
-    {
-      name: 'clickstack',
-      version: `${CODE_VERSION}-beta`,
-    },
-    {
-      instructions: SERVER_INSTRUCTIONS,
-    },
-  );
+  const server = new McpServer(SERVER_INFO, {
+    instructions: SERVER_INSTRUCTIONS,
+  });
 
   const registerTool = createRegisterTool(server, context);
   const registrar = { server, context, registerTool };
