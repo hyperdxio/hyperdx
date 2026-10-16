@@ -1,4 +1,5 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
+import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
@@ -39,6 +40,7 @@ import {
   isTraceSource,
   NumberTileColorCondition,
   NumberTileColorConditionSchema,
+  PromqlSavedChartConfig,
   RawSqlSavedChartConfig,
   resolveChartPaletteToken,
   SavedChartConfig,
@@ -62,11 +64,13 @@ import {
 } from '@/utils/externalApi';
 import logger from '@/utils/logger';
 import {
+  ExternalDashboardBuilderTileConfig,
   ExternalDashboardFilter,
   externalDashboardFilterSchema,
   externalDashboardFilterSchemaWithId,
   ExternalDashboardFilterWithId,
   ExternalDashboardHeatmapSelectItem,
+  ExternalDashboardPromqlTileConfig,
   ExternalDashboardRawSqlTileConfig,
   externalDashboardSavedFilterValueSchema,
   ExternalDashboardSelectItem,
@@ -99,8 +103,20 @@ export function isRawSqlExternalTileConfig(
   return 'configType' in config && config.configType === 'sql';
 }
 
+function isPromqlExternalTileConfig(
+  config: ExternalDashboardTileConfig,
+): config is ExternalDashboardPromqlTileConfig {
+  return 'configType' in config && config.configType === 'promql';
+}
+
+function isBuilderExternalTileConfig(
+  config: ExternalDashboardTileConfig,
+): config is ExternalDashboardBuilderTileConfig {
+  return !('configType' in config);
+}
+
 type ExternalHeatmapTileConfig = Extract<
-  ExternalDashboardTileConfig,
+  ExternalDashboardBuilderTileConfig,
   { displayType: 'heatmap' }
 >;
 
@@ -223,6 +239,90 @@ const toExternalColorRules = (
   return resolved.length > 0 ? resolved : undefined;
 };
 
+const convertPromqlConfigToExternal = (
+  config: PromqlSavedChartConfig,
+): ExternalDashboardPromqlTileConfig => {
+  const base = {
+    configType: 'promql' as const,
+    sourceId: config.source,
+    granularity: config.granularity,
+    numberFormat: config.numberFormat,
+  };
+
+  const series = getPromqlSeries(config);
+  const rangeExpressions = series.map(s => pick(s, ['expression', 'alias']));
+  const instantExpressions = series.map(s =>
+    pick(s, ['expression', 'alias', 'queryType']),
+  );
+  const reducibleExpressions = series.map(s =>
+    pick(s, ['expression', 'alias', 'queryType', 'reducer']),
+  );
+  const timeChartFields = {
+    expressions: rangeExpressions,
+    legendTemplate: config.legendTemplate,
+    fillNulls: config.fillNulls !== false,
+    alignDateRangeToGranularity: config.alignDateRangeToGranularity,
+    seriesLimit: config.seriesLimit ?? undefined,
+  };
+
+  switch (config.displayType) {
+    case DisplayType.StackedBar:
+      return { ...base, ...timeChartFields, displayType: 'stacked_bar' };
+    case DisplayType.StackedLine:
+      return { ...base, ...timeChartFields, displayType: 'stacked_line' };
+    case DisplayType.Table:
+      return { ...base, displayType: 'table', expressions: instantExpressions };
+    case DisplayType.Number:
+      return {
+        ...base,
+        displayType: 'number',
+        expressions: reducibleExpressions,
+        color: resolveChartPaletteToken(config.color),
+        colorRules: toExternalColorRules(config.colorRules),
+        backgroundChart: config.backgroundChart,
+      };
+    case DisplayType.Pie:
+    case DisplayType.Bar:
+      return {
+        ...base,
+        displayType: config.displayType === DisplayType.Pie ? 'pie' : 'bar',
+        expressions: reducibleExpressions,
+        legendTemplate: config.legendTemplate,
+        limit: config.seriesLimit ?? undefined,
+      };
+    case DisplayType.Heatmap:
+      return {
+        ...base,
+        displayType: 'heatmap',
+        expressions: rangeExpressions,
+        heatmapMode: config.heatmap?.mode,
+        heatmapScaleType: config.heatmap?.scaleType,
+        legendTemplate: config.legendTemplate,
+      };
+    case DisplayType.Search:
+    case DisplayType.Markdown:
+    case DisplayType.EventPatterns:
+      // The editor never saves these for PromQL. Emitting a line chart keeps
+      // the tile a PromQL tile on a GET -> PUT round-trip.
+      logger.error(
+        { displayType: config.displayType },
+        'PromQL tile has an unsupported display type; emitting it as a line chart',
+      );
+      break;
+    case DisplayType.Line:
+    case undefined:
+      break;
+    default:
+      config.displayType satisfies never;
+  }
+  return {
+    ...base,
+    ...timeChartFields,
+    displayType: 'line',
+    compareToPreviousPeriod: config.compareToPreviousPeriod,
+  };
+};
+
 // Exported for the inline-alert converter (v2/utils/alertChartConfig.ts),
 // which reuses the tile-config translation for an alert's persisted config.
 export const convertToExternalTileChartConfig = (
@@ -319,9 +419,8 @@ export const convertToExternalTileChartConfig = (
     return undefined;
   }
 
-  // PromQL configs are not yet supported in the external API
   if (isPromqlSavedChartConfig(config)) {
-    return undefined;
+    return convertPromqlConfigToExternal(config);
   }
 
   const sourceId = config.source?.toString() ?? '';
@@ -573,19 +672,7 @@ function convertTileToExternalChart(
   tile: DashboardDocument['tiles'][number],
   containerById: Map<string, DashboardContainer>,
   dashboardId: string,
-): ExternalDashboardTileWithId | undefined {
-  // PromQL tiles have no external schema representation yet. Dropping them on
-  // read (and letting the caller filter undefined) is safer than falling
-  // through to defaultTileConfig — that would silently overwrite the PromQL
-  // config with an empty Line tile on a GET → PUT round-trip.
-  if (isPromqlSavedChartConfig(tile.config)) {
-    logger.warn(
-      { dashboardId, tileId: tile.id },
-      'Skipping PromQL tile in external API response (not yet supported)',
-    );
-    return undefined;
-  }
-
+): ExternalDashboardTileWithId {
   // Returned in case of a failure converting the saved chart config
   const defaultTileConfig: ExternalDashboardTileConfig =
     isRawSqlSavedChartConfig(tile.config)
@@ -666,6 +753,13 @@ function convertTileToExternalChart(
 
 export function convertToExternalDashboard(
   dashboard: DashboardDocument,
+  {
+    hidePromqlTiles = false,
+  }: {
+    // MCP cannot save PromQL tiles until HDX-5302, so its tools hide them
+    // rather than show tiles the agent cannot edit. Remove with that work.
+    hidePromqlTiles?: boolean;
+  } = {},
 ): ExternalDashboard {
   const containers = dashboard.containers ?? [];
   // Dedupe by id when building the lookup map: a doc with duplicate
@@ -681,8 +775,12 @@ export function convertToExternalDashboard(
     id: dashboardId,
     name: dashboard.name,
     tiles: dashboard.tiles
-      .map(tile => convertTileToExternalChart(tile, containerById, dashboardId))
-      .filter(t => t !== undefined),
+      .filter(
+        tile => !(hidePromqlTiles && isPromqlSavedChartConfig(tile.config)),
+      )
+      .map(tile =>
+        convertTileToExternalChart(tile, containerById, dashboardId),
+      ),
     tags: dashboard.tags || [],
     filters: getExternalCompatibleFilters(dashboard.filters).map(
       translateFilterToExternalFilter,
@@ -727,6 +825,73 @@ const convertToInternalSelectItem = (
   };
 };
 
+const convertExternalPromqlConfigToInternal = (
+  config: ExternalDashboardPromqlTileConfig,
+  name: string,
+): PromqlSavedChartConfig => {
+  const base = {
+    configType: 'promql' as const,
+    name,
+    source: config.sourceId,
+    promqlExpression: config.expressions,
+    granularity: config.granularity,
+    numberFormat: config.numberFormat,
+  };
+
+  switch (config.displayType) {
+    case 'line':
+    case 'stacked_bar':
+    case 'stacked_line':
+      return {
+        ...base,
+        ...pick(config, [
+          'legendTemplate',
+          'alignDateRangeToGranularity',
+          'seriesLimit',
+        ]),
+        displayType: TIME_SERIES_DISPLAY_TYPE_BY_NAME[config.displayType],
+        fillNulls: config.fillNulls === false ? false : undefined,
+        compareToPreviousPeriod:
+          config.displayType === 'line'
+            ? config.compareToPreviousPeriod
+            : undefined,
+      };
+    case 'table':
+      return { ...base, displayType: DisplayType.Table };
+    case 'number':
+      return {
+        ...base,
+        ...pick(config, ['color', 'colorRules', 'backgroundChart']),
+        displayType: DisplayType.Number,
+      };
+    case 'pie':
+    case 'bar':
+      return {
+        ...base,
+        displayType:
+          config.displayType === 'pie' ? DisplayType.Pie : DisplayType.Bar,
+        legendTemplate: config.legendTemplate,
+        seriesLimit: config.limit,
+      };
+    case 'heatmap':
+      return {
+        ...base,
+        displayType: DisplayType.Heatmap,
+        legendTemplate: config.legendTemplate,
+        ...(config.heatmapMode || config.heatmapScaleType
+          ? {
+              heatmap: {
+                ...(config.heatmapMode ? { mode: config.heatmapMode } : {}),
+                ...(config.heatmapScaleType
+                  ? { scaleType: config.heatmapScaleType }
+                  : {}),
+              },
+            }
+          : {}),
+      };
+  }
+};
+
 export function convertToInternalTileConfig(
   externalTile: ConfigTile,
 ): DashboardDocument['tiles'][number] {
@@ -735,7 +900,12 @@ export function convertToInternalTileConfig(
 
   let internalConfig: SavedChartConfig;
 
-  if (isRawSqlExternalTileConfig(externalConfig)) {
+  if (isPromqlExternalTileConfig(externalConfig)) {
+    internalConfig = convertExternalPromqlConfigToInternal(
+      externalConfig,
+      name,
+    );
+  } else if (isRawSqlExternalTileConfig(externalConfig)) {
     switch (externalConfig.displayType) {
       case 'line':
       case 'stacked_bar':
@@ -1132,7 +1302,7 @@ function getHeatmapTilesWithIncompatibleSources(
   for (const tile of tiles) {
     if (
       !isConfigTile(tile) ||
-      isRawSqlExternalTileConfig(tile.config) ||
+      !isBuilderExternalTileConfig(tile.config) ||
       tile.config.displayType !== 'heatmap' ||
       !tile.config.sourceId
     ) {
@@ -1180,7 +1350,7 @@ function getFormulaTilesWithIncompatibleSources(
   for (const tile of tiles) {
     if (
       isConfigTile(tile) &&
-      !isRawSqlExternalTileConfig(tile.config) &&
+      isBuilderExternalTileConfig(tile.config) &&
       'formulas' in tile.config &&
       (tile.config.formulas?.length ?? 0) > 0 &&
       'sourceId' in tile.config &&
@@ -1218,7 +1388,7 @@ function filterChangedFormulaTiles(
   return requestTiles.filter(tile => {
     if (
       !isConfigTile(tile) ||
-      isRawSqlExternalTileConfig(tile.config) ||
+      !isBuilderExternalTileConfig(tile.config) ||
       !('formulas' in tile.config) ||
       (tile.config.formulas?.length ?? 0) === 0
     ) {
@@ -1266,7 +1436,7 @@ function filterChangedHeatmapTiles(
   return requestTiles.filter(tile => {
     if (
       !isConfigTile(tile) ||
-      isRawSqlExternalTileConfig(tile.config) ||
+      !isBuilderExternalTileConfig(tile.config) ||
       tile.config.displayType !== 'heatmap'
     ) {
       return false;

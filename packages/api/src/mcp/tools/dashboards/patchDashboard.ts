@@ -99,8 +99,12 @@ export function registerPatchDashboard({
         if (existingIdx === -1) {
           // Build a human-readable list of available tile IDs.
           // Convert only for the error message (read-only, no write-back).
-          const externalDashboard =
-            convertToExternalDashboard(existingDashboard);
+          const externalDashboard = convertToExternalDashboard(
+            existingDashboard,
+            {
+              hidePromqlTiles: true,
+            },
+          );
           return mcpUserError(
             `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => `${t.id} (${t.name})`).join(', ')}`,
           );

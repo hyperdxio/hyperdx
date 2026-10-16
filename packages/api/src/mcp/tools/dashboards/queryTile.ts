@@ -66,7 +66,9 @@ export function registerQueryTile({
         return mcpUserError('Dashboard not found');
       }
 
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromqlTiles: true,
+      });
       const tile = externalDashboard.tiles.find(t => t.id === tileId);
       if (!tile) {
         return mcpUserError(
