@@ -228,7 +228,16 @@ export function ColumnsPopover({
               size="xs"
               placeholder="Search columns"
               value={search}
-              onChange={setSearch}
+              onChange={next => {
+                // A picked map key is stored with its alias. Show that alias
+                // in the input so it can be edited before Add.
+                const aliased = withMapKeyAlias(
+                  next.trim(),
+                  items,
+                  knownColumns,
+                );
+                setSearch(aliased === next.trim() ? next : aliased);
+              }}
               data={options}
               limit={50}
               comboboxProps={{ withinPortal: false }}

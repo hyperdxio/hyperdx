@@ -92,6 +92,30 @@ describe('ColumnsPopover', () => {
     expect(onApply).toHaveBeenCalledWith('Timestamp', ['Body']);
   });
 
+  it('shows a map key alias in the input before adding it', async () => {
+    renderPopover({
+      fieldOptions: ["LogAttributes['ads.consent_given']"],
+    });
+    openPopover();
+    const input = await screen.findByPlaceholderText('Search columns');
+    fireEvent.change(input, {
+      target: { value: "LogAttributes['ads" },
+    });
+    fireEvent.click(
+      await screen.findByText("LogAttributes['ads.consent_given']"),
+    );
+    expect(input).toHaveValue(
+      `LogAttributes['ads.consent_given'] AS "ads.consent_given"`,
+    );
+    fireEvent.click(screen.getByTestId('search-columns-add-button'));
+    expect(input).toHaveValue('');
+    expect(
+      screen.getByText(
+        `LogAttributes['ads.consent_given'] AS "ads.consent_given"`,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('fills the input from a suggestion and adds only on Add', async () => {
     const { onApply } = renderPopover();
     openPopover();
