@@ -41,7 +41,9 @@ function parseSortKeys(orderBy: string): SortKey[] | null {
   const trimmed = orderBy.trim();
   if (!trimmed) return [];
 
-  const direction = trimmed.match(/^(.*)\s+(asc|desc)$/i);
+  // [\s\S] so a newline inside `(toDateTime(Timestamp),\n Timestamp) DESC`
+  // still counts as one direction. `.` would miss it and hide the Pick controls.
+  const direction = trimmed.match(/^([\s\S]*)\s+(asc|desc)$/i);
   const expr = direction?.[1].trim() ?? '';
   if (
     direction &&

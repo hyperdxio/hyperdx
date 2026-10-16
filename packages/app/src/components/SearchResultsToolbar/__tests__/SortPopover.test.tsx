@@ -61,6 +61,20 @@ describe('SortPopover', () => {
     expect(onApply).toHaveBeenCalledWith('Timestamp ASC');
   });
 
+  it('lists a tuple sort that spans more than one line', async () => {
+    const orderBy = '(toDateTime(Timestamp),\n Timestamp) DESC';
+    renderPopover({ value: orderBy, defaultValue: orderBy });
+    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
+      'Sort: 2 fields',
+    );
+    openPopover();
+    expect(
+      await screen.findByDisplayValue('toDateTime(Timestamp)'),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Timestamp')).toBeInTheDocument();
+    expect(screen.queryByTestId('search-sort-custom')).not.toBeInTheDocument();
+  });
+
   it('lists function calls inside a tuple sort', async () => {
     const orderBy = '(toDateTime(Timestamp), Timestamp) DESC';
     renderPopover({ value: orderBy, defaultValue: orderBy });
