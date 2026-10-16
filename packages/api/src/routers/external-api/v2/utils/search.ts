@@ -1,5 +1,6 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
+import { windowInclusivity } from '@hyperdx/common-utils/dist/core/searchWindows';
 import {
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
@@ -19,7 +20,18 @@ import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ExternalDashboardSearchRequestConfig } from '@/utils/zod';
 
-export type SearchErrorCode = 'SOURCE_NOT_FOUND' | 'CONNECTION_NOT_FOUND';
+import {
+  MAX_CURSOR_OFFSET,
+  MAX_SINGLE_WINDOW_OFFSET,
+  type SearchCursorState,
+} from './searchCursor';
+import { resolveSearchWindows } from './searchWindows';
+
+export type SearchErrorCode =
+  | 'SOURCE_NOT_FOUND'
+  | 'CONNECTION_NOT_FOUND'
+  | 'CURSOR_QUERY_MISMATCH'
+  | 'CURSOR_WINDOW_TOO_DENSE';
 
 type SearchError = {
   isError: true;
@@ -30,6 +42,7 @@ type SearchError = {
 type SearchResults = {
   isError: false;
   data: Record<string, unknown>[];
+  nextCursorState: SearchCursorState | null;
 };
 
 // Mirrors `optimizeDefaultOrderBy` + `useDefaultOrderBy` from DBSearchPage.tsx.
@@ -85,6 +98,7 @@ export async function runSearchConfig({
   endDate,
   maxResults,
   offset,
+  cursorState,
 }: {
   teamId: string;
   config: ExternalDashboardSearchRequestConfig;
@@ -92,6 +106,7 @@ export async function runSearchConfig({
   endDate: Date;
   maxResults: number;
   offset: number;
+  cursorState?: SearchCursorState;
 }): Promise<SearchResults | SearchError> {
   const source = await getSource(teamId, config.sourceId);
   if (!source) {
@@ -133,19 +148,71 @@ export async function runSearchConfig({
     ...(requestTimeout != null ? { requestTimeout } : {}),
   });
 
+  const effectiveOrderBy =
+    config.orderBy?.trim() || resolveSearchOrderBy(source);
+
+  // A walk pins its range in the cursor. `endTime` is optional and defaults to
+  // `now`, so recomputing windows from a freshly resolved range would shift
+  // every boundary between pages and make windowIndex point at a different
+  // slice each call, skipping or duplicating rows.
+  const walkStart = cursorState ? new Date(cursorState.startTime) : startDate;
+  const walkEnd = cursorState ? new Date(cursorState.endTime) : endDate;
+
+  // Window ONLY for an active cursor walk. An offset-only request keeps the
+  // legacy single-range behaviour: confining it to window 0 would make a large
+  // `offset` skip within the newest window and never reach older rows.
+  const windows = resolveSearchWindows(
+    source,
+    effectiveOrderBy,
+    walkStart,
+    walkEnd,
+    { forceSingleWindow: !cursorState },
+  );
+  const windowIndex = cursorState?.windowIndex ?? 0;
+  const window = windows[windowIndex];
+  if (window == null) {
+    return {
+      isError: true,
+      code: 'CURSOR_QUERY_MISMATCH',
+      message: 'Cursor refers to a page outside the current time range',
+    };
+  }
+  const effectiveOffset = cursorState ? cursorState.offset : offset;
+  // A single window spans the whole range, so it keeps the `offset` field's
+  // cap; windowed walks may go deeper within one window. Refusing here rather
+  // than ending the walk keeps a too-dense window from looking complete.
+  const offsetCap =
+    windows.length === 1 ? MAX_SINGLE_WINDOW_OFFSET : MAX_CURSOR_OFFSET;
+  const pageLimit = cursorState
+    ? Math.min(maxResults, offsetCap - effectiveOffset)
+    : maxResults;
+  if (cursorState && pageLimit <= 0) {
+    return {
+      isError: true,
+      code: 'CURSOR_WINDOW_TOO_DENSE',
+      message:
+        'Too many matching rows to page further. Narrow the time range or the filter.',
+    };
+  }
+
   const searchBase = buildSearchChartConfig(source, {
     where: typeof config.where === 'string' ? config.where : '',
     whereLanguage: config.whereLanguage ?? 'lucene',
     select: config.select ?? null,
     displayType: DisplayType.Search,
-    orderBy: config.orderBy?.trim() || resolveSearchOrderBy(source),
-    dateRange: [startDate, endDate],
+    orderBy: effectiveOrderBy,
+    dateRange: [window.startTime, window.endTime],
+    ...windowInclusivity(window, windows.length),
   });
 
   const chartConfig: ChartConfigWithDateRange = {
     ...searchBase,
     connection: source.connection.toString(),
-    limit: { limit: maxResults, offset },
+    // A cursor walk reads one extra row to learn whether the window continues.
+    limit: {
+      limit: cursorState ? pageLimit + 1 : maxResults,
+      offset: effectiveOffset,
+    },
   } as ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
@@ -164,8 +231,27 @@ export async function runSearchConfig({
     throw new Error('Unexpected ClickHouse response shape: missing data array');
   }
 
-  return {
-    isError: false,
-    data: (result as { data: unknown[] }).data as Record<string, unknown>[],
-  };
+  const rows = (result as { data: unknown[] }).data as Record<
+    string,
+    unknown
+  >[];
+  const hasMoreInWindow = cursorState != null && rows.length > pageLimit;
+  const data = cursorState ? rows.slice(0, pageLimit) : rows;
+
+  // Only a cursor walk gets a next cursor; offset-only callers are unchanged.
+  let nextCursorState: SearchCursorState | null = null;
+  if (cursorState) {
+    const pinned = {
+      startTime: cursorState.startTime,
+      endTime: cursorState.endTime,
+    };
+    const nextOffset = effectiveOffset + data.length;
+    if (hasMoreInWindow) {
+      nextCursorState = { windowIndex, offset: nextOffset, ...pinned };
+    } else if (windowIndex + 1 < windows.length) {
+      nextCursorState = { windowIndex: windowIndex + 1, offset: 0, ...pinned };
+    }
+  }
+
+  return { isError: false, data, nextCursorState };
 }
