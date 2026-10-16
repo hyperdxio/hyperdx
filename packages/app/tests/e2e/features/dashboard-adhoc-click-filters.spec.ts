@@ -3,6 +3,8 @@
  * to it: include / exclude toggle `key = value` / `key != value` on every such
  * filter. Tiles no ad hoc filter reaches offer no filter actions.
  */
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
 import { DashboardPage } from '../page-objects/DashboardPage';
@@ -11,7 +13,9 @@ import {
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_SESSIONS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
+  E2E_PROMQL_METRIC_NAME,
   INTERESTING_FILTER_KEYS_SOURCE_NAME,
+  PROMQL_SOURCE_NAME,
 } from '../utils/constants';
 import {
   adhocConditionsParam,
@@ -114,6 +118,212 @@ test.describe(
             { key: 'ServiceName', operator: '!=', value: 'accounting' },
           ]),
         );
+      });
+    });
+
+    const TIME_FILTER =
+      'Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp <= fromUnixTimestamp64Milli({endDateMilliseconds:Int64})';
+
+    /**
+     * Hover the text of a cell in the first tile's first row, which opens its
+     * actions, and return the cell's value.
+     */
+    const hoverFirstRowCell = async (index: number): Promise<string> => {
+      const value = await dashboardPage.getFirstTableRowValue(0, index);
+      await dashboardPage
+        .getFirstTableRow()
+        .locator('td')
+        .nth(index)
+        .getByText(value, { exact: true })
+        .hover();
+      return value;
+    };
+
+    test('builder table group-by cells update the ad hoc filter', async ({
+      page,
+    }) => {
+      const tile = dashboardPage.getTile(0);
+
+      await test.step('Add a table grouped by ServiceName and an ad hoc filter', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await dashboardPage.chartEditor.createTable({
+          chartName: 'Builder table',
+          sourceName: DEFAULT_LOGS_SOURCE_NAME,
+          groupBy: 'ServiceName',
+        });
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+        await expect(tile.getByTitle('frontend', { exact: true })).toBeVisible({
+          timeout: 20000,
+        });
+      });
+
+      await test.step('Enabling the filter actions keeps the table layout', async () => {
+        // Relative to the cell, since the filter bar shifts the page down
+        const layout = () =>
+          tile
+            .getByTitle('frontend', { exact: true })
+            .evaluate((cell: HTMLElement) => {
+              const text = document
+                .createTreeWalker(cell, NodeFilter.SHOW_TEXT)
+                .nextNode();
+              const range = document.createRange();
+              if (text) range.selectNodeContents(text);
+              const textBox = range.getBoundingClientRect();
+              const cellBox = cell.getBoundingClientRect();
+              return {
+                cellHeight: cellBox.height,
+                textX: textBox.x - cellBox.x,
+                textY: textBox.y - cellBox.y,
+              };
+            });
+        const before = await layout();
+
+        await addAdhocFilters([
+          { name: 'Conditions', sources: [DEFAULT_LOGS_SOURCE_NAME] },
+        ]);
+        await expect(
+          await dashboardPage.getTileCellAction(tile, 'frontend', 'include'),
+        ).toBeVisible();
+        await page.mouse.move(0, 0);
+
+        expect(await layout()).toEqual(before);
+      });
+
+      await test.step('Aggregate cells offer no filter action', async () => {
+        await hoverFirstRowCell(0);
+        await expect(
+          dashboardPage.getTileCellActionButton(tile, 'copy'),
+        ).toHaveCount(0);
+        await expect(
+          dashboardPage.getTileCellActionButton(tile, 'include'),
+        ).toHaveCount(0);
+      });
+
+      await test.step('Including a group-by value narrows the table', async () => {
+        await dashboardPage.filterTileCell(tile, 'accounting', 'include');
+        await expectFiltersParam(page, [
+          {
+            type: 'adhoc',
+            name: 'Conditions',
+            conditions: [
+              { key: 'ServiceName', operator: '=', value: 'accounting' },
+            ],
+          },
+        ]);
+        await expect(tile.getByTitle('frontend', { exact: true })).toHaveCount(
+          0,
+        );
+      });
+    });
+
+    test('raw SQL table cells filter on the expressions they group by', async ({
+      page,
+    }) => {
+      const tile = dashboardPage.getTile(0);
+      const sql = `SELECT ServiceName AS svc, length(ServiceName) AS len, any(SeverityText) AS sev, count() AS count FROM default.e2e_otel_logs WHERE ${TIME_FILTER} AND $__filters GROUP BY svc, len LIMIT 200`;
+
+      await test.step('Add a raw SQL table and an ad hoc filter', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+        await dashboardPage.chartEditor.setChartName('Raw SQL table');
+        await dashboardPage.chartEditor.switchToSqlMode();
+        await dashboardPage.chartEditor.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+        await dashboardPage.chartEditor.typeSqlQuery(sql);
+        await dashboardPage.chartEditor.runQuery(false);
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+        await addAdhocFilters([
+          { name: 'Conditions', sources: [DEFAULT_LOGS_SOURCE_NAME] },
+        ]);
+        await expect(tile.getByTitle('frontend', { exact: true })).toBeVisible({
+          timeout: 20000,
+        });
+      });
+
+      await test.step('An aggregated string column offers no filter action', async () => {
+        await hoverFirstRowCell(2);
+        await expect(
+          dashboardPage.getTileCellActionButton(tile, 'include'),
+        ).toHaveCount(0);
+      });
+
+      await test.step('An aliased column filters on the expression behind it', async () => {
+        await dashboardPage.filterTileCell(tile, 'frontend', 'include');
+        await expectFiltersParam(page, [
+          {
+            type: 'adhoc',
+            name: 'Conditions',
+            conditions: [
+              { key: 'ServiceName', operator: '=', value: 'frontend' },
+            ],
+          },
+        ]);
+        await expect(
+          tile.getByTitle('accounting', { exact: true }),
+        ).toHaveCount(0);
+      });
+
+      await test.step('A numeric group-by column filters too', async () => {
+        expect(await hoverFirstRowCell(1)).toBe('8');
+        await dashboardPage.getTileCellActionButton(tile, 'include').click();
+        await expectFiltersParam(page, [
+          {
+            type: 'adhoc',
+            name: 'Conditions',
+            conditions: [
+              { key: 'ServiceName', operator: '=', value: 'frontend' },
+              { key: 'length(ServiceName)', operator: '=', value: '8' },
+            ],
+          },
+        ]);
+      });
+    });
+
+    test('PromQL table label cells add label matchers', async ({ page }) => {
+      const tile = dashboardPage.getTile(0);
+
+      await test.step('Add a PromQL table and an ad hoc filter on its source', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartType(DisplayType.Table);
+        await dashboardPage.chartEditor.switchToPromqlMode();
+        await dashboardPage.chartEditor.selectSource(PROMQL_SOURCE_NAME);
+        await dashboardPage.chartEditor.setChartName('PromQL table');
+        await dashboardPage.chartEditor.replacePromqlExpression(
+          `${E2E_PROMQL_METRIC_NAME}{}`,
+        );
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addAdhocFilterToDashboard(
+          'Labels',
+          [PROMQL_SOURCE_NAME],
+          { sourceType: 'Prometheus' },
+        );
+        await dashboardPage.closeFiltersModal();
+        await dashboardPage.waitForTableTileRows();
+      });
+
+      await test.step('Excluding a label value adds a != matcher', async () => {
+        // Columns: timestamp, __name__, service, value
+        const service = await hoverFirstRowCell(2);
+        await dashboardPage.getTileCellActionButton(tile, 'exclude').click();
+        await expectFiltersParam(page, [
+          {
+            type: 'adhoc',
+            name: 'Labels',
+            conditions: [{ key: 'service', operator: '!=', value: service }],
+          },
+        ]);
+        await expect(tile.getByTitle(service, { exact: true })).toHaveCount(0, {
+          timeout: 20000,
+        });
       });
     });
 

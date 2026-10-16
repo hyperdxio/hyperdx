@@ -28,6 +28,9 @@ import { ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { CsvExportButton } from './components/CsvExportButton';
+import DBRowTableFieldWithPopover, {
+  type CellFilterHandler,
+} from './components/DBTable/DBRowTableFieldWithPopover';
 import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
 import type { RowAction } from './hooks/useOnClickLinkBuilder';
@@ -61,6 +64,7 @@ export const Table = ({
   variant = 'default',
   alternateRowBackground = false,
   className,
+  onCellFilter,
 }: {
   data: any[];
   columns: {
@@ -78,6 +82,9 @@ export const Table = ({
     // Ordered conditional color rules evaluated against each cell's value
     // (last match wins). Resolves to `color` when no rule matches.
     colorRules?: ColorCondition[];
+    // Expression (or PromQL label) the column's values filter on. Cells of a
+    // column with a key offer filter / exclude actions via `onCellFilter`.
+    filterKey?: string;
   }[];
   groupColumnName?: string;
   // Returns the row click destination + a hover-hint description. When
@@ -105,6 +112,7 @@ export const Table = ({
   // Extra classes for the scroll container, e.g. `effect-pulse` while the
   // tile is refreshing.
   className?: string;
+  onCellFilter?: CellFilterHandler;
 }) => {
   const brandName = useBrandDisplayName();
   const MIN_COLUMN_WIDTH_PX = 100;
@@ -163,6 +171,7 @@ export const Table = ({
             sortingFn,
             color,
             colorRules,
+            filterKey,
           },
           i,
         ) =>
@@ -188,6 +197,27 @@ export const Table = ({
               } else if (numberFormat) {
                 formattedValue = formatNumber(value, numberFormat);
               }
+
+              // Map / Array values render as JSON, which their `toString()`
+              // in a filter condition wouldn't match.
+              const content: React.ReactNode =
+                filterKey &&
+                onCellFilter &&
+                value != null &&
+                typeof value !== 'object' ? (
+                  <DBRowTableFieldWithPopover
+                    cellValue={value}
+                    columnName={filterKey}
+                    onPropertyAddClick={onCellFilter}
+                    wrapLinesEnabled={wrapLinesEnabled}
+                    tableContainerRef={tableContainerRef.current}
+                    inline
+                  >
+                    {formattedValue}
+                  </DBRowTableFieldWithPopover>
+                ) : (
+                  formattedValue
+                );
 
               // Resolve this cell's color from the column config: ordered
               // rules first (last match wins), then the column's static
@@ -257,7 +287,7 @@ export const Table = ({
                         data-testid="dashboard-table-row-action"
                         data-shape="external-link"
                       >
-                        {formattedValue}
+                        {content}
                       </a>
                     );
                   }
@@ -273,7 +303,7 @@ export const Table = ({
                       data-testid="dashboard-table-row-action"
                       data-shape="link"
                     >
-                      {formattedValue}
+                      {content}
                     </Link>
                   );
                 }
@@ -295,7 +325,7 @@ export const Table = ({
                     data-testid="dashboard-table-row-action"
                     data-shape="button"
                   >
-                    {formattedValue}
+                    {content}
                   </button>
                 );
               }
@@ -312,7 +342,7 @@ export const Table = ({
                       data-testid="dashboard-table-row-action"
                       data-shape="link"
                     >
-                      {formattedValue}
+                      {content}
                     </Link>
                   );
                 }
@@ -320,7 +350,7 @@ export const Table = ({
 
               return (
                 <div className={className} style={colorStyle}>
-                  {formattedValue}
+                  {content}
                 </div>
               );
             },
