@@ -1367,7 +1367,6 @@ const DBSearchPageFiltersComponent = ({
       });
     }
 
-    // sort keys within nested groups alphabetically
     sortNestedFacetKeys(_facets);
 
     // prioritize facets that are primary keys
