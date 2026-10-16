@@ -1108,29 +1108,35 @@ const DBSearchPageFiltersComponent = ({
   setFilterValue: _setFilterValue,
   isLive,
   chartConfig,
-  analysisMode,
-  setAnalysisMode,
+  analysisMode = 'results',
+  setAnalysisMode = voidFunc,
   sourceId,
-  showDelta,
-  denoiseResults,
-  setDenoiseResults,
+  showDelta = false,
+  denoiseResults = false,
+  setDenoiseResults = voidFunc,
   setFilterRange,
   onColumnToggle,
   displayedColumns,
   onCollapse,
+  hideAnalysisMode = false,
+  forceExactFacetMode = false,
 }: {
-  analysisMode: 'results' | 'delta' | 'pattern';
-  setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
+  analysisMode?: 'results' | 'delta' | 'pattern';
+  setAnalysisMode?: (mode: 'results' | 'delta' | 'pattern') => void;
   isLive: boolean;
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId?: string;
-  showDelta: boolean;
-  denoiseResults: boolean;
-  setDenoiseResults: (denoiseResults: boolean) => void;
+  showDelta?: boolean;
+  denoiseResults?: boolean;
+  setDenoiseResults?: (denoiseResults: boolean) => void;
   setFilterRange: (key: string, range: { min: number; max: number }) => void;
   onColumnToggle?: (column: string) => void;
   displayedColumns?: string[];
   onCollapse?: () => void;
+  hideAnalysisMode?: boolean;
+  // Ignore the "show all values" setting; "all" mode drops chartConfig.where,
+  // which callers may rely on to scope facets.
+  forceExactFacetMode?: boolean;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1228,7 +1234,7 @@ const DBSearchPageFiltersComponent = ({
     chartConfig,
     sourceId: sourceId ?? null,
     dateRange,
-    mode: showAllValues ? 'all' : 'exact',
+    mode: forceExactFacetMode || !showAllValues ? 'exact' : 'all',
     filterState,
     showMoreFields,
   });
@@ -1670,10 +1676,15 @@ const DBSearchPageFiltersComponent = ({
         }}
       >
         <Stack gap="sm" p="xs">
-          <Flex align="center" justify="space-between">
-            <Text size="xxs" c="dimmed" fw="bold">
-              Analysis Mode
-            </Text>
+          <Flex
+            align="center"
+            justify={hideAnalysisMode ? 'flex-end' : 'space-between'}
+          >
+            {!hideAnalysisMode && (
+              <Text size="xxs" c="dimmed" fw="bold">
+                Analysis Mode
+              </Text>
+            )}
             <Group gap={0}>
               {showRefreshButton && (
                 <TextButton
@@ -1696,6 +1707,7 @@ const DBSearchPageFiltersComponent = ({
                 onResetSharedFilters={resetSharedFilters}
                 showAllValues={showAllValues}
                 onShowAllValuesChange={setShowAllValues}
+                hideShowAllValues={forceExactFacetMode}
               />
               {onCollapse && (
                 <Tooltip label="Hide filters" position="bottom">
@@ -1711,31 +1723,33 @@ const DBSearchPageFiltersComponent = ({
               )}
             </Group>
           </Flex>
-          <Tabs
-            value={analysisMode}
-            onChange={value =>
-              setAnalysisMode(value as 'results' | 'delta' | 'pattern')
-            }
-            orientation="vertical"
-            w="100%"
-            placement="right"
-          >
-            <Tabs.List w="100%">
-              <Tabs.Tab value="results" size="xs" h="24px">
-                <Text size="xs">Results Table</Text>
-              </Tabs.Tab>
-              {showDelta && (
-                <Tabs.Tab value="delta" size="xs" h="24px">
-                  <Text size="xs">Event Deltas</Text>
+          {!hideAnalysisMode && (
+            <Tabs
+              value={analysisMode}
+              onChange={value =>
+                setAnalysisMode(value as 'results' | 'delta' | 'pattern')
+              }
+              orientation="vertical"
+              w="100%"
+              placement="right"
+            >
+              <Tabs.List w="100%">
+                <Tabs.Tab value="results" size="xs" h="24px">
+                  <Text size="xs">Results Table</Text>
                 </Tabs.Tab>
-              )}
-              {!IS_CLICKHOUSE_BUILD && (
-                <Tabs.Tab value="pattern" size="xs" h="24px">
-                  <Text size="xs">Event Patterns</Text>
-                </Tabs.Tab>
-              )}
-            </Tabs.List>
-          </Tabs>
+                {showDelta && (
+                  <Tabs.Tab value="delta" size="xs" h="24px">
+                    <Text size="xs">Event Deltas</Text>
+                  </Tabs.Tab>
+                )}
+                {!IS_CLICKHOUSE_BUILD && (
+                  <Tabs.Tab value="pattern" size="xs" h="24px">
+                    <Text size="xs">Event Patterns</Text>
+                  </Tabs.Tab>
+                )}
+              </Tabs.List>
+            </Tabs>
+          )}
 
           {isSharedFiltersVisible && (
             <SharedFiltersSection
@@ -1813,7 +1827,7 @@ const DBSearchPageFiltersComponent = ({
             </Flex>
             <Collapse expanded={isFiltersExpanded}>
               <Stack gap="sm">
-                {analysisMode === 'results' && (
+                {!hideAnalysisMode && analysisMode === 'results' && (
                   <Checkbox
                     size={13 as any}
                     checked={denoiseResults}
@@ -1844,7 +1858,8 @@ const DBSearchPageFiltersComponent = ({
                   />
                 )}
 
-                {source?.kind === SourceKind.Trace &&
+                {!hideAnalysisMode &&
+                  source?.kind === SourceKind.Trace &&
                   source.parentSpanIdExpression && (
                     <Checkbox
                       size={13 as any}
