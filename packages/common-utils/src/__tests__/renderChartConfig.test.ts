@@ -2884,6 +2884,64 @@ describe('renderChartConfig', () => {
       },
     );
 
+    describe('sub-second start flooring edge cases', () => {
+      const start = new Date('2026-10-13T22:03:21.827Z');
+      const flooredStart = new Date('2026-10-13T22:03:21Z');
+      const end = new Date('2026-10-13T22:05:00Z');
+
+      const render = (
+        timestampValueExpression: string,
+        includedDataInterval?: string,
+      ) =>
+        timeFilterExpr({
+          timestampValueExpression,
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive: false,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+          includedDataInterval,
+        }).then(parameterizedQueryToSql);
+
+      it('does not floor when the finer column type cannot be resolved', async () => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'TimestampTime'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : undefined,
+        );
+
+        expect(await render('TimestampTime, Timestamp')).toBe(
+          `(TimestampTime > fromUnixTimestamp64Milli(${start.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp > fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      });
+
+      it('does not treat a toStartOf column as the finer column', async () => {
+        expect(await render('toStartOfMinute(Timestamp), TimestampTime')).toBe(
+          `(toStartOfMinute(Timestamp) >= toStartOfMinute(fromUnixTimestamp64Milli(${start.getTime()})) AND toStartOfMinute(Timestamp) <= toStartOfMinute(fromUnixTimestamp64Milli(${end.getTime()})))AND(TimestampTime > fromUnixTimestamp64Milli(${start.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      });
+
+      it('floors the start inside the includedDataInterval expansion', async () => {
+        expect(await render('TimestampTime, Timestamp', '1 minute')).toBe(
+          `(TimestampTime >= toStartOfInterval(fromUnixTimestamp64Milli(${flooredStart.getTime()}), INTERVAL 1 minute) - INTERVAL 1 minute AND TimestampTime <= toStartOfInterval(fromUnixTimestamp64Milli(${end.getTime()}), INTERVAL 1 minute) + INTERVAL 1 minute)AND(Timestamp > toStartOfInterval(fromUnixTimestamp64Milli(${start.getTime()}), INTERVAL 1 minute) - INTERVAL 1 minute AND Timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${end.getTime()}), INTERVAL 1 minute) + INTERVAL 1 minute)`,
+        );
+      });
+
+      it('treats a Nullable(DateTime64(9)) column as the finer column', async () => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'TimestampTime'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : ({ type: 'Nullable(DateTime64(9))' } as ColumnMeta),
+        );
+
+        expect(await render('TimestampTime, Timestamp')).toBe(
+          `(TimestampTime >= fromUnixTimestamp64Milli(${flooredStart.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp > fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      });
+    });
+
     it.each(['Date32', 'Nullable(Date)', 'LowCardinality(Date)'])(
       'wraps a %s column in toDate() and keeps the bounds inclusive',
       async type => {
