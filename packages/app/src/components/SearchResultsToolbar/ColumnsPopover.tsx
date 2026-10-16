@@ -22,7 +22,6 @@ import {
   Box,
   Button,
   Group,
-  ScrollArea,
   Stack,
   Text,
 } from '@mantine/core';
@@ -62,27 +61,30 @@ function SortableColumn({
         opacity: isDragging ? 0.5 : 1,
       }}
     >
-      <Group gap={4} wrap="nowrap" justify="space-between">
-        <Group gap={4} wrap="nowrap" miw={0} style={{ flex: 1 }}>
-          <ActionIcon
-            variant="subtle"
-            size="sm"
-            aria-label={`Reorder ${label}`}
-            style={{ cursor: 'grab', touchAction: 'none', flexShrink: 0 }}
-            {...attributes}
-            {...listeners}
-          >
-            <IconGripVertical size={12} />
-          </ActionIcon>
-          <Text size="xs" ff="monospace" truncate="end">
-            {label}
-          </Text>
-        </Group>
+      <Group gap={4} wrap="nowrap" align="flex-start" w="100%">
+        <ActionIcon
+          variant="subtle"
+          size="sm"
+          aria-label={`Reorder ${label}`}
+          style={{ cursor: 'grab', touchAction: 'none', flexShrink: 0 }}
+          {...attributes}
+          {...listeners}
+        >
+          <IconGripVertical size={12} />
+        </ActionIcon>
+        <Text
+          size="xs"
+          ff="monospace"
+          style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}
+        >
+          {label}
+        </Text>
         <ActionIcon
           variant="subtle"
           size="sm"
           onClick={onRemove}
           aria-label={`Remove ${label}`}
+          style={{ flexShrink: 0 }}
         >
           <IconX size={12} />
         </ActionIcon>
@@ -194,7 +196,7 @@ export function ColumnsPopover({
       data-testid="search-columns-button"
       renderPick={() => (
         <Stack gap="xs">
-          <ScrollArea.Autosize mah={220}>
+          <Box mah={220} style={{ overflowX: 'hidden', overflowY: 'auto' }}>
             {items.length === 0 ? (
               <Text size="xs" c="dimmed">
                 No columns selected.
@@ -218,7 +220,7 @@ export function ColumnsPopover({
                 </SortableContext>
               </DndContext>
             )}
-          </ScrollArea.Autosize>
+          </Box>
           <Group gap="xs" wrap="nowrap" align="center">
             <Autocomplete
               size="xs"
