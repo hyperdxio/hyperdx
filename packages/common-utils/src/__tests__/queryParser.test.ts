@@ -171,6 +171,103 @@ describe('CustomSchemaSQLSerializerV2 - json', () => {
 
   const testCases = [
     {
+      lucene: '(ServiceName:"a" AND ServiceName:"b") OR ServiceName:"c"',
+      sql: "(((ServiceName = 'a') AND (ServiceName = 'b')) OR (ServiceName = 'c'))",
+      english:
+        "('ServiceName' is a AND 'ServiceName' is b) OR 'ServiceName' is c",
+    },
+    {
+      lucene: '-ServiceName:"a" AND ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName != 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is not a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" NOT ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND NOT (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND NOT 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" OR NOT (ServiceName:"b" AND ServiceName:"c")',
+      sql: "((ServiceName = 'a') OR NOT ((ServiceName = 'b') AND (ServiceName = 'c')))",
+      english:
+        "'ServiceName' is a OR NOT ('ServiceName' is b AND 'ServiceName' is c)",
+    },
+    {
+      lucene: 'ServiceName:"a" AND ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" OR ServiceName:"b" AND ServiceName:"c"',
+      sql: "((ServiceName = 'a') OR (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a OR 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
+      lucene:
+        'ServiceName:"a" AND ServiceName:"b" OR ServiceName:"c" AND ServiceName:"d"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c') AND (ServiceName = 'd'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c AND 'ServiceName' is d",
+    },
+    {
+      lucene: '(ServiceName:"a" OR ServiceName:"b") AND ServiceName:"c"',
+      sql: "(((ServiceName = 'a') OR (ServiceName = 'b')) AND (ServiceName = 'c'))",
+      english:
+        "('ServiceName' is a OR 'ServiceName' is b) AND 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" AND (ServiceName:"b" OR ServiceName:"c")',
+      sql: "((ServiceName = 'a') AND ((ServiceName = 'b') OR (ServiceName = 'c')))",
+      english:
+        "'ServiceName' is a AND ('ServiceName' is b OR 'ServiceName' is c)",
+    },
+    {
+      lucene: 'ServiceName:"a" && ServiceName:"b" || ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" || ServiceName:"b" && ServiceName:"c"',
+      sql: "((ServiceName = 'a') OR (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a OR 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" AND NOT ServiceName:"b" OR ServiceName:"c"',
+      sql: "((ServiceName = 'a') AND NOT (ServiceName = 'b') OR (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a AND NOT 'ServiceName' is b OR 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" OR NOT ServiceName:"b" AND ServiceName:"c"',
+      sql: "((ServiceName = 'a') OR NOT (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "'ServiceName' is a OR NOT 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
+      lucene: 'ServiceName:"a" AND NOT (ServiceName:"b" OR ServiceName:"c")',
+      sql: "((ServiceName = 'a') AND NOT ((ServiceName = 'b') OR (ServiceName = 'c')))",
+      english:
+        "'ServiceName' is a AND NOT ('ServiceName' is b OR 'ServiceName' is c)",
+    },
+    {
+      lucene: 'NOT ServiceName:"a" OR ServiceName:"b" AND ServiceName:"c"',
+      sql: "(NOT (ServiceName = 'a') OR (ServiceName = 'b') AND (ServiceName = 'c'))",
+      english:
+        "NOT 'ServiceName' is a OR 'ServiceName' is b AND 'ServiceName' is c",
+    },
+    {
       lucene: '"foo bar baz"',
       sql: "((hasToken(lower(Body), lower('foo')) AND hasToken(lower(Body), lower('bar')) AND hasToken(lower(Body), lower('baz')) AND (lower(Body) LIKE lower('%foo bar baz%'))))",
       english: 'event has whole word "foo bar baz"',
