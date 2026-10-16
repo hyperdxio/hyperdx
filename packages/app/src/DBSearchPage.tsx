@@ -2462,8 +2462,8 @@ function DBSearchPageContent() {
             )}
           </Group>
         </Flex>
-        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
-          <Box style={{ flex: '1 1 600px', minWidth: 'min(600px, 100%)' }}>
+        <Flex className={searchPageStyles.whereRow} gap="sm" mt="sm" px="sm">
+          <Box className={searchPageStyles.whereField}>
             <SearchWhereInput
               tableConnection={inputSourceTableConnection}
               control={control}
@@ -2479,11 +2479,7 @@ function DBSearchPageContent() {
               size="xs"
             />
           </Box>
-          <Flex
-            gap="sm"
-            style={{ flex: '0 1 500px', minWidth: 0 }}
-            align="flex-start"
-          >
+          <Flex gap="sm" style={{ flex: '0 0 auto' }} align="flex-start">
             <TimePicker
               data-testid="time-picker"
               inputValue={displayedTimeInputValue}
@@ -2496,7 +2492,6 @@ function DBSearchPageContent() {
               defaultRelativeTimeMode={
                 isLive && interval !== LIVE_TAIL_DURATION_MS
               }
-              width="100%"
               size="xs"
             />
             {isLive && (
