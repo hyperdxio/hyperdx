@@ -381,6 +381,8 @@ export const RawLogTable = memo(
     getRowWhere,
     variant = 'default',
     onRemoveColumn,
+    toolbarLeading,
+    controlsAboveTable = false,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -424,6 +426,10 @@ export const RawLogTable = memo(
     getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
     onRemoveColumn?: (column: string) => void;
+    /** Rendered on the left of the bar above the table. */
+    toolbarLeading?: React.ReactNode;
+    /** Keep the header actions above the table instead of in the last column. */
+    controlsAboveTable?: boolean;
   }) => {
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
@@ -989,8 +995,103 @@ export const RawLogTable = memo(
       [],
     );
 
+    // Above the scroll area, so a wide table can't scroll these out of view.
+    const tableControls = (
+      <Group gap={8} mr={8} wrap="nowrap" align="center">
+        {tableId && Object.keys(columnSizeStorage).length > 0 && (
+          <UnstyledButton
+            onClick={() => setColumnSizeStorage({})}
+            title="Reset Column Widths"
+            display="flex"
+          >
+            <MantineTooltip label="Reset Column Widths">
+              <IconRotateClockwise size={16} />
+            </MantineTooltip>
+          </UnstyledButton>
+        )}
+        {config && (
+          <UnstyledButton
+            onClick={() => handleSqlModalOpen(true)}
+            title="Show Generated SQL"
+            tabIndex={0}
+            display="flex"
+          >
+            <MantineTooltip label="Show Generated SQL">
+              <IconCode size={16} />
+            </MantineTooltip>
+          </UnstyledButton>
+        )}
+        <UnstyledButton
+          onClick={() => setWrapLinesEnabled(prev => !prev)}
+          title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
+          display="flex"
+        >
+          <MantineTooltip
+            label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
+          >
+            {wrapLinesEnabled ? (
+              <IconTextWrapDisabled size={16} />
+            ) : (
+              <IconTextWrap size={16} />
+            )}
+          </MantineTooltip>
+        </UnstyledButton>
+
+        <CsvExportButton
+          data={csvData}
+          filename={getCsvFilename}
+          className="fs-6"
+        >
+          <MantineTooltip
+            label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+          >
+            <IconDownload size={16} />
+          </MantineTooltip>
+        </CsvExportButton>
+        {onSettingsClick != null && (
+          <UnstyledButton
+            onClick={() => onSettingsClick()}
+            title="Settings"
+            display="flex"
+          >
+            <MantineTooltip label="Settings">
+              <IconSettings size={16} />
+            </MantineTooltip>
+          </UnstyledButton>
+        )}
+        {enableRowSelection && (
+          <RowSelectionMenu
+            selectedCount={rowSelection.selectedCount}
+            getSelectedRows={rowSelection.getSelectedRows}
+            columns={csvColumns}
+            onClear={rowSelection.clearSelection}
+          />
+        )}
+      </Group>
+    );
+
     return (
       <Flex direction="column" h="100%">
+        {(controlsAboveTable || toolbarLeading != null) && (
+          <Flex
+            gap="sm"
+            align="center"
+            pb="xs"
+            wrap="nowrap"
+            data-testid="results-table-toolbar"
+          >
+            {toolbarLeading != null && (
+              <Box style={{ flex: '1 1 auto', minWidth: 0 }}>
+                {toolbarLeading}
+              </Box>
+            )}
+            {controlsAboveTable && (
+              <Box style={{ flexShrink: 0, marginLeft: 'auto' }}>
+                {tableControls}
+              </Box>
+            )}
+          </Flex>
+        )}
         <Box pos="relative" style={{ flex: 1, minHeight: 0 }}>
           {/* Find within page search bar - floating on top right */}
           <TableSearchInput
@@ -1060,87 +1161,7 @@ export const RawLogTable = memo(
                                 : undefined
                             }
                             lastItemButtons={
-                              <Group
-                                gap={8}
-                                mr={8}
-                                wrap="nowrap"
-                                align="center"
-                              >
-                                {tableId &&
-                                  Object.keys(columnSizeStorage).length > 0 && (
-                                    <UnstyledButton
-                                      onClick={() => setColumnSizeStorage({})}
-                                      title="Reset Column Widths"
-                                      display="flex"
-                                    >
-                                      <MantineTooltip label="Reset Column Widths">
-                                        <IconRotateClockwise size={16} />
-                                      </MantineTooltip>
-                                    </UnstyledButton>
-                                  )}
-                                {config && (
-                                  <UnstyledButton
-                                    onClick={() => handleSqlModalOpen(true)}
-                                    title="Show Generated SQL"
-                                    tabIndex={0}
-                                    display="flex"
-                                  >
-                                    <MantineTooltip label="Show Generated SQL">
-                                      <IconCode size={16} />
-                                    </MantineTooltip>
-                                  </UnstyledButton>
-                                )}
-                                <UnstyledButton
-                                  onClick={() =>
-                                    setWrapLinesEnabled(prev => !prev)
-                                  }
-                                  title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
-                                  display="flex"
-                                >
-                                  <MantineTooltip
-                                    label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
-                                  >
-                                    {wrapLinesEnabled ? (
-                                      <IconTextWrapDisabled size={16} />
-                                    ) : (
-                                      <IconTextWrap size={16} />
-                                    )}
-                                  </MantineTooltip>
-                                </UnstyledButton>
-
-                                <CsvExportButton
-                                  data={csvData}
-                                  filename={getCsvFilename}
-                                  className="fs-6"
-                                >
-                                  <MantineTooltip
-                                    label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
-                                  >
-                                    <IconDownload size={16} />
-                                  </MantineTooltip>
-                                </CsvExportButton>
-                                {onSettingsClick != null && (
-                                  <UnstyledButton
-                                    onClick={() => onSettingsClick()}
-                                    title="Settings"
-                                    display="flex"
-                                  >
-                                    <MantineTooltip label="Settings">
-                                      <IconSettings size={16} />
-                                    </MantineTooltip>
-                                  </UnstyledButton>
-                                )}
-                                {enableRowSelection && (
-                                  <RowSelectionMenu
-                                    selectedCount={rowSelection.selectedCount}
-                                    getSelectedRows={
-                                      rowSelection.getSelectedRows
-                                    }
-                                    columns={csvColumns}
-                                    onClear={rowSelection.clearSelection}
-                                  />
-                                )}
-                              </Group>
+                              controlsAboveTable ? undefined : tableControls
                             }
                           />
                         );
@@ -1633,6 +1654,8 @@ function DBSqlRowTableComponent({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
+  toolbarLeading,
+  controlsAboveTable,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1666,6 +1689,8 @@ function DBSqlRowTableComponent({
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  toolbarLeading?: React.ReactNode;
+  controlsAboveTable?: boolean;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1989,6 +2014,8 @@ function DBSqlRowTableComponent({
         variant={variant}
         onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
         tableId={tableId}
+        toolbarLeading={toolbarLeading}
+        controlsAboveTable={controlsAboveTable}
       />
     </>
   );

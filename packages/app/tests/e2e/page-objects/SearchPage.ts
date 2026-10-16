@@ -454,7 +454,7 @@ export class SearchPage {
    * Get SELECT editor (CodeMirror)
    */
   getSELECTEditor() {
-    return this.page.locator('.cm-content').first();
+    return this.page.getByTestId('search-select-input').locator('.cm-content');
   }
 
   async getSelectBorderColor(): Promise<string> {
@@ -496,7 +496,9 @@ export class SearchPage {
    * Get ORDER BY editor (CodeMirror)
    */
   getOrderByEditor() {
-    return this.page.locator('.cm-content').nth(1);
+    return this.page
+      .getByTestId('search-order-by-input')
+      .locator('.cm-content');
   }
 
   /**
