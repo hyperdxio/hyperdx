@@ -98,6 +98,7 @@ import {
 import { FormatTime } from '@/useFormatTime';
 import {
   DEFAULT_ROW_CLICK_ACTION,
+  useContentFontSize,
   useUserPreferences,
 } from '@/useUserPreferences';
 import {
@@ -167,15 +168,21 @@ function getResolvedColumnSize(
     columnTypeMap: Map<string, { _type: JSDataType | null }>;
     logLevelColumn?: string;
     columnSizeStorage: Record<string, number>;
+    /**
+     * Content font size ratio. Only the defaults scale — a width the user
+     * dragged to is what they asked for at any font size.
+     */
+    contentFontScale: number;
   },
 ): number {
   const columnId = opts.aliasMap?.[column] ? `"${column}"` : column;
   const stored = opts.columnSizeStorage[columnId];
   if (stored != null) return stored;
+  const scaled = (px: number) => Math.round(px * opts.contentFontScale);
   const jsType = opts.columnTypeMap.get(column)?._type;
-  if (jsType === JSDataType.Date) return 170;
-  if (column === opts.logLevelColumn) return 115;
-  return 160;
+  if (jsType === JSDataType.Date) return scaled(170);
+  if (column === opts.logLevelColumn) return scaled(115);
+  return scaled(160);
 }
 
 function inferLogLevelColumn(rows: Record<string, any>[]) {
@@ -458,6 +465,7 @@ export const RawLogTable = memo(
     const {
       userPreferences: { isUTC, rowClickAction },
     } = useUserPreferences();
+    const { scale: contentFontScale } = useContentFontSize();
 
     // The ClickHouse dashboard's slow-query list has no side panel to open, so
     // inline expansion is the only thing a row click can do there.
@@ -567,8 +575,20 @@ export const RawLogTable = memo(
     });
 
     const columnSizeOpts = useMemo(
-      () => ({ aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage }),
-      [aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage],
+      () => ({
+        aliasMap,
+        columnTypeMap,
+        logLevelColumn,
+        columnSizeStorage,
+        contentFontScale,
+      }),
+      [
+        aliasMap,
+        columnTypeMap,
+        logLevelColumn,
+        columnSizeStorage,
+        contentFontScale,
+      ],
     );
 
     const leadingColumnsWidth =

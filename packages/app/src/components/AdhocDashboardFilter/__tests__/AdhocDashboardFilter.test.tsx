@@ -40,11 +40,14 @@ const editorId = 'adhoc-condition-editor-Conditions';
 
 const addButton = () => screen.getByTestId('adhoc-filter-add-Conditions');
 
-const renderFilter = (conditions: AdhocFilterCondition[]) => {
+const renderFilter = (
+  conditions: AdhocFilterCondition[],
+  definition: AdhocDashboardFilterType = filter,
+) => {
   const onChange = jest.fn();
   renderWithMantine(
     <AdhocDashboardFilter
-      filter={filter}
+      filter={definition}
       conditions={conditions}
       onChange={onChange}
       dateRange={dateRange}
@@ -72,6 +75,20 @@ describe('AdhocDashboardFilter', () => {
     const pills = screen.getAllByTestId('adhoc-condition-pill');
     expect(pills[0]).toHaveTextContent('ServiceName != api');
     expect(pills[1]).toHaveTextContent('Level regex ^err');
+  });
+
+  it('marks conditions a PromQL filter cannot apply as invalid', () => {
+    renderFilter(
+      [
+        { key: 'job', operator: 'LIKE', value: '%api%' },
+        { key: 'env', operator: '=', value: 'prod' },
+      ],
+      { ...filter, sourceType: 'promql' },
+    );
+
+    const pills = screen.getAllByTestId('adhoc-condition-pill');
+    expect(pills[0]).toHaveAttribute('data-invalid', 'true');
+    expect(pills[1]).not.toHaveAttribute('data-invalid');
   });
 
   it('removes a condition', async () => {
