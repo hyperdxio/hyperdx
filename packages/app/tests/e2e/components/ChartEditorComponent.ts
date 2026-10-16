@@ -1282,6 +1282,11 @@ export class ChartEditorComponent {
     await this.applyDisplaySettings();
   }
 
+  /** Switch line / stacked bar / stacked line from the preview's toolbar. */
+  async setPreviewDisplayType(type: 'line' | 'stacked_bar' | 'stacked_line') {
+    await this.editorForm().getByTestId(`display-switcher-${type}`).click();
+  }
+
   /** A "Line interpolation" option's (visually hidden) radio in the open drawer. */
   lineInterpolationOption(mode: 'Smooth' | 'Linear' | 'Step'): Locator {
     return this.page
