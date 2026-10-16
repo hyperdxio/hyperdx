@@ -57,7 +57,7 @@ import { IS_CLICKHOUSE_BUILD } from '@/config';
 import {
   useColumns,
   useGetValuesDistribution,
-  useJsonColumns,
+  useJsonColumnNames,
   useTableMetadata,
 } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
@@ -1183,7 +1183,6 @@ const DBSearchPageFiltersComponent = ({
 
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
-  const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
 
   // Special case for live tail
   const [dateRange, setDateRange] = useState<[Date, Date]>(
@@ -1195,6 +1194,8 @@ const DBSearchPageFiltersComponent = ({
     tableName: chartConfig.from.tableName,
     connectionId: chartConfig.connection,
   });
+  const jsonColumns = useJsonColumnNames(columns);
+  const jsonColumnSet = useMemo(() => new Set(jsonColumns), [jsonColumns]);
 
   const { data: tableMetadata } = useTableMetadata(sourceTableConnection);
 
@@ -1310,9 +1311,6 @@ const DBSearchPageFiltersComponent = ({
     const _facets: { key: string; value: (string | boolean)[] }[] = [];
     for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
-      if (jsonColumns?.some(col => facet.key.startsWith(col))) {
-        facet.key = `toString(${facet.key})`;
-      }
 
       // Skip fields already shown in the Shared Filters section
       if (sharedFilterKeys.has(facet.key)) {
@@ -1384,7 +1382,6 @@ const DBSearchPageFiltersComponent = ({
     tableMetadata,
     isFieldPinned,
     isSharedFieldPinned,
-    jsonColumns,
     sharedFilterKeys,
   ]);
 
@@ -1504,6 +1501,7 @@ const DBSearchPageFiltersComponent = ({
                 sqlKey: toQuotedClickHouseKeyExpression(
                   child.key,
                   knownColumns,
+                  jsonColumnSet,
                 ),
               }))}
               selectedValues={group.children.reduce((acc, child) => {
@@ -1570,6 +1568,7 @@ const DBSearchPageFiltersComponent = ({
             const facetSqlKey = toQuotedClickHouseKeyExpression(
               facet.key,
               knownColumns,
+              jsonColumnSet,
             );
             return (
               <FilterGroup
@@ -1652,6 +1651,7 @@ const DBSearchPageFiltersComponent = ({
       setFilterRange,
       tableMetadata,
       knownColumns,
+      jsonColumnSet,
       extraFacetKeys,
     ],
   );
