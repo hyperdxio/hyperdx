@@ -1,6 +1,7 @@
 import { IncomingMessage, ServerResponse } from 'http';
 import { Socket } from 'net';
 
+import logger from '@/utils/logger';
 import { captureProxyBody, writeProxyBody } from '@/utils/proxyBody';
 
 jest.mock('@/utils/logger', () => ({
@@ -77,8 +78,8 @@ describe('captured proxy request bodies', () => {
     expect(proxy.destroy).not.toHaveBeenCalled();
   });
 
-  it.each([undefined, false, true])(
-    'does not reconstruct a parsed body without captured bytes (_body=%s)',
+  it.each([undefined, false])(
+    'does not reconstruct a body without captured bytes (_body=%s)',
     parsed => {
       const proxy = makeProxyRequest();
       const req = {
@@ -96,6 +97,28 @@ describe('captured proxy request bodies', () => {
       expect(proxy.destroy).not.toHaveBeenCalled();
     },
   );
+
+  it('destroys the upstream request when a parsed body was not captured', () => {
+    const proxy = makeProxyRequest();
+    const req = {
+      headers: {},
+      _hdxProxyBody: undefined,
+      body: { query: 'SELECT 1' },
+      _body: true,
+    };
+
+    writeProxyBody(proxy, req);
+
+    expect(proxy.write).not.toHaveBeenCalled();
+    expect(proxy.setHeader).not.toHaveBeenCalled();
+    expect(proxy.destroy).toHaveBeenCalledTimes(1);
+    const [[error]] = proxy.destroy.mock.calls;
+    expect(error).toBeInstanceOf(Error);
+    expect(logger.error).toHaveBeenCalledWith(
+      { err: error },
+      expect.any(String),
+    );
+  });
 
   it.each<[string, Buffer]>([
     [

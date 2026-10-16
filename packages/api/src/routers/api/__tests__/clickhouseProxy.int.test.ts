@@ -4,6 +4,7 @@ import { gzipSync } from 'zlib';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Connection from '@/models/connection';
+import logger from '@/utils/logger';
 
 // Use the real proxy instead of the blanket mock in jest.setup.ts; the int
 // jest config transpiles it (see jest.int.config.js).
@@ -342,7 +343,7 @@ describe('clickhouse-proxy forwarding', () => {
     ]);
     expect(Buffer.byteLength(body)).toBeGreaterThan(4096);
 
-    const consoleError = jest.spyOn(console, 'error');
+    const loggerError = jest.spyOn(logger, 'error');
     try {
       await agent
         .post('/clickhouse-proxy/?query_id=test-multipart')
@@ -360,9 +361,9 @@ describe('clickhouse-proxy forwarding', () => {
       expect(captured[0].headers['content-length']).toBe(
         String(Buffer.byteLength(body)),
       );
-      expect(consoleError).not.toHaveBeenCalled();
+      expect(loggerError).not.toHaveBeenCalled();
     } finally {
-      consoleError.mockRestore();
+      loggerError.mockRestore();
     }
   });
 

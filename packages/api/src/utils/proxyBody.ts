@@ -4,6 +4,8 @@ import logger from '@/utils/logger';
 
 type ParsedRequest = Pick<IncomingMessage, 'headers'> & {
   _hdxProxyBody?: Buffer;
+  // Set by body-parser before it reads the stream.
+  _body?: boolean;
 };
 
 type ProxyRequest = Pick<
@@ -24,8 +26,16 @@ export function captureProxyBody(
 
 export function writeProxyBody(proxyReq: ProxyRequest, req: ParsedRequest) {
   const body = req._hdxProxyBody;
-  // No parser consumed this stream, so let the proxy pipe the original bytes.
-  if (body === undefined) return;
+  if (body === undefined) {
+    // No parser consumed this stream, so let the proxy pipe the original bytes.
+    if (!req._body) return;
+
+    // A drained stream would leave upstream waiting on the original length.
+    const err = new Error('ClickHouse proxy body was parsed but not captured');
+    logger.error({ err }, 'Unable to forward ClickHouse proxy body');
+    proxyReq.destroy(err);
+    return;
+  }
 
   try {
     proxyReq.removeHeader('content-encoding');
