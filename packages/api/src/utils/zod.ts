@@ -808,6 +808,7 @@ export const externalDashboardTileSchema = z
     // valid container id from the editor always fits.
     containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
     tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+    description: z.string().max(1024).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.series && data.config) {
