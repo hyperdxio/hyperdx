@@ -1,4 +1,5 @@
 import { ColumnMeta, JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import { Field } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderHook } from '@testing-library/react';
 
 import { useClauseFieldOptions } from '@/components/SearchResultsToolbar/useClauseFieldOptions';
@@ -24,16 +25,37 @@ const columns = [
   column('my-map', 'Map(String, String)'),
 ];
 
+function mockAllFields(
+  data: Field[] | undefined,
+  isFieldMetadataDisabled: boolean,
+) {
+  const result: ReturnType<typeof useAllFields> = {
+    data,
+    error: null,
+    isError: false,
+    isPending: false,
+    isSuccess: true,
+    isLoading: false,
+    isFetching: false,
+    isFieldMetadataDisabled,
+    fieldsByTableConnection: new Map(),
+    columnsByTableConnection: new Map(),
+    errorsByTableConnection: new Map(),
+    refetch: () => Promise.reject(new Error('unused')),
+  };
+  jest.mocked(useAllFields).mockReturnValue(result);
+}
+
 describe('useClauseFieldOptions', () => {
   it('quotes column names that are not bare identifiers', () => {
-    jest.mocked(useAllFields).mockReturnValue({
-      data: [
+    mockAllFields(
+      [
         { path: ['ServiceName'], type: 'String', jsType: JSDataType.String },
         { path: ['service-name'], type: 'String', jsType: JSDataType.String },
         { path: ['my-map', 'k'], type: 'String', jsType: null },
       ],
-      isFieldMetadataDisabled: false,
-    } as unknown as ReturnType<typeof useAllFields>);
+      false,
+    );
 
     const { result } = renderHook(() =>
       useClauseFieldOptions({ tableConnection: undefined, columns }),
@@ -47,10 +69,7 @@ describe('useClauseFieldOptions', () => {
   });
 
   it('offers scalar columns when field metadata is disabled', () => {
-    jest.mocked(useAllFields).mockReturnValue({
-      data: [],
-      isFieldMetadataDisabled: true,
-    } as unknown as ReturnType<typeof useAllFields>);
+    mockAllFields([], true);
 
     const { result } = renderHook(() =>
       useClauseFieldOptions({ tableConnection: undefined, columns }),
