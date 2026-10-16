@@ -32,6 +32,7 @@ import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DisplayType,
+  getDefaultLineInterpolation,
   LineInterpolation,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover } from '@mantine/core';
@@ -1158,16 +1159,13 @@ const CURVE_TYPE_BY_INTERPOLATION: Record<LineInterpolation, CurveType> = {
   step: 'stepAfter',
 };
 
-// Monotone curves fit each stacked edge independently, so adjacent edges can
-// cross between points and the bands overlap; linear segments stay ordered
-// wherever the points are. Hence stacked lines default to linear.
 export function getLineCurveType(
   displayType: DisplayType,
   lineInterpolation: LineInterpolation | undefined,
 ): CurveType {
-  const fallback =
-    displayType === DisplayType.StackedLine ? 'linear' : 'smooth';
-  return CURVE_TYPE_BY_INTERPOLATION[lineInterpolation ?? fallback];
+  return CURVE_TYPE_BY_INTERPOLATION[
+    lineInterpolation ?? getDefaultLineInterpolation(displayType)
+  ];
 }
 
 // A stacked bar's rendered height sums its series at each timestamp - leave
