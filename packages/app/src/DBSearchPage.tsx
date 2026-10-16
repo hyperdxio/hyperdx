@@ -103,10 +103,12 @@ import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
 import SearchPageActionBar from '@/components/SearchPageActionBar';
+import { ColumnsPopover } from '@/components/SearchResultsToolbar/ColumnsPopover';
+import { SortPopover } from '@/components/SearchResultsToolbar/SortPopover';
+import { useClauseFieldOptions } from '@/components/SearchResultsToolbar/useClauseFieldOptions';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 import { TableSourceForm } from '@/components/Sources/SourceForm';
 import { SourceSelectControlled } from '@/components/SourceSelect';
-import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
@@ -2087,6 +2089,15 @@ function DBSearchPageContent() {
     [inputSourceObj],
   );
 
+  const inputSelect = useWatch({ name: 'select', control });
+  const inputOrderBy = useWatch({ name: 'orderBy', control });
+  const clauseFieldOptions = useClauseFieldOptions({
+    tableConnection: inputSourceTableConnection,
+    columns: inputSourceColumns,
+    dateRange: searchedTimeRange,
+    timestampValueExpression: inputSourceObj?.timestampValueExpression,
+  });
+
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -2208,6 +2219,58 @@ function DBSearchPageContent() {
     },
     [setValue, setNewSourceModalClosed],
   );
+
+  const applySelect = useCallback(
+    (select: string, removedItems: string[]) => {
+      setValue('select', select);
+      let orderBy = getValues('orderBy') ?? '';
+      for (const item of removedItems) {
+        orderBy = orderByAfterRemovingSelectItem(
+          item,
+          orderBy,
+          defaultSearchConfig.orderBy ?? '',
+        );
+      }
+      setValue('orderBy', orderBy);
+      onSubmit();
+    },
+    [setValue, getValues, defaultSearchConfig.orderBy, onSubmit],
+  );
+
+  const applyOrderBy = useCallback(
+    (orderBy: string) => {
+      setValue('orderBy', orderBy);
+      onSubmit();
+    },
+    [setValue, onSubmit],
+  );
+
+  // SELECT and ORDER BY shape the results table, so they sit on that table
+  // and stay hidden on Event Deltas and Event Patterns.
+  const resultsClauseEditors =
+    analysisMode === 'results' ? (
+      <Group gap="xs" wrap="nowrap">
+        <ColumnsPopover
+          value={inputSelect ?? ''}
+          defaultValue={defaultSearchConfig.select ?? ''}
+          fieldOptions={clauseFieldOptions}
+          knownColumns={knownColumns}
+          onApply={applySelect}
+          tableConnection={inputSourceTableConnection}
+          sourceId={inputSource}
+          dateRange={searchedTimeRange}
+        />
+        <SortPopover
+          value={inputOrderBy ?? ''}
+          defaultValue={defaultSearchConfig.orderBy ?? ''}
+          fieldOptions={clauseFieldOptions}
+          onApply={applyOrderBy}
+          tableConnection={inputSourceTableConnection}
+          sourceId={inputSource}
+          dateRange={searchedTimeRange}
+        />
+      </Group>
+    ) : null;
 
   return (
     <Flex
@@ -2345,7 +2408,7 @@ function DBSearchPageContent() {
         className={searchPageStyles.searchForm}
       >
         {/* <DevTool control={control} /> */}
-        <Flex gap="sm" px="sm" pt="sm" wrap="nowrap">
+        <Flex gap="sm" px="sm" pt="sm" justify="space-between" align="center">
           <SourceSelectControlled
             key={`${savedSearchId}`}
             size="xs"
@@ -2362,48 +2425,13 @@ function DBSearchPageContent() {
             data-testid="source-selector"
             style={{ minWidth: 150 }}
           />
-          <SourceSchemaPreview
-            source={inputSourceObj}
-            controlled
-            open={isSourceSchemaPreviewOpen}
-            onClose={() => setIsSourceSchemaPreviewOpen(false)}
-          />
-          <Box style={{ flex: '1 1 0%', minWidth: 100 }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="select"
-              defaultValue={defaultSearchConfig.select}
-              placeholder={defaultSearchConfig.select || 'SELECT Columns'}
-              onSubmit={onSubmit}
-              label="SELECT"
-              size="xs"
-              allowMultiline
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-          </Box>
-          <Box style={{ maxWidth: 400, width: '20%' }}>
-            <SQLInlineEditorControlled
-              tableConnection={inputSourceTableConnection}
-              control={control}
-              name="orderBy"
-              defaultValue={defaultSearchConfig.orderBy}
-              onSubmit={onSubmit}
-              label="ORDER BY"
-              size="xs"
-              dateRange={searchedTimeRange}
-              sourceId={inputSource}
-            />
-          </Box>
-          <>
+          <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
             {!savedSearchId ? (
               <Button
                 data-testid="save-search-button"
                 variant="secondary"
                 size="xs"
                 onClick={onSaveSearch}
-                style={{ flexShrink: 0 }}
               >
                 Save
               </Button>
@@ -2415,7 +2443,6 @@ function DBSearchPageContent() {
                 onClick={() => {
                   setSaveSearchModalState('update');
                 }}
-                style={{ flexShrink: 0 }}
               >
                 Update
               </Button>
@@ -2426,7 +2453,6 @@ function DBSearchPageContent() {
                 variant="secondary"
                 size="xs"
                 onClick={openAlertModal}
-                style={{ flexShrink: 0 }}
               >
                 <Group gap={4}>
                   Alerts
@@ -2434,38 +2460,26 @@ function DBSearchPageContent() {
                 </Group>
               </Button>
             )}
-          </>
+          </Group>
         </Flex>
-        <SourceEditModal
-          opened={modelFormExpanded}
-          onClose={onModelFormExpandClose}
-          inputSource={inputSource}
-        />
-        <NewSourceModal
-          opened={newSourceModalOpened}
-          onClose={setNewSourceModalClosed}
-          onCreate={onNewSourceCreate}
-        />
-        <Flex gap="sm" mt="sm" px="sm" wrap="wrap">
-          <SearchWhereInput
-            tableConnection={inputSourceTableConnection}
-            control={control}
-            name="where"
-            onSubmit={onSubmit}
-            sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
-            luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
-            enableHotkey
-            data-testid="search-input"
-            minWidth="min(600px, 100%)"
-            dateRange={searchedTimeRange}
-            sourceId={inputSource}
-            size="xs"
-          />
-          <Flex
-            gap="sm"
-            style={{ flex: '0 1 500px', minWidth: 0 }}
-            align="flex-start"
-          >
+        <Flex className={searchPageStyles.whereRow} gap="sm" mt="sm" px="sm">
+          <Box className={searchPageStyles.whereField}>
+            <SearchWhereInput
+              tableConnection={inputSourceTableConnection}
+              control={control}
+              name="where"
+              onSubmit={onSubmit}
+              sqlQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_SQL}
+              luceneQueryHistoryType={QUERY_LOCAL_STORAGE.SEARCH_LUCENE}
+              enableHotkey
+              data-testid="search-input"
+              minWidth="100%"
+              dateRange={searchedTimeRange}
+              sourceId={inputSource}
+              size="xs"
+            />
+          </Box>
+          <Flex gap="sm" style={{ flex: '0 0 auto' }} align="flex-start">
             <TimePicker
               data-testid="time-picker"
               inputValue={displayedTimeInputValue}
@@ -2478,7 +2492,6 @@ function DBSearchPageContent() {
               defaultRelativeTimeMode={
                 isLive && interval !== LIVE_TAIL_DURATION_MS
               }
-              width="100%"
               size="xs"
             />
             {isLive && (
@@ -2504,6 +2517,22 @@ function DBSearchPageContent() {
             <SearchSubmitButton isFormStateDirty={formState.isDirty} />
           </Flex>
         </Flex>
+        <SourceSchemaPreview
+          source={inputSourceObj}
+          controlled
+          open={isSourceSchemaPreviewOpen}
+          onClose={() => setIsSourceSchemaPreviewOpen(false)}
+        />
+        <SourceEditModal
+          opened={modelFormExpanded}
+          onClose={onModelFormExpandClose}
+          inputSource={inputSource}
+        />
+        <NewSourceModal
+          opened={newSourceModalOpened}
+          onClose={setNewSourceModalClosed}
+          onCreate={onNewSourceCreate}
+        />
         <ActiveFilterPills
           searchFilters={searchFilters}
           chartConfig={filtersChartConfig}
@@ -2536,12 +2565,19 @@ function DBSearchPageContent() {
         className="bg-body"
       >
         {!queryReady ? (
-          <EmptyState
-            h="100%"
-            icon={<IconStack2 size={32} />}
-            title="No data to display"
-            description="Select a source and click the play button to query data."
-          />
+          <Flex direction="column" h="100%">
+            {resultsClauseEditors != null && (
+              <Box px="sm" pt="sm">
+                {resultsClauseEditors}
+              </Box>
+            )}
+            <EmptyState
+              h="100%"
+              icon={<IconStack2 size={32} />}
+              title="No data to display"
+              description="Select a source and click the play button to query data."
+            />
+          </Flex>
         ) : (
           <>
             <div
@@ -2726,6 +2762,11 @@ function DBSearchPageContent() {
                   )}
                   {hasQueryError && queryError ? (
                     <>
+                      {resultsClauseEditors != null && (
+                        <Box px="sm" pt="xs">
+                          {resultsClauseEditors}
+                        </Box>
+                      )}
                       <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
                         {whereSuggestions && whereSuggestions.length > 0 && (
                           <Box mb="xl">
@@ -2878,6 +2919,8 @@ function DBSearchPageContent() {
                             selectionResetKey={selectionResetKey}
                             onSelectedRowsChange={onSelectedRowsChange}
                             onResolvedColumnsChange={onResolvedColumnsChange}
+                            toolbarLeading={resultsClauseEditors}
+                            controlsAboveTable
                           />
                         )}
                     </Box>
