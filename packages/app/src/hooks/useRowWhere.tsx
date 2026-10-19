@@ -10,7 +10,7 @@ import { quoteResultColumnNameIfNeeded } from '@hyperdx/common-utils/dist/core/m
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { WithClauseSchema } from '@hyperdx/common-utils/dist/types';
 
-import { clickHouseSha256HexLower } from '@/utils/clickHouseSha256';
+import SHA256 from 'crypto-js/sha256';
 
 const MAX_STRING_LENGTH = 512;
 
@@ -87,7 +87,7 @@ export function processRowToWhereClause(
           // Handle case for whole json object, ex: json
           return SqlString.format(`lower(hex(SHA256(toString(?))))=?`, [
             SqlString.raw(valueExpr),
-            clickHouseSha256HexLower(value),
+            SHA256(value).toString(),
           ]);
         case JSDataType.Dynamic:
           // Handle case for json element, ex: json.c
@@ -120,7 +120,7 @@ export function processRowToWhereClause(
               `lower(hex(SHA256(leftUTF8(?, 1000))))=?`,
               [
                 SqlString.raw(valueExpr),
-                clickHouseSha256HexLower(value.substring(0, 1000)),
+                SHA256(value.substring(0, 1000)).toString(),
               ],
             );
           }
