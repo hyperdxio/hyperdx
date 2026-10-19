@@ -4,6 +4,7 @@
  * filter. Tiles no ad hoc filter reaches offer no filter actions.
  */
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import type { Locator } from '@playwright/test';
 
 import { SidePanelComponent } from '../components/SidePanelComponent';
 import { TableComponent } from '../components/TableComponent';
@@ -336,6 +337,168 @@ test.describe(
         await expect(tile.getByTitle(service, { exact: true })).toHaveCount(0, {
           timeout: 20000,
         });
+      });
+    });
+
+    // One `<g class="recharts-area">` per returned series.
+    const seriesAreasOf = (tile: Locator) => tile.locator('.recharts-area');
+
+    const addLineTile = async (chartName: string, groupBy: string) => {
+      const tileCount = await dashboardPage.getTiles().count();
+      await dashboardPage.addTile();
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      await dashboardPage.chartEditor.waitForDataToLoad();
+      await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+      await dashboardPage.chartEditor.setChartName(chartName);
+      await dashboardPage.chartEditor.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+      await dashboardPage.chartEditor.setGroupBy(groupBy);
+      await dashboardPage.chartEditor.runQuery();
+      await dashboardPage.chartEditor.save();
+      await expect(dashboardPage.getTiles()).toHaveCount(tileCount + 1);
+    };
+
+    test('builder line chart series update the ad hoc filter', async ({
+      page,
+    }) => {
+      const filterActions =
+        dashboardPage.getPinnedSeriesFilterActions('include');
+      const excludeActions =
+        dashboardPage.getPinnedSeriesFilterActions('exclude');
+
+      await test.step('Add line charts grouped by one and two columns', async () => {
+        await dashboardPage.createNewDashboard();
+        // Auto granularity leaves most one-minute buckets without every series
+        await dashboardPage.changeGranularity('30 Minutes Granularity');
+        await addLineTile('Two keys', 'ServiceName, SeverityText');
+        await addLineTile('One key', 'ServiceName');
+      });
+
+      await test.step('Without an ad hoc filter, series offer no filter action', async () => {
+        await dashboardPage.pinTimeChart(dashboardPage.getTile(0));
+        await expect(filterActions).toHaveCount(0);
+        await page.keyboard.press('Escape');
+        await addAdhocFilters([
+          { name: 'Conditions', sources: [DEFAULT_LOGS_SOURCE_NAME] },
+        ]);
+      });
+
+      await test.step('Filtering on a series adds a condition per group-by value', async () => {
+        await dashboardPage.pinTimeChart(dashboardPage.getTile(0));
+        await expect(excludeActions).toHaveCount(0);
+        await filterActions.first().click();
+        await expect
+          .poll(() => adhocConditionsParam(page, 'Conditions'))
+          .toEqual([
+            { key: 'ServiceName', operator: '=', value: expect.any(String) },
+            { key: 'SeverityText', operator: '=', value: expect.any(String) },
+          ]);
+        // Values that didn't match the series exactly would leave none or many.
+        await expect(seriesAreasOf(dashboardPage.getTile(0))).toHaveCount(1);
+      });
+
+      await test.step('Excluding a single-key series adds key != value', async () => {
+        await page.getByTestId('adhoc-filter-clear-Conditions').click();
+        await expect.poll(() => filtersParam(page) ?? []).toEqual([]);
+        await dashboardPage.pinTimeChart(dashboardPage.getTile(1));
+        await excludeActions.first().click();
+        await expect
+          .poll(() => adhocConditionsParam(page, 'Conditions'))
+          .toEqual([
+            { key: 'ServiceName', operator: '!=', value: expect.any(String) },
+          ]);
+        const [{ value: service }] = adhocConditionsParam(page, 'Conditions');
+        const excludedRow = page.getByTestId(`chart-copy-name-${service}`);
+        // Re-pin until the tooltip shows the refetched series.
+        await expect(async () => {
+          await page.keyboard.press('Escape');
+          await dashboardPage.pinTimeChart(dashboardPage.getTile(1));
+          await expect(excludedRow).toHaveCount(0, { timeout: 2000 });
+        }).toPass({ timeout: 20000 });
+      });
+    });
+
+    test('raw SQL line chart series filter on the expression behind the alias', async ({
+      page,
+    }) => {
+      const sql = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, ServiceName AS svc, count() AS count FROM default.e2e_otel_logs WHERE ${TIME_FILTER} AND $__filters GROUP BY ts, svc ORDER BY ts ASC`;
+
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.changeGranularity('30 Minutes Granularity');
+      await dashboardPage.addTile();
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      await dashboardPage.chartEditor.waitForDataToLoad();
+      await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+      await dashboardPage.chartEditor.setChartName('Raw SQL line');
+      await dashboardPage.chartEditor.switchToSqlMode();
+      await dashboardPage.chartEditor.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+      await dashboardPage.chartEditor.typeSqlQuery(sql);
+      await dashboardPage.chartEditor.runQuery(false);
+      await dashboardPage.chartEditor.save();
+      await expect(dashboardPage.getTiles()).toHaveCount(1);
+      await addAdhocFilters([
+        { name: 'Conditions', sources: [DEFAULT_LOGS_SOURCE_NAME] },
+      ]);
+
+      await dashboardPage.pinTimeChart(dashboardPage.getTile(0));
+      await dashboardPage
+        .getPinnedSeriesFilterActions('include')
+        .first()
+        .click();
+      await expect
+        .poll(() => adhocConditionsParam(page, 'Conditions'))
+        .toEqual([
+          { key: 'ServiceName', operator: '=', value: expect.any(String) },
+        ]);
+      await expect(seriesAreasOf(dashboardPage.getTile(0))).toHaveCount(1);
+    });
+
+    test('PromQL line chart series filter on their labels', async ({
+      page,
+    }) => {
+      const tile = dashboardPage.getTile(0);
+      const seriesAreas = seriesAreasOf(tile);
+
+      await test.step('Add a PromQL chart and an ad hoc filter on its source', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.switchToPromqlMode();
+        await dashboardPage.chartEditor.selectSource(PROMQL_SOURCE_NAME);
+        await dashboardPage.chartEditor.setChartName('PromQL chart');
+        await dashboardPage.chartEditor.replacePromqlExpression(
+          E2E_PROMQL_METRIC_NAME,
+        );
+        await dashboardPage.chartEditor.save();
+        await expect(dashboardPage.getTiles()).toHaveCount(1);
+        await dashboardPage.openEditFiltersModal();
+        await dashboardPage.addAdhocFilterToDashboard(
+          'Labels',
+          [PROMQL_SOURCE_NAME],
+          { sourceType: 'Prometheus' },
+        );
+        await dashboardPage.closeFiltersModal();
+        await expect(seriesAreas.nth(1)).toBeAttached({ timeout: 20000 });
+      });
+
+      await test.step('Filtering on a series adds its labels and narrows the chart', async () => {
+        await dashboardPage.pinTimeChart(tile);
+        await dashboardPage
+          .getPinnedSeriesFilterActions('include')
+          .first()
+          .click();
+        await expect
+          .poll(() => filtersParam(page))
+          .toEqual([
+            {
+              type: 'adhoc',
+              name: 'Labels',
+              conditions: [
+                { key: 'service', operator: '=', value: expect.any(String) },
+              ],
+            },
+          ]);
+        await expect(seriesAreas).toHaveCount(1);
       });
     });
 

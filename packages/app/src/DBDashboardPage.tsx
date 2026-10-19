@@ -1298,6 +1298,7 @@ const Tile = ({
                             });
                           }
                     }
+                    onFilter={onFilter}
                   />
                 )}
               {effectiveQueriedConfig?.displayType === DisplayType.Table && (

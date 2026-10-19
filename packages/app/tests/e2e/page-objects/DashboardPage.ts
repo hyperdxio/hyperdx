@@ -1688,6 +1688,26 @@ export class DashboardPage {
     await (await this.getTileCellAction(tile, value, action)).click();
   }
 
+  /**
+   * Click a time chart tile until its tooltip pins. Recharts only pins when the
+   * click lands on a bucket, so retry.
+   */
+  async pinTimeChart(tile: Locator) {
+    const chart = tile.locator('.recharts-responsive-container');
+    const pinnedRow = this.page.locator('[data-testid^="chart-copy-name-"]');
+    await expect(async () => {
+      await chart.click();
+      await expect(pinnedRow.first()).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
+  }
+
+  /** The pinned tooltip's filter (`include`) or exclude action per series. */
+  getPinnedSeriesFilterActions(action: 'include' | 'exclude'): Locator {
+    const prefix =
+      action === 'include' ? 'chart-filter-series-' : 'chart-exclude-series-';
+    return this.page.locator(`[data-testid^="${prefix}"]`);
+  }
+
   /** The open condition editor of an ad hoc filter. */
   getAdhocConditionEditor(filterName: string): Locator {
     return this.page.getByTestId(`adhoc-condition-editor-${filterName}`);
