@@ -661,6 +661,7 @@ function convertTileToExternalChart(
     config: convertToExternalTileChartConfig(tile.config) ?? defaultTileConfig,
     ...(containerId !== undefined ? { containerId } : {}),
     ...(tabId !== undefined ? { tabId } : {}),
+    ...(tile.description ? { description: tile.description } : {}),
   };
 }
 
@@ -1027,7 +1028,7 @@ export function convertToInternalTileConfig(
   // name on `config`, not at the top level (`strippedConfig` carries it).
   // Stripping the top-level `name` brings the runtime shape back in line
   // with `DashboardDocument['tiles'][number]`.
-  const { id, x, y, w, h, containerId, tabId } = externalTile;
+  const { id, x, y, w, h, containerId, tabId, description } = externalTile;
   return {
     id,
     x,
@@ -1036,6 +1037,7 @@ export function convertToInternalTileConfig(
     h,
     ...(containerId !== undefined ? { containerId } : {}),
     ...(tabId !== undefined ? { tabId } : {}),
+    ...(description ? { description } : {}),
     config: strippedConfig,
   };
 }

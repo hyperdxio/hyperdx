@@ -8,7 +8,10 @@ import {
   QueryAttribution,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { Field, tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { getAdhocFilterSourceKinds } from '@hyperdx/common-utils/dist/filters';
+import {
+  getAdhocFilterSourceKinds,
+  isAdhocComparableDataType,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   AdhocDashboardFilter,
   TSource,
@@ -45,26 +48,43 @@ const unionSorted = (lists: (string[] | undefined)[]) =>
   Array.from(new Set(lists.flatMap(list => list ?? []))).sort();
 
 /**
- * A SQL source's filterable keys, in the search sidebar's key format: scalar
- * columns, and the keys inside its map and JSON columns.
+ * Quote a column name that isn't a bare identifier (e.g. `log-attributes`), so
+ * the stored key is SQL that broadcasting can use verbatim.
+ */
+const toQuotedKeys = (keys: string[], columns: ColumnMeta[]) => {
+  const columnNames = new Set(columns.map(column => column.name));
+  return keys.map(key => toQuotedClickHouseKeyExpression(key, columnNames));
+};
+
+/**
+ * A SQL source's filterable keys, as SQL expressions in the search sidebar's
+ * key format: scalar columns, and the keys inside its map and JSON columns.
  */
 export function getSqlSourceKeys(fields: Field[], columns: ColumnMeta[]) {
   const columnNames = (types: JSDataType[]) =>
     filterColumnMetaByType(columns, types)?.map(column => column.name) ?? [];
   const jsonColumns = columnNames([JSDataType.JSON]);
   const mapColumns = columnNames([JSDataType.Map]);
-  return fields
-    .filter(field => field.path.length > 1 || isJSDataTypeScalar(field.jsType))
+  const keys = fields
+    .filter(
+      field =>
+        (field.path.length > 1 || isJSDataTypeScalar(field.jsType)) &&
+        isAdhocComparableDataType(field.type),
+    )
     .map(field => mergePath(field.path, jsonColumns, mapColumns));
+  return toQuotedKeys(keys, columns);
 }
 
 /** A SQL source's scalar columns, the only keys known without field metadata. */
 export function getSqlSourceColumnKeys(columns: ColumnMeta[]) {
-  return columns
-    .filter(column =>
-      isJSDataTypeScalar(convertCHDataTypeToJSType(column.type)),
+  const keys = columns
+    .filter(
+      column =>
+        isJSDataTypeScalar(convertCHDataTypeToJSType(column.type)) &&
+        isAdhocComparableDataType(column.type),
     )
     .map(column => column.name);
+  return toQuotedKeys(keys, columns);
 }
 
 /**

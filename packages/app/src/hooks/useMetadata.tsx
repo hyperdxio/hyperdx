@@ -33,6 +33,7 @@ import api from '@/api';
 import { IS_LOCAL_MODE } from '@/config';
 import { LOCAL_STORE_CONNECTIONS_KEY } from '@/connection';
 import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
+import { mergeStreams, useStreamingQuery } from '@/hooks/useStreamingQuery';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
 import { toArray } from '@/utils';
@@ -417,6 +418,12 @@ export function useTableMetadata(
   });
 }
 
+/** How many keys a filter values query reads, per the team's setting. */
+export function useFilterKeysFetchLimit() {
+  const { data: me } = api.useMe();
+  return me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+}
+
 /**
  * Throw the first rejection when every lookup failed, otherwise return what
  * succeeded, so one failing source doesn't empty a multi-source result.
@@ -439,7 +446,9 @@ async function settleAllOrThrow<T>(promises: Promise<T>[]): Promise<T[]> {
  *   `keyConditions`.
  * - `'all'` tries text indexes, then metadata MVs, then the raw table, so it is
  *   cheaper for typeahead. It skips JSON-column keys, and its lookups return no
- *   values instead of failing, so it rarely errors.
+ *   values instead of failing, so it rarely errors. When no values are showing
+ *   yet, each query's values land in `data` within 100ms of it finishing,
+ *   while `isFetching` is still true.
  *
  * `limit` caps the values returned per key in both modes.
  *
@@ -474,16 +483,27 @@ export function useMultipleGetKeyValues(
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
   const metadata = useMetadataWithSettings();
+  const queryClient = useQueryClient();
   const chartConfigsArr = toArray(chartConfigs);
 
   const { enabled = true } = options || {};
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
+  const { isLoading: isLoadingMe } = api.useMe();
   const { data: sources, isLoading: isLoadingSources } = useSources();
+  const maxKeys = useFilterKeysFetchLimit();
 
-  const maxKeys =
-    me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+  // 'exact' lookups don't stream, so they keep the client's defaults rather
+  // than the streaming hook's. An unset default stays `undefined` here, which
+  // React Query reads as its own default. `refetchOnWindowFocus` is React
+  // Query's default outright: the client's can be a function typed against
+  // `Query<unknown>`, which doesn't fit this query's data.
+  const { retry, structuralSharing } =
+    queryClient.getDefaultOptions().queries ?? {};
+  const exactModeOptions =
+    mode === 'exact'
+      ? { retry, structuralSharing, refetchOnWindowFocus: true }
+      : {};
 
-  const query = useQuery<Facet[]>({
+  const query = useStreamingQuery<Facet>({
     queryKey: [
       'useMetadata.useGetKeyValues',
       mode,
@@ -497,8 +517,8 @@ export function useMultipleGetKeyValues(
       maxKeys,
       limit,
     ],
-    queryFn: async ({ signal }) => {
-      if (keys.length === 0) return [];
+    streamFactory: async function* ({ signal }) {
+      if (keys.length === 0) return;
       const usableMVsOverride =
         chartConfigsArr.length === 1 ? metadataMVsOverride : undefined;
 
@@ -514,35 +534,50 @@ export function useMultipleGetKeyValues(
         return { chartConfig, source, metadataMVs };
       });
 
-      const results = await settleAllOrThrow(
-        lookups.map(({ chartConfig, source, metadataMVs }) =>
-          mode === 'all'
-            ? metadata.getAllKeyValues({
-                databaseName: chartConfig.from.databaseName,
-                tableName: chartConfig.from.tableName,
-                keyExpressions: keys.slice(0, maxKeys),
-                maxValuesPerKey: limit,
-                connectionId: chartConfig.connection,
-                metadataMVs,
-                dateRange: chartConfig.dateRange,
-                timestampValueExpression: chartConfig.timestampValueExpression,
-                signal,
-              })
-            : metadata.getKeyValuesWithMVs({
-                chartConfig,
-                keys: keys.slice(0, maxKeys),
-                keyConditions: keyConditions?.slice(0, maxKeys),
-                limit,
-                disableRowLimit,
-                source,
-                signal,
-              }),
-        ),
+      if (mode === 'exact') {
+        const results = await settleAllOrThrow(
+          lookups.map(({ chartConfig, source }) =>
+            metadata.getKeyValuesWithMVs({
+              chartConfig,
+              keys: keys.slice(0, maxKeys),
+              keyConditions: keyConditions?.slice(0, maxKeys),
+              limit,
+              disableRowLimit,
+              source,
+              signal,
+            }),
+          ),
+        );
+        // Numeric values have always passed through unconverted here; `useQuery`
+        // used to hide the mismatch with `Facet`. HDX-1548.
+        yield results.flat() as Facet[];
+        return;
+      }
+
+      // mode === 'all'
+      const streams = lookups.map(({ chartConfig, metadataMVs }) =>
+        metadata.streamAllKeyValues({
+          databaseName: chartConfig.from.databaseName,
+          tableName: chartConfig.from.tableName,
+          keyExpressions: keys.slice(0, maxKeys),
+          maxValuesPerKey: limit,
+          connectionId: chartConfig.connection,
+          metadataMVs,
+          dateRange: chartConfig.dateRange,
+          timestampValueExpression: chartConfig.timestampValueExpression,
+          signal,
+        }),
       );
-      return results.flat();
+      for await (const keyValues of mergeStreams(streams)) {
+        yield keyValues.map(({ key, value }) => ({
+          key,
+          value: value.map(val => val.toString()),
+        }));
+      }
     },
     staleTime: 1000 * 60 * 5, // Cache every 5 min
     placeholderData: keepPreviousData,
+    ...exactModeOptions,
     ...options,
     enabled: !!enabled && !!keys.length && !isLoadingSources && !isLoadingMe,
   });

@@ -98,6 +98,7 @@ import {
 import { FormatTime } from '@/useFormatTime';
 import {
   DEFAULT_ROW_CLICK_ACTION,
+  useContentFontSize,
   useUserPreferences,
 } from '@/useUserPreferences';
 import {
@@ -112,6 +113,7 @@ import { csvExportFilename } from '@/utils/csv';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
+import { getAdhocCellCondition } from './DBTable/adhocCellCondition';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import {
@@ -167,15 +169,21 @@ function getResolvedColumnSize(
     columnTypeMap: Map<string, { _type: JSDataType | null }>;
     logLevelColumn?: string;
     columnSizeStorage: Record<string, number>;
+    /**
+     * Content font size ratio. Only the defaults scale — a width the user
+     * dragged to is what they asked for at any font size.
+     */
+    contentFontScale: number;
   },
 ): number {
   const columnId = opts.aliasMap?.[column] ? `"${column}"` : column;
   const stored = opts.columnSizeStorage[columnId];
   if (stored != null) return stored;
+  const scaled = (px: number) => Math.round(px * opts.contentFontScale);
   const jsType = opts.columnTypeMap.get(column)?._type;
-  if (jsType === JSDataType.Date) return 170;
-  if (column === opts.logLevelColumn) return 115;
-  return 160;
+  if (jsType === JSDataType.Date) return scaled(170);
+  if (column === opts.logLevelColumn) return scaled(115);
+  return scaled(160);
 }
 
 function inferLogLevelColumn(rows: Record<string, any>[]) {
@@ -397,7 +405,7 @@ export const RawLogTable = memo(
     tableId?: string;
     columnNameMap?: Record<string, string>;
     dedupRows?: boolean;
-    columnTypeMap: Map<string, { _type: JSDataType | null }>;
+    columnTypeMap: Map<string, { _type: JSDataType | null; type?: string }>;
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
@@ -458,6 +466,7 @@ export const RawLogTable = memo(
     const {
       userPreferences: { isUTC, rowClickAction },
     } = useUserPreferences();
+    const { scale: contentFontScale } = useContentFontSize();
 
     // The ClickHouse dashboard's slow-query list has no side panel to open, so
     // inline expansion is the only thing a row click can do there.
@@ -513,6 +522,27 @@ export const RawLogTable = memo(
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
 
+    const { isAdhocFilterTarget } = use(RowSidePanelContext);
+
+    const getCellFilter = useCallback(
+      (
+        column: string | undefined,
+        cellValue: unknown,
+      ): { columnName?: string; filterValue?: string } => {
+        if (!isAdhocFilterTarget || column == null) {
+          return { columnName: column };
+        }
+        const condition = getAdhocCellCondition(
+          column,
+          columnTypeMap.get(column),
+          cellValue,
+          aliasMap,
+        );
+        return { columnName: condition?.key, filterValue: condition?.value };
+      },
+      [isAdhocFilterTarget, aliasMap, columnTypeMap],
+    );
+
     // Reset scroll when live tail is enabled for the first time
     const prevIsLive = usePrevious(isLive);
     useEffect(() => {
@@ -567,8 +597,20 @@ export const RawLogTable = memo(
     });
 
     const columnSizeOpts = useMemo(
-      () => ({ aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage }),
-      [aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage],
+      () => ({
+        aliasMap,
+        columnTypeMap,
+        logLevelColumn,
+        columnSizeStorage,
+        contentFontScale,
+      }),
+      [
+        aliasMap,
+        columnTypeMap,
+        logLevelColumn,
+        columnSizeStorage,
+        contentFontScale,
+      ],
     );
 
     const leadingColumnsWidth =
@@ -1271,10 +1313,11 @@ export const RawLogTable = memo(
                                       cellValue={cellValue}
                                       wrapLinesEnabled={wrapLinesEnabled}
                                       tableContainerRef={tableContainerRef}
-                                      columnName={
+                                      {...getCellFilter(
                                         (cell.column.columnDef.meta as any)
-                                          ?.column
-                                      }
+                                          ?.column,
+                                        cellValue,
+                                      )}
                                       isChart={
                                         (cell.column.columnDef.meta as any)
                                           ?.column === '__hdx_pattern_trend'
@@ -1587,6 +1630,7 @@ function selectColumnMapWithoutAdditionalKeys(
   string,
   {
     _type: JSDataType | null;
+    type: string;
   }
 > {
   if (selectMeta == null || additionalKeysLength == null) {
