@@ -28,7 +28,9 @@ import {
   SegmentedControl,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { IconHelpCircle } from '@tabler/icons-react';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
@@ -345,25 +347,32 @@ export default function ChartDisplaySettingsDrawer({
               description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
             {showLineInterpolation && (
-              <Input.Wrapper size="xs" label="Line interpolation">
+              <Input.Wrapper
+                size="xs"
+                label={
+                  <Group gap={4} align="center">
+                    Line interpolation
+                    <Tooltip label="Determines the shape of the line between data points in the same series">
+                      <IconHelpCircle size={14} className="cursor-pointer" />
+                    </Tooltip>
+                  </Group>
+                }
+              >
                 <Controller
                   control={control}
                   name="lineInterpolation"
                   render={({ field: { onChange, value } }) => (
-                    // Block wrapper so the inline-flex control sits below the
-                    // inline-block label.
-                    <Box>
-                      <SegmentedControl
-                        size="xs"
-                        value={value ?? defaultLineInterpolation}
-                        onChange={v => {
-                          const parsed = LineInterpolationSchema.safeParse(v);
-                          if (parsed.success) onChange(parsed.data);
-                        }}
-                        data={LINE_INTERPOLATION_OPTIONS}
-                        data-testid="line-interpolation-control"
-                      />
-                    </Box>
+                    <SegmentedControl
+                      size="xs"
+                      fullWidth
+                      value={value ?? defaultLineInterpolation}
+                      onChange={v => {
+                        const parsed = LineInterpolationSchema.safeParse(v);
+                        if (parsed.success) onChange(parsed.data);
+                      }}
+                      data={LINE_INTERPOLATION_OPTIONS}
+                      data-testid="line-interpolation-control"
+                    />
                   )}
                 />
               </Input.Wrapper>
