@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from 'react';
+import SHA256 from 'crypto-js/sha256';
 import SqlString from 'sqlstring';
 import z from 'zod';
 import {
@@ -9,8 +10,6 @@ import {
 import { quoteResultColumnNameIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { WithClauseSchema } from '@hyperdx/common-utils/dist/types';
-
-import SHA256 from 'crypto-js/sha256';
 
 const MAX_STRING_LENGTH = 512;
 

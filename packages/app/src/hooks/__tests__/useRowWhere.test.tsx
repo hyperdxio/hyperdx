@@ -1,3 +1,4 @@
+import SHA256 from 'crypto-js/sha256';
 import {
   ColumnMetaType,
   JSDataType,
@@ -5,7 +6,6 @@ import {
 import { renderHook } from '@testing-library/react';
 
 import useRowWhere, { processRowToWhereClause } from '@/hooks/useRowWhere';
-import SHA256 from 'crypto-js/sha256';
 
 /** From ClickHouse: lower(hex(SHA256(<json log line>))) on telemetry.otel_logs. */
 const OTEL_LOG_JSON_FOR_SHA256 =
@@ -310,7 +310,8 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
 
     // in ClickHouse: SELECT lower(hex(SHA256(repeat('a', 600))));
-    const expected = 'ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d'
+    const expected =
+      'ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d';
 
     expect(result).toBe(
       `lower(hex(SHA256(leftUTF8(description, 1000))))='${expected}'`,
