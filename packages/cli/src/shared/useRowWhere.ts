@@ -11,7 +11,7 @@
  * to common-utils later.
  */
 
-import { createHash } from 'node:crypto';
+import SHA256 from 'crypto-js/sha256';
 import SqlString from 'sqlstring';
 import {
   ColumnMetaType,
@@ -23,11 +23,6 @@ import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import type { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
-
-/** Matches ClickHouse `lower(hex(SHA256(?)))` for UTF-8 strings. */
-function clickHouseSha256HexLower(value: string): string {
-  return createHash('sha256').update(value, 'utf8').digest('hex');
-}
 
 // Type for WITH clause entries, derived from ChartConfig's with property
 type WithClause = NonNullable<BuilderChartConfig['with']>[number];
@@ -96,7 +91,7 @@ function processRowToWhereClause(
           // Handle case for whole json object, ex: json
           return SqlString.format(`lower(hex(SHA256(toString(?))))=?`, [
             SqlString.raw(valueExpr),
-            clickHouseSha256HexLower(strValue ?? ''),
+            SHA256(strValue ?? '').toString(),
           ]);
         case JSDataType.Dynamic:
           // Handle case for json element, ex: json.c
@@ -121,7 +116,7 @@ function processRowToWhereClause(
           if ((strValue?.length ?? 0) > MAX_STRING_LENGTH) {
             return SqlString.format(`lower(hex(SHA256(leftUTF8(?, 1000))))=?`, [
               SqlString.raw(valueExpr),
-              clickHouseSha256HexLower((strValue ?? '').substring(0, 1000)),
+              SHA256((strValue ?? '').substring(0, 1000)).toString(),
             ]);
           }
           return SqlString.format(`?=?`, [
