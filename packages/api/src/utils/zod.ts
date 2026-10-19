@@ -11,8 +11,6 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
   MetricFormulaSchema,
   MetricsDataType,
   NumberFormatSchema,
@@ -161,7 +159,7 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 
 // Re-exported from common-utils so existing `@/utils/zod` importers keep working
 // while the canonical definition lives in the shared package.
-export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
+export { tagsSchema };
 
 const externalQueryExpressionFilterShape =
   QueryExpressionDashboardFilterSchema.omit({ source: true }).extend({

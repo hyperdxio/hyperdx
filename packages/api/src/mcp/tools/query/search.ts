@@ -37,8 +37,7 @@ const searchSchema = z.object({
     .optional()
     .default(50)
     .describe(
-      'Maximum number of rows to return (1-200). Default: 50. ' +
-        'Use smaller values to reduce response size.',
+      'Maximum rows to return. Use smaller values to reduce response size.',
     ),
   denoise: z
     .boolean()
