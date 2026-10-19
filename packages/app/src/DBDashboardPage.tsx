@@ -1367,6 +1367,7 @@ const Tile = ({
                       queryKeyPrefix={'search'}
                       variant="default"
                       errorVariant="collapsible"
+                      keepPreviousData
                     />
                   </ChartContainer>
                 )}
@@ -1418,6 +1419,7 @@ const Tile = ({
                         granularity: undefined,
                       }}
                       totalCountQueryKeyPrefix={`dashboard-patterns-${chart.id}`}
+                      keepPreviousData
                     />
                   </ChartContainer>
                 )}
