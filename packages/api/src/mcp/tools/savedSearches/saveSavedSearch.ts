@@ -60,7 +60,9 @@ export function registerSaveSavedSearch({
         name: input.name,
         select: input.select ?? '',
         where: input.where ?? '',
-        whereLanguage: input.whereLanguage,
+        // Alerts read a missing whereLanguage as sql while the app reads it as
+        // lucene, so a new search must store it explicitly.
+        whereLanguage: input.whereLanguage ?? (isUpdate ? undefined : 'lucene'),
         orderBy: input.orderBy,
         source: input.sourceId,
         tags: input.tags ?? [],
