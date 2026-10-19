@@ -31,6 +31,7 @@ services:
         OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION}
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
+      # host:port (plain HTTP), http://host:port or https://host:port
       CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}

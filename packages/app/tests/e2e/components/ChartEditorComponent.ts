@@ -58,6 +58,15 @@ export class ChartEditorComponent {
     await this.chartNameInput.fill(name);
   }
 
+  /** Replace a Search tile's SELECT list, the first editor in its form. */
+  async setSearchSelect(select: string) {
+    await replaceEditorText(
+      this.page,
+      this.tileEditor.locator('.cm-editor .cm-content').first(),
+      select,
+    );
+  }
+
   /**
    * Set chart type
    */
