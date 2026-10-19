@@ -23,10 +23,15 @@ const mockTracer = {
 };
 
 const mockCounter = { add: jest.fn() };
-const mockHistogram = { record: jest.fn() };
+const mockDurationHistogram = { record: jest.fn() };
+const mockResponseSizeHistogram = { record: jest.fn() };
 const mockMeter = {
   createCounter: jest.fn(() => mockCounter),
-  createHistogram: jest.fn(() => mockHistogram),
+  createHistogram: jest.fn((name: string) =>
+    name === 'hyperdx.mcp.tool.response.size_bytes'
+      ? mockResponseSizeHistogram
+      : mockDurationHistogram,
+  ),
 };
 
 jest.mock('@opentelemetry/api', () => ({
@@ -327,9 +332,12 @@ describe('withToolTracing', () => {
     const traced = withToolTracing('my_tool', context, handler);
     await traced({});
 
-    expect(mockHistogram.record).toHaveBeenCalledWith(expect.any(Number), {
-      tool: 'my_tool',
-    });
+    expect(mockDurationHistogram.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      {
+        tool: 'my_tool',
+      },
+    );
     expect(mockCounter.add).not.toHaveBeenCalled();
   });
 
@@ -348,7 +356,7 @@ describe('withToolTracing', () => {
       'mcp.tool.response.size_bytes',
       5,
     );
-    expect(mockHistogram.record).toHaveBeenCalledWith(5, {
+    expect(mockResponseSizeHistogram.record).toHaveBeenCalledWith(5, {
       tool: 'my_tool',
       outcome: 'success',
     });
@@ -360,7 +368,7 @@ describe('withToolTracing', () => {
     const traced = withToolTracing('my_tool', context, handler);
     await traced({});
 
-    expect(mockHistogram.record).toHaveBeenCalledWith(9, {
+    expect(mockResponseSizeHistogram.record).toHaveBeenCalledWith(9, {
       tool: 'my_tool',
       outcome: 'error',
     });
@@ -392,9 +400,12 @@ describe('withToolTracing', () => {
       tool: 'my_tool',
       error_category: 'server',
     });
-    expect(mockHistogram.record).toHaveBeenCalledWith(expect.any(Number), {
-      tool: 'my_tool',
-    });
+    expect(mockDurationHistogram.record).toHaveBeenCalledWith(
+      expect.any(Number),
+      {
+        tool: 'my_tool',
+      },
+    );
   });
 
   // ─── Error category tests ───────────────────────────────────────────────
