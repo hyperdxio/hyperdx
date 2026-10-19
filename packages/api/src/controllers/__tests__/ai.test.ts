@@ -257,13 +257,14 @@ describe('openai provider', () => {
 });
 
 describe('getChartConfigFromResolvedConfig', () => {
-  const source = {
+  // @ts-expect-error mock source only has the fields getChartConfigFromResolvedConfig reads
+  const source: ISource = {
     id: 'source-id',
     kind: SourceKind.Trace,
     connection: 'connection-id',
     from: { databaseName: 'default', tableName: 'otel_traces' },
     timestampValueExpression: 'Timestamp',
-  } as unknown as ISource;
+  };
 
   it('maps percentile aggregations to quantile with a level', () => {
     const result = getChartConfigFromResolvedConfig(
