@@ -3712,6 +3712,66 @@ describe('renderChartConfig', () => {
     expect(sql).toContain("hasToken(lower(Body), lower('denied'))");
   });
 
+  describe('percentile shorthand aggFn', () => {
+    const baseTraceConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_traces',
+      },
+      select: [],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+
+    it('renders p95 as quantile at level 0.95', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseTraceConfig,
+        select: [
+          {
+            aggFn: 'p95',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const actual = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+      expect(actual).toContain(
+        'quantileIf(0.95)(toFloat64OrDefault(toString(Duration))',
+      );
+      expect(actual).not.toContain('p95');
+    });
+
+    it('renders p99 as sample-weighted quantile at level 0.99', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseTraceConfig,
+        sampleWeightExpression: 'SampleRate',
+        select: [
+          {
+            aggFn: 'p99',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const actual = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+      expect(actual).toContain(
+        'quantileTDigestWeighted(0.99)(toFloat64OrDefault(toString(Duration))',
+      );
+      expect(actual).not.toContain('p99');
+    });
+  });
+
   describe('sample-weighted aggregations', () => {
     const baseSampledConfig: ChartConfigWithOptDateRange = {
       displayType: DisplayType.Table,

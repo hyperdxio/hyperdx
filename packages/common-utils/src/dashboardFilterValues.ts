@@ -5,14 +5,17 @@ import {
   getDashboardVariableFilters,
   getFilterExpression,
   getFilterVariableName,
+  isAdhocFilter,
   isAdhocFilterValue,
   isFilterGlobalRequirement,
   isFilterRequired,
   isFilterVariableEnabled,
   parseQuery,
 } from '@/filters';
-import { isMissingFiltersMacro } from '@/macros';
+import { isPromqlSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import { hasMacro, isMissingFiltersMacro } from '@/macros';
 import {
+  AdhocDashboardFilter,
   AdhocFilterValue,
   ChartConfigWithOptDateRange,
   DashboardFilter,
@@ -210,6 +213,14 @@ export function getUnsatisfiedRequiredFilters<
   );
 }
 
+const hasFiltersMacro = (sqlTemplate: string): boolean => {
+  try {
+    return hasMacro(sqlTemplate, 'filters');
+  } catch {
+    return false;
+  }
+};
+
 /** Whether a dashboard's broadcast filters reach a tile with the given config. */
 export function configConsumesBroadcastFilters(
   config: SavedChartConfig | ChartConfigWithOptDateRange,
@@ -221,6 +232,33 @@ export function configConsumesBroadcastFilters(
     return !!sourceId && !isMissingFiltersMacro(config.sqlTemplate);
   }
   return true;
+}
+
+/**
+ * The ad hoc filters whose conditions reach a tile, i.e. the filters that
+ * clicking a value in the tile should update. PromQL tiles take PromQL filters;
+ * builder and raw SQL tiles take SQL filters.
+ */
+export function getAdhocFilterTargetsForTile(
+  filters: DashboardFilter[],
+  config: SavedChartConfig,
+  sourceId: string | undefined,
+): AdhocDashboardFilter[] {
+  // Ad hoc conditions reach raw SQL only through `$__filters`, which requires a sourceId.
+  if (
+    isRawSqlSavedChartConfig(config) &&
+    !(sourceId && hasFiltersMacro(config.sqlTemplate))
+  ) {
+    return [];
+  }
+  const isPromql = isPromqlSavedChartConfig(config);
+  return filters
+    .filter(isAdhocFilter)
+    .filter(
+      filter =>
+        filter.sourceType === (isPromql ? 'promql' : 'sql') &&
+        doesFilterApplyToSource(filter, sourceId),
+    );
 }
 
 /**
