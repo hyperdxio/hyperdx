@@ -11,7 +11,7 @@
  * to common-utils later.
  */
 
-import MD5 from 'crypto-js/md5';
+import SHA256 from 'crypto-js/sha256';
 import SqlString from 'sqlstring';
 import {
   ColumnMetaType,
@@ -89,9 +89,9 @@ function processRowToWhereClause(
           ]);
         case JSDataType.JSON:
           // Handle case for whole json object, ex: json
-          return SqlString.format(`lower(hex(MD5(toString(?))))=?`, [
+          return SqlString.format(`lower(hex(SHA256(toString(?))))=?`, [
             SqlString.raw(valueExpr),
-            MD5(strValue ?? '').toString(),
+            SHA256(strValue ?? '').toString(),
           ]);
         case JSDataType.Dynamic:
           // Handle case for json element, ex: json.c
@@ -114,9 +114,9 @@ function processRowToWhereClause(
           }
           // Handle the case when string is too long
           if ((strValue?.length ?? 0) > MAX_STRING_LENGTH) {
-            return SqlString.format(`lower(hex(MD5(leftUTF8(?, 1000))))=?`, [
+            return SqlString.format(`lower(hex(SHA256(leftUTF8(?, 1000))))=?`, [
               SqlString.raw(valueExpr),
-              MD5((strValue ?? '').substring(0, 1000)).toString(),
+              SHA256((strValue ?? '').substring(0, 1000)).toString(),
             ]);
           }
           return SqlString.format(`?=?`, [

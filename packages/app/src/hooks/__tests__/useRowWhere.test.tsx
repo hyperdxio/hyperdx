@@ -1,4 +1,4 @@
-import MD5 from 'crypto-js/md5';
+import SHA256 from 'crypto-js/sha256';
 import {
   ColumnMetaType,
   JSDataType,
@@ -7,8 +7,8 @@ import { renderHook } from '@testing-library/react';
 
 import useRowWhere, { processRowToWhereClause } from '@/hooks/useRowWhere';
 
-// Mock crypto-js/md5
-jest.mock('crypto-js/md5');
+// Mock crypto-js/sha256
+jest.mock('crypto-js/sha256');
 
 // Mock convertCHDataTypeToJSType
 jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
@@ -31,8 +31,8 @@ jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
 describe('processRowToWhereClause', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (MD5 as jest.Mock).mockImplementation((value: string) => ({
-      toString: () => `md5_${value}`,
+    (SHA256 as jest.Mock).mockImplementation((value: string) => ({
+      toString: () => `sha256_${value}`,
     }));
   });
 
@@ -116,7 +116,7 @@ describe('processRowToWhereClause', () => {
     );
   });
 
-  it('should handle JSON columns with MD5', () => {
+  it('should handle JSON columns with SHA256', () => {
     const columnMap = new Map([
       [
         'data',
@@ -133,9 +133,9 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
 
     expect(result).toBe(
-      'lower(hex(MD5(toString(data))))=\'md5_{\\"key\\": \\"value\\"}\'',
+      'lower(hex(SHA256(toString(data))))=\'sha256_{\\"key\\": \\"value\\"}\'',
     );
-    expect(MD5).toHaveBeenCalledWith('{"key": "value"}');
+    expect(SHA256).toHaveBeenCalledWith('{"key": "value"}');
   });
 
   it('should handle Dynamic columns with null value', () => {
@@ -266,7 +266,7 @@ describe('processRowToWhereClause', () => {
     );
   });
 
-  it('should handle long strings with MD5', () => {
+  it('should handle long strings with SHA256', () => {
     const columnMap = new Map([
       [
         'description',
@@ -284,9 +284,9 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
 
     expect(result).toBe(
-      `lower(hex(MD5(leftUTF8(description, 1000))))='md5_${'a'.repeat(600)}'`,
+      `lower(hex(SHA256(leftUTF8(description, 1000))))='sha256_${'a'.repeat(600)}'`,
     );
-    expect(MD5).toHaveBeenCalledWith('a'.repeat(600));
+    expect(SHA256).toHaveBeenCalledWith('a'.repeat(600));
   });
 
   it('should handle multiple columns with AND', () => {
@@ -448,8 +448,8 @@ describe('processRowToWhereClause', () => {
 describe('useRowWhere', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (MD5 as jest.Mock).mockImplementation((value: string) => ({
-      toString: () => `md5_${value}`,
+    (SHA256 as jest.Mock).mockImplementation((value: string) => ({
+      toString: () => `sha256_${value}`,
     }));
   });
 
