@@ -138,9 +138,11 @@ describe('processRowToWhereClause', () => {
     const row = { data: jsonValue };
     const result = processRowToWhereClause(row, columnMap);
 
-    expect(result).toBe(
-      `lower(hex(SHA256(toString(data))))='${SHA256(jsonValue).toString()}'`,
-    );
+    // in ClickHouse: SELECT lower(hex(SHA256(toString('{"key": "value"}')));
+    const expected =
+      '9724c1e20e6e3e4d7f57ed25f9d4efb006e508590d528c90da597f6a775c13e5';
+
+    expect(result).toBe(`lower(hex(SHA256(toString(data))))='${expected}'`);
   });
 
   it('should handle JSON columns with SHA256 for otel log payload', () => {
