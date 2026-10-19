@@ -116,7 +116,11 @@ function processRowToWhereClause(
           if ((strValue?.length ?? 0) > MAX_STRING_LENGTH) {
             return SqlString.format(`lower(hex(SHA256(leftUTF8(?, 1000))))=?`, [
               SqlString.raw(valueExpr),
-              SHA256((strValue ?? '').substring(0, 1000)).toString(),
+              SHA256(
+                Array.from(strValue ?? '')
+                  .slice(0, 1000)
+                  .join(''),
+              ).toString(),
             ]);
           }
           return SqlString.format(`?=?`, [

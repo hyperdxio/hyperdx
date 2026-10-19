@@ -19,6 +19,10 @@ const LONG_STRING_SHA256_HEX =
 const LONGER_STRING_SHA256_HEX =
   '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3';
 
+/** From ClickHouse: lower(hex(SHA256(leftUTF8(repeat('😀', 600), 1000)))). */
+const EMOJI_STRING_SHA256_HEX =
+  '7f22fd88b289648f5f2a8f290d1010a0cefcf260777d613f34f9fb7948db3e43';
+
 describe('buildColumnMap', () => {
   it('quotes a column name that is not a bare identifier', () => {
     const meta: ColumnMetaType[] = [{ name: 'x-host-header', type: 'String' }];
@@ -110,7 +114,7 @@ describe('buildColumnMap', () => {
     );
   });
 
-  it('hashes only the first 1000 UTF-8 code units when the string exceeds that limit', () => {
+  it('hashes only the first 1000 Unicode code points when the string exceeds that limit', () => {
     const meta: ColumnMetaType[] = [{ name: 'description', type: 'String' }];
 
     const where = getRowWhere(
@@ -121,6 +125,20 @@ describe('buildColumnMap', () => {
 
     expect(where).toBe(
       `lower(hex(SHA256(leftUTF8(description, 1000))))='${LONGER_STRING_SHA256_HEX}'`,
+    );
+  });
+
+  it('matches ClickHouse leftUTF8 code-point truncation for non-BMP strings', () => {
+    const meta: ColumnMetaType[] = [{ name: 'description', type: 'String' }];
+
+    const where = getRowWhere(
+      { description: '😀'.repeat(600) },
+      buildColumnMap(meta, {}),
+      {},
+    ).where;
+
+    expect(where).toBe(
+      `lower(hex(SHA256(leftUTF8(description, 1000))))='${EMOJI_STRING_SHA256_HEX}'`,
     );
   });
 });
