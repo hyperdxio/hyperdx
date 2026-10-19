@@ -2044,11 +2044,14 @@ export type ChartConfigWithOptDateRange =
   | (RawSqlChartConfig & Partial<DateRange>)
   | (PromqlChartConfig & Partial<DateRange>);
 
+const chartDescriptionSchema = z.string().max(1024).optional();
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 const BuilderSavedChartConfigWithoutAlertSchema = z
   .object({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
     source: z.string(),
   })
   .extend(
@@ -2079,6 +2082,7 @@ export type BuilderSavedChartConfig = z.infer<
 const RawSqlSavedChartConfigWithoutAlertSchema =
   RawSqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const RawSqlSavedChartConfigSchema =
@@ -2092,6 +2096,7 @@ const RawSqlSavedChartConfigSchema =
 const PromqlSavedChartConfigWithoutAlertSchema =
   PromqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const PromqlSavedChartConfigSchema =
@@ -2143,7 +2148,6 @@ export const TileSchema = z.object({
   containerId: z.string().min(1).optional(),
   // For tiles inside a tab container: which tab this tile belongs to
   tabId: z.string().min(1).optional(),
-  description: z.string().max(1024).optional(),
 });
 
 export const TileTemplateSchema = TileSchema.extend({

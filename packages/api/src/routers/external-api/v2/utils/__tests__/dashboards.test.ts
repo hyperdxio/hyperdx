@@ -97,7 +97,8 @@ describe('tile description', () => {
     const internal = convertToInternalTileConfig(
       makeMarkdownTile('# Hello', { description: 'What this tile shows.' }),
     );
-    expect(internal.description).toBe('What this tile shows.');
+    expect(internal.config.description).toBe('What this tile shows.');
+    expect(internal).not.toHaveProperty('description');
 
     const ext = convertToExternalDashboard(makeDoc({ tiles: [internal] }));
     expect(ext.tiles[0].description).toBe('What this tile shows.');
@@ -105,7 +106,7 @@ describe('tile description', () => {
 
   it('omits the field when unset', () => {
     const internal = convertToInternalTileConfig(makeMarkdownTile('# Hello'));
-    expect(internal).not.toHaveProperty('description');
+    expect(internal.config).not.toHaveProperty('description');
     const ext = convertToExternalDashboard(makeDoc({ tiles: [internal] }));
     expect(ext.tiles[0]).not.toHaveProperty('description');
   });

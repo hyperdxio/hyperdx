@@ -1142,18 +1142,23 @@ const Tile = ({
       chart.config.name ? (
         <Group gap={4} wrap="nowrap">
           <Text size="sm">{chart.config.name}</Text>
-          {chart.description && (
-            <Tooltip label={chart.description} multiline maw={360} withArrow>
+          {chart.config.description && (
+            <Tooltip
+              label={chart.config.description}
+              multiline
+              maw={360}
+              withArrow
+            >
               <IconInfoCircle
                 size={14}
-                aria-label={chart.description}
+                aria-label={chart.config.description}
                 data-testid={`tile-description-${chart.id}`}
               />
             </Tooltip>
           )}
         </Group>
       ) : undefined,
-    [chart.config.name, chart.description, chart.id],
+    [chart.config.name, chart.config.description, chart.id],
   );
 
   // Render chart content (used in both tile and fullscreen views)

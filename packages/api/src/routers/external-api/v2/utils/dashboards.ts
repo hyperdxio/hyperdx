@@ -661,7 +661,9 @@ function convertTileToExternalChart(
     config: convertToExternalTileChartConfig(tile.config) ?? defaultTileConfig,
     ...(containerId !== undefined ? { containerId } : {}),
     ...(tabId !== undefined ? { tabId } : {}),
-    ...(tile.description ? { description: tile.description } : {}),
+    ...(tile.config.description
+      ? { description: tile.config.description }
+      : {}),
   };
 }
 
@@ -733,6 +735,7 @@ export function convertToInternalTileConfig(
 ): DashboardDocument['tiles'][number] {
   const externalConfig = externalTile.config;
   const name = externalTile.name || '';
+  const description = externalTile.description || undefined;
 
   let internalConfig: SavedChartConfig;
 
@@ -755,6 +758,7 @@ export function convertToInternalTileConfig(
             TIME_SERIES_DISPLAY_TYPE_BY_NAME[externalConfig.displayType],
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           name,
+          description,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
@@ -775,6 +779,7 @@ export function convertToInternalTileConfig(
                   ? DisplayType.Bar
                   : DisplayType.Pie,
           name,
+          description,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
@@ -827,6 +832,7 @@ export function convertToInternalTileConfig(
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
           seriesLimit: externalConfig.seriesLimit,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'table':
@@ -849,6 +855,7 @@ export function convertToInternalTileConfig(
           where: '',
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'number':
@@ -881,6 +888,7 @@ export function convertToInternalTileConfig(
           // palette token, so it passes through directly.
           backgroundChart: externalConfig.backgroundChart,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'pie':
@@ -896,6 +904,7 @@ export function convertToInternalTileConfig(
           where: '',
           seriesLimit: externalConfig.limit,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'heatmap': {
@@ -910,6 +919,7 @@ export function convertToInternalTileConfig(
             source: externalConfig.sourceId,
             where: '',
             name,
+            description,
           } satisfies BuilderSavedChartConfig;
           break;
         }
@@ -973,6 +983,7 @@ export function convertToInternalTileConfig(
           where: externalConfig.where,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       }
@@ -982,6 +993,7 @@ export function convertToInternalTileConfig(
           displayType: DisplayType.Search,
           source: externalConfig.sourceId,
           name,
+          description,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
         } satisfies BuilderSavedChartConfig;
         break;
@@ -991,6 +1003,7 @@ export function convertToInternalTileConfig(
           displayType: DisplayType.EventPatterns,
           source: externalConfig.sourceId,
           name,
+          description,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
         } satisfies BuilderSavedChartConfig;
         break;
@@ -1002,6 +1015,7 @@ export function convertToInternalTileConfig(
           where: '',
           select: [],
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       default:
@@ -1028,7 +1042,7 @@ export function convertToInternalTileConfig(
   // name on `config`, not at the top level (`strippedConfig` carries it).
   // Stripping the top-level `name` brings the runtime shape back in line
   // with `DashboardDocument['tiles'][number]`.
-  const { id, x, y, w, h, containerId, tabId, description } = externalTile;
+  const { id, x, y, w, h, containerId, tabId } = externalTile;
   return {
     id,
     x,
@@ -1037,7 +1051,6 @@ export function convertToInternalTileConfig(
     h,
     ...(containerId !== undefined ? { containerId } : {}),
     ...(tabId !== undefined ? { tabId } : {}),
-    ...(description ? { description } : {}),
     config: strippedConfig,
   };
 }
