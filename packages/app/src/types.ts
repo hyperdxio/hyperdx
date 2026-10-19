@@ -1,4 +1,8 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import type {
+  AdhocConditionAction,
+  AdhocConditionEntry,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   Alert,
   AlertsPageItem as _AlertsPageItem,
@@ -20,6 +24,15 @@ export type ChartQueryResult = Pick<
 > & {
   isComplete: boolean;
 };
+
+/**
+ * Applies a value clicked in a dashboard tile to the ad hoc filters that
+ * broadcast to the tile. A chart series passes one entry per group-by value.
+ */
+export type TileFilterHandler = (
+  entries: AdhocConditionEntry[],
+  action: AdhocConditionAction,
+) => void;
 
 export type AlertsPageItem = _AlertsPageItem;
 

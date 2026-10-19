@@ -184,6 +184,23 @@ export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
 
+// Percentile shorthands for `quantile` at a fixed level.
+export const PercentileAggregateFunctionSchema = z.enum([
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+]);
+export const PERCENTILE_AGG_FN_LEVELS = {
+  p50: 0.5,
+  p90: 0.9,
+  p95: 0.95,
+  p99: 0.99,
+} as const satisfies Record<
+  z.infer<typeof PercentileAggregateFunctionSchema>,
+  number
+>;
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 export const RootValueExpressionSchema = z
@@ -2027,11 +2044,19 @@ export type ChartConfigWithOptDateRange =
   | (RawSqlChartConfig & Partial<DateRange>)
   | (PromqlChartConfig & Partial<DateRange>);
 
+export const TILE_DESCRIPTION_MAX_LENGTH = 1024;
+
+const chartDescriptionSchema = z
+  .string()
+  .max(TILE_DESCRIPTION_MAX_LENGTH)
+  .optional();
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 const BuilderSavedChartConfigWithoutAlertSchema = z
   .object({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
     source: z.string(),
   })
   .extend(
@@ -2062,6 +2087,7 @@ export type BuilderSavedChartConfig = z.infer<
 const RawSqlSavedChartConfigWithoutAlertSchema =
   RawSqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const RawSqlSavedChartConfigSchema =
@@ -2075,6 +2101,7 @@ const RawSqlSavedChartConfigSchema =
 const PromqlSavedChartConfigWithoutAlertSchema =
   PromqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const PromqlSavedChartConfigSchema =
@@ -2805,10 +2832,11 @@ export const AssistantLineTableConfigSchema = z.object({
   select: z
     .array(
       z.object({
-        // TODO: Change percentile to fixed functions
-        aggregationFunction: AggregateFunctionSchema.describe(
-          'SQL-like function to aggregate the property by',
-        ),
+        aggregationFunction: AggregateFunctionSchema.exclude(['quantile'])
+          .or(PercentileAggregateFunctionSchema)
+          .describe(
+            'SQL-like function to aggregate the property by. Percentiles are p50, p90, p95 and p99',
+          ),
         property: z
           .string()
           .describe('Property or column to be aggregated (ex. Duration)'),
