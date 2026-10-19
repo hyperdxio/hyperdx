@@ -2044,7 +2044,12 @@ export type ChartConfigWithOptDateRange =
   | (RawSqlChartConfig & Partial<DateRange>)
   | (PromqlChartConfig & Partial<DateRange>);
 
-const chartDescriptionSchema = z.string().max(1024).optional();
+export const TILE_DESCRIPTION_MAX_LENGTH = 1024;
+
+const chartDescriptionSchema = z
+  .string()
+  .max(TILE_DESCRIPTION_MAX_LENGTH)
+  .optional();
 
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).

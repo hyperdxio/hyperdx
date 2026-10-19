@@ -29,6 +29,7 @@ import {
   PromqlHeatmapMode,
   SavedChartConfig,
   SourceKind,
+  TILE_DESCRIPTION_MAX_LENGTH,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
@@ -1154,7 +1155,7 @@ export default function EditTimeChartForm({
                         autosize
                         minRows={1}
                         maxRows={4}
-                        maxLength={1024}
+                        maxLength={TILE_DESCRIPTION_MAX_LENGTH}
                         value={value ?? ''}
                         onChange={e =>
                           onChange(e.currentTarget.value || undefined)
