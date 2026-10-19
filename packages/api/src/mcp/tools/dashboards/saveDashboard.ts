@@ -20,12 +20,7 @@ import {
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
-import {
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
-  objectIdSchema,
-  tagsSchema,
-} from '@/utils/zod';
+import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
 import type { McpDashboardFilter } from './schemas';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
@@ -66,7 +61,7 @@ export function registerSaveDashboard({
         name: z.string().describe('Dashboard name'),
         tiles: mcpTilesParam,
         tags: tagsSchema.describe(
-          `Dashboard tags. Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+          'Labels for organizing the dashboard; clickstack_search_dashboards can filter by them.',
         ),
         containers: mcpContainersParam.optional(),
         filters: mcpFiltersParam.optional(),

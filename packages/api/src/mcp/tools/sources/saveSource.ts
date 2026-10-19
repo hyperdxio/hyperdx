@@ -30,7 +30,9 @@ export function registerSaveSource({
       description:
         'Create a new data source (omit id) or update an existing one ' +
         '(provide id) so shipped telemetry becomes queryable. Update is a ' +
-        'full replace of the source definition. Required for all kinds: kind, ' +
+        'full replace of the source definition: start from the `config` ' +
+        'returned by clickstack_describe_source and change only what you need. ' +
+        'Required for all kinds: kind, ' +
         'name, connection, databaseName, tableName, timestampValueExpression. ' +
         'Kind-specific requirements: log & trace need ' +
         'defaultTableSelectExpression; trace also needs durationExpression, ' +

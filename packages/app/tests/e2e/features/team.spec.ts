@@ -375,7 +375,7 @@ test.describe('Team Settings Page', { tag: ['@team', '@full-stack'] }, () => {
       const row = teamPage.getInvitationRow(email);
       await expect(row).toBeVisible({ timeout: 10000 });
       await expect(row.getByText(email)).toBeVisible();
-      await expect(row.getByText('Pending Invite')).toBeVisible();
+      await expect(row.getByText('Pending invite')).toBeVisible();
     });
 
     await test.step('Delete the invitation', async () => {

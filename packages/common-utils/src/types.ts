@@ -342,16 +342,36 @@ export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
  * Lives in common-utils so both the app and a future external-API parity
  * PR can import it.
  */
+const colorConditionColor = ChartPaletteTokenSchema.describe(
+  'Palette color applied when this rule matches.',
+);
+const colorConditionLabel = z
+  .string()
+  .max(40)
+  .optional()
+  .describe('Short label describing the rule.');
+
 // Numeric ordered operators (gt | gte | lt | lte).
 const numericOrderedColorCondition = z.object({
-  operator: z.enum(['gt', 'gte', 'lt', 'lte']),
-  value: z.number().finite(),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
+  operator: z
+    .enum(['gt', 'gte', 'lt', 'lte'])
+    .describe(
+      'Compares the raw query value (before numberFormat is applied) against ' +
+        '`value`: greater than, greater ' +
+        'than or equal, less than, or less than or equal.',
+    ),
+  value: z
+    .number()
+    .finite()
+    .describe('Numeric bound the raw value is compared against.'),
+  color: colorConditionColor,
+  label: colorConditionLabel,
 });
 
 const betweenColorCondition = z.object({
-  operator: z.literal('between'),
+  operator: z
+    .literal('between')
+    .describe('Matches when the raw value falls within the `value` range.'),
   // A fixed-length array rather than `z.tuple([...])`: the MCP dashboard tools
   // (clickstack_save_dashboard / clickstack_patch_dashboard) expose this schema
   // as a tool `input_schema`, and `zod-to-json-schema` renders a tuple in the
@@ -360,17 +380,26 @@ const betweenColorCondition = z.object({
   // invalid and any strict draft-2020-12 client (e.g. the Anthropic API) rejects
   // the tool list outright. The wire format — `[min, max]` — is identical either
   // way, and matches the published `BetweenColorCondition` external-API schema.
-  value: z.array(z.number().finite()).length(2),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
+  value: z
+    .array(z.number().finite())
+    .length(2)
+    .describe('Inclusive [min, max] range.'),
+  color: colorConditionColor,
+  label: colorConditionLabel,
 });
 
 // Equality against a number or a string value.
 const equalityColorCondition = z.object({
-  operator: z.enum(['eq', 'neq']),
-  value: z.union([z.number().finite(), z.string().max(200)]),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
+  operator: z
+    .enum(['eq', 'neq'])
+    .describe(
+      'Matches when the raw value equals (eq) or does not equal (neq) `value`.',
+    ),
+  value: z
+    .union([z.number().finite(), z.string().max(200)])
+    .describe('Number or string to compare the raw value with.'),
+  color: colorConditionColor,
+  label: colorConditionLabel,
 });
 
 // String-match operators, kept at the schema level only for a future
@@ -1679,8 +1708,10 @@ export type NumberTileColorCondition = z.infer<
  * external-API parity PR can import it.
  */
 export const BackgroundChartSchema = z.object({
-  type: z.enum(['line', 'area']),
-  color: ChartPaletteTokenSchema.optional(),
+  type: z.enum(['line', 'area']).describe('Sparkline shape.'),
+  color: ChartPaletteTokenSchema.optional().describe(
+    "Palette color for the sparkline. Inherits the tile's color when unset.",
+  ),
 });
 
 export type BackgroundChart = z.infer<typeof BackgroundChartSchema>;
@@ -2185,24 +2216,59 @@ export const DASHBOARD_MAX_CONTAINERS = 50;
 export const DASHBOARD_MAX_TILES = 500;
 
 export const DashboardContainerTabSchema = z.object({
-  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
-  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
+  id: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .describe(
+      'Tab identifier that tiles reference via tile.tabId. Unique within its container.',
+    ),
+  title: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_TITLE_MAX)
+    .describe('Label shown on the tab.'),
 });
 
 export const DashboardContainerSchema = z.object({
-  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
-  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
-  collapsed: z.boolean(),
-  // Whether the group can be collapsed (default true)
-  collapsible: z.boolean().optional(),
-  // Whether to show a border around the group (default true)
-  bordered: z.boolean().optional(),
-  // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
-  // Tiles reference a specific tab via tabId.
+  id: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .describe(
+      'Container identifier that tiles reference via tile.containerId. Unique on the dashboard.',
+    ),
+  title: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_TITLE_MAX)
+    .describe('Heading shown on the container.'),
+  collapsed: z
+    .boolean()
+    .describe(
+      'Whether the container starts collapsed when the dashboard opens. ' +
+        'Viewers can still expand it; ignored when collapsible is false.',
+    ),
+  collapsible: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether viewers can collapse the container. Treated as true when omitted.',
+    ),
+  bordered: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether to draw a border around the container. Treated as true when omitted.',
+    ),
   tabs: z
     .array(DashboardContainerTabSchema)
     .max(DASHBOARD_CONTAINER_MAX_TABS)
-    .optional(),
+    .optional()
+    .describe(
+      'Tabs inside the container. Two or more render as a tab bar; zero or ' +
+        'one renders as a plain group header.',
+    ),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;

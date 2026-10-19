@@ -45,9 +45,7 @@ const timeseriesSchema = z.object({
     .enum(['line', 'stacked_bar', 'stacked_line'])
     .optional()
     .default('line')
-    .describe(
-      'Chart shape. "line" for line chart (default), "stacked_bar" for stacked bar chart, "stacked_line" for stacked line (area) chart.',
-    ),
+    .describe('Chart type. "stacked_line" is a stacked area chart.'),
   where: whereSchema.describe(
     'Row filter applied to ALL select items. ' +
       'Scopes the entire query — use to restrict by service, severity, etc. ' +

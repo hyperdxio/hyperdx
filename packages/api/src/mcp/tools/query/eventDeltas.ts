@@ -25,37 +25,53 @@ import { clickHouseErrorResult, parseTimeRange } from './helpers';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
-const groupSchema = z.object({
-  startTime: z.string().describe('Start of the group window as ISO 8601.'),
-  endTime: z.string().describe('End of the group window as ISO 8601.'),
-  where: z
-    .string()
-    .optional()
-    .default('')
-    .describe(
-      'Optional row filter (Lucene by default, SQL via whereLanguage). ' +
-        'Combined with the time window via AND. Useful for restricting the ' +
-        'group to a service, endpoint, or other dimension.',
-    ),
-  whereLanguage: z
-    .enum(['lucene', 'sql'])
-    .optional()
-    .default('lucene')
-    .describe('Query language for where. Default: lucene.'),
-});
+const makeGroupSchema = (text: {
+  startTime: string;
+  endTime: string;
+  where: string;
+}) =>
+  z.object({
+    startTime: z.string().describe(text.startTime),
+    endTime: z.string().describe(text.endTime),
+    where: z.string().optional().default('').describe(text.where),
+    whereLanguage: z
+      .enum(['lucene', 'sql'])
+      .optional()
+      .default('lucene')
+      .describe(
+        "Language of where. Lucene uses Column:value; SQL uses Column = 'value'.",
+      ),
+  });
 
 const deltasSchema = z.object({
   sourceId: z
     .string()
     .describe(
-      'Source ID. Works for trace and log sources. ' +
+      'Trace or log source to sample. ' +
         'Call clickstack_list_sources for available sources.',
     ),
-  target: groupSchema.describe(
+  target: makeGroupSchema({
+    startTime: 'Start of the target window as ISO 8601.',
+    endTime: 'End of the target window as ISO 8601.',
+    where:
+      'Row filter selecting the target rows, ANDed with the target window. ' +
+      'Keep it narrow: only the outlier rows. For slow-vs-fast comparisons, ' +
+      'include the same operation filter used in baseline.',
+  }).describe(
     'Target ("outlier") group — the rows you suspect are different (e.g. the ' +
       'recent slow window, the failing requests, the affected segment).',
   ),
-  baseline: groupSchema.describe(
+  baseline: makeGroupSchema({
+    startTime:
+      'Start of the baseline window as ISO 8601. Use an earlier healthy ' +
+      'period for before/after comparisons, or the same window as target ' +
+      'when the groups differ only by where.',
+    endTime: 'End of the baseline window as ISO 8601.',
+    where:
+      'Row filter selecting the baseline rows, ANDed with the baseline ' +
+      'window. Leave empty to use every row in the window. If where and ' +
+      'whereLanguage match target, the windows must differ.',
+  }).describe(
     'Baseline ("inlier") group — the rows considered normal (e.g. an earlier ' +
       'healthy window, the successful requests, the unaffected segment).',
   ),
@@ -66,8 +82,8 @@ const deltasSchema = z.object({
     .optional()
     .default(500)
     .describe(
-      'Rows to sample from each group. Default: 500. Larger samples give ' +
-        'more stable rankings at the cost of latency.',
+      'Rows to sample from each group. Larger samples give more stable ' +
+        'rankings at the cost of latency.',
     ),
   topN: z
     .number()
@@ -76,15 +92,17 @@ const deltasSchema = z.object({
     .optional()
     .default(20)
     .describe(
-      'Number of top-ranked properties to return in `properties`. Default: 20.',
+      'Number of top-ranked properties to return in `properties` (and in ' +
+        '`hidden` when includeHidden is set).',
     ),
   includeHidden: z
     .boolean()
     .optional()
     .default(false)
     .describe(
-      'When true, include denylisted/high-cardinality properties in a separate ' +
-        '`hidden` array. Default: false (mirrors UI behavior — these are noisy).',
+      'Also return denylisted ID, timestamp, and high-cardinality properties ' +
+        'in a separate `hidden` array. Off by default, like the UI, because ' +
+        'these are noisy.',
     ),
   topValuesPerProperty: z
     .number()
@@ -93,7 +111,8 @@ const deltasSchema = z.object({
     .optional()
     .default(6)
     .describe(
-      'How many top values per property to include in the response. Default: 6.',
+      'Number of values per property in `topDeltas`, ordered by largest ' +
+        'share shift.',
     ),
 });
 
@@ -147,58 +166,35 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
       title: 'Compare Events: Target vs Baseline',
       annotations: READ_ONLY_TOOL,
       description:
-        'Rank the properties of two row groups (logs or trace spans) by ' +
-        'how much their value distributions differ. Same algorithm as the ' +
-        'in-app Event Deltas view (DBDeltaChart). High-cardinality fields ' +
-        '(IDs, request IDs, timestamps) are filtered out by default so the ' +
-        'ranking surfaces the categorical attributes that actually separate ' +
-        'the two groups. Score is computed after normalizing each group to ' +
-        "100% so it's robust to different group sizes.\n\n" +
-        'USE THIS INSTEAD OF MANUAL PIVOTS. When two row sets visibly differ ' +
-        "and you don't know which attribute(s) separate them, the standard " +
-        'agentic move is to run a GROUP BY for each candidate attribute and ' +
-        'compare. event_deltas does this for ALL attributes in one call, ' +
-        'ranked by signal strength — usually 1 call instead of 5–20.\n\n' +
-        'NARROW the target to the specific outlier rows. A broad target ' +
-        'mostly contains healthy rows, so the ranking comes back noisy. ' +
-        'The narrower target — the sharper the ranking.\n\n' +
-        'TYPICAL USES (any source — logs or traces):\n' +
-        '  - Slow vs fast spans (MOST COMMON for latency triage):\n' +
-        '      target = {where: <op-filter> AND Duration > <threshold>},\n' +
-        '      baseline = {where: <op-filter> AND Duration <= <threshold>}\n' +
-        '      Scope BOTH to the same operation/endpoint via `<op-filter>`; ' +
-        'the ranked attribute(s) are then what discriminates the slow ' +
-        'invocations of THAT operation from the fast ones. Skipping the ' +
-        'op-filter gives a noisy "which operation is slow" answer instead ' +
-        'of "which sub-set of one operation is slow".\n' +
-        '  - Before vs after a deploy / incident onset:\n' +
-        '      target = {window: after onset}, baseline = {window: before onset}\n' +
-        '  - Failing vs succeeding rows:\n' +
-        '      target = {where: <failing filter>}, baseline = {where: <succeeding filter>}\n' +
-        '  - One service / endpoint vs the rest:\n' +
-        '      target = {where: ServiceName=X}, baseline = {where: ServiceName != X}\n' +
-        '  Any pair of row sets over the same source works — the tool just ' +
-        '  asks "what is statistically different about target vs baseline".\n\n' +
-        'WHEN NOT TO USE: when the question is already known to be about a ' +
-        'specific attribute (use clickstack_table groupBy), when you want raw ' +
-        'rows (use clickstack_search), or when you need a time-series shape ' +
-        '(use clickstack_timeseries).\n\n' +
+        'Rank every attribute of two row groups (logs or trace spans) by how ' +
+        'much its value distribution differs between a target and a baseline ' +
+        '(the in-app Event Deltas algorithm). One call replaces running a ' +
+        'GROUP BY per candidate attribute.\n\n' +
+        'NARROW the target to the outlier rows. A broad target is mostly ' +
+        'healthy rows and gives a noisy ranking. target and baseline must ' +
+        'differ in where or in time window.\n\n' +
+        'TYPICAL PAIRS:\n' +
+        '  - Slow vs fast (latency triage): target where = <op-filter> AND ' +
+        'Duration > X, baseline where = <op-filter> AND Duration <= X. Scope ' +
+        'BOTH to the same operation, or you learn which operation is slow ' +
+        'instead of why it is slow.\n' +
+        '  - After vs before an incident or deploy: same where, different windows.\n' +
+        '  - Failing vs succeeding rows, or one service vs the rest.\n\n' +
+        'WHEN NOT TO USE: the attribute is already known (clickstack_table ' +
+        'groupBy), you want raw rows (clickstack_search) or a trend ' +
+        '(clickstack_timeseries), or you want patterns that are new or gone ' +
+        '(clickstack_emerging_signals).\n\n' +
         PREFER_BUILDER_OVER_SQL_NUDGE +
         '\n\n' +
-        'OUTPUT SHAPE: an array of properties, each with rank, key, score, ' +
-        'semanticBoost (true for well-known OTel attrs like service.name / ' +
-        'http.method / error.type / status), targetCount and baselineCount ' +
-        '(sample sizes), and topDeltas — the values whose share shifted ' +
-        'most, each with `value`, `targetPct`, `baselinePct`, and `diffPct`. ' +
-        'topDeltas already contains the full per-value comparison for that ' +
-        'attribute, so there is no separate target/baseline distribution to ' +
-        'consult.\n\n' +
-        'IMPORTANT — DO NOT STOP AT RANK 1. The top ~5 ranked properties ' +
-        'are often INDEPENDENT axes that together explain the population ' +
-        'shift (e.g. a regression localized on the intersection of two ' +
-        'attributes). Scan down the list until the score visibly drops to ' +
-        'noise level; any property well above that floor is a candidate axis ' +
-        'to combine with the others.',
+        'OUTPUT: properties ranked by score, the largest %-share difference of ' +
+        'any value after normalizing each group to 100%, plus a 0.1 tie-breaking ' +
+        'boost for well-known attributes. Each has key, score, ' +
+        'semanticBoost (well-known OTel attribute), targetCount/baselineCount, ' +
+        'and topDeltas (value, targetPct, baselinePct, diffPct): the ' +
+        'topValuesPerProperty values whose share shifted most. ID and high-cardinality fields are hidden ' +
+        'unless includeHidden is set.\n\n' +
+        'DO NOT STOP AT RANK 1. The top ~5 are often independent axes that ' +
+        'together explain the shift. Read down until scores drop to noise.',
       inputSchema: deltasSchema,
     },
     async (input: DeltasInput) => {

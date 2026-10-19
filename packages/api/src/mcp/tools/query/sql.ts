@@ -17,14 +17,14 @@ const sqlSchema = z.object({
   connectionId: z
     .string()
     .describe(
-      'Connection ID (required). This is the only split tool that needs a connectionId ' +
+      'Connection to query. This is the only query tool that takes a connectionId ' +
         'instead of sourceId. Call clickstack_list_sources to find available connections.',
     ),
   sourceId: z
     .string()
     .optional()
     .describe(
-      'Source ID. Optional. Set it when the query reads a table backed by a source, so ' +
+      'Source ID. Set it when the query reads a table backed by a source, so ' +
         "`$__sourceTable` expands to that source's database.table. The source's " +
         'connection must match connectionId. Call clickstack_list_sources to find source IDs.',
     ),

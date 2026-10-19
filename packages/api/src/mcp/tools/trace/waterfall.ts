@@ -64,13 +64,13 @@ const traceSchema = z.object({
     .enum(['lucene', 'sql'])
     .optional()
     .default('lucene')
-    .describe('Query language for pickFilter. Default: lucene'),
+    .describe('Language of pickFilter.'),
   pickBy: z
     .enum(['slowest', 'first_error', 'most_recent'])
     .optional()
     .default('slowest')
     .describe(
-      'How to choose which trace to return when traceId is not provided.\n' +
+      'How to choose the trace when traceId is not provided:\n' +
         '  slowest – trace with the longest single span (use for latency investigations)\n' +
         '  first_error – earliest trace containing a span with STATUS_CODE_ERROR\n' +
         '  most_recent – the most recent trace matching pickFilter',
@@ -95,8 +95,8 @@ const traceSchema = z.object({
     .optional()
     .default(500)
     .describe(
-      'Cap on spans returned in the tree (1–2000). Default 500. ' +
-        'A trace with more spans than this will be truncated; the response notes the truncation.',
+      'Cap on spans returned in the tree. ' +
+        'A larger trace is truncated and the response notes the truncation.',
     ),
   includeLogs: z
     .boolean()
@@ -116,8 +116,8 @@ const traceSchema = z.object({
     .optional()
     .default(100)
     .describe(
-      'Cap on correlated log rows returned (1–1000). Default 100. Has no ' +
-        'effect when includeLogs is false or the trace source has no logSourceId.',
+      'Cap on correlated log rows returned. Has no effect when includeLogs ' +
+        'is false or the trace source has no logSourceId.',
     ),
 });
 
@@ -313,37 +313,26 @@ export function registerTraceWaterfall({
       title: 'Trace Waterfall (single trace)',
       annotations: READ_ONLY_TOOL,
       description:
-        'Fetch all spans in ONE trace and return them as a parent/child waterfall, ' +
-        'pre-ordered for human-readable display. Use this for "show me a concrete ' +
-        'example trace" or "what happened in trace X" investigations — the tool walks ' +
-        'the cascade for you instead of forcing the model to write self-JOINs in raw SQL.\n\n' +
-        'NOT THE RIGHT TOOL when the question is "where does the time go across MANY ' +
-        'slow traces of operation X" — that is the aggregate question, and the answer ' +
-        'is clickstack_trace_top_time_consuming_operations (called per affected ' +
-        '(service, operation) with `minParentDurationMs`). Use this tool only when you ' +
-        'want a single concrete example to inspect, or after the aggregate breakdown ' +
-        'has already identified a suspicious operation.\n\n' +
+        'Fetch every span in ONE trace as a parent/child waterfall, pre-ordered for ' +
+        'reading. Use it for "show me an example trace" or "what happened in trace X" ' +
+        "instead of writing TraceId self-JOINs in raw SQL; it uses the source's " +
+        'configured trace, span, and parent-span ID expressions.\n\n' +
+        'NOT FOR AGGREGATE QUESTIONS. "Where does the time go across many slow traces ' +
+        'of operation X" is clickstack_trace_top_time_consuming_operations, called ' +
+        'once per (service, operation) with minParentDurationMs. Use this tool for a ' +
+        'single concrete example, typically after that breakdown has pointed at a ' +
+        'suspicious operation.\n\n' +
         'Two modes:\n' +
-        '  1. Specific trace: pass `traceId`. Returns every span in that trace.\n' +
-        '  2. Auto-pick: pass `pickFilter` + `pickBy`. The tool finds one matching trace ' +
-        '(slowest / first_error / most_recent) and returns its full tree.\n\n' +
-        'Each returned span has: depth (root=0), spanId, parentSpanId, serviceName, ' +
-        'spanName, spanKind, durationMs, statusCode, statusMessage, timestamp, and ' +
-        'spanAttributes. Spans are pre-order DFS — child spans follow their parent in ' +
-        'execution order. The tool also surfaces a `summary` section with the picked ' +
-        'TraceId, total span count, and root span info.\n\n' +
-        'When the trace source has a linked logSourceId (the standard config), the ' +
-        'response also includes a `logs[]` array of correlated log rows that share ' +
-        'the same TraceId — sorted by timestamp, each carrying its `spanId` so the ' +
-        'agent can attribute messages to specific spans. Disable with `includeLogs:false`.\n\n' +
-        "Prefer this over running raw SQL with JOINs on TraceId — it uses the source's " +
-        'configured traceIdExpression / parentSpanIdExpression / spanIdExpression so ' +
-        'attribute extraction stays consistent with the rest of the platform.\n\n' +
-        'PAIR TOOL: clickstack_trace_top_time_consuming_operations is the aggregate ' +
-        'counterpart — given a parent-span filter, it ranks child operations by total ' +
-        'time across MANY matching traces. Use that when the question is "where does ' +
-        'time go in slow X" (aggregate), and use THIS tool when the question is "show ' +
-        'me one example of a slow X" (single trace).',
+        '  1. Specific trace: pass traceId.\n' +
+        '  2. Auto-pick: omit traceId and pass pickFilter + pickBy; the tool picks one ' +
+        'matching trace and returns its full tree.\n\n' +
+        'Returns traceId, spanCount, totalDurationMs, rootSpan, and spans in ' +
+        'pre-order DFS, children after their parent in execution order. Each span has ' +
+        'depth (root=0), spanId, parentSpanId, serviceName, spanName, spanKind, ' +
+        'durationMs, statusCode, statusMessage, timestamp, and spanAttributes.\n\n' +
+        'If the trace source has a linked logSourceId, the response also has `logs[]`: ' +
+        'log rows sharing the TraceId, sorted by timestamp, each with its spanId. ' +
+        'Disable with includeLogs:false.',
       inputSchema: traceSchema,
     },
     async (rawInput: TraceInput) => {
