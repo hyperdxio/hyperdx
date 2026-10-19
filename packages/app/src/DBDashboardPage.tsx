@@ -107,6 +107,7 @@ import {
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
+  IconInfoCircle,
   IconLayoutSidebarRightCollapse,
   IconLayoutSidebarRightExpand,
   IconPencil,
@@ -1139,9 +1140,20 @@ const Tile = ({
   const title = useMemo(
     () =>
       chart.config.name ? (
-        <Text size="sm">{chart.config.name}</Text>
+        <Group gap={4} wrap="nowrap">
+          <Text size="sm">{chart.config.name}</Text>
+          {chart.description && (
+            <Tooltip label={chart.description} multiline maw={360} withArrow>
+              <IconInfoCircle
+                size={14}
+                aria-label={chart.description}
+                data-testid={`tile-description-${chart.id}`}
+              />
+            </Tooltip>
+          )}
+        </Group>
       ) : undefined,
-    [chart.config.name],
+    [chart.config.name, chart.description, chart.id],
   );
 
   // Render chart content (used in both tile and fullscreen views)
