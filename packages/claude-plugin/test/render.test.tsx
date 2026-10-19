@@ -129,3 +129,53 @@ test(
     expect(await ui.find({ type: 'Text', text: /^engine row$/ })).toBeDefined();
   },
 );
+
+test(
+  'draws a timeseries call drawn as its own tool row',
+  { options },
+  async ($, on) => {
+    let id = '';
+    on('tool.call', (_, e) => {
+      id = e.tool_use_id;
+      return {
+        result: [
+          { type: 'text', text: JSON.stringify({ result: timeseries }) },
+        ],
+      };
+    });
+    on('ui.render', ($, e) => {
+      const { Text } = $.ui.resolve(e);
+      return <Text>engine row</Text>;
+    });
+    const input = {
+      startTime: '2026-10-13T00:00:00Z',
+      endTime: '2026-10-13T00:20:00Z',
+      granularity: '5 minute',
+    };
+    await $.tool.call({
+      tool: TIMESERIES,
+      sourceId: 's',
+      select: [{ aggFn: 'count' }],
+      ...input,
+    });
+    const ui = await $.ui.mount({
+      plugin: 'hyperdx-charts',
+      surface: 'terminal',
+      component: 'ToolUse',
+      requestId: id,
+      props: {
+        tool_use_id: id,
+        tool: TIMESERIES,
+        input,
+        isRunning: false,
+        isErrored: false,
+        isInterrupted: false,
+      },
+      viewport: { columns: 100, rows: 40 },
+    });
+    expect(
+      await ui.find({ type: 'Text', text: /^engine row$/ }),
+    ).toBeUndefined();
+    expect(await ui.find({ type: 'Text', text: /[┤┼╭╮╰╯─]/ })).toBeDefined();
+  },
+);

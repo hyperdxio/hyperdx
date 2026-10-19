@@ -1,7 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
-import { chartedTool, parseResponse, toTileResult } from '../toTileResult';
+import {
+  chartedTool,
+  isTrimmed,
+  parseResponse,
+  toTileResult,
+} from '../toTileResult';
 
 const response = {
   meta: [
@@ -70,7 +75,7 @@ describe('toTileResult', () => {
     });
   });
 
-  it('defaults to the server defaults: line, the last 15 minutes, inferred buckets', () => {
+  it('defaults to the server defaults: line and the last 15 minutes', () => {
     const result = toTileResult(
       'mcp__clickstack__clickstack_timeseries',
       {},
@@ -79,30 +84,65 @@ describe('toTileResult', () => {
     );
     expect(result?.queriedConfig).toMatchObject({
       displayType: DisplayType.Line,
-      granularity: '300 second',
       dateRange: [new Date('2026-10-13T00:45:00Z'), new Date(calledAt)],
     });
   });
 
-  it('does not fill empty buckets when the bucket size is unknown', () => {
-    const single = [
+  it('fills empty buckets only for an explicit granularity on a whole result', () => {
+    const run = (input: object, out: unknown) =>
+      toTileResult(
+        'mcp__clickstack__clickstack_timeseries',
+        input,
+        out,
+        calledAt,
+      )?.queriedConfig;
+    const trimmed = [
       {
         type: 'text',
-        text: JSON.stringify({
-          result: { ...response, data: response.data.slice(0, 1) },
-        }),
+        text: JSON.stringify({ result: response, note: 'Result was trimmed' }),
       },
     ];
-    const result = toTileResult(
-      'mcp__clickstack__clickstack_timeseries',
-      {},
-      single,
-      calledAt,
-    );
-    expect(result?.queriedConfig).toMatchObject({
-      granularity: undefined,
+    expect(run({}, output)).toMatchObject({ fillNulls: false });
+    expect(run({ granularity: '5 minute' }, trimmed)).toMatchObject({
       fillNulls: false,
     });
+    expect(run({ granularity: '5 minute' }, output)?.fillNulls).toBeUndefined();
+  });
+
+  it('follows the server turning multi-select number, pie and bar into a table', () => {
+    for (const shape of ['number', 'pie', 'bar']) {
+      const result = toTileResult(
+        'mcp__clickstack__clickstack_table',
+        { shape, select: [{ aggFn: 'count' }, { aggFn: 'max' }] },
+        output,
+        calledAt,
+      );
+      expect(result?.queriedConfig.displayType).toBe(DisplayType.Table);
+    }
+  });
+
+  it('keeps a single-select number chart and a multi-select table as asked', () => {
+    const shapeOf = (input: object) =>
+      toTileResult('mcp__clickstack__clickstack_table', input, output, calledAt)
+        ?.queriedConfig.displayType;
+    expect(shapeOf({ shape: 'number', select: [{ aggFn: 'count' }] })).toBe(
+      DisplayType.Number,
+    );
+    expect(
+      shapeOf({
+        shape: 'table',
+        select: [{ aggFn: 'count' }, { aggFn: 'max' }],
+      }),
+    ).toBe(DisplayType.Table);
+  });
+
+  it('notices a trimmed result', () => {
+    expect(isTrimmed(output)).toBe(false);
+    expect(
+      isTrimmed([
+        { type: 'text', text: JSON.stringify({ result: response, note: 'x' }) },
+      ]),
+    ).toBe(true);
   });
 
   it('skips empty results and shapes it does not know', () => {

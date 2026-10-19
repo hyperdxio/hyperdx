@@ -38,12 +38,12 @@ function chartTree(
           <Text dimColor> {stripControlChars(reason)}</Text>
         )}
       </Text>
-      {lines.map(segments => (
-        <Text wrap="truncate">
+      {lines.map((segments, i) => (
+        <Text key={i} wrap="truncate">
           {segments.length === 0
             ? ' '
-            : segments.map(s => (
-                <Text color={s.color} dimColor={s.dim} bold={s.bold}>
+            : segments.map((s, j) => (
+                <Text key={j} color={s.color} dimColor={s.dim} bold={s.bold}>
                   {s.text}
                 </Text>
               ))}
@@ -79,6 +79,8 @@ async function drawRows(
 
 export const register: Register = on => {
   on('tool.call', async ($, e, next) => {
+    // The server fixes its default window before the query runs.
+    const calledAt = Date.now();
     const ran = await next(e);
     if (!chartedTool(e.tool) || ran.deny !== undefined || ran.isError)
       return ran;
@@ -86,7 +88,7 @@ export const register: Register = on => {
       tool: e.tool,
       input: e,
       output: ran.result,
-      calledAt: Date.now(),
+      calledAt,
     };
     // Chart bookkeeping must never fail the call it watched.
     try {

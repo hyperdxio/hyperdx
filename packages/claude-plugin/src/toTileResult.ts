@@ -1,18 +1,16 @@
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import type { TileQueryResult } from '@hyperdx/cli/src/shared/tileQuery';
 
-const TIME_BUCKET = '__hdx_time_bucket';
 const DEFAULT_WINDOW_MS = 15 * 60 * 1000;
+// clickstack_table turns these into a table when given more than one select item.
+const SINGLE_SERIES_SHAPES = ['number', 'pie', 'bar'];
 
 // Builder tools whose shape input picks the chart.
 const DISPLAY_TYPES: Record<string, Record<string, DisplayType>> = {
-  clickstack_timeseries: {
-    line: DisplayType.Line,
-    stacked_bar: DisplayType.StackedBar,
-    stacked_line: DisplayType.StackedLine,
-  },
+  clickstack_timeseries: TIME_SERIES_DISPLAY_TYPE_BY_NAME,
   clickstack_table: {
     table: DisplayType.Table,
     number: DisplayType.Number,
@@ -53,6 +51,11 @@ function parseBody(output: unknown): Record<string, unknown> | undefined {
   }
 }
 
+/** The server trims results over its size limit and says so in `note`. */
+export function isTrimmed(output: unknown): boolean {
+  return typeof parseBody(output)?.note === 'string';
+}
+
 /** The builder tools answer `{ result: ResponseJSON, ... }`. */
 export function parseResponse(
   output: unknown,
@@ -84,28 +87,26 @@ export function toTileResult(
   const data = parseResponse(output);
   if (!data || data.data.length === 0) return undefined;
   const shapes = DISPLAY_TYPES[tool]!;
-  const displayType = shapes[args.shape ?? Object.keys(shapes)[0]!];
+  const select = args.select ?? [];
+  const shape =
+    tool === 'clickstack_table' &&
+    select.length > 1 &&
+    SINGLE_SERIES_SHAPES.includes(args.shape ?? '')
+      ? 'table'
+      : (args.shape ?? Object.keys(shapes)[0]!);
+  const displayType = shapes[shape];
   if (!displayType) return undefined;
-  const granularity = args.granularity ?? inferGranularity(data.data);
 
   const queriedConfig = {
     displayType,
     dateRange: [start, end],
-    granularity,
-    // Without a known bucket size, filling empty buckets would invent zeros.
-    fillNulls: granularity ? undefined : false,
-    select: args.select ?? [],
+    granularity: args.granularity,
+    // Empty buckets are filled only when their alignment is known: an explicit
+    // granularity and every row present. Otherwise filling would invent zeros.
+    fillNulls: args.granularity && !isTrimmed(output) ? undefined : false,
+    select,
     groupBy: args.groupBy,
   } as unknown as ChartConfigWithDateRange;
 
   return { status: 'ok', queriedConfig, data };
-}
-
-/** The smallest gap between bucket timestamps, as the server's "<n> second" interval. */
-function inferGranularity(rows: Record<string, unknown>[]): string | undefined {
-  const times = [...new Set(rows.map(r => Date.parse(String(r[TIME_BUCKET]))))]
-    .filter(Number.isFinite)
-    .sort((a, b) => a - b);
-  const gaps = times.slice(1).map((t, i) => t - times[i]!);
-  return gaps.length ? `${Math.min(...gaps) / 1000} second` : undefined;
 }
