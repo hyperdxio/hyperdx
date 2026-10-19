@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { isAdhocConditionSupported } from '@hyperdx/common-utils/dist/filters';
 import {
   ADHOC_FILTER_MAX_CONDITIONS,
   AdhocDashboardFilter as AdhocDashboardFilterType,
@@ -14,7 +15,6 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
 import { IconPlus } from '@tabler/icons-react';
 
 import {
@@ -24,6 +24,10 @@ import {
 import { FilterPill, getFilterOperatorDisplay } from '@/components/FilterPill';
 
 import { AdhocConditionEditor } from './AdhocConditionEditor';
+import {
+  notifyAdhocConditionTooLong,
+  notifyAdhocFilterFull,
+} from './notifications';
 
 type AdhocDashboardFilterProps = {
   filter: AdhocDashboardFilterType;
@@ -46,12 +50,7 @@ export function AdhocDashboardFilter({
 
   const toggleAdding = () => {
     if (isAtLimit) {
-      notifications.show({
-        id: `adhoc-filter-full-${filter.id}`,
-        color: 'yellow',
-        title: `${filter.name} is full`,
-        message: `A filter holds up to ${ADHOC_FILTER_MAX_CONDITIONS} conditions. Remove one to add another.`,
-      });
+      notifyAdhocFilterFull(filter);
       return;
     }
     setIsAdding(!isAdding);
@@ -60,13 +59,7 @@ export function AdhocDashboardFilter({
   // lose the filter's others on reload. Keep the editor open to fix it instead.
   const isStorable = (condition: AdhocFilterCondition) => {
     if (AdhocFilterConditionSchema.safeParse(condition).success) return true;
-    const maxLength = AdhocFilterConditionSchema.shape.value.maxLength;
-    notifications.show({
-      id: `adhoc-filter-too-long-${filter.id}`,
-      color: 'yellow',
-      title: 'Condition is too long',
-      message: `Keys and values can be up to ${maxLength?.toLocaleString()} characters.`,
-    });
+    notifyAdhocConditionTooLong(filter);
     return false;
   };
   const replace = (index: number, condition: AdhocFilterCondition) =>
@@ -103,6 +96,10 @@ export function AdhocDashboardFilter({
               operator={operator.label}
               value={condition.value}
               isExcluded={operator.isExcluded}
+              isInvalid={
+                !isAdhocConditionSupported(filter.sourceType, condition)
+              }
+              invalidReason={`Filter not applied: PromQL has no ${condition.operator} operator. Remove this condition and add it again with a supported operator.`}
               onRemove={() => remove(index)}
               renderPopover={close => (
                 <AdhocConditionEditor

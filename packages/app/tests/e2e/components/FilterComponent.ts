@@ -48,7 +48,26 @@ export class FilterComponent {
    * Open/expand a filter group (toggles — may close if already open)
    */
   async openFilterGroup(filterName: string) {
-    await this.getFilterGroup(filterName).click();
+    const group = this.getFilterGroup(filterName);
+    await group.click();
+    // The group animates open or closed. A row scrolled into view mid-animation
+    // can slide back out of the panel, hiding any menu anchored to it, so wait
+    // until the group's height holds still.
+    await group.evaluate(
+      el =>
+        new Promise<void>(resolve => {
+          let lastHeight = el.getBoundingClientRect().height;
+          let stableFrames = 0;
+          const check = () => {
+            const height = el.getBoundingClientRect().height;
+            stableFrames = height === lastHeight ? stableFrames + 1 : 0;
+            lastHeight = height;
+            if (stableFrames >= 3) resolve();
+            else requestAnimationFrame(check);
+          };
+          requestAnimationFrame(check);
+        }),
+    );
   }
 
   /**

@@ -23,6 +23,7 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   getAlignedDateRange,
+  getPercentileAggFnLevel,
   Granularity,
   hasPositiveSeriesLimit,
   TIME_SERIES_DISPLAY_TYPE_BY_NAME,
@@ -1115,16 +1116,11 @@ const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
   }
   // Map rate-based aggregations to their base aggregation
   if (aggFn.endsWith('_rate')) {
-    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
+    return mapV1AggFnToV2(aggFn.replace(/_rate$/, '') as AggFn);
   }
 
   // Map percentiles to quantile
-  if (
-    aggFn === 'p50' ||
-    aggFn === 'p90' ||
-    aggFn === 'p95' ||
-    aggFn === 'p99'
-  ) {
+  if (getPercentileAggFnLevel(aggFn) != null) {
     return 'quantile';
   }
 
@@ -1222,8 +1218,12 @@ export const convertV1ChartConfigToV2 = (
         const metricDataType = z
           .nativeEnum(MetricsDataTypeV2)
           .parse(rawMetricDataType?.toLowerCase());
+        const percentileLevel = getPercentileAggFnLevel(
+          s.aggFn?.replace(/_rate$/, ''),
+        );
         return {
           aggFn: mapV1AggFnToV2(s.aggFn),
+          ...(percentileLevel != null ? { level: percentileLevel } : {}),
           metricType: metricDataType,
           valueExpression: field,
           metricName,

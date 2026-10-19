@@ -388,7 +388,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     await expect(headlines).toHaveCount(2);
 
     // Both measurements below are font-metric dependent, and the fallback font
-    // is wider than the webfont — "BREAKING" genuinely does overflow the column
+    // is wider than the webfont — "Breaking" genuinely does overflow the column
     // mid-swap. Wait for the swap so this measures the shipped typeface.
     await page.evaluate(() => document.fonts.ready.then(() => undefined));
 

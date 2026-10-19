@@ -111,8 +111,13 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TLogSource | TTraceSource;
+  source?: TSource;
   onOpenLinkedTrace?: (link: SpanLinkData) => void;
+  /**
+   * onPropertyAddClick updates ad hoc dashboard filters. Tables shape
+   * each cell's key and value for that with getAdhocCellCondition.
+   */
+  isAdhocFilterTarget?: boolean;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});

@@ -75,6 +75,27 @@ describe('getSqlSourceKeys', () => {
       ),
     ).toEqual(['ServiceName', "LogAttributes['1']", 'Body.`user`.`id`']);
   });
+
+  it('leaves out DateTime keys, whose values never match toString()', () => {
+    expect(
+      getSqlSourceKeys(
+        [
+          {
+            path: ['Timestamp'],
+            type: 'DateTime64(9)',
+            jsType: JSDataType.Date,
+          },
+          { path: ['Day'], type: 'Date', jsType: JSDataType.Date },
+          { path: ['Body', 'ts'], type: 'DateTime', jsType: JSDataType.Date },
+        ],
+        [
+          column('Timestamp', 'DateTime64(9)'),
+          column('Day', 'Date'),
+          column('Body', 'JSON'),
+        ],
+      ),
+    ).toEqual(['Day']);
+  });
 });
 
 describe('getSqlSourceColumnKeys', () => {
@@ -85,6 +106,21 @@ describe('getSqlSourceColumnKeys', () => {
         column('LogAttributes', 'Map(LowCardinality(String), String)'),
       ]),
     ).toEqual(['ServiceName']);
+  });
+
+  it('leaves out DateTime columns', () => {
+    expect(
+      getSqlSourceColumnKeys([
+        column('Timestamp', "DateTime64(9, 'UTC')"),
+        column('Day', 'Date'),
+      ]),
+    ).toEqual(['Day']);
+  });
+
+  it('quotes column names that are not bare identifiers', () => {
+    expect(getSqlSourceColumnKeys([column('service-name', 'String')])).toEqual([
+      '`service-name`',
+    ]);
   });
 });
 

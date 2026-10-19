@@ -17,8 +17,10 @@ setup_suite() {
     wait_for_ready "otel-collector-custom"
     wait_for_ready "otel-collector-oidc"
     wait_for_ready "otel-collector-bearer-auth"
-    # otel-collector-oidc-missing-audience is expected to exit immediately,
-    # not become ready -- checked directly in oidc-auth.bats instead.
+    wait_for_ready "otel-collector-promql-url"
+    # otel-collector-oidc-missing-audience and otel-collector-promql-bad-endpoint
+    # are expected to exit immediately, not become ready -- checked directly in
+    # oidc-auth.bats and promql-remote-write.bats instead.
 }
 
 teardown_suite() {

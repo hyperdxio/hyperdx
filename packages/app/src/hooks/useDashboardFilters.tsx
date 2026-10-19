@@ -12,24 +12,37 @@ import {
   VariableEntryValue,
 } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  AdhocConditionAction,
+  AdhocConditionEntry,
+  adhocConditionsToFilters,
+  adhocConditionsToPromqlFilters,
   doesFilterApplyToSource,
   FilterState,
   filtersToQuery,
   getDashboardVariableFilters,
   getFilterExpression,
   getFilterVariableName,
+  getSqlFilters,
   isAdhocFilter,
   isFilterBroadcastEnabled,
   isQueryExpressionFilter,
+  mergeAdhocConditions,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  ADHOC_FILTER_MAX_CONDITIONS,
+  AdhocDashboardFilter,
   AdhocFilterCondition,
+  AdhocFilterConditionSchema,
   AdhocFilterValueSchema,
+  BroadcastFilter,
   ChartVariable,
   DashboardFilter,
-  Filter,
 } from '@hyperdx/common-utils/dist/types';
 
+import {
+  notifyAdhocConditionTooLong,
+  notifyAdhocFilterFull,
+} from '@/components/AdhocDashboardFilter/notifications';
 import { dashboardFilterValuesParser } from '@/utils/queryParsers';
 
 const hasSelection = (selection: FilterSelection): boolean =>
@@ -151,23 +164,33 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     [setFilterValueEntries, filters],
   );
 
-  const setAdhocConditions = useCallback(
-    (filterId: string, conditions: AdhocFilterCondition[]) => {
+  /** Replace the conditions of several ad hoc filters in one update. */
+  const setAdhocConditionsByFilterId = useCallback(
+    (conditionsByFilterId: ReadonlyMap<string, AdhocFilterCondition[]>) => {
       setFilterValueEntries(prev => {
-        const target = filters.find(f => f.id === filterId);
-        const name = target && getFilterVariableName(target);
-        // The URL parser drops an invalid entry whole, losing every condition
-        const unique = uniqConditions(conditions);
-        const isStorable =
-          AdhocFilterValueSchema.shape.conditions.safeParse(unique).success;
-        if (!name || !isStorable) return prev;
-
         const parsed = parseDashboardFilterValues(prev ?? []);
-        parsed.byVariable.set(name, { type: 'adhoc', conditions: unique });
-        return rebuildEntries(filters, parsed);
+        let changed = false;
+        for (const [filterId, conditions] of conditionsByFilterId) {
+          const target = filters.find(f => f.id === filterId);
+          const name = target && getFilterVariableName(target);
+          // The URL parser drops an invalid entry whole, losing every condition
+          const unique = uniqConditions(conditions);
+          const isStorable =
+            AdhocFilterValueSchema.shape.conditions.safeParse(unique).success;
+          if (!name || !isStorable) continue;
+          parsed.byVariable.set(name, { type: 'adhoc', conditions: unique });
+          changed = true;
+        }
+        return changed ? rebuildEntries(filters, parsed) : prev;
       });
     },
     [setFilterValueEntries, filters],
+  );
+
+  const setAdhocConditions = useCallback(
+    (filterId: string, conditions: AdhocFilterCondition[]) =>
+      setAdhocConditionsByFilterId(new Map([[filterId, conditions]])),
+    [setAdhocConditionsByFilterId],
   );
 
   const {
@@ -256,21 +279,10 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
 
   /** Returns the set of rendered filter conditions corresponding to filters matching the given predicate */
   const getFiltersQueriesFor = useCallback(
-    (predicate: (filter: DashboardFilter) => boolean): Filter[] => {
+    (predicate: (filter: DashboardFilter) => boolean): BroadcastFilter[] => {
       const seen = new Set<string>();
-      const queries: Filter[] = [];
-      for (const filter of filters) {
-        if (!predicate(filter)) continue;
-        const expression = getFilterExpression(filter);
-        if (expression == null) continue;
-        const selection = selectionByFilterId.get(filter.id);
-        if (!selection) continue;
-        // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
-        // All keys can be stringified, since filter select values are stringified as well.
-        const emitted = filtersToQuery(
-          { [expression]: selection },
-          { stringifyKeys: true },
-        );
+      const queries: BroadcastFilter[] = [];
+      const emit = (emitted: BroadcastFilter[]) => {
         for (const query of emitted) {
           // Two definitions resolving to the same selection would otherwise
           // emit an identical condition twice, churning react-query keys.
@@ -280,14 +292,80 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
             queries.push(query);
           }
         }
+      };
+
+      for (const filter of filters) {
+        if (!predicate(filter)) continue;
+        if (isAdhocFilter(filter)) {
+          const conditions = adhocConditionsByFilterId.get(filter.id);
+          if (!conditions) continue;
+          emit(
+            filter.sourceType === 'promql'
+              ? adhocConditionsToPromqlFilters(conditions)
+              : adhocConditionsToFilters(conditions),
+          );
+          continue;
+        }
+        const expression = getFilterExpression(filter);
+        if (expression == null) continue;
+        const selection = selectionByFilterId.get(filter.id);
+        if (!selection) continue;
+        // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
+        // All keys can be stringified, since filter select values are stringified as well.
+        emit(
+          filtersToQuery({ [expression]: selection }, { stringifyKeys: true }),
+        );
       }
       return queries;
     },
-    [filters, selectionByFilterId],
+    [filters, selectionByFilterId, adhocConditionsByFilterId],
   );
 
+  /**
+   * Apply a value clicked in a tile to each of the given ad hoc filters. A
+   * filter that would exceed its condition limit is left unchanged.
+   */
+  const applyAdhocAction = useCallback(
+    (
+      filterIds: string[],
+      entries: AdhocConditionEntry[],
+      action: AdhocConditionAction,
+    ) => {
+      const targets = filters.filter(
+        (filter): filter is AdhocDashboardFilter =>
+          isAdhocFilter(filter) && filterIds.includes(filter.id),
+      );
+      const isStorable = entries.every(
+        ({ key, value }) =>
+          AdhocFilterConditionSchema.safeParse({ key, operator: '=', value })
+            .success,
+      );
+      if (!isStorable) {
+        if (targets[0]) notifyAdhocConditionTooLong(targets[0]);
+        return;
+      }
+
+      const next = new Map<string, AdhocFilterCondition[]>();
+      for (const filter of targets) {
+        const merged = mergeAdhocConditions(
+          adhocConditionsByFilterId.get(filter.id) ?? [],
+          entries,
+          action,
+        );
+        if (merged.length > ADHOC_FILTER_MAX_CONDITIONS) {
+          notifyAdhocFilterFull(filter);
+          continue;
+        }
+        next.set(filter.id, merged);
+      }
+      if (next.size > 0) setAdhocConditionsByFilterId(next);
+    },
+    [filters, adhocConditionsByFilterId, setAdhocConditionsByFilterId],
+  );
+
+  // Its consumers apply it as SQL; PromQL conditions reach tiles by source only.
   const broadcastedFilters = useMemo(
-    () => getFiltersQueriesFor(isFilterBroadcastEnabled),
+    () => getSqlFilters(getFiltersQueriesFor(isFilterBroadcastEnabled)),
     [getFiltersQueriesFor],
   );
 
@@ -296,7 +374,7 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
    * broadcast to tiles with the given sourceId
    **/
   const getFilterQueriesForSource = useCallback(
-    (sourceId: string | undefined): Filter[] =>
+    (sourceId: string | undefined): BroadcastFilter[] =>
       getFiltersQueriesFor(definition =>
         doesFilterApplyToSource(definition, sourceId),
       ),
@@ -317,6 +395,8 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
     adhocConditionsByFilterId,
     /** Replace the conditions of an ad hoc filter, by its ID */
     setAdhocConditions,
+    /** Apply a value clicked in a tile to the given ad hoc filters, by ID */
+    applyAdhocAction,
     /** Set the raw filter value state */
     setFilterValueEntries,
     /** The raw persisted entries, as they appear in the URL param. */
@@ -338,7 +418,8 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      * source is `sourceId`. Filters with no `appliesToSourceIds` apply to all
      * tiles. Filters with `appliesToSourceIds` defined apply only to tiles
      * whose source ID is in the list. Filters with broadcasting disabled
-     * apply to no tiles at all.
+     * apply to no tiles at all. PromQL ad hoc filters yield `promql` label
+     * matchers; the rest yield SQL or Lucene conditions.
      */
     getFilterQueriesForSource,
     /** The dashboard's variable-enabled filters and their currently selected values. */
