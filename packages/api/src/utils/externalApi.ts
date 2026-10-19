@@ -53,7 +53,19 @@ const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
 export function translateExternalChartToTileConfig(
   chart: SeriesTile,
 ): DashboardDocument['tiles'][number] {
-  const { id, name, x, y, w, h, series, asRatio, containerId, tabId } = chart;
+  const {
+    id,
+    name,
+    description,
+    x,
+    y,
+    w,
+    h,
+    series,
+    asRatio,
+    containerId,
+    tabId,
+  } = chart;
 
   if (series.length === 0) {
     throw new Error('Chart must have at least one series');
@@ -208,6 +220,7 @@ export function translateExternalChartToTileConfig(
       ['groupBy', 'orderBy', 'markdown', 'seriesReturnType', 'numberFormat'],
     ),
     name,
+    ...(description ? { description } : {}),
     source: sourceId,
     displayType,
     select,

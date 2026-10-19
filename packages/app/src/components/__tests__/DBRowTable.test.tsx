@@ -11,7 +11,7 @@ import {
   useConfigWithAdditionalSelect,
 } from '@/components/DBRowTable';
 import * as useChartConfigModule from '@/hooks/useChartConfig';
-import { RowWhereResult } from '@/hooks/useRowWhere';
+import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { RowClickAction, UserPreferences } from '@/useUserPreferences';
 
 const mockSetQueryState = jest.fn();
@@ -390,6 +390,41 @@ describe('RawLogTable', () => {
       );
 
       expect(mockSetQueryState).toHaveBeenCalledWith('rowWhere', ROW_ID);
+    });
+
+    // A table with its own `id` column must not overwrite the WHERE clause the
+    // expanded row queries with (#3370).
+    it('passes the row where clause to row details when the row has an id column', async () => {
+      const aliasWith: WithClause[] = [
+        {
+          name: 'body',
+          sql: { sql: 'Body', params: {} },
+          isSubquery: false,
+        },
+      ];
+      const renderRowDetails = jest.fn(() => <div>row details</div>);
+
+      renderTable(
+        <RawLogTable
+          {...baseProps}
+          rows={[
+            { col1: 'value1', id: 'a5c1334f-9b43-44db-abc3-3412220272dd.0.0' },
+          ]}
+          generateRowId={() => ({ where: ROW_ID, aliasWith })}
+          renderRowDetails={renderRowDetails}
+          onRowDetailsClick={() => {}}
+        />,
+        'expand',
+      );
+
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Expand log row' }),
+      );
+
+      await screen.findByTestId(`expanded-row-${ROW_ID}`);
+      expect(renderRowDetails).toHaveBeenLastCalledWith(
+        expect.objectContaining({ id: ROW_ID, aliasWith, col1: 'value1' }),
+      );
     });
 
     it('collapses an expanded row when its body is clicked again', async () => {

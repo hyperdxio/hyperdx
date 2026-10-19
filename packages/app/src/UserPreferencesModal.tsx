@@ -12,12 +12,17 @@ import {
   Tooltip,
 } from '@mantine/core';
 
-import { OPTIONS_FONTS } from './config/fonts';
+import {
+  isContentFontSize,
+  OPTIONS_CONTENT_FONT_SIZE,
+  OPTIONS_FONTS,
+} from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
 import {
   DEFAULT_ROW_CLICK_ACTION,
   RowClickAction,
+  useContentFontSize,
   UserPreferences,
   useUserPreferences,
 } from './useUserPreferences';
@@ -71,6 +76,7 @@ export const UserPreferencesModal = ({
   onClose: () => void;
 }) => {
   const { userPreferences, setUserPreference } = useUserPreferences();
+  const { contentFontSize } = useContentFontSize();
   const { themeName, setTheme, isDev } = useAppTheme();
 
   return (
@@ -161,6 +167,23 @@ export const UserPreferencesModal = ({
               })
             }
             data={OPTIONS_COLOR_MODE}
+            allowDeselect={false}
+          />
+        </SettingContainer>
+
+        <SettingContainer
+          label="Content font size"
+          description="Text size for log tables, data tables, and charts"
+        >
+          <Select
+            data-testid="content-font-size-select"
+            value={contentFontSize}
+            onChange={value =>
+              value &&
+              isContentFontSize(value) &&
+              setUserPreference({ contentFontSize: value })
+            }
+            data={OPTIONS_CONTENT_FONT_SIZE}
             allowDeselect={false}
           />
         </SettingContainer>

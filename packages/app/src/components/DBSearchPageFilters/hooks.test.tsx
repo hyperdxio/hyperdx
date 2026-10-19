@@ -10,6 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import api from '@/api';
+import type { Facet } from '@/hooks/useMetadata';
 import * as useMetadataModule from '@/hooks/useMetadata';
 import * as searchFiltersModule from '@/searchFilters';
 import * as sourceModule from '@/source';
@@ -68,6 +69,7 @@ jest.mock('@/hooks/useMetadata', () => ({
   useMapColumns: jest.fn(),
   useAllFields: jest.fn(),
   useGetKeyValues: jest.fn(),
+  useFilterKeysFetchLimit: jest.fn(),
 }));
 
 const useMe = jest.mocked(api.useMe);
@@ -82,6 +84,9 @@ const useJsonColumns = jest.mocked(useMetadataModule.useJsonColumns);
 const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
 const useAllFields = jest.mocked(useMetadataModule.useAllFields);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
+const useFilterKeysFetchLimit = jest.mocked(
+  useMetadataModule.useFilterKeysFetchLimit,
+);
 
 const CHART_CONFIG: BuilderChartConfigWithDateRange = {
   connection: 'conn1',
@@ -121,6 +126,7 @@ const makeLogSource = (opts: { withMVs: boolean }) => ({
 
 type SourceQueryResult = ReturnType<typeof sourceModule.useSource>;
 type AllFieldsResult = ReturnType<typeof useMetadataModule.useAllFields>;
+type KeyValuesResult = ReturnType<typeof useMetadataModule.useGetKeyValues>;
 type MetadataWithSettings = ReturnType<
   typeof useMetadataModule.useMetadataWithSettings
 >;
@@ -192,6 +198,8 @@ function setupDefaultMocks({ withMVs }: { withMVs: boolean }) {
     isFetching: false,
     error: null,
   } as any);
+
+  useFilterKeysFetchLimit.mockReturnValue(100);
 }
 
 describe('useFetchFacets', () => {
@@ -476,6 +484,88 @@ describe('useFetchFacets', () => {
       );
 
       expect(result.current.error).toBe(fieldsError);
+    });
+  });
+
+  describe('pending keys', () => {
+    const TWO_FIELDS = [
+      {
+        path: ['ServiceName'],
+        type: 'LowCardinality(String)',
+        jsType: 'string',
+      },
+      {
+        path: ['SeverityText'],
+        type: 'LowCardinality(String)',
+        jsType: 'string',
+      },
+    ];
+
+    const mockKeyValues = (data: Facet[] | undefined, isFetching: boolean) =>
+      useGetKeyValues.mockReturnValue({
+        data,
+        isLoading: false,
+        isFetching,
+        error: null,
+      } as unknown as KeyValuesResult);
+
+    const renderAllMode = () =>
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper: makeWrapper().wrapper },
+      );
+
+    it('lists keys whose values have not arrived yet as empty, pending facets', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
+      mockKeyValues([{ key: 'SeverityText', value: ['info'] }], true);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: [] },
+        { key: 'SeverityText', value: ['info'] },
+      ]);
+      expect(result.current.data.pendingKeys).toEqual(new Set(['ServiceName']));
+    });
+
+    it('drops keys without values once the values query finishes', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
+      mockKeyValues([{ key: 'SeverityText', value: ['info'] }], false);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'SeverityText', value: ['info'] },
+      ]);
+      expect(result.current.data.pendingKeys.size).toBe(0);
+    });
+
+    it('does not list keys past the team key fetch limit', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
+      useFilterKeysFetchLimit.mockReturnValue(1);
+      mockKeyValues(undefined, true);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: [] },
+      ]);
+      expect(result.current.data.pendingKeys).toEqual(new Set(['ServiceName']));
     });
   });
 
