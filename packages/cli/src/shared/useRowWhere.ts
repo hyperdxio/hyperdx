@@ -23,6 +23,18 @@ import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import type { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
+const LEFT_UTF8_HASH_CODE_POINTS = 1000;
+
+/** First `limit` Unicode code points, matching ClickHouse leftUTF8(s, limit). */
+function leftUtf8Prefix(value: string, limit: number): string {
+  let prefix = '';
+  let n = 0;
+  for (const ch of value) {
+    if (n++ === limit) break;
+    prefix += ch;
+  }
+  return prefix;
+}
 
 // Type for WITH clause entries, derived from ChartConfig's with property
 type WithClause = NonNullable<BuilderChartConfig['with']>[number];
@@ -117,9 +129,7 @@ function processRowToWhereClause(
             return SqlString.format(`lower(hex(SHA256(leftUTF8(?, 1000))))=?`, [
               SqlString.raw(valueExpr),
               SHA256(
-                Array.from(strValue ?? '')
-                  .slice(0, 1000)
-                  .join(''),
+                leftUtf8Prefix(strValue ?? '', LEFT_UTF8_HASH_CODE_POINTS),
               ).toString(),
             ]);
           }

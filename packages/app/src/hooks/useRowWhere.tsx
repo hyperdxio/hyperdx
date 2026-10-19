@@ -12,6 +12,18 @@ import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { WithClauseSchema } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
+const LEFT_UTF8_HASH_CODE_POINTS = 1000;
+
+/** First `limit` Unicode code points, matching ClickHouse leftUTF8(s, limit). */
+function leftUtf8Prefix(value: string, limit: number): string {
+  let prefix = '';
+  let n = 0;
+  for (const ch of value) {
+    if (n++ === limit) break;
+    prefix += ch;
+  }
+  return prefix;
+}
 
 // Type for WITH clause entries, derived from ChartConfig's with property
 export type WithClause = z.infer<typeof WithClauseSchema>;
@@ -113,11 +125,13 @@ export function processRowToWhereClause(
           // Handle the case when string is too long
           if (value.length > MAX_STRING_LENGTH) {
             return SqlString.format(
-              // Slice by code point to match ClickHouse leftUTF8(?, 1000).
+              // Hash only a prefix so huge payloads do not block the main thread.
               `lower(hex(SHA256(leftUTF8(?, 1000))))=?`,
               [
                 SqlString.raw(valueExpr),
-                SHA256(Array.from(value).slice(0, 1000).join('')).toString(),
+                SHA256(
+                  leftUtf8Prefix(value, LEFT_UTF8_HASH_CODE_POINTS),
+                ).toString(),
               ],
             );
           }
