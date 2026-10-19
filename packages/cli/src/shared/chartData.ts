@@ -344,8 +344,9 @@ export function formatResponseForTimeChart({
     }
   }
 
-  // Sort log-level series info < warn < error, then by peak like the web, so
-  // the 8-color palette goes to the largest series before it repeats.
+  // Sort log-level series info < warn < error, then by peak per series so the
+  // 8-color palette goes to the largest first. The web ranks by peak only to cap
+  // series counts, and by group rather than per value column.
   const logLevelColorOrder = ['green', 'yellow', 'red'];
   const sortedSeries = Object.values(seriesMap).sort((a, b) => {
     return (

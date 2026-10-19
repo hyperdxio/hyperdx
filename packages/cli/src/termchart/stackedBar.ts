@@ -121,20 +121,23 @@ export function renderStackedBarChart({
         continue;
       }
 
-      // Which series occupies this row? Find via cumulative heights.
+      // The series covering most of the cell's filled part takes it, so a
+      // partial top cell isn't handed to a thin series stacked on top.
+      const cellTop = Math.min(row + 1, totalRows);
       let cum = 0;
       let cellSeries = series[series.length - 1];
-      // Sample the middle of the cell's filled part, so a partial top cell
-      // takes the series filling most of it, not a sliver stacked on top.
-      const target = (row + Math.min(row + 1, totalRows)) / 2;
+      let bestOverlap = 0;
       for (const s of series) {
         const v = bucket[s.dataKey];
         const sv = typeof v === 'number' && Number.isFinite(v) ? v : 0;
+        const start = cum;
         cum += (sv / axisMax) * plotHeight;
-        if (cum > target) {
+        const overlap = Math.min(cum, cellTop) - Math.max(start, row);
+        if (overlap > bestOverlap) {
+          bestOverlap = overlap;
           cellSeries = s;
-          break;
         }
+        if (cum >= cellTop) break;
       }
       drawn.add(cellSeries.dataKey);
       const cellColor = cellSeries.color;
@@ -165,15 +168,16 @@ export function renderStackedBarChart({
     plotWidth,
   });
 
+  // Series can go undrawn when they are too thin for a cell or when buckets
+  // are merged to fit the width; the legend counts them instead of listing them.
   const shownSeries = series.filter(s => drawn.has(s.dataKey));
-  const hidden = series.length - shownSeries.length;
   const legendLines = showLegend
-    ? [
-        renderLegend(shownSeries, width),
-        hidden > 0 ? chalk.dim(`+${hidden} too small to show`) : '',
-      ]
-        .filter(Boolean)
-        .join('  ')
+    ? renderLegend(
+        shownSeries,
+        width,
+        Math.max(1, legendHeight - 1),
+        series.length - shownSeries.length,
+      )
     : '';
 
   return [
