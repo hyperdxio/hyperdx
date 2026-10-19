@@ -7,6 +7,7 @@ import {
   isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  AdhocDashboardFilter,
   DashboardFilter,
   DashboardFilterSchema,
   PromqlLabelDashboardFilter,
@@ -51,7 +52,8 @@ export type FilterFormValues = {
     | 'minSelections'
     | 'isGlobalRequirement'
     | 'maxSelections'
-  >;
+  > &
+  Pick<AdhocDashboardFilter, 'sourceType' | 'sources'>;
 
 export type FilterFormControl = Control<FilterFormValues>;
 
@@ -62,6 +64,7 @@ export const toFormValues = (
   const queried = filter?.type === 'QUERY_EXPRESSION' ? filter : undefined;
   const staticList = filter?.type === 'STATIC_LIST' ? filter : undefined;
   const promqlLabel = filter?.type === 'PROMETHEUS_LABEL' ? filter : undefined;
+  const adhoc = filter?.type === 'ADHOC' ? filter : undefined;
 
   return {
     id: filter?.id ?? crypto.randomUUID(),
@@ -80,7 +83,8 @@ export const toFormValues = (
     sourceMetricType: queried?.sourceMetricType,
     where: queried?.where ?? '',
     whereLanguage: queried?.whereLanguage ?? getStoredLanguage() ?? 'sql',
-    appliesToSourceIds: queried?.appliesToSourceIds ?? [],
+    appliesToSourceIds:
+      queried?.appliesToSourceIds ?? adhoc?.appliesToSourceIds ?? [],
 
     // STATIC_LIST fields
     options: staticList?.options ?? [],
@@ -88,6 +92,10 @@ export const toFormValues = (
     // PROMETHEUS_LABEL fields
     label: promqlLabel?.label ?? '',
     match: promqlLabel?.match ?? '',
+
+    // ADHOC fields
+    sourceType: adhoc?.sourceType ?? 'sql',
+    sources: adhoc?.sources ?? [],
   };
 };
 
@@ -128,8 +136,27 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
     });
   }
 
-  const trimmedWhere = values.where?.trim() ?? '';
   const appliesTo = values.appliesToSourceIds?.filter(id => !!id?.length);
+
+  // Selection limits don't apply to conditions, so they aren't stored.
+  if (values.type === 'ADHOC') {
+    const isBroadcastEnabled = isFilterBroadcastEnabled(values);
+    return DashboardFilterSchema.parse({
+      id: values.id,
+      type: values.type,
+      name: values.name,
+      sourceType: values.sourceType,
+      sources: values.sources,
+      isBroadcastEnabled,
+      // Hidden, and so unvalidated, while broadcast is off
+      appliesToSourceIds:
+        isBroadcastEnabled && appliesTo?.length ? appliesTo : undefined,
+      isVariableEnabled: true,
+      variableName: getFilterVariableName(values),
+    });
+  }
+
+  const trimmedWhere = values.where?.trim() ?? '';
   const isVariableEnabled = isFilterVariableEnabled(values);
 
   return DashboardFilterSchema.parse({

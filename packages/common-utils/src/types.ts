@@ -1248,15 +1248,34 @@ export const SqlAstFilterSchema = z.object({
 
 export type SqlAstFilter = z.infer<typeof SqlAstFilterSchema>;
 
+export const ConditionFilterSchema = z.object({
+  type: z.enum(['lucene', 'sql']),
+  condition: z.string(),
+});
+
+export type ConditionFilter = z.infer<typeof ConditionFilterSchema>;
+
 export const FilterSchema = z.union([
-  z.object({
-    type: z.enum(['lucene', 'sql']),
-    condition: z.string(),
-  }),
+  ConditionFilterSchema,
   SqlAstFilterSchema,
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+/**
+ * A PromQL label matcher (e.g. `job="api"`) added to every selector of a
+ * PromQL tile. Kept out of `FilterSchema` because saved searches, alerts and
+ * the APIs only take SQL and Lucene conditions.
+ */
+export const PromqlConditionFilterSchema = z.object({
+  type: z.literal('promql'),
+  condition: z.string(),
+});
+
+export type PromqlConditionFilter = z.infer<typeof PromqlConditionFilterSchema>;
+
+/** A dashboard filter condition broadcast to tiles, in the tile's query language. */
+export type BroadcastFilter = ConditionFilter | PromqlConditionFilter;
 
 export const VariableFilterValueSchema = z.object({
   type: z.literal('variable'),
@@ -1266,9 +1285,15 @@ export const VariableFilterValueSchema = z.object({
 
 export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
 
+/** The kind of sources an ad hoc filter reads its keys from. */
+export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
+
+export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
+
 /**
  * Operators an ad hoc filter condition can use, spelled as in PromQL so one set
- * serves both source types. `LIKE` / `NOT LIKE` are offered for SQL sources only.
+ * serves both source types. See `SQL_ADHOC_FILTER_OPERATORS` and
+ * `PROMQL_ADHOC_FILTER_OPERATORS` for which ones each source type supports.
  */
 export const AdhocFilterOperatorSchema = z.enum([
   '=',
@@ -1280,6 +1305,16 @@ export const AdhocFilterOperatorSchema = z.enum([
 ]);
 
 export type AdhocFilterOperator = z.infer<typeof AdhocFilterOperatorSchema>;
+
+export const SQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] =
+  AdhocFilterOperatorSchema.options;
+
+export const PROMQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] = [
+  '=',
+  '!=',
+  '=~',
+  '!~',
+];
 
 /** One `key operator value` condition picked in an ad hoc filter. */
 export const AdhocFilterConditionSchema = z.object({
@@ -1725,6 +1760,13 @@ export type RatioMode = z.infer<typeof RatioModeSchema>;
 export const HeatmapModeSchema = z.enum(['distribution', 'series']);
 export type HeatmapMode = z.infer<typeof HeatmapModeSchema>;
 
+// PromQL heatmaps can also draw pre-bucketed Prometheus histograms (`le` buckets).
+export const PromqlHeatmapModeSchema = z.enum([
+  ...HeatmapModeSchema.options,
+  'histogram',
+]);
+export type PromqlHeatmapMode = z.infer<typeof PromqlHeatmapModeSchema>;
+
 export const HeatmapSettingsSchema = z.object({
   mode: HeatmapModeSchema.optional(),
 });
@@ -1924,18 +1966,21 @@ export type PromqlExpressionList = z.infer<typeof PromqlExpressionListSchema>;
 const PromqlBaseChartConfigSchema = SharedChartSettingsSchema.extend({
   configType: z.literal('promql'),
   promqlExpression: PromqlExpressionListSchema,
-  connection: z.string(),
-  source: z.string().optional(),
+  source: z.string().min(1),
   step: z.string().optional(),
   legendTemplate: z.string().max(MAX_LEGEND_TEMPLATE_LENGTH).optional(),
   heatmap: HeatmapSettingsSchema.extend({
+    mode: PromqlHeatmapModeSchema.optional(),
     scaleType: HeatmapScaleTypeSchema.optional(),
   }).optional(),
 });
 
 /** Schema describing PromQL chart configs with runtime-only fields */
 const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
-  filters: z.array(FilterSchema).optional(),
+  // Copied from the source at query time and never persisted, so it cannot go
+  // stale if the source moves to another connection.
+  connection: z.string(),
+  filters: z.array(PromqlConditionFilterSchema).optional(),
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
@@ -2265,11 +2310,6 @@ export const PromqlLabelDashboardFilterSchema =
     isBroadcastEnabled: z.literal(false),
     isVariableEnabled: z.literal(true),
   });
-
-/** The kind of sources an ad hoc filter reads its keys from. */
-export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
-
-export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
 
 /**
  * A filter whose conditions (`key operator value`) are picked freely from the

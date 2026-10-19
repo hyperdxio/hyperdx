@@ -1292,6 +1292,7 @@ describe('ChartUtils', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Table,
       connection: 'conn',
+      source: 'source-promql',
       promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
       dateRange: [
         new Date('2025-11-26T00:00:14.076Z'),
@@ -1348,6 +1349,7 @@ describe('ChartUtils', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Number,
       connection: 'conn',
+      source: 'source-promql',
       promqlExpression: [
         { expression: 'up', queryType: 'range' as const },
         { expression: 'down', queryType: 'range' as const },

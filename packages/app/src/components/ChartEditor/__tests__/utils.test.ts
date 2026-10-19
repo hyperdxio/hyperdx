@@ -19,6 +19,7 @@ import {
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
   getAllowedSourceKinds,
+  promqlExpressionPlaceholder,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 
@@ -688,6 +689,21 @@ describe('PromQL expressions', () => {
     });
   });
 
+  it('saves a histogram heatmap', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        {
+          ...promqlForm(
+            [{ expression: 'sum by (le) (x_bucket)' }],
+            DisplayType.Heatmap,
+          ),
+          heatmap: { mode: 'histogram' },
+        },
+        undefined,
+      ),
+    ).toMatchObject({ heatmap: { mode: 'histogram' } });
+  });
+
   it('queries a heatmap with its heatmap settings', () => {
     const result = convertFormStateToChartConfig(
       {
@@ -715,6 +731,16 @@ describe('PromQL expressions', () => {
         undefined,
       ),
     ).not.toHaveProperty('heatmap', expect.anything());
+  });
+
+  it('carries the PromQL source on the saved and queried configs', () => {
+    const form = promqlForm([{ expression: 'up' }]);
+    expect(
+      convertFormStateToSavedChartConfig(form, promqlSource),
+    ).toMatchObject({ source: 'source-promql' });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, promqlSource),
+    ).toMatchObject({ source: 'source-promql' });
   });
 
   it('saves the form rows as the expression list', () => {
@@ -885,7 +911,7 @@ describe('PromQL expressions', () => {
       configType: 'promql',
       displayType: DisplayType.Line,
       promqlExpression: 'up',
-      connection: 'conn-1',
+      source: 'source-promql',
       legendTemplate: '{{pod}}',
     });
     expect(result.configType).toBe('promql');
@@ -901,7 +927,7 @@ describe('PromQL expressions', () => {
       convertSavedChartConfigToFormState({
         configType: 'promql',
         displayType: DisplayType.Line,
-        connection: 'conn-1',
+        source: 'source-promql',
         promqlExpression: [],
       }).promqlExpressions,
     ).toEqual([{ expression: '', alias: '' }]);
@@ -1303,6 +1329,55 @@ describe('validateChartForm', () => {
       setError,
     );
     expect(errors.filter(e => e.path === 'source')).toHaveLength(0);
+  });
+
+  describe('PromQL charts', () => {
+    const promqlChartForm = (overrides: Partial<ChartEditorFormState>) =>
+      makeForm({
+        configType: 'promql',
+        promqlExpressions: [{ expression: 'up' }],
+        series: [],
+        ...overrides,
+      });
+
+    it('returns no errors with a PromQL source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: 'source-promql' }),
+        promqlSource,
+        jest.fn(),
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('errors without a source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: undefined }),
+        undefined,
+        jest.fn(),
+      );
+      expect(errors).toContainEqual(
+        expect.objectContaining({
+          path: 'source',
+          message: 'Source is required',
+        }),
+      );
+    });
+
+    // The editor resolves the selection against the kinds PromQL mode allows,
+    // so a leftover builder source arrives here as no source at all.
+    it('errors when the selected source is not a PromQL source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: 'source-log' }),
+        undefined,
+        jest.fn(),
+      );
+      expect(errors).toContainEqual(
+        expect.objectContaining({
+          path: 'source',
+          message: 'Source is required',
+        }),
+      );
+    });
   });
 
   // ── Series valueExpression validation ────────────────────────────────
@@ -1929,6 +2004,22 @@ describe('validateChartForm', () => {
       expect.objectContaining({ path: 'series.0.valueExpression' }),
     );
   });
+
+  it('requires a value expression on a builder heatmap left in histogram mode', () => {
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        heatmap: { mode: 'histogram' },
+        series: [{ ...seriesItem, valueExpression: '' }],
+      }),
+      traceSource,
+      jest.fn(),
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({ path: 'series.0.valueExpression' }),
+    );
+  });
 });
 
 describe('color round-trip (sql/promql Number tile)', () => {
@@ -2079,6 +2170,41 @@ describe('heatmap round-trip', () => {
         heatmapScaleType: 'linear',
       }),
     );
+  });
+});
+
+describe('builder heatmap settings', () => {
+  const form: ChartEditorFormState = {
+    displayType: DisplayType.Heatmap,
+    source: 'source-trace',
+    where: '',
+    series: [{ ...seriesItem, valueExpression: 'Duration' }],
+  };
+
+  it('fall back to distribution mode from PromQL-only histogram mode', () => {
+    const histogramForm: ChartEditorFormState = {
+      ...form,
+      heatmap: { mode: 'histogram', scaleType: 'log' },
+    };
+    expect(
+      convertFormStateToSavedChartConfig(histogramForm, traceSource),
+    ).toHaveProperty('heatmap', { mode: undefined });
+    expect(
+      convertFormStateToChartConfig(
+        histogramForm,
+        [new Date(0), new Date(1000)],
+        traceSource,
+      ),
+    ).toHaveProperty('heatmap', { mode: undefined });
+  });
+
+  it('keep series mode, without PromQL-only settings', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        { ...form, heatmap: { mode: 'series', scaleType: 'log' } },
+        traceSource,
+      ),
+    ).toHaveProperty('heatmap', { mode: 'series' });
   });
 });
 
@@ -2489,6 +2615,16 @@ describe('getAllowedSourceKinds', () => {
     ).toEqual([SourceKind.Trace]);
   });
 
+  it('treats a leftover histogram mode on a builder heatmap as distribution', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'builder',
+        displayType: DisplayType.Heatmap,
+        heatmapMode: 'histogram',
+      }),
+    ).toEqual([SourceKind.Trace]);
+  });
+
   it('offers only PromQL sources on PromQL heatmap tiles', () => {
     expect(
       getAllowedSourceKinds({
@@ -2497,5 +2633,23 @@ describe('getAllowedSourceKinds', () => {
         heatmapMode: 'distribution',
       }),
     ).toEqual([SourceKind.Promql]);
+  });
+});
+
+describe('promqlExpressionPlaceholder', () => {
+  it.each([
+    ['distribution', /_sum\[5m\]\) \/ rate\(.*_count/],
+    ['series', /^sum by \(service\)/],
+    ['histogram', /^sum by \(le\) \(rate\(.*_bucket/],
+  ] as const)('suggests a %s heatmap expression', (mode, pattern) => {
+    expect(promqlExpressionPlaceholder(DisplayType.Heatmap, mode)).toMatch(
+      pattern,
+    );
+  });
+
+  it('suggests the same expression on every non-heatmap chart', () => {
+    expect(promqlExpressionPlaceholder(DisplayType.Line, 'histogram')).toBe(
+      promqlExpressionPlaceholder(DisplayType.Number, 'distribution'),
+    );
   });
 });

@@ -38,6 +38,7 @@ import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNavForSurface } from '@/layout';
+import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -75,6 +76,9 @@ const SAMPLING_FACTORS = [
     label: '100%',
   },
 ];
+
+const DEFAULT_SAMPLING_FACTOR = 10;
+const SAMPLING_FACTOR_STORAGE_KEY = 'hdx-service-map-sampling-factor';
 
 const DEFAULT_INTERVAL = 'Past 1h';
 
@@ -210,9 +214,28 @@ function DBServiceMapPage() {
     })();
   }, [handleSubmit, setSearchedConfig, displayedTimeInputValue, onSearch]);
 
-  const [samplingFactor, setSamplingFactor] = useQueryState(
+  // The URL param wins so shared links reproduce the sender's view, but only
+  // slider changes are remembered: opening a link must not overwrite the
+  // viewer's saved preference.
+  const [samplingFactorParam, setSamplingFactorParam] = useQueryState(
     'samplingFactor',
-    parseAsInteger.withDefault(10),
+    parseAsInteger,
+  );
+  const [storedSamplingFactor, setStoredSamplingFactor] = useLocalStorage(
+    SAMPLING_FACTOR_STORAGE_KEY,
+    DEFAULT_SAMPLING_FACTOR,
+  );
+  const samplingFactor =
+    samplingFactorParam ??
+    (SAMPLING_FACTORS.some(factor => factor.value === storedSamplingFactor)
+      ? storedSamplingFactor
+      : DEFAULT_SAMPLING_FACTOR);
+  const setSamplingFactor = useCallback(
+    (value: number) => {
+      setStoredSamplingFactor(value);
+      setSamplingFactorParam(value);
+    },
+    [setStoredSamplingFactor, setSamplingFactorParam],
   );
   const { label: samplingLabel = '' } =
     SAMPLING_FACTORS.find(factor => factor.value === samplingFactor) ?? {};
@@ -253,7 +276,7 @@ function DBServiceMapPage() {
 
   const headerActions = (
     <Group gap="sm" wrap="nowrap">
-      <Text bg="inherit" size="sm">
+      <Text bg="inherit" size="sm" data-testid="service-map-sampling-label">
         Sampling {samplingLabel}
       </Text>
       <div style={{ minWidth: '200px' }}>
@@ -266,6 +289,7 @@ function DBServiceMapPage() {
           )}
           onChange={v => setSamplingFactor(SAMPLING_FACTORS[v].value)}
           showLabelOnHover={false}
+          data-testid="service-map-sampling-slider"
         />
       </div>
       <TimePicker
