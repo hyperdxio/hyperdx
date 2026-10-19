@@ -61,9 +61,12 @@ const escapeRegexValue = (value: string) =>
 const escapeLuceneValue = (value: string) =>
   value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 
-/** Escape `\` and `"` so a value survives inside a double-quoted PromQL string. */
-const escapePromqlStringValue = (value: string) =>
-  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+/**
+ * Escape `\`, `"` and newlines so a value survives inside a double-quoted
+ * PromQL string, which can't span lines.
+ */
+export const escapePromqlStringValue = (value: string) =>
+  value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n');
 
 /**
  * Backslash-escape every ASCII punctuation character (CommonMark renders each

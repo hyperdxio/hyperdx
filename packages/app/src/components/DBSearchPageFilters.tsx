@@ -1,4 +1,11 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import {
   TableMetadata,
@@ -76,6 +83,7 @@ import {
 } from './DBSearchPageFilters/PinShareMenu';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
 import {
+  type FacetEntry,
   getFilterStateEntry,
   groupFacetsByBaseName,
   toQuotedClickHouseKeyExpression,
@@ -413,6 +421,10 @@ export type FilterGroupProps = {
   loadMoreLoading: boolean;
   hasLoadedMore: boolean;
   isDefaultExpanded?: boolean;
+  expanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  showDistributions?: boolean;
+  onShowDistributionsChange?: (show: boolean) => void;
   showFilterCounts?: boolean;
   'data-testid'?: string;
   chartConfig: BuilderChartConfigWithDateRange;
@@ -517,6 +529,8 @@ const FilterGroupBody = ({
     onFetchingDistributionChange(isFetchingDistribution);
   }, [isFetchingDistribution, onFetchingDistributionChange]);
 
+  // onDistributionError isn't stable; re-running on it would notify again
+  const handleDistributionError = useEffectEvent(onDistributionError);
   useEffect(() => {
     if (distributionError) {
       notifications.show({
@@ -525,9 +539,9 @@ const FilterGroupBody = ({
         message: distributionError?.message,
         autoClose: 5000,
       });
-      onDistributionError();
+      handleDistributionError();
     }
-  }, [distributionError, onDistributionError]);
+  }, [distributionError]);
 
   const totalAppliedFiltersSize =
     selectedValues.included.size +
@@ -920,6 +934,10 @@ export const FilterGroup = ({
   loadMoreLoading,
   hasLoadedMore,
   isDefaultExpanded,
+  expanded,
+  onExpandedChange,
+  showDistributions: _showDistributions,
+  onShowDistributionsChange,
   showFilterCounts,
   'data-testid': dataTestId,
   chartConfig,
@@ -927,8 +945,21 @@ export const FilterGroup = ({
   distributionKey,
   onRangeChange,
 }: FilterGroupProps) => {
-  const [isExpanded, setExpanded] = useState(isDefaultExpanded ?? false);
-  const [showDistributions, setShowDistributions] = useState(false);
+  const [uncontrolledExpanded, setUncontrolledExpanded] = useState(
+    isDefaultExpanded ?? false,
+  );
+  const isExpanded = expanded ?? uncontrolledExpanded;
+  const setExpanded = (value: boolean) => {
+    setUncontrolledExpanded(value);
+    onExpandedChange?.(value);
+  };
+  const [uncontrolledShowDistributions, setUncontrolledShowDistributions] =
+    useState(false);
+  const showDistributions = _showDistributions ?? uncontrolledShowDistributions;
+  const setShowDistributions = (value: boolean) => {
+    setUncontrolledShowDistributions(value);
+    onShowDistributionsChange?.(value);
+  };
   const [isFetchingDistribution, setIsFetchingDistribution] = useState(false);
 
   const selectedValues: SelectedValues = useMemo(
@@ -938,22 +969,16 @@ export const FilterGroup = ({
 
   const hasRange = selectedValues.range != null;
 
-  const toggleShowDistributions = useCallback(() => {
-    setShowDistributions(prev => {
-      if (!prev) {
-        setExpanded(true);
-      }
-      return !prev;
-    });
-  }, []);
+  const toggleShowDistributions = () => {
+    if (!showDistributions) setExpanded(true);
+    setShowDistributions(!showDistributions);
+  };
 
-  const onDistributionError = useCallback(() => {
-    setShowDistributions(false);
-  }, []);
+  const onDistributionError = () => setShowDistributions(false);
 
   useEffect(() => {
     if (isDefaultExpanded) {
-      setExpanded(true);
+      setUncontrolledExpanded(true);
     }
   }, [isDefaultExpanded]);
 
@@ -992,7 +1017,7 @@ export const FilterGroup = ({
                 chevron: 'm-0',
                 label: 'p-0',
               }}
-              className={hasOptions ? '' : 'opacity-50'}
+              className={hasOptions || optionsLoading ? '' : 'opacity-50'}
             >
               <Tooltip
                 openDelay={displayName.length > 26 ? 0 : 1500}
@@ -1004,12 +1029,21 @@ export const FilterGroup = ({
               >
                 <Text size="xs" fw="500" truncate="end">
                   {displayName}
-                  {showFilterCounts && (
-                    <Text
-                      component="span"
-                      size="xs"
-                      c="dimmed"
-                    >{` (${totalAppliedFiltersSize > 0 ? totalAppliedFiltersSize : options.length})`}</Text>
+                  {totalAppliedFiltersSize === 0 && optionsLoading ? (
+                    <Loader
+                      size={8}
+                      color="var(--color-text-muted)"
+                      ml={6}
+                      data-testid={`filter-values-loading-${name}`}
+                    />
+                  ) : (
+                    showFilterCounts && (
+                      <Text
+                        component="span"
+                        size="xs"
+                        c="dimmed"
+                      >{` (${totalAppliedFiltersSize > 0 ? totalAppliedFiltersSize : options.length})`}</Text>
+                    )
                   )}
                 </Text>
               </Tooltip>
@@ -1208,7 +1242,7 @@ const DBSearchPageFiltersComponent = ({
     filterState,
     showMoreFields,
   });
-  const facets = fetchFacetsData.keyValues;
+  const { keyValues: facets, pendingKeys } = fetchFacetsData;
 
   useEffect(() => {
     if (error) {
@@ -1222,7 +1256,7 @@ const DBSearchPageFiltersComponent = ({
   }, [error]);
 
   // Merge pinned filter values into the queried facets, so that pinned values are always available
-  const facetsWithPinnedValues = useMemo(() => {
+  const facetsWithPinnedValues = useMemo((): FacetEntry[] => {
     const facetsMap = new Map((facets ?? []).map(f => [f.key, f.value]));
     const mergedKeys = new Set<string>([
       ...facetsMap.keys(),
@@ -1238,9 +1272,13 @@ const DBSearchPageFiltersComponent = ({
         ...(pinnedValues ?? []),
       ]);
 
-      return { key, value: Array.from(mergedValues) };
+      return {
+        key,
+        value: Array.from(mergedValues),
+        isLoading: pendingKeys.has(key),
+      };
     });
-  }, [facets, pinnedFilters, getPinnedFields]);
+  }, [facets, pinnedFilters, getPinnedFields, pendingKeys]);
 
   // Build the set of team-pinned fields for the Shared Filters section,
   // so we can avoid duplicating them in the regular Filters list below.
@@ -1254,7 +1292,7 @@ const DBSearchPageFiltersComponent = ({
 
   // Build the facet list for the Shared Filters section.
   // For each team-pinned field: merge pinned values with dynamic facet values.
-  const sharedFacets = useMemo(() => {
+  const sharedFacets = useMemo((): FacetEntry[] => {
     if (sharedFilterKeys.size === 0) return [];
 
     const facetMap = new Map(
@@ -1264,6 +1302,7 @@ const DBSearchPageFiltersComponent = ({
     return Array.from(sharedFilterKeys).map(key => {
       const teamVals = pinnedFiltersApiData?.team?.filters[key] ?? [];
       const dynamicValues = facetMap.get(key) ?? [];
+      const isLoading = pendingKeys.has(key);
 
       let merged: (string | boolean)[];
       if (teamVals.length > 0) {
@@ -1278,12 +1317,17 @@ const DBSearchPageFiltersComponent = ({
         merged = [...dynamicValues];
       }
 
-      return { key, value: merged };
+      return { key, value: merged, isLoading };
     });
-  }, [sharedFilterKeys, facetsWithPinnedValues, pinnedFiltersApiData]);
+  }, [
+    sharedFilterKeys,
+    facetsWithPinnedValues,
+    pinnedFiltersApiData,
+    pendingKeys,
+  ]);
 
   const shownFacets = useMemo(() => {
-    const _facets: { key: string; value: (string | boolean)[] }[] = [];
+    const _facets: FacetEntry[] = [];
     for (const _facet of facetsWithPinnedValues ?? []) {
       const facet = structuredClone(_facet);
       if (jsonColumns?.some(col => facet.key.startsWith(col))) {
@@ -1295,12 +1339,18 @@ const DBSearchPageFiltersComponent = ({
         continue;
       }
 
-      // don't include empty facets, unless they are already selected or pinned
+      // don't include empty facets, unless they are already selected, pinned,
+      // or still waiting on their values
       const filter = filterState[facet.key];
       const hasSelectedValues =
         filter && (filter.included.size > 0 || filter.excluded.size > 0);
       const isPinned = isFieldPinned(facet.key);
-      if (facet.value?.length > 0 || hasSelectedValues || isPinned) {
+      if (
+        facet.value?.length > 0 ||
+        hasSelectedValues ||
+        isPinned ||
+        facet.isLoading
+      ) {
         _facets.push(facet);
       }
     }
@@ -1442,7 +1492,7 @@ const DBSearchPageFiltersComponent = ({
    */
   const renderFacetList = useCallback(
     (
-      facets: { key: string; value: (string | boolean)[] }[],
+      facets: FacetEntry[],
       options?: { keyPrefix?: string; isDefaultExpanded?: boolean },
     ) => {
       const { keyPrefix = '', isDefaultExpanded: forceExpanded } =
@@ -1558,7 +1608,7 @@ const DBSearchPageFiltersComponent = ({
                   value,
                   label: value.toString(),
                 }))}
-                optionsLoading={isFacetsLoading}
+                optionsLoading={isFacetsLoading || !!facet.isLoading}
                 selectedValues={
                   getFilterStateEntry(filterState, facet.key) ?? {
                     included: new Set(),
@@ -1852,16 +1902,15 @@ const DBSearchPageFiltersComponent = ({
                     />
                   )}
 
-                {isFacetsLoading ? (
-                  <Flex align="center" justify="center">
-                    <Loader size="xs" color="gray" />
-                  </Flex>
-                ) : (
-                  shownFacets.length === 0 && (
+                {shownFacets.length === 0 &&
+                  (isFacetsLoading ? (
+                    <Flex align="center" justify="center">
+                      <Loader size="xs" color="gray" />
+                    </Flex>
+                  ) : (
                     <Text size="xxs">No filters available</Text>
-                  )
-                )}
-                {/* Show facets even when loading to ensure pinned filters are visible while loading */}
+                  ))}
+                {/* Filters show their own loader until their values arrive */}
                 {renderFacetList(shownFacets)}
 
                 <Button
