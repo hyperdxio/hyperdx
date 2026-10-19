@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
@@ -163,7 +164,7 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
     'clickstack_event_deltas',
     {
       title: 'Compare Events: Target vs Baseline',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Rank every attribute of two row groups (logs or trace spans) by how ' +
         'much its value distribution differs between a target and a baseline ' +

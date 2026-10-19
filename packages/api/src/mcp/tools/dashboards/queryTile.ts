@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
@@ -23,7 +24,7 @@ export function registerQueryTile({
     'clickstack_query_tile',
     {
       title: 'Query a Dashboard Tile',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Execute the query for a specific tile on an existing dashboard. ' +
         'Useful for validating that a tile returns data or for spot-checking results ' +

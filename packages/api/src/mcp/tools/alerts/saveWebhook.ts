@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 
 import { createWebhook, updateWebhook } from '@/controllers/webhook';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
@@ -97,7 +98,7 @@ export function registerSaveWebhook({
     'clickstack_save_webhook',
     {
       title: 'Create or Update Webhook',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new webhook (omit id) or update an existing one (provide ' +
         'id). Use the returned id as the webhookId when creating alerts with ' +

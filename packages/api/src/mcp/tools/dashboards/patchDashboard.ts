@@ -2,6 +2,7 @@ import { uniq } from 'lodash';
 
 import * as config from '@/config';
 import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
+import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -33,7 +34,7 @@ export function registerPatchDashboard({
     'clickstack_patch_dashboard',
     {
       title: 'Patch Dashboard',
-      annotations: { destructiveHint: true },
+      annotations: IDEMPOTENT_DESTRUCTIVE_TOOL,
       description:
         'Make targeted updates to a dashboard without resubmitting the full object. ' +
         'You can update dashboard-level fields (name, tags) and/or replace a single ' +

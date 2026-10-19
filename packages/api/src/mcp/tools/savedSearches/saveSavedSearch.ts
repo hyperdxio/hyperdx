@@ -5,6 +5,7 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
@@ -25,7 +26,7 @@ export function registerSaveSavedSearch({
     'clickstack_save_saved_search',
     {
       title: 'Create or Update Saved Search',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new saved search (omit id) or update an existing one (provide id). ' +
         'A saved search stores a reusable query (select, where, orderBy, filters) ' +
