@@ -74,7 +74,10 @@ export function serviceSummary(args: {
       : comparison === undefined
         ? 'Healthy: no absolute threshold crossed (no comparison window).'
         : `Healthy: no metric crossed a threshold vs ${args.comparisonMode}; ` +
-          'the deltas are normal variance; report this service as steady, no action needed.';
+          'the deltas are normal variance' +
+          (changedErrors.length > 0
+            ? ', but see the new errors below.'
+            : '; report this service as steady, no action needed.');
 
   const context: string[] = [];
   if (f.has('new_service'))

@@ -114,7 +114,8 @@ export function assessService(
 
   if (!curEnough && !cmpEnough) {
     flags.push('low_volume');
-  } else if (comparing && !cmp) {
+  } else if (comparing && !cmpEnough && curEnough) {
+    // A handful of prior requests is not a baseline; treat it like none.
     flags.push('new_service');
   } else if (comparing && cmp && cur.requests === 0) {
     flags.push('missing_service');

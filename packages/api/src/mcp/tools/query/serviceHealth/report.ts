@@ -165,6 +165,10 @@ const USAGE =
   'least 2x its comparison count and beyond random variation, "existing" = ' +
   'otherwise.';
 
+/** Without real prior traffic every error group looks new; skip novelty. */
+export const hasBaseline = (r: RankedService) =>
+  !r.assessment.flags.some(f => f === 'new_service' || f === 'low_volume');
+
 export function buildReport(args: {
   ranked: RankedService[];
   current: Window;
@@ -197,16 +201,15 @@ export function buildReport(args: {
   const prior = (g: ErrorGroup) =>
     args.comparisonErrorCounts?.get(errorGroupKey(g)) ?? 0;
   const changedErrors = (r: RankedService) =>
-    args.comparisonErrorCounts
-      ? (args.currentErrors.get(r.service) ?? []).filter(g =>
-          isChanged(g.count, prior(g)),
+    args.comparisonErrorCounts && hasBaseline(r)
+      ? (args.currentErrors.get(r.service) ?? []).filter(
+          g => isChanged(g.count, prior(g)) && !onNewOperation(r, g),
         )
       : [];
   const hasNewErrors = (r: RankedService) => changedErrors(r).length > 0;
   // Within a status, a service with a new or growing error group goes first:
   // its aggregate rates may be flat, but it has the most novel signal.
   const shown = args.ranked
-    .slice(0, args.topN)
     .map((r, i) => ({ r, i, novel: hasNewErrors(r) }))
     .sort(
       (a, b) =>
@@ -214,7 +217,8 @@ export function buildReport(args: {
           STATUS_ORDER[b.r.assessment.status] ||
         Number(b.novel) - Number(a.novel) ||
         a.i - b.i,
-    );
+    )
+    .slice(0, args.topN);
 
   const services = shown.map(({ r, novel }, i) => ({
     rank: i + 1,

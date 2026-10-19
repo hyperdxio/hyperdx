@@ -31,7 +31,7 @@ const LAST_SEEN_ALIAS = '__hdx_last_seen';
 const errorKeyAlias = (i: number) => `__hdx_error_key_${i}`;
 
 /** Upper bound on error-group rows fetched, before bucketing per service. */
-const MAX_ERROR_ROWS = 1000;
+const MAX_ERROR_ROWS = 2500;
 
 type MvSource = Parameters<typeof tryOptimizeConfigWithMaterializedView>[4];
 
@@ -117,6 +117,9 @@ export function baseConfig(
     whereLanguage: input.where ? input.whereLanguage : 'sql',
     filters,
     dateRange: [window.start, window.end],
+    // Half-open windows: with an inclusive end, a span at exactly the
+    // boundary lands in both the comparison and the current window.
+    dateRangeEndInclusive: false,
   };
 }
 

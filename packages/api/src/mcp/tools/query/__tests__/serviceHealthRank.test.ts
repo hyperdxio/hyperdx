@@ -1,3 +1,4 @@
+import type { NewOperation } from '@/mcp/tools/query/serviceHealth/operations';
 import { errorGroupKey } from '@/mcp/tools/query/serviceHealth/queries';
 import {
   assessService,
@@ -5,6 +6,7 @@ import {
   type WindowStats,
 } from '@/mcp/tools/query/serviceHealth/rank';
 import {
+  buildReport,
   errorGroupStatus,
   rankServices,
   selectTopErrors,
@@ -88,6 +90,12 @@ describe('assessService', () => {
     const gone = assessService(null, stats(), 50);
     expect(gone.flags).toEqual(['missing_service']);
     expect(gone.status).toBe('degraded');
+  });
+
+  it('treats a handful of prior requests as no baseline', () => {
+    const a = assessService(stats(), stats({ requests: 1, errors: 1 }), 50);
+    expect(a.flags).toEqual(['new_service']);
+    expect(a.status).toBe('healthy');
   });
 
   it('never flags services under minRequests in both windows', () => {
@@ -228,5 +236,96 @@ describe('error group selection', () => {
   it('keeps count order without a comparison', () => {
     const picked = selectTopErrors([g('a', 9), g('b', 5), g('c', 1)], null, 2);
     expect(picked.map(x => x.group.StatusMessage)).toEqual(['a', 'b']);
+  });
+});
+
+describe('buildReport', () => {
+  it('lifts a service with a new error group into the top N', () => {
+    const ranked = rankServices(
+      new Map([
+        ['busy', stats({ requests: 100_000, errors: 600 })],
+        ['quiet', stats({ requests: 1000, errors: 5 })],
+      ]),
+      new Map([
+        ['busy', stats({ requests: 100_000, errors: 500 })],
+        ['quiet', stats({ requests: 1000, errors: 5 })],
+      ]),
+      50,
+    );
+    expect(ranked.map(r => r.service)).toEqual(['busy', 'quiet']);
+    const novel = {
+      service: 'quiet',
+      group: { SpanName: 'POST /pay', StatusMessage: 'payment unavailable' },
+      count: 8,
+    };
+    const report = buildReport({
+      ranked,
+      current: { start: new Date(0), end: new Date(600_000) },
+      comparison: { start: new Date(-600_000), end: new Date(0) },
+      comparisonMode: 'previous_period',
+      spanKind: 'server',
+      topN: 1,
+      errorGroupBy: ['SpanName', 'StatusMessage'],
+      currentErrors: new Map([['quiet', [novel]]]),
+      comparisonErrorCounts: new Map(),
+      newOperations: new Map(),
+      spanNameKey: 'SpanName',
+      mvUsed: false,
+    });
+    expect(report.services.map(s => s.service)).toEqual(['quiet']);
+    expect(report.services[0].flags).toContain('new_errors');
+  });
+
+  const reportFor = (
+    cur: WindowStats,
+    cmp: WindowStats,
+    newOperations: Map<string, NewOperation[]> = new Map(),
+  ) =>
+    buildReport({
+      ranked: rankServices(
+        new Map([['svc', cur]]),
+        new Map([['svc', cmp]]),
+        50,
+      ),
+      current: { start: new Date(0), end: new Date(600_000) },
+      comparison: { start: new Date(-600_000), end: new Date(0) },
+      comparisonMode: 'previous_period',
+      spanKind: 'server',
+      topN: 5,
+      errorGroupBy: ['SpanName', 'StatusMessage'],
+      currentErrors: new Map([
+        [
+          'svc',
+          [
+            {
+              service: 'svc',
+              group: { SpanName: 'GET /v2', StatusMessage: 'x' },
+              count: 20,
+            },
+          ],
+        ],
+      ]),
+      comparisonErrorCounts: new Map(),
+      newOperations,
+      spanNameKey: 'SpanName',
+      mvUsed: false,
+    }).services[0];
+
+  it('does not call errors on a brand-new operation new errors', () => {
+    const svc = reportFor(
+      stats(),
+      stats(),
+      new Map([
+        ['svc', [{ operation: 'GET /v2', requests: 100, shareOfService: 0.1 }]],
+      ]),
+    );
+    expect(svc.flags).not.toContain('new_errors');
+    expect(svc.topErrors[0].status).toBe('new_operation');
+  });
+
+  it('does not call errors new when the service has no baseline', () => {
+    const svc = reportFor(stats(), stats({ requests: 1, errors: 0 }));
+    expect(svc.flags).toEqual(['new_service']);
+    expect(svc.summary).not.toMatch(/New or growing errors/);
   });
 });

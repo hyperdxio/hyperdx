@@ -71,6 +71,7 @@ export async function findNewOperations(
   current: Window,
   comparison: Window,
   services: string[],
+  minPriorRequests: number,
 ): Promise<Map<string, NewOperation[]>> {
   if (services.length === 0) return new Map();
   const [cur, cmp] = await Promise.all([
@@ -81,6 +82,10 @@ export async function findNewOperations(
   for (const [svc, ops] of cur) {
     const total = [...ops.values()].reduce((a, b) => a + b, 0);
     const before = cmp.get(svc);
+    // A service with no real prior traffic is new as a whole (new_service);
+    // calling each of its operations a rollout would be noise.
+    const priorTotal = [...(before?.values() ?? [])].reduce((a, b) => a + b, 0);
+    if (priorTotal < minPriorRequests) continue;
     const fresh = [...ops]
       .filter(
         ([op, n]) =>

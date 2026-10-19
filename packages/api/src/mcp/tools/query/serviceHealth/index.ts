@@ -30,6 +30,7 @@ import {
 import { loadHealthSource } from './source';
 
 const TOOL_NAME = 'clickstack_service_health';
+const MAX_ERROR_SERVICES = 100;
 
 const TIMEOUT_SUFFIX =
   'Service health aggregates every span in both windows. Retry with a ' +
@@ -136,9 +137,12 @@ export function registerServiceHealth({
           await collectErrors(ctx, {
             current,
             comparison,
-            shown: ranked.slice(0, input.topN),
+            // Novelty can lift a service into the top N, so assess errors
+            // beyond it rather than only for services already ranked there.
+            shown: ranked.slice(0, MAX_ERROR_SERVICES),
             perService: input.topErrorsPerService,
             groupExprs,
+            minRequests: input.minRequests,
           });
 
         const report = buildReport({

@@ -7,6 +7,7 @@ import {
 } from './queries';
 import {
   ERROR_CANDIDATES_PER_SERVICE,
+  hasBaseline,
   type RankedService,
   selectTopErrors,
   topGroupsPerService,
@@ -32,9 +33,11 @@ export async function collectErrors(
     shown: RankedService[];
     perService: number;
     groupExprs: string[];
+    minRequests: number;
   },
 ): Promise<CollectedErrors> {
-  const { current, comparison, shown, perService, groupExprs } = args;
+  const { current, comparison, shown, perService, groupExprs, minRequests } =
+    args;
   const withErrors = shown
     .filter(r => (r.current?.errors ?? 0) > 0)
     .map(r => r.service);
@@ -50,6 +53,7 @@ export async function collectErrors(
           current,
           comparison,
           shown.filter(r => r.current).map(r => r.service),
+          minRequests,
         )
       : Promise.resolve(new Map<string, NewOperation[]>()),
   ]);
@@ -70,14 +74,18 @@ export async function collectErrors(
 
   const spanKey = ctx.source.spanNameExpression;
   const currentErrors = new Map<string, ErrorGroup[]>();
+  const baseline = new Map(shown.map(r => [r.service, hasBaseline(r)]));
   for (const [service, groups] of candidates) {
     const newOps = new Set(
       (newOperations.get(service) ?? []).map(o => o.operation),
     );
     currentErrors.set(
       service,
-      selectTopErrors(groups, comparisonErrorCounts, perService, g =>
-        newOps.has(g.group[spanKey] ?? ''),
+      selectTopErrors(
+        groups,
+        comparisonErrorCounts,
+        perService,
+        g => !baseline.get(service) || newOps.has(g.group[spanKey] ?? ''),
       ),
     );
   }
