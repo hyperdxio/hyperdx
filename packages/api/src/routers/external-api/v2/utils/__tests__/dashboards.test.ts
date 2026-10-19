@@ -11,10 +11,14 @@ import { DashboardDocument } from '@/models/dashboard';
 import {
   collectTileContainerRefIssues,
   ConfigTile,
+  convertExternalTilesToInternal,
   convertToExternalDashboard,
   convertToInternalTileConfig,
 } from '@/routers/external-api/v2/utils/dashboards';
-import { externalDashboardSelectItemSchema } from '@/utils/zod';
+import {
+  externalDashboardSelectItemSchema,
+  ExternalDashboardTileWithId,
+} from '@/utils/zod';
 
 function makeMarkdownTile(
   markdown?: string,
@@ -97,15 +101,62 @@ describe('tile description', () => {
     const internal = convertToInternalTileConfig(
       makeMarkdownTile('# Hello', { description: 'What this tile shows.' }),
     );
-    expect(internal.description).toBe('What this tile shows.');
+    expect(internal.config.description).toBe('What this tile shows.');
+    expect(internal).not.toHaveProperty('description');
 
     const ext = convertToExternalDashboard(makeDoc({ tiles: [internal] }));
     expect(ext.tiles[0].description).toBe('What this tile shows.');
   });
 
+  describe.each([
+    ['a series tile', 'series'],
+    ['a config tile', 'config'],
+  ] as const)(
+    'through convertExternalTilesToInternal for %s',
+    (_label, kind) => {
+      const makeTile = (
+        overrides: { description?: string } = {},
+      ): ExternalDashboardTileWithId => ({
+        id: 'test-id',
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 4,
+        name: 'Tile',
+        ...(kind === 'series'
+          ? {
+              series: [
+                {
+                  type: 'time',
+                  sourceId: new mongoose.Types.ObjectId().toString(),
+                  aggFn: 'count',
+                  where: '',
+                  groupBy: [],
+                  displayType: 'line',
+                },
+              ],
+            }
+          : { config: { displayType: 'markdown', markdown: '# Hello' } }),
+        ...overrides,
+      });
+
+      it('keeps the description', () => {
+        const [internal] = convertExternalTilesToInternal([
+          makeTile({ description: 'What this tile shows.' }),
+        ]);
+        expect(internal.config.description).toBe('What this tile shows.');
+      });
+
+      it('omits the description when unset', () => {
+        const [internal] = convertExternalTilesToInternal([makeTile()]);
+        expect(internal.config).not.toHaveProperty('description');
+      });
+    },
+  );
+
   it('omits the field when unset', () => {
     const internal = convertToInternalTileConfig(makeMarkdownTile('# Hello'));
-    expect(internal).not.toHaveProperty('description');
+    expect(internal.config).not.toHaveProperty('description');
     const ext = convertToExternalDashboard(makeDoc({ tiles: [internal] }));
     expect(ext.tiles[0]).not.toHaveProperty('description');
   });

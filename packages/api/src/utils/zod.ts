@@ -26,6 +26,7 @@ import {
   SearchConditionLanguageSchema as whereLanguageSchema,
   StaticListDashboardFilterSchema,
   tagsSchema,
+  TILE_DESCRIPTION_MAX_LENGTH,
   validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
@@ -808,7 +809,7 @@ export const externalDashboardTileSchema = z
     // valid container id from the editor always fits.
     containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
     tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
-    description: z.string().max(1024).optional(),
+    description: z.string().max(TILE_DESCRIPTION_MAX_LENGTH).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.series && data.config) {

@@ -36,7 +36,6 @@ export type Tile = {
   config: SavedChartConfig;
   containerId?: string;
   tabId?: string;
-  description?: string;
 };
 
 export type Dashboard = {
