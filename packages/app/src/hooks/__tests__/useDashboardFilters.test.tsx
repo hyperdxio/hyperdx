@@ -1106,6 +1106,71 @@ describe('useDashboardFilters', () => {
       ]);
     });
 
+    it('applies a clicked value to every target filter', () => {
+      const other: AdhocDashboardFilter = {
+        ...adhocFilter,
+        id: 'adhoc2',
+        name: 'More',
+        variableName: 'more',
+      };
+      mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+      const { result } = renderHook(() =>
+        useDashboardFilters([adhocFilter, other]),
+      );
+
+      act(() => {
+        result.current.applyAdhocAction(
+          ['adhoc1', 'adhoc2'],
+          [{ key: 'ServiceName', value: 'api' }],
+          'include',
+        );
+      });
+
+      const included = { key: 'ServiceName', operator: '=', value: 'api' };
+      expect(mockState).toEqual([
+        { type: 'adhoc', name: 'conds', conditions: [included] },
+        { type: 'adhoc', name: 'more', conditions: [included] },
+      ]);
+    });
+
+    it('leaves filters unchanged when a clicked value is too long', () => {
+      mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
+      const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
+
+      act(() => {
+        result.current.applyAdhocAction(
+          ['adhoc1'],
+          [{ key: 'ServiceName', value: 'x'.repeat(10001) }],
+          'include',
+        );
+      });
+
+      expect(mockState).toEqual([
+        { type: 'adhoc', name: 'conds', conditions: [condition] },
+      ]);
+    });
+
+    it('leaves a filter that would exceed its limit unchanged', () => {
+      const full = Array.from(
+        { length: ADHOC_FILTER_MAX_CONDITIONS },
+        (_, i) => ({ ...condition, value: `${i}` }),
+      );
+      mockState = [{ type: 'adhoc', name: 'conds', conditions: full }];
+      const { result } = renderHook(() => useDashboardFilters([adhocFilter]));
+
+      act(() => {
+        result.current.applyAdhocAction(
+          ['adhoc1'],
+          [{ key: 'ServiceName', value: 'web' }],
+          'include',
+        );
+      });
+
+      expect(mockState).toEqual([
+        { type: 'adhoc', name: 'conds', conditions: full },
+      ]);
+    });
+
     it('keeps conditions across a write to another filter', () => {
       mockState = [{ type: 'adhoc', name: 'conds', conditions: [condition] }];
       const filters = [mockFilters[0], adhocFilter];
