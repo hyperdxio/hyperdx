@@ -1545,16 +1545,13 @@ describe('getLogSeverityLevel', () => {
     ['17', undefined, 'error'],
     [0, 'ERROR', 'error'],
     [undefined, 'Warning', 'warn'],
-    ['', 'critical', 'error'],
+    ['', 'fatal', 'error'],
     [undefined, 'info', undefined],
-  ])(
-    'maps SeverityNumber %p and SeverityText %p to %p',
-    (severityNumber, severityText, expected) => {
-      expect(getLogSeverityLevel({ severityNumber, severityText })).toBe(
-        expected,
-      );
-    },
-  );
+  ])('maps %p and %p to %p', (severityNumber, severityText, expected) => {
+    expect(getLogSeverityLevel({ severityNumber, severityText })).toBe(
+      expected,
+    );
+  });
 });
 
 describe('getColorFromCSSToken', () => {
