@@ -15,6 +15,10 @@ const OTEL_LOG_JSON_SHA256_HEX =
 const LONG_STRING_SHA256_HEX =
   'ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d';
 
+/** From ClickHouse: lower(hex(SHA256(leftUTF8(repeat('a', 2000), 1000)))). */
+const LONGER_STRING_SHA256_HEX =
+  '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3';
+
 describe('buildColumnMap', () => {
   it('quotes a column name that is not a bare identifier', () => {
     const meta: ColumnMetaType[] = [{ name: 'x-host-header', type: 'String' }];
@@ -103,6 +107,20 @@ describe('buildColumnMap', () => {
 
     expect(where).toBe(
       `lower(hex(SHA256(leftUTF8(description, 1000))))='${LONG_STRING_SHA256_HEX}'`,
+    );
+  });
+
+  it('hashes only the first 1000 UTF-8 code units when the string exceeds that limit', () => {
+    const meta: ColumnMetaType[] = [{ name: 'description', type: 'String' }];
+
+    const where = getRowWhere(
+      { description: 'a'.repeat(2000) },
+      buildColumnMap(meta, {}),
+      {},
+    ).where;
+
+    expect(where).toBe(
+      `lower(hex(SHA256(leftUTF8(description, 1000))))='${LONGER_STRING_SHA256_HEX}'`,
     );
   });
 });

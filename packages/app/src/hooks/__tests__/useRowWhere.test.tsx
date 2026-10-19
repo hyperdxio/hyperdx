@@ -14,6 +14,10 @@ const OTEL_LOG_JSON_FOR_SHA256 =
 const OTEL_LOG_JSON_SHA256_HEX =
   '9bf1e18eb79cfe32fa7abb7c2b5370085a73eb299ffaaa526393084c8681c0b8';
 
+/** From ClickHouse: lower(hex(SHA256(leftUTF8(repeat('a', 2000), 1000)))). */
+const LONGER_STRING_SHA256_HEX =
+  '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3';
+
 // Mock convertCHDataTypeToJSType
 jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
   ...jest.requireActual('@hyperdx/common-utils/dist/clickhouse'),
@@ -317,6 +321,27 @@ describe('processRowToWhereClause', () => {
 
     expect(result).toBe(
       `lower(hex(SHA256(leftUTF8(description, 1000))))='${expected}'`,
+    );
+  });
+
+  it('should hash only the first 1000 UTF-8 code units when the string exceeds that limit', () => {
+    const columnMap = new Map([
+      [
+        'description',
+        {
+          name: 'description',
+          type: 'String',
+          valueExpr: 'description',
+          jsType: JSDataType.String,
+        },
+      ],
+    ]);
+
+    const row = { description: 'a'.repeat(2000) };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe(
+      `lower(hex(SHA256(leftUTF8(description, 1000))))='${LONGER_STRING_SHA256_HEX}'`,
     );
   });
 
