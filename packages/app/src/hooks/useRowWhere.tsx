@@ -1,5 +1,4 @@
 import { useCallback, useMemo } from 'react';
-import SHA256 from 'crypto-js/sha256';
 import SqlString from 'sqlstring';
 import z from 'zod';
 import {
@@ -10,6 +9,8 @@ import {
 import { quoteResultColumnNameIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
 import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
 import { WithClauseSchema } from '@hyperdx/common-utils/dist/types';
+
+import { clickHouseSha256HexLower } from '@/utils/clickHouseSha256';
 
 const MAX_STRING_LENGTH = 512;
 
@@ -86,7 +87,7 @@ export function processRowToWhereClause(
           // Handle case for whole json object, ex: json
           return SqlString.format(`lower(hex(SHA256(toString(?))))=?`, [
             SqlString.raw(valueExpr),
-            SHA256(value).toString(),
+            clickHouseSha256HexLower(value),
           ]);
         case JSDataType.Dynamic:
           // Handle case for json element, ex: json.c
@@ -119,7 +120,7 @@ export function processRowToWhereClause(
               `lower(hex(SHA256(leftUTF8(?, 1000))))=?`,
               [
                 SqlString.raw(valueExpr),
-                SHA256(value.substring(0, 1000)).toString(),
+                clickHouseSha256HexLower(value.substring(0, 1000)),
               ],
             );
           }

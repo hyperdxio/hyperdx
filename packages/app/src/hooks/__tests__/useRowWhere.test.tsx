@@ -1,4 +1,3 @@
-import SHA256 from 'crypto-js/sha256';
 import {
   ColumnMetaType,
   JSDataType,
@@ -6,9 +5,14 @@ import {
 import { renderHook } from '@testing-library/react';
 
 import useRowWhere, { processRowToWhereClause } from '@/hooks/useRowWhere';
+import { clickHouseSha256HexLower } from '@/utils/clickHouseSha256';
 
-// Mock crypto-js/sha256
-jest.mock('crypto-js/sha256');
+/** From ClickHouse: lower(hex(SHA256(<json log line>))) on telemetry.otel_logs. */
+const OTEL_LOG_JSON_FOR_SHA256 =
+  '{"caller":"github.com/cloudzero/cloudzero-agent/app/domain/shipper/shipper.go:289","level":"info","message":"Successfully ran the shipper cycle","time":"2026-10-18T00:00:03Z","version":"5d05872b1f292e4bf481c61b187494b9bafff6a8.1.2.10-2026-03-24_02:00:46PM"}';
+
+const OTEL_LOG_JSON_SHA256_HEX =
+  '9bf1e18eb79cfe32fa7abb7c2b5370085a73eb299ffaaa526393084c8681c0b8';
 
 // Mock convertCHDataTypeToJSType
 jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
@@ -28,14 +32,15 @@ jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
   }),
 }));
 
-describe('processRowToWhereClause', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (SHA256 as jest.Mock).mockImplementation((value: string) => ({
-      toString: () => `sha256_${value}`,
-    }));
+describe('clickHouseSha256HexLower', () => {
+  it('matches ClickHouse lower(hex(SHA256(...))) for a real otel log JSON string', () => {
+    expect(clickHouseSha256HexLower(OTEL_LOG_JSON_FOR_SHA256)).toBe(
+      OTEL_LOG_JSON_SHA256_HEX,
+    );
   });
+});
 
+describe('processRowToWhereClause', () => {
   it('should handle string columns', () => {
     const columnMap = new Map([
       [
@@ -129,13 +134,34 @@ describe('processRowToWhereClause', () => {
       ],
     ]);
 
-    const row = { data: '{"key": "value"}' };
+    const jsonValue = '{"key": "value"}';
+    const row = { data: jsonValue };
     const result = processRowToWhereClause(row, columnMap);
 
     expect(result).toBe(
-      'lower(hex(SHA256(toString(data))))=\'sha256_{\\"key\\": \\"value\\"}\'',
+      `lower(hex(SHA256(toString(data))))='${clickHouseSha256HexLower(jsonValue)}'`,
     );
-    expect(SHA256).toHaveBeenCalledWith('{"key": "value"}');
+  });
+
+  it('should handle JSON columns with SHA256 for otel log payload', () => {
+    const columnMap = new Map([
+      [
+        'Body',
+        {
+          name: 'Body',
+          type: 'JSON',
+          valueExpr: 'Body',
+          jsType: JSDataType.JSON,
+        },
+      ],
+    ]);
+
+    const row = { Body: OTEL_LOG_JSON_FOR_SHA256 };
+    const result = processRowToWhereClause(row, columnMap);
+
+    expect(result).toBe(
+      `lower(hex(SHA256(toString(Body))))='${OTEL_LOG_JSON_SHA256_HEX}'`,
+    );
   });
 
   it('should handle Dynamic columns with null value', () => {
@@ -284,9 +310,8 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
 
     expect(result).toBe(
-      `lower(hex(SHA256(leftUTF8(description, 1000))))='sha256_${'a'.repeat(600)}'`,
+      `lower(hex(SHA256(leftUTF8(description, 1000))))='${clickHouseSha256HexLower(longString)}'`,
     );
-    expect(SHA256).toHaveBeenCalledWith('a'.repeat(600));
   });
 
   it('should handle multiple columns with AND', () => {
@@ -446,13 +471,6 @@ describe('processRowToWhereClause', () => {
 });
 
 describe('useRowWhere', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    (SHA256 as jest.Mock).mockImplementation((value: string) => ({
-      toString: () => `sha256_${value}`,
-    }));
-  });
-
   it('should return a function that processes rows', () => {
     const meta: ColumnMetaType[] = [
       { name: 'id', type: 'String' },
