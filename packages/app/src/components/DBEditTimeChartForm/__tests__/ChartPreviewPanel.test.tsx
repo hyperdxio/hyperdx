@@ -309,6 +309,7 @@ describe('ChartPreviewPanel', () => {
       displayType: DisplayType.Line,
       promqlExpression: EXPRESSION,
       connection: 'default',
+      source: 'source-promql',
       from: { databaseName: 'default', tableName: 'metrics' },
       dateRange,
       ...overrides,

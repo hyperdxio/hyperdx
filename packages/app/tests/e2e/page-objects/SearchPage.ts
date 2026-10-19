@@ -128,6 +128,11 @@ export class SearchPage {
   }
 
   async selectSource(sourceName: string) {
+    // Clicking the option that is already selected deselects it. Leave an
+    // existing match alone.
+    if ((await this.sourceSelector.inputValue()) === sourceName) {
+      return;
+    }
     await this.sourceSelector.click();
     await this.page
       .getByRole('option', { name: sourceName, exact: true })

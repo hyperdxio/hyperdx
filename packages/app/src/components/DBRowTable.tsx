@@ -98,6 +98,7 @@ import {
 import { FormatTime } from '@/useFormatTime';
 import {
   DEFAULT_ROW_CLICK_ACTION,
+  useContentFontSize,
   useUserPreferences,
 } from '@/useUserPreferences';
 import {
@@ -112,6 +113,7 @@ import { csvExportFilename } from '@/utils/csv';
 import ChartErrorState, {
   ChartErrorStateVariant,
 } from './charts/ChartErrorState';
+import { getAdhocCellCondition } from './DBTable/adhocCellCondition';
 import DBRowTableFieldWithPopover from './DBTable/DBRowTableFieldWithPopover';
 import DBRowTableRowButtons from './DBTable/DBRowTableRowButtons';
 import {
@@ -167,15 +169,21 @@ function getResolvedColumnSize(
     columnTypeMap: Map<string, { _type: JSDataType | null }>;
     logLevelColumn?: string;
     columnSizeStorage: Record<string, number>;
+    /**
+     * Content font size ratio. Only the defaults scale — a width the user
+     * dragged to is what they asked for at any font size.
+     */
+    contentFontScale: number;
   },
 ): number {
   const columnId = opts.aliasMap?.[column] ? `"${column}"` : column;
   const stored = opts.columnSizeStorage[columnId];
   if (stored != null) return stored;
+  const scaled = (px: number) => Math.round(px * opts.contentFontScale);
   const jsType = opts.columnTypeMap.get(column)?._type;
-  if (jsType === JSDataType.Date) return 170;
-  if (column === opts.logLevelColumn) return 115;
-  return 160;
+  if (jsType === JSDataType.Date) return scaled(170);
+  if (column === opts.logLevelColumn) return scaled(115);
+  return scaled(160);
 }
 
 function inferLogLevelColumn(rows: Record<string, any>[]) {
@@ -398,7 +406,7 @@ export const RawLogTable = memo(
     tableId?: string;
     columnNameMap?: Record<string, string>;
     dedupRows?: boolean;
-    columnTypeMap: Map<string, { _type: JSDataType | null }>;
+    columnTypeMap: Map<string, { _type: JSDataType | null; type?: string }>;
 
     isError?: boolean;
     error?: ClickHouseQueryError | Error;
@@ -460,6 +468,7 @@ export const RawLogTable = memo(
     const {
       userPreferences: { isUTC, rowClickAction },
     } = useUserPreferences();
+    const { scale: contentFontScale } = useContentFontSize();
 
     // The ClickHouse dashboard's slow-query list has no side panel to open, so
     // inline expansion is the only thing a row click can do there.
@@ -515,6 +524,27 @@ export const RawLogTable = memo(
     // Get the alias map from the config so we resolve correct column ids
     const { data: aliasMap } = useAliasMapFromChartConfig(config);
 
+    const { isAdhocFilterTarget } = use(RowSidePanelContext);
+
+    const getCellFilter = useCallback(
+      (
+        column: string | undefined,
+        cellValue: unknown,
+      ): { columnName?: string; filterValue?: string } => {
+        if (!isAdhocFilterTarget || column == null) {
+          return { columnName: column };
+        }
+        const condition = getAdhocCellCondition(
+          column,
+          columnTypeMap.get(column),
+          cellValue,
+          aliasMap,
+        );
+        return { columnName: condition?.key, filterValue: condition?.value };
+      },
+      [isAdhocFilterTarget, aliasMap, columnTypeMap],
+    );
+
     // Reset scroll when live tail is enabled for the first time
     const prevIsLive = usePrevious(isLive);
     useEffect(() => {
@@ -569,8 +599,20 @@ export const RawLogTable = memo(
     });
 
     const columnSizeOpts = useMemo(
-      () => ({ aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage }),
-      [aliasMap, columnTypeMap, logLevelColumn, columnSizeStorage],
+      () => ({
+        aliasMap,
+        columnTypeMap,
+        logLevelColumn,
+        columnSizeStorage,
+        contentFontScale,
+      }),
+      [
+        aliasMap,
+        columnTypeMap,
+        logLevelColumn,
+        columnSizeStorage,
+        contentFontScale,
+      ],
     );
 
     const leadingColumnsWidth =
@@ -783,6 +825,7 @@ export const RawLogTable = memo(
 
       const columnSizeProps = {
         state: {
+          ...initReactTableProps.state,
           columnSizing: columnSizeStorage,
         },
         onColumnSizingChange: onColumnSizingChange,
@@ -1272,10 +1315,11 @@ export const RawLogTable = memo(
                                       cellValue={cellValue}
                                       wrapLinesEnabled={wrapLinesEnabled}
                                       tableContainerRef={tableContainerRef}
-                                      columnName={
+                                      {...getCellFilter(
                                         (cell.column.columnDef.meta as any)
-                                          ?.column
-                                      }
+                                          ?.column,
+                                        cellValue,
+                                      )}
                                       isChart={
                                         (cell.column.columnDef.meta as any)
                                           ?.column === '__hdx_pattern_trend'
@@ -1321,10 +1365,10 @@ export const RawLogTable = memo(
                         canOpenSidePanel={canOpenSidePanel}
                       >
                         {renderRowDetails?.({
+                          ...row.original,
                           id: rowId,
                           aliasWith:
                             row.original[INTERNAL_ROW_FIELDS.ALIAS_WITH],
-                          ...row.original,
                         })}
                       </ExpandedLogRow>
                     )}
@@ -1488,6 +1532,23 @@ export function appendSelectWithAdditionalKeys(
   }
 }
 
+// Block columns are only stable row identifiers when the table persists them
+// (the virtual versions are renumbered on merge). Either one combined with the
+// primary key is unique enough: two rows would need identical key values
+// (incl. a nanosecond timestamp) plus the same insert block or the same offset
+// within their blocks. So a table that persists only one of them still skips
+// the slow full-row lookup.
+export function getPersistedBlockColumns(engineFull: string): string[] {
+  const columns: string[] = [];
+  if (engineFull.includes('enable_block_number_column = 1')) {
+    columns.push('_block_number');
+  }
+  if (engineFull.includes('enable_block_offset_column = 1')) {
+    columns.push('_block_offset');
+  }
+  return columns;
+}
+
 function getSelectLength(select: SelectList): number {
   if (typeof select === 'string') {
     return select.split(',').filter(s => s.trim().length > 0).length;
@@ -1526,16 +1587,16 @@ export function useConfigWithAdditionalSelect(
     }
 
     let extraKeys: string[] = [];
+    let hasBlockColumns = false;
 
     if (sourceId) {
-      const engineFull = tableMetadata?.engine_full ?? '';
+      const blockColumns = getPersistedBlockColumns(
+        tableMetadata?.engine_full ?? '',
+      );
 
-      const hasBlockColumns =
-        engineFull.includes('enable_block_number_column = 1') &&
-        engineFull.includes('enable_block_offset_column = 1');
-
-      if (hasBlockColumns) {
-        extraKeys = ['_block_number', '_block_offset'];
+      if (blockColumns.length > 0) {
+        extraKeys = blockColumns;
+        hasBlockColumns = true;
       } else if (columns?.some(c => c.name === '__hdx_id')) {
         extraKeys = ['__hdx_id'];
       }
@@ -1554,10 +1615,6 @@ export function useConfigWithAdditionalSelect(
     // column references like Timestamp, ServiceName) so the row WHERE clause
     // can use only these, avoiding expensive index loading on large columns
     // like Body.
-    const hasBlockColumns =
-      extraKeys.includes('_block_number') &&
-      extraKeys.includes('_block_offset');
-
     const rowKeyColumns = hasBlockColumns
       ? new Set([
           ...splitAndTrimWithBracket(partitionKey),
@@ -1579,6 +1636,7 @@ function selectColumnMapWithoutAdditionalKeys(
   string,
   {
     _type: JSDataType | null;
+    type: string;
   }
 > {
   if (selectMeta == null || additionalKeysLength == null) {

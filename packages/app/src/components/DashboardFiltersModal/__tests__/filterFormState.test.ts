@@ -80,6 +80,33 @@ describe('toFormValues', () => {
       isVariableEnabled: true,
     });
   });
+
+  it('seeds the ad hoc fields from a stored ad hoc filter', () => {
+    const values = toFormValues({
+      id: 'a',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'promql',
+      sources: ['prom'],
+      appliesToSourceIds: ['prom-2'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'conds',
+    });
+
+    expect(values).toMatchObject({
+      type: 'ADHOC',
+      sourceType: 'promql',
+      sources: ['prom'],
+      appliesToSourceIds: ['prom-2'],
+      variableName: 'conds',
+      isBroadcastEnabled: false,
+    });
+  });
+
+  it('defaults a new filter to SQL ad hoc sources', () => {
+    expect(toFormValues()).toMatchObject({ sourceType: 'sql', sources: [] });
+  });
 });
 
 describe('toSavedFilter', () => {
@@ -186,6 +213,59 @@ describe('toSavedFilter', () => {
     ).toThrow();
   });
 
+  it('keeps only the ad hoc fields on an ad hoc filter', () => {
+    const saved = toSavedFilter(
+      formValues({
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources: ['logs', 'traces'],
+        appliesToSourceIds: ['logs'],
+        // Left behind by the other editors before the type was switched.
+        expression: 'Env',
+        source: 'logs',
+        options: ['prod'],
+        isRequired: true,
+        isSingleSelect: true,
+      }),
+    );
+
+    expect(saved).toEqual({
+      id: 'a',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'sql',
+      sources: ['logs', 'traces'],
+      appliesToSourceIds: ['logs'],
+      isBroadcastEnabled: true,
+      isVariableEnabled: true,
+      variableName: 'Conditions',
+    });
+  });
+
+  it('drops the ad hoc broadcast scope when broadcast is off', () => {
+    const saved = toSavedFilter(
+      formValues({
+        type: 'ADHOC',
+        name: 'Conditions',
+        sources: ['logs'],
+        appliesToSourceIds: ['logs'],
+        isBroadcastEnabled: false,
+      }),
+    );
+
+    expect(saved).toMatchObject({
+      isBroadcastEnabled: false,
+      appliesToSourceIds: undefined,
+    });
+  });
+
+  it('rejects an ad hoc filter without sources', () => {
+    expect(() =>
+      toSavedFilter(formValues({ type: 'ADHOC', name: 'Conditions' })),
+    ).toThrow();
+  });
+
   it('rejects values the schema cannot accept', () => {
     expect(() =>
       toSavedFilter(formValues({ type: 'STATIC_LIST', options: [] })),
@@ -193,8 +273,11 @@ describe('toSavedFilter', () => {
   });
 });
 
-/** The minimum a form needs to save, per filter type. */
-const byType: Record<DashboardFilter['type'], Partial<FilterFormValues>> = {
+/** The minimum a form needs to save, per filter type the form supports. */
+const byType: Record<
+  Exclude<DashboardFilter['type'], 'ADHOC'>,
+  Partial<FilterFormValues>
+> = {
   QUERY_EXPRESSION: {
     type: 'QUERY_EXPRESSION',
     name: 'Service',
@@ -221,7 +304,7 @@ describe('minSelections', () => {
     (_type, filter) => {
       const saved = toSavedFilter(formValues({ ...filter, isRequired: true }));
 
-      expect(saved.minSelections).toBe(1);
+      expect(saved).toMatchObject({ minSelections: 1 });
       expect(toFormValues(saved).isRequired).toBe(true);
     },
   );
@@ -262,7 +345,7 @@ describe('isGlobalRequirement', () => {
         formValues({ ...filter, isRequired: true, isGlobalRequirement: true }),
       );
 
-      expect(saved.isGlobalRequirement).toBe(true);
+      expect(saved).toMatchObject({ isGlobalRequirement: true });
       expect(toFormValues(saved).isGlobalRequirement).toBe(true);
     },
   );
@@ -307,7 +390,7 @@ describe('maxSelections', () => {
         formValues({ ...filter, isSingleSelect: true }),
       );
 
-      expect(saved.maxSelections).toBe(1);
+      expect(saved).toMatchObject({ maxSelections: 1 });
       expect(saved).not.toHaveProperty('isSingleSelect');
       expect(toFormValues(saved).isSingleSelect).toBe(true);
     },

@@ -54,6 +54,8 @@ import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
 import Dashboard, { DashboardDocument } from '@/models/dashboard';
 import {
+  getExternalCompatibleFilters,
+  getExternalCompatibleFilterValues,
   translateExternalChartToTileConfig,
   translateExternalFilterToFilter,
   translateFilterToExternalFilter,
@@ -659,6 +661,9 @@ function convertTileToExternalChart(
     config: convertToExternalTileChartConfig(tile.config) ?? defaultTileConfig,
     ...(containerId !== undefined ? { containerId } : {}),
     ...(tabId !== undefined ? { tabId } : {}),
+    ...(tile.config.description
+      ? { description: tile.config.description }
+      : {}),
   };
 }
 
@@ -682,10 +687,14 @@ export function convertToExternalDashboard(
       .map(tile => convertTileToExternalChart(tile, containerById, dashboardId))
       .filter(t => t !== undefined),
     tags: dashboard.tags || [],
-    filters: dashboard.filters?.map(translateFilterToExternalFilter) || [],
+    filters: getExternalCompatibleFilters(dashboard.filters).map(
+      translateFilterToExternalFilter,
+    ),
     savedQuery: dashboard.savedQuery ?? null,
     savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
-    savedFilterValues: dashboard.savedFilterValues ?? [],
+    savedFilterValues: getExternalCompatibleFilterValues(
+      dashboard.savedFilterValues,
+    ),
     // Mongoose persists missing arrays as []. Only emit containers when
     // the user actually saved one or more, so dashboards without the
     // organization layer round-trip with the field absent.
@@ -726,6 +735,7 @@ export function convertToInternalTileConfig(
 ): DashboardDocument['tiles'][number] {
   const externalConfig = externalTile.config;
   const name = externalTile.name || '';
+  const description = externalTile.description || undefined;
 
   let internalConfig: SavedChartConfig;
 
@@ -748,6 +758,7 @@ export function convertToInternalTileConfig(
             TIME_SERIES_DISPLAY_TYPE_BY_NAME[externalConfig.displayType],
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           name,
+          description,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
@@ -768,6 +779,7 @@ export function convertToInternalTileConfig(
                   ? DisplayType.Bar
                   : DisplayType.Pie,
           name,
+          description,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
@@ -820,6 +832,7 @@ export function convertToInternalTileConfig(
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
           seriesLimit: externalConfig.seriesLimit,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'table':
@@ -842,6 +855,7 @@ export function convertToInternalTileConfig(
           where: '',
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'number':
@@ -874,6 +888,7 @@ export function convertToInternalTileConfig(
           // palette token, so it passes through directly.
           backgroundChart: externalConfig.backgroundChart,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'pie':
@@ -889,6 +904,7 @@ export function convertToInternalTileConfig(
           where: '',
           seriesLimit: externalConfig.limit,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'heatmap': {
@@ -903,6 +919,7 @@ export function convertToInternalTileConfig(
             source: externalConfig.sourceId,
             where: '',
             name,
+            description,
           } satisfies BuilderSavedChartConfig;
           break;
         }
@@ -966,6 +983,7 @@ export function convertToInternalTileConfig(
           where: externalConfig.where,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       }
@@ -975,6 +993,7 @@ export function convertToInternalTileConfig(
           displayType: DisplayType.Search,
           source: externalConfig.sourceId,
           name,
+          description,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
         } satisfies BuilderSavedChartConfig;
         break;
@@ -984,6 +1003,7 @@ export function convertToInternalTileConfig(
           displayType: DisplayType.EventPatterns,
           source: externalConfig.sourceId,
           name,
+          description,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
         } satisfies BuilderSavedChartConfig;
         break;
@@ -995,6 +1015,7 @@ export function convertToInternalTileConfig(
           where: '',
           select: [],
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       default:
@@ -1145,7 +1166,7 @@ function getHeatmapTilesWithIncompatibleSources(
  * Returns an error message string if any of the referenced source IDs is not
  * a valid PromQL source, or null if all of them are.
  */
-export function getPromqlLabelFilterSourceError(
+function getPromqlLabelFilterSourceError(
   sources: SourceForValidation[],
   referencedSourceIds: string[],
 ): string | null {

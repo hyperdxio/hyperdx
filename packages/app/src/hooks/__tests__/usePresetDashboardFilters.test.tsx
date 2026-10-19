@@ -1,7 +1,7 @@
 import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  ConditionFilter,
   DashboardFilter,
-  Filter,
   PresetDashboard,
   PresetDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
@@ -63,7 +63,7 @@ describe('usePresetDashboardFilters', () => {
     ],
   );
 
-  const mockFilterQueries: Filter[] = [
+  const mockFilterQueries: ConditionFilter[] = [
     {
       type: 'sql',
       condition: "environment = 'production'",
@@ -111,6 +111,9 @@ describe('usePresetDashboardFilters', () => {
     jest.mocked(useDashboardFilters).mockReturnValue({
       selectionByFilterId: mockSelectionByFilterId,
       setFilterValue: mockSetFilterValue,
+      adhocConditionsByFilterId: new Map(),
+      setAdhocConditions: jest.fn(),
+      applyAdhocAction: jest.fn(),
       broadcastedFilters: mockFilterQueries,
       setFilterValueEntries: jest.fn(),
       filterValueEntries: null,

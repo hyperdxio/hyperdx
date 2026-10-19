@@ -2,10 +2,10 @@ import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { parseAsString, useQueryState } from 'nuqs';
 import SqlString from 'sqlstring';
+import { Badge } from '@clickhouse/click-ui';
 import {
   Accordion,
   Anchor,
-  Badge,
   Button,
   Drawer,
   Group,
@@ -75,14 +75,10 @@ function SessionSpanItem({
             {row.spanName}
           </Text>
           {row.model != null && (
-            <Badge size="xs" variant="light" color="violet" tt="none">
-              {row.model}
-            </Badge>
+            <Badge size="sm" text={row.model} state="info" />
           )}
           {row.toolName != null && (
-            <Badge size="xs" variant="light" color="orange" tt="none">
-              {row.toolName}
-            </Badge>
+            <Badge size="sm" text={row.toolName} state="warning" />
           )}
           {row.totalTokens != null && row.totalTokens > 0 && (
             <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>

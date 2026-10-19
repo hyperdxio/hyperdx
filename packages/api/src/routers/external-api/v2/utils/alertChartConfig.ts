@@ -98,6 +98,8 @@ export const EXTERNAL_TO_INTERNAL_KEY: Record<string, string> = {
  */
 export const EVALUATION_INERT_CONFIG_KEYS: ReadonlySet<string> = new Set([
   'markdown',
+  // Tile tooltip text; the alert task never reads it.
+  'description',
   // Only meaningful together with `filters`, which is itself lossy.
   'filtersLogicalOperator',
   'groupByColumnsOnLeft',

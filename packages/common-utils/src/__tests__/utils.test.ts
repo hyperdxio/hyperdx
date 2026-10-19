@@ -13,6 +13,7 @@ import {
   getAlignedDateRange,
   getDistributedTableArgs,
   getFirstOrderingItem,
+  getPercentileAggFnLevel,
   hasNonEmptyOrderBy,
   hasPositiveSeriesLimit,
   isFirstOrderByAscending,
@@ -25,6 +26,7 @@ import {
   parseToStartOfFunction,
   pickBucketTimestampColumn,
   replaceJsonExpressions,
+  resolvePercentileAggFn,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
 } from '@/core/utils';
@@ -1277,6 +1279,83 @@ describe('utils', () => {
           filter.type === 'QUERY_EXPRESSION' && filter.appliesToSourceIds,
         ).toBeUndefined();
       }
+    });
+
+    it('should remap ad hoc filter sources and applies-to sources from IDs to names', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+        {
+          id: 'source2',
+          name: 'Traces',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'traces_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Ad hoc Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-scoped',
+            type: 'ADHOC',
+            name: 'Scoped',
+            sourceType: 'sql',
+            sources: ['source1', 'source2'],
+            appliesToSourceIds: ['source2', 'deleted-source-id'],
+            isVariableEnabled: true,
+            variableName: 'scoped',
+          },
+          {
+            id: 'filter-unresolved',
+            type: 'ADHOC',
+            name: 'Unresolved',
+            sourceType: 'sql',
+            sources: ['source1'],
+            appliesToSourceIds: ['deleted-source-id'],
+            isVariableEnabled: true,
+            variableName: 'unresolved',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-scoped',
+          type: 'ADHOC',
+          name: 'Scoped',
+          sourceType: 'sql',
+          sources: ['Logs', 'Traces'],
+          appliesToSourceIds: ['Traces'],
+          isVariableEnabled: true,
+          variableName: 'scoped',
+        },
+        {
+          id: 'filter-unresolved',
+          type: 'ADHOC',
+          name: 'Unresolved',
+          sourceType: 'sql',
+          sources: ['Logs'],
+          isVariableEnabled: true,
+          variableName: 'unresolved',
+        },
+      ]);
+      expect(() => DashboardTemplateSchema.parse(template)).not.toThrow();
     });
 
     // Variable settings are dashboard-local — unlike `source` and
@@ -3421,6 +3500,46 @@ describe('utils', () => {
       expect(
         convertDateRangeToGranularityString(range(30 * 60), undefined, 0),
       ).toBe('30 second');
+    });
+  });
+
+  describe('getPercentileAggFnLevel', () => {
+    it.each([
+      ['p50', 0.5],
+      ['p90', 0.9],
+      ['p95', 0.95],
+      ['p99', 0.99],
+    ])('returns the level of %s', (aggFn, level) => {
+      expect(getPercentileAggFnLevel(aggFn)).toBe(level);
+    });
+
+    it.each(['quantile', 'avg', 'p75', 'toString', undefined])(
+      'returns undefined for %s',
+      aggFn => {
+        expect(getPercentileAggFnLevel(aggFn)).toBeUndefined();
+      },
+    );
+  });
+
+  describe('resolvePercentileAggFn', () => {
+    it('rewrites a percentile shorthand as quantile with its level', () => {
+      expect(
+        resolvePercentileAggFn({
+          aggFn: 'p95',
+          valueExpression: 'Duration',
+          aggCondition: "ServiceName = 'api'",
+        }),
+      ).toEqual({
+        aggFn: 'quantile',
+        level: 0.95,
+        valueExpression: 'Duration',
+        aggCondition: "ServiceName = 'api'",
+      });
+    });
+
+    it('returns other select items unchanged', () => {
+      const select = { aggFn: 'quantile', level: 0.5, valueExpression: 'x' };
+      expect(resolvePercentileAggFn(select)).toBe(select);
     });
   });
 });

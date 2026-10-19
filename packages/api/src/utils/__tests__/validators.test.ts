@@ -1,6 +1,11 @@
 import { WebhookService } from '@hyperdx/common-utils/dist/types';
 
+import { createHandlebarsWithHelpers } from '@/tasks/checkAlerts/transports';
 import * as validators from '@/utils/validators';
+import {
+  WEBHOOK_BODY_HELPERS,
+  WebhookBodyValidationError,
+} from '@/utils/webhookBodyTemplate';
 
 describe('validators', () => {
   describe('isPrivateIp', () => {
@@ -314,6 +319,157 @@ describe('validators', () => {
           }),
         ).toThrow(isolatedValidators.WebhookUrlValidationError);
       }
+    });
+  });
+
+  describe('getWebhookConfigErrors', () => {
+    const BROKEN_BODY = '{"text": "{{#if title}}"}';
+
+    it('returns no errors for a valid config', () => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body: '{"status": "{{#if (eq state "ALERT")}}firing{{/if}}"}',
+        }),
+      ).toEqual([]);
+    });
+
+    it('reports URL and body errors with their paths', () => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'http://127.0.0.1/webhook',
+          body: BROKEN_BODY,
+        }),
+      ).toEqual([
+        {
+          path: 'url',
+          message: expect.stringContaining('private or reserved'),
+        },
+        {
+          path: 'body',
+          message: expect.stringMatching(
+            /^Invalid webhook body template \(line 1, column 26\): Parse error/,
+          ),
+        },
+      ]);
+    });
+
+    it.each([
+      ['a top-level call', '{"s": "{{equals state "ALERT"}}"}', 10],
+      [
+        'a subexpression',
+        '{"s": "{{#if (equals state "ALERT")}}x{{/if}}"}',
+        15,
+      ],
+      ['a block call', '{"s": "{{#equals state "ALERT"}}x{{/equals}}"}', 11],
+      [
+        'a call in a branch a sample alert would skip',
+        '{"s": "{{#if (eq state "OK")}}{{equals a b}}{{/if}}"}',
+        33,
+      ],
+    ])('rejects an unknown helper in %s', (_label, body, column) => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body,
+        }),
+      ).toEqual([
+        {
+          path: 'body',
+          message: `Invalid webhook body template (line 1, column ${column}): Unknown helper "equals"`,
+        },
+      ]);
+    });
+
+    it.each([
+      ['a partial', '{"a": "{{> foo}}"}', 'Unknown partial "foo"'],
+      ['a decorator', '{"a": "{{* foo}}"}', 'Unknown decorator "foo"'],
+      [
+        'a block decorator other than inline',
+        '{"a": "{{#* foo}}x{{/foo}}"}',
+        'Unknown decorator "foo"',
+      ],
+    ])('rejects %s delivery does not provide', (_label, body, message) => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body,
+        }),
+      ).toEqual([{ path: 'body', message: expect.stringContaining(message) }]);
+    });
+
+    it.each([
+      ['a partial block fallback', '{"a": "{{#> foo}}x{{/foo}}"}'],
+      ['an inline partial', '{"a": "{{#* inline "p"}}y{{/inline}}{{> p}}"}'],
+      [
+        'the built-in @partial-block',
+        '{{#*inline "layout"}}{{> @partial-block}}{{/inline}}{{#> layout}}{"a": 1}{{/layout}}',
+      ],
+    ])('accepts %s', (_label, body) => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body,
+        }),
+      ).toEqual([]);
+    });
+
+    it('knows exactly the helpers delivery registers', () => {
+      const delivery = Object.keys(
+        createHandlebarsWithHelpers().helpers,
+      ).filter(
+        name => name !== 'helperMissing' && name !== 'blockHelperMissing',
+      );
+      expect([...WEBHOOK_BODY_HELPERS].sort()).toEqual(delivery.sort());
+    });
+
+    it('accepts registered helpers and bare lookups', () => {
+      expect(
+        validators.getWebhookConfigErrors({
+          service: WebhookService.Generic,
+          url: 'https://example.com/webhook',
+          body:
+            '{"a": "{{#if (eq state "ALERT")}}{{title}}{{/if}}", ' +
+            '"b": "{{#each tags}}{{this}}{{/each}}{{lookup this "title"}}", ' +
+            '"c": "{{#unless value}}{{missing}}{{/unless}}{{#section}}x{{/section}}"}',
+        }),
+      ).toEqual([]);
+    });
+
+    it.each([
+      [
+        'a slack webhook',
+        WebhookService.Slack,
+        'https://hooks.slack.com/services/T0/B0/X',
+        BROKEN_BODY,
+      ],
+      [
+        'an empty body',
+        WebhookService.Generic,
+        'https://example.com/webhook',
+        '   ',
+      ],
+    ])('skips the body check for %s', (_label, service, url, body) => {
+      expect(validators.getWebhookConfigErrors({ service, url, body })).toEqual(
+        [],
+      );
+    });
+  });
+
+  describe('validateWebhookConfig', () => {
+    it('throws the same error create returns as a 400', () => {
+      expect(() =>
+        validators.validateWebhookConfig({
+          service: WebhookService.IncidentIO,
+          url: 'https://example.com/webhook',
+          body: '{"text": "{{#if title}}"}',
+        }),
+      ).toThrow(WebhookBodyValidationError);
     });
   });
 
