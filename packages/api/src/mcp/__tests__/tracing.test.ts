@@ -333,6 +333,39 @@ describe('withToolTracing', () => {
     expect(mockCounter.add).not.toHaveBeenCalled();
   });
 
+  it('should record the response size in UTF-8 bytes on span and histogram', async () => {
+    const handler = jest.fn().mockResolvedValue({
+      content: [
+        { type: 'text', text: 'abc' },
+        { type: 'text', text: 'é' }, // 2 bytes in UTF-8
+      ],
+    });
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+      'mcp.tool.response.size_bytes',
+      5,
+    );
+    expect(mockHistogram.record).toHaveBeenCalledWith(5, {
+      tool: 'my_tool',
+      outcome: 'success',
+    });
+  });
+
+  it('should record the response size of error results', async () => {
+    const handler = jest.fn().mockResolvedValue(mcpUserError('bad input'));
+
+    const traced = withToolTracing('my_tool', context, handler);
+    await traced({});
+
+    expect(mockHistogram.record).toHaveBeenCalledWith(9, {
+      tool: 'my_tool',
+      outcome: 'error',
+    });
+  });
+
   it('should increment the error counter for isError results', async () => {
     const handler = jest.fn().mockResolvedValue({
       isError: true,
