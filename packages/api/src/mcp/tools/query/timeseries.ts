@@ -1,6 +1,7 @@
 import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -77,7 +78,7 @@ export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
     'clickstack_timeseries',
     {
       title: 'Time-Series Chart',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Plot metrics over time as a line or stacked bar chart. ' +
         'Use this when you need to visualize trends, compare time-series, ' +

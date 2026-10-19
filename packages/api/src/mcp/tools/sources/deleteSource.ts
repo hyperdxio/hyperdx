@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { deleteSource } from '@/controllers/sources';
+import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { objectIdSchema } from '@/utils/zod';
@@ -15,7 +16,7 @@ export function registerDeleteSource({
     'clickstack_delete_source',
     {
       title: 'Delete Source',
-      annotations: { destructiveHint: true },
+      annotations: IDEMPOTENT_DESTRUCTIVE_TOOL,
       description:
         'Permanently delete a data source by ID. Other sources may reference ' +
         'it (e.g. a trace source linked to a log source) — those links are ' +

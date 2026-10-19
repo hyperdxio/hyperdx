@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
@@ -139,7 +140,7 @@ export function registerEmergingSignals({
     'clickstack_emerging_signals',
     {
       title: 'Emerging & Disappeared Signals',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Detect what is NEW or GONE between an earlier baseline window and a ' +
         'current window — log/event patterns that emerged, ramped up, or ' +
