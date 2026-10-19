@@ -29,6 +29,7 @@ import {
   PromqlHeatmapMode,
   SavedChartConfig,
   SourceKind,
+  TILE_DESCRIPTION_MAX_LENGTH,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
@@ -1121,17 +1122,54 @@ export default function EditTimeChartForm({
       <div ref={setParentRef}>
         <ErrorBoundary>
           <Flex align="center" gap="sm" mb="sm">
-            <Text size="sm" className="text-nowrap">
-              Chart Name
-            </Text>
-            <InputControlled
-              name="name"
-              control={control}
+            <Flex
               flex={1}
-              type="text"
-              placeholder="My Chart Name"
-              data-testid="chart-name-input"
-            />
+              gap="sm"
+              direction={{ base: 'column', lg: 'row' }}
+              align={{ base: 'stretch', lg: 'center' }}
+            >
+              <Flex align="center" gap="sm" flex={1}>
+                <Text size="sm" className="text-nowrap">
+                  Chart Name
+                </Text>
+                <InputControlled
+                  name="name"
+                  control={control}
+                  flex={1}
+                  type="text"
+                  placeholder="My Chart Name"
+                  data-testid="chart-name-input"
+                />
+              </Flex>
+              {isDashboardForm && (
+                <Flex align="center" gap="sm" flex={1}>
+                  <Text size="sm" className="text-nowrap">
+                    Description
+                  </Text>
+                  <Controller
+                    control={control}
+                    name="description"
+                    render={({ field: { value, onChange, onBlur } }) => (
+                      <Textarea
+                        flex={1}
+                        autosize
+                        minRows={1}
+                        maxRows={4}
+                        maxLength={TILE_DESCRIPTION_MAX_LENGTH}
+                        value={value ?? ''}
+                        onChange={e =>
+                          onChange(e.currentTarget.value || undefined)
+                        }
+                        onBlur={onBlur}
+                        placeholder="Describe what this chart displays"
+                        aria-label="Tile description"
+                        data-testid="chart-description-input"
+                      />
+                    )}
+                  />
+                </Flex>
+              )}
+            </Flex>
             {configTypeOptions.length > 1 && (
               <Controller
                 control={control}

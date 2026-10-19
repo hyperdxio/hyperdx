@@ -8,7 +8,10 @@ import {
   QueryAttribution,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { Field, tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
-import { getAdhocFilterSourceKinds } from '@hyperdx/common-utils/dist/filters';
+import {
+  getAdhocFilterSourceKinds,
+  isAdhocComparableDataType,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   AdhocDashboardFilter,
   TSource,
@@ -63,7 +66,11 @@ export function getSqlSourceKeys(fields: Field[], columns: ColumnMeta[]) {
   const jsonColumns = columnNames([JSDataType.JSON]);
   const mapColumns = columnNames([JSDataType.Map]);
   const keys = fields
-    .filter(field => field.path.length > 1 || isJSDataTypeScalar(field.jsType))
+    .filter(
+      field =>
+        (field.path.length > 1 || isJSDataTypeScalar(field.jsType)) &&
+        isAdhocComparableDataType(field.type),
+    )
     .map(field => mergePath(field.path, jsonColumns, mapColumns));
   return toQuotedKeys(keys, columns);
 }
@@ -71,8 +78,10 @@ export function getSqlSourceKeys(fields: Field[], columns: ColumnMeta[]) {
 /** A SQL source's scalar columns, the only keys known without field metadata. */
 export function getSqlSourceColumnKeys(columns: ColumnMeta[]) {
   const keys = columns
-    .filter(column =>
-      isJSDataTypeScalar(convertCHDataTypeToJSType(column.type)),
+    .filter(
+      column =>
+        isJSDataTypeScalar(convertCHDataTypeToJSType(column.type)) &&
+        isAdhocComparableDataType(column.type),
     )
     .map(column => column.name);
   return toQuotedKeys(keys, columns);
