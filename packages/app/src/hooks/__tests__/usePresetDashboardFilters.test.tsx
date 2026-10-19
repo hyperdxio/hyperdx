@@ -113,6 +113,7 @@ describe('usePresetDashboardFilters', () => {
       setFilterValue: mockSetFilterValue,
       adhocConditionsByFilterId: new Map(),
       setAdhocConditions: jest.fn(),
+      applyAdhocAction: jest.fn(),
       broadcastedFilters: mockFilterQueries,
       setFilterValueEntries: jest.fn(),
       filterValueEntries: null,

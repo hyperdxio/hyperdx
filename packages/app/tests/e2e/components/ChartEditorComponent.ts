@@ -58,6 +58,15 @@ export class ChartEditorComponent {
     await this.chartNameInput.fill(name);
   }
 
+  /** Replace a Search tile's SELECT list, the first editor in its form. */
+  async setSearchSelect(select: string) {
+    await replaceEditorText(
+      this.page,
+      this.tileEditor.locator('.cm-editor .cm-content').first(),
+      select,
+    );
+  }
+
   /**
    * Set chart type
    */
@@ -197,6 +206,24 @@ export class ChartEditorComponent {
   async setSqlWhere(expression: string, scope: 'chart' | 'series' = 'chart') {
     await this.setWhereLanguage('SQL', scope);
     await this.whereInput(scope).fillSql(expression);
+    await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * Type a multi-line SQL WHERE clause, one line per entry. Lines are split
+   * with Shift+Enter, since a bare Enter in the editor submits the query.
+   */
+  async setMultilineSqlWhere(
+    lines: string[],
+    scope: 'chart' | 'series' = 'chart',
+  ) {
+    const [first = '', ...rest] = lines;
+    await this.setWhereLanguage('SQL', scope);
+    await this.whereInput(scope).fillSql(first);
+    for (const line of rest) {
+      await this.page.keyboard.press('Shift+Enter');
+      await this.page.keyboard.type(line);
+    }
     await dismissSqlAutocomplete(this.page);
   }
 
