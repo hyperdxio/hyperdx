@@ -20,6 +20,7 @@ import {
   formatNumber,
   getAllMetricTables,
   getColorFromCSSToken,
+  getLogSeverityLevel,
   getMetricTableName,
   isColumnInSelect,
   mapKeyBy,
@@ -1533,6 +1534,27 @@ describe('orderByAfterRemovingSelectItem', () => {
       orderByAfterRemovingSelectItem('Body', 'Body DESC', 'Timestamp DESC'),
     ).toBe('Body DESC');
   });
+});
+
+describe('getLogSeverityLevel', () => {
+  it.each([
+    [12, 'error', undefined],
+    [13, undefined, 'warn'],
+    [16, 'error', 'warn'],
+    [17, 'info', 'error'],
+    ['17', undefined, 'error'],
+    [0, 'ERROR', 'error'],
+    [undefined, 'Warning', 'warn'],
+    ['', 'critical', 'error'],
+    [undefined, 'info', undefined],
+  ])(
+    'maps SeverityNumber %p and SeverityText %p to %p',
+    (severityNumber, severityText, expected) => {
+      expect(getLogSeverityLevel({ severityNumber, severityText })).toBe(
+        expected,
+      );
+    },
+  );
 });
 
 describe('getColorFromCSSToken', () => {

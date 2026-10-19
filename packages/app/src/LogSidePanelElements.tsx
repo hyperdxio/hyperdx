@@ -24,6 +24,7 @@ import { ColumnDef, Row, Table } from '@tanstack/react-table';
 import HyperJson from './components/HyperJson';
 import { StacktraceFrame as StacktraceFrameCmp } from './components/StacktraceFrame';
 import { TableCellButton } from './components/Table';
+import type { HttpHeader } from './utils/httpHeaders';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { StacktraceBreadcrumb, StacktraceFrame } from './types';
 import { FormatTime } from './useFormatTime';
@@ -375,20 +376,20 @@ const useShowMoreRows = <T extends object>({
 /**
  * Request / Response Headers elements
  */
-export const headerColumns: ColumnDef<[string, string]>[] = [
+export const headerColumns: ColumnDef<HttpHeader>[] = [
   {
-    accessorKey: '0',
+    accessorKey: 'name',
     header: 'Header',
     size: 260,
     cell: ({ row }) => (
-      <div className="text-truncate" title={row.original[0]}>
-        {row.original[0]}
+      <div className="text-truncate" title={row.original.attributeKey}>
+        {row.original.name}
       </div>
     ),
   },
   {
     size: UNDEFINED_WIDTH,
-    accessorKey: '1',
+    accessorKey: 'value',
     header: 'Value',
   },
 ];
@@ -396,27 +397,6 @@ export const headerColumns: ColumnDef<[string, string]>[] = [
 /**
  * Network Subpanel
  */
-export const networkColumns: ColumnDef<{
-  label: string;
-  value: string;
-  className?: string;
-}>[] = [
-  {
-    accessorKey: 'label',
-    header: 'Label',
-    size: 260,
-    cell: ({ row }) => <span>{row.original.label}</span>,
-  },
-  {
-    size: UNDEFINED_WIDTH,
-    accessorKey: 'value',
-    header: 'Value',
-    cell: ({ row }) => (
-      <span className={row.original.className}>{row.original.value}</span>
-    ),
-  },
-];
-
 export const NetworkBody = ({
   body,
   theme,
@@ -461,7 +441,7 @@ export const NetworkBody = ({
     <>
       {body != null && body != '' ? (
         <pre
-          className="m-0 px-4 py-3"
+          className={parsedBody ? 'm-0' : 'm-0 px-4 py-3'}
           style={{
             wordBreak: 'break-all',
             wordWrap: 'break-word',

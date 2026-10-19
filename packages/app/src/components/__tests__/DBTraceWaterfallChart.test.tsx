@@ -22,6 +22,7 @@ import {
 } from '@/components/DBTraceWaterfallChart';
 import { TimelineChart } from '@/components/TimelineChart';
 import { TRACE_WATERFALL_ROW_LIMIT } from '@/components/traceWaterfallLimits';
+import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
 
@@ -77,6 +78,10 @@ jest.mock('@/components/TimelineChart', () => {
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');
 jest.mock('@/hooks/useRowWhere');
+jest.mock('@/hooks/useMetadata', () => ({
+  ...jest.requireActual('@/hooks/useMetadata'),
+  useColumns: jest.fn(),
+}));
 jest.mock('../DBRowDataPanel', () => ({
   getJSONColumnNames: jest.fn().mockReturnValue([]),
 }));
@@ -116,7 +121,24 @@ jest.mock('@/hooks/useWaterfallSearchState', () => ({
 
 const mockUseOffsetPaginatedQuery = useOffsetPaginatedQuery as jest.Mock;
 const mockUseRowWhere = useRowWhere as jest.Mock;
+const mockUseColumns = useColumns as jest.Mock;
 const MockTimelineChart = TimelineChart as any;
+
+// Mirrors useColumns: the query is disabled, so never loading, for an empty
+// table name unless the caller overrides `enabled`.
+const setupColumnsMock = (state: {
+  data?: Array<{ name: string; type: string }>;
+  isLoading?: boolean;
+}) =>
+  mockUseColumns.mockImplementation(
+    ({ tableName }: { tableName: string }, opts?: { enabled?: boolean }) =>
+      (opts?.enabled ?? !!tableName)
+        ? { data: state.data, isLoading: state.isLoading ?? false }
+        : { data: undefined, isLoading: false },
+  );
+
+const selectsSeverityNumber = (query: { select: Array<{ alias?: string }> }) =>
+  query.select.some(s => s.alias === 'SeverityNumber');
 
 describe('DBTraceWaterfallChartContainer', () => {
   // Common test data
@@ -202,6 +224,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     mockUseRowWhere.mockReturnValue(() => ({ where: 'row-id', aliasWith: [] }));
     MockTimelineChart.latestProps = {};
     mockUseWaterfallSearchState.mockReturnValue(makeWaterfallSearchState());
+    setupColumnsMock({ data: [] });
   });
 
   // Helper functions
@@ -240,7 +263,7 @@ describe('DBTraceWaterfallChartContainer', () => {
   //   the unfiltered fallback still returns data.
   const setupQueryMocks = (options: {
     traceData?: typeof mockTraceData | typeof emptyData;
-    logData?: typeof mockLogData | typeof emptyData;
+    logData?: { data: object[]; meta: object[] };
     traceError?: Error;
     logError?: Error;
     traceFilterError?: Error;
@@ -702,7 +725,7 @@ describe('DBTraceWaterfallChartContainer', () => {
           HyperDXEventType: 'span' as const,
           type: 'trace',
           SpanAttributes: {
-            'http.url': 'https://api.example.com/users',
+            'http.url': 'https://example-api.clickhouse.com/users',
             'http.method': 'GET',
             'http.status_code': 200,
           },
@@ -720,8 +743,137 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     expect(MockTimelineChart.latestProps.rows[0]).toBeTruthy();
     expect(
-      screen.getByText('http span https://api.example.com/users'),
+      screen.getByText('http span https://example-api.clickhouse.com/users'),
     ).toBeInTheDocument();
+  });
+
+  const apiUrl = 'https://example-api.clickhouse.com/users?id=1';
+  it.each([
+    [{ 'url.full': apiUrl }, apiUrl],
+    [
+      {
+        'url.scheme': 'https',
+        'server.address': 'example-api.clickhouse.com',
+        'url.path': '/users',
+        'url.query': 'id=1',
+      },
+      apiUrl,
+    ],
+    [{ 'http.url': apiUrl }, apiUrl],
+    // An RPC span is named after its method, which the URL repeats.
+    [{ 'grpc.method': '/demo.QuoteService/GetQuote', 'url.full': apiUrl }, ''],
+  ])('labels a span with %p using URL %p', async (SpanAttributes, url) => {
+    setupQueryMocks({
+      traceData: {
+        data: [{ ...mockTraceData.data[0], SpanAttributes }],
+        meta: [{ totalCount: 1 }],
+      },
+    });
+    renderComponent(null);
+    await waitForLoading();
+
+    const [row] = MockTimelineChart.latestProps.rows;
+    const displayText = url ? `test span ${url}` : 'test span';
+    expect(row.events[0].tooltip).toContain(`${displayText} took`);
+    const title = url ? `test-service ${displayText}` : 'test-service';
+    expect(renderWithMantine(row.label).getByTitle(title)).toBeInTheDocument();
+  });
+
+  const renderWithLogs = async (logs: Record<string, unknown>[]) => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: {
+        data: logs.map(log => ({
+          ...mockLogData.data[0],
+          SeverityText: undefined,
+          ...log,
+        })),
+        meta: [{ totalCount: logs.length }],
+      },
+    });
+    renderComponent();
+    await waitForLoading();
+  };
+
+  it.each([
+    [{ SeverityNumber: 17, SeverityText: 'info' }, ['Error']],
+    [{ SeverityNumber: 9, SeverityText: 'error' }, []],
+    [{ SeverityNumber: 0, SeverityText: 'ERROR' }, ['Error']],
+    [{ SeverityText: 'Warning' }, ['Warning']],
+    [{}, []],
+  ])('marks a log with %p with icons %p', async (severity, icons) => {
+    await renderWithLogs([severity]);
+
+    const logRow = MockTimelineChart.latestProps.rows.find(
+      (row: { type?: string }) => row.type === SourceKind.Log,
+    );
+    const label = renderWithMantine(logRow.label);
+    expect(
+      ['Error', 'Warning'].filter(icon => label.queryByLabelText(icon)),
+    ).toEqual(icons);
+  });
+
+  it('counts error logs by SeverityNumber, falling back to SeverityText', async () => {
+    mockUseRowWhere.mockReturnValue((row: Record<string, unknown>) => ({
+      where: String(row.Body),
+      aliasWith: [],
+    }));
+    await renderWithLogs([
+      { Body: 'by number', SeverityNumber: 17 },
+      { Body: 'by text', SeverityText: 'FATAL' },
+      { Body: 'number wins', SeverityNumber: 13, SeverityText: 'error' },
+    ]);
+
+    expect(screen.getByText('2 errors')).toBeInTheDocument();
+  });
+
+  describe('SeverityNumber column', () => {
+    const logQueryCalls = () =>
+      mockUseOffsetPaginatedQuery.mock.calls.filter(
+        ([query]) => query?.from?.tableName === 'log_table',
+      );
+
+    it.each([
+      ['has it', [{ name: 'SeverityNumber', type: 'UInt8' }], true],
+      ['lacks it', [{ name: 'SeverityText', type: 'String' }], false],
+      ['lookup failed', undefined, false],
+    ])(
+      'selects SeverityNumber only when the log table has it (%s)',
+      async (_name, data, expected) => {
+        setupColumnsMock({ data });
+        setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+        renderComponent();
+        await waitForLoading();
+
+        const enabled = logQueryCalls().filter(([, opts]) => opts?.enabled);
+        expect(enabled.length).toBeGreaterThan(0);
+        for (const [query] of enabled) {
+          expect(selectsSeverityNumber(query)).toBe(expected);
+        }
+        expect(MockTimelineChart.latestProps.rows.length).toBe(2);
+      },
+    );
+
+    it('holds the log query until the columns load', () => {
+      setupColumnsMock({ isLoading: true });
+      setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+      renderComponent();
+
+      expect(screen.getByText('Loading Traces...')).toBeInTheDocument();
+      const enabled = logQueryCalls().map(([, opts]) => opts?.enabled);
+      expect(enabled).toContain(false);
+      expect(enabled).not.toContain(true);
+    });
+
+    it('renders a trace without a log source', async () => {
+      // Only a lookup disabled by its empty table name skips this loading state.
+      setupColumnsMock({ isLoading: true });
+      setupQueryMocks({ traceData: mockTraceData });
+      renderComponent(null);
+      await waitForLoading();
+
+      expect(MockTimelineChart.latestProps.rows.length).toBe(1);
+    });
   });
 
   it('renders Spans and Logs chips when log source is present', async () => {
@@ -962,15 +1114,30 @@ describe('useEventsAroundFocus', () => {
     mockUseRowWhere.mockReturnValue(() => ({ where: 'row-id', aliasWith: [] }));
   });
 
+  const mockLogSource: TLogSource = {
+    id: 'test-log-source-id',
+    kind: SourceKind.Log,
+    name: 'log-source',
+    from: { databaseName: 'test_db', tableName: 'log_table' },
+    timestampValueExpression: 'Timestamp',
+    defaultTableSelectExpression: 'Timestamp',
+    implicitColumnExpression: 'Body',
+    connection: 'conn2',
+  };
+
   const testEventsAroundFocus = (options: {
     beforeData?: any;
     afterData?: any;
     enabled?: boolean;
+    tableSource?: TTraceSource | TLogSource;
+    selectSeverityNumber?: boolean;
   }) => {
     const {
       beforeData = { data: [], meta: [] },
       afterData = { data: [], meta: [] },
       enabled = true,
+      tableSource = mockTableSource,
+      selectSeverityNumber,
     } = options;
 
     mockUseOffsetPaginatedQuery.mockReset();
@@ -988,16 +1155,51 @@ describe('useEventsAroundFocus', () => {
 
     const { result } = renderHook(() =>
       useEventsAroundFocus({
-        tableSource: mockTableSource,
+        tableSource,
         focusDate: mockFocusDate,
         dateRange: mockDateRange,
         traceId: mockTraceId,
         enabled,
+        selectSeverityNumber,
       }),
     );
 
     return result.current;
   };
+
+  it.each([
+    ['log', true, true],
+    ['log', false, false],
+    ['trace', true, false],
+  ])(
+    'from a %s source with selectSeverityNumber=%p, selects SeverityNumber: %p',
+    (kind, selectSeverityNumber, expected) => {
+      testEventsAroundFocus({
+        tableSource: kind === 'log' ? mockLogSource : mockTableSource,
+        selectSeverityNumber,
+      });
+
+      const [query] = mockUseOffsetPaginatedQuery.mock.calls[0];
+      expect(selectsSeverityNumber(query)).toBe(expected);
+    },
+  );
+
+  it('leaves SeverityNumber out of row ids but keeps it on the row', () => {
+    const getRowWhere = jest.fn(() => ({ where: 'row-id', aliasWith: [] }));
+    mockUseRowWhere.mockReturnValue(getRowWhere);
+
+    const result = testEventsAroundFocus({
+      tableSource: mockLogSource,
+      selectSeverityNumber: true,
+      beforeData: {
+        data: [{ Body: 'log line', SeverityNumber: 17 }],
+        meta: [{ name: 'Body', type: 'String' }],
+      },
+    });
+
+    expect(getRowWhere).toHaveBeenCalledWith({ Body: 'log line' });
+    expect(result.rows[0]).toMatchObject({ id: 'row-id', SeverityNumber: 17 });
+  });
 
   it('fetches events before and after focus date', () => {
     const mockBeforeData = {
