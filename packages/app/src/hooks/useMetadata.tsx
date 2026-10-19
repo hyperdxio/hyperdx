@@ -9,6 +9,7 @@ import {
 import {
   Field,
   MetricNames,
+  parseKeyPath,
   TableConnection,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
@@ -521,6 +522,30 @@ export function useMultipleGetKeyValues(
       if (keys.length === 0) return;
       const usableMVsOverride =
         chartConfigsArr.length === 1 ? metadataMVsOverride : undefined;
+      // The limit applies per Map column, so one wide Map (e.g. LogAttributes)
+      // can't crowd out the others. Top-level columns share a single limit.
+      const { limitedKeys, limitedKeyConditions } = keys.reduce<{
+        countByColumn: Map<string, number>;
+        limitedKeys: string[];
+        limitedKeyConditions?: (FilterState | undefined)[];
+      }>(
+        (acc, key, i) => {
+          const path = parseKeyPath(key);
+          const column = path.length > 1 ? path[0] : '';
+          const count = acc.countByColumn.get(column) ?? 0;
+          acc.countByColumn.set(column, count + 1);
+          if (count < maxKeys) {
+            acc.limitedKeys.push(key);
+            acc.limitedKeyConditions?.push(keyConditions?.[i]);
+          }
+          return acc;
+        },
+        {
+          countByColumn: new Map(),
+          limitedKeys: [],
+          limitedKeyConditions: keyConditions ? [] : undefined,
+        },
+      );
 
       const lookups = chartConfigsArr.map(chartConfig => {
         const source = chartConfig.source
@@ -539,8 +564,8 @@ export function useMultipleGetKeyValues(
           lookups.map(({ chartConfig, source }) =>
             metadata.getKeyValuesWithMVs({
               chartConfig,
-              keys: keys.slice(0, maxKeys),
-              keyConditions: keyConditions?.slice(0, maxKeys),
+              keys: limitedKeys,
+              keyConditions: limitedKeyConditions,
               limit,
               disableRowLimit,
               source,
@@ -559,7 +584,7 @@ export function useMultipleGetKeyValues(
         metadata.streamAllKeyValues({
           databaseName: chartConfig.from.databaseName,
           tableName: chartConfig.from.tableName,
-          keyExpressions: keys.slice(0, maxKeys),
+          keyExpressions: limitedKeys,
           maxValuesPerKey: limit,
           connectionId: chartConfig.connection,
           metadataMVs,
