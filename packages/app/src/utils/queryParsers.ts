@@ -112,12 +112,17 @@ export const parseAsSortingStateString = createParser<SortingState[number]>({
     if (!value) {
       return null;
     }
-    const keys = value.split(' ');
-    const direction = keys.pop();
-    const key = keys.join(' ');
+    // Column ids are select expressions and may contain spaces, so everything
+    // before a trailing ASC/DESC is the id. Without an explicit direction (e.g.
+    // "(TimestampTime, Timestamp)" or "x DESC NULLS LAST") return null so
+    // DBSqlRowTable leaves the raw ORDER BY string untouched.
+    const match = value.trim().match(/^(.+?)\s+(asc|desc)$/i);
+    if (!match) {
+      return null;
+    }
     return {
-      id: key,
-      desc: direction === 'DESC',
+      id: match[1],
+      desc: match[2].toUpperCase() === 'DESC',
     };
   },
   serialize: value => {

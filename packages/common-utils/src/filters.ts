@@ -3,15 +3,28 @@ import * as SQLParser from 'node-sql-parser';
 import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
 import {
+  AdhocDashboardFilter,
+  AdhocFilterCondition,
+  AdhocFilterSourceType,
+  AdhocFilterValue,
+  BroadcastFilter,
   ChartVariable,
+  ConditionFilter,
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardFilter,
   DashboardFilterValue,
   Filter,
+  PROMQL_ADHOC_FILTER_OPERATORS,
+  PromqlConditionFilter,
   SourceKind,
+  SQL_ADHOC_FILTER_OPERATORS,
 } from '@/types';
-import { getVariableReferences, substituteVariables } from '@/variables';
+import {
+  escapePromqlStringValue,
+  getVariableReferences,
+  substituteVariables,
+} from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -56,7 +69,7 @@ export const filtersToQuery = (
     /** Map of DateTime/Date column name → its ClickHouse type. */
     dateTimeColumns?: ReadonlyMap<string, string>;
   } = {},
-): Filter[] => {
+): ConditionFilter[] => {
   return Object.entries(filters)
     .filter(
       ([_, values]) =>
@@ -65,7 +78,7 @@ export const filtersToQuery = (
         values.range != null,
     )
     .flatMap(([key, values]) => {
-      const conditions: Filter[] = [];
+      const conditions: ConditionFilter[] = [];
       const actualKey = stringifyKeys ? `toString(${key})` : key;
 
       // DateTime/DateTime64 columns can't be compared against a bare string
@@ -851,18 +864,20 @@ export function isFilterVariableEnabled(filter: {
  * Whether a filter must have at least one value selected before the tiles it
  * covers will load.
  */
-export function isFilterRequired(filter: { minSelections?: number }): boolean {
-  return (filter.minSelections ?? 0) > 0;
+export function isFilterRequired(
+  filter: DashboardFilter | { minSelections?: number },
+): boolean {
+  return 'minSelections' in filter && (filter.minSelections ?? 0) > 0;
 }
 
 /**
  * Whether the given required filter blocks every tile on the dashboard,
  * rather than only the tiles that read it.
  */
-export function isFilterGlobalRequirement(filter: {
-  isGlobalRequirement?: boolean;
-}): boolean {
-  return !!filter.isGlobalRequirement;
+export function isFilterGlobalRequirement(
+  filter: DashboardFilter | { isGlobalRequirement?: boolean },
+): boolean {
+  return 'isGlobalRequirement' in filter && !!filter.isGlobalRequirement;
 }
 
 /** The discriminant every dashboard-filter shape carries. */
@@ -875,6 +890,21 @@ export const QUERY_EXPRESSION_FILTER_SOURCE_KINDS: SourceKind[] = [
   SourceKind.Session,
   SourceKind.Metric,
 ];
+
+/**
+ * The source kinds an ADHOC filter of the given source type can read keys
+ * from. Metric sources need a metric type to pick a table, so they are left out.
+ */
+export function getAdhocFilterSourceKinds(
+  sourceType: AdhocFilterSourceType,
+): SourceKind[] {
+  switch (sourceType) {
+    case 'sql':
+      return [SourceKind.Log, SourceKind.Trace, SourceKind.Session];
+    case 'promql':
+      return [SourceKind.Promql];
+  }
+}
 
 /** Type guard for QUERY_EXPRESSION type filters. */
 export function isQueryExpressionFilter<
@@ -897,6 +927,157 @@ export function isPrometheusLabelFilter<
   return filter.type === 'PROMETHEUS_LABEL';
 }
 
+/** Type guard for ADHOC type filters. */
+export function isAdhocFilter<T extends { type: DashboardFilterKind }>(
+  filter: T,
+): filter is Extract<T, { type: 'ADHOC' }> {
+  return filter.type === 'ADHOC';
+}
+
+/**
+ * The sources an ADHOC filter broadcasts its conditions to: its
+ * `appliesToSourceIds`, or its own `sources` when that is unset or empty.
+ */
+export function getAdhocFilterAppliesToSourceIds(
+  filter: Pick<AdhocDashboardFilter, 'sources' | 'appliesToSourceIds'>,
+): string[] {
+  return filter.appliesToSourceIds?.length
+    ? filter.appliesToSourceIds
+    : filter.sources;
+}
+
+/** Type guard for the saved conditions of an ADHOC filter. */
+export function isAdhocFilterValue(
+  value: DashboardFilterValue,
+): value is AdhocFilterValue {
+  return value.type === 'adhoc';
+}
+
+const renderAdhocConditionSql = ({
+  key,
+  operator,
+  value,
+}: AdhocFilterCondition): string => {
+  // Stringified like broadcast filter selections, so Map/JSON/Dynamic values
+  // compare as strings.
+  const target = `toString(${key})`;
+  const literal = `'${escapeSqlString(value)}'`;
+  switch (operator) {
+    case '=':
+    case '!=':
+    case 'LIKE':
+    case 'NOT LIKE':
+      return `${target} ${operator} ${literal}`;
+    case '=~':
+      return `match(${target}, ${literal})`;
+    case '!~':
+      return `NOT match(${target}, ${literal})`;
+    default:
+      operator satisfies never;
+      throw new Error(`Unknown ad hoc filter operator '${operator}'`);
+  }
+};
+
+/**
+ * Render the conditions of a SQL ad hoc filter as filters, one per condition.
+ * Keys are SQL expressions and are used verbatim.
+ */
+export function adhocConditionsToFilters(
+  conditions: AdhocFilterCondition[],
+): ConditionFilter[] {
+  return conditions.map(
+    (condition): ConditionFilter => ({
+      type: 'sql',
+      condition: renderAdhocConditionSql(condition),
+    }),
+  );
+}
+
+const LEGACY_LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+const renderAdhocMatcherPromql = ({
+  key,
+  operator,
+  value,
+}: AdhocFilterCondition): string => {
+  // Label names outside the legacy charset must be quoted (Prometheus 3).
+  const label = LEGACY_LABEL_NAME.test(key)
+    ? key
+    : `"${escapePromqlStringValue(key)}"`;
+  switch (operator) {
+    case '=':
+    case '!=':
+    case '=~':
+    case '!~':
+      return `${label}${operator}"${escapePromqlStringValue(value)}"`;
+    case 'LIKE':
+    case 'NOT LIKE':
+      throw new Error(
+        `Ad hoc filter operator '${operator}' is not supported for PromQL`,
+      );
+    default:
+      operator satisfies never;
+      throw new Error(`Unknown ad hoc filter operator '${operator}'`);
+  }
+};
+
+/**
+ * Whether an ad hoc filter of `sourceType` can apply `condition`. A filter
+ * switched from SQL to PromQL keeps its conditions, and PromQL has no LIKE.
+ */
+export function isAdhocConditionSupported(
+  sourceType: AdhocFilterSourceType,
+  { operator }: AdhocFilterCondition,
+): boolean {
+  switch (sourceType) {
+    case 'sql':
+      return SQL_ADHOC_FILTER_OPERATORS.includes(operator);
+    case 'promql':
+      return PROMQL_ADHOC_FILTER_OPERATORS.includes(operator);
+    default:
+      sourceType satisfies never;
+      throw new Error(`Unknown ad hoc filter source type '${sourceType}'`);
+  }
+}
+
+/**
+ * Render the conditions of a PromQL ad hoc filter as label matchers, one per
+ * condition. Conditions PromQL can't express are skipped; callers report them
+ * using `isAdhocConditionSupported`.
+ */
+export function adhocConditionsToPromqlFilters(
+  conditions: AdhocFilterCondition[],
+): PromqlConditionFilter[] {
+  return conditions
+    .filter(condition => isAdhocConditionSupported('promql', condition))
+    .map(
+      (condition): PromqlConditionFilter => ({
+        type: 'promql',
+        condition: renderAdhocMatcherPromql(condition),
+      }),
+    );
+}
+
+function isPromqlFilter(
+  filter: BroadcastFilter,
+): filter is PromqlConditionFilter {
+  return filter.type === 'promql';
+}
+
+/** The broadcast filters a SQL, Lucene or builder query can apply. */
+export function getSqlFilters(filters: BroadcastFilter[]): ConditionFilter[] {
+  return filters.filter(
+    (filter): filter is ConditionFilter => !isPromqlFilter(filter),
+  );
+}
+
+/** The broadcast filters a PromQL query can apply. */
+export function getPromqlFilters(
+  filters: BroadcastFilter[],
+): PromqlConditionFilter[] {
+  return filters.filter(isPromqlFilter);
+}
+
 /** The SQL expression associated with the filter, if any. */
 export function getFilterExpression(
   filter: DashboardFilter,
@@ -904,16 +1085,16 @@ export function getFilterExpression(
   return isQueryExpressionFilter(filter) ? filter.expression : undefined;
 }
 
-/** What the filter broadcasts, or undefined when it cannot broadcast. */
+/** Where the filter broadcasts, or undefined when it cannot broadcast. */
 export function getFilterBroadcastTarget(
   filter: DashboardFilter,
-): { expression: string; appliesToSourceIds?: string[] } | undefined {
-  if (!isQueryExpressionFilter(filter) || !isFilterBroadcastEnabled(filter))
-    return undefined;
-  return {
-    expression: filter.expression,
-    appliesToSourceIds: filter.appliesToSourceIds,
-  };
+): { appliesToSourceIds?: string[] } | undefined {
+  if (!isFilterBroadcastEnabled(filter)) return undefined;
+  if (isAdhocFilter(filter)) {
+    return { appliesToSourceIds: getAdhocFilterAppliesToSourceIds(filter) };
+  }
+  if (!isQueryExpressionFilter(filter)) return undefined;
+  return { appliesToSourceIds: filter.appliesToSourceIds };
 }
 
 /**

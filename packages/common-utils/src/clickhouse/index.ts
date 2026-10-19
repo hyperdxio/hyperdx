@@ -170,6 +170,21 @@ export const isJSDataTypeJSONStringifiable = (
   );
 };
 
+/** Types that hold structure rather than a filterable value. */
+const NON_SCALAR_JS_DATA_TYPES = [
+  JSDataType.Map,
+  JSDataType.JSON,
+  JSDataType.Array,
+  JSDataType.Tuple,
+];
+
+/**
+ * Unlike !isJSDataTypeJSONStringifiable, Dynamic (JSON subfields) and
+ * unrecognized (null) types count as scalar.
+ */
+export const isJSDataTypeScalar = (dataType: JSDataType | null) =>
+  dataType == null || !NON_SCALAR_JS_DATA_TYPES.includes(dataType);
+
 export const extractInnerCHArrayJSType = (
   dataType: string,
 ): JSDataType | null => {

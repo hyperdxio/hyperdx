@@ -970,6 +970,10 @@ describe('substituteVariables for promql', () => {
       expect(matcher(['a\\b'])).toBe('up{service=~"a\\\\\\\\b"}');
     });
 
+    it('escapes a newline, which a PromQL string literal cannot contain', () => {
+      expect(matcher(['a\nb'])).toBe('up{service=~"a\\nb"}');
+    });
+
     it("leaves ' alone, which is not an RE2 metacharacter and invalid to escape here", () => {
       expect(matcher(["o'brien"])).toBe('up{service=~"o\'brien"}');
     });
@@ -1473,6 +1477,7 @@ describe('filterReferencedVariables', () => {
           configType: 'promql',
           promqlExpression: 'up{service=~"$service"}',
           connection: 'local',
+          source: 'promql-source',
         },
         variables,
       ),
@@ -1489,6 +1494,7 @@ describe('filterReferencedVariables', () => {
             { expression: 'up{service=~"$service"}' },
           ],
           connection: 'local',
+          source: 'promql-source',
         },
         variables,
       ),
@@ -1576,6 +1582,7 @@ describe('getAlertVariableWarning', () => {
           configType: 'promql',
           promqlExpression: 'up{service=~"$service"}',
           connection: 'local',
+          source: 'promql-source',
         },
         variables,
       ),

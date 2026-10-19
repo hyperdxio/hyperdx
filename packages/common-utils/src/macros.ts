@@ -1,17 +1,23 @@
 import {
   getPromqlMacroInputs,
+  getPromqlSeries,
+  getQueriedPromqlSeries,
   PROMQL_MACRO_NAMES,
   PROMQL_MACROS,
   PromqlMacroName,
 } from './core/promql';
+import { injectPromqlLabelMatchers } from './core/promqlLabelInjection';
 import { splitAndTrimWithBracket } from './core/utils';
 import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
 import { RawSqlQueryParam, renderQueryParam } from './rawSqlParams';
 import {
   ChartVariable,
+  DisplayType,
   MetricsDataType,
   MetricsDataTypeSchema,
+  PromqlConditionFilter,
   PromqlExpressionList,
+  PromqlSeries,
   RawSqlChartConfig,
 } from './types';
 import {
@@ -512,18 +518,22 @@ export function replaceMacros(
 
 /**
  * Expand the macros (`$__interval`, `$__range`, `$__rate_interval`) and variable
- * references in a PromQL config's expression(s), returning it with `variables`
- * consumed. References to names that aren't variables are left as written, so
- * `$1` in a `label_replace` replacement reaches Prometheus unchanged.
+ * references in a PromQL config's expression(s), then add its `filters` to
+ * every selector of the expressions its display queries, returning it with
+ * `variables` and `filters` consumed.
+ * References to names that aren't variables are left as written, so `$1` in a
+ * `label_replace` replacement reaches Prometheus unchanged.
  *
  * Macros and variables expand in one pass, so a selected value that looks like
- * `$__range` stays inert. Dropping `variables` from the result ensures variables
- * can't be substituted twice.
+ * `$__range` stays inert. Dropping `variables` and `filters` from the result
+ * ensures neither can be applied twice.
  */
 export function substitutePromqlChartConfigTemplates<
   T extends {
     promqlExpression: PromqlExpressionList;
     variables?: ChartVariable[];
+    filters?: PromqlConditionFilter[];
+    displayType?: DisplayType;
     granularity?: string;
     dateRange: [Date, Date];
     minGranularitySeconds?: number;
@@ -532,6 +542,7 @@ export function substitutePromqlChartConfigTemplates<
   const {
     promqlExpression,
     variables = [],
+    filters = [],
     granularity,
     dateRange,
     minGranularitySeconds,
@@ -561,8 +572,20 @@ export function substitutePromqlChartConfigTemplates<
     ]),
   );
 
-  const substitute = (expression: string) =>
-    expandTemplate(expression, {
+  const matchers = filters.map(filter => filter.condition).join(', ');
+
+  // Matchers go only into expressions the display queries: the editor saves
+  // every row, and an unfinished one that's never queried mustn't fail to parse.
+  const allSeries = getPromqlSeries(config);
+  const queriedSeries = new Set(
+    getQueriedPromqlSeries({
+      promqlExpression: allSeries,
+      displayType: config.displayType,
+    }),
+  );
+
+  const substitute = (series: PromqlSeries) => {
+    const expanded = expandTemplate(series.expression, {
       // `$__filter` / `$__conditionalAll` are scanned only so a reference in
       // their arguments isn't expanded; they have no meaning in PromQL.
       macroNames: [...VARIABLE_MACRO_NAMES, ...PROMQL_MACRO_NAMES],
@@ -570,16 +593,21 @@ export function substitutePromqlChartConfigTemplates<
         macrosByName.get(token.name)?.replace(token.args) ?? token.raw,
       expandReference: token => expandVariableToken(token, variableContext),
     });
+    return queriedSeries.has(series)
+      ? injectPromqlLabelMatchers(expanded, matchers)
+      : expanded;
+  };
 
   return {
     ...config,
     promqlExpression:
       typeof promqlExpression === 'string'
-        ? substitute(promqlExpression)
-        : promqlExpression.map(series => ({
+        ? substitute(allSeries[0])
+        : allSeries.map(series => ({
             ...series,
-            expression: substitute(series.expression),
+            expression: substitute(series),
           })),
     variables: undefined,
+    filters: undefined,
   };
 }

@@ -30,6 +30,12 @@
   --mantine-moz-font-smoothing: inherit;
 
   --app-font-family: var(--font-inter);
+
+  // Content density, overridden on <html> from the `contentFontSize` user
+  // preference. These defaults must match CONTENT_FONT_SIZES.sm so the
+  // pre-hydration render matches the default preference.
+  --hdx-content-font-size: 12px;
+  --hdx-content-font-size-compact: 11px;
 }
 
 [data-mantine-color-scheme='dark'] {
@@ -270,7 +276,7 @@ button:focus-visible {
 }
 
 .recharts-legend-item {
-  font-size: 0.75rem;
+  font-size: var(--hdx-content-font-size);
 }
 
 .recharts-tooltip-cursor {

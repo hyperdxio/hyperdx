@@ -97,7 +97,7 @@ describe('iac router', () => {
           config: {
             configType: 'promql',
             promqlExpression: 'up',
-            connection: randomMongoId(),
+            source: randomMongoId(),
             displayType: 'line',
           },
         },

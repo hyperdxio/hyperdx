@@ -10,6 +10,10 @@ import { Address4, Address6 } from 'ip-address';
 import { z } from 'zod';
 
 import * as config from '@/config';
+import {
+  validateWebhookBodyTemplate,
+  WebhookBodyValidationError,
+} from '@/utils/webhookBodyTemplate';
 
 // Strips the surrounding brackets from IPv6 literals in URL hostnames (e.g. [::1] → ::1)
 export const IPV6_BRACKET_RE = /^\[|\]$/g;
@@ -163,6 +167,45 @@ export function validateWebhookUrl(
       `Webhook URL resolves to a private or reserved address.`,
     );
   }
+}
+
+/** A 400-worthy webhook config error whose message is safe to return. */
+export const isWebhookValidationError = (
+  err: unknown,
+): err is WebhookUrlValidationError | WebhookBodyValidationError =>
+  err instanceof WebhookUrlValidationError ||
+  err instanceof WebhookBodyValidationError;
+
+type WebhookConfigInput = WebhookUrlInput & { body?: string };
+
+// The one list of checks a webhook must pass before it is saved or sent, so
+// POST /api/v2/webhooks/validate can never pass a config that create rejects.
+const WEBHOOK_CONFIG_CHECKS: {
+  path: string;
+  check: (input: WebhookConfigInput) => void;
+}[] = [
+  { path: 'url', check: input => validateWebhookUrl(input) },
+  { path: 'body', check: input => validateWebhookBodyTemplate(input) },
+];
+
+/** Throws the first webhook config error. */
+export function validateWebhookConfig(input: WebhookConfigInput) {
+  for (const { check } of WEBHOOK_CONFIG_CHECKS) check(input);
+}
+
+/** Returns every webhook config error instead of throwing the first. */
+export function getWebhookConfigErrors(
+  input: WebhookConfigInput,
+): { path: string; message: string }[] {
+  return WEBHOOK_CONFIG_CHECKS.flatMap(({ path, check }) => {
+    try {
+      check(input);
+      return [];
+    } catch (err) {
+      if (!isWebhookValidationError(err)) throw err;
+      return [{ path, message: err.message }];
+    }
+  });
 }
 
 export const passwordSchema = z
