@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
@@ -51,7 +52,7 @@ export function registerListMetrics({
     'clickstack_list_metrics',
     {
       title: 'List Metric Names',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'DISCOVERY: Use this after clickstack_describe_source when you need more metric ' +
         'names than the per-kind sample shows, or when you want to narrow by ' +

@@ -274,6 +274,7 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'lineInterpolation',
         'alternateRowBackground',
         'seriesLimit',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
@@ -301,6 +302,7 @@ export function convertFormStateToSavedChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'lineInterpolation',
         'alternateRowBackground',
         // Per-tile render cap for raw SQL time charts (drives the client-side
         // series cap in formatResponseForTimeChart). See
@@ -377,6 +379,7 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'lineInterpolation',
         'alternateRowBackground',
         'seriesLimit',
       ]),
@@ -404,6 +407,7 @@ export function convertFormStateToChartConfig(
         'compareToPreviousPeriod',
         'fillNulls',
         'alignDateRangeToGranularity',
+        'lineInterpolation',
         'alternateRowBackground',
         // Per-tile render cap for raw SQL time charts (see the save-config path
         // above and SharedChartSettingsSchema.seriesLimit).

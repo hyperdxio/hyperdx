@@ -16,6 +16,7 @@ import {
   computeYAxisBounds,
   formatAxisTick,
   getExpandableYAxisTicks,
+  getLineCurveType,
   getNiceYAxisTicks,
   getSelectedLineData,
   getVisibleLineData,
@@ -736,6 +737,19 @@ describe('computeYAxisBounds', () => {
     expect(bounds.ticks!.length).toBeGreaterThanOrEqual(2);
     const labels = bounds.ticks!.map(t => bounds.tickFormatter!(t));
     expect(new Set(labels).size).toBe(labels.length);
+  });
+});
+
+describe('getLineCurveType', () => {
+  it.each([
+    [DisplayType.Line, undefined, 'monotone'],
+    [DisplayType.StackedLine, undefined, 'linear'],
+    [DisplayType.Line, 'linear', 'linear'],
+    [DisplayType.StackedLine, 'smooth', 'monotone'],
+    [DisplayType.Line, 'step', 'stepAfter'],
+    [DisplayType.StackedLine, 'step', 'stepAfter'],
+  ] as const)('%s with %s renders %s', (displayType, interpolation, curve) => {
+    expect(getLineCurveType(displayType, interpolation)).toBe(curve);
   });
 });
 

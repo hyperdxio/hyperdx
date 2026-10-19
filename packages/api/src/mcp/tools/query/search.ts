@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
@@ -37,8 +38,7 @@ const searchSchema = z.object({
     .optional()
     .default(50)
     .describe(
-      'Maximum number of rows to return (1-200). Default: 50. ' +
-        'Use smaller values to reduce response size.',
+      'Maximum rows to return. Use smaller values to reduce response size.',
     ),
   denoise: z
     .boolean()
@@ -63,7 +63,7 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
     'clickstack_search',
     {
       title: 'Search Events',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Browse individual log/event/trace rows. ' +
         'Use this when you need to see raw events, investigate specific log lines, ' +
