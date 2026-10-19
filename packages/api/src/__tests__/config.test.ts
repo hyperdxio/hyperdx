@@ -124,6 +124,45 @@ describe('config', () => {
     );
   });
 
+  describe('EXTERNAL_API_SEARCH_MAX_RESULTS', () => {
+    const ORIGINAL = process.env.EXTERNAL_API_SEARCH_MAX_RESULTS;
+
+    afterEach(() => {
+      if (ORIGINAL === undefined) {
+        delete process.env.EXTERNAL_API_SEARCH_MAX_RESULTS;
+      } else {
+        process.env.EXTERNAL_API_SEARCH_MAX_RESULTS = ORIGINAL;
+      }
+      jest.resetModules();
+    });
+
+    const loadMaxResults = () => {
+      let loaded!: typeof import('@/config');
+      jest.isolateModules(() => {
+        loaded = jest.requireActual<typeof import('@/config')>('@/config');
+      });
+      return loaded.EXTERNAL_API_SEARCH_MAX_RESULTS;
+    };
+
+    it('defaults to 2000 when unset', () => {
+      delete process.env.EXTERNAL_API_SEARCH_MAX_RESULTS;
+      expect(loadMaxResults()).toBe(2000);
+    });
+
+    it('accepts a valid positive integer', () => {
+      process.env.EXTERNAL_API_SEARCH_MAX_RESULTS = '10000';
+      expect(loadMaxResults()).toBe(10_000);
+    });
+
+    it.each(['abc', '0', '50', '-5', '100rows', '', '0.5', 'Infinity'])(
+      'falls back to 2000 for %p',
+      raw => {
+        process.env.EXTERNAL_API_SEARCH_MAX_RESULTS = raw;
+        expect(loadMaxResults()).toBe(2000);
+      },
+    );
+  });
+
   describe('EXPRESS_SESSION_SECRET', () => {
     const ORIGINAL_SECRET = process.env.EXPRESS_SESSION_SECRET;
     const ORIGINAL_LOCAL_APP_MODE = process.env.IS_LOCAL_APP_MODE;

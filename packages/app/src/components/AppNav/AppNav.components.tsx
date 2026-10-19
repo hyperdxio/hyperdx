@@ -1,9 +1,9 @@
 import React from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
+import { Badge } from '@clickhouse/click-ui';
 import {
   Avatar,
-  Badge,
   Button,
   Group,
   Menu,
@@ -388,13 +388,11 @@ export const AppNavLink = ({
       </span>
       {!isCollapsed && isBeta && (
         <Badge
-          size="xs"
-          color="blue"
-          variant="light"
+          size="sm"
+          text="Beta"
+          state="info"
           className={styles.navItemBadge}
-        >
-          Beta
-        </Badge>
+        />
       )}
       {!isCollapsed && onToggle && (
         <Tooltip

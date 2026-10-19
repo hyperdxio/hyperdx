@@ -184,6 +184,23 @@ export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
 
+// Percentile shorthands for `quantile` at a fixed level.
+export const PercentileAggregateFunctionSchema = z.enum([
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+]);
+export const PERCENTILE_AGG_FN_LEVELS = {
+  p50: 0.5,
+  p90: 0.9,
+  p95: 0.95,
+  p99: 0.99,
+} as const satisfies Record<
+  z.infer<typeof PercentileAggregateFunctionSchema>,
+  number
+>;
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 export const RootValueExpressionSchema = z
@@ -1231,15 +1248,34 @@ export const SqlAstFilterSchema = z.object({
 
 export type SqlAstFilter = z.infer<typeof SqlAstFilterSchema>;
 
+export const ConditionFilterSchema = z.object({
+  type: z.enum(['lucene', 'sql']),
+  condition: z.string(),
+});
+
+export type ConditionFilter = z.infer<typeof ConditionFilterSchema>;
+
 export const FilterSchema = z.union([
-  z.object({
-    type: z.enum(['lucene', 'sql']),
-    condition: z.string(),
-  }),
+  ConditionFilterSchema,
   SqlAstFilterSchema,
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+/**
+ * A PromQL label matcher (e.g. `job="api"`) added to every selector of a
+ * PromQL tile. Kept out of `FilterSchema` because saved searches, alerts and
+ * the APIs only take SQL and Lucene conditions.
+ */
+export const PromqlConditionFilterSchema = z.object({
+  type: z.literal('promql'),
+  condition: z.string(),
+});
+
+export type PromqlConditionFilter = z.infer<typeof PromqlConditionFilterSchema>;
+
+/** A dashboard filter condition broadcast to tiles, in the tile's query language. */
+export type BroadcastFilter = ConditionFilter | PromqlConditionFilter;
 
 export const VariableFilterValueSchema = z.object({
   type: z.literal('variable'),
@@ -1249,9 +1285,15 @@ export const VariableFilterValueSchema = z.object({
 
 export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
 
+/** The kind of sources an ad hoc filter reads its keys from. */
+export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
+
+export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
+
 /**
  * Operators an ad hoc filter condition can use, spelled as in PromQL so one set
- * serves both source types. `LIKE` / `NOT LIKE` are offered for SQL sources only.
+ * serves both source types. See `SQL_ADHOC_FILTER_OPERATORS` and
+ * `PROMQL_ADHOC_FILTER_OPERATORS` for which ones each source type supports.
  */
 export const AdhocFilterOperatorSchema = z.enum([
   '=',
@@ -1263,6 +1305,16 @@ export const AdhocFilterOperatorSchema = z.enum([
 ]);
 
 export type AdhocFilterOperator = z.infer<typeof AdhocFilterOperatorSchema>;
+
+export const SQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] =
+  AdhocFilterOperatorSchema.options;
+
+export const PROMQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] = [
+  '=',
+  '!=',
+  '=~',
+  '!~',
+];
 
 /** One `key operator value` condition picked in an ad hoc filter. */
 export const AdhocFilterConditionSchema = z.object({
@@ -1928,7 +1980,7 @@ const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
   // Copied from the source at query time and never persisted, so it cannot go
   // stale if the source moves to another connection.
   connection: z.string(),
-  filters: z.array(FilterSchema).optional(),
+  filters: z.array(PromqlConditionFilterSchema).optional(),
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
@@ -1992,11 +2044,19 @@ export type ChartConfigWithOptDateRange =
   | (RawSqlChartConfig & Partial<DateRange>)
   | (PromqlChartConfig & Partial<DateRange>);
 
+export const TILE_DESCRIPTION_MAX_LENGTH = 1024;
+
+const chartDescriptionSchema = z
+  .string()
+  .max(TILE_DESCRIPTION_MAX_LENGTH)
+  .optional();
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 const BuilderSavedChartConfigWithoutAlertSchema = z
   .object({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
     source: z.string(),
   })
   .extend(
@@ -2027,6 +2087,7 @@ export type BuilderSavedChartConfig = z.infer<
 const RawSqlSavedChartConfigWithoutAlertSchema =
   RawSqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const RawSqlSavedChartConfigSchema =
@@ -2040,6 +2101,7 @@ const RawSqlSavedChartConfigSchema =
 const PromqlSavedChartConfigWithoutAlertSchema =
   PromqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const PromqlSavedChartConfigSchema =
@@ -2258,11 +2320,6 @@ export const PromqlLabelDashboardFilterSchema =
     isBroadcastEnabled: z.literal(false),
     isVariableEnabled: z.literal(true),
   });
-
-/** The kind of sources an ad hoc filter reads its keys from. */
-export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
-
-export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
 
 /**
  * A filter whose conditions (`key operator value`) are picked freely from the
@@ -2775,10 +2832,11 @@ export const AssistantLineTableConfigSchema = z.object({
   select: z
     .array(
       z.object({
-        // TODO: Change percentile to fixed functions
-        aggregationFunction: AggregateFunctionSchema.describe(
-          'SQL-like function to aggregate the property by',
-        ),
+        aggregationFunction: AggregateFunctionSchema.exclude(['quantile'])
+          .or(PercentileAggregateFunctionSchema)
+          .describe(
+            'SQL-like function to aggregate the property by. Percentiles are p50, p90, p95 and p99',
+          ),
         property: z
           .string()
           .describe('Property or column to be aggregated (ex. Duration)'),

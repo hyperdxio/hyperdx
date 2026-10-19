@@ -121,6 +121,17 @@ export class SidePanelComponent {
       .click({ timeout: 10_000 });
   }
 
+  /** Click the "Add to Filters" line action on a top-level field of the parsed row. */
+  async addParsedFieldToFilter(field: string) {
+    await this.clickTab('parsed');
+    const line = this.panelContainer
+      .getByTestId('json-viewer-line')
+      .filter({ has: this.page.getByText(field, { exact: true }) })
+      .first();
+    await line.hover();
+    await line.getByTitle(/add to filters/i).click();
+  }
+
   /**
    * The cross-source "View Trace" action rendered in a log panel's metadata row
    * when the log has trace context (TraceId + a configured trace source).

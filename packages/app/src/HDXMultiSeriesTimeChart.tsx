@@ -69,6 +69,7 @@ import {
   toStartOfInterval,
 } from './ChartUtils';
 import { useFormatTime } from './useFormatTime';
+import { useContentFontSize } from './useUserPreferences';
 
 import styles from '@styles/HDXLineChart.module.scss';
 
@@ -777,7 +778,12 @@ export function collectMemoChartGradientHexes(
 // (NumberFormat.tsx), but 2 already distinguishes values >= 0.005 from 0.
 const MAX_AXIS_MANTISSA = 2;
 
-/** Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's comment. */
+/**
+ * Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's
+ * comment. A character budget rather than a pixel one, which is why
+ * Y_AXIS_WIDTH scales with the content font size preference: the gutter has to
+ * grow with the tick font for this to keep holding at every setting.
+ */
 const AXIS_CHAR_BUDGET = 5;
 
 // Flat, not suffix-length-scaled - IBM Plex Mono is monospace, so a longer
@@ -1351,6 +1357,12 @@ export const MemoChart = memo(function MemoChart({
   const _id = useId();
   const id = _id.replace(/:/g, '');
 
+  // The y-axis width budget is expressed in characters (see MAX_AXIS_MANTISSA),
+  // so it has to grow with the tick font or the widest labels clip.
+  const { compact: axisTickFontSize, scale: contentFontScale } =
+    useContentFontSize();
+  const yAxisWidth = Math.round(Y_AXIS_WIDTH * contentFontScale);
+
   // recharts sync group, scoped via context (see chartSync).
   const syncId = useChartSyncId();
 
@@ -1585,14 +1597,14 @@ export const MemoChart = memo(function MemoChart({
     if (graphResults.length !== 1) return undefined;
     const drawableWidth = Math.max(
       0,
-      containerWidth - Y_AXIS_WIDTH - SINGLE_POINT_BAR_RIGHT_PADDING,
+      containerWidth - yAxisWidth - SINGLE_POINT_BAR_RIGHT_PADDING,
     );
     if (drawableWidth <= 0) return undefined;
     return Math.max(
       1,
       Math.floor(drawableWidth * SINGLE_POINT_BAR_WIDTH_RATIO),
     );
-  }, [displayType, graphResults.length, containerWidth]);
+  }, [displayType, graphResults.length, containerWidth, yAxisWidth]);
 
   const formatTime = useFormatTime();
   const xTickFormatter = useCallback(
@@ -1932,9 +1944,9 @@ export const MemoChart = memo(function MemoChart({
     }
     return layoutAnnotations(coloredAnnotations, {
       domain: xAxisDomain,
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth: Math.max(0, containerWidth - yAxisWidth),
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth, yAxisWidth]);
 
   const [hoveredAnnotation, setHoveredAnnotation] =
     useState<HoveredAnnotation | null>(null);
@@ -1948,9 +1960,9 @@ export const MemoChart = memo(function MemoChart({
       // Drawable width, so markers too close together share one label. Zero on
       // the first paint (before ResponsiveContainer measures), which the
       // renderer treats as "label everything".
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth: Math.max(0, containerWidth - yAxisWidth),
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth, yAxisWidth]);
 
   return (
     <div
@@ -2063,13 +2075,19 @@ export const MemoChart = memo(function MemoChart({
             type="number"
             tickFormatter={xTickFormatter}
             minTickGap={100}
-            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+            tick={{
+              fontSize: axisTickFontSize,
+              fontFamily: 'IBM Plex Mono, monospace',
+            }}
           />
           <YAxis
-            width={Y_AXIS_WIDTH}
+            width={yAxisWidth}
             minTickGap={25}
             tickFormatter={yAxisTickFormatter}
-            tick={{ fontSize: 11, fontFamily: 'IBM Plex Mono, monospace' }}
+            tick={{
+              fontSize: axisTickFontSize,
+              fontFamily: 'IBM Plex Mono, monospace',
+            }}
             domain={yAxisDomain}
             ticks={yAxisTicks}
           />

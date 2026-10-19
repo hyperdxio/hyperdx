@@ -658,6 +658,33 @@ export class DashboardPage {
   }
 
   /**
+   * Open the actions menu of the tile with this id. Narrow tiles swap the
+   * toolbar for a single collapsed menu button.
+   */
+  async openTileActionsMenuById(tileId: string, { narrow = false } = {}) {
+    const tile = this.page.getByTestId(`dashboard-tile-${tileId}`);
+    await tile.scrollIntoViewIfNeeded();
+    await tile.hover();
+    const trigger = narrow
+      ? tile.locator('button').filter({ visible: true })
+      : this.page.getByTestId(`tile-actions-button-${tileId}`);
+    await trigger.click();
+  }
+
+  getTileMenuItem(name: string): Locator {
+    return this.page.getByRole('menuitem', { name, exact: true });
+  }
+
+  /**
+   * Open the "Move to group" submenu of an open tile menu.
+   */
+  async openMoveToGroupSubmenu(): Promise<Locator> {
+    const item = this.getTileMenuItem('Move to group');
+    await item.hover();
+    return this.page.locator(`#${await item.getAttribute('aria-controls')}`);
+  }
+
+  /**
    * Edit a tile
    */
   async editTile(tileIndex: number) {
@@ -1603,6 +1630,54 @@ export class DashboardPage {
   /** The condition pills of an ad hoc filter in the filter bar. */
   getAdhocConditionPills(filterName: string): Locator {
     return this.getAdhocFilter(filterName).getByTestId('adhoc-condition-pill');
+  }
+
+  /** Add a Search tile and save it. */
+  async addSearchTile({
+    chartName,
+    sourceName,
+    select,
+  }: {
+    chartName: string;
+    sourceName: string;
+    select?: string;
+  }) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartType(DisplayType.Search);
+    await this.chartEditor.setChartName(chartName);
+    await this.chartEditor.selectSource(sourceName);
+    if (select) await this.chartEditor.setSearchSelect(select);
+    await this.chartEditor.save();
+  }
+
+  /**
+   * The hover action on a tile cell showing `value`: `include` / `exclude`
+   * filter on it, `copy` copies it. Hovers the cell so the actions render.
+   */
+  async getTileCellAction(
+    tile: Locator,
+    value: string | RegExp,
+    action: 'include' | 'exclude' | 'copy',
+  ): Promise<Locator> {
+    await tile.getByText(value, { exact: true }).first().hover();
+    const name = {
+      include: 'Toggle filter for this value',
+      exclude: 'Exclude this value',
+      copy: 'Copy field value',
+    }[action];
+    // The previous cell's popover can still be closing
+    return tile.getByRole('button', { name }).last();
+  }
+
+  /** Hover a tile cell showing `value` and click its include / exclude action. */
+  async filterTileCell(
+    tile: Locator,
+    value: string,
+    action: 'include' | 'exclude',
+  ) {
+    await (await this.getTileCellAction(tile, value, action)).click();
   }
 
   /** The open condition editor of an ad hoc filter. */

@@ -264,6 +264,7 @@ export function convertFormStateToSavedChartConfig(
       configType: 'promql',
       ...pick(form, [
         'name',
+        'description',
         'displayType',
         'numberFormat',
         'color',
@@ -291,6 +292,7 @@ export function convertFormStateToSavedChartConfig(
       configType: 'sql',
       ...pick(form, [
         'name',
+        'description',
         'displayType',
         'numberFormat',
         'color',
