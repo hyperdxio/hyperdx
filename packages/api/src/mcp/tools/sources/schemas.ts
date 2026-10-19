@@ -142,9 +142,7 @@ const metricTablesSchema = z
     'exponential histogram': z
       .string()
       .optional()
-      .describe(
-        'Table containing exponential histogram metrics data. Not yet fully supported.',
-      ),
+      .describe('Table containing exponential histogram metrics data.'),
   })
   .describe(
     'Metric source only. Map of OTel metric kind to the ClickHouse table (in ' +

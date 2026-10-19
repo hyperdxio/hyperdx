@@ -133,7 +133,8 @@ const numberTileColorDescription =
 const numberTileColorRulesDescription =
   'Conditional colors for the number, evaluated in array order with the ' +
   'last matching rule winning; falls back to color (then the default text ' +
-  'color) when none match. Example: ' +
+  'color) when none match. Rules compare the raw query value, before ' +
+  'numberFormat is applied (a 0.5 shown as 50% matches value 0.5). Example: ' +
   '[{ operator: "gte", value: 500, color: "chart-error", label: "Critical" }].';
 
 const rawSqlNumberTileColorDescription =

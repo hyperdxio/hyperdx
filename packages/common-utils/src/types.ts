@@ -339,13 +339,14 @@ const numericOrderedColorCondition = z.object({
   operator: z
     .enum(['gt', 'gte', 'lt', 'lte'])
     .describe(
-      'Compares the displayed value against `value`: greater than, greater ' +
+      'Compares the raw query value (before numberFormat is applied) against ' +
+        '`value`: greater than, greater ' +
         'than or equal, less than, or less than or equal.',
     ),
   value: z
     .number()
     .finite()
-    .describe('Numeric bound the displayed value is compared against.'),
+    .describe('Numeric bound the raw value is compared against.'),
   color: colorConditionColor,
   label: colorConditionLabel,
 });
@@ -353,9 +354,7 @@ const numericOrderedColorCondition = z.object({
 const betweenColorCondition = z.object({
   operator: z
     .literal('between')
-    .describe(
-      'Matches when the displayed value falls within the `value` range.',
-    ),
+    .describe('Matches when the raw value falls within the `value` range.'),
   // A fixed-length array rather than `z.tuple([...])`: the MCP dashboard tools
   // (clickstack_save_dashboard / clickstack_patch_dashboard) expose this schema
   // as a tool `input_schema`, and `zod-to-json-schema` renders a tuple in the
@@ -377,11 +376,11 @@ const equalityColorCondition = z.object({
   operator: z
     .enum(['eq', 'neq'])
     .describe(
-      'Matches when the displayed value equals (eq) or does not equal (neq) `value`.',
+      'Matches when the raw value equals (eq) or does not equal (neq) `value`.',
     ),
   value: z
     .union([z.number().finite(), z.string().max(200)])
-    .describe('Number or string to compare the displayed value with.'),
+    .describe('Number or string to compare the raw value with.'),
   color: colorConditionColor,
   label: colorConditionLabel,
 });
