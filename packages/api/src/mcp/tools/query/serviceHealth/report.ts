@@ -232,6 +232,7 @@ export function buildReport(args: {
       window: args.current,
       comparisonMode: args.comparisonMode,
       metricSourceId: args.metricSourceId,
+      spanKind: args.spanKind,
     }),
     score: r.assessment.score,
     current: formatStats(r.current, windowMinutes),

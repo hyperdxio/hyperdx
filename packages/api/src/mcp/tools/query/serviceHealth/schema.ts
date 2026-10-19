@@ -31,7 +31,7 @@ export const serviceHealthSchema = z.object({
   endTime: z
     .string()
     .optional()
-    .describe('End of the window to assess (ISO 8601). Default: now.'),
+    .describe('End of the window to assess (ISO 8601). Defaults to now.'),
   comparison: z
     .enum(COMPARISON_MODES)
     .optional()
@@ -41,7 +41,8 @@ export const serviceHealthSchema = z.object({
         '  yesterday (default): shifted back 24h, so daily traffic cycles line up\n' +
         '  previous_period: the window immediately before startTime\n' +
         '  last_week: shifted back 7 days\n' +
-        '  none: no comparison; only absolute thresholds apply',
+        '  none: no comparison; only absolute thresholds apply\n' +
+        'If the chosen window has no data, the previous period is used instead.',
     ),
   where: whereSchema,
   whereLanguage: whereLanguageSchema,
@@ -52,13 +53,13 @@ export const serviceHealthSchema = z.object({
     .describe(
       'Which spans count as requests. server (default): entry-point spans only, ' +
         'matching the Services dashboard. all: every span, including internal ' +
-        'and client calls (inflates throughput and dilutes error rate).',
+        'and client calls, which inflates throughput and dilutes error rate and latency changes.',
     ),
   services: z
     .array(z.string().min(1))
     .max(100)
     .optional()
-    .describe('Only assess these service names. Default: every service.'),
+    .describe('Only assess these service names. Omit to assess every service.'),
   topN: z
     .number()
     .int()
@@ -66,7 +67,7 @@ export const serviceHealthSchema = z.object({
     .max(100)
     .optional()
     .default(20)
-    .describe('Max services returned, worst first. Default: 20.'),
+    .describe('Max services returned, worst first.'),
   topErrorsPerService: z
     .number()
     .int()
@@ -75,13 +76,13 @@ export const serviceHealthSchema = z.object({
     .optional()
     .default(3)
     .describe(
-      'Error groups returned per service. 0 skips the error breakdown (faster). Default: 3.',
+      'Error groups returned per service. 0 skips the error breakdown, which is faster.',
     ),
   errorGroupBy: z
     .string()
     .optional()
     .describe(
-      'Comma-separated SQL expressions that define an error group. Default: the ' +
+      'Comma-separated SQL expressions that define an error group. Defaults to the ' +
         "source's span name and status message. Example: " +
         '"SpanName, SpanAttributes[\'exception.type\']".',
     ),
@@ -93,7 +94,7 @@ export const serviceHealthSchema = z.object({
     .default(50)
     .describe(
       'Services with fewer requests than this in both windows are never flagged; ' +
-        'their ratios are too noisy. Default: 50.',
+        'their ratios are too noisy.',
     ),
 });
 

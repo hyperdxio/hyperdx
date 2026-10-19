@@ -2,6 +2,7 @@ import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { trace } from '@opentelemetry/api';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { PREFER_BUILDER_OVER_SQL_NUDGE } from '@/mcp/tools/query/builderCatalog';
 import {
   clickHouseErrorResult,
@@ -37,41 +38,25 @@ const TIMEOUT_SUFFIX =
 
 const DESCRIPTION =
   'One-call health report for every service on a trace source: throughput, ' +
-  'error rate, p50/p95/p99 latency and top error groups, each compared with ' +
-  'the same window yesterday (configurable), ranked worst first with a ' +
-  'status (critical / degraded / healthy) and the flags that explain it. ' +
-  'Error groups that are new or growing versus the comparison are listed ' +
-  'first.\n\n' +
-  'USE THIS FIRST for status checks, "how are my services doing", "is X ' +
-  'healthy", post-deploy checks, and as the entry point for triage. It ' +
-  'replaces several clickstack_table / clickstack_timeseries calls.\n\n' +
-  'sourceId is the "id" of a kind="trace" source from ' +
-  'clickstack_list_sources (a 24-character hex string), not its name or ' +
-  'table.\n\n' +
-  'This report is per service and per window, so it cannot show WHEN ' +
-  'something happened inside the window, or per-endpoint shifts. For a ' +
-  'status report, follow up with:\n' +
-  '  - clickstack_timeseries (error count and p99 by minute) to place a ' +
-  'new error group or latency change in time: a one-minute burst that ' +
-  'recovered is not an ongoing problem\n' +
-  '  - clickstack_table grouped by span name to spot new or shifting ' +
-  'endpoints\n' +
-  '  - clickstack_emerging_signals on the related log source for new log ' +
-  'patterns, which span data does not show\n' +
-  'For triage of a flagged service, check its own runtime metrics first ' +
-  '(memory, GC, CPU, restarts: clickstack_list_metrics then ' +
-  'clickstack_timeseries on the metric source, grouped by pod or instance). ' +
-  'Slow or failing spans are often a symptom of the service itself, not ' +
-  'its dependencies. Then use clickstack_event_deltas to find what ' +
-  'separates its failing or slow spans, and ' +
-  'clickstack_trace_top_time_consuming_operations for slow downstream ' +
-  'calls.\n\n' +
-  'Requires serviceName and statusCode expressions on the source (see ' +
-  'clickstack_describe_source). Counts server spans by default.\n\n' +
-  'CALIBRATION: flags only fire past fixed thresholds (see `usage` in the ' +
-  'response). A healthy service with small swings is steady, not a ' +
-  'regression and needs no action. An all-healthy report is a ' +
-  'valid answer.\n\n' +
+  'error rate, p50/p95/p99 latency and top error groups, compared with the ' +
+  'same window yesterday and ranked worst first. Each service gets a status ' +
+  '(critical / degraded / healthy), flags, and a one-line summary of which ' +
+  'changes crossed a threshold. New or growing error groups come first, ' +
+  'with first/last-seen times; operations with no prior traffic are listed ' +
+  'as likely rollouts.\n\n' +
+  'USE THIS FIRST for status checks, "is X healthy", post-deploy checks, and ' +
+  'as the entry point for triage.\n\n' +
+  'It is per service and per window. To follow up:\n' +
+  '  - clickstack_timeseries by minute to see when a change happened\n' +
+  '  - clickstack_table grouped by span name for per-endpoint shifts\n' +
+  '  - clickstack_emerging_signals on the log source for new log patterns\n' +
+  'For a flagged service, check its own runtime metrics (memory, GC, CPU, ' +
+  'restarts by pod) on the metric source before blaming dependencies, then ' +
+  'use clickstack_event_deltas and ' +
+  'clickstack_trace_top_time_consuming_operations.\n\n' +
+  'CALIBRATION: flags fire only past fixed thresholds (see `usage` in the ' +
+  'response). Small swings on a healthy service are normal variance. An ' +
+  'all-healthy report is a valid answer.\n\n' +
   PREFER_BUILDER_OVER_SQL_NUDGE;
 
 export function registerServiceHealth({
@@ -84,7 +69,7 @@ export function registerServiceHealth({
     TOOL_NAME,
     {
       title: 'Service Health',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description: DESCRIPTION,
       inputSchema: serviceHealthSchema,
     },

@@ -50,6 +50,7 @@ export function serviceSummary(args: {
   window: Window;
   comparisonMode: string;
   metricSourceId?: string | null;
+  spanKind?: string;
 }): string {
   const { current, comparison, assessment, changedErrors, window } = args;
   const f = new Set(assessment.flags);
@@ -110,5 +111,10 @@ export function serviceSummary(args: {
           : ''),
     );
   }
+  if (args.spanKind === 'all' && assessment.status === 'healthy')
+    context.push(
+      'Internal and client spans are included, which dilutes server-side ' +
+        'changes; check spanKind:"server" before concluding nothing changed.',
+    );
   return [head, ...context].join(' ');
 }
