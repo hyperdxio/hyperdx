@@ -11,6 +11,7 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
+  LineInterpolationSchema,
   MetricFormulaSchema,
   MetricsDataType,
   NumberFormatSchema,
@@ -354,6 +355,7 @@ const externalDashboardLineChartConfigSchema =
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    lineInterpolation: LineInterpolationSchema.optional(),
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     seriesLimit: z.number().int().nonnegative().optional(),
@@ -366,6 +368,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    lineInterpolation: LineInterpolationSchema.optional(),
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     // Raw SQL Line tiles carry the client-side render cap too, so it must
@@ -396,11 +399,13 @@ const externalDashboardBarRawSqlChartConfigSchema =
 const externalDashboardStackedLineChartConfigSchema =
   externalDashboardBarChartConfigSchema.extend({
     displayType: z.literal('stacked_line'),
+    lineInterpolation: LineInterpolationSchema.optional(),
   });
 
 const externalDashboardStackedLineRawSqlChartConfigSchema =
   externalDashboardBarRawSqlChartConfigSchema.extend({
     displayType: z.literal('stacked_line'),
+    lineInterpolation: LineInterpolationSchema.optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({
