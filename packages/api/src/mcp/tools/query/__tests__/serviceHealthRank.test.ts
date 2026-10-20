@@ -356,11 +356,9 @@ describe('errorTiming', () => {
     );
   });
 
-  it('calls a long trickle that paused intermittent, not a burst', () => {
+  it('calls errors spread across the window spread, not a burst', () => {
     // 52 minutes of errors, last one 7 minutes before the window end.
-    expect(errorTiming(group('17:06', '17:58'), window).pattern).toBe(
-      'intermittent',
-    );
+    expect(errorTiming(group('17:06', '17:58'), window).pattern).toBe('spread');
   });
 
   it('calls a short spike that ended a burst', () => {
@@ -379,9 +377,9 @@ describe('errorTiming', () => {
         comparisonMode: 'yesterday',
       });
     const trickle = summary(group('17:06', '17:58'));
-    expect(trickle).toMatch(/on and off from 17:06 to 17:58 UTC/);
+    expect(trickle).toMatch(/spread across 17:06-17:58 UTC, none since 17:58/);
     expect(trickle).not.toMatch(/transient/);
-    expect(trickle).toMatch(/still a live problem/);
+    expect(trickle).toMatch(/check clickstack_timeseries/);
     expect(summary(group('17:20', '17:21'))).toMatch(/transient/);
   });
 });

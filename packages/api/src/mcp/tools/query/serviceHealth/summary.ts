@@ -10,13 +10,13 @@ import type { Window } from './schema';
 /** An error group whose last error is this close to the window end is ongoing. */
 const ONGOING_TAIL_MS = 2 * 60_000;
 /**
- * A group that is not ongoing but spans this share of the window is a slow
- * trickle that paused, not a burst that ended. Calling it transient would
- * tell the agent to dismiss a recurring failure.
+ * A group that is not ongoing but spans this share of the window is not a
+ * short burst. First/last times can't tell a trickle from one long incident,
+ * so it is only called spread, never transient.
  */
-const INTERMITTENT_SHARE = 0.5;
+const SPREAD_SHARE = 0.5;
 
-type ErrorPattern = 'ongoing' | 'intermittent' | 'burst';
+type ErrorPattern = 'ongoing' | 'spread' | 'burst';
 
 const pct = (s: WindowStats | null) =>
   s && s.requests > 0 ? `${((s.errors / s.requests) * 100).toFixed(2)}%` : '0%';
@@ -29,8 +29,8 @@ export function errorTiming(g: ErrorGroup, window: Window) {
   const spread = windowMs > 0 ? (g.lastSeenMs - g.firstSeenMs) / windowMs : 0;
   const pattern: ErrorPattern = ongoing
     ? 'ongoing'
-    : spread >= INTERMITTENT_SHARE
-      ? 'intermittent'
+    : spread >= SPREAD_SHARE
+      ? 'spread'
       : 'burst';
   return {
     firstSeen: new Date(g.firstSeenMs).toISOString(),
@@ -52,8 +52,8 @@ function describeError(g: ErrorGroup, window: Window): string {
   const how =
     t.pattern === 'ongoing'
       ? `${when}, still occurring`
-      : t.pattern === 'intermittent'
-        ? `on and off from ${from} to ${to} UTC, last at ${to}`
+      : t.pattern === 'spread'
+        ? `spread across ${from}-${to} UTC, none since ${to}`
         : `${when}, stopped`;
   return `"${label}" (${g.count}, ${how})`;
 }
@@ -134,8 +134,8 @@ export function serviceSummary(args: {
         (patterns.has('burst')
           ? ' A short burst that stopped is transient, not an ongoing problem.'
           : '') +
-        (patterns.has('intermittent')
-          ? ' An error that recurs on and off across the window is still a live problem even if it is quiet right now.'
+        (patterns.has('spread')
+          ? ' An error spread across much of the window may still recur; check clickstack_timeseries by minute before calling it resolved.'
           : ''),
     );
   }
