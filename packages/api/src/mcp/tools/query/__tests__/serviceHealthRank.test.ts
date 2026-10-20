@@ -327,5 +327,6 @@ describe('buildReport', () => {
     const svc = reportFor(stats(), stats({ requests: 1, errors: 0 }));
     expect(svc.flags).toEqual(['new_service']);
     expect(svc.summary).not.toMatch(/New or growing errors/);
+    expect(svc.topErrors[0]).not.toHaveProperty('status');
   });
 });

@@ -5,7 +5,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { mcpQuerySettings } from '@/mcp/tools/trace/shared';
 
 import type { QueryContext } from './queries';
-import { baseConfig } from './queries';
+import { baseConfig, col } from './queries';
 import type { Window } from './schema';
 
 const SERVICE_ALIAS = '__hdx_service';
@@ -13,7 +13,8 @@ const OP_ALIAS = '__hdx_operation';
 const MAX_OPERATION_ROWS = 5000;
 /** A new operation needs this many requests to be reported. */
 const NEW_OPERATION_MIN_REQUESTS = 10;
-const MAX_NEW_OPERATIONS = 5;
+/** New operations shown per service; all of them still classify errors. */
+export const MAX_NEW_OPERATIONS = 5;
 
 export type NewOperation = {
   operation: string;
@@ -25,7 +26,7 @@ async function operationCounts(
   ctx: QueryContext,
   window: Window,
   services: string[],
-): Promise<Map<string, Map<string, number>>> {
+): Promise<{ counts: Map<string, Map<string, number>>; truncated: boolean }> {
   const { source, client, signal } = ctx;
   const list = services.map(s => `'${escapeSqlString(s)}'`).join(', ');
   const result = await client.queryChartConfig({
@@ -51,14 +52,15 @@ async function operationCounts(
       abort_signal: signal,
     },
   });
+  const rows = result.data ?? [];
   const out = new Map<string, Map<string, number>>();
-  for (const row of result.data ?? []) {
-    const svc = String(row[SERVICE_ALIAS] ?? '');
+  for (const row of rows) {
+    const svc = String(col(row, SERVICE_ALIAS) ?? '');
     const ops = out.get(svc) ?? new Map<string, number>();
-    ops.set(String(row[OP_ALIAS] ?? ''), Number(row.requests) || 0);
+    ops.set(String(col(row, OP_ALIAS) ?? ''), Number(row.requests) || 0);
     out.set(svc, ops);
   }
-  return out;
+  return { counts: out, truncated: rows.length >= MAX_OPERATION_ROWS };
 }
 
 /**
@@ -72,14 +74,20 @@ export async function findNewOperations(
   comparison: Window,
   services: string[],
   minPriorRequests: number,
-): Promise<Map<string, NewOperation[]>> {
-  if (services.length === 0) return new Map();
-  const [cur, cmp] = await Promise.all([
+): Promise<{ newOperations: Map<string, NewOperation[]>; complete: boolean }> {
+  const out = new Map<string, NewOperation[]>();
+  if (services.length === 0) return { newOperations: out, complete: true };
+  const [curRes, cmpRes] = await Promise.all([
     operationCounts(ctx, current, services),
     operationCounts(ctx, comparison, services),
   ]);
-  const out = new Map<string, NewOperation[]>();
-  for (const [svc, ops] of cur) {
+  // A truncated comparison can omit operations that did exist, which would
+  // make them look new. Report nothing rather than guess.
+  if (curRes.truncated || cmpRes.truncated) {
+    return { newOperations: out, complete: false };
+  }
+  const cmp = cmpRes.counts;
+  for (const [svc, ops] of curRes.counts) {
     const total = [...ops.values()].reduce((a, b) => a + b, 0);
     const before = cmp.get(svc);
     // A service with no real prior traffic is new as a whole (new_service);
@@ -92,7 +100,6 @@ export async function findNewOperations(
           op !== '' && n >= NEW_OPERATION_MIN_REQUESTS && !before?.get(op),
       )
       .sort((a, b) => b[1] - a[1])
-      .slice(0, MAX_NEW_OPERATIONS)
       .map(([operation, requests]) => ({
         operation,
         requests,
@@ -100,5 +107,5 @@ export async function findNewOperations(
       }));
     if (fresh.length) out.set(svc, fresh);
   }
-  return out;
+  return { newOperations: out, complete: true };
 }

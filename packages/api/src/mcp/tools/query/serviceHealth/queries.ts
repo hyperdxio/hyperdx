@@ -31,7 +31,7 @@ const LAST_SEEN_ALIAS = '__hdx_last_seen';
 const errorKeyAlias = (i: number) => `__hdx_error_key_${i}`;
 
 /** Upper bound on error-group rows fetched, before bucketing per service. */
-const MAX_ERROR_ROWS = 2500;
+export const MAX_ERROR_ROWS = 2500;
 
 type MvSource = Parameters<typeof tryOptimizeConfigWithMaterializedView>[4];
 
@@ -79,6 +79,14 @@ export type ErrorGroup = {
   firstSeenMs?: number;
   lastSeenMs?: number;
 };
+
+/** Read a column from a result row (rows are keyed by alias). */
+export const col = (row: Record<string, unknown>, key: string) =>
+  new Map(Object.entries(row)).get(key);
+
+/** The value of one grouping expression in an error group. */
+export const groupValue = (g: Pick<ErrorGroup, 'group'>, key: string) =>
+  new Map(Object.entries(g.group)).get(key);
 
 const sqlList = (values: string[]) =>
   values.map(v => `'${escapeSqlString(v)}'`).join(', ');
@@ -195,7 +203,7 @@ export async function fetchServiceStats(
   };
   const stats = new Map<string, WindowStats>();
   for (const row of rows) {
-    stats.set(String(row[SERVICE_ALIAS] ?? ''), {
+    stats.set(String(col(row, SERVICE_ALIAS) ?? ''), {
       requests: Number(row.requests) || 0,
       errors: Number(row.errors) || 0,
       p50Ms: toMs(row.p50),
@@ -240,7 +248,7 @@ export async function fetchErrorGroups(
       : `tuple(${keyExprs.map(e => `toString(${e})`).join(', ')}) IN (${scope.match
           .map(
             g =>
-              `tuple(${sqlList([g.service, ...groupExprs.map(e => g.group[e] ?? '')])})`,
+              `tuple(${sqlList([g.service, ...groupExprs.map(e => groupValue(g, e) ?? '')])})`,
           )
           .join(', ')})`;
 
@@ -270,13 +278,13 @@ export async function fetchErrorGroups(
   });
 
   return rows.map(row => ({
-    service: String(row[SERVICE_ALIAS] ?? ''),
+    service: String(col(row, SERVICE_ALIAS) ?? ''),
     group: Object.fromEntries(
-      groupExprs.map((e, i) => [e, String(row[errorKeyAlias(i)] ?? '')]),
+      groupExprs.map((e, i) => [e, String(col(row, errorKeyAlias(i)) ?? '')]),
     ),
-    count: Number(row[ERROR_COUNT_ALIAS]) || 0,
-    firstSeenMs: toNumberOrNull(row[FIRST_SEEN_ALIAS]) || undefined,
-    lastSeenMs: toNumberOrNull(row[LAST_SEEN_ALIAS]) || undefined,
+    count: Number(col(row, ERROR_COUNT_ALIAS)) || 0,
+    firstSeenMs: toNumberOrNull(col(row, FIRST_SEEN_ALIAS)) || undefined,
+    lastSeenMs: toNumberOrNull(col(row, LAST_SEEN_ALIAS)) || undefined,
   }));
 }
 

@@ -133,17 +133,22 @@ export function registerServiceHealth({
           input.minRequests,
         );
 
-        const { currentErrors, comparisonErrorCounts, newOperations } =
-          await collectErrors(ctx, {
-            current,
-            comparison,
-            // Novelty can lift a service into the top N, so assess errors
-            // beyond it rather than only for services already ranked there.
-            shown: ranked.slice(0, MAX_ERROR_SERVICES),
-            perService: input.topErrorsPerService,
-            groupExprs,
-            minRequests: input.minRequests,
-          });
+        const {
+          currentErrors,
+          comparisonErrorCounts,
+          newOperations,
+          coverageNote,
+        } = await collectErrors(ctx, {
+          current,
+          comparison,
+          // Novelty can lift a service into the top N, so assess errors
+          // beyond it rather than only for services already ranked there.
+          shown: ranked.slice(0, MAX_ERROR_SERVICES),
+          perService: input.topErrorsPerService,
+          groupExprs,
+          minRequests: input.minRequests,
+          totalServices: ranked.length,
+        });
 
         const report = buildReport({
           ranked,
@@ -151,6 +156,7 @@ export function registerServiceHealth({
           comparison,
           comparisonMode,
           comparisonNote,
+          coverageNote,
           spanKind: input.spanKind,
           topN: input.topN,
           errorGroupBy: groupExprs,

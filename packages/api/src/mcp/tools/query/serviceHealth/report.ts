@@ -1,6 +1,6 @@
-import type { NewOperation } from './operations';
+import { MAX_NEW_OPERATIONS, type NewOperation } from './operations';
 import type { ErrorGroup } from './queries';
-import { errorGroupKey } from './queries';
+import { errorGroupKey, groupValue } from './queries';
 import {
   assessService,
   compareAssessments,
@@ -175,6 +175,7 @@ export function buildReport(args: {
   comparison: Window | null;
   comparisonMode: string;
   comparisonNote?: string;
+  coverageNote?: string;
   spanKind: string;
   topN: number;
   errorGroupBy: string[];
@@ -187,7 +188,7 @@ export function buildReport(args: {
 }) {
   const onNewOperation = (r: RankedService, g: ErrorGroup) =>
     (args.newOperations.get(r.service) ?? []).some(
-      o => o.operation === g.group[args.spanNameKey],
+      o => o.operation === groupValue(g, args.spanNameKey),
     );
   const windowMinutes =
     (args.current.end.getTime() - args.current.start.getTime()) / 60_000;
@@ -232,7 +233,10 @@ export function buildReport(args: {
       comparison: r.comparison,
       assessment: r.assessment,
       changedErrors: changedErrors(r),
-      newOperations: args.newOperations.get(r.service) ?? [],
+      newOperations: (args.newOperations.get(r.service) ?? []).slice(
+        0,
+        MAX_NEW_OPERATIONS,
+      ),
       window: args.current,
       comparisonMode: args.comparisonMode,
       metricSourceId: args.metricSourceId,
@@ -247,7 +251,9 @@ export function buildReport(args: {
       deltas: r.assessment.deltas,
     }),
     ...(args.newOperations.has(r.service) && {
-      newOperations: args.newOperations.get(r.service),
+      newOperations: args.newOperations
+        .get(r.service)
+        ?.slice(0, MAX_NEW_OPERATIONS),
     }),
     topErrors: (args.currentErrors.get(r.service) ?? []).map(g => {
       const comparisonCount = prior(g);
@@ -255,12 +261,13 @@ export function buildReport(args: {
         group: g.group,
         count: g.count,
         ...errorTiming(g, args.current),
-        ...(args.comparisonErrorCounts && {
-          comparisonCount,
-          status: onNewOperation(r, g)
-            ? ('new_operation' satisfies ErrorGroupStatus)
-            : errorGroupStatus(g.count, comparisonCount),
-        }),
+        ...(args.comparisonErrorCounts &&
+          hasBaseline(r) && {
+            comparisonCount,
+            status: onNewOperation(r, g)
+              ? ('new_operation' satisfies ErrorGroupStatus)
+              : errorGroupStatus(g.count, comparisonCount),
+          }),
       };
     }),
   }));
@@ -283,6 +290,7 @@ export function buildReport(args: {
           'spans; try spanKind:"all").',
       }),
       ...(args.comparisonNote && { comparisonNote: args.comparisonNote }),
+      ...(args.coverageNote && { coverageNote: args.coverageNote }),
     },
     services,
     usage: USAGE,

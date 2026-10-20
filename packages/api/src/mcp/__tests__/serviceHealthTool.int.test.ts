@@ -148,10 +148,11 @@ describe('MCP Service Health Tool', () => {
 
   const parse = (result: Awaited<ReturnType<typeof call>>) => {
     expect(result.isError).toBeFalsy();
-    return JSON.parse(getFirstText(result)) as {
+    const body: {
       summary: Record<string, unknown>;
       services: ServiceReport[];
-    };
+    } = JSON.parse(getFirstText(result));
+    return body;
   };
 
   it('is listed with its input schema', async () => {

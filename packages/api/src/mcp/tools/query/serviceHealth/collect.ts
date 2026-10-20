@@ -3,6 +3,8 @@ import {
   type ErrorGroup,
   errorGroupKey,
   fetchErrorGroups,
+  groupValue,
+  MAX_ERROR_ROWS,
   type QueryContext,
 } from './queries';
 import {
@@ -18,6 +20,8 @@ export type CollectedErrors = {
   currentErrors: Map<string, ErrorGroup[]>;
   comparisonErrorCounts: Map<string, number> | null;
   newOperations: Map<string, NewOperation[]>;
+  /** Set when a limit kept some services or error groups out of the check. */
+  coverageNote: string | undefined;
 };
 
 /**
@@ -34,6 +38,8 @@ export async function collectErrors(
     perService: number;
     groupExprs: string[];
     minRequests: number;
+    /** Services assessed in total; `shown` may be a prefix of them. */
+    totalServices: number;
   },
 ): Promise<CollectedErrors> {
   const { current, comparison, shown, perService, groupExprs, minRequests } =
@@ -43,7 +49,7 @@ export async function collectErrors(
     .map(r => r.service);
   const fetchErrors = perService > 0 && withErrors.length > 0;
 
-  const [rows, newOperations] = await Promise.all([
+  const [rows, ops] = await Promise.all([
     fetchErrors
       ? fetchErrorGroups(ctx, current, groupExprs, { services: withErrors })
       : Promise.resolve([]),
@@ -55,13 +61,15 @@ export async function collectErrors(
           shown.filter(r => r.current).map(r => r.service),
           minRequests,
         )
-      : Promise.resolve(new Map<string, NewOperation[]>()),
+      : Promise.resolve({
+          newOperations: new Map<string, NewOperation[]>(),
+          complete: true,
+        }),
   ]);
+  const { newOperations } = ops;
 
-  const candidates = topGroupsPerService(
-    rows,
-    Math.max(ERROR_CANDIDATES_PER_SERVICE, perService),
-  );
+  const perServiceCap = Math.max(ERROR_CANDIDATES_PER_SERVICE, perService);
+  const candidates = topGroupsPerService(rows, perServiceCap);
   const all = [...candidates.values()].flat();
   const comparisonErrorCounts =
     comparison && all.length
@@ -85,9 +93,27 @@ export async function collectErrors(
         groups,
         comparisonErrorCounts,
         perService,
-        g => !baseline.get(service) || newOps.has(g.group[spanKey] ?? ''),
+        g => !baseline.get(service) || newOps.has(groupValue(g, spanKey) ?? ''),
       ),
     );
   }
-  return { currentErrors, comparisonErrorCounts, newOperations };
+  const groupsPerService = new Map<string, number>();
+  for (const g of rows) {
+    groupsPerService.set(g.service, (groupsPerService.get(g.service) ?? 0) + 1);
+  }
+  const limits = [
+    args.totalServices > shown.length &&
+      `only the first ${shown.length} of ${args.totalServices} services were checked for new errors`,
+    rows.length >= MAX_ERROR_ROWS &&
+      `the error query hit its ${MAX_ERROR_ROWS}-row limit`,
+    [...groupsPerService.values()].some(n => n > perServiceCap) &&
+      `only the ${perServiceCap} largest error groups per service were compared`,
+    !ops.complete &&
+      'too many operations to detect new ones reliably, so none are reported',
+  ].filter((x): x is string => typeof x === 'string');
+  const coverageNote = limits.length
+    ? `Incomplete: ${limits.join('; ')}. Narrow with services or a where filter for a full check.`
+    : undefined;
+
+  return { currentErrors, comparisonErrorCounts, newOperations, coverageNote };
 }
