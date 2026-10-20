@@ -15,6 +15,7 @@ import { isReducibleRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   displayTypeRequiresSource,
@@ -29,6 +30,7 @@ import {
   PromqlHeatmapMode,
   SavedChartConfig,
   SourceKind,
+  TILE_DESCRIPTION_MAX_LENGTH,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
@@ -389,6 +391,7 @@ export default function EditTimeChartForm({
     fillNulls,
     compareToPreviousPeriod,
     fitYAxisToData,
+    lineInterpolation,
     numberFormat,
     groupByColumnsOnLeft,
     alternateRowBackground,
@@ -406,6 +409,7 @@ export default function EditTimeChartForm({
       'fillNulls',
       'compareToPreviousPeriod',
       'fitYAxisToData',
+      'lineInterpolation',
       'numberFormat',
       'groupByColumnsOnLeft',
       'alternateRowBackground',
@@ -442,6 +446,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -457,6 +462,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -1019,6 +1025,7 @@ export default function EditTimeChartForm({
         fillNulls,
         compareToPreviousPeriod,
         fitYAxisToData,
+        lineInterpolation,
         groupByColumnsOnLeft,
         alternateRowBackground,
         seriesLimit,
@@ -1040,6 +1047,7 @@ export default function EditTimeChartForm({
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
+      setValue('lineInterpolation', lineInterpolation);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       setValue('alternateRowBackground', alternateRowBackground);
       // Persist `null` (not undefined) when cleared so the disabled state
@@ -1121,17 +1129,54 @@ export default function EditTimeChartForm({
       <div ref={setParentRef}>
         <ErrorBoundary>
           <Flex align="center" gap="sm" mb="sm">
-            <Text size="sm" className="text-nowrap">
-              Chart Name
-            </Text>
-            <InputControlled
-              name="name"
-              control={control}
+            <Flex
               flex={1}
-              type="text"
-              placeholder="My Chart Name"
-              data-testid="chart-name-input"
-            />
+              gap="sm"
+              direction={{ base: 'column', lg: 'row' }}
+              align={{ base: 'stretch', lg: 'center' }}
+            >
+              <Flex align="center" gap="sm" flex={1}>
+                <Text size="sm" className="text-nowrap">
+                  Chart Name
+                </Text>
+                <InputControlled
+                  name="name"
+                  control={control}
+                  flex={1}
+                  type="text"
+                  placeholder="My Chart Name"
+                  data-testid="chart-name-input"
+                />
+              </Flex>
+              {isDashboardForm && (
+                <Flex align="center" gap="sm" flex={1}>
+                  <Text size="sm" className="text-nowrap">
+                    Description
+                  </Text>
+                  <Controller
+                    control={control}
+                    name="description"
+                    render={({ field: { value, onChange, onBlur } }) => (
+                      <Textarea
+                        flex={1}
+                        autosize
+                        minRows={1}
+                        maxRows={4}
+                        maxLength={TILE_DESCRIPTION_MAX_LENGTH}
+                        value={value ?? ''}
+                        onChange={e =>
+                          onChange(e.currentTarget.value || undefined)
+                        }
+                        onBlur={onBlur}
+                        placeholder="Describe what this chart displays"
+                        aria-label="Tile description"
+                        data-testid="chart-description-input"
+                      />
+                    )}
+                  />
+                </Flex>
+              )}
+            </Flex>
             {configTypeOptions.length > 1 && (
               <Controller
                 control={control}
@@ -1162,8 +1207,16 @@ export default function EditTimeChartForm({
             name="displayType"
             render={({ field: { onChange, value } }) => (
               <Tabs
-                value={value}
-                onChange={onChange}
+                // Stacked variants are picked from the preview's display
+                // switcher and live under the Time Series tab.
+                value={
+                  isTimeSeriesDisplayType(value) ? DisplayType.Line : value
+                }
+                onChange={v => {
+                  if (v === DisplayType.Line && isTimeSeriesDisplayType(value))
+                    return;
+                  onChange(v);
+                }}
                 radius={'xs'}
                 mb="md"
                 data-testid="chart-type-input"
@@ -1346,6 +1399,9 @@ export default function EditTimeChartForm({
             previewDashboardFilters?.missingRequiredFilterNames
           }
           setValue={(name, value) => setValue(name, value)}
+          setDisplayType={type =>
+            setValue('displayType', type, { shouldDirty: true })
+          }
           onSubmit={onSubmit}
         />
         <SaveToDashboardModal

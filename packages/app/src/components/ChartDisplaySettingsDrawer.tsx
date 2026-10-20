@@ -8,6 +8,9 @@ import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
+  getDefaultLineInterpolation,
+  LineInterpolation,
+  LineInterpolationSchema,
   MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
   PromqlHeatmapMode,
@@ -20,10 +23,14 @@ import {
   Divider,
   Drawer,
   Group,
+  Input,
   NumberInput,
+  SegmentedControl,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { IconHelpCircle } from '@tabler/icons-react';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
@@ -49,6 +56,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'fillNulls'
   | 'compareToPreviousPeriod'
   | 'fitYAxisToData'
+  | 'lineInterpolation'
   | 'color'
   | 'colorRules'
   | 'backgroundChart'
@@ -99,6 +107,15 @@ interface ChartDisplaySettingsDrawerProps {
   isPerSeriesNumberFormatAllowed?: boolean;
 }
 
+const LINE_INTERPOLATION_OPTIONS: {
+  label: string;
+  value: LineInterpolation;
+}[] = [
+  { label: 'Smooth', value: 'smooth' },
+  { label: 'Linear', value: 'linear' },
+  { label: 'Step', value: 'step' },
+];
+
 function applyDefaultSettings(
   settings: ChartConfigDisplaySettings,
   fallbackNumberFormat: NumberFormat | undefined,
@@ -114,6 +131,9 @@ function applyDefaultSettings(
     fillNulls: settings.fillNulls ?? 0,
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
+    // No default: an unset value keeps following the display type's default
+    // if the tile later switches between line and stacked line.
+    lineInterpolation: settings.lineInterpolation,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
     alternateRowBackground: settings.alternateRowBackground ?? false,
     // Coerce to null so `reset` clears the input; undefined leaves the
@@ -213,6 +233,10 @@ export default function ChartDisplaySettingsDrawer({
   }, [reset, defaultNumberFormat, defaultHeatmapScaleType]);
 
   const isTimeChart = isTimeSeriesDisplayType(displayType);
+
+  const showLineInterpolation =
+    displayType === DisplayType.Line || displayType === DisplayType.StackedLine;
+  const defaultLineInterpolation = getDefaultLineInterpolation(displayType);
 
   // Series Limit applies to every time chart. On builder group-by charts a
   // positive value drives the __hdx_series_limit SQL CTE (trimming what's
@@ -322,6 +346,37 @@ export default function ChartDisplaySettingsDrawer({
               label="Fit Y-Axis to Data"
               description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
+            {showLineInterpolation && (
+              <Input.Wrapper
+                size="xs"
+                label={
+                  <Group gap={4} align="center">
+                    Line interpolation
+                    <Tooltip label="Determines the shape of the line between data points in the same series">
+                      <IconHelpCircle size={14} className="cursor-pointer" />
+                    </Tooltip>
+                  </Group>
+                }
+              >
+                <Controller
+                  control={control}
+                  name="lineInterpolation"
+                  render={({ field: { onChange, value } }) => (
+                    <SegmentedControl
+                      size="xs"
+                      fullWidth
+                      value={value ?? defaultLineInterpolation}
+                      onChange={v => {
+                        const parsed = LineInterpolationSchema.safeParse(v);
+                        if (parsed.success) onChange(parsed.data);
+                      }}
+                      data={LINE_INTERPOLATION_OPTIONS}
+                      data-testid="line-interpolation-control"
+                    />
+                  )}
+                />
+              </Input.Wrapper>
+            )}
             {showSeriesLimit && (
               <Box>
                 <Controller

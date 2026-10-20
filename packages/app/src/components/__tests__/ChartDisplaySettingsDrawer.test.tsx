@@ -252,6 +252,76 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('line interpolation setting', () => {
+    it.each([
+      [DisplayType.Line, 'Smooth'],
+      [DisplayType.StackedLine, 'Linear'],
+    ])(
+      'selects the %s default when the tile has none',
+      (displayType, label) => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(screen.getByRole('radio', { name: label })).toBeChecked();
+      },
+    );
+
+    it.each([DisplayType.StackedBar, DisplayType.Table])(
+      'does not show the control for %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.queryByTestId('line-interpolation-control'),
+        ).not.toBeInTheDocument();
+      },
+    );
+
+    it('leaves lineInterpolation unset when untouched', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0].lineInterpolation).toBeUndefined();
+    });
+
+    it('applies the chosen interpolation', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.StackedLine}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('radio', { name: 'Step' }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        lineInterpolation: 'step',
+      });
+    });
+  });
+
   describe('series limit setting', () => {
     const builderProps = { ...baseProps, configType: 'builder' as const };
 

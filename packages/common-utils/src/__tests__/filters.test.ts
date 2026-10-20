@@ -16,6 +16,7 @@ import {
   getPromqlFilters,
   getSqlFilters,
   hasFilterEffect,
+  isAdhocComparableDataType,
   isAdhocConditionSupported,
   isFilterBroadcastEnabled,
   isFilterGlobalRequirement,
@@ -23,6 +24,7 @@ import {
   isFilterVariableEnabled,
   isQueryExpressionFilter,
   isRenderablePinnedFilter,
+  mergeAdhocConditions,
   parseQuery,
   resolveFilterValuesWhere,
   resolvePromqlLabelFilterMatch,
@@ -34,6 +36,7 @@ import {
 } from '@/filters';
 import type {
   AdhocDashboardFilter,
+  AdhocFilterCondition,
   AdhocFilterOperator,
   AdhocFilterSourceType,
   ChartVariable,
@@ -1811,6 +1814,137 @@ describe('filters', () => {
 
     it('returns no filters for no conditions', () => {
       expect(adhocConditionsToFilters([])).toEqual([]);
+    });
+  });
+
+  describe('isAdhocComparableDataType', () => {
+    it.each([
+      'DateTime',
+      "DateTime('UTC')",
+      'DateTime64(9)',
+      'Nullable(DateTime64(3))',
+      'LowCardinality(Nullable(DateTime))',
+    ])('rejects %s', type => {
+      expect(isAdhocComparableDataType(type)).toBe(false);
+    });
+
+    it.each(['Date', 'Date32', 'String', 'UInt64', 'Dynamic'])(
+      'accepts %s',
+      type => {
+        expect(isAdhocComparableDataType(type)).toBe(true);
+      },
+    );
+  });
+
+  describe('mergeAdhocConditions', () => {
+    const svc = (
+      operator: AdhocFilterOperator,
+      value = 'api',
+    ): AdhocFilterCondition => ({ key: 'ServiceName', operator, value });
+    const level: AdhocFilterCondition = {
+      key: 'SeverityText',
+      operator: '=',
+      value: 'error',
+    };
+
+    it('includes a value', () => {
+      expect(
+        mergeAdhocConditions(
+          [level],
+          [{ key: 'ServiceName', value: 'api' }],
+          'include',
+        ),
+      ).toEqual([level, svc('=')]);
+    });
+
+    it('toggles an included value off', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('='), level],
+          [{ key: 'ServiceName', value: 'api' }],
+          'include',
+        ),
+      ).toEqual([level]);
+    });
+
+    it('replaces the opposite condition on the same value', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('=')],
+          [{ key: 'ServiceName', value: 'api' }],
+          'exclude',
+        ),
+      ).toEqual([svc('!=')]);
+      expect(
+        mergeAdhocConditions(
+          [svc('!=')],
+          [{ key: 'ServiceName', value: 'api' }],
+          'include',
+        ),
+      ).toEqual([svc('=')]);
+    });
+
+    it('adds a value without toggling an existing condition off', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('='), level],
+          [{ key: 'ServiceName', value: 'api' }],
+          'add',
+        ),
+      ).toEqual([svc('='), level]);
+      expect(
+        mergeAdhocConditions(
+          [svc('!=')],
+          [{ key: 'ServiceName', value: 'api' }],
+          'add',
+        ),
+      ).toEqual([svc('=')]);
+    });
+
+    it('toggles an excluded value off', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('!=')],
+          [{ key: 'ServiceName', value: 'api' }],
+          'exclude',
+        ),
+      ).toEqual([]);
+    });
+
+    it('appends a second value on the same key', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('=')],
+          [{ key: 'ServiceName', value: 'web' }],
+          'include',
+        ),
+      ).toEqual([svc('='), svc('=', 'web')]);
+    });
+
+    it('adds the entries that are missing when some already apply', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('=')],
+          [
+            { key: 'ServiceName', value: 'api' },
+            { key: 'SeverityText', value: 'error' },
+          ],
+          'include',
+        ),
+      ).toEqual([svc('='), level]);
+    });
+
+    it('removes every entry when all already apply', () => {
+      expect(
+        mergeAdhocConditions(
+          [svc('='), level],
+          [
+            { key: 'ServiceName', value: 'api' },
+            { key: 'SeverityText', value: 'error' },
+          ],
+          'include',
+        ),
+      ).toEqual([]);
     });
   });
 

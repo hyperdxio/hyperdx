@@ -20,6 +20,8 @@ interface DBRowTableFieldWithPopoverProps {
   cellValue: unknown;
   wrapLinesEnabled: boolean;
   columnName?: string;
+  /** The value include / exclude filter on, when it differs from the cell's. */
+  filterValue?: string;
   tableContainerRef: HTMLDivElement | null;
   isChart?: boolean;
 }
@@ -30,6 +32,7 @@ const DBRowTableFieldWithPopover = ({
   tableContainerRef,
   wrapLinesEnabled,
   columnName,
+  filterValue,
   isChart = false,
 }: DBRowTableFieldWithPopoverProps) => {
   const [opened, { close, open }] = useDisclosure(false);
@@ -102,20 +105,20 @@ const DBRowTableFieldWithPopover = ({
     setTimeout(() => setIsCopied(false), 2000);
   };
 
+  const getFilterValue = () =>
+    filterValue ??
+    (typeof cellValue === 'string' ? cellValue : String(cellValue ?? ''));
+
   const addFilter = () => {
     if (canFilter) {
-      const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
-      onPropertyAddClick(columnName, value, 'include');
+      onPropertyAddClick(columnName, getFilterValue(), 'include');
       handleClick(); // Close the popover
     }
   };
 
   const excludeFilter = () => {
     if (canFilter) {
-      const value =
-        typeof cellValue === 'string' ? cellValue : String(cellValue ?? '');
-      onPropertyAddClick(columnName, value, 'exclude');
+      onPropertyAddClick(columnName, getFilterValue(), 'exclude');
       handleClick(); // Close the popover
     }
   };

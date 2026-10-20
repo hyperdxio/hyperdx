@@ -240,6 +240,7 @@ export const convertToExternalTileChartConfig = (
           alignDateRangeToGranularity: config.alignDateRangeToGranularity,
           fillNulls: config.fillNulls !== false,
           fitYAxisToData: config.fitYAxisToData,
+          lineInterpolation: config.lineInterpolation,
           numberFormat: config.numberFormat,
           compareToPreviousPeriod: config.compareToPreviousPeriod,
           // Three-state passthrough: 0 (unlimited) and positive N round-trip;
@@ -262,7 +263,11 @@ export const convertToExternalTileChartConfig = (
         };
         // A union-typed displayType doesn't narrow to one union member.
         return config.displayType === DisplayType.StackedLine
-          ? { displayType: DisplayType.StackedLine, ...stacked }
+          ? {
+              displayType: DisplayType.StackedLine,
+              lineInterpolation: config.lineInterpolation,
+              ...stacked,
+            }
           : { displayType: DisplayType.StackedBar, ...stacked };
       }
       case DisplayType.Table:
@@ -357,6 +362,7 @@ export const convertToExternalTileChartConfig = (
         alignDateRangeToGranularity: config.alignDateRangeToGranularity,
         fillNulls: config.fillNulls !== false,
         fitYAxisToData: config.fitYAxisToData,
+        lineInterpolation: config.lineInterpolation,
         groupBy: stringValueOrDefault(config.groupBy, undefined),
         select: Array.isArray(config.select)
           ? config.select.map(convertToExternalSelectItem)
@@ -391,7 +397,11 @@ export const convertToExternalTileChartConfig = (
         ...externalShowOperandSeriesField,
       };
       return config.displayType === DisplayType.StackedLine
-        ? { displayType: DisplayType.StackedLine, ...stacked }
+        ? {
+            displayType: DisplayType.StackedLine,
+            lineInterpolation: config.lineInterpolation,
+            ...stacked,
+          }
         : { displayType: DisplayType.StackedBar, ...stacked };
     }
     case DisplayType.Number:
@@ -661,6 +671,9 @@ function convertTileToExternalChart(
     config: convertToExternalTileChartConfig(tile.config) ?? defaultTileConfig,
     ...(containerId !== undefined ? { containerId } : {}),
     ...(tabId !== undefined ? { tabId } : {}),
+    ...(tile.config.description
+      ? { description: tile.config.description }
+      : {}),
   };
 }
 
@@ -732,6 +745,7 @@ export function convertToInternalTileConfig(
 ): DashboardDocument['tiles'][number] {
   const externalConfig = externalTile.config;
   const name = externalTile.name || '';
+  const description = externalTile.description || undefined;
 
   let internalConfig: SavedChartConfig;
 
@@ -747,6 +761,7 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            'lineInterpolation',
             // Round-trip the render cap so a GET→PUT does not silently wipe it.
             'seriesLimit',
           ]),
@@ -754,6 +769,7 @@ export function convertToInternalTileConfig(
             TIME_SERIES_DISPLAY_TYPE_BY_NAME[externalConfig.displayType],
           fillNulls: externalConfig.fillNulls === false ? false : undefined,
           name,
+          description,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
@@ -774,6 +790,7 @@ export function convertToInternalTileConfig(
                   ? DisplayType.Bar
                   : DisplayType.Pie,
           name,
+          description,
           connection: externalConfig.connectionId,
           sqlTemplate: externalConfig.sqlTemplate,
           source: externalConfig.sourceId,
@@ -812,6 +829,7 @@ export function convertToInternalTileConfig(
             'alignDateRangeToGranularity',
             'compareToPreviousPeriod',
             'fitYAxisToData',
+            'lineInterpolation',
             // Formulas round-trip as-is; the input schema has already
             // validated the expressions against `select`.
             'formulas',
@@ -826,6 +844,7 @@ export function convertToInternalTileConfig(
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
           seriesLimit: externalConfig.seriesLimit,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'table':
@@ -848,6 +867,7 @@ export function convertToInternalTileConfig(
           where: '',
           seriesReturnType: externalConfig.asRatio ? 'ratio' : undefined,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'number':
@@ -880,6 +900,7 @@ export function convertToInternalTileConfig(
           // palette token, so it passes through directly.
           backgroundChart: externalConfig.backgroundChart,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'pie':
@@ -895,6 +916,7 @@ export function convertToInternalTileConfig(
           where: '',
           seriesLimit: externalConfig.limit,
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       case 'heatmap': {
@@ -909,6 +931,7 @@ export function convertToInternalTileConfig(
             source: externalConfig.sourceId,
             where: '',
             name,
+            description,
           } satisfies BuilderSavedChartConfig;
           break;
         }
@@ -972,6 +995,7 @@ export function convertToInternalTileConfig(
           where: externalConfig.where,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       }
@@ -981,6 +1005,7 @@ export function convertToInternalTileConfig(
           displayType: DisplayType.Search,
           source: externalConfig.sourceId,
           name,
+          description,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
         } satisfies BuilderSavedChartConfig;
         break;
@@ -990,6 +1015,7 @@ export function convertToInternalTileConfig(
           displayType: DisplayType.EventPatterns,
           source: externalConfig.sourceId,
           name,
+          description,
           whereLanguage: externalConfig.whereLanguage ?? 'lucene',
         } satisfies BuilderSavedChartConfig;
         break;
@@ -1001,6 +1027,7 @@ export function convertToInternalTileConfig(
           where: '',
           select: [],
           name,
+          description,
         } satisfies BuilderSavedChartConfig;
         break;
       default:

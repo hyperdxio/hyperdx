@@ -8,6 +8,7 @@ import {
   Metadata,
   MetadataCache,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -507,6 +508,64 @@ describe('useGetKeyValues', () => {
       expect(result.current.data).toBeUndefined();
     },
   );
+
+  it('applies the filter key limit to each Map column separately', async () => {
+    queryClient.setQueryData(['me'], { team: { filterKeysFetchLimit: 2 } });
+    const getKeyValuesWithMVs = jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockResolvedValue([]);
+    const conditionFor = (key: string): FilterState => ({
+      [key]: { included: new Set(['v']), excluded: new Set() },
+    });
+    const allKeys = [
+      "LogAttributes['a']",
+      "LogAttributes['b']",
+      "LogAttributes['c']",
+      "`Resource-Attributes`['x']",
+      'ServiceName',
+      'SeverityText',
+      'SpanName',
+    ];
+    const keptKeys = [
+      "LogAttributes['a']",
+      "LogAttributes['b']",
+      "`Resource-Attributes`['x']",
+      'ServiceName',
+      'SeverityText',
+    ];
+
+    const { result } = renderHook(
+      () =>
+        useGetKeyValues({
+          chartConfig: createMockChartConfig(),
+          keys: allKeys,
+          keyConditions: allKeys.map(conditionFor),
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getKeyValuesWithMVs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keys: keptKeys,
+        keyConditions: keptKeys.map(conditionFor),
+      }),
+    );
+  });
+
+  it('passes no keyConditions when none are given', async () => {
+    const getKeyValuesWithMVs = jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockResolvedValue([]);
+
+    const { result } = renderHook(
+      () => useGetKeyValues({ chartConfig: createMockChartConfig(), keys }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getKeyValuesWithMVs.mock.calls[0][0].keyConditions).toBeUndefined();
+  });
 
   it("retries a failed 'exact' mode lookup per the client's defaults", async () => {
     queryClient.setDefaultOptions({ queries: { retry: 1, retryDelay: 0 } });

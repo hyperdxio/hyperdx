@@ -1,6 +1,7 @@
 import {
   configConsumesBroadcastFilters,
   filterSelectionKey,
+  getAdhocFilterTargetsForTile,
   getBlockingRequiredFilterNames,
   getBlockingRequiredFilters,
   getUnsatisfiedRequiredFilters,
@@ -11,12 +12,14 @@ import {
 } from '@/dashboardFilterValues';
 import { FilterState, filtersToQuery } from '@/filters';
 import type {
+  AdhocDashboardFilter,
   AdhocFilterCondition,
   ChartConfigWithOptDateRange,
   DashboardFilter,
   DashboardFilterValue,
   PromqlLabelDashboardFilter,
   QueryExpressionDashboardFilter,
+  SavedChartConfig,
   StaticListDashboardFilter,
 } from '@/types';
 
@@ -880,6 +883,83 @@ describe('dashboardFilterValues', () => {
           'logs',
         ),
       ).toBe(true);
+    });
+  });
+
+  describe('getAdhocFilterTargetsForTile', () => {
+    const builderTile: SavedChartConfig = {
+      source: 'logs',
+      select: 'count()',
+      where: '',
+    };
+    const rawSqlTile = (sqlTemplate: string): SavedChartConfig => ({
+      configType: 'sql',
+      sqlTemplate,
+      connection: 'local',
+    });
+    const promqlTile: SavedChartConfig = {
+      configType: 'promql',
+      promqlExpression: 'up',
+      source: 'logs',
+    };
+    const adhoc = (
+      overrides: Partial<AdhocDashboardFilter> = {},
+    ): AdhocDashboardFilter => ({
+      id: 'a1',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'sql',
+      sources: ['logs'],
+      isVariableEnabled: true,
+      ...overrides,
+    });
+    const ids = (
+      filters: DashboardFilter[],
+      config: SavedChartConfig,
+      sourceId: string | undefined,
+    ) => getAdhocFilterTargetsForTile(filters, config, sourceId).map(f => f.id);
+
+    it('returns every ad hoc filter covering the tile source', () => {
+      const filters = [
+        adhoc(),
+        adhoc({ id: 'a2', sources: ['traces'], appliesToSourceIds: ['logs'] }),
+        adhoc({ id: 'a3', sources: ['traces'] }),
+        filter(),
+      ];
+      expect(ids(filters, builderTile, 'logs')).toEqual(['a1', 'a2']);
+    });
+
+    it('skips filters that do not broadcast', () => {
+      expect(
+        ids([adhoc({ isBroadcastEnabled: false })], builderTile, 'logs'),
+      ).toEqual([]);
+    });
+
+    it('matches the filter language to the tile', () => {
+      const filters = [
+        adhoc(),
+        adhoc({ id: 'p1', sourceType: 'promql', sources: ['logs'] }),
+      ];
+      expect(ids(filters, builderTile, 'logs')).toEqual(['a1']);
+      expect(ids(filters, promqlTile, 'logs')).toEqual(['p1']);
+    });
+
+    it('requires $__filters and a source on raw SQL tiles', () => {
+      const filters = [adhoc()];
+      expect(
+        ids(filters, rawSqlTile('SELECT 1 FROM t WHERE $__filters'), 'logs'),
+      ).toEqual(['a1']);
+      expect(
+        ids(filters, rawSqlTile('SELECT 1 FROM t WHERE $__filters'), undefined),
+      ).toEqual([]);
+      expect(ids(filters, rawSqlTile('SELECT 1 FROM t'), 'logs')).toEqual([]);
+      expect(
+        ids(
+          filters,
+          rawSqlTile('SELECT 1 FROM t WHERE $__filter(ServiceName, $svc)'),
+          'logs',
+        ),
+      ).toEqual([]);
     });
   });
 
