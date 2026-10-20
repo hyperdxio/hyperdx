@@ -114,6 +114,7 @@ const renderPanel = (
       showSampleEvents={false}
       showGeneratedPromql={false}
       setValue={jest.fn()}
+      setDisplayType={jest.fn()}
       onSubmit={jest.fn()}
       {...overrides}
     />,

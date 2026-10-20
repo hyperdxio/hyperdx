@@ -52,6 +52,10 @@ import { notifications } from '@mantine/notifications';
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
 import {
+  encodeJsonUrlParamValue,
+  encodeUrlParamValue,
+} from './utils/urlParamEncoding';
+import {
   DEFAULT_SERIES_LIMIT,
   MAX_RENDERED_TIME_CHART_SERIES,
 } from './defaults';
@@ -1380,11 +1384,19 @@ export function buildEventsSearchUrl({
   const from = dateRange[0].getTime();
   const to = dateRange[1].getTime();
 
+  // `where`, `select` and `filters` carry the search page parsers' own encoding
+  // layer under the query string's. When the search page later writes any
+  // other param, nuqs re-renders every value from the once-decoded query string
+  // without escaping newlines, and the browser strips them — so a
+  // single-encoded multi-line `where` comes back with its lines joined.
   const params: Record<string, string> = {
     source: source?.id ?? '',
-    where: where,
+    where: encodeUrlParamValue(where),
     whereLanguage: whereLanguage,
-    filters: JSON.stringify([...(config.filters ?? []), ...additionalFilters]),
+    filters: encodeJsonUrlParamValue([
+      ...(config.filters ?? []),
+      ...additionalFilters,
+    ]),
     isLive: 'false',
     from: from.toString(),
     to: to.toString(),
@@ -1394,7 +1406,7 @@ export function buildEventsSearchUrl({
   if (isMetricChart) {
     params.where = '';
     params.whereLanguage = 'lucene';
-    params.filters = JSON.stringify([]);
+    params.filters = encodeJsonUrlParamValue([]);
     params.source =
       (source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
         ? source.logSourceId
@@ -1405,7 +1417,7 @@ export function buildEventsSearchUrl({
   // eventTableSelect is used for charts that override select (like histograms with count)
   // to preserve the original table's select expression
   if (config.eventTableSelect) {
-    params.select = config.eventTableSelect;
+    params.select = encodeUrlParamValue(config.eventTableSelect);
   }
 
   return `/search?${new URLSearchParams(params).toString()}`;

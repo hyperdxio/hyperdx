@@ -399,6 +399,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         },
         compareToPreviousPeriod: true,
         fitYAxisToData: true,
+        lineInterpolation: 'step' as const,
       };
       const sqlNumberConfig = {
         configType: 'sql' as const,
@@ -996,6 +997,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
         numberFormat,
         compareToPreviousPeriod: true,
         fitYAxisToData: true,
+        lineInterpolation: 'linear' as const,
         seriesLimit: 5,
       };
       const barConfig = {
@@ -1009,6 +1011,7 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       const stackedLineConfig = {
         ...barConfig,
         displayType: 'stacked_line' as const,
+        lineInterpolation: 'step' as const,
       };
       const tableConfig = {
         displayType: 'table' as const,

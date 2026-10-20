@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
   parseTimeRange,
@@ -88,7 +89,7 @@ const describeMetricSchema = z.object({
   kind: z
     .enum(DISCOVERABLE_METRIC_KINDS)
     .describe(
-      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram" | "summary". Required. ' +
+      'OTel metric kind of metricName, which selects the metric table to read. ' +
         'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
         'or clickstack_describe_source (which groups metric-name samples by kind). ' +
         'A metric name can legitimately live in more than one kind (e.g. ' +
@@ -110,7 +111,7 @@ const describeMetricSchema = z.object({
     .optional()
     .default(true)
     .describe(
-      'When true (default), sample up to ' +
+      'Sample up to ' +
         `${MAX_ATTR_VALUES} distinct values per attribute key for the top ${MAX_ATTR_KEYS_TO_SAMPLE} attributes. ` +
         'Set false to skip value sampling for faster responses on high-cardinality metrics.',
     ),
@@ -713,7 +714,7 @@ export function registerDescribeMetric({
     'clickstack_describe_metric',
     {
       title: 'Describe Metric',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'DRILL-DOWN: Use after clickstack_list_metrics (or after a clickstack_describe_source ' +
         'sample) to get attribute keys, sampled values, unit, and description for a ' +

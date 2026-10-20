@@ -8,6 +8,7 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   formatZodIssues,
@@ -42,17 +43,23 @@ export function registerSaveAlert({
     'clickstack_save_alert',
     {
       title: 'Create or Update Alert',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new alert (omit id) or update an existing one (provide id). ' +
         'Alerts monitor a saved search, a dashboard tile, or an inline chart ' +
         'config (source "inline" + chartConfig — no saved search or dashboard ' +
-        'needed) and fire when the metric crosses a threshold. At least one ' +
-        'webhook notification channel ' +
-        'is required: pass "channels" for 1-10 targets, or the legacy singular ' +
-        '"channel" for one. Updates replace the alert configuration rather than ' +
-        'merging it, so read the alert first and resend its full "channels" ' +
-        'array to avoid dropping channels you did not mean to remove.',
+        'needed) and fire when the metric crosses a threshold. Once saved, the ' +
+        'alert is evaluated every interval and notifies its webhook channels ' +
+        'when it fires and when it resolves. At least one webhook channel is ' +
+        'required: pass "channels", or the legacy singular "channel" for one ' +
+        '(webhook IDs come from clickstack_get_webhook). Updates replace the ' +
+        'alert configuration rather than merging it: channels you do not resend are ' +
+        'removed, omitted name and message are cleared, omitted displayName and tags ' +
+        'are re-derived from the source, and settings this tool cannot set ' +
+        '(note, consecutive-window count) are cleared. Omitting both ' +
+        'scheduleStartAt and scheduleOffsetMinutes keeps the stored schedule; ' +
+        'clearing scheduleStartAt without an offset resets the offset to 0. Read the alert with ' +
+        'clickstack_get_alert first and resend every field you want to keep.',
       inputSchema: mcpSaveAlertSchema,
     },
     async input => {
