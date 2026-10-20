@@ -269,7 +269,12 @@ const convertPromqlConfigToExternal = (
     case DisplayType.StackedBar:
       return { ...base, ...timeChartFields, displayType: 'stacked_bar' };
     case DisplayType.StackedLine:
-      return { ...base, ...timeChartFields, displayType: 'stacked_line' };
+      return {
+        ...base,
+        ...timeChartFields,
+        displayType: 'stacked_line',
+        lineInterpolation: config.lineInterpolation,
+      };
     case DisplayType.Table:
       return { ...base, displayType: 'table', expressions: instantExpressions };
     case DisplayType.Number:
@@ -320,6 +325,7 @@ const convertPromqlConfigToExternal = (
     ...timeChartFields,
     displayType: 'line',
     compareToPreviousPeriod: config.compareToPreviousPeriod,
+    lineInterpolation: config.lineInterpolation,
   };
 };
 
@@ -841,10 +847,12 @@ const convertToInternalSelectItem = (
 const convertExternalPromqlConfigToInternal = (
   config: ExternalDashboardPromqlTileConfig,
   name: string,
+  description: string | undefined,
 ): PromqlSavedChartConfig => {
   const base = {
     configType: 'promql' as const,
     name,
+    description,
     source: config.sourceId,
     promqlExpression: config.expressions,
     granularity: config.granularity,
@@ -868,6 +876,10 @@ const convertExternalPromqlConfigToInternal = (
           config.displayType === 'line'
             ? config.compareToPreviousPeriod
             : undefined,
+        lineInterpolation:
+          config.displayType === 'stacked_bar'
+            ? undefined
+            : config.lineInterpolation,
       };
     case 'table':
       return { ...base, displayType: DisplayType.Table };
@@ -918,6 +930,7 @@ export function convertToInternalTileConfig(
     internalConfig = convertExternalPromqlConfigToInternal(
       externalConfig,
       name,
+      description,
     );
   } else if (isRawSqlExternalTileConfig(externalConfig)) {
     switch (externalConfig.displayType) {
@@ -1812,9 +1825,14 @@ export async function cleanupDashboardAlerts({
 }) {
   const newTileIdSet = new Set(internalTiles.map(t => t.id));
   const tileIdsToDeleteAlerts = [
-    // Tiles whose config no longer supports alerts (raw SQL or builder).
+    // Tiles whose config no longer supports alerts. PromQL tiles cannot be
+    // alerted on (HDX-4636), so an alert left on a tile switched to PromQL
+    // would never be checked.
     ...internalTiles
       .filter(tile => {
+        if (isPromqlSavedChartConfig(tile.config)) {
+          return true;
+        }
         if (isRawSqlSavedChartConfig(tile.config)) {
           return !displayTypeSupportsRawSqlAlerts(tile.config.displayType);
         }

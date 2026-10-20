@@ -748,11 +748,22 @@ describe('PromQL tiles', () => {
           { expression: 'up', alias: 'Up' },
           { expression: 'rate(errors_total[$__rate_interval])' },
         ],
+        description: 'Targets that are up',
         legendTemplate: '{{job}}',
         fillNulls: false,
         alignDateRangeToGranularity: true,
         compareToPreviousPeriod: true,
+        lineInterpolation: 'step',
         seriesLimit: 0,
+      },
+    ],
+    [
+      'stacked line',
+      {
+        ...base,
+        displayType: DisplayType.StackedLine,
+        promqlExpression: [{ expression: 'up' }],
+        lineInterpolation: 'smooth',
       },
     ],
     [

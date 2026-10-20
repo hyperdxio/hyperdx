@@ -720,10 +720,12 @@ const externalDashboardPromqlTileConfigSchema = z.discriminatedUnion(
     externalPromqlStackedChartConfigSchema.extend({
       displayType: z.literal('line'),
       compareToPreviousPeriod: z.boolean().optional(),
+      lineInterpolation: LineInterpolationSchema.optional(),
     }),
     externalPromqlStackedChartConfigSchema,
     externalPromqlStackedChartConfigSchema.extend({
       displayType: z.literal('stacked_line'),
+      lineInterpolation: LineInterpolationSchema.optional(),
     }),
     externalPromqlChartConfigBaseSchema.extend({
       displayType: z.literal('table'),
