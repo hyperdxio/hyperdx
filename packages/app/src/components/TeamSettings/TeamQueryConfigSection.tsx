@@ -24,6 +24,7 @@ import {
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
+import { getTeamClickHouseSettings } from '@/teamSettings';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 type ClickhouseSettingType = 'number' | 'boolean';
@@ -66,7 +67,7 @@ function ClickhouseSettingForm({
   const updateClickhouseSettings = api.useUpdateClickhouseSettings();
   const hasAdminAccess = true;
   const [isEditing, setIsEditing] = useState(false);
-  const currentValue = me?.team[settingKey];
+  const currentValue = getTeamClickHouseSettings(me)?.[settingKey];
 
   const form = useForm<{ value: any }>({
     defaultValues: {

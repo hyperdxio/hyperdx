@@ -39,6 +39,7 @@ import { DEFAULT_FILTER_KEYS_FETCH_LIMIT } from '@/defaults';
 import { mergeStreams, useStreamingQuery } from '@/hooks/useStreamingQuery';
 import { getMetadata } from '@/metadata';
 import { useSource, useSources } from '@/source';
+import { getTeamClickHouseSettings } from '@/teamSettings';
 import { toArray } from '@/utils';
 
 export type Facet = { key: string; value: string[] };
@@ -53,6 +54,8 @@ export const SINGLE_KEY_VALUES_LIMIT = 10000;
 export function useMetadataWithSettings() {
   const [metadata, setMetadata] = useState(getMetadata());
   const { data: me } = api.useMe();
+  const metadataMaxRowsToRead =
+    getTeamClickHouseSettings(me)?.metadataMaxRowsToRead;
   const settingsAppliedRef = useRef(false);
   const queryClient = useQueryClient();
 
@@ -81,13 +84,13 @@ export function useMetadataWithSettings() {
   }, [queryClient]);
 
   useEffect(() => {
-    if (me?.team?.metadataMaxRowsToRead && !settingsAppliedRef.current) {
+    if (metadataMaxRowsToRead && !settingsAppliedRef.current) {
       metadata.setClickHouseSettings({
-        max_rows_to_read: String(me.team.metadataMaxRowsToRead),
+        max_rows_to_read: String(metadataMaxRowsToRead),
       });
       settingsAppliedRef.current = true;
     }
-  }, [me?.team?.metadataMaxRowsToRead, metadata]);
+  }, [metadataMaxRowsToRead, metadata]);
 
   return metadata;
 }
@@ -294,7 +297,8 @@ export function useMultipleAllFields(
 ) {
   const metadata = useMetadataWithSettings();
   const { data: me, isFetched } = api.useMe();
-  const isFieldMetadataDisabled = !!me?.team?.fieldMetadataDisabled;
+  const isFieldMetadataDisabled =
+    !!getTeamClickHouseSettings(me)?.fieldMetadataDisabled;
   const allPopulated = tableConnections.every(
     tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
   );
@@ -454,7 +458,7 @@ export function useKeySample(
       })) ?? null,
     enabled:
       isFetched &&
-      !me?.team?.fieldMetadataDisabled &&
+      !getTeamClickHouseSettings(me)?.fieldMetadataDisabled &&
       !!databaseName &&
       !!tableName &&
       !!connectionId &&
@@ -496,7 +500,10 @@ export function useTableMetadata(
 /** How many keys a filter values query reads, per the team's setting. */
 export function useFilterKeysFetchLimit() {
   const { data: me } = api.useMe();
-  return me?.team?.filterKeysFetchLimit ?? DEFAULT_FILTER_KEYS_FETCH_LIMIT;
+  return (
+    getTeamClickHouseSettings(me)?.filterKeysFetchLimit ??
+    DEFAULT_FILTER_KEYS_FETCH_LIMIT
+  );
 }
 
 /**

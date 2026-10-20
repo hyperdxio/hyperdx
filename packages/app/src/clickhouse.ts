@@ -21,6 +21,7 @@ import {
   useMetadataQueryAttribution,
   useQueryAttribution,
 } from '@/queryAttribution';
+import { getTeamClickHouseSettings } from '@/teamSettings';
 
 import api from './api';
 import { DEFAULT_QUERY_TIMEOUT } from './defaults';
@@ -63,7 +64,8 @@ export const useClickhouseClient = (
 ): ClickhouseClient => {
   const { data: me } = api.useMe();
   // The team's timeout wins over anything the caller passed, as it always has.
-  const queryTimeout = me?.team?.queryTimeout ?? DEFAULT_QUERY_TIMEOUT;
+  const queryTimeout =
+    getTeamClickHouseSettings(me)?.queryTimeout ?? DEFAULT_QUERY_TIMEOUT;
 
   // Set on the client, not at each query: everything reaches ClickHouse
   // through a client from here or from the factory above.

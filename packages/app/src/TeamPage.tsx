@@ -36,13 +36,14 @@ import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
 import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
-import { IS_IAC_EXPORT_ENABLED } from './config';
+import { IS_IAC_EXPORT_ENABLED, IS_LOCAL_MODE } from './config';
 import { APP_CONTENT_SCROLL_CONTAINER_ID, withAppNav } from './layout';
 
 type TeamTab = {
   value: string;
   label: string;
   icon: ReactNode;
+  cloudOnly?: boolean; // Needs the API, which local mode doesn't have
   sections: {
     id: string;
     // Always a function of whether this tab is the visible one. Mantine `Tabs`
@@ -111,7 +112,7 @@ export default function TeamPage() {
     [refetchTeam, setTeamName],
   );
 
-  const tabs: TeamTab[] = [
+  const allTabs: TeamTab[] = [
     {
       value: 'data',
       label: 'Data',
@@ -131,6 +132,7 @@ export default function TeamPage() {
       value: 'team',
       label: 'Members',
       icon: <IconUsers size={16} />,
+      cloudOnly: true,
       sections: [
         {
           id: 'team-members',
@@ -161,6 +163,7 @@ export default function TeamPage() {
       value: 'api-agents',
       label: 'API & Agents',
       icon: <IconApi size={16} />,
+      cloudOnly: true,
       sections: [
         {
           id: 'team-api-agents-api-keys',
@@ -186,6 +189,7 @@ export default function TeamPage() {
       value: 'integrations',
       label: 'Integrations',
       icon: <IconPlug size={16} />,
+      cloudOnly: true,
       sections: [
         {
           id: 'team-integrations-webhooks',
@@ -205,6 +209,7 @@ export default function TeamPage() {
       ],
     },
   ];
+  const tabs = allTabs.filter(tab => !tab.cloudOnly || !IS_LOCAL_MODE);
 
   const queryTab =
     typeof router.query.tab === 'string' ? router.query.tab : null;
@@ -318,7 +323,7 @@ export default function TeamPage() {
               <span data-testid="team-name-display">
                 {team?.name || 'My team'}
               </span>
-              {hasAdminAccess && (
+              {hasAdminAccess && !IS_LOCAL_MODE && (
                 <Button
                   data-testid="team-name-change-button"
                   size="xs"
@@ -344,7 +349,7 @@ export default function TeamPage() {
               <Loader color="dimmed" />
             </Center>
           )}
-          {!isLoading && team != null && (
+          {!isLoading && (team != null || IS_LOCAL_MODE) && (
             <Tabs value={activeTab} onChange={handleTabChange}>
               <Tabs.List>
                 {tabs.map(tab => (
