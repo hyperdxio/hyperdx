@@ -8,6 +8,8 @@ import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
+import { getRequestPanelTitle } from '@/utils/rpcSpanAttributes';
+import { isSet } from '@/utils/spanAttributeReaders';
 
 import {
   getJSONColumnNames,
@@ -26,6 +28,12 @@ import { SpanLinkedFromSubpanel } from './SpanLinkedFromSubpanel';
 import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
+const EXCEPTION_ATTRIBUTE_KEYS = [
+  'exception.type',
+  'exception.message',
+  'exception.stacktrace',
+];
+
 export function RowOverviewPanel({
   source,
   rowId,
@@ -134,36 +142,35 @@ export function RowOverviewPanel({
     [generateSearchUrl],
   );
 
-  const isHttpRequest = useMemo(() => {
-    const attributes =
-      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
-    return attributes?.['http.url'] != null;
-  }, [dataAttributes, eventAttributesExpr]);
+  const requestPanelTitle = useMemo(
+    () => getRequestPanelTitle(flattenedEventAttributes),
+    [flattenedEventAttributes],
+  );
 
-  const filteredEventAttributes = useMemo(() => {
-    if (!eventAttributesExpr) return dataAttributes;
-
-    const attributes = dataAttributes?.[eventAttributesExpr];
-    return isHttpRequest && attributes
-      ? {
-          [eventAttributesExpr]: pickBy(
-            attributes,
-            (_, key) => !key.startsWith('http.'),
-          ),
-        }
-      : dataAttributes;
-  }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
+  const exceptionAttributes = useMemo(() => {
+    const spanEventAttributes = firstRow?.__hdx_events_exception_attributes;
+    if (
+      spanEventAttributes != null &&
+      Object.keys(spanEventAttributes).length > 0
+    ) {
+      return spanEventAttributes;
+    }
+    return EXCEPTION_ATTRIBUTE_KEYS.some(key =>
+      isSet(flattenedEventAttributes[key]),
+    )
+      ? flattenedEventAttributes
+      : undefined;
+  }, [firstRow?.__hdx_events_exception_attributes, flattenedEventAttributes]);
 
   const exceptionValues = useMemo(() => {
-    const parsedEvents =
-      firstRow?.__hdx_events_exception_attributes ?? EMPTY_OBJ;
+    const parsedEvents = exceptionAttributes ?? EMPTY_OBJ;
     const stacktrace =
       parsedEvents?.['exception.stacktrace'] ||
       parsedEvents?.['exception.parsed_stacktrace'];
 
     let parsedStacktrace = stacktrace ?? '[]';
     try {
-      parsedStacktrace = JSON.parse(stacktrace);
+      parsedStacktrace = JSON.parse(parsedStacktrace);
     } catch {
       // do nothing
     }
@@ -179,13 +186,9 @@ export function RowOverviewPanel({
         mechanism: parsedEvents?.['exception.mechanism'],
       },
     ];
-  }, [firstRow]);
+  }, [exceptionAttributes]);
 
-  const hasException = useMemo(() => {
-    return (
-      Object.keys(firstRow?.__hdx_events_exception_attributes ?? {}).length > 0
-    );
-  }, [firstRow?.__hdx_events_exception_attributes]);
+  const hasException = exceptionAttributes != null;
 
   const hasSpanEvents = useMemo(() => {
     return (
@@ -266,23 +269,6 @@ export function RowOverviewPanel({
         multiple
         variant="noPadding"
       >
-        {isHttpRequest && (
-          <Accordion.Item value="network">
-            <Accordion.Control>
-              <Text size="sm" ps={contentPx}>
-                HTTP Request
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px={contentPx}>
-                <NetworkPropertySubpanel
-                  eventAttributes={flattenedEventAttributes}
-                />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
         {hasException && (
           <Accordion.Item value="exception">
             <Accordion.Control>
@@ -294,10 +280,27 @@ export function RowOverviewPanel({
               <Box px={contentPx}>
                 <ExceptionSubpanel
                   exceptionValues={exceptionValues}
-                  breadcrumbs={[]}
                   logData={{
                     timestamp: firstRow?.__hdx_timestamp,
                   }}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {requestPanelTitle != null && (
+          <Accordion.Item value="network">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                {requestPanelTitle}
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <NetworkPropertySubpanel
+                  eventAttributes={flattenedEventAttributes}
+                  spanKind={firstRow?.__hdx_span_kind}
                 />
               </Box>
             </Accordion.Panel>
@@ -323,7 +326,7 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {Object.keys(filteredEventAttributes).length > 0 && (
+        {Object.keys(dataAttributes).length > 0 && (
           <Accordion.Item value="eventAttributes">
             <Accordion.Control>
               <Text size="sm" ps={contentPx}>
@@ -333,7 +336,7 @@ export function RowOverviewPanel({
             <Accordion.Panel>
               <Box px={contentPx}>
                 <DBRowJsonViewer
-                  data={filteredEventAttributes}
+                  data={dataAttributes}
                   jsonColumns={jsonColumns}
                   mapColumns={mapColumns}
                 />

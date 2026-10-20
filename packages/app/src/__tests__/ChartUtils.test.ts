@@ -155,6 +155,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: [],
           isDashed: false,
         },
       ]);
@@ -246,6 +247,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -255,6 +257,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · checkout (previous)',
           displayName: 'max · checkout',
           valueColumnName: 'max',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -266,6 +269,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['shipping'],
           isDashed: false,
         },
         {
@@ -275,6 +279,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
           valueColumnName: 'max',
+          groupValues: ['shipping'],
           isDashed: false,
         },
       ]);
@@ -336,6 +341,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'info (previous)',
           displayName: 'info',
           valueColumnName: 'count()',
+          groupValues: ['info'],
           isDashed: false,
         },
         {
@@ -345,6 +351,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'debug (previous)',
           displayName: 'debug',
           valueColumnName: 'count()',
+          groupValues: ['debug'],
           isDashed: false,
         },
         {
@@ -354,6 +361,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'error (previous)',
           displayName: 'error',
           valueColumnName: 'count()',
+          groupValues: ['error'],
           isDashed: false,
         },
       ]);
@@ -444,6 +452,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -453,6 +462,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · checkout (previous)',
           displayName: 'max · checkout',
           valueColumnName: 'max',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -464,6 +474,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['shipping'],
           isDashed: false,
         },
         {
@@ -473,6 +484,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
           valueColumnName: 'max',
+          groupValues: ['shipping'],
           isDashed: false,
         },
       ]);
@@ -672,9 +684,39 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'foo · {"key":"val"} · [1,2,3] (previous)',
           displayName: 'foo · {"key":"val"} · [1,2,3]',
           valueColumnName: 'count()',
+          groupValues: ['foo', { key: 'val' }, [1, 2, 3]],
           isDashed: false,
         },
       ]);
+    });
+
+    it('keeps raw group values, including nulls and values containing the key joiner', () => {
+      const path = `GET${ChartKeyJoiner}/api`;
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: {
+          data: [
+            {
+              'count()': 5,
+              severity: null,
+              span_name: path,
+              __hdx_time_bucket: '2025-11-26T11:12:00Z',
+            },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'severity', type: 'Nullable(String)' },
+            { name: 'span_name', type: 'String' },
+            { name: '__hdx_time_bucket', type: 'DateTime' },
+          ],
+        },
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      expect(actual.lineData).toHaveLength(1);
+      expect(actual.lineData[0].dataKey).toBe(`${ChartKeyJoiner}${path}`);
+      expect(actual.lineData[0].groupValues).toEqual([null, path]);
     });
 
     it('should plot previous period data when provided, shifted to align with current period', () => {
@@ -762,6 +804,7 @@ describe('ChartUtils', () => {
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: [],
           isDashed: false,
         },
         {
@@ -772,6 +815,7 @@ describe('ChartUtils', () => {
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: [],
           isDashed: true,
         },
       ]);
@@ -1839,6 +1883,7 @@ describe('getSeriesColorForGroup', () => {
     previousPeriodKey: `${currentPeriodKey} (previous)`,
     displayName: currentPeriodKey,
     valueColumnName: 'count()',
+    groupValues: [],
     color,
     isDashed,
   });
