@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import produce from 'immer';
+import { z } from 'zod';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   chSql,
@@ -12,6 +13,7 @@ import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   DateRange,
   Filter,
+  FilterSchema,
   pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
@@ -22,6 +24,7 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useQueryAttribution } from '@/queryAttribution';
 import { usePrevious } from '@/utils';
+import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import useFieldExpressionGenerator, {
   FieldExpressionGenerator,
@@ -117,22 +120,49 @@ export async function fetchServiceScopeFilters({
   }
 }
 
-export function buildSessionsQueryFilters(
-  serviceScopeFilters: Filter[],
-  where: SearchCondition | undefined,
-  whereLanguage: SearchConditionLanguage | undefined,
-): Filter[] {
-  return [
-    ...serviceScopeFilters,
-    ...(where
-      ? [
-          {
-            type: whereLanguage === 'sql' ? 'sql' : 'lucene',
-            condition: where,
-          } satisfies Filter,
-        ]
-      : []),
-  ];
+export const sessionFiltersParser = parseAsJsonEncoded<Filter[]>(v =>
+  z.array(FilterSchema).parse(v),
+).withDefault([]);
+
+export function hasSessionsSearch(
+  where: string | undefined,
+  filters: Filter[] | undefined,
+): boolean {
+  return !!where?.trim() || (filters?.length ?? 0) > 0;
+}
+
+export function buildSessionsScope(
+  resourceAttributesExpression: string | undefined,
+): string {
+  return `${resourceAttributesExpression ?? 'ResourceAttributes'}.rum.sessionId:*`;
+}
+
+// Combines the RUM session scope with the user's query into one `where`, so
+// callers that replace `filters` (e.g. facet "load more") keep both.
+export function buildSessionsSearchCondition({
+  resourceAttributesExpression,
+  sessionIdExpression,
+  where,
+  whereLanguage,
+}: {
+  resourceAttributesExpression: string | undefined;
+  sessionIdExpression: string;
+  where: string | undefined;
+  whereLanguage: SearchConditionLanguage | undefined;
+}): { where: string; whereLanguage: 'sql' | 'lucene' } {
+  const query = where?.trim();
+  if (query && whereLanguage === 'sql') {
+    return {
+      // The newline keeps a trailing `--` comment from swallowing the `)`.
+      where: `notEmpty(${sessionIdExpression}) AND (${query}\n)`,
+      whereLanguage: 'sql',
+    };
+  }
+  const scope = buildSessionsScope(resourceAttributesExpression);
+  return {
+    where: query ? `${scope} AND (${query})` : scope,
+    whereLanguage: 'lucene',
+  };
 }
 
 export function useSessions(
@@ -142,12 +172,14 @@ export function useSessions(
     dateRange,
     where,
     whereLanguage,
+    filters,
   }: {
     traceSource?: TTraceSource;
     sessionSource?: TSessionSource;
     dateRange: DateRange['dateRange'];
     where?: SearchCondition;
     whereLanguage?: SearchConditionLanguage;
+    filters?: Filter[];
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -175,6 +207,7 @@ export function useSessions(
       dateRange,
       where,
       whereLanguage,
+      filters,
     ],
     queryFn: async () => {
       if (
@@ -198,12 +231,14 @@ export function useSessions(
         metadata,
         clickhouseClient,
       });
-
-      const sessionsQueryFilters = buildSessionsQueryFilters(
-        serviceScopeFilters,
+      const searchCondition = buildSessionsSearchCondition({
+        resourceAttributesExpression: traceSource.resourceAttributesExpression,
+        sessionIdExpression: traceSessionIdExpression,
         where,
         whereLanguage,
-      );
+      });
+      const hasSearchQuery = hasSessionsSearch(where, filters);
+      const traceQueryFilters = [...serviceScopeFilters, ...(filters ?? [])];
 
       const [
         sessionsQuery,
@@ -263,11 +298,8 @@ export function useSessions(
             ],
             from: traceSource.from,
             dateRange,
-            where: `${traceSource.resourceAttributesExpression}.rum.sessionId:*`,
-            whereLanguage: 'lucene',
-            ...(sessionsQueryFilters.length > 0 && {
-              filters: sessionsQueryFilters,
-            }),
+            ...searchCondition,
+            ...(traceQueryFilters.length > 0 && { filters: traceQueryFilters }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
             useTextIndexForImplicitColumn:
@@ -337,16 +369,17 @@ export function useSessions(
           ${
             // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
             // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
-            where ? '' : 'HAVING interactionCount > 0 OR recordingCount > 0'
+            hasSearchQuery
+              ? ''
+              : 'HAVING interactionCount > 0 OR recordingCount > 0'
           }
           ORDER BY maxTimestamp DESC
           LIMIT 500
         )
       `;
 
-      const finalQuery =
-        where && where.length > 0
-          ? chSql`
+      const finalQuery = hasSearchQuery
+        ? chSql`
         ${sessionsCTE},
         sessionIdsWithRecordings AS (${sessionIdsWithRecordingsQuery}),
         sessionIdsWithUserActivity AS (${sessionIdsWithUserActivityQuery})
@@ -358,7 +391,7 @@ export function useSessions(
           SELECT sessionIdsWithUserActivity.sessionId FROM sessionIdsWithUserActivity
         )
       `
-          : chSql`
+        : chSql`
         ${sessionsCTE}
         SELECT *
         FROM ${SESSIONS_CTE_NAME}

@@ -78,6 +78,12 @@ export const areFiltersEqual = (a: FilterState, b: FilterState) => {
 // filtersToQuery; re-export so existing `@/searchFilters` importers keep working.
 export { parseQuery };
 
+export function formatDroppedFiltersMessage(count: number): string {
+  const noun = count === 1 ? 'filter' : 'filters';
+  const verb = count === 1 ? 'was' : 'were';
+  return `${count} ${noun} didn't apply to this source and ${verb} removed.`;
+}
+
 export const useSearchPageFilterState = ({
   searchQuery = [],
   onFilterChange,

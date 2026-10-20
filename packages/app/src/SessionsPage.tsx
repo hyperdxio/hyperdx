@@ -17,7 +17,10 @@ import {
 } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
+  BuilderChartConfigWithDateRange,
+  Filter,
   SearchCondition,
   SearchConditionLanguage,
   SourceKind,
@@ -33,20 +36,32 @@ import {
   Stepper,
   Tooltip,
 } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import {
+  IconArrowBarToRight,
   IconDeviceLaptop,
   IconPlayerPlay,
   IconRefresh,
+  IconSearchOff,
 } from '@tabler/icons-react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
+import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import EmptyState from '@/components/EmptyState';
+import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { PageHeader } from '@/components/PageHeader';
 import { PageLayout } from '@/components/PageLayout';
+import { SessionFilters } from '@/components/SessionFilters';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
+import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
+import { useColumns, useResolvedDateTimeColumns } from '@/hooks/useMetadata';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
+import {
+  formatDroppedFiltersMessage,
+  useSearchPageFilterState,
+} from '@/searchFilters';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -55,12 +70,20 @@ import SearchWhereInput, {
 } from './components/SearchInput/SearchWhereInput';
 import { useBrandDisplayName, usePageTitle } from './theme/ThemeProvider';
 import { withAppNavForSurface } from './layout';
-import { Session, useSessions } from './sessions';
+import {
+  buildSessionsScope,
+  buildSessionsSearchCondition,
+  hasSessionsSearch,
+  Session,
+  sessionFiltersParser,
+  useSessions,
+} from './sessions';
 import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
 import { FormatTime } from './useFormatTime';
-import { formatDistanceToNowStrictShort } from './utils';
+import { formatDistanceToNowStrictShort, useLocalStorage } from './utils';
 
+import searchPageStyles from '@styles/SearchPage.module.scss';
 import styles from '@styles/SessionsPage.module.scss';
 
 function SessionCard({
@@ -235,6 +258,7 @@ const appliedConfigMap = {
   sessionSource: parseAsString,
   where: parseAsString.withDefault(''),
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
+  filters: sessionFiltersParser,
 };
 const DEFAULT_INTERVAL = 'Past 1h';
 
@@ -255,6 +279,10 @@ function SessionsPage() {
       whereLanguage:
         appliedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
       source: paramSource?.id ?? null,
+      filters: appliedConfig.filters,
+    },
+    resetOptions: {
+      keepDirtyValues: true,
     },
   });
 
@@ -325,19 +353,133 @@ function SessionsPage() {
     })();
   }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
 
+  const { data: traceColumns } = useColumns(tcFromSource(traceTrace), {
+    enabled: !!traceTrace,
+  });
+  const knownColumns = useMemo(
+    () =>
+      traceColumns ? new Set(traceColumns.map(c => c.name)) : new Set<string>(),
+    [traceColumns],
+  );
+  const { dateTimeColumns } = useResolvedDateTimeColumns(traceColumns);
+
+  const handleSetFilters = useCallback(
+    (newFilters: Filter[]) => {
+      setValue('filters', newFilters);
+      setAppliedConfig({ filters: newFilters });
+    },
+    [setValue, setAppliedConfig],
+  );
+
+  const filters = useWatch({ control, name: 'filters' });
+  const searchFilters = useSearchPageFilterState({
+    searchQuery: filters ?? undefined,
+    onFilterChange: handleSetFilters,
+    dateTimeColumns,
+    knownColumns,
+  });
+
+  const { getFieldExpression: getTraceFieldExpression } =
+    useFieldExpressionGenerator(traceTrace);
+  const traceResourceAttributesExpression =
+    traceTrace?.resourceAttributesExpression ?? 'ResourceAttributes';
+  const traceSessionIdExpression = getTraceFieldExpression?.(
+    traceResourceAttributesExpression,
+    'rum.sessionId',
+  );
+  const sessionsSearchCondition = useMemo(
+    () =>
+      traceSessionIdExpression == null
+        ? undefined
+        : buildSessionsSearchCondition({
+            resourceAttributesExpression: traceResourceAttributesExpression,
+            sessionIdExpression: traceSessionIdExpression,
+            where: appliedConfig.where,
+            whereLanguage: appliedConfig.whereLanguage ?? undefined,
+          }),
+    [
+      traceSessionIdExpression,
+      traceResourceAttributesExpression,
+      appliedConfig.where,
+      appliedConfig.whereLanguage,
+    ],
+  );
+  const rumScopeFilters = useMemo<Filter[]>(
+    () => [
+      {
+        type: 'lucene',
+        condition: buildSessionsScope(traceResourceAttributesExpression),
+      },
+    ],
+    [traceResourceAttributesExpression],
+  );
+
+  const filtersChartConfig = useMemo<BuilderChartConfigWithDateRange>(() => {
+    const overrides = { dateRange: searchedTimeRange } as const;
+    if (traceTrace == null || sessionsSearchCondition == null) {
+      return {
+        timestampValueExpression: '',
+        connection: '',
+        from: { databaseName: '', tableName: '' },
+        where: '',
+        select: '',
+        ...overrides,
+      };
+    }
+    const config = buildSearchChartConfig(traceTrace, {
+      ...sessionsSearchCondition,
+      filters: appliedConfig.filters,
+    });
+    return { ...config, ...overrides };
+  }, [
+    traceTrace,
+    sessionsSearchCondition,
+    appliedConfig.filters,
+    searchedTimeRange,
+  ]);
+
+  const [isFilterSidebarCollapsed, setIsFilterSidebarCollapsed] =
+    useLocalStorage<boolean>('isSessionsFilterSidebarCollapsed', false);
+
   // Auto submit when the source changes. Compared against the *resolved* param
   // only: while `?sessionSource=` is still resolving — or when it names no
   // source at all — there is nothing for the form to have diverged from, and
   // submitting would write the empty form source over the param (losing both the
   // link and the "Source not found" warning) and reset the searched time range.
+  const pendingFilterReconcileRef = useRef<string | null>(null);
   const submitOnSourceChange = useEffectEvent(() => {
     if (sourceId !== (paramSource?.id ?? null)) {
+      if (paramSource != null) {
+        pendingFilterReconcileRef.current = sourceId;
+      }
       onSubmit();
     }
   });
   useEffect(() => {
     submitOnSourceChange();
   }, [sourceId]);
+
+  const retainCompatibleFilters = useEffectEvent(() => {
+    if (
+      pendingFilterReconcileRef.current == null ||
+      pendingFilterReconcileRef.current !== sessionSource?.id ||
+      traceTrace?.id !== sessionSource?.traceSourceId ||
+      traceColumns == null
+    ) {
+      return;
+    }
+    pendingFilterReconcileRef.current = null;
+    const dropped = searchFilters.retainFiltersByColumns(knownColumns);
+    if (dropped.length > 0) {
+      notifications.show({
+        color: 'yellow',
+        message: formatDroppedFiltersMessage(dropped.length),
+      });
+    }
+  });
+  useEffect(() => {
+    retainCompatibleFilters();
+  }, [sessionSource?.id, traceTrace?.id, traceColumns]);
 
   const [selectedSessionQuery, setSelectedSessionQuery] = useQueryStates(
     selectedSessionQueryStateMap,
@@ -389,10 +531,22 @@ function SessionsPage() {
     // TODO: if selectedSession is not null, we should filter by that session id
     where: appliedConfig.where as SearchCondition,
     whereLanguage: appliedConfig.whereLanguage as SearchConditionLanguage,
+    filters: appliedConfig.filters,
   });
 
   const sessions = tableData?.data ?? [];
   const targetSession = sessions.find(s => s.sessionId === selectedSession?.id);
+
+  // With a query applied, no results means "no matches", not "not set up yet".
+  const canShowFilterSidebar =
+    sessionSource != null &&
+    traceTrace != null &&
+    sessionsSearchCondition != null;
+
+  const hasActiveSearch = hasSessionsSearch(
+    appliedConfig.where,
+    appliedConfig.filters,
+  );
 
   return (
     <>
@@ -447,6 +601,8 @@ function SessionsPage() {
                   control={control}
                   name="source"
                   allowedSourceKinds={[SourceKind.Session]}
+                  // The filter sidebar's stacking context covers an inline menu.
+                  comboboxProps={{ withinPortal: true }}
                 />
                 <SearchWhereInput
                   tableConnection={tcFromSource(traceTrace)}
@@ -490,43 +646,96 @@ function SessionsPage() {
               </Group>
             </PageHeader>
           }
-          padded
           content={
-            <>
-              {isSessionsLoading || isSessionSourceLoading ? (
-                <Group mt="md" align="center" justify="center" gap="xs">
-                  <IconRefresh className="spin-animate" size={14} />
-                  {isSessionSourceLoading
-                    ? 'Loading...'
-                    : 'Searching sessions...'}
-                </Group>
-              ) : (
-                <>
-                  {!sessions.length ? (
-                    <Flex
-                      align="center"
-                      justify="center"
-                      style={{ flex: 1, minHeight: 0 }}
-                    >
-                      <SessionSetupInstructions />
-                    </Flex>
-                  ) : (
-                    <div
-                      style={{ minHeight: 0 }}
-                      data-testid="session-card-list"
-                    >
-                      <SessionCardList
-                        onClick={session => {
-                          setSelectedSession(session);
-                        }}
-                        sessions={sessions}
-                        isSessionLoading={isSessionsLoading}
-                      />
-                    </div>
-                  )}
-                </>
+            <div
+              className={searchPageStyles.searchPageContainer}
+              style={{ minHeight: 0, height: '100%' }}
+            >
+              {canShowFilterSidebar && !isFilterSidebarCollapsed && (
+                <ErrorBoundary message="Unable to render session filters">
+                  <SessionFilters
+                    chartConfig={filtersChartConfig}
+                    sourceId={traceTrace.id}
+                    onCollapse={() => setIsFilterSidebarCollapsed(true)}
+                    {...searchFilters}
+                  />
+                </ErrorBoundary>
               )}
-            </>
+              <Flex
+                direction="column"
+                p="sm"
+                style={{ flex: 1, minWidth: 0, minHeight: 0 }}
+              >
+                <Group gap={4} align="center" wrap="nowrap">
+                  {canShowFilterSidebar && isFilterSidebarCollapsed && (
+                    <Tooltip label="Show filters" position="bottom">
+                      <ActionIcon
+                        variant="subtle"
+                        size="sm"
+                        onClick={() => setIsFilterSidebarCollapsed(false)}
+                        aria-label="Show filters"
+                      >
+                        <IconArrowBarToRight size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                  <ActiveFilterPills
+                    searchFilters={searchFilters}
+                    chartConfig={filtersChartConfig}
+                    pickerFilters={rumScopeFilters}
+                    dateTimeColumns={dateTimeColumns}
+                    px={0}
+                    mb="xs"
+                    style={{ flex: 1 }}
+                  />
+                </Group>
+                {isSessionsLoading || isSessionSourceLoading ? (
+                  <Group mt="md" align="center" justify="center" gap="xs">
+                    <IconRefresh className="spin-animate" size={14} />
+                    {isSessionSourceLoading
+                      ? 'Loading...'
+                      : 'Searching sessions...'}
+                  </Group>
+                ) : !sessions.length && !hasActiveSearch ? (
+                  <Flex
+                    align="center"
+                    justify="center"
+                    style={{ flex: 1, minHeight: 0 }}
+                  >
+                    <SessionSetupInstructions />
+                  </Flex>
+                ) : !sessions.length ? (
+                  <EmptyState
+                    mt="xl"
+                    icon={<IconSearchOff size={32} />}
+                    title="No matching sessions"
+                    description="Try a different query, time range, or filters."
+                  >
+                    {appliedConfig.filters.length > 0 && (
+                      <Button
+                        variant="secondary"
+                        onClick={searchFilters.clearAllFilters}
+                      >
+                        Clear filters
+                      </Button>
+                    )}
+                  </EmptyState>
+                ) : (
+                  <div
+                    style={{ flex: 1, minHeight: 0 }}
+                    data-testid="session-card-list"
+                  >
+                    <SessionCardList
+                      onClick={session => {
+                        setSelectedSession(session);
+                      }}
+                      sessions={sessions}
+                      isSessionLoading={isSessionsLoading}
+                    />
+                  </div>
+                )}
+              </Flex>
+            </div>
           }
         />
       </form>

@@ -511,6 +511,30 @@ describe('ActiveFilterPills', () => {
     expect(passedConfig.filters).toEqual([]);
   });
 
+  it('keeps pickerFilters on the picker query', () => {
+    const pickerFilters = [
+      { type: 'lucene', condition: 'ResourceAttributes.rum.sessionId:*' },
+    ] as const;
+    const searchFilters = makeSearchFilters({
+      status: {
+        included: new Set<string | boolean>(['200']),
+        excluded: new Set<string | boolean>(),
+      },
+    });
+    renderWithMantine(
+      <ActiveFilterPills
+        searchFilters={searchFilters}
+        chartConfig={{ ...CHART_CONFIG, where: "status = '200'" }}
+        pickerFilters={[...pickerFilters]}
+      />,
+    );
+
+    const { chartConfig: passedConfig } =
+      mockedUseGetKeyValues.mock.lastCall[0];
+    expect(passedConfig.where).toBe('');
+    expect(passedConfig.filters).toEqual(pickerFilters);
+  });
+
   it('shows a value picker populated from useGetKeyValues', async () => {
     jest.useRealTimers();
     mockedUseGetKeyValues.mockReturnValue({
