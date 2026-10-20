@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { isEqual } from 'lodash';
 import objectHash from 'object-hash';
 import {
   ColumnMeta,
@@ -8,6 +9,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
+  KeySample,
   MetricNames,
   parseKeyPath,
   TableConnection,
@@ -248,7 +250,24 @@ type MultipleAllFieldsOptions = {
   // would offer fields that exist in one table but not another.
   intersect?: boolean;
   enabled?: boolean;
+  /** Share of data parts Map keys are read from; see `Metadata.getMapKeys`. */
+  keySampleRatio?: number;
 };
+
+/**
+ * Keeps the previous result on screen while only the key sample ratio, the
+ * last query key element, changes.
+ */
+function keepDataAcrossKeySampleChange<T>(queryKey: readonly unknown[]) {
+  return (
+    previous: T | undefined,
+    previousQuery?: { queryKey: readonly unknown[] },
+  ) =>
+    previousQuery &&
+    isEqual(previousQuery.queryKey.slice(0, -1), queryKey.slice(0, -1))
+      ? previous
+      : undefined;
+}
 
 /**
  * Fields (columns plus Map / JSON keys) across one or more tables, merged into
@@ -270,6 +289,7 @@ export function useMultipleAllFields(
     timestampValueExpression,
     intersect,
     enabled = true,
+    keySampleRatio,
   }: MultipleAllFieldsOptions = {},
 ) {
   const metadata = useMetadataWithSettings();
@@ -279,14 +299,17 @@ export function useMultipleAllFields(
     tc => !!tc.databaseName && !!tc.tableName && !!tc.connectionId,
   );
 
+  const queryKey = [
+    'useMetadata.useMultipleAllFields',
+    ...tableConnections.map(tc => ({ ...tc })),
+    dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
+    timestampValueExpression,
+    isFieldMetadataDisabled,
+    keySampleRatio,
+  ];
   const query = useQuery<TableConnectionFields[]>({
-    queryKey: [
-      'useMetadata.useMultipleAllFields',
-      ...tableConnections.map(tc => ({ ...tc })),
-      dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
-      timestampValueExpression,
-      isFieldMetadataDisabled,
-    ],
+    queryKey,
+    placeholderData: keepDataAcrossKeySampleChange(queryKey),
     queryFn: () =>
       Promise.all(
         tableConnections.map(async (tc): Promise<TableConnectionFields> => {
@@ -304,6 +327,7 @@ export function useMultipleAllFields(
                   dateRange,
                   timestampValueExpression:
                     timestampValueExpression ?? tc.timestampValueExpression,
+                  keySampleRatio,
                 });
             return { fields, columns };
           } catch (error) {
@@ -388,6 +412,56 @@ export function useAllFields(
   );
 }
 
+/**
+ * How many of the data parts in `dateRange` Map keys are read from at
+ * `keySampleRatio`. `null` when the table's Map keys aren't sampled.
+ */
+export function useKeySample(
+  { databaseName, tableName, connectionId }: TableConnection,
+  {
+    dateRange,
+    timestampValueExpression,
+    keySampleRatio,
+  }: {
+    dateRange: [Date, Date];
+    timestampValueExpression?: string;
+    keySampleRatio: number;
+  },
+) {
+  const metadata = useMetadataWithSettings();
+  // Without field metadata there are no Map keys to sample.
+  const { data: me, isFetched } = api.useMe();
+  const queryKey = [
+    'useMetadata.useKeySample',
+    { databaseName, tableName, connectionId },
+    dateRange[0].getTime(),
+    dateRange[1].getTime(),
+    timestampValueExpression,
+    keySampleRatio,
+  ];
+  return useQuery<KeySample | null>({
+    queryKey,
+    placeholderData: keepDataAcrossKeySampleChange(queryKey),
+    queryFn: async ({ signal }) =>
+      (await metadata.getKeySample({
+        databaseName,
+        tableName,
+        connectionId,
+        dateRange,
+        timestampValueExpression,
+        keySampleRatio,
+        signal,
+      })) ?? null,
+    enabled:
+      isFetched &&
+      !me?.team?.fieldMetadataDisabled &&
+      !!databaseName &&
+      !!tableName &&
+      !!connectionId &&
+      !!timestampValueExpression,
+  });
+}
+
 export function useTableMetadata(
   {
     databaseName,
@@ -464,6 +538,7 @@ export function useMultipleGetKeyValues(
     disableRowLimit,
     mode = 'exact',
     metadataMVs: metadataMVsOverride,
+    keySampleRatio,
   }: {
     chartConfigs:
       | BuilderChartConfigWithDateRange
@@ -480,6 +555,11 @@ export function useMultipleGetKeyValues(
      * than one config, since MVs belong to a single table.
      */
     metadataMVs?: MetadataMaterializedViews;
+    /**
+     * Share of data parts 'all' mode reads text index values from; see
+     * `Metadata.getMapKeys`.
+     */
+    keySampleRatio?: number;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -517,6 +597,7 @@ export function useMultipleGetKeyValues(
       disableRowLimit,
       maxKeys,
       limit,
+      keySampleRatio,
     ],
     streamFactory: async function* ({ signal }) {
       if (keys.length === 0) return;
@@ -590,6 +671,7 @@ export function useMultipleGetKeyValues(
           metadataMVs,
           dateRange: chartConfig.dateRange,
           timestampValueExpression: chartConfig.timestampValueExpression,
+          keySampleRatio,
           signal,
         }),
       );
@@ -657,6 +739,7 @@ export function useGetKeyValues(
     disableRowLimit,
     mode,
     metadataMVs,
+    keySampleRatio,
   }: {
     chartConfig?: BuilderChartConfigWithDateRange;
     keys: string[];
@@ -666,6 +749,7 @@ export function useGetKeyValues(
     disableRowLimit?: boolean;
     mode?: 'all' | 'exact';
     metadataMVs?: MetadataMaterializedViews;
+    keySampleRatio?: number;
   },
   options?: Omit<UseQueryOptions<any, Error>, 'queryKey'>,
 ) {
@@ -678,6 +762,7 @@ export function useGetKeyValues(
       disableRowLimit,
       mode,
       metadataMVs,
+      keySampleRatio,
     },
     options,
   );

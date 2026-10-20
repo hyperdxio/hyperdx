@@ -48,6 +48,11 @@ import {
   renderStartOfBucketExpr,
 } from './materializedViews';
 import {
+  renderSampledPartCounts,
+  renderSampledPartNames,
+  SampledPartsOptions,
+} from './sampledParts';
+import {
   getAlignedDateRange,
   getDistributedTableArgs,
   MetadataMVQueryOptions,
@@ -92,6 +97,9 @@ export type KeyValues = {
   value: string[] | number[];
 };
 
+/** How many of the parts overlapping a date range a Map key lookup reads. */
+export type KeySample = { sampledParts: number; totalParts: number };
+
 type AllKeyValuesQuery = {
   databaseName: string;
   tableName: string;
@@ -101,6 +109,11 @@ type AllKeyValuesQuery = {
   metadataMVs?: MetadataMaterializedViews;
   dateRange: [Date, Date];
   timestampValueExpression: string;
+  /**
+   * Share of the parts overlapping `dateRange` whose text index values are
+   * read; see `Metadata.getMapKeys`. Defaults to 0, the smallest sample.
+   */
+  keySampleRatio?: number;
   signal?: AbortSignal;
 };
 
@@ -852,6 +865,117 @@ export class Metadata {
     )`;
   }
 
+  /**
+   * `part_name` filter for a Map key text index read: every part overlapping
+   * the range when keySampleRatio >= 1, otherwise a sample of them.
+   */
+  private async keySamplePartsFilter({
+    databaseName,
+    tableName,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    keySampleRatio,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    dateRange: [Date, Date];
+    timestampValueExpression: string;
+    keySampleRatio: number;
+  }): Promise<ChSql> {
+    if (keySampleRatio >= 1) {
+      return this.partsOverlapFilter({
+        databaseName,
+        tableName,
+        dateRange,
+        timestampValueExpression,
+      });
+    }
+    const options = await this.keySampleOptions({
+      databaseName,
+      tableName,
+      connectionId,
+      dateRange,
+      keySampleRatio,
+    });
+    return chSql`part_name IN (${renderSampledPartNames(options)})`;
+  }
+
+  private async keySampleOptions({
+    databaseName,
+    tableName,
+    connectionId,
+    dateRange,
+    keySampleRatio,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    dateRange: [Date, Date];
+    keySampleRatio: number;
+  }): Promise<SampledPartsOptions> {
+    return {
+      databaseName,
+      tableName,
+      dateRange,
+      ratio: keySampleRatio,
+      maxPartRows:
+        Number(this.getClickHouseSettings().max_rows_to_read) ||
+        DEFAULT_METADATA_MAX_ROWS_TO_READ,
+      coverColumns:
+        keySampleRatio >= 1
+          ? []
+          : await this.getKeySampleCoverColumns({
+              databaseName,
+              tableName,
+              connectionId,
+            }),
+    };
+  }
+
+  /** String-typed primary key columns, whose values a key sample should span. */
+  private async getKeySampleCoverColumns({
+    databaseName,
+    tableName,
+    connectionId,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+  }): Promise<string[]> {
+    try {
+      const tableMetadata = await this.getTableMetadata({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+      // mergeTreeIndex can't read the index of a Distributed or Merge table.
+      if (!tableMetadata?.primary_key || tableMetadata.isPointerTable) {
+        return [];
+      }
+      const columns = await this.getColumns({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+      const stringColumns = new Set(
+        columns
+          .filter(c => convertCHDataTypeToJSType(c.type) === JSDataType.String)
+          .map(c => c.name),
+      );
+      return splitAndTrimWithBracket(tableMetadata.primary_key)
+        .map(unquoteIdentifier)
+        .filter(column => stringColumns.has(column));
+    } catch (e) {
+      console.warn(
+        'Could not read the primary key; Map key parts are sampled without it',
+        e,
+      );
+      return [];
+    }
+  }
+
   /** Rejects what `mergeTreeIndex` cannot read; callers fall back to a scan. */
   private async assertIndexReadable({
     databaseName,
@@ -1012,6 +1136,7 @@ export class Metadata {
     metadataMVs,
     dateRange: callerDateRange,
     timestampValueExpression,
+    keySampleRatio = 0,
     signal,
   }: {
     databaseName: string;
@@ -1023,6 +1148,12 @@ export class Metadata {
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    /**
+     * Share of the parts overlapping `dateRange` whose key text index is read.
+     * 0 reads the smallest sample that spans the string primary key values;
+     * 1 reads every part.
+     */
+    keySampleRatio?: number;
     signal?: AbortSignal;
   }) {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
@@ -1046,10 +1177,10 @@ export class Metadata {
         ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
         : '';
     const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.${maxKeys}.keys`
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.${maxKeys}.${keySampleRatio}.keys`
       : alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.${maxKeys}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.${maxKeys}.keys`;
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.${maxKeys}.${keySampleRatio}.keys`
+        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.${maxKeys}.${keySampleRatio}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -1082,11 +1213,13 @@ export class Metadata {
       canQueryMergeTreeTextIndex &&
       timestampValueExpression
     ) {
-      const partsFilter = await this.partsOverlapFilter({
+      const partsFilter = await this.keySamplePartsFilter({
         databaseName,
         tableName,
+        connectionId,
         dateRange,
         timestampValueExpression,
+        keySampleRatio,
       });
       const index = textIndexInfo.key.indexName;
       // `cardinality` is the token's row count in the part, not a distinct count.
@@ -1129,11 +1262,13 @@ export class Metadata {
       canQueryMergeTreeTextIndex &&
       timestampValueExpression
     ) {
-      const partsFilter = await this.partsOverlapFilter({
+      const partsFilter = await this.keySamplePartsFilter({
         databaseName,
         tableName,
+        connectionId,
         dateRange,
         timestampValueExpression,
+        keySampleRatio,
       });
       const index = textIndexInfo.kv.indexName;
       const separator = textIndexInfo.kv.separator;
@@ -1587,17 +1722,27 @@ export class Metadata {
     queryOptions,
     dateRange,
     timestampValueExpression,
+    keySampleRatio,
     signal,
   }: TableConnection & {
     queryOptions: TextIndexMapColumnQueryOptions;
     dateRange: [Date, Date];
     timestampValueExpression: string;
+    keySampleRatio: number;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
     const queryOptionsHash = objectHash(queryOptions);
-    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.getMapTextIndexKeyValues`;
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.${keySampleRatio}.getMapTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       try {
+        const partsFilter = await this.keySamplePartsFilter({
+          databaseName,
+          tableName,
+          connectionId,
+          dateRange,
+          timestampValueExpression,
+          keySampleRatio,
+        });
         const sqlBranches: Array<ChSql> = [];
         for (const [columnName, info] of queryOptions.entries()) {
           const orChain = concatChSql(
@@ -1613,12 +1758,6 @@ export class Metadata {
                 }})`,
             ),
           );
-          const partsFilter = await this.partsOverlapFilter({
-            databaseName,
-            tableName,
-            dateRange,
-            timestampValueExpression,
-          });
           const valueSql = chSql`substring(token, position(token, ${{ String: info.separator }}) + ${{ Int32: info.separator.length }})`;
           const sql = chSql`
         SELECT * FROM (
@@ -1679,25 +1818,29 @@ export class Metadata {
     queryOptions,
     dateRange,
     timestampValueExpression,
+    keySampleRatio,
     signal,
   }: TableConnection & {
     queryOptions: TextIndexColumnQueryOptions;
     dateRange: [Date, Date];
     timestampValueExpression: string;
+    keySampleRatio: number;
     signal?: AbortSignal;
   }): Promise<KeyValues[] | undefined> {
     const queryOptionsHash = objectHash(queryOptions);
-    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.getTextIndexKeyValues`;
+    const cacheKey = `${databaseName}.${tableName}.${connectionId}.${dateRange[0].toString()}.${dateRange[1].toString()}.${queryOptionsHash}.${timestampValueExpression}.${keySampleRatio}.getTextIndexKeyValues`;
     return this.cache.getOrFetch(cacheKey, async () => {
       try {
+        const partsFilter = await this.keySamplePartsFilter({
+          databaseName,
+          tableName,
+          connectionId,
+          dateRange,
+          timestampValueExpression,
+          keySampleRatio,
+        });
         const sqlBranches: Array<ChSql> = [];
         for (const [columnName, info] of queryOptions.entries()) {
-          const partsFilter = await this.partsOverlapFilter({
-            databaseName,
-            tableName,
-            dateRange,
-            timestampValueExpression,
-          });
           const sql = chSql`
         SELECT * FROM (
           SELECT ${{ String: columnName }} AS key,
@@ -1856,9 +1999,12 @@ export class Metadata {
     metadataMVs,
     dateRange,
     timestampValueExpression,
+    keySampleRatio,
   }: TableConnection & {
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    /** See `getMapKeys`. */
+    keySampleRatio?: number;
   }) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
@@ -1912,6 +2058,7 @@ export class Metadata {
           metadataMVs,
           dateRange,
           timestampValueExpression,
+          keySampleRatio,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);
@@ -1928,6 +2075,67 @@ export class Metadata {
     );
 
     return fields;
+  }
+
+  /**
+   * How many of the parts overlapping `dateRange` the text index reads of
+   * `getMapKeys` and `getAllKeyValues` cover at `keySampleRatio`. Undefined
+   * when no Map column has a key or key=value text index.
+   */
+  async getKeySample({
+    databaseName,
+    tableName,
+    connectionId,
+    dateRange,
+    timestampValueExpression,
+    keySampleRatio = 0,
+    signal,
+  }: {
+    databaseName: string;
+    tableName: string;
+    connectionId: string;
+    dateRange: [Date, Date];
+    timestampValueExpression?: string;
+    keySampleRatio?: number;
+    signal?: AbortSignal;
+  }): Promise<KeySample | undefined> {
+    if (!timestampValueExpression) return undefined;
+    const [textIndexes, serverVersion] = await Promise.all([
+      this.getMapColumnTextIndexes({ databaseName, tableName, connectionId }),
+      this.getServerVersion({ connectionId }),
+    ]);
+    const hasKeyTextIndex = [...textIndexes.values()].some(
+      ({ key, kv }) => key?.indexName || kv?.indexName,
+    );
+    if (!hasKeyTextIndex || !supportsMergeTreeTextIndex(serverVersion)) {
+      return undefined;
+    }
+
+    const sql = renderSampledPartCounts(
+      await this.keySampleOptions({
+        databaseName,
+        tableName,
+        connectionId,
+        dateRange,
+        keySampleRatio,
+      }),
+    );
+    const { data } = await this.clickhouseClient
+      .query<'JSON'>({
+        query: sql.sql,
+        query_params: sql.params,
+        connectionId,
+        clickhouse_settings: this.getClickHouseSettings(),
+        abort_signal: signal,
+      })
+      .then(res =>
+        // UInt64 arrives as a string in JSON output.
+        res.json<{ sampledParts: string; totalParts: string }>(),
+      );
+    return {
+      sampledParts: Number(data[0]?.sampledParts ?? 0),
+      totalParts: Number(data[0]?.totalParts ?? 0),
+    };
   }
 
   async getTableMetadata({
@@ -2694,6 +2902,7 @@ export class Metadata {
     metadataMVs,
     dateRange,
     timestampValueExpression,
+    keySampleRatio = 0,
     signal,
   }: AllKeyValuesQuery &
     Required<Pick<AllKeyValuesQuery, 'maxValuesPerKey'>>): Promise<
@@ -2813,6 +3022,7 @@ export class Metadata {
           queryOptions: mapTextIndexQueryOptions,
           dateRange,
           timestampValueExpression,
+          keySampleRatio,
           signal,
         }),
       );
@@ -2826,6 +3036,7 @@ export class Metadata {
           queryOptions: nativeTextIndexQueryOptions,
           dateRange,
           timestampValueExpression,
+          keySampleRatio,
           signal,
         }),
       );

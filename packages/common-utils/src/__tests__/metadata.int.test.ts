@@ -806,6 +806,9 @@ describe('Metadata Integration Tests', () => {
         kvRollupTable: 'otel_logs_kv_rollup_15m',
         granularity: '15 minute' as const,
       },
+      // A shared table can hold larger parts that would outrank this suite's
+      // rows in a sample.
+      keySampleRatio: 1,
     };
 
     // Values unique to this suite so `expect.arrayContaining` still passes
@@ -1554,4 +1557,139 @@ describe('Metadata Integration Tests', () => {
       });
     },
   );
+
+  describe('getMapKeys and getAllKeyValues - sampled text index parts', () => {
+    const tableName = 'test_map_keys_sampled_parts';
+    let textIndexSupported = false;
+    const args = () => ({
+      databaseName: 'default',
+      tableName,
+      connectionId: 'test_connection',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [
+        new Date(Date.now() - 60 * 60 * 1000),
+        new Date(Date.now() + 60 * 1000),
+      ] as [Date, Date],
+    });
+
+    beforeAll(async () => {
+      const probe = new Metadata(hdxClient, new MetadataCache());
+      textIndexSupported = supportsMergeTreeTextIndex(
+        await probe.getServerVersion({ connectionId: 'test_connection' }),
+      );
+      if (!textIndexSupported) return;
+
+      await client.command({
+        query: `CREATE OR REPLACE TABLE default.${tableName} (
+            Timestamp DateTime64(9),
+            ServiceName LowCardinality(String),
+            LogAttributes Map(LowCardinality(String), String),
+            LogAttributeItems Array(String) MATERIALIZED
+              arrayMap(x -> concat(x.1, '=', x.2), CAST(LogAttributes, 'Array(Tuple(String, String))')),
+            INDEX idx_log_attr_key mapKeys(LogAttributes) TYPE text(tokenizer = 'array'),
+            INDEX idx_log_attr_items LogAttributeItems TYPE text(tokenizer = 'array')
+          )
+          ENGINE = MergeTree()
+          PARTITION BY toDate(Timestamp)
+          ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp)
+        `,
+      });
+      // One part per insert, so each part holds a single ServiceName.
+      await client.command({
+        query: `SYSTEM STOP MERGES default.${tableName}`,
+      });
+      // Parts above the minimum sample size, so none is ranked as too small.
+      // Only the older round has `old.key` and `round=old`.
+      const insert = (
+        service: string,
+        minutesAgo: number,
+        attributes: Record<string, string>,
+      ) =>
+        client.command({
+          query: `INSERT INTO default.${tableName}
+            SELECT now64(9) - INTERVAL ${minutesAgo} MINUTE + toIntervalMillisecond(number % 60000),
+              '${service}',
+              map(${Object.entries(attributes)
+                .map(([key, value]) => `'${key}', '${value}'`)
+                .join(', ')})
+            FROM numbers(150000)`,
+        });
+      for (const service of ['api', 'web', 'worker']) {
+        await insert(service, 40, {
+          [`${service}.key`]: 'v',
+          'old.key': 'v',
+          round: 'old',
+        });
+      }
+      for (const service of ['api', 'web', 'worker']) {
+        await insert(service, 10, { [`${service}.key`]: 'v', round: 'new' });
+      }
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+    });
+
+    it('reads the newest part of each ServiceName by default', async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const metadata = new Metadata(hdxClient, new MetadataCache());
+
+      const keys = await metadata.getMapKeys({
+        ...args(),
+        column: 'LogAttributes',
+      });
+      const values = await metadata.getAllKeyValues({
+        ...args(),
+        keyExpressions: ["LogAttributes['round']"],
+      });
+
+      expect([...keys].sort()).toEqual([
+        'api.key',
+        'round',
+        'web.key',
+        'worker.key',
+      ]);
+      expect(values).toEqual([
+        { key: "LogAttributes['round']", value: ['new'] },
+      ]);
+      expect(await metadata.getKeySample(args())).toEqual({
+        sampledParts: 3,
+        totalParts: 6,
+      });
+    });
+
+    it('reads every part when keySampleRatio is 1', async () => {
+      if (!textIndexSupported) {
+        console.warn(
+          'Skipping: ClickHouse < 26.3 does not support mergeTreeTextIndex()',
+        );
+        return;
+      }
+      const metadata = new Metadata(hdxClient, new MetadataCache());
+
+      const keys = await metadata.getMapKeys({
+        ...args(),
+        column: 'LogAttributes',
+        keySampleRatio: 1,
+      });
+      const [roundValues] = await metadata.getAllKeyValues({
+        ...args(),
+        keyExpressions: ["LogAttributes['round']"],
+        keySampleRatio: 1,
+      });
+
+      expect(keys).toContain('old.key');
+      expect([...roundValues.value].sort()).toEqual(['new', 'old']);
+      expect(
+        await metadata.getKeySample({ ...args(), keySampleRatio: 1 }),
+      ).toEqual({ sampledParts: 6, totalParts: 6 });
+    });
+  });
 });

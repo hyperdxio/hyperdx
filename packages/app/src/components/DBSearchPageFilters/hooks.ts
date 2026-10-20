@@ -69,6 +69,7 @@ function useFacets({
   showMoreFields,
   enabled,
   disableValues,
+  keySampleRatio,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -83,6 +84,7 @@ function useFacets({
   showMoreFields?: boolean;
   enabled?: boolean;
   disableValues?: boolean;
+  keySampleRatio?: number;
 }) {
   const { data: source } = useSource({
     id: sourceId,
@@ -109,6 +111,7 @@ function useFacets({
     dateRange,
     timestampValueExpression: source?.timestampValueExpression,
     enabled,
+    keySampleRatio,
   });
 
   const { isFieldPinned, isSharedFieldPinned } = usePinnedFilters(
@@ -201,6 +204,7 @@ function useFacets({
       limit: INITIAL_LOAD_LIMIT,
       keys: escapedKeysToFetch,
       mode,
+      keySampleRatio,
     },
     { enabled: enabled && !disableValues },
   );
@@ -267,6 +271,8 @@ function useFacets({
             source?.timestampValueExpression ??
             chartConfig.timestampValueExpression ??
             '',
+          // An explicit ask for one key's values reads every part.
+          keySampleRatio: 1,
         });
         return {
           key,
@@ -316,6 +322,7 @@ export function useFetchFacets({
   filterState,
   showMoreFields,
   disableValues,
+  keySampleRatio,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
@@ -329,6 +336,8 @@ export function useFetchFacets({
   filterState?: FilterState;
   showMoreFields?: boolean;
   disableValues?: boolean;
+  /** Share of data parts Map keys are read from; see `Metadata.getMapKeys`. */
+  keySampleRatio?: number;
 }) {
   const facetsQuery = useFacets({
     chartConfig,
@@ -340,6 +349,7 @@ export function useFetchFacets({
     showMoreFields,
     enabled: true,
     disableValues,
+    keySampleRatio,
   });
 
   const [extraFacets, setExtraFacets] = useState<Facet[] | null>(null);

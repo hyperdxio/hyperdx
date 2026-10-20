@@ -58,6 +58,7 @@ import {
   useColumns,
   useGetValuesDistribution,
   useJsonColumns,
+  useKeySample,
   useTableMetadata,
 } from '@/hooks/useMetadata';
 import useResizable from '@/hooks/useResizable';
@@ -76,6 +77,7 @@ import {
 } from './DBSearchPageFilters/FilterSearchInput';
 import { FilterSettingsPanel } from './DBSearchPageFilters/FilterSettingsPopover';
 import { useFetchFacets } from './DBSearchPageFilters/hooks';
+import { KeySampleControl } from './DBSearchPageFilters/KeySampleControl';
 import { NestedFilterGroup } from './DBSearchPageFilters/NestedFilterGroup';
 import {
   PinShareIndicator,
@@ -1230,6 +1232,18 @@ const DBSearchPageFiltersComponent = ({
   );
 
   const [showMoreFields, setShowMoreFields] = useState(false);
+  // A larger key sample applies only to the source it was picked for.
+  const [keySampleChoice, setKeySampleChoice] = useState({
+    sourceId,
+    ratio: 0,
+  });
+  const keySampleRatio =
+    keySampleChoice.sourceId === sourceId ? keySampleChoice.ratio : 0;
+  const { data: keySample } = useKeySample(sourceTableConnection, {
+    dateRange,
+    timestampValueExpression: source?.timestampValueExpression,
+    keySampleRatio,
+  });
   const {
     data: fetchFacetsData,
     isLoading: isFacetsLoading,
@@ -1245,6 +1259,7 @@ const DBSearchPageFiltersComponent = ({
     mode: showAllValues ? 'all' : 'exact',
     filterState,
     showMoreFields,
+    keySampleRatio,
   });
   const { keyValues: facets, pendingKeys } = fetchFacetsData;
 
@@ -1933,6 +1948,14 @@ const DBSearchPageFiltersComponent = ({
                   ))}
                 {/* Filters show their own loader until their values arrive */}
                 {renderFacetList(shownFacets)}
+
+                <KeySampleControl
+                  sample={keySample}
+                  ratio={keySampleRatio}
+                  onRatioChange={ratio =>
+                    setKeySampleChoice({ sourceId, ratio })
+                  }
+                />
 
                 <Button
                   variant="secondary"
