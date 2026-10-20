@@ -1359,11 +1359,13 @@ function getHeatmapTilesWithIncompatibleSources(
 
 /**
  * Returns an error message string if any of the referenced source IDs is not
- * a valid PromQL source, or null if all of them are.
+ * a valid PromQL source, or null if all of them are. `subject` names what
+ * referenced them, e.g. "PromQL tiles".
  */
-function getPromqlLabelFilterSourceError(
+function getNonPromqlSourceError(
   sources: SourceForValidation[],
   referencedSourceIds: string[],
+  subject: string,
 ): string | null {
   const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
   const invalid = [...new Set(referencedSourceIds)].filter(id => {
@@ -1371,7 +1373,7 @@ function getPromqlLabelFilterSourceError(
     return source === undefined || !isPromqlSource(source);
   });
   if (invalid.length === 0) return null;
-  return `PROMETHEUS_LABEL filters require a PromQL source. The following source IDs are not PromQL sources: ${invalid.join(', ')}`;
+  return `${subject} require a PromQL source. The following source IDs are not PromQL sources: ${invalid.join(', ')}`;
 }
 
 /**
@@ -1711,7 +1713,7 @@ export type TileValidationContext = {
 
 /**
  * Run the full suite of tile validation checks (sources, connections,
- * heatmap source-kind, onClick targets, container/tab refs). Returns
+ * heatmap and PromQL source-kind, onClick targets, container/tab refs). Returns
  * `null` when all checks pass, or an error message string on failure.
  *
  * Consolidates the ~95-line validation block that was previously
@@ -1789,11 +1791,24 @@ export async function validateDashboardTiles(
     return `Tiles with formulas require a Metric, Log, or Trace source. The following source IDs are not formula-capable: ${formulaIncompatibleSources.join(', ')}`;
   }
 
-  // Validate that PROMETHEUS_LABEL filters reference PromQL sources
+  // PromQL tiles and PROMETHEUS_LABEL filters query through their source's
+  // connection and TimeSeries table, which only a PromQL source carries.
+  const promqlTileError = getNonPromqlSourceError(
+    sources,
+    tiles.flatMap(tile =>
+      isConfigTile(tile) && isPromqlExternalTileConfig(tile.config)
+        ? [tile.config.sourceId]
+        : [],
+    ),
+    'PromQL tiles',
+  );
+  if (promqlTileError != null) return promqlTileError;
+
   const promqlLabelFilters = (filters ?? []).filter(isPrometheusLabelFilter);
-  const promqlLabelFilterError = getPromqlLabelFilterSourceError(
+  const promqlLabelFilterError = getNonPromqlSourceError(
     sources,
     promqlLabelFilters.map(f => f.sourceId),
+    'PROMETHEUS_LABEL filters',
   );
   if (promqlLabelFilterError != null) return promqlLabelFilterError;
 
