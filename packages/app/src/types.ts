@@ -9,6 +9,7 @@ import {
   BuilderChartConfig,
   Filter,
   NumberFormat as _NumberFormat,
+  SearchScope,
 } from '@hyperdx/common-utils/dist/types';
 
 export type NumberFormat = _NumberFormat;
@@ -48,6 +49,7 @@ export type SearchConfig = {
   source?: string | null;
   where?: BuilderChartConfig['where'] | null;
   whereLanguage?: BuilderChartConfig['whereLanguage'] | null;
+  searchScope?: SearchScope | null;
   filters?: Filter[] | null;
   orderBy?: string | null;
 };
