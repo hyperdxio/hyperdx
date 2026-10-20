@@ -2910,7 +2910,7 @@
                   "sum",
                   "count"
                 ],
-                "description": "How a range query's samples are reduced to one value. Only used when queryType is \"range\". Defaults to \"lastNotNull\" when omitted.\n",
+                "description": "How each series' samples are reduced to one value. Defaults to \"lastNotNull\" when omitted. It also applies to instant queries, where each series has a single sample, so e.g. \"count\" turns every value into 1.\n",
                 "example": "max"
               }
             }
@@ -3095,7 +3095,7 @@
         ]
       },
       "TablePromqlChartConfig": {
-        "description": "PromQL configuration for a table chart, with one row per series and one column per label.\n",
+        "description": "PromQL configuration for a table chart, with one row per sample: a column per label, a Value column, and a Timestamp column when the expression is a range query. An instant query gives one row per series.\n",
         "allOf": [
           {
             "$ref": "#/components/schemas/PromqlChartConfigBase"
@@ -3119,7 +3119,7 @@
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 10,
-                "description": "PromQL expressions to tabulate.",
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
                 "items": {
                   "$ref": "#/components/schemas/PromqlInstantExpression"
                 }
@@ -3153,7 +3153,7 @@
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 10,
-                "description": "PromQL expressions. The tile displays the first value.",
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored. The tile displays the first value.\n",
                 "items": {
                   "$ref": "#/components/schemas/PromqlReducibleExpression"
                 }
@@ -3203,7 +3203,7 @@
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 10,
-                "description": "PromQL expressions to plot.",
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
                 "items": {
                   "$ref": "#/components/schemas/PromqlReducibleExpression"
                 }
@@ -3249,7 +3249,7 @@
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 10,
-                "description": "PromQL expressions to plot.",
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
                 "items": {
                   "$ref": "#/components/schemas/PromqlReducibleExpression"
                 }
@@ -3295,7 +3295,7 @@
                 "type": "array",
                 "minItems": 1,
                 "maxItems": 10,
-                "description": "PromQL expressions to plot.",
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
                 "items": {
                   "$ref": "#/components/schemas/PromqlRangeExpression"
                 }

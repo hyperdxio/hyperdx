@@ -1563,9 +1563,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: string
  *               enum: [lastNotNull, min, max, mean, sum, count]
  *               description: >
- *                 How a range query's samples are reduced to one value. Only
- *                 used when queryType is "range". Defaults to "lastNotNull"
- *                 when omitted.
+ *                 How each series' samples are reduced to one value. Defaults
+ *                 to "lastNotNull" when omitted. It also applies to instant
+ *                 queries, where each series has a single sample, so e.g.
+ *                 "count" turns every value into 1.
  *               example: "max"
  *
  *     PromqlChartConfigBase:
@@ -1697,8 +1698,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *
  *     TablePromqlChartConfig:
  *       description: >
- *         PromQL configuration for a table chart, with one row per series and
- *         one column per label.
+ *         PromQL configuration for a table chart, with one row per sample: a
+ *         column per label, a Value column, and a Timestamp column when the
+ *         expression is a range query. An instant query gives one row per
+ *         series.
  *       allOf:
  *         - $ref: '#/components/schemas/PromqlChartConfigBase'
  *         - type: object
@@ -1715,7 +1718,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: array
  *               minItems: 1
  *               maxItems: 10
- *               description: PromQL expressions to tabulate.
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
  *               items:
  *                 $ref: '#/components/schemas/PromqlInstantExpression'
  *
@@ -1737,7 +1742,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: array
  *               minItems: 1
  *               maxItems: 10
- *               description: PromQL expressions. The tile displays the first value.
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored. The tile displays the first value.
  *               items:
  *                 $ref: '#/components/schemas/PromqlReducibleExpression'
  *             color:
@@ -1776,7 +1783,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: array
  *               minItems: 1
  *               maxItems: 10
- *               description: PromQL expressions to plot.
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
  *               items:
  *                 $ref: '#/components/schemas/PromqlReducibleExpression'
  *             legendTemplate:
@@ -1813,7 +1822,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: array
  *               minItems: 1
  *               maxItems: 10
- *               description: PromQL expressions to plot.
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
  *               items:
  *                 $ref: '#/components/schemas/PromqlReducibleExpression'
  *             legendTemplate:
@@ -1850,7 +1861,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: array
  *               minItems: 1
  *               maxItems: 10
- *               description: PromQL expressions to plot.
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
  *               items:
  *                 $ref: '#/components/schemas/PromqlRangeExpression'
  *             heatmapMode:
