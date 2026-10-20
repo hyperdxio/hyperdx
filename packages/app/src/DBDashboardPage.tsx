@@ -1321,6 +1321,7 @@ const Tile = ({
                             })
                         : undefined
                     }
+                    onFilter={onFilter}
                   />
                 </Box>
               )}
@@ -1500,6 +1501,7 @@ const Tile = ({
       tileVariables,
       variableNames,
       searchRowContext,
+      onFilter,
     ],
   );
 
