@@ -4,6 +4,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { Badge } from '@clickhouse/click-ui';
 import { formatTileAlertDisplayName } from '@hyperdx/common-utils/dist/alerts';
 import {
   AlertThresholdType,
@@ -12,7 +13,6 @@ import {
 import {
   ActionIcon,
   Alert,
-  Badge,
   Box,
   Group,
   NativeSelect,
@@ -134,20 +134,21 @@ export function TileAlertEditor({
             {error && (
               <Tooltip label={error} withArrow>
                 <Badge
-                  color="var(--color-text-danger)"
-                  size="xs"
-                  variant="light"
-                  ml="xs"
-                >
-                  Invalid Query
-                </Badge>
+                  size="sm"
+                  text="Invalid query"
+                  state="danger"
+                  style={{ marginLeft: 'var(--mantine-spacing-xs)' }}
+                />
               </Tooltip>
             )}
             {warning && (
               <Tooltip label={warning} withArrow>
-                <Badge color="yellow" size="xs" variant="light" ml="xs">
-                  Warning
-                </Badge>
+                <Badge
+                  size="sm"
+                  text="Warning"
+                  state="warning"
+                  style={{ marginLeft: 'var(--mantine-spacing-xs)' }}
+                />
               </Tooltip>
             )}
           </Group>
