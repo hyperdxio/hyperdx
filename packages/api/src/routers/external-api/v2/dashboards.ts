@@ -1799,9 +1799,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: integer
  *               minimum: 0
  *               description: >
- *                 Maximum number of slices (top-N by value). Omit to use the
- *                 default cap, set 0 for unlimited, or a positive N to keep the
- *                 top N.
+ *                 Maximum number of slices (top-N by value), at most 500. Omit
+ *                 or set 0 to show up to 500.
  *               example: 10
  *
  *     CategoricalBarPromqlChartConfig:
@@ -1838,9 +1837,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: integer
  *               minimum: 0
  *               description: >
- *                 Maximum number of bars (top-N by value). Omit to use the
- *                 default cap, set 0 for unlimited, or a positive N to keep the
- *                 top N.
+ *                 Maximum number of bars (top-N by value), at most 500. Omit or
+ *                 set 0 to show up to 500.
  *               example: 10
  *
  *     HeatmapPromqlChartConfig:
