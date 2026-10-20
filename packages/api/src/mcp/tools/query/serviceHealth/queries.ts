@@ -1,4 +1,3 @@
-import { tryOptimizeConfigWithMaterializedView } from '@hyperdx/common-utils/dist/core/materializedViews';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   errorStatusPredicateSql,
@@ -23,12 +22,10 @@ import type { ServiceHealthInput, Window } from './schema';
 
 export const SERVICE_ALIAS = '__hdx_service';
 
-type MvSource = Parameters<typeof tryOptimizeConfigWithMaterializedView>[4];
-
 /**
  * Plain copies of the trace source fields the queries read. The Mongoose
- * document's subdocuments (e.g. `from`) can't go into a chart config, because
- * the MV optimizer structuredClones the config.
+ * document's subdocuments (e.g. `from`) don't belong in a chart config, which
+ * the renderer may clone.
  */
 export type HealthSource = Pick<
   TTraceSource,
@@ -49,8 +46,6 @@ export type HealthSource = Pick<
   serviceNameExpression: string;
   statusCodeExpression: string;
   querySettings: QuerySettings | undefined;
-  /** The original document, for the MV optimizer. Unset when it has no MVs. */
-  mvSource: MvSource | undefined;
 };
 
 export type QueryContext = {
@@ -111,19 +106,13 @@ export function baseConfig(
 export async function run(
   ctx: QueryContext,
   config: BuilderChartConfigWithDateRange,
-): Promise<{ rows: Record<string, string | number>[]; mvUsed: boolean }> {
+): Promise<{ rows: Record<string, string | number>[] }> {
   const { client, metadata, source, signal } = ctx;
-  const optimized = source.mvSource
-    ? await tryOptimizeConfigWithMaterializedView(
-        config,
-        metadata,
-        client,
-        signal,
-        source.mvSource,
-      )
-    : config;
+  // No materialized-view rewrite: it rounds the window to the view's
+  // granularity, which would break the half-open windows the comparison
+  // relies on, and the error-group queries can't use a view anyway.
   const result = await client.queryChartConfig({
-    config: optimized,
+    config,
     metadata,
     querySettings: source.querySettings,
     opts: {
@@ -131,7 +120,7 @@ export async function run(
       abort_signal: signal,
     },
   });
-  return { rows: result.data ?? [], mvUsed: optimized !== config };
+  return { rows: result.data ?? [] };
 }
 
 export const toNumberOrNull = (v: unknown) => {
@@ -143,7 +132,7 @@ export const toNumberOrNull = (v: unknown) => {
 export async function fetchServiceStats(
   ctx: QueryContext,
   window: Window,
-): Promise<{ stats: Map<string, WindowStats>; mvUsed: boolean }> {
+): Promise<{ stats: Map<string, WindowStats> }> {
   const { source } = ctx;
   const quantile = (level: number, alias: string) => ({
     aggFn: 'quantile' as const,
@@ -153,7 +142,7 @@ export async function fetchServiceStats(
     aggConditionLanguage: 'sql' as const,
     alias,
   });
-  const { rows, mvUsed } = await run(ctx, {
+  const { rows } = await run(ctx, {
     ...baseConfig(ctx, window, []),
     select: [
       { aggFn: 'count', valueExpression: '', alias: 'requests' },
@@ -188,5 +177,5 @@ export async function fetchServiceStats(
       p99Ms: toMs(row.p99),
     });
   }
-  return { stats, mvUsed };
+  return { stats };
 }

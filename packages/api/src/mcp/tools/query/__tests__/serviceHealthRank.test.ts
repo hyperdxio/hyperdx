@@ -275,7 +275,6 @@ describe('buildReport', () => {
       comparisonErrorCounts: new Map(),
       newOperations: new Map(),
       spanNameKey: 'SpanName',
-      mvUsed: false,
     });
     expect(report.services.map(s => s.service)).toEqual(['quiet']);
     expect(report.services[0].flags).toContain('new_errors');
@@ -313,7 +312,6 @@ describe('buildReport', () => {
       comparisonErrorCounts: new Map(),
       newOperations,
       spanNameKey: 'SpanName',
-      mvUsed: false,
     }).services[0];
 
   it('does not call errors on a brand-new operation new errors', () => {

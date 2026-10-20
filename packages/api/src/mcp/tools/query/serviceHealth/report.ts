@@ -185,7 +185,6 @@ export function buildReport(args: {
   newOperations: Map<string, NewOperation[]>;
   spanNameKey: string;
   metricSourceId?: string | null;
-  mvUsed: boolean;
 }) {
   const onNewOperation = (r: RankedService, g: ErrorGroup) =>
     (args.newOperations.get(r.service) ?? []).some(
@@ -283,7 +282,6 @@ export function buildReport(args: {
       servicesAssessed: args.ranked.length,
       servicesReturned: services.length,
       statusCounts: counts,
-      materializedViewUsed: args.mvUsed,
       ...(args.ranked.length === 0 && {
         warning:
           'No spans matched in either window. Check the time window, the ' +

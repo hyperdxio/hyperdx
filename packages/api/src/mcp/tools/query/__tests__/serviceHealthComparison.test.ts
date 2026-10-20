@@ -32,7 +32,6 @@ const stats = (services: string[]) => ({
       { requests: 100, errors: 0, p50Ms: 1, p95Ms: 2, p99Ms: 3 },
     ]),
   ),
-  mvUsed: false,
 });
 
 const source: HealthSource = {
@@ -47,7 +46,6 @@ const source: HealthSource = {
   durationExpression: 'Duration',
   durationPrecision: 9,
   querySettings: undefined,
-  mvSource: undefined,
 };
 
 const ctxWith = (results: { data: Record<string, string | number>[] }[]) => {

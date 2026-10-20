@@ -162,7 +162,6 @@ export function registerServiceHealth({
           newOperations,
           spanNameKey: source.spanNameExpression,
           metricSourceId: source.metricSourceId,
-          mvUsed: cur.mvUsed || !!cmp?.mvUsed,
         });
 
         trace.getActiveSpan()?.setAttributes({
@@ -177,7 +176,6 @@ export function registerServiceHealth({
             report.summary.statusCounts.critical,
           'mcp.service_health.degraded_count':
             report.summary.statusCounts.degraded,
-          'mcp.service_health.mv_used': report.summary.materializedViewUsed,
         });
 
         const { data, isTrimmed } = trimToolResponse(report);

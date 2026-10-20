@@ -88,6 +88,5 @@ export async function loadHealthSource(
     durationPrecision: doc.durationPrecision,
     metricSourceId: doc.metricSourceId,
     querySettings: doc.querySettings,
-    mvSource: doc.materializedViews?.length ? doc : undefined,
   };
 }
