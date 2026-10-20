@@ -5,7 +5,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { mcpQuerySettings } from '@/mcp/tools/trace/shared';
 
 import type { QueryContext } from './queries';
-import { baseConfig, col } from './queries';
+import { baseConfig, columns } from './queries';
 import type { Window } from './schema';
 
 const SERVICE_ALIAS = '__hdx_service';
@@ -55,9 +55,10 @@ async function operationCounts(
   const rows = result.data ?? [];
   const out = new Map<string, Map<string, number>>();
   for (const row of rows) {
-    const svc = String(col(row, SERVICE_ALIAS) ?? '');
+    const c = columns(row);
+    const svc = String(c.get(SERVICE_ALIAS) ?? '');
     const ops = out.get(svc) ?? new Map<string, number>();
-    ops.set(String(col(row, OP_ALIAS) ?? ''), Number(row.requests) || 0);
+    ops.set(String(c.get(OP_ALIAS) ?? ''), Number(row.requests) || 0);
     out.set(svc, ops);
   }
   return { counts: out, truncated: rows.length >= MAX_OPERATION_ROWS };

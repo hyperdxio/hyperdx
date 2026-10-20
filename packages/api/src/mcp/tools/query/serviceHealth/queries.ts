@@ -80,9 +80,9 @@ export type ErrorGroup = {
   lastSeenMs?: number;
 };
 
-/** Read a column from a result row (rows are keyed by alias). */
-export const col = (row: Record<string, unknown>, key: string) =>
-  new Map(Object.entries(row)).get(key);
+/** A result row's columns by alias. Build once per row, then read with get. */
+export const columns = (row: Record<string, unknown>) =>
+  new Map(Object.entries(row));
 
 /** The value of one grouping expression in an error group. */
 export const groupValue = (g: Pick<ErrorGroup, 'group'>, key: string) =>
@@ -203,7 +203,7 @@ export async function fetchServiceStats(
   };
   const stats = new Map<string, WindowStats>();
   for (const row of rows) {
-    stats.set(String(col(row, SERVICE_ALIAS) ?? ''), {
+    stats.set(String(columns(row).get(SERVICE_ALIAS) ?? ''), {
       requests: Number(row.requests) || 0,
       errors: Number(row.errors) || 0,
       p50Ms: toMs(row.p50),
@@ -277,15 +277,18 @@ export async function fetchErrorGroups(
     limit: { limit: MAX_ERROR_ROWS },
   });
 
-  return rows.map(row => ({
-    service: String(col(row, SERVICE_ALIAS) ?? ''),
-    group: Object.fromEntries(
-      groupExprs.map((e, i) => [e, String(col(row, errorKeyAlias(i)) ?? '')]),
-    ),
-    count: Number(col(row, ERROR_COUNT_ALIAS)) || 0,
-    firstSeenMs: toNumberOrNull(col(row, FIRST_SEEN_ALIAS)) || undefined,
-    lastSeenMs: toNumberOrNull(col(row, LAST_SEEN_ALIAS)) || undefined,
-  }));
+  return rows.map(row => {
+    const c = columns(row);
+    return {
+      service: String(c.get(SERVICE_ALIAS) ?? ''),
+      group: Object.fromEntries(
+        groupExprs.map((e, i) => [e, String(c.get(errorKeyAlias(i)) ?? '')]),
+      ),
+      count: Number(c.get(ERROR_COUNT_ALIAS)) || 0,
+      firstSeenMs: toNumberOrNull(c.get(FIRST_SEEN_ALIAS)) || undefined,
+      lastSeenMs: toNumberOrNull(c.get(LAST_SEEN_ALIAS)) || undefined,
+    };
+  });
 }
 
 export const errorGroupKey = (g: Pick<ErrorGroup, 'service' | 'group'>) =>
