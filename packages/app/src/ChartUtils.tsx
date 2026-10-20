@@ -664,6 +664,8 @@ export interface LineData {
   displayName: string;
   /** The original result column name this series' values were pulled from. */
   valueColumnName: string;
+  /** The series' raw group-by values, in group column order. */
+  groupValues: unknown[];
   color: string;
   isDashed?: boolean;
 }
@@ -814,6 +816,7 @@ function addResponseToFormattedData({
           previousPeriodKey: `${currentPeriodKey}${PreviousPeriodSuffix}`,
           displayName: keyName,
           valueColumnName,
+          groupValues: groupColumnNames.map(name => row[name]),
           color: applyLogLevelColor
             ? logLevelColor(row[groupColumnNames[0]])
             : undefined,
