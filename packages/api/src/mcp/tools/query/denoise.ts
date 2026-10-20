@@ -226,16 +226,6 @@ export async function denoiseSearchResults(
     return { rows, removedPatterns: [] };
   }
 
-  // ── Build a miner trained on the same sample for row matching ──
-  const drainConfig = new TemplateMinerConfig();
-  const miner = new TemplateMiner(drainConfig);
-  for (const row of sampleRows) {
-    const raw = row.__hdx_pattern_body;
-    const bodyText = flattenBody(raw != null ? String(raw) : '');
-    miner.addLogMessage(bodyText);
-  }
-
-  // ── Match each result row and filter out noisy ones ──
   const bodyColumnKey = findBodyColumnKey(rows[0], bodyColumn);
   if (!bodyColumnKey) {
     return {
@@ -245,13 +235,17 @@ export async function denoiseSearchResults(
     };
   }
 
+  const isNoisy = buildNoisyBodyMatcher(
+    sampleRows.map(row => {
+      const raw = row.__hdx_pattern_body;
+      return raw != null ? String(raw) : '';
+    }),
+    noisyTemplates,
+  );
   const filteredRows = rows.filter(row => {
     const bodyValue = row[bodyColumnKey];
     if (bodyValue == null) return true; // Keep rows with no body
-    const bodyText = flattenBody(String(bodyValue));
-    const match = miner.match(bodyText, 'fallback');
-    if (!match) return true; // No pattern match — keep the row
-    return !noisyTemplates.has(match.getTemplate());
+    return !isNoisy(String(bodyValue));
   });
 
   return {
@@ -261,6 +255,36 @@ export async function denoiseSearchResults(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Train a miner on the sample the same way minePatterns does and return a
+ * predicate that is true when a body matches a noisy cluster. minePatterns
+ * reports each cluster's own template, but `match` can land a member on a
+ * different same-length cluster. So the noisy set is the clusters that
+ * `match` returns for members of noisy clusters, which removes every sampled
+ * noisy row.
+ */
+export function buildNoisyBodyMatcher(
+  sampleBodies: string[],
+  noisyTemplates: Set<string>,
+): (body: string) => boolean {
+  const miner = new TemplateMiner(new TemplateMinerConfig());
+  const trained = sampleBodies.map(body => {
+    const text = flattenBody(body);
+    return { text, clusterId: miner.addLogMessage(text).clusterId };
+  });
+  const noisyClusterIds = new Set<number>();
+  for (const { text, clusterId } of trained) {
+    const template = miner.drain.getCluster(clusterId)?.getTemplate();
+    if (template == null || !noisyTemplates.has(template)) continue;
+    const match = miner.match(text, 'fallback');
+    noisyClusterIds.add(match?.clusterId ?? clusterId);
+  }
+  return body => {
+    const match = miner.match(flattenBody(body), 'fallback');
+    return match != null && noisyClusterIds.has(match.clusterId);
+  };
+}
 
 /**
  * Find the key in a result row that corresponds to the body column expression.

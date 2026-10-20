@@ -788,7 +788,45 @@ describe('MCP Query Tools', () => {
         await bulkInsertLogs(logs);
       });
 
-      const mine = async (args: Record<string, unknown>) => {
+      type MinedPattern = {
+        pattern: string;
+        sampleCount: number;
+        estimatedCount: number;
+        whereSnippet: string;
+        whereLanguage: string;
+        samples: string[];
+        trend?: { time: string; count: number }[];
+      };
+      type MinedOutput = {
+        summary: {
+          totalCount: number;
+          sampledCount: number;
+          sampleCoverage: number;
+          sampleMultiplier: number;
+          bodyColumn: string;
+          timeRange: { start: string; end: string };
+          trend?: {
+            requestedBuckets: number;
+            bucketCount: number;
+            bucketInterval: string;
+            firstBucketStart: string;
+            lastBucketEnd: string;
+          };
+          drilldown: {
+            tool: string;
+            sourceId: string;
+            startTime: string;
+            endTime: string;
+            includesFilters: boolean;
+            warning?: string;
+          };
+        };
+        patterns: MinedPattern[];
+      };
+
+      const mine = async (
+        args: Record<string, unknown>,
+      ): Promise<MinedOutput> => {
         const result = await callTool(client, 'clickstack_event_patterns', {
           sourceId: logSource._id.toString(),
           ...window,
@@ -798,7 +836,7 @@ describe('MCP Query Tools', () => {
         return JSON.parse(getFirstText(result));
       };
 
-      const drill = async (output: any, pattern: any) => {
+      const drill = async (output: MinedOutput, pattern: MinedPattern) => {
         expect(pattern.whereLanguage).toBe('sql');
         expect(pattern.whereSnippet).not.toBe('');
         const { drilldown } = output.summary;
@@ -819,9 +857,9 @@ describe('MCP Query Tools', () => {
         return parsed.result.data;
       };
 
-      const findPattern = (output: any, template: string) => {
-        const p = output.patterns.find((x: any) => x.pattern === template);
-        expect(p).toBeDefined();
+      const findPattern = (output: MinedOutput, template: string) => {
+        const p = output.patterns.find(x => x.pattern === template);
+        if (!p) throw new Error(`pattern not found: ${template}`);
         return p;
       };
 
@@ -909,9 +947,7 @@ describe('MCP Query Tools', () => {
         // are filtered out. How numbers and objects extract varies by
         // ClickHouse version, so only the payment strings are asserted.
         expect(output.summary.totalCount).toBeGreaterThanOrEqual(3);
-        const allSamples: string[] = output.patterns.flatMap(
-          (x: any) => x.samples,
-        );
+        const allSamples = output.patterns.flatMap(x => x.samples);
         expect(allSamples).not.toContain('');
 
         const p = findPattern(output, 'Payment <*> declined by issuer');
@@ -990,7 +1026,7 @@ describe('MCP Query Tools', () => {
         expect(summary.sampleCoverage).toBeCloseTo(3 / 9, 3);
         expect(summary.sampleMultiplier).toBe(3);
         const sampledTotal = output.patterns.reduce(
-          (n: number, p: any) => n + p.sampleCount,
+          (n, p) => n + p.sampleCount,
           0,
         );
         expect(sampledTotal).toBe(3);
@@ -1005,6 +1041,7 @@ describe('MCP Query Tools', () => {
           trendBuckets: 24,
         });
         const { trend } = withTrend.summary;
+        if (!trend) throw new Error('summary.trend missing');
         expect(trend.requestedBuckets).toBe(24);
         expect(trend.bucketCount).toBeLessThanOrEqual(24);
         expect(typeof trend.bucketInterval).toBe('string');

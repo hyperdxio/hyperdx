@@ -10,7 +10,7 @@ import type {
   ChartConfigWithDateRange,
   ChartVariable,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, isLogSource } from '@hyperdx/common-utils/dist/types';
 import { trace } from '@opentelemetry/api';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -22,6 +22,7 @@ import {
   mcpUserError,
 } from '@/mcp/utils/errors';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -37,6 +38,14 @@ import {
   PATTERN_MATCH_SEMANTICS,
   userWhereAsSql,
 } from './patternDrilldown';
+
+const drilldownWhereFailedCounter = getCounter(
+  'hyperdx.mcp.event_patterns.drilldown_where_failed',
+  {
+    description:
+      'Count of event pattern requests whose where filter could not be rendered as SQL for the drill-down.',
+  },
+);
 
 // ─── Reusable window mining ──────────────────────────────────────────────────
 
@@ -141,11 +150,7 @@ export async function mineWindowPatterns(
   }
 
   const tableFilterSql =
-    source.kind === SourceKind.Log &&
-    'tableFilterExpression' in source &&
-    source.tableFilterExpression
-      ? source.tableFilterExpression
-      : undefined;
+    (isLogSource(source) && source.tableFilterExpression) || undefined;
   const filters = tableFilterSql
     ? [{ type: 'sql' as const, condition: tableFilterSql }]
     : [];
@@ -231,6 +236,9 @@ export async function mineWindowPatterns(
             'mcp.event_patterns.drilldown_where_failed': true,
             'mcp.event_patterns.drilldown_where_error':
               err instanceof Error ? err.message : String(err),
+          });
+          drilldownWhereFailedCounter.add(1, {
+            where_language: options.whereLanguage ?? 'lucene',
           });
           logger.warn(
             { err, teamId, sourceId },

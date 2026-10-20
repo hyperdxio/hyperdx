@@ -133,6 +133,10 @@ describe('normalizeBodyExpression', () => {
       String.raw`JSONExtractString(Body, 'it\'s, ok')`,
       String.raw`JSONExtractString(Body, 'it\'s, ok')`,
     ],
+    [
+      "JSONExtractString(Body, 'it''s, ok')",
+      "JSONExtractString(Body, 'it''s, ok')",
+    ],
   ])('accepts %s', (expr, expected) => {
     expect(normalizeBodyExpression(expr)).toBe(expected);
   });
@@ -152,6 +156,7 @@ describe('normalizeBodyExpression', () => {
     "JSONExtractString(Body, 'm', (SELECT 1))",
     // A stray quote in the column would pair with a key's quotes.
     "JSONExtractString(Body', ' OR 1=1 --')",
+    "JSONExtractString(Body, 'm'' OR 1=1)",
   ])('rejects %s', expr => {
     expect(normalizeBodyExpression(expr)).toBeNull();
   });

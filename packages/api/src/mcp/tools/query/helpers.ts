@@ -81,7 +81,7 @@ export function resolveBodyExpression(
 const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 
 const COLUMN_OR_MAP_REF = /^[A-Za-z_][\w.]*$|^[A-Za-z_][\w.]*\['[^'\\]*'\]$/;
-const SQL_STRING_LITERAL = /^'([^'\\]|\\.)*'$/;
+const SQL_STRING_LITERAL = /^'([^'\\]|\\.|'')*'$/;
 const JSON_EXTRACT_STRING_CALL = /^JSONExtractString\((.*)\)$/s;
 
 /**
