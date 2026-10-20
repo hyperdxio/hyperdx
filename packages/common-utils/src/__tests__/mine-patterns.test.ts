@@ -466,7 +466,7 @@ describe('minePatterns template fidelity', () => {
     const b = body.split(/\s+/).filter(Boolean);
     return (
       t.length === b.length &&
-      t.every((tok, i) => tok === '<*>' || tok === b[i])
+      t.every((tok, i) => tok === '<*>' || tok === b.at(i))
     );
   }
 
