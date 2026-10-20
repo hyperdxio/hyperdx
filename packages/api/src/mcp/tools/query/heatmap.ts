@@ -1,6 +1,7 @@
 import { SQLIntervalSchema } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -53,7 +54,7 @@ export function registerHeatmap({ context, registerTool }: ToolRegistrar) {
     'clickstack_heatmap',
     {
       title: 'Distribution Heatmap',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Show how a numeric value is distributed over time: counts of events per ' +
         'time bucket and value range, as on a latency heatmap. Use this to see ' +

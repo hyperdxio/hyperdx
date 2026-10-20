@@ -1,7 +1,11 @@
 import { z } from 'zod';
 
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
-import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
+import {
+  parseTimeRange,
+  runConfigTile,
+  savedTileGranularity,
+} from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -96,7 +100,10 @@ export function registerQueryTile({
         tile,
         startDate,
         endDate,
-        { variables: resolvedVariables.variables },
+        {
+          variables: resolvedVariables.variables,
+          savedGranularity: savedTileGranularity(dashboard.tiles, tileId),
+        },
       );
 
       // Surface non-blocking missing macro and variable warnings alongside

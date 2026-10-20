@@ -13,6 +13,7 @@ import {
 } from '@/fixtures';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
+import Dashboard from '@/models/dashboard';
 import { Source } from '@/models/source';
 
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
@@ -20,6 +21,7 @@ import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 type HeatmapBody = {
   heatmap: {
     scale: string;
+    granularity: string;
     numberFormat?: { output: string; factor: number };
     times: string[];
     valueEdges: number[];
@@ -203,6 +205,47 @@ describe('MCP Heatmap Tool', () => {
     expect(result.isError).toBeFalsy();
     const body: HeatmapBody = JSON.parse(getFirstText(result));
     expect(body.heatmap!.counts.flat().reduce((a, b) => a + b, 0)).toBe(55);
+  });
+
+  it('uses the granularity saved on the tile', async () => {
+    const saved = await callTool(client, 'clickstack_save_dashboard', {
+      name: 'Latency',
+      tiles: [
+        {
+          name: 'Span latency',
+          config: {
+            displayType: 'heatmap',
+            sourceId: traceSourceId,
+            select: [{ valueExpression: 'Duration' }],
+            where,
+          },
+        },
+      ],
+    });
+    const dashboard = JSON.parse(getFirstText(saved));
+    // The external tile format has no granularity; the web editor stores one.
+    await Dashboard.updateOne(
+      { _id: dashboard.id },
+      { $set: { 'tiles.0.config.granularity': '1 minute' } },
+    );
+
+    const range = {
+      dashboardId: dashboard.id,
+      startTime: new Date(now - 10 * 60_000).toISOString(),
+      endTime: new Date(now).toISOString(),
+    };
+    const single = await callTool(client, 'clickstack_query_tile', {
+      ...range,
+      tileId: dashboard.tiles[0].id,
+    });
+    const body: HeatmapBody = JSON.parse(getFirstText(single));
+    expect(body.heatmap!.granularity).toBe('1 minute');
+
+    // A heatmap summary's rowCount is its number of time buckets.
+    const batch = await callTool(client, 'clickstack_query_tiles', range);
+    const [summary] = JSON.parse(getFirstText(batch)).tiles;
+    expect(summary.rowCount).toBe(body.heatmap!.times.length);
+    expect(summary.rowCount).toBeLessThanOrEqual(11);
   });
 
   it('rejects a non-trace source', async () => {

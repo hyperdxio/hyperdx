@@ -21,6 +21,7 @@ import type {
   ChartConfigWithDateRange,
   ChartVariable,
   MetricTable,
+  Tile,
 } from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
@@ -415,6 +416,14 @@ function toPlainMetricTables(
     : metricTables;
 }
 
+export function savedTileGranularity(
+  tiles: Tile[],
+  tileId: string,
+): string | undefined {
+  const config = tiles.find(t => t.id === tileId)?.config;
+  return config && 'granularity' in config ? config.granularity : undefined;
+}
+
 export async function runConfigTile(
   teamId: string,
   tile: ExternalDashboardTileWithId,
@@ -423,6 +432,8 @@ export async function runConfigTile(
   options?: {
     maxResults?: number;
     granularity?: string;
+    /** The stored tile's granularity, which the external tile format drops. Distribution heatmaps only. */
+    savedGranularity?: string;
     abortSignal?: AbortSignal;
     /** Dashboard variables and their selected values. Omitted when not in a dashboard context. */
     variables?: ChartVariable[];
@@ -623,7 +634,7 @@ export async function runConfigTile(
           client: clickhouseClient,
           metadata: getMetadata(clickhouseClient),
           config: chartConfig,
-          granularity: options?.granularity,
+          granularity: options?.granularity ?? options?.savedGranularity,
           targetTimeBuckets: MCP_HEATMAP_TIME_BUCKETS,
           nBuckets: MCP_HEATMAP_VALUE_BUCKETS,
           querySettings: source.querySettings,
