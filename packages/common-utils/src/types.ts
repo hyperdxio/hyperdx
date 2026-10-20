@@ -184,6 +184,23 @@ export const AggregateFunctionWithCombinatorsSchema = z
   .string()
   .regex(/^(\w+)If(State|Merge)$/);
 
+// Percentile shorthands for `quantile` at a fixed level.
+export const PercentileAggregateFunctionSchema = z.enum([
+  'p50',
+  'p90',
+  'p95',
+  'p99',
+]);
+export const PERCENTILE_AGG_FN_LEVELS = {
+  p50: 0.5,
+  p90: 0.9,
+  p95: 0.95,
+  p99: 0.99,
+} as const satisfies Record<
+  z.infer<typeof PercentileAggregateFunctionSchema>,
+  number
+>;
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 export const RootValueExpressionSchema = z
@@ -325,16 +342,36 @@ export const ChartPaletteTokenSchema = z.enum(CHART_PALETTE_TOKENS);
  * Lives in common-utils so both the app and a future external-API parity
  * PR can import it.
  */
+const colorConditionColor = ChartPaletteTokenSchema.describe(
+  'Palette color applied when this rule matches.',
+);
+const colorConditionLabel = z
+  .string()
+  .max(40)
+  .optional()
+  .describe('Short label describing the rule.');
+
 // Numeric ordered operators (gt | gte | lt | lte).
 const numericOrderedColorCondition = z.object({
-  operator: z.enum(['gt', 'gte', 'lt', 'lte']),
-  value: z.number().finite(),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
+  operator: z
+    .enum(['gt', 'gte', 'lt', 'lte'])
+    .describe(
+      'Compares the raw query value (before numberFormat is applied) against ' +
+        '`value`: greater than, greater ' +
+        'than or equal, less than, or less than or equal.',
+    ),
+  value: z
+    .number()
+    .finite()
+    .describe('Numeric bound the raw value is compared against.'),
+  color: colorConditionColor,
+  label: colorConditionLabel,
 });
 
 const betweenColorCondition = z.object({
-  operator: z.literal('between'),
+  operator: z
+    .literal('between')
+    .describe('Matches when the raw value falls within the `value` range.'),
   // A fixed-length array rather than `z.tuple([...])`: the MCP dashboard tools
   // (clickstack_save_dashboard / clickstack_patch_dashboard) expose this schema
   // as a tool `input_schema`, and `zod-to-json-schema` renders a tuple in the
@@ -343,17 +380,26 @@ const betweenColorCondition = z.object({
   // invalid and any strict draft-2020-12 client (e.g. the Anthropic API) rejects
   // the tool list outright. The wire format — `[min, max]` — is identical either
   // way, and matches the published `BetweenColorCondition` external-API schema.
-  value: z.array(z.number().finite()).length(2),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
+  value: z
+    .array(z.number().finite())
+    .length(2)
+    .describe('Inclusive [min, max] range.'),
+  color: colorConditionColor,
+  label: colorConditionLabel,
 });
 
 // Equality against a number or a string value.
 const equalityColorCondition = z.object({
-  operator: z.enum(['eq', 'neq']),
-  value: z.union([z.number().finite(), z.string().max(200)]),
-  color: ChartPaletteTokenSchema,
-  label: z.string().max(40).optional(),
+  operator: z
+    .enum(['eq', 'neq'])
+    .describe(
+      'Matches when the raw value equals (eq) or does not equal (neq) `value`.',
+    ),
+  value: z
+    .union([z.number().finite(), z.string().max(200)])
+    .describe('Number or string to compare the raw value with.'),
+  color: colorConditionColor,
+  label: colorConditionLabel,
 });
 
 // String-match operators, kept at the schema level only for a future
@@ -1231,15 +1277,34 @@ export const SqlAstFilterSchema = z.object({
 
 export type SqlAstFilter = z.infer<typeof SqlAstFilterSchema>;
 
+export const ConditionFilterSchema = z.object({
+  type: z.enum(['lucene', 'sql']),
+  condition: z.string(),
+});
+
+export type ConditionFilter = z.infer<typeof ConditionFilterSchema>;
+
 export const FilterSchema = z.union([
-  z.object({
-    type: z.enum(['lucene', 'sql']),
-    condition: z.string(),
-  }),
+  ConditionFilterSchema,
   SqlAstFilterSchema,
 ]);
 
 export type Filter = z.infer<typeof FilterSchema>;
+
+/**
+ * A PromQL label matcher (e.g. `job="api"`) added to every selector of a
+ * PromQL tile. Kept out of `FilterSchema` because saved searches, alerts and
+ * the APIs only take SQL and Lucene conditions.
+ */
+export const PromqlConditionFilterSchema = z.object({
+  type: z.literal('promql'),
+  condition: z.string(),
+});
+
+export type PromqlConditionFilter = z.infer<typeof PromqlConditionFilterSchema>;
+
+/** A dashboard filter condition broadcast to tiles, in the tile's query language. */
+export type BroadcastFilter = ConditionFilter | PromqlConditionFilter;
 
 export const VariableFilterValueSchema = z.object({
   type: z.literal('variable'),
@@ -1249,9 +1314,15 @@ export const VariableFilterValueSchema = z.object({
 
 export type VariableFilterValue = z.infer<typeof VariableFilterValueSchema>;
 
+/** The kind of sources an ad hoc filter reads its keys from. */
+export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
+
+export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
+
 /**
  * Operators an ad hoc filter condition can use, spelled as in PromQL so one set
- * serves both source types. `LIKE` / `NOT LIKE` are offered for SQL sources only.
+ * serves both source types. See `SQL_ADHOC_FILTER_OPERATORS` and
+ * `PROMQL_ADHOC_FILTER_OPERATORS` for which ones each source type supports.
  */
 export const AdhocFilterOperatorSchema = z.enum([
   '=',
@@ -1263,6 +1334,16 @@ export const AdhocFilterOperatorSchema = z.enum([
 ]);
 
 export type AdhocFilterOperator = z.infer<typeof AdhocFilterOperatorSchema>;
+
+export const SQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] =
+  AdhocFilterOperatorSchema.options;
+
+export const PROMQL_ADHOC_FILTER_OPERATORS: readonly AdhocFilterOperator[] = [
+  '=',
+  '!=',
+  '=~',
+  '!~',
+];
 
 /** One `key operator value` condition picked in an ad hoc filter. */
 export const AdhocFilterConditionSchema = z.object({
@@ -1627,11 +1708,30 @@ export type NumberTileColorCondition = z.infer<
  * external-API parity PR can import it.
  */
 export const BackgroundChartSchema = z.object({
-  type: z.enum(['line', 'area']),
-  color: ChartPaletteTokenSchema.optional(),
+  type: z.enum(['line', 'area']).describe('Sparkline shape.'),
+  color: ChartPaletteTokenSchema.optional().describe(
+    "Palette color for the sparkline. Inherits the tile's color when unset.",
+  ),
 });
 
 export type BackgroundChart = z.infer<typeof BackgroundChartSchema>;
+
+/**
+ * How a line / stacked line chart connects its points. Unset follows the
+ * display type's default: `smooth` for line, `linear` for stacked line.
+ */
+export const LineInterpolationSchema = z.enum(['smooth', 'linear', 'step']);
+
+export type LineInterpolation = z.infer<typeof LineInterpolationSchema>;
+
+// Monotone curves fit each stacked edge independently, so adjacent edges can
+// cross between points and the bands overlap; linear segments stay ordered
+// wherever the points are. Hence stacked lines default to linear.
+export function getDefaultLineInterpolation(
+  displayType: DisplayType | undefined,
+): LineInterpolation {
+  return displayType === DisplayType.StackedLine ? 'linear' : 'smooth';
+}
 
 // When making changes here, consider if they need to be made to the external API
 // as well: the Zod schema (packages/api/src/utils/zod.ts) and the hand-written
@@ -1649,6 +1749,7 @@ const SharedChartSettingsSchema = z.object({
   fillNulls: z.union([z.number(), z.literal(false)]).optional(),
   alignDateRangeToGranularity: z.boolean().optional(),
   fitYAxisToData: z.boolean().optional(),
+  lineInterpolation: LineInterpolationSchema.optional(),
   onClick: OnClickSchema.optional(),
   // Palette-token color override. Applied by the renderer for number
   // tiles only (gated in `ChartDisplaySettingsDrawer`); other display
@@ -1928,7 +2029,7 @@ const PromqlChartConfigSchema = PromqlBaseChartConfigSchema.extend({
   // Copied from the source at query time and never persisted, so it cannot go
   // stale if the source moves to another connection.
   connection: z.string(),
-  filters: z.array(FilterSchema).optional(),
+  filters: z.array(PromqlConditionFilterSchema).optional(),
   from: z
     .object({ databaseName: z.string(), tableName: z.string() })
     .optional(),
@@ -1992,11 +2093,19 @@ export type ChartConfigWithOptDateRange =
   | (RawSqlChartConfig & Partial<DateRange>)
   | (PromqlChartConfig & Partial<DateRange>);
 
+export const TILE_DESCRIPTION_MAX_LENGTH = 1024;
+
+const chartDescriptionSchema = z
+  .string()
+  .max(TILE_DESCRIPTION_MAX_LENGTH)
+  .optional();
+
 // When making changes here, consider if they need to be made to the external API
 // schema as well (packages/api/src/utils/zod.ts).
 const BuilderSavedChartConfigWithoutAlertSchema = z
   .object({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
     source: z.string(),
   })
   .extend(
@@ -2027,6 +2136,7 @@ export type BuilderSavedChartConfig = z.infer<
 const RawSqlSavedChartConfigWithoutAlertSchema =
   RawSqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const RawSqlSavedChartConfigSchema =
@@ -2040,6 +2150,7 @@ const RawSqlSavedChartConfigSchema =
 const PromqlSavedChartConfigWithoutAlertSchema =
   PromqlBaseChartConfigSchema.extend({
     name: z.string().optional(),
+    description: chartDescriptionSchema,
   });
 
 const PromqlSavedChartConfigSchema =
@@ -2123,24 +2234,59 @@ export const DASHBOARD_MAX_CONTAINERS = 50;
 export const DASHBOARD_MAX_TILES = 500;
 
 export const DashboardContainerTabSchema = z.object({
-  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
-  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
+  id: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .describe(
+      'Tab identifier that tiles reference via tile.tabId. Unique within its container.',
+    ),
+  title: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_TITLE_MAX)
+    .describe('Label shown on the tab.'),
 });
 
 export const DashboardContainerSchema = z.object({
-  id: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX),
-  title: z.string().min(1).max(DASHBOARD_CONTAINER_TITLE_MAX),
-  collapsed: z.boolean(),
-  // Whether the group can be collapsed (default true)
-  collapsible: z.boolean().optional(),
-  // Whether to show a border around the group (default true)
-  bordered: z.boolean().optional(),
-  // Optional tabs: 2+ entries → tab bar renders, 0-1 → plain group header.
-  // Tiles reference a specific tab via tabId.
+  id: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .describe(
+      'Container identifier that tiles reference via tile.containerId. Unique on the dashboard.',
+    ),
+  title: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_TITLE_MAX)
+    .describe('Heading shown on the container.'),
+  collapsed: z
+    .boolean()
+    .describe(
+      'Whether the container starts collapsed when the dashboard opens. ' +
+        'Viewers can still expand it; ignored when collapsible is false.',
+    ),
+  collapsible: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether viewers can collapse the container. Treated as true when omitted.',
+    ),
+  bordered: z
+    .boolean()
+    .optional()
+    .describe(
+      'Whether to draw a border around the container. Treated as true when omitted.',
+    ),
   tabs: z
     .array(DashboardContainerTabSchema)
     .max(DASHBOARD_CONTAINER_MAX_TABS)
-    .optional(),
+    .optional()
+    .describe(
+      'Tabs inside the container. Two or more render as a tab bar; zero or ' +
+        'one renders as a plain group header.',
+    ),
 });
 
 export type DashboardContainer = z.infer<typeof DashboardContainerSchema>;
@@ -2258,11 +2404,6 @@ export const PromqlLabelDashboardFilterSchema =
     isBroadcastEnabled: z.literal(false),
     isVariableEnabled: z.literal(true),
   });
-
-/** The kind of sources an ad hoc filter reads its keys from. */
-export const AdhocFilterSourceTypeSchema = z.enum(['sql', 'promql']);
-
-export type AdhocFilterSourceType = z.infer<typeof AdhocFilterSourceTypeSchema>;
 
 /**
  * A filter whose conditions (`key operator value`) are picked freely from the
@@ -2775,10 +2916,11 @@ export const AssistantLineTableConfigSchema = z.object({
   select: z
     .array(
       z.object({
-        // TODO: Change percentile to fixed functions
-        aggregationFunction: AggregateFunctionSchema.describe(
-          'SQL-like function to aggregate the property by',
-        ),
+        aggregationFunction: AggregateFunctionSchema.exclude(['quantile'])
+          .or(PercentileAggregateFunctionSchema)
+          .describe(
+            'SQL-like function to aggregate the property by. Percentiles are p50, p90, p95 and p99',
+          ),
         property: z
           .string()
           .describe('Property or column to be aggregated (ex. Duration)'),

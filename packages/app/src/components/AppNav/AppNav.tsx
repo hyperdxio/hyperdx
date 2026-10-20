@@ -3,12 +3,12 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import Script from 'next/script';
 import cx from 'classnames';
+import { Badge } from '@clickhouse/click-ui';
 import HyperDX from '@hyperdx/browser';
 import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
-  Badge,
   Collapse,
   Flex,
   Group,
@@ -375,14 +375,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     fallback={
                       isUTC && (
                         <Badge
-                          size="xs"
-                          color="gray"
-                          variant="light"
-                          fw="normal"
+                          size="sm"
+                          text="UTC"
+                          state="neutral"
                           title="Showing time in UTC"
-                        >
-                          UTC
-                        </Badge>
+                        />
                       )
                     }
                   />

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
 import {
@@ -28,6 +28,9 @@ import { ColumnDef } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import { CsvExportButton } from './components/CsvExportButton';
+import DBRowTableFieldWithPopover, {
+  type CellFilterHandler,
+} from './components/DBTable/DBRowTableFieldWithPopover';
 import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
 import type { RowAction } from './hooks/useOnClickLinkBuilder';
@@ -61,6 +64,7 @@ export const Table = ({
   variant = 'default',
   alternateRowBackground = false,
   className,
+  onCellFilter,
 }: {
   data: any[];
   columns: {
@@ -78,6 +82,9 @@ export const Table = ({
     // Ordered conditional color rules evaluated against each cell's value
     // (last match wins). Resolves to `color` when no rule matches.
     colorRules?: ColorCondition[];
+    // Expression (or PromQL label) the column's values filter on. Cells of a
+    // column with a key offer filter / exclude actions via `onCellFilter`.
+    filterKey?: string;
   }[];
   groupColumnName?: string;
   // Returns the row click destination + a hover-hint description. When
@@ -105,11 +112,14 @@ export const Table = ({
   // Extra classes for the scroll container, e.g. `effect-pulse` while the
   // tile is refreshing.
   className?: string;
+  onCellFilter?: CellFilterHandler;
 }) => {
   const brandName = useBrandDisplayName();
   const MIN_COLUMN_WIDTH_PX = 100;
   //we need a reference to the scrolling element for logic down below
-  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const [tableContainer, setTableContainer] = useState<HTMLDivElement | null>(
+    null,
+  );
 
   const truncatedData = useMemo(() => {
     if (data.length > MAX_TABLE_ROWS) {
@@ -119,7 +129,7 @@ export const Table = ({
   }, [data]);
   const isTruncated = truncatedData.length === MAX_TABLE_ROWS;
 
-  const tableWidth = tableContainerRef.current?.clientWidth;
+  const tableWidth = tableContainer?.clientWidth;
   const numColumns = columns.filter(c => c.visible !== false).length + 1;
   const dataColumnsWidthPerc = columns
     .filter(c => c.visible !== false)
@@ -163,6 +173,7 @@ export const Table = ({
             sortingFn,
             color,
             colorRules,
+            filterKey,
           },
           i,
         ) =>
@@ -188,6 +199,29 @@ export const Table = ({
               } else if (numberFormat) {
                 formattedValue = formatNumber(value, numberFormat);
               }
+
+              // Map / Array values render as JSON, which their `toString()`
+              // in a filter condition wouldn't match.
+              const isAdhocFilterable =
+                filterKey &&
+                onCellFilter &&
+                value != null &&
+                typeof value !== 'object';
+
+              const content: React.ReactNode = isAdhocFilterable ? (
+                <DBRowTableFieldWithPopover
+                  cellValue={value}
+                  columnName={filterKey}
+                  onPropertyAddClick={onCellFilter}
+                  wrapLinesEnabled={wrapLinesEnabled}
+                  tableContainerRef={tableContainer}
+                  inline
+                >
+                  {formattedValue}
+                </DBRowTableFieldWithPopover>
+              ) : (
+                formattedValue
+              );
 
               // Resolve this cell's color from the column config: ordered
               // rules first (last match wins), then the column's static
@@ -257,7 +291,7 @@ export const Table = ({
                         data-testid="dashboard-table-row-action"
                         data-shape="external-link"
                       >
-                        {formattedValue}
+                        {content}
                       </a>
                     );
                   }
@@ -273,7 +307,7 @@ export const Table = ({
                       data-testid="dashboard-table-row-action"
                       data-shape="link"
                     >
-                      {formattedValue}
+                      {content}
                     </Link>
                   );
                 }
@@ -295,7 +329,7 @@ export const Table = ({
                     data-testid="dashboard-table-row-action"
                     data-shape="button"
                   >
-                    {formattedValue}
+                    {content}
                   </button>
                 );
               }
@@ -312,7 +346,7 @@ export const Table = ({
                       data-testid="dashboard-table-row-action"
                       data-shape="link"
                     >
-                      {formattedValue}
+                      {content}
                     </Link>
                   );
                 }
@@ -320,7 +354,7 @@ export const Table = ({
 
               return (
                 <div className={className} style={colorStyle}>
-                  {formattedValue}
+                  {content}
                 </div>
               );
             },
@@ -376,7 +410,7 @@ export const Table = ({
 
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
-    getScrollElement: () => tableContainerRef.current,
+    getScrollElement: () => tableContainer,
     estimateSize: useCallback(() => 58, []),
     overscan: 10,
     paddingEnd: 20,
@@ -408,8 +442,8 @@ export const Table = ({
 
   return (
     <div
-      className={cx('overflow-auto h-100 fs-8', className)}
-      ref={tableContainerRef}
+      className={cx('overflow-auto h-100', styles.tableWrapper, className)}
+      ref={setTableContainer}
     >
       <table
         className="w-100"

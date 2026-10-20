@@ -179,6 +179,7 @@ type ChartPreviewPanelProps = {
   /** Required dashboard filters with nothing selected that block this tile. */
   missingRequiredFilterNames?: string[];
   setValue: (name: 'orderBy', value: string) => void;
+  setDisplayType: (displayType: DisplayType) => void;
   onSubmit: () => void;
 };
 
@@ -197,6 +198,7 @@ export function ChartPreviewPanel({
   dbTimeChartConfig,
   missingRequiredFilterNames,
   setValue,
+  setDisplayType,
   onSubmit,
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
@@ -305,6 +307,7 @@ export function ChartPreviewPanel({
           <DBTimeChart
             sourceId={sourceId}
             config={dbTimeChartConfig}
+            setDisplayType={setDisplayType}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={
               alert &&

@@ -8,21 +8,20 @@ import {
   FILTER_SEARCH_MIN_ITEMS,
   FilterSearchInput,
 } from '@/components/DBSearchPageFilters/FilterSearchInput';
+import type { FacetEntry } from '@/components/DBSearchPageFilters/utils';
 import { isColumnInSelect } from '@/utils';
 
 import classes from '@styles/SearchPage.module.scss';
 
 type NestedFilterGroupProps = {
   name: string;
-  childFilters: {
-    key: string;
-    value: (string | boolean)[];
+  childFilters: (FacetEntry & {
     propertyPath: string;
     // Canonical (quoted/bracket) SQL form of `key`, used wherever the key
     // becomes a raw SQL expression (distribution query, "Add column" SELECT).
     // Falls back to `key` when absent.
     sqlKey?: string;
-  }[];
+  })[];
   selectedValues?: FilterState;
   onChange: (key: string, value: string | boolean) => void;
   onClearClick: (key: string) => void;
@@ -46,6 +45,12 @@ type NestedFilterGroupProps = {
   'data-testid'?: string;
   chartConfig: any; // Using any to avoid importing ChartConfigWithDateRange
   isLive?: boolean;
+};
+
+type ChildState = {
+  expanded: boolean;
+  showDistributions?: boolean;
+  hadSelections: boolean;
 };
 
 const VIRTUAL_ITEM_HEIGHT_ESTIMATE = 26;
@@ -107,6 +112,30 @@ export const NestedFilterGroup = ({
   }, [childFilters, search]);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const keyHasSelections = (key: string) => {
+    const entry = selectedValues[key];
+    return entry != null && entry.included.size + entry.excluded.size > 0;
+  };
+  // Rows unmount when scrolled out of view, so their state lives here. Like
+  // regular filter groups, a key expands when it gains a filter (including one
+  // added outside the sidebar) and keeps its state when it loses one.
+  const [childState, setChildState] = useState<Record<string, ChildState>>({});
+  const updateChildState = (key: string, patch: Partial<ChildState>) =>
+    setChildState(prev => ({ ...prev, [key]: { ...prev[key], ...patch } }));
+  const changedKeys = Object.keys({ ...selectedValues, ...childState }).filter(
+    key => (childState[key]?.hadSelections ?? false) !== keyHasSelections(key),
+  );
+  if (changedKeys.length > 0) {
+    setChildState(prev => {
+      const next = { ...prev };
+      for (const key of changedKeys) {
+        next[key] = keyHasSelections(key)
+          ? { ...prev[key], expanded: true, hadSelections: true }
+          : { ...prev[key], hadSelections: false };
+      }
+      return next;
+    });
+  }
 
   const rowVirtualizer = useVirtualizer({
     count: isExpanded ? matchingChildFilters.length : 0,
@@ -203,10 +232,7 @@ export const NestedFilterGroup = ({
                         included: new Set(),
                         excluded: new Set(),
                       };
-                      const childHasSelections =
-                        childSelectedValues.included.size +
-                          childSelectedValues.excluded.size >
-                        0;
+                      const childHasSelections = keyHasSelections(child.key);
 
                       return (
                         <div
@@ -231,7 +257,7 @@ export const NestedFilterGroup = ({
                               value: value,
                               label: value.toString(),
                             }))}
-                            optionsLoading={false}
+                            optionsLoading={child.isLoading ?? false}
                             selectedValues={childSelectedValues}
                             onChange={value => onChange(child.key, value)}
                             onClearClick={() => onClearClick(child.key)}
@@ -275,7 +301,22 @@ export const NestedFilterGroup = ({
                             }
                             hasLoadedMore={hasLoadedMore[child.key] || false}
                             showFilterCounts={showFilterCounts}
-                            isDefaultExpanded={childHasSelections}
+                            expanded={
+                              childState[child.key]?.expanded ??
+                              childHasSelections
+                            }
+                            onExpandedChange={expanded =>
+                              updateChildState(child.key, {
+                                expanded,
+                                hadSelections: childHasSelections,
+                              })
+                            }
+                            showDistributions={
+                              childState[child.key]?.showDistributions ?? false
+                            }
+                            onShowDistributionsChange={showDistributions =>
+                              updateChildState(child.key, { showDistributions })
+                            }
                             chartConfig={chartConfig}
                             isLive={isLive}
                           />

@@ -3645,6 +3645,78 @@ describe('External API v2 Dashboards - new format', () => {
       expect(tiles[2].config).not.toHaveProperty('fitYAxisToData');
     });
 
+    it('persists lineInterpolation on line and stacked line tiles only', async () => {
+      const sourceId = traceSource._id.toString();
+      const connectionId = connection._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+      const select = [
+        { aggFn: 'count' as const, where: '', whereLanguage: 'sql' as const },
+      ];
+      const configs = [
+        { displayType: 'line', sourceId, select, lineInterpolation: 'step' },
+        {
+          displayType: 'stacked_line',
+          sourceId,
+          select,
+          lineInterpolation: 'smooth',
+        },
+        {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId,
+          sqlTemplate,
+          lineInterpolation: 'linear',
+        },
+        {
+          configType: 'sql',
+          displayType: 'stacked_line',
+          connectionId,
+          sqlTemplate,
+          lineInterpolation: 'step',
+        },
+        {
+          displayType: 'stacked_bar',
+          sourceId,
+          select,
+          lineInterpolation: 'step',
+        },
+        { displayType: 'line', sourceId, select },
+      ];
+
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'lineInterpolation dashboard',
+          tiles: configs.map((config, i) => ({
+            name: `Tile ${i}`,
+            x: 0,
+            y: i * 3,
+            w: 6,
+            h: 3,
+            config,
+          })),
+          tags: [],
+        })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${createResponse.body.data.id}`,
+      ).expect(200);
+      const tiles: { config: Record<string, unknown> }[] =
+        getResponse.body.data.tiles;
+
+      expect(tiles.map(t => t.config.lineInterpolation)).toEqual([
+        'step',
+        'smooth',
+        'linear',
+        'step',
+        undefined,
+        undefined,
+      ]);
+      expect(tiles[4].config).not.toHaveProperty('lineInterpolation');
+      expect(tiles[5].config).not.toHaveProperty('lineInterpolation');
+    });
+
     it('should return 400 when source IDs do not exist', async () => {
       const nonExistentSourceId = new ObjectId().toString();
       const mockDashboard = createMockDashboard(nonExistentSourceId);
