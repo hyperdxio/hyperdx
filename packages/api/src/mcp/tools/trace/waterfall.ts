@@ -12,6 +12,7 @@ import { z } from 'zod';
 
 import type { ClickhouseClient } from '@/clickhouse';
 import { getSource } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
   MCP_CLICKHOUSE_SETTINGS,
@@ -310,7 +311,7 @@ export function registerTraceWaterfall({
     'clickstack_trace_waterfall',
     {
       title: 'Trace Waterfall (single trace)',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Fetch every span in ONE trace as a parent/child waterfall, pre-ordered for ' +
         'reading. Use it for "show me an example trace" or "what happened in trace X" ' +

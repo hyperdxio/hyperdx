@@ -1,6 +1,7 @@
 import { trace } from '@opentelemetry/api';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -98,7 +99,7 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
     {
       title: 'Raw SQL Query',
       // Enforces ClickHouse readonly=2, so effectively read-only.
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Execute raw ClickHouse SQL. LAST-RESORT TOOL — do NOT reach for this first.\n\n' +
         'Default to the builder tools for querying; they are more reliable and produce ' +

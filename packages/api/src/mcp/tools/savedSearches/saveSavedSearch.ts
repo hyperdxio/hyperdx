@@ -5,6 +5,7 @@ import {
   updateSavedSearch,
 } from '@/controllers/savedSearch';
 import { getSource } from '@/controllers/sources';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
@@ -25,7 +26,7 @@ export function registerSaveSavedSearch({
     'clickstack_save_saved_search',
     {
       title: 'Create or Update Saved Search',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new saved search (omit id) or update an existing one (provide id). ' +
         'A saved search stores a reusable query (select, where, orderBy, filters) ' +
@@ -59,7 +60,9 @@ export function registerSaveSavedSearch({
         name: input.name,
         select: input.select ?? '',
         where: input.where ?? '',
-        whereLanguage: input.whereLanguage,
+        // Alerts read a missing whereLanguage as sql while the app reads it as
+        // lucene, so a new search must store it explicitly.
+        whereLanguage: input.whereLanguage ?? (isUpdate ? undefined : 'lucene'),
         orderBy: input.orderBy,
         source: input.sourceId,
         tags: input.tags ?? [],

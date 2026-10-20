@@ -1,307 +1,140 @@
-import React, { useMemo } from 'react';
-import { pickBy } from 'lodash';
-import CopyToClipboard from 'react-copy-to-clipboard';
-import { JSONTree } from 'react-json-tree';
-import { Button } from '@mantine/core';
-import { notifications } from '@mantine/notifications';
-import { IconTerminal } from '@tabler/icons-react';
+import { ReactNode } from 'react';
+import { Badge } from '@clickhouse/click-ui';
+import { Group, Stack } from '@mantine/core';
 
-import HyperJson from '@/components/HyperJson';
-import { Table } from '@/components/Table';
-import {
-  headerColumns,
-  networkColumns,
-  SectionWrapper,
-} from '@/LogSidePanelElements';
-import { CollapsibleSection } from '@/LogSidePanelElements';
 import { CurlGenerator } from '@/utils/curlGenerator';
+import {
+  getReplayableHeaders,
+  HTTP_REQUEST_HEADER_PREFIX,
+  parseHttpHeaders,
+  toHeaderDisplayCase,
+} from '@/utils/httpHeaders';
+import {
+  getHttpBody,
+  getHttpMessageSize,
+  getHttpMethod,
+  getHttpProtocol,
+  getHttpResendCount,
+  getHttpRoute,
+  getHttpStatusCode,
+  getHttpStatusText,
+  getUserAgent,
+} from '@/utils/httpSpanAttributes';
+import { getHttpUrl, isAbsoluteHttpUrl } from '@/utils/httpUrl';
+import { isRpcSpan } from '@/utils/rpcSpanAttributes';
+import {
+  Attributes,
+  firstSetString,
+  getClientAddress,
+  getLocalAddress,
+  getNetworkPeerAddress,
+} from '@/utils/spanAttributeReaders';
 
-interface NetworkPropertyPanelProps {
-  eventAttributes: Record<string, any>;
+import { HttpMessageSections } from './HttpMessageSections';
+import { RequestDetailRow, RequestDetailsTable } from './RequestDetailsTable';
+import { getHttpStatusBadge, RequestLine } from './RequestLine';
+import { RpcCallSubpanel } from './RpcCallPanel';
+
+function buildCurl(attributes: Attributes, url: string, method?: string) {
+  const body = getHttpBody(attributes, 'request');
+  return CurlGenerator({
+    method,
+    headers: getReplayableHeaders(
+      parseHttpHeaders(attributes, HTTP_REQUEST_HEADER_PREFIX),
+    )
+      .map(toHeaderDisplayCase)
+      .map(h => [h.name, h.value]),
+    url,
+    body:
+      typeof body === 'string' || (typeof body === 'object' && body !== null)
+        ? body
+        : undefined,
+  });
 }
 
-// https://github.com/reduxjs/redux-devtools/blob/f11383d294c1139081f119ef08aa1169bd2ad5ff/packages/react-json-tree/src/createStylingFromTheme.ts
-const JSON_TREE_THEME = {
-  base00: '#00000000',
-  base01: '#383830',
-  base02: '#49483e',
-  base03: '#75715e',
-  base04: '#a59f85',
-  base05: '#f8f8f2',
-  base06: '#f5f4f1',
-  base07: '#f9f8f5',
-  base08: '#f92672',
-  base09: '#fd971f',
-  base0A: '#f4bf75',
-  base0B: '#a6e22e',
-  base0C: '#a1efe4',
-  base0D: '#8378FF', // Value Labels
-  base0E: '#ae81ff',
-  base0F: '#cc6633',
-};
+function userAgentValue(attributes: Attributes): ReactNode {
+  const userAgent = getUserAgent(attributes);
+  const syntheticType = firstSetString(attributes, [
+    'user_agent.synthetic.type',
+  ]);
+  if (userAgent == null || syntheticType == null) {
+    return userAgent;
+  }
+  return (
+    <Group gap={6} wrap="nowrap" align="flex-start">
+      <span>{userAgent}</span>
+      <Badge text={syntheticType} size="sm" state="neutral" />
+    </Group>
+  );
+}
 
-const parseHeaders = (
-  keyPrefix: string,
-  parsedProperties: any,
-): [string, string][] => {
-  const reqHeaderObj: Record<
-    string,
-    string | string[] | Record<string, string>
-  > = pickBy(parsedProperties, (value, key) => key.startsWith(keyPrefix));
+function getDetailRows(
+  attributes: Attributes,
+  statusCode: number | undefined,
+): RequestDetailRow[] {
+  const errorType = firstSetString(attributes, ['error.type']);
+  const resends = getHttpResendCount(attributes);
+  return [
+    ['Route', getHttpRoute(attributes)],
+    // Instrumentations set error.type to the status code, which the badge
+    // already shows.
+    ['Error type', errorType !== String(statusCode) ? errorType : undefined],
+    ['Protocol', getHttpProtocol(attributes)],
+    ['Remote address', getNetworkPeerAddress(attributes)],
+    ['Client address', getClientAddress(attributes)],
+    ['Local address', getLocalAddress(attributes)],
+    ['User agent', userAgentValue(attributes)],
+    ['Request size', getHttpMessageSize(attributes, 'request')],
+    ['Response size', getHttpMessageSize(attributes, 'response')],
+    ['Resends', resends != null && resends > 0 ? resends : undefined],
+  ];
+}
 
-  return Object.entries(reqHeaderObj).flatMap(([fullKey, _value]) => {
-    let value = _value;
-    try {
-      if (typeof _value === 'string') {
-        value = JSON.parse(_value);
-      }
-    } catch {
-      // ignore
-    }
-
-    // Replacing _ -> - is part of the otel spec, idk why
-    const key = fullKey.replace(keyPrefix, '').replace('_', '-');
-
-    let keyVal = [[key, `${value}`]] as [string, string][];
-
-    if (Array.isArray(value)) {
-      keyVal = value.map(value => [key, `${value}`] as [string, string]);
-    } else if (typeof value === 'object' && Object.keys(value).length > 0) {
-      try {
-        // TODO: We actually shouldn't be re-serializing this as it may mess with the original value
-        keyVal = [[key, `${JSON.stringify(value)}`]] as [string, string][];
-      } catch (e) {
-        console.error(e);
-      }
-    }
-
-    return keyVal;
-  });
-};
-
-const NetworkBody = ({
-  body,
-  theme,
-  emptyMessage,
-  notCollectedMessage,
-}: {
-  body: any;
-  theme?: any;
-  emptyMessage?: string;
-  notCollectedMessage?: string;
-}) => {
-  const valueRenderer = React.useCallback((raw: any) => {
-    return (
-      <pre
-        className="d-inline text-break"
-        style={{
-          whiteSpace: 'pre-wrap',
-          wordWrap: 'break-word',
-        }}
-      >
-        {raw}
-      </pre>
-    );
-  }, []);
-
-  const parsedBody = React.useMemo(() => {
-    if (typeof body !== 'string') return null;
-    try {
-      if (
-        (body.startsWith('{') && body.endsWith('}')) ||
-        (body.startsWith('[') && body.endsWith(']'))
-      ) {
-        const parsed = JSON.parse(body);
-        return parsed;
-      }
-    } catch {
-      return null;
-    }
-  }, [body]);
+function HttpRequestSubpanel({ attributes }: { attributes: Attributes }) {
+  const url = getHttpUrl(attributes);
+  const statusCode = getHttpStatusCode(attributes);
+  const method = getHttpMethod(attributes);
 
   return (
-    <>
-      {body != null && body != '' ? (
-        <pre
-          className="m-0 px-4 py-3"
-          style={{
-            wordBreak: 'break-all',
-            wordWrap: 'break-word',
-            whiteSpace: 'pre-wrap',
-          }}
-        >
-          {parsedBody ? (
-            <HyperJson data={parsedBody} normallyExpanded />
-          ) : typeof body === 'string' ? (
-            body
-          ) : (
-            <JSONTree
-              hideRoot
-              invertTheme={false}
-              data={body}
-              theme={theme}
-              valueRenderer={valueRenderer}
-            />
-          )}
-        </pre>
-      ) : body === '' ? (
-        <div className="px-4 py-3">{emptyMessage}</div>
-      ) : (
-        <div className="px-4 py-3">{notCollectedMessage}</div>
-      )}
-    </>
+    <Stack gap="sm">
+      <RequestLine
+        label={method}
+        target={url}
+        status={
+          statusCode != null
+            ? getHttpStatusBadge(
+                statusCode,
+                getHttpStatusText(attributes, statusCode),
+              )
+            : undefined
+        }
+        getCurl={
+          url != null && isAbsoluteHttpUrl(url)
+            ? () => buildCurl(attributes, url, method)
+            : undefined
+        }
+      />
+      <RequestDetailsTable rows={getDetailRows(attributes, statusCode)} />
+      <HttpMessageSections attributes={attributes} />
+    </Stack>
   );
-};
+}
 
+/**
+ * Spans with both RPC and HTTP attributes (gRPC over HTTP/2, e.g. ASP.NET
+ * Core) get the RPC panel: their HTTP status is almost always 200 and the
+ * call's result is the RPC status.
+ */
 export function NetworkPropertySubpanel({
   eventAttributes,
-}: NetworkPropertyPanelProps) {
-  const requestHeaders = useMemo(
-    () => parseHeaders('http.request.header.', eventAttributes),
-    [eventAttributes],
-  );
-
-  const responseHeaders = useMemo(
-    () => parseHeaders('http.response.header.', eventAttributes),
-    [eventAttributes],
-  );
-
-  const url = eventAttributes['http.url'];
-  const remoteAddress = eventAttributes['net.peer.ip'];
-  const statusCode = eventAttributes['http.status_code'];
-  const method = eventAttributes['http.method'];
-  const requestBody = eventAttributes['http.request.body'];
-  const responseBody = eventAttributes['http.response.body'];
-
-  const curl = CurlGenerator({
-    method,
-    headers: requestHeaders,
-    url,
-    body: requestBody,
-  });
-
-  if (!url && !method && !statusCode) {
-    return null;
-  }
-
-  return (
-    <div>
-      <div className="mb-3">
-        <CopyToClipboard
-          text={curl}
-          onCopy={() => {
-            notifications.show({
-              color: 'green',
-              message: 'Curl command copied to clipboard',
-            });
-          }}
-        >
-          <Button size="xs" variant="primary">
-            <IconTerminal size={14} className="me-2" />
-            Copy Request as Curl
-          </Button>
-        </CopyToClipboard>
-        {/* <Link href={trendsDashboardUrl} passHref legacyBehavior>
-          <Button
-            variant="dark"
-            className="text-muted-hover fs-8"
-            size="sm"
-            as="a"
-          >
-            <IconChartLine size={14} className="me-2" />
-            Endpoint Trends
-          </Button>
-        </Link> */}
-      </div>
-
-      <SectionWrapper>
-        <Table
-          borderless
-          density="compact"
-          columns={networkColumns}
-          data={[
-            url && { label: 'URL', value: url },
-            method && { label: 'Method', value: method },
-            remoteAddress && {
-              label: 'Remote Address',
-              value: remoteAddress,
-            },
-            statusCode && {
-              label: 'Status',
-              value: `${statusCode} ${
-                eventAttributes['http.status_text'] ?? ''
-              }`,
-              className:
-                statusCode >= 500
-                  ? 'text-danger'
-                  : statusCode >= 400
-                    ? 'text-warning'
-                    : 'text-success',
-            },
-          ].filter(Boolean)}
-          hideHeader
-        />
-      </SectionWrapper>
-
-      {requestHeaders.length > 0 && (
-        <CollapsibleSection
-          title={`Request Headers (${requestHeaders.length})`}
-          initiallyCollapsed
-        >
-          <SectionWrapper>
-            <Table
-              borderless
-              hideHeader
-              density="compact"
-              columns={headerColumns}
-              data={requestHeaders}
-              emptyMessage="No request headers collected"
-            />
-          </SectionWrapper>
-        </CollapsibleSection>
-      )}
-
-      {requestBody != null && (
-        <CollapsibleSection title="Request Body">
-          <SectionWrapper>
-            <NetworkBody
-              body={requestBody}
-              theme={JSON_TREE_THEME}
-              emptyMessage="Empty request"
-              notCollectedMessage="No request body collected"
-            />
-          </SectionWrapper>
-        </CollapsibleSection>
-      )}
-      {responseHeaders.length > 0 && (
-        <CollapsibleSection
-          title={`Response Headers (${responseHeaders.length})`}
-          initiallyCollapsed
-        >
-          <SectionWrapper>
-            <Table
-              borderless
-              hideHeader
-              density="compact"
-              columns={headerColumns}
-              data={responseHeaders}
-              emptyMessage="No response headers collected"
-            />
-          </SectionWrapper>
-        </CollapsibleSection>
-      )}
-      {responseBody != null && (
-        <CollapsibleSection title="Response Body">
-          <SectionWrapper>
-            <NetworkBody
-              body={responseBody}
-              theme={JSON_TREE_THEME}
-              emptyMessage="Empty response"
-              notCollectedMessage="No response body collected"
-            />
-          </SectionWrapper>
-        </CollapsibleSection>
-      )}
-    </div>
+  spanKind,
+}: {
+  eventAttributes: Attributes;
+  spanKind?: string;
+}) {
+  return isRpcSpan(eventAttributes) ? (
+    <RpcCallSubpanel attributes={eventAttributes} spanKind={spanKind} />
+  ) : (
+    <HttpRequestSubpanel attributes={eventAttributes} />
   );
 }

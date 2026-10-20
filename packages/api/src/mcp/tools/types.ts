@@ -5,6 +5,7 @@ import type {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { AnyZodObject } from 'zod';
 
+import type { ToolBehaviorAnnotations } from '@/mcp/tools/annotations';
 import type { McpClientInfo } from '@/mcp/utils/mcpClient';
 
 export type McpContext = {
@@ -41,10 +42,11 @@ export type RegisterToolFn = <TSchema extends AnyZodObject>(
     description: string;
     inputSchema: TSchema;
     /**
-     * Advisory MCP tool annotations (readOnlyHint, destructiveHint, etc.).
-     * These are hints only — clients must not rely on them for safety.
+     * Advisory MCP tool annotations. All four behavior hints are required;
+     * use the presets in `./annotations`. These are hints only — clients
+     * must not rely on them for safety.
      */
-    annotations?: ToolAnnotations;
+    annotations: ToolAnnotations & ToolBehaviorAnnotations;
   },
   handler: (args: TSchema['_output']) => Promise<ToolResult>,
 ) => void;

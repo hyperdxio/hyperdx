@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -42,7 +43,7 @@ export function registerSaveDashboard({
     'clickstack_save_dashboard',
     {
       title: 'Create or Update Dashboard',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new dashboard (omit id) or update an existing one (provide id). ' +
         'Call clickstack_list_sources first to obtain sourceId and connectionId values. ' +

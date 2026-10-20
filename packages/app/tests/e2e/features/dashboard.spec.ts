@@ -334,6 +334,17 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test('should warn when closing tile editor after changing only the chart type', async () => {
+    await dashboardPage.openNewTileEditor();
+    await dashboardPage.chartEditor.waitForDataToLoad();
+    await dashboardPage.chartEditor.setPreviewDisplayType('stacked_bar');
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+  });
+
   test('should warn when closing tile editor with unsaved display settings changes', async () => {
     await dashboardPage.openNewTileEditor();
 
