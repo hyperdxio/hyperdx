@@ -423,6 +423,8 @@ export async function runConfigTile(
     variables?: ChartVariable[];
     /** Serialized size the result is trimmed to. Defaults to trimToolResponse's limit. */
     maxResponseChars?: number;
+    /** Source lookup for raw SQL tiles, so a batch can share one per-call cache. */
+    lookupSource?: (sourceId: string) => ReturnType<typeof getSource>;
   },
 ) {
   if (!isConfigTile(tile)) {
@@ -639,7 +641,9 @@ export async function runConfigTile(
     metricTables?: MetricTable;
   } = {};
   if (savedConfig.source) {
-    const source = await getSource(teamId, savedConfig.source);
+    const source = await (options?.lookupSource
+      ? options.lookupSource(savedConfig.source)
+      : getSource(teamId, savedConfig.source));
     if (source) {
       sourceFields = {
         from: source.from,

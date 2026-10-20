@@ -1,5 +1,6 @@
 import PQueue from '@esm2cjs/p-queue';
 import { trace } from '@opentelemetry/api';
+import { z } from 'zod';
 
 import type { ToolResult } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
@@ -21,20 +22,47 @@ export const SQL_BATCH_CONCURRENCY = 5;
  */
 export const SQL_BATCH_DEADLINE_MS = 60_000;
 
-/** Total serialized size budget split evenly across the batch's results. */
-const SQL_BATCH_RESPONSE_BUDGET = 100_000;
+/**
+ * Serialized size budget for the whole batch response. It is split evenly
+ * across queries up front, then enforced on the final payload, because
+ * trimToolResponse keeps at least ten rows per result whatever their size.
+ */
+export const SQL_BATCH_RESPONSE_BUDGET = 100_000;
 const SQL_SINGLE_RESPONSE_LIMIT = 50_000;
 
 const batchQueryCounter = getCounter('hyperdx.mcp.sql.batch.queries', {
   description: 'Queries run by clickstack_sql in batch mode, by outcome.',
 });
 
-export type SqlBatchQuery = {
-  id?: string;
-  sql: string;
-  connectionId?: string;
-  sourceId?: string;
-};
+const BATCH_TRIM_NOTE =
+  'Rows were dropped to fit the batch response size budget. Narrow the time ' +
+  'range, add filters, or run fewer queries per call.';
+
+export const sqlBatchQuerySchema = z.object({
+  id: z
+    .string()
+    .min(1)
+    .max(64)
+    .optional()
+    .describe(
+      "Label echoed back on this query's result. Results also carry their array index.",
+    ),
+  sql: z
+    .string()
+    .describe('Raw ClickHouse SQL, with the same macros as the sql field.'),
+  connectionId: z
+    .string()
+    .optional()
+    .describe('Overrides the top-level connectionId for this query.'),
+  sourceId: z
+    .string()
+    .optional()
+    .describe(
+      'Overrides the top-level sourceId for this query, so $__sourceTable expands to it.',
+    ),
+});
+
+export type SqlBatchQuery = z.infer<typeof sqlBatchQuerySchema>;
 
 type SqlBatchStatus = 'ok' | 'error' | 'timeout';
 
@@ -69,6 +97,56 @@ function parsePayload(text: string): Record<string, unknown> {
     // Fall through to the raw text.
   }
   return { raw: text };
+}
+
+/** The row array of an ok entry: `result` itself, or ClickHouse's `result.data`. */
+function rowsOf(entry: SqlBatchEntry): unknown[] | undefined {
+  const { result } = entry;
+  if (Array.isArray(result)) return result;
+  if (
+    result != null &&
+    typeof result === 'object' &&
+    'data' in result &&
+    Array.isArray(result.data)
+  ) {
+    return result.data;
+  }
+  return undefined;
+}
+
+function setRows(entry: SqlBatchEntry, rows: unknown[]) {
+  const { result } = entry;
+  entry.result =
+    result != null && typeof result === 'object' && !Array.isArray(result)
+      ? { ...result, data: rows }
+      : rows;
+  entry.note = BATCH_TRIM_NOTE;
+}
+
+/**
+ * Halve the rows of the largest result until the serialized payload fits the
+ * budget, or no rows are left to drop.
+ */
+function fitToBudget(
+  payload: { results: SqlBatchEntry[] },
+  budget: number,
+): void {
+  const sizeOf = (value: unknown) => JSON.stringify(value, null, 2).length;
+  while (sizeOf(payload) > budget) {
+    let target: SqlBatchEntry | undefined;
+    let targetSize = 0;
+    for (const entry of payload.results) {
+      if (!rowsOf(entry)?.length) continue;
+      const size = sizeOf(entry);
+      if (size > targetSize) {
+        target = entry;
+        targetSize = size;
+      }
+    }
+    if (!target) return;
+    const rows = rowsOf(target) ?? [];
+    setRows(target, rows.slice(0, Math.floor(rows.length / 2)));
+  }
 }
 
 export async function runSqlBatch({
@@ -111,13 +189,17 @@ export async function runSqlBatch({
         ...(query.id !== undefined ? { id: query.id } : {}),
       };
       try {
-        const prepared = await prepareSqlQuery(
-          {
-            sql: query.sql,
-            connectionId: query.connectionId ?? defaults.connectionId,
-            sourceId: query.sourceId ?? defaults.sourceId,
-          },
-          lookupSource,
+        const prepared = await withDeadline(
+          () =>
+            prepareSqlQuery(
+              {
+                sql: query.sql,
+                connectionId: query.connectionId ?? defaults.connectionId,
+                sourceId: query.sourceId ?? defaults.sourceId,
+              },
+              lookupSource,
+            ),
+          deadlineAt,
         );
         if ('error' in prepared) {
           return { ...base, status: 'error', error: textOf(prepared.error) };
@@ -129,6 +211,7 @@ export async function runSqlBatch({
               runConfigTile(teamId, prepared.tile, startDate, endDate, {
                 abortSignal: signal,
                 maxResponseChars,
+                lookupSource,
               }),
             deadlineAt,
           ),
@@ -151,12 +234,13 @@ export async function runSqlBatch({
   );
 
   const summary = { total: results.length, ok: 0, error: 0, timeout: 0 };
-  let trimmed = 0;
   for (const entry of results) {
     summary[entry.status] += 1;
-    if (entry.note !== undefined) trimmed += 1;
     batchQueryCounter.add(1, { status: entry.status });
   }
+  const payload = { summary, results };
+  fitToBudget(payload, SQL_BATCH_RESPONSE_BUDGET);
+  const trimmed = results.filter(entry => entry.note !== undefined).length;
   trace.getActiveSpan()?.setAttributes({
     'mcp.sql.batch.size': summary.total,
     'mcp.sql.batch.ok': summary.ok,
@@ -165,7 +249,7 @@ export async function runSqlBatch({
     'mcp.sql.batch.trimmed': trimmed,
   });
 
-  const text = JSON.stringify({ summary, results }, null, 2);
+  const text = JSON.stringify(payload, null, 2);
   if (summary.ok === 0) {
     return mcpUserError(text);
   }

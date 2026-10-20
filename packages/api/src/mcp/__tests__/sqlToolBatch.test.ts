@@ -23,7 +23,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import mongoose from 'mongoose';
 
 import { registerSql } from '@/mcp/tools/query/sql';
-import { SQL_BATCH_CONCURRENCY } from '@/mcp/tools/query/sqlBatch';
+import {
+  SQL_BATCH_CONCURRENCY,
+  SQL_BATCH_DEADLINE_MS,
+  SQL_BATCH_RESPONSE_BUDGET,
+} from '@/mcp/tools/query/sqlBatch';
 import type { McpContext, RegisterToolFn, ToolResult } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -256,14 +260,82 @@ describe('clickstack_sql batch mode', () => {
     expect(parsed.results[1].error).toContain('does not match the connection');
   });
 
-  it('looks each source up once per call', async () => {
+  it('looks each source up once per call, including during execution', async () => {
     await buildHandler()({
       connectionId,
       sourceId,
       queries: [{ sql: 'SELECT 1' }, { sql: 'SELECT 2' }, { sql: 'SELECT 3' }],
     });
 
+    // runConfigTile is mocked, so call the lookup it was handed the way the
+    // real raw SQL path does and check it reuses the cached read.
+    for (const call of mockRunConfigTile.mock.calls) {
+      await call[4].lookupSource(sourceId);
+    }
     expect(mockGetSource).toHaveBeenCalledTimes(1);
+  });
+
+  it('times out a query whose source lookup outlives the deadline', async () => {
+    jest.useFakeTimers();
+    try {
+      mockGetSource.mockReturnValue(new Promise(() => {}));
+
+      const pending = buildHandler()({
+        connectionId,
+        queries: [
+          { id: 'stuck', sql: 'SELECT 1', sourceId },
+          { id: 'free', sql: 'SELECT 2' },
+        ],
+      });
+      await jest.advanceTimersByTimeAsync(SQL_BATCH_DEADLINE_MS);
+      const parsed = JSON.parse(textOf(await pending));
+
+      expect(parsed.results[0]).toMatchObject({
+        id: 'stuck',
+        status: 'timeout',
+      });
+      expect(parsed.results[1]).toMatchObject({ id: 'free', status: 'ok' });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('drops rows until the whole response fits the budget', async () => {
+    // trimToolResponse keeps ten rows per result however large they are, so
+    // ten such results would blow far past the batch budget on their own.
+    const bigRow = { body: 'x'.repeat(2_000) };
+    mockRunConfigTile.mockResolvedValue({
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify({ result: { data: Array(10).fill(bigRow) } }),
+        },
+      ],
+    });
+
+    const result = await buildHandler()({
+      connectionId,
+      queries: Array.from({ length: 10 }, (_, i) => ({ sql: `SELECT ${i}` })),
+    });
+
+    const text = textOf(result);
+    expect(text.length).toBeLessThanOrEqual(SQL_BATCH_RESPONSE_BUDGET);
+    const parsed = JSON.parse(text);
+    expect(parsed.summary.ok).toBe(10);
+    for (const entry of parsed.results) {
+      expect(entry.result.data.length).toBeGreaterThan(0);
+      expect(entry.result.data.length).toBeLessThan(10);
+      expect(entry.note).toContain('batch response size budget');
+    }
+  });
+
+  it('leaves results under the budget untouched', async () => {
+    const result = await buildHandler()({
+      connectionId,
+      queries: [{ sql: 'SELECT 1' }],
+    });
+
+    expect(JSON.parse(textOf(result)).results[0].note).toBeUndefined();
   });
 
   it(`runs at most ${SQL_BATCH_CONCURRENCY} queries at once`, async () => {

@@ -12,6 +12,7 @@ import {
   MAX_SQL_BATCH_QUERIES,
   runSqlBatch,
   SQL_BATCH_DEADLINE_MS,
+  sqlBatchQuerySchema,
 } from './sqlBatch';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -71,33 +72,7 @@ const sqlSchema = z.object({
         'GROUP BY ServiceName ORDER BY n DESC LIMIT 20',
     ),
   queries: z
-    .array(
-      z.object({
-        id: z
-          .string()
-          .min(1)
-          .max(64)
-          .optional()
-          .describe(
-            "Label echoed back on this query's result. Results also carry their array index.",
-          ),
-        sql: z
-          .string()
-          .describe(
-            'Raw ClickHouse SQL, with the same macros as the sql field.',
-          ),
-        connectionId: z
-          .string()
-          .optional()
-          .describe('Overrides the top-level connectionId for this query.'),
-        sourceId: z
-          .string()
-          .optional()
-          .describe(
-            'Overrides the top-level sourceId for this query, so $__sourceTable expands to it.',
-          ),
-      }),
-    )
+    .array(sqlBatchQuerySchema)
     .min(1)
     .max(MAX_SQL_BATCH_QUERIES)
     .optional()
