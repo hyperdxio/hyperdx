@@ -1,12 +1,12 @@
-import { findNewOperations, type NewOperation } from './operations';
 import {
   type ErrorGroup,
   errorGroupKey,
   fetchErrorGroups,
   groupValue,
   MAX_ERROR_ROWS,
-  type QueryContext,
-} from './queries';
+} from './errorGroups';
+import { findNewOperations, type NewOperation } from './operations';
+import type { QueryContext } from './queries';
 import {
   ERROR_CANDIDATES_PER_SERVICE,
   hasBaseline,

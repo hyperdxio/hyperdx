@@ -16,11 +16,8 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { collectErrors } from './collect';
 import { resolveComparison } from './comparison';
-import {
-  errorGroupExpressions,
-  fetchServiceStats,
-  type QueryContext,
-} from './queries';
+import { errorGroupExpressions } from './errorGroups';
+import { fetchServiceStats, type QueryContext } from './queries';
 import { buildReport, rankServices } from './report';
 import {
   comparisonWindow,

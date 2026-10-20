@@ -1,5 +1,5 @@
+import type { ErrorGroup } from './errorGroups';
 import type { NewOperation } from './operations';
-import type { ErrorGroup } from './queries';
 import {
   HEALTH_THRESHOLDS,
   type ServiceAssessment,

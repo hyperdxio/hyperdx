@@ -1,6 +1,5 @@
+import { type ErrorGroup, errorGroupKey, groupValue } from './errorGroups';
 import { MAX_NEW_OPERATIONS, type NewOperation } from './operations';
-import type { ErrorGroup } from './queries';
-import { errorGroupKey, groupValue } from './queries';
 import {
   assessService,
   compareAssessments,

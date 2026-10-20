@@ -1,5 +1,5 @@
+import { errorGroupKey } from '@/mcp/tools/query/serviceHealth/errorGroups';
 import type { NewOperation } from '@/mcp/tools/query/serviceHealth/operations';
-import { errorGroupKey } from '@/mcp/tools/query/serviceHealth/queries';
 import {
   assessService,
   HEALTH_THRESHOLDS,
