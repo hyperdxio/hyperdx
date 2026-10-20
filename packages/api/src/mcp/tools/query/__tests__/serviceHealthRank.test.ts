@@ -13,6 +13,10 @@ import {
   topGroupsPerService,
 } from '@/mcp/tools/query/serviceHealth/report';
 import { comparisonWindow } from '@/mcp/tools/query/serviceHealth/schema';
+import {
+  errorTiming,
+  serviceSummary,
+} from '@/mcp/tools/query/serviceHealth/summary';
 
 const stats = (s: Partial<WindowStats> = {}): WindowStats => ({
   requests: 1000,
@@ -329,5 +333,55 @@ describe('buildReport', () => {
     expect(svc.flags).toEqual(['new_service']);
     expect(svc.summary).not.toMatch(/New or growing errors/);
     expect(svc.topErrors[0]).not.toHaveProperty('status');
+  });
+});
+
+describe('errorTiming', () => {
+  const window = {
+    start: new Date('2026-10-20T17:05:00Z'),
+    end: new Date('2026-10-20T18:05:00Z'),
+  };
+  const at = (hhmm: string) => Date.parse(`2026-10-20T${hhmm}:00Z`);
+  const group = (first: string, last: string) => ({
+    service: 'svc',
+    group: { SpanName: 'POST /x' },
+    count: 30,
+    firstSeenMs: at(first),
+    lastSeenMs: at(last),
+  });
+
+  it('calls a group still firing at the window end ongoing', () => {
+    expect(errorTiming(group('17:30', '18:04'), window).pattern).toBe(
+      'ongoing',
+    );
+  });
+
+  it('calls a long trickle that paused intermittent, not a burst', () => {
+    // 52 minutes of errors, last one 7 minutes before the window end.
+    expect(errorTiming(group('17:06', '17:58'), window).pattern).toBe(
+      'intermittent',
+    );
+  });
+
+  it('calls a short spike that ended a burst', () => {
+    expect(errorTiming(group('17:20', '17:21'), window).pattern).toBe('burst');
+  });
+
+  it('only calls bursts transient in the summary', () => {
+    const summary = (g: ReturnType<typeof group>) =>
+      serviceSummary({
+        current: stats(),
+        comparison: stats(),
+        assessment: assessService(stats(), stats(), 50),
+        changedErrors: [g],
+        newOperations: [],
+        window,
+        comparisonMode: 'yesterday',
+      });
+    const trickle = summary(group('17:06', '17:58'));
+    expect(trickle).toMatch(/on and off from 17:06 to 17:58 UTC/);
+    expect(trickle).not.toMatch(/transient/);
+    expect(trickle).toMatch(/still a live problem/);
+    expect(summary(group('17:20', '17:21'))).toMatch(/transient/);
   });
 });

@@ -157,7 +157,8 @@ const USAGE =
   'regressions: report them as steady, and treat moves below these ' +
   "thresholds as normal variance. Each service's " +
   '`summary` states which moves crossed one. topErrors carry firstSeen / ' +
-  'lastSeen / ongoing so a burst that stopped reads as transient. topErrors lists new and ' +
+  'lastSeen and a pattern: ongoing (still firing), intermittent (on and ' +
+  'off across most of the window) or burst (short and over, so transient). topErrors lists new and ' +
   'growing error groups first (largest gain first), then the largest steady ' +
   'ones. newOperations = span names with traffic now and none in the ' +
   'comparison window (usually a rollout); errors on them have status ' +

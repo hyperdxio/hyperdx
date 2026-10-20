@@ -9,6 +9,14 @@ import type { Window } from './schema';
 
 /** An error group whose last error is this close to the window end is ongoing. */
 const ONGOING_TAIL_MS = 2 * 60_000;
+/**
+ * A group that is not ongoing but spans this share of the window is a slow
+ * trickle that paused, not a burst that ended. Calling it transient would
+ * tell the agent to dismiss a recurring failure.
+ */
+const INTERMITTENT_SHARE = 0.5;
+
+type ErrorPattern = 'ongoing' | 'intermittent' | 'burst';
 
 const pct = (s: WindowStats | null) =>
   s && s.requests > 0 ? `${((s.errors / s.requests) * 100).toFixed(2)}%` : '0%';
@@ -17,23 +25,37 @@ const hhmm = (ms: number) => new Date(ms).toISOString().slice(11, 16);
 export function errorTiming(g: ErrorGroup, window: Window) {
   if (g.firstSeenMs == null || g.lastSeenMs == null) return {};
   const ongoing = window.end.getTime() - g.lastSeenMs <= ONGOING_TAIL_MS;
+  const windowMs = window.end.getTime() - window.start.getTime();
+  const spread = windowMs > 0 ? (g.lastSeenMs - g.firstSeenMs) / windowMs : 0;
+  const pattern: ErrorPattern = ongoing
+    ? 'ongoing'
+    : spread >= INTERMITTENT_SHARE
+      ? 'intermittent'
+      : 'burst';
   return {
     firstSeen: new Date(g.firstSeenMs).toISOString(),
     lastSeen: new Date(g.lastSeenMs).toISOString(),
     activeMinutes:
       Math.round(((g.lastSeenMs - g.firstSeenMs) / 60_000) * 10) / 10,
     ongoing,
+    pattern,
   };
 }
 
 function describeError(g: ErrorGroup, window: Window): string {
   const label = Object.values(g.group).filter(Boolean).join(' / ') || 'error';
   const t = errorTiming(g, window);
-  if (t.firstSeen == null || g.firstSeenMs == null || g.lastSeenMs == null)
+  if (t.pattern == null || g.firstSeenMs == null || g.lastSeenMs == null)
     return `"${label}" (${g.count})`;
   const [from, to] = [hhmm(g.firstSeenMs), hhmm(g.lastSeenMs)];
   const when = from === to ? `at ${from} UTC` : `${from}-${to} UTC`;
-  return `"${label}" (${g.count}, ${when}, ${t.ongoing ? 'still occurring' : 'stopped'})`;
+  const how =
+    t.pattern === 'ongoing'
+      ? `${when}, still occurring`
+      : t.pattern === 'intermittent'
+        ? `on and off from ${from} to ${to} UTC, last at ${to}`
+        : `${when}, stopped`;
+  return `"${label}" (${g.count}, ${how})`;
 }
 
 /**
@@ -104,13 +126,16 @@ export function serviceSummary(args: {
         .join('; ')}.`,
     );
   if (changedErrors.length > 0) {
-    const stopped = changedErrors.some(
-      g => errorTiming(g, window).ongoing === false,
+    const patterns = new Set(
+      changedErrors.map(g => errorTiming(g, window).pattern),
     );
     context.push(
       `New or growing errors: ${changedErrors.map(g => describeError(g, window)).join('; ')}.` +
-        (stopped
-          ? ' A burst that stopped is transient, not an ongoing problem.'
+        (patterns.has('burst')
+          ? ' A short burst that stopped is transient, not an ongoing problem.'
+          : '') +
+        (patterns.has('intermittent')
+          ? ' An error that recurs on and off across the window is still a live problem even if it is quiet right now.'
           : ''),
     );
   }
