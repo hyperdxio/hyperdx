@@ -354,6 +354,27 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 };
 
 /**
+ * Error or warn level of a log row, or undefined when it is neither.
+ * SeverityNumber is normalized by the SDK, so it wins when set; 0 means
+ * unspecified, which falls back to matching SeverityText.
+ * https://github.com/open-telemetry/opentelemetry-specification/blob/v1.59.0/specification/logs/data-model.md#field-severitynumber
+ */
+export function getLogSeverityLevel({
+  severityNumber,
+  severityText,
+}: {
+  severityNumber?: unknown;
+  severityText?: string;
+}): 'error' | 'warn' | undefined {
+  const number = Number(severityNumber);
+  if (number > 0) {
+    return number >= 17 ? 'error' : number >= 13 ? 'warn' : undefined;
+  }
+  const level = getLogLevelClass(severityText);
+  return level === 'error' || level === 'warn' ? level : undefined;
+}
+
+/**
  * Chart Categorical Palette - ten distinguishable hues based on
  * Observable 10 (https://observablehq.com/@d3/color-schemes), with
  * `chart-blue` swapped to `#437eef` to match the brand link color

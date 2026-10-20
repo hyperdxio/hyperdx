@@ -8,6 +8,7 @@ import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
+import { getRequestPanelTitle } from '@/utils/rpcSpanAttributes';
 
 import {
   getJSONColumnNames,
@@ -134,25 +135,10 @@ export function RowOverviewPanel({
     [generateSearchUrl],
   );
 
-  const isHttpRequest = useMemo(() => {
-    const attributes =
-      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
-    return attributes?.['http.url'] != null;
-  }, [dataAttributes, eventAttributesExpr]);
-
-  const filteredEventAttributes = useMemo(() => {
-    if (!eventAttributesExpr) return dataAttributes;
-
-    const attributes = dataAttributes?.[eventAttributesExpr];
-    return isHttpRequest && attributes
-      ? {
-          [eventAttributesExpr]: pickBy(
-            attributes,
-            (_, key) => !key.startsWith('http.'),
-          ),
-        }
-      : dataAttributes;
-  }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
+  const requestPanelTitle = useMemo(
+    () => getRequestPanelTitle(flattenedEventAttributes),
+    [flattenedEventAttributes],
+  );
 
   const exceptionValues = useMemo(() => {
     const parsedEvents =
@@ -266,17 +252,18 @@ export function RowOverviewPanel({
         multiple
         variant="noPadding"
       >
-        {isHttpRequest && (
+        {requestPanelTitle != null && (
           <Accordion.Item value="network">
             <Accordion.Control>
               <Text size="sm" ps={contentPx}>
-                HTTP Request
+                {requestPanelTitle}
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
               <Box px={contentPx}>
                 <NetworkPropertySubpanel
                   eventAttributes={flattenedEventAttributes}
+                  spanKind={firstRow?.__hdx_span_kind}
                 />
               </Box>
             </Accordion.Panel>
@@ -323,7 +310,7 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {Object.keys(filteredEventAttributes).length > 0 && (
+        {Object.keys(dataAttributes).length > 0 && (
           <Accordion.Item value="eventAttributes">
             <Accordion.Control>
               <Text size="sm" ps={contentPx}>
@@ -333,7 +320,7 @@ export function RowOverviewPanel({
             <Accordion.Panel>
               <Box px={contentPx}>
                 <DBRowJsonViewer
-                  data={filteredEventAttributes}
+                  data={dataAttributes}
                   jsonColumns={jsonColumns}
                   mapColumns={mapColumns}
                 />

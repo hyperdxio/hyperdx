@@ -57,6 +57,7 @@ import {
   TRACE_WATERFALL_FETCH_LIMIT,
   TRACE_WATERFALL_ROW_LIMIT,
 } from '@/components/traceWaterfallLimits';
+import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
@@ -75,12 +76,15 @@ import {
   getChartColorSuccess,
   getChartColorSuccessHighlight,
   getChartColorWarning,
+  getLogSeverityLevel,
   parseTimestampToMs,
 } from '@/utils';
 import {
   getHighlightedAttributesFromData,
   getSelectExpressionsForHighlightedAttributes,
 } from '@/utils/highlightedAttributes';
+import { getHttpUrl } from '@/utils/httpUrl';
+import { isRpcSpan } from '@/utils/rpcSpanAttributes';
 
 import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
@@ -95,6 +99,7 @@ export type SpanRow = {
   StatusCode?: string;
   ServiceName?: string;
   SeverityText?: string;
+  SeverityNumber?: number;
   HyperDXEventType: 'span';
   type?: string;
   SpanAttributes?: Record<string, any>;
@@ -139,6 +144,20 @@ function barColor(condition: {
   }
 
   return isHighlighted ? '#A9AFB7' : '#6A7077';
+}
+
+// Shared by the error count and the row icons so the two can't disagree.
+// OTel spans have no severity; they report errors through StatusCode.
+function getRowSeverity(
+  row: Pick<SpanRow, 'type' | 'StatusCode' | 'SeverityNumber' | 'SeverityText'>,
+): 'error' | 'warn' | undefined {
+  if (row.type === SourceKind.Log) {
+    return getLogSeverityLevel({
+      severityNumber: row.SeverityNumber,
+      severityText: row.SeverityText,
+    });
+  }
+  return row.StatusCode === 'Error' ? 'error' : undefined;
 }
 
 // Per-service span palette: the full categorical palette minus the two hues we
@@ -195,6 +214,7 @@ function getConfig(
   traceId: string,
   hiddenRowExpression?: string,
   hiddenRowExpressionLanguage: 'lucene' | 'sql' = 'lucene',
+  selectSeverityNumber = false,
 ) {
   const alias: Record<string, string> = {
     Body: getTableBody(source),
@@ -328,6 +348,14 @@ function getConfig(
               },
             ]
           : []),
+        ...(selectSeverityNumber
+          ? [
+              {
+                valueExpression: 'SeverityNumber',
+                alias: 'SeverityNumber',
+              },
+            ]
+          : []),
       ],
     );
   }
@@ -371,6 +399,7 @@ export function useEventsAroundFocus({
   enabled,
   hiddenRowExpression,
   hiddenRowExpressionLanguage = 'lucene',
+  selectSeverityNumber = false,
 }: {
   tableSource: TTraceSource | TLogSource;
   focusDate: Date;
@@ -380,6 +409,7 @@ export function useEventsAroundFocus({
   /** An expression (in `hiddenRowExpressionLanguage`) that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
   hiddenRowExpression?: string;
   hiddenRowExpressionLanguage?: 'lucene' | 'sql';
+  selectSeverityNumber?: boolean;
 }) {
   const { config, alias, type } = useMemo(
     () =>
@@ -388,8 +418,15 @@ export function useEventsAroundFocus({
         traceId,
         hiddenRowExpression,
         hiddenRowExpressionLanguage,
+        selectSeverityNumber,
       ),
-    [tableSource, traceId, hiddenRowExpression, hiddenRowExpressionLanguage],
+    [
+      tableSource,
+      traceId,
+      hiddenRowExpression,
+      hiddenRowExpressionLanguage,
+      selectSeverityNumber,
+    ],
   );
 
   const {
@@ -445,10 +482,16 @@ export function useEventsAroundFocus({
     // DO NOT REMOVE, useRowWhere will error if no meta
     if (!meta || meta.length === 0) return [];
     return [...trimmedBefore, ...trimmedAfter].map(cd => {
-      // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
+      // Omit SpanAttributes, SpanEvents, __hdx_hidden and SeverityNumber from rowWhere id generation.
       // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
+      // SeverityNumber is only selected when the column exists; leaving it out keeps row ids stable.
       const rowWhereResult = getRowWhere(
-        omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
+        omit(cd, [
+          'SpanAttributes',
+          'SpanEvents',
+          '__hdx_hidden',
+          'SeverityNumber',
+        ]),
       );
 
       return {
@@ -735,6 +778,18 @@ export function DBTraceWaterfallChartContainer({
     hiddenRowExpressionLanguage: traceFilterLanguage,
     enabled: true,
   });
+
+  const { data: logColumns, isLoading: isLogColumnsLoading } = useColumns(
+    {
+      databaseName: logTableSource?.from.databaseName ?? '',
+      tableName: logTableSource?.from.tableName ?? '',
+      connectionId: logTableSource?.connection ?? '',
+    },
+    { retry: 1 },
+  );
+  const hasSeverityNumber =
+    logColumns?.some(column => column.name === 'SeverityNumber') ?? false;
+
   const {
     rows: logRowsData,
     isFetching: logIsFetching,
@@ -750,10 +805,13 @@ export function DBTraceWaterfallChartContainer({
     traceId,
     hiddenRowExpression: logWhere ? `NOT (${logWhere})` : undefined,
     hiddenRowExpressionLanguage: logFilterLanguage,
-    enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+    // Wait for the columns (a failed lookup runs without SeverityNumber) so the
+    // select doesn't change mid-flight and run the log query twice.
+    enabled: !!logTableSource && !isLogColumnsLoading,
+    selectSeverityNumber: hasSeverityNumber,
   });
 
-  const isFetching = traceIsFetching || logIsFetching;
+  const isFetching = traceIsFetching || logIsFetching || isLogColumnsLoading;
   // Only a fatal trace failure (bad source / connection) blanks the waterfall.
   // A *filter* error on either side is non-fatal: the offending query falls back
   // to unfiltered data and the error is surfaced inline next to its input, so a
@@ -1127,9 +1185,7 @@ export function DBTraceWaterfallChartContainer({
     node => node.type === SourceKind.Log,
   ).length;
   const errorCount = visibleNodes.filter(
-    node =>
-      node.StatusCode === 'Error' ||
-      node.SeverityText?.toLowerCase() === 'error',
+    node => getRowSeverity(node) === 'error',
   ).length;
 
   const countParts: string[] = [];
@@ -1178,14 +1234,11 @@ export function DBTraceWaterfallChartContainer({
           );
         }
 
-        // Extract HTTP-related logic
-        const eventAttributes = result.SpanAttributes || {};
-        const hasHttpAttributes =
-          eventAttributes['http.url'] || eventAttributes['http.method'];
-        const httpUrl = eventAttributes['http.url'];
-
-        const displayText =
-          hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
+        const spanAttributes = result.SpanAttributes ?? {};
+        const httpUrl = isRpcSpan(spanAttributes)
+          ? undefined
+          : getHttpUrl(spanAttributes);
+        const displayText = httpUrl ? `${body} ${httpUrl}` : body;
 
         // Process span events into markers (only if showSpanEvents is enabled)
         const markers =
@@ -1200,10 +1253,10 @@ export function DBTraceWaterfallChartContainer({
         // Extract status logic
         // TODO: Legacy schemas will have STATUS_CODE_ERROR
         // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
-        const isError =
-          result.StatusCode == 'Error' || result.SeverityText === 'error';
+        const severity = getRowSeverity(result);
+        const isError = severity === 'error';
         const status = result.StatusCode || result.SeverityText;
-        const isWarn = result.SeverityText === 'warn';
+        const isWarn = severity === 'warn';
         const isHighlighted = highlightedRowWhere === id;
 
         const barBackgroundColor =
@@ -1316,7 +1369,7 @@ export function DBTraceWaterfallChartContainer({
                     size="xxs"
                     truncate="end"
                     span
-                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` ${displayText}` : ''}`}
+                    title={`${serviceName}${httpUrl ? ` ${displayText}` : ''}`}
                     role="button"
                   >
                     {serviceName && <>{serviceName} </>}
