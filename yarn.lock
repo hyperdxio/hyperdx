@@ -4942,7 +4942,7 @@ __metadata:
   resolution: "@hyperdx/claude-plugin@workspace:packages/claude-plugin"
   dependencies:
     "@hyperdx/cli": "workspace:*"
-    "@hyperdx/common-utils": "npm:^0.30.0"
+    "@hyperdx/common-utils": "npm:^0.31.0"
     "@jest/globals": "npm:^30.2.0"
     "@types/jest": "npm:^29.5.14"
     chalk: "npm:^5.3.0"
