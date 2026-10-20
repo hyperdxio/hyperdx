@@ -158,6 +158,14 @@ export const isCHFixedStringType = (dataType: string): boolean => {
   return stripTypeWrappers(dataType).startsWith('FixedString');
 };
 
+/**
+ * True when the ClickHouse type is a signed or unsigned integer, including
+ * Nullable and LowCardinality wrappers. JSDataType.Number also covers Float.
+ */
+export const isCHIntegerType = (dataType: string): boolean => {
+  return /^U?Int(8|16|32|64|128|256)$/.test(stripTypeWrappers(dataType));
+};
+
 export const isJSDataTypeJSONStringifiable = (
   dataType: JSDataType | null | undefined,
 ) => {
