@@ -168,7 +168,10 @@ export function assessService(
   return {
     status,
     flags,
-    score: severityScore(cur, cmp, { curRate, cmpRate, p95Ratio }),
+    // Too few requests to judge, so it should not outrank real services.
+    score: flags.includes('low_volume')
+      ? 0
+      : severityScore(cur, cmp, { curRate, cmpRate, p95Ratio }),
     deltas: { throughputRatio, errorRateDeltaPp, p95Ratio, p95DeltaMs },
   };
 }

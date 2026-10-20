@@ -105,6 +105,7 @@ describe('assessService', () => {
       50,
     );
     expect(a.flags).toEqual(['low_volume']);
+    expect(a.score).toBe(0);
     expect(a.status).toBe('healthy');
   });
 

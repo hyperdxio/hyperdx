@@ -23,13 +23,15 @@ async function sourceNotFound(
   const needle = sourceId.trim().toLowerCase();
   const describe = (s: (typeof traces)[number]) =>
     `${s._id.toString()} ("${s.name}", table ${s.from.databaseName}.${s.from.tableName})`;
-  const match = traces.find(s =>
+  const matches = traces.filter(s =>
     [
       s.name,
       s.from.tableName,
       `${s.from.databaseName}.${s.from.tableName}`,
     ].some(v => v.toLowerCase() === needle),
   );
+  // With several matches, naming one would be a guess; list them instead.
+  const match = matches.length === 1 ? matches[0] : undefined;
   if (match) {
     return mcpUserError(
       `"${sourceId}" is a source name or table, not a source ID. Retry ${toolName} ` +
