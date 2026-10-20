@@ -7278,9 +7278,9 @@ describe('checkAlerts', () => {
         );
       }
 
-      const texts = (slack.postMessageToWebhook as jest.Mock).mock.calls.map(
-        call => call[1].text as string,
-      );
+      const texts = jest
+        .mocked(slack.postMessageToWebhook)
+        .mock.calls.map(call => call[1].text);
       expect(texts).toHaveLength(2);
       expect(texts[1]).toBe('✅ Errors for service-b');
     });
