@@ -1,31 +1,16 @@
-import { ColumnMetaType } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  type HeatmapGrid,
+  heatmapRowCount,
+  type HeatmapYAxis,
+} from '@hyperdx/common-utils/dist/core/heatmap';
 
-export type HeatmapScaleType = 'log' | 'linear';
-
-export type HeatmapYAxis =
-  | {
-      type: 'numeric';
-      scale: HeatmapScaleType;
-      /** `rows + 1` ascending row boundaries in data space. Rows may be uneven. */
-      edges: number[];
-    }
-  /**
-   * Pre-bucketed histogram rows, drawn evenly. One ascending upper bound per
-   * row; the top bound may be `Infinity` (a `+Inf` bucket).
-   */
-  | { type: 'buckets'; bounds: number[] }
-  | { type: 'series'; labels: string[] };
-
-/** Source-agnostic heatmap data: one column per time bucket, one row per y bucket or series. */
-export type HeatmapGrid = {
-  /** Column centers, ms ascending. */
-  times: number[];
-  /** Column width, ms. */
-  stepMs: number;
-  yAxis: HeatmapYAxis;
-  /** Row-major: `cells[timeIdx * rowCount + rowIdx]`. */
-  cells: number[];
-};
+export {
+  gridFromBucketRows,
+  type HeatmapGrid,
+  heatmapRowCount,
+  type HeatmapScaleType,
+  type HeatmapYAxis,
+} from '@hyperdx/common-utils/dist/core/heatmap';
 
 /**
  * Numeric- and bucket-axis cells are counts, empty at 0. Series-axis cells
@@ -47,17 +32,6 @@ export const EMPTY_HEATMAP_GRID: HeatmapGrid = {
   yAxis: { type: 'numeric', scale: 'linear', edges: [] },
   cells: [],
 };
-
-export function heatmapRowCount(yAxis: HeatmapYAxis) {
-  switch (yAxis.type) {
-    case 'series':
-      return yAxis.labels.length;
-    case 'buckets':
-      return yAxis.bounds.length;
-    case 'numeric':
-      return Math.max(0, yAxis.edges.length - 1);
-  }
-}
 
 /**
  * Lower and upper bound of each row in plot space. Series and histogram
@@ -119,80 +93,6 @@ export function gridToPlotData(grid: HeatmapGrid): HeatmapPlotData {
     }
   }
   return [xs, ys, grid.cells, x0s, x1s, y0s, y1s];
-}
-
-/**
- * Grid for the rows of the server-side `widthBucket` query. widthBucket
- * returns buckets 0 (underflow) through nBuckets + 1 (overflow), so each time
- * bucket has nBuckets + 2 rows.
- */
-export function gridFromBucketRows({
-  data,
-  timestampColumn,
-  generatedTsBuckets,
-  scaleType,
-  effectiveMin,
-  max,
-  nBuckets,
-}: {
-  data: Record<string, any>[];
-  timestampColumn: ColumnMetaType;
-  generatedTsBuckets: Date[];
-  scaleType: HeatmapScaleType;
-  effectiveMin: number;
-  max: number;
-  nBuckets: number;
-}): HeatmapGrid {
-  const isLog = scaleType === 'log' && effectiveMin > 0 && max > effectiveMin;
-  const bucketValue = (j: number) =>
-    isLog
-      ? effectiveMin * Math.pow(max / effectiveMin, j / nBuckets)
-      : effectiveMin + j * ((max - effectiveMin) / nBuckets);
-
-  // Row j is centered on bucketValue(j), which is the upper bound of
-  // widthBucket's bucket j, so the row boundaries sit half a bucket either
-  // side of it.
-  const rows = nBuckets + 2;
-  const edges = Array.from({ length: rows + 1 }, (_, k) =>
-    bucketValue(k - 0.5),
-  );
-
-  const times = generatedTsBuckets.map(d => d.getTime());
-  const cells: number[] = [];
-
-  let dataIndex = 0;
-  for (const generatedTs of times) {
-    for (let j = 0; j < rows; j++) {
-      const row = data[dataIndex];
-
-      if (
-        row != null &&
-        new Date(row[timestampColumn.name]).getTime() == generatedTs &&
-        row['x_bucket'] == j
-      ) {
-        cells.push(Number.parseInt(row['count'], 10)); // UInt64 returns as string
-
-        // Skip duplicate buckets (from unmerged distributed table results)
-        while (
-          dataIndex < data.length &&
-          new Date(data[dataIndex][timestampColumn.name]).getTime() ==
-            generatedTs &&
-          data[dataIndex]['x_bucket'] == j
-        ) {
-          dataIndex++;
-        }
-      } else {
-        cells.push(0);
-      }
-    }
-  }
-
-  return {
-    times,
-    stepMs: times.length > 1 ? times[1] - times[0] : 0,
-    yAxis: { type: 'numeric', scale: isLog ? 'log' : 'linear', edges },
-    cells,
-  };
 }
 
 /**

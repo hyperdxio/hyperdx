@@ -15,6 +15,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import type { SourceResponse } from '@/api/client';
 import {
   deriveTableColumns,
+  formatHeatmapGrid,
   formatResponseForCategoricalChart,
   formatResponseForTimeChart,
   getNumberChartValue,
@@ -30,6 +31,7 @@ import type { TileQueryResult } from '@/shared/tileQuery';
 import {
   defaultFormatValue,
   renderCategoricalChart,
+  renderHeatmapChart,
   renderLineChart,
   renderMarkdown,
   renderNumberChart,
@@ -61,6 +63,20 @@ export function renderTileContent({
   }
   if (result.status === 'unresolved') {
     return chalk.yellow(result.resolution.message);
+  }
+  if (result.status === 'heatmap') {
+    const data = result.grid && formatHeatmapGrid(result.grid);
+    if (!data) return chalk.dim('Not enough data points to draw a heatmap.');
+    const { chartFormat } = resolveChartNumberFormats(
+      result.queriedConfig,
+      source,
+    );
+    return renderHeatmapChart({
+      data,
+      width,
+      height,
+      formatTick: axisTickFormatter(chartFormat),
+    });
   }
 
   const { queriedConfig, data } = result;

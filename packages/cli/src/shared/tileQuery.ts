@@ -5,7 +5,13 @@
  */
 
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  getHeatmapMode,
+  type HeatmapGrid,
+} from '@hyperdx/common-utils/dist/core/heatmap';
+import { queryDistributionHeatmap } from '@hyperdx/common-utils/dist/core/distributionHeatmap';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   SavedChartConfig,
@@ -28,6 +34,12 @@ export type TileQueryResult =
       data: ResponseJSON<Record<string, string | number>>;
     }
   | {
+      status: 'heatmap';
+      queriedConfig: ChartConfigWithDateRange;
+      /** Undefined when the range has too few distinct values to bucket */
+      grid: HeatmapGrid | undefined;
+    }
+  | {
       status: 'markdown';
       /** Markdown tiles render statically without querying */
       markdown: string;
@@ -37,6 +49,9 @@ export type TileQueryResult =
       status: 'unresolved';
       resolution: Extract<ResolvedTileConfig, { ok: false }>;
     };
+
+// Value buckets per heatmap column; the renderer merges them to fit its rows.
+const HEATMAP_VALUE_BUCKETS = 40;
 
 export interface FetchTileDataParams {
   clickhouseClient: ProxyClickhouseClient;
@@ -89,6 +104,34 @@ export async function fetchTileData({
       return { status: 'unsupported', message: resolution.message };
     }
     return { status: 'unresolved', resolution };
+  }
+
+  if (displayType === DisplayType.Heatmap) {
+    const heatmapConfig = resolution.config;
+    if (
+      !isBuilderChartConfig(heatmapConfig) ||
+      getHeatmapMode(heatmapConfig) === 'series'
+    ) {
+      return {
+        status: 'unsupported',
+        message: 'Series heatmap tiles are not supported in the CLI yet.',
+      };
+    }
+    const result = await queryDistributionHeatmap({
+      client: clickhouseClient,
+      metadata,
+      config: heatmapConfig,
+      granularity: heatmapConfig.granularity,
+      targetTimeBuckets: maxTimeBuckets,
+      nBuckets: HEATMAP_VALUE_BUCKETS,
+      querySettings: source?.querySettings,
+      opts: { abort_signal: signal },
+    });
+    return {
+      status: 'heatmap',
+      queriedConfig: heatmapConfig,
+      grid: result.heatmap?.grid,
+    };
   }
 
   const queriedConfig = convertTileConfigForQuery(resolution.config, {

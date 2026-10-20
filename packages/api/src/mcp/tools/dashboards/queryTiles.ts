@@ -127,6 +127,23 @@ export function summarizeRows(text: string): {
   } catch {
     return {};
   }
+  if (parsed != null && typeof parsed === 'object' && 'heatmap' in parsed) {
+    // A distribution heatmap: one row per time bucket, null when empty.
+    const { heatmap } = parsed;
+    const counts: unknown[] =
+      heatmap != null &&
+      typeof heatmap === 'object' &&
+      'counts' in heatmap &&
+      Array.isArray(heatmap.counts)
+        ? heatmap.counts
+        : [];
+    return {
+      hasData: counts.some(
+        column => Array.isArray(column) && column.some(n => n > 0),
+      ),
+      rowCount: counts.length,
+    };
+  }
   if (parsed == null || typeof parsed !== 'object' || !('result' in parsed)) {
     return {};
   }
