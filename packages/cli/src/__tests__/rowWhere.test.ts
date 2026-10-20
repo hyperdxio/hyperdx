@@ -112,6 +112,20 @@ describe('buildColumnMap', () => {
     expect(where).toBe('isNull(Body)');
   });
 
+  it('uses isNull for null Date column values', () => {
+    const meta: ColumnMetaType[] = [
+      { name: 'event_created', type: "Nullable(DateTime64(3, 'UTC'))" },
+    ];
+
+    const where = getRowWhere(
+      { event_created: null },
+      buildColumnMap(meta, {}),
+      {},
+    ).where;
+
+    expect(where).toBe('isNull(event_created)');
+  });
+
   it('hashes strings longer than MAX_STRING_LENGTH with SHA256', () => {
     const meta: ColumnMetaType[] = [{ name: 'description', type: 'String' }];
 
