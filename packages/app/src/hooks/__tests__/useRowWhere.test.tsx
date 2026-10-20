@@ -7,7 +7,7 @@ import { renderHook } from '@testing-library/react';
 
 import useRowWhere, { processRowToWhereClause } from '@/hooks/useRowWhere';
 
-/** From ClickHouse: lower(hex(SHA256(<json log line>))) on telemetry.otel_logs. */
+/** From ClickHouse: lower(hex(SHA256(<json log line>))). */
 const OTEL_LOG_JSON_FOR_SHA256 =
   '{"caller":"github.com/cloudzero/cloudzero-agent/app/domain/shipper/shipper.go:289","level":"info","message":"Successfully ran the shipper cycle","time":"2026-10-18T00:00:03Z","version":"5d05872b1f292e4bf481c61b187494b9bafff6a8.1.2.10-2026-03-24_02:00:46PM"}';
 
@@ -40,7 +40,7 @@ jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
   }),
 }));
 
-describe('clickHouseSha256HexLower', () => {
+describe('SHA256 matches ClickHouse lower(hex(SHA256(...)))', () => {
   it('matches ClickHouse lower(hex(SHA256(...))) for a real otel log JSON string', () => {
     expect(SHA256(OTEL_LOG_JSON_FOR_SHA256).toString()).toBe(
       OTEL_LOG_JSON_SHA256_HEX,
