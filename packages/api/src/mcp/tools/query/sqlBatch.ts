@@ -53,7 +53,10 @@ export const sqlBatchQuerySchema = z.object({
   connectionId: z
     .string()
     .optional()
-    .describe('Overrides the top-level connectionId for this query.'),
+    .describe(
+      'Overrides the top-level connectionId for this query. A query that sets it ' +
+        'does not inherit the top-level sourceId.',
+    ),
   sourceId: z
     .string()
     .optional()
@@ -195,7 +198,13 @@ export async function runSqlBatch({
               {
                 sql: query.sql,
                 connectionId: query.connectionId ?? defaults.connectionId,
-                sourceId: query.sourceId ?? defaults.sourceId,
+                // The top-level source belongs to the top-level connection, so a
+                // query on another connection must not inherit it.
+                sourceId:
+                  query.sourceId ??
+                  (query.connectionId === undefined
+                    ? defaults.sourceId
+                    : undefined),
               },
               lookupSource,
             ),

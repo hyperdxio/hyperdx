@@ -244,7 +244,7 @@ describe('clickstack_sql batch mode', () => {
     ]);
   });
 
-  it('flags a connection override that conflicts with the inherited source', async () => {
+  it('does not inherit the top-level sourceId when a query overrides connectionId', async () => {
     const result = await buildHandler()({
       connectionId,
       sourceId,
@@ -255,9 +255,21 @@ describe('clickstack_sql batch mode', () => {
     });
 
     const parsed = JSON.parse(textOf(result));
-    expect(parsed.results[0].status).toBe('ok');
-    expect(parsed.results[1].status).toBe('error');
-    expect(parsed.results[1].error).toContain('does not match the connection');
+    expect(parsed.summary.ok).toBe(2);
+    const overridden = tileArgs().find(c => c.sqlTemplate === 'SELECT 2');
+    expect(overridden?.connectionId).toBe(otherConnectionId);
+    expect(overridden?.sourceId).toBeUndefined();
+  });
+
+  it('flags an explicit source on a different connection', async () => {
+    const result = await buildHandler()({
+      connectionId,
+      queries: [{ sql: 'SELECT 1', connectionId: otherConnectionId, sourceId }],
+    });
+
+    const parsed = JSON.parse(textOf(result));
+    expect(parsed.results[0].status).toBe('error');
+    expect(parsed.results[0].error).toContain('does not match the connection');
   });
 
   it('looks each source up once per call, including during execution', async () => {
