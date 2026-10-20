@@ -20,7 +20,11 @@ import {
   IS_LOCAL_MODE,
   IS_PROMQL_ENABLED,
 } from '@/config';
-import { useConnections, useCreateConnection } from '@/connection';
+import {
+  useConnections,
+  useCreateConnection,
+  useUpdateConnection,
+} from '@/connection';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import {
   inferTableSourceConfig,
@@ -35,6 +39,17 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { TableSourceForm } from './Sources/SourceForm';
 import { SourcesList } from './Sources/SourcesList';
+
+const DEMO_CONNECTION = {
+  name: 'Demo',
+  host: 'https://b1g1gnrrz3.us-central1.gcp.clickhouse-staging.com:8443',
+  username: 'otel_demo',
+  password: '',
+};
+const LEGACY_DEMO_CONNECTION = {
+  host: 'https://sql-clickhouse.clickhouse.com',
+  username: 'otel_demo',
+};
 
 async function addOtelDemoSources({
   connectionId,
@@ -259,6 +274,7 @@ function OnboardingModalComponent({
 
   const createSourceMutation = useCreateSource();
   const createConnectionMutation = useCreateConnection();
+  const updateConnectionMutation = useUpdateConnection();
   const updateSourceMutation = useUpdateSource();
   const deleteSourceMutation = useDeleteSource();
   const metadata = useMetadataWithSettings();
@@ -651,16 +667,19 @@ function OnboardingModalComponent({
       // Reuse existing demo connection if available, otherwise create one
       const existingDemoConnection = connections?.find(c => c.name === 'Demo');
       let createdConnectionId = existingDemoConnection?.id ?? '';
-      if (!existingDemoConnection) {
+      if (
+        existingDemoConnection?.host === LEGACY_DEMO_CONNECTION.host &&
+        existingDemoConnection.username === LEGACY_DEMO_CONNECTION.username
+      ) {
+        // Demo connections created before the demo server moved still point
+        // at the old host
+        await updateConnectionMutation.mutateAsync({
+          id: existingDemoConnection.id,
+          connection: { ...existingDemoConnection, ...DEMO_CONNECTION },
+        });
+      } else if (!existingDemoConnection) {
         await createConnectionMutation.mutateAsync(
-          {
-            connection: {
-              name: 'Demo',
-              host: 'https://sql-clickhouse.clickhouse.com',
-              username: 'otel_demo',
-              password: '',
-            },
-          },
+          { connection: DEMO_CONNECTION },
           {
             onSuccess(data) {
               createdConnectionId = data.id;
@@ -679,23 +698,23 @@ function OnboardingModalComponent({
         createSourceMutation,
         deleteSourceMutation,
 
-        logSourceDatabaseName: 'otel_v2',
+        logSourceDatabaseName: 'otel',
         logSourceName: 'Demo Logs',
         logSourceTableName: 'otel_logs',
 
-        metricsSourceDatabaseName: 'otel_v2',
+        metricsSourceDatabaseName: 'otel',
         metricsSourceName: 'Demo Metrics',
 
-        sessionSourceDatabaseName: 'otel_v2',
+        sessionSourceDatabaseName: 'otel',
         sessionSourceName: 'Demo Sessions',
         sessionSourceTableName: 'hyperdx_sessions',
 
-        traceSourceDatabaseName: 'otel_v2',
+        traceSourceDatabaseName: 'otel',
         traceSourceName: 'Demo Traces',
         traceSourceTableName: 'otel_traces',
         traceSourceMaterializedViews: [
           {
-            databaseName: 'otel_v2',
+            databaseName: 'otel',
             tableName: 'otel_traces_1m',
             dimensionColumns: 'ServiceName, StatusCode',
             minGranularity: '1 minute',
@@ -715,7 +734,7 @@ function OnboardingModalComponent({
             ],
           },
           {
-            databaseName: 'otel_v2',
+            databaseName: 'otel',
             tableName: 'otel_traces_1m_v2',
             dimensionColumns: 'ServiceName, SpanName, SpanKind',
             minGranularity: '1 minute',
@@ -787,6 +806,7 @@ function OnboardingModalComponent({
     connections,
     createSourceMutation,
     createConnectionMutation,
+    updateConnectionMutation,
     updateSourceMutation,
     deleteSourceMutation,
     sources,
