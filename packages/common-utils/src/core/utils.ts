@@ -51,6 +51,20 @@ import { SkipIndexMetadata, TableMetadata } from './metadata';
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
 
+/** Code-point limit for row-lookup string hashes (matches ClickHouse leftUTF8). */
+export const LEFT_UTF8_HASH_CODE_POINTS = 1000;
+
+/** First `limit` Unicode code points, matching ClickHouse leftUTF8(s, limit). */
+export function leftUtf8Prefix(value: string, limit: number): string {
+  let prefix = '';
+  let n = 0;
+  for (const ch of value) {
+    if (n++ === limit) break;
+    prefix += ch;
+  }
+  return prefix;
+}
+
 /**
  * Returns the quantile level of a percentile shorthand aggFn (`p95` -> 0.95),
  * or undefined for any other aggFn.
