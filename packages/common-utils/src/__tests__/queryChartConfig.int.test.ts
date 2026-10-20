@@ -2924,4 +2924,79 @@ describe('queryChartConfig Integration Tests', () => {
       });
     });
   });
+
+  // Mirrors the OTel logs schema, where a DateTime column precedes the
+  // DateTime64(9) column in the timestamp expression for primary-key pruning.
+  describe('sub-second start on a DateTime + DateTime64 source', () => {
+    const LOGS_TABLE = 'logs_subsecond_start_int_test';
+    const start = new Date('2026-10-13T22:03:21.827Z');
+    const end = new Date('2026-10-13T22:05:00Z');
+
+    const searchConfig = (
+      dateRange: [Date, Date],
+      dateRangeEndInclusive = true,
+    ): ChartConfigWithOptDateRange => ({
+      connection: 'test-connection',
+      from: { databaseName: DATABASE, tableName: LOGS_TABLE },
+      select: 'Body',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimestampTime, Timestamp',
+      orderBy: 'Timestamp ASC',
+      dateRange,
+      dateRangeEndInclusive,
+    });
+
+    const bodies = async (config: ChartConfigWithOptDateRange) => {
+      const result = await hdxClient.queryChartConfig({
+        config,
+        metadata,
+        querySettings: undefined,
+      });
+      return (result.data as Array<{ Body: string }>).map(r => r.Body);
+    };
+
+    beforeAll(async () => {
+      await client.command({
+        query: `CREATE OR REPLACE TABLE ${DATABASE}.${LOGS_TABLE} (
+          Timestamp DateTime64(9, 'UTC'),
+          TimestampTime DateTime('UTC') DEFAULT toDateTime(Timestamp),
+          Body String
+        )
+        ENGINE = MergeTree
+        ORDER BY (TimestampTime, Timestamp)`,
+      });
+      await client.insert({
+        table: `${DATABASE}.${LOGS_TABLE}`,
+        values: [
+          { Timestamp: '2026-10-13 22:03:21.500000000', Body: 'before-start' },
+          { Timestamp: '2026-10-13 22:03:21.900000000', Body: 'same-second' },
+          { Timestamp: '2026-10-13 22:03:22.100000000', Body: 'next-second' },
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS ${DATABASE}.${LOGS_TABLE}`,
+      });
+    });
+
+    it('returns rows in the rest of the start second', async () => {
+      expect(await bodies(searchConfig([start, end]))).toEqual([
+        'same-second',
+        'next-second',
+      ]);
+    });
+
+    it('does not return the same row from the preceding window', async () => {
+      const previousWindow = searchConfig(
+        [new Date('2026-10-13T22:00:00Z'), start],
+        false,
+      );
+
+      expect(await bodies(previousWindow)).toEqual(['before-start']);
+    });
+  });
 });

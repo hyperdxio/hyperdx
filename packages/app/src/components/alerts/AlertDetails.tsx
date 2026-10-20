@@ -1,9 +1,9 @@
 import * as React from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
+import { Badge } from '@clickhouse/click-ui';
 import { AlertSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Badge,
   Collapse,
   Flex,
   Group,
@@ -190,9 +190,7 @@ export const AlertDetails = React.memo(function AlertDetails({
           {alert.tags?.length > 0 && (
             <Group gap={4}>
               {alert.tags.map(tag => (
-                <Badge key={tag} variant="light" color="gray" size="xs">
-                  {tag}
-                </Badge>
+                <Badge key={tag} size="sm" text={tag} state="neutral" />
               ))}
             </Group>
           )}

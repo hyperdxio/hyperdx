@@ -1,4 +1,5 @@
 import React from 'react';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
@@ -218,6 +219,29 @@ describe('DBTimeChart', () => {
     const options = jest.mocked(useMVOptimizationExplanation).mock.calls[0][1];
     expect(options?.enabled).toBe(true);
   });
+
+  it.each([
+    ['controlled', jest.fn()],
+    ['uncontrolled', undefined],
+  ])(
+    'renders a stacked chart as lines when comparing to the previous period (%s)',
+    (_, setDisplayType) => {
+      renderWithMantine(
+        <DBTimeChart
+          config={{
+            ...baseTestConfig,
+            displayType: DisplayType.StackedBar,
+            compareToPreviousPeriod: true,
+          }}
+          setDisplayType={setDisplayType}
+        />,
+      );
+
+      expect(
+        screen.getByTestId(`display-switcher-${DisplayType.Line}`),
+      ).toHaveAttribute('data-active', 'true');
+    },
+  );
 
   describe('load-all series escape hatch', () => {
     // A high-cardinality group-by response: MAX_RENDERED_TIME_CHART_SERIES (250)

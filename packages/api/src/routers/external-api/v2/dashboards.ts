@@ -690,6 +690,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             instead of zero, making small fluctuations between series easier
  *             to see.
  *           default: false
+ *         lineInterpolation:
+ *           type: string
+ *           enum: [smooth, linear, step]
+ *           example: "step"
+ *           description: >
+ *             How points are connected. Defaults to "smooth" when omitted.
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -834,6 +840,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: boolean
  *           description: Fill missing time buckets with zero instead of leaving gaps.
  *           default: true
+ *         lineInterpolation:
+ *           type: string
+ *           enum: [smooth, linear, step]
+ *           example: "step"
+ *           description: >
+ *             How points are connected. Defaults to "linear" when omitted.
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -1374,6 +1386,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *                 data instead of zero, making small fluctuations between
  *                 series easier to see.
  *               default: false
+ *             lineInterpolation:
+ *               type: string
+ *               enum: [smooth, linear, step]
+ *               example: "step"
+ *               description: >
+ *                 How points are connected. Defaults to "smooth" when omitted.
  *
  *     BarRawSqlChartConfig:
  *       description: Raw SQL configuration for a stacked-bar time-series chart.
@@ -1418,6 +1436,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: boolean
  *               description: Expand date range boundaries to the query granularity interval.
  *               default: true
+ *             lineInterpolation:
+ *               type: string
+ *               enum: [smooth, linear, step]
+ *               example: "step"
+ *               description: >
+ *                 How points are connected. Defaults to "linear" when omitted.
  *
  *     TableRawSqlChartConfig:
  *       description: Raw SQL configuration for a table chart.
@@ -1882,6 +1906,11 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           maxLength: 256
  *           description: References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.
  *           example: "errors"
+ *         description:
+ *           type: string
+ *           maxLength: 1024
+ *           description: Short explanation of the tile, shown as a tooltip next to its name.
+ *           example: "Share of API requests that returned a 5xx response."
  *
  *     TileOutput:
  *       description: Response format for dashboard tiles

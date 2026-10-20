@@ -11,8 +11,7 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
+  LineInterpolationSchema,
   MetricFormulaSchema,
   MetricsDataType,
   NumberFormatSchema,
@@ -26,6 +25,7 @@ import {
   SearchConditionLanguageSchema as whereLanguageSchema,
   StaticListDashboardFilterSchema,
   tagsSchema,
+  TILE_DESCRIPTION_MAX_LENGTH,
   validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
@@ -160,7 +160,7 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 
 // Re-exported from common-utils so existing `@/utils/zod` importers keep working
 // while the canonical definition lives in the shared package.
-export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
+export { tagsSchema };
 
 const externalQueryExpressionFilterShape =
   QueryExpressionDashboardFilterSchema.omit({ source: true }).extend({
@@ -355,6 +355,7 @@ const externalDashboardLineChartConfigSchema =
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    lineInterpolation: LineInterpolationSchema.optional(),
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     seriesLimit: z.number().int().nonnegative().optional(),
@@ -367,6 +368,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    lineInterpolation: LineInterpolationSchema.optional(),
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     // Raw SQL Line tiles carry the client-side render cap too, so it must
@@ -397,11 +399,13 @@ const externalDashboardBarRawSqlChartConfigSchema =
 const externalDashboardStackedLineChartConfigSchema =
   externalDashboardBarChartConfigSchema.extend({
     displayType: z.literal('stacked_line'),
+    lineInterpolation: LineInterpolationSchema.optional(),
   });
 
 const externalDashboardStackedLineRawSqlChartConfigSchema =
   externalDashboardBarRawSqlChartConfigSchema.extend({
     displayType: z.literal('stacked_line'),
+    lineInterpolation: LineInterpolationSchema.optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({
@@ -808,6 +812,7 @@ export const externalDashboardTileSchema = z
     // valid container id from the editor always fits.
     containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
     tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+    description: z.string().max(TILE_DESCRIPTION_MAX_LENGTH).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.series && data.config) {

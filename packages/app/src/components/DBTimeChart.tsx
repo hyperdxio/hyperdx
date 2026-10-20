@@ -646,12 +646,20 @@ function DBTimeChartComponent({
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
 
   const displayType = useMemo(() => {
-    if (setDisplayType) {
+    // Stacking would sum the current and previous periods together.
+    if (config.compareToPreviousPeriod) {
+      return DisplayType.Line;
+    } else if (setDisplayType) {
       return displayTypeProp;
     } else {
       return displayTypeLocal;
     }
-  }, [displayTypeLocal, displayTypeProp, setDisplayType]);
+  }, [
+    config.compareToPreviousPeriod,
+    displayTypeLocal,
+    displayTypeProp,
+    setDisplayType,
+  ]);
 
   const handleSetDisplayType = useCallback(
     (type: DisplayType) => {
@@ -663,12 +671,6 @@ function DBTimeChartComponent({
     },
     [setDisplayType],
   );
-
-  useEffect(() => {
-    if (config.compareToPreviousPeriod) {
-      setDisplayTypeLocal(DisplayType.Line);
-    }
-  }, [config.compareToPreviousPeriod]);
 
   const [activeClickPayload, setActiveClickPayload] = useState<
     ActiveClickPayload | undefined
@@ -1071,6 +1073,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            lineInterpolation={queriedConfig.lineInterpolation}
           />
         </>
       )}

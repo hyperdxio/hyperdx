@@ -38,8 +38,8 @@ export const listMetricsSchema = z.object({
     .enum(DISCOVERABLE_METRIC_KINDS)
     .optional()
     .describe(
-      'Optional metric kind filter. Omit to scan every populated kind on the source ' +
-        '(gauge, sum, histogram, exponential histogram, summary). Set to narrow results to one kind. ' +
+      'Restrict results to one metric kind. Omit to scan every kind that has ' +
+        'a table on the source. ' +
         'NOTE: summary metrics are discovery-only — they cannot be passed to ' +
         'clickstack_timeseries / clickstack_table; query them with clickstack_sql.',
     ),
@@ -47,7 +47,7 @@ export const listMetricsSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Optional ClickHouse ILIKE pattern applied to MetricName server-side. ' +
+      'ClickHouse ILIKE pattern (case-insensitive) matched against MetricName. ' +
         'Use % as the wildcard. Examples: "system.cpu.%", "%duration%", "http.server.%".',
     ),
   startTime: z
@@ -69,7 +69,7 @@ export const listMetricsSchema = z.object({
     .optional()
     .default(DEFAULT_LIMIT)
     .describe(
-      `Max metrics returned per page. Default ${DEFAULT_LIMIT}, max ${MAX_LIMIT}.`,
+      'Maximum metrics returned per page. Use cursor to fetch further pages.',
     ),
   cursor: z
     .string()
