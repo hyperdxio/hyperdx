@@ -576,3 +576,21 @@ export function axisTickFormatter(
     return '';
   };
 }
+
+/**
+ * A heatmap's axis format. Saved heatmap tiles carry aggFn count, which hides
+ * a duration value expression from the series check, so check it directly.
+ */
+export function heatmapNumberFormat(
+  config: ChartConfigWithOptDateRange,
+  source: SourceResponse | undefined,
+): NumberFormat | undefined {
+  const valueExpression =
+    isBuilderChartConfig(config) && Array.isArray(config.select)
+      ? config.select[0]?.valueExpression
+      : undefined;
+  return (
+    resolveChartNumberFormats(config, source).chartFormat ??
+    getTraceDurationNumberFormat(source, { valueExpression })
+  );
+}

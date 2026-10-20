@@ -79,4 +79,66 @@ describe('fetchTileData heatmap tiles', () => {
     expect(result.status).toBe('unsupported');
     expect(queryChartConfig).not.toHaveBeenCalled();
   });
+
+  it('uses the saved granularity and labels rows with widthBucket bounds', async () => {
+    const queryChartConfig = jest
+      .fn<() => Promise<unknown>>()
+      .mockResolvedValueOnce({ meta: [], data: [{ min: '0', max: '100' }] })
+      .mockResolvedValueOnce({
+        meta: [{ name: '__hdx_time_bucket', type: 'DateTime' }],
+        data: [],
+      });
+    const result = await fetchTileData({
+      clickhouseClient: {
+        queryChartConfig,
+      } as unknown as ProxyClickhouseClient,
+      metadata: {} as never,
+      config: heatmapTile({
+        granularity: '1 minute',
+        select: [
+          {
+            aggFn: 'count',
+            valueExpression: 'Duration',
+            heatmapScaleType: 'linear',
+          },
+        ],
+      }),
+      source: traceSource,
+      dateRange,
+    });
+
+    const bucketQuery = queryChartConfig.mock.calls[1] as unknown as [
+      { config: { granularity: string } },
+    ];
+    expect(bucketQuery[0].config.granularity).toBe('1 minute');
+    if (result.status !== 'heatmap') throw new Error(result.status);
+    // 40 buckets over 0..100 are 2.5 wide; the underflow row starts one below 0.
+    expect(result.grid?.yAxis).toMatchObject({
+      type: 'numeric',
+      scale: 'linear',
+    });
+    const edges =
+      result.grid?.yAxis.type === 'numeric' ? result.grid.yAxis.edges : [];
+    expect(edges.slice(0, 3)).toEqual([-2.5, 0, 2.5]);
+    expect(result.heatmap).toMatchObject({
+      valueExpression: 'Duration',
+      granularity: '1 minute',
+      scale: 'linear',
+    });
+  });
+
+  it('refuses distribution heatmaps on non-trace sources', async () => {
+    const queryChartConfig = jest.fn();
+    const result = await fetchTileData({
+      clickhouseClient: {
+        queryChartConfig,
+      } as unknown as ProxyClickhouseClient,
+      metadata: {} as never,
+      config: heatmapTile(),
+      source: { ...traceSource, kind: 'log' } as unknown as SourceResponse,
+      dateRange,
+    });
+    expect(result).toMatchObject({ status: 'unsupported' });
+    expect(queryChartConfig).not.toHaveBeenCalled();
+  });
 });

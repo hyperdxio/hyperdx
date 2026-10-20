@@ -1,7 +1,7 @@
 import type { queryDistributionHeatmap } from '@hyperdx/common-utils/dist/core/distributionHeatmap';
 import {
-  heatmapCountColumns,
   type HeatmapScaleType,
+  toHeatmapResult,
 } from '@hyperdx/common-utils/dist/core/heatmap';
 import type {
   BuilderSavedChartConfig,
@@ -62,15 +62,11 @@ export function formatHeatmapResult(
   const notes = granularityNote ? [granularityNote] : [];
   const body = heatmap
     ? {
-        heatmap: {
+        heatmap: toHeatmapResult(heatmap, {
           valueExpression,
-          scale: heatmap.scaleType,
           granularity,
-          ...(numberFormat ? { numberFormat } : {}),
-          times: heatmap.grid.times.map(t => new Date(t).toISOString()),
-          valueEdges: heatmap.bucketEdges.map(e => Number(e.toPrecision(6))),
-          counts: heatmapCountColumns(heatmap.grid),
-        },
+          numberFormat,
+        }),
         hints: [readingHint(heatmap.scaleType), ...notes],
       }
     : {

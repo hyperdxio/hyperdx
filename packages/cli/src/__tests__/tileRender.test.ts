@@ -120,4 +120,31 @@ describe('renderTileContent', () => {
       ),
     ).toContain('Not enough data points');
   });
+
+  it('formats a saved Duration heatmap as durations without a numberFormat', () => {
+    const result: TileQueryResult = {
+      status: 'heatmap',
+      queriedConfig: {
+        displayType: DisplayType.Heatmap,
+        dateRange,
+        select: [{ aggFn: 'count', valueExpression: 'Duration' }],
+      } as unknown as ChartConfigWithDateRange,
+      grid: {
+        times: [dateRange[0].getTime()],
+        stepMs: 0,
+        yAxis: { type: 'numeric', scale: 'log', edges: [1e6, 1e7, 1e8, 1e9] },
+        cells: [3, 5, 1],
+      },
+    };
+    const traceSource = {
+      kind: 'trace',
+      durationExpression: 'Duration',
+      durationPrecision: 9,
+    } as never;
+    const output = stripAnsi(
+      renderTileContent({ result, source: traceSource, width: 60, height: 12 }),
+    );
+    expect(output).toMatch(/\d+(ms|s)\b/);
+    expect(output).not.toContain('1.0B');
+  });
 });

@@ -8,17 +8,24 @@ import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   getHeatmapMode,
   type HeatmapGrid,
+  type HeatmapResult,
+  heatmapRowEdges,
+  toHeatmapResult,
 } from '@hyperdx/common-utils/dist/core/heatmap';
 import { queryDistributionHeatmap } from '@hyperdx/common-utils/dist/core/distributionHeatmap';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderChartConfig,
+  isHeatmapCompatibleSource,
+} from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import type { ProxyClickhouseClient, SourceResponse } from '@/api/client';
+import { heatmapNumberFormat } from '@/shared/formatNumber';
 import {
   CLI_SUPPORTED_DISPLAY_TYPES,
   convertTileConfigForQuery,
@@ -38,6 +45,8 @@ export type TileQueryResult =
       queriedConfig: ChartConfigWithDateRange;
       /** Undefined when the range has too few distinct values to bucket */
       grid: HeatmapGrid | undefined;
+      /** The same grid in the shape the MCP server returns, for --json */
+      heatmap?: HeatmapResult;
     }
   | {
       status: 'markdown';
@@ -117,20 +126,55 @@ export async function fetchTileData({
         message: 'Series heatmap tiles are not supported in the CLI yet.',
       };
     }
+    // The CLI's source kind is a string; map it onto SourceKind for the shared guard.
+    const sourceKind = Object.values(SourceKind).find(k => k === source?.kind);
+    if (
+      source &&
+      !(sourceKind && isHeatmapCompatibleSource({ kind: sourceKind }))
+    ) {
+      return {
+        status: 'unsupported',
+        message: `Distribution heatmaps need a trace source; "${source.name}" is a ${source.kind} source.`,
+      };
+    }
     const result = await queryDistributionHeatmap({
       client: clickhouseClient,
       metadata,
       config: heatmapConfig,
-      granularity: heatmapConfig.granularity,
+      // resolveTileConfig swaps in the command's granularity, which is unset
+      // by default; fall back to the tile's own.
+      granularity:
+        granularity ??
+        ('granularity' in config ? config.granularity : undefined),
       targetTimeBuckets: maxTimeBuckets,
       nBuckets: HEATMAP_VALUE_BUCKETS,
       querySettings: source?.querySettings,
       opts: { abort_signal: signal },
     });
+    const { heatmap } = result;
+    const firstSelect = Array.isArray(heatmapConfig.select)
+      ? heatmapConfig.select[0]
+      : undefined;
     return {
       status: 'heatmap',
       queriedConfig: heatmapConfig,
-      grid: result.heatmap?.grid,
+      // Label rows with the bucket bounds widthBucket counted, not the
+      // web's centred display edges.
+      grid: heatmap && {
+        ...heatmap.grid,
+        yAxis: {
+          type: 'numeric',
+          scale: heatmap.scaleType,
+          edges: heatmapRowEdges(heatmap.bucketEdges, heatmap.scaleType),
+        },
+      },
+      heatmap:
+        heatmap &&
+        toHeatmapResult(heatmap, {
+          valueExpression: firstSelect?.valueExpression ?? '',
+          granularity: result.granularity,
+          numberFormat: heatmapNumberFormat(heatmapConfig, source),
+        }),
     };
   }
 

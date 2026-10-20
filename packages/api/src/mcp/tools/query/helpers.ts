@@ -623,7 +623,7 @@ export async function runConfigTile(
           client: clickhouseClient,
           metadata: getMetadata(clickhouseClient),
           config: chartConfig,
-          granularity: options?.granularity ?? builderConfig.granularity,
+          granularity: options?.granularity,
           targetTimeBuckets: MCP_HEATMAP_TIME_BUCKETS,
           nBuckets: MCP_HEATMAP_VALUE_BUCKETS,
           querySettings: source.querySettings,

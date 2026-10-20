@@ -1,7 +1,10 @@
 import { queryDistributionHeatmap } from '@/core/distributionHeatmap';
 import {
   heatmapBucketEdges,
+  HeatmapResultSchema,
+  heatmapRowEdges,
   resolveDistributionGranularity,
+  toHeatmapResult,
 } from '@/core/heatmap';
 import { timeBucketByGranularity } from '@/core/utils';
 import { DisplayType } from '@/types';
@@ -118,5 +121,37 @@ describe('timeBucketByGranularity', () => {
     expect(
       timeBucketByGranularity(dateRange[0], dateRange[1], '1 week' as never),
     ).toEqual([]);
+  });
+});
+
+describe('heatmapRowEdges', () => {
+  it('adds an under- and overflow row one bucket tall on each side', () => {
+    expect(heatmapRowEdges([0, 25, 50], 'linear')).toEqual([
+      -25, 0, 25, 50, 75,
+    ]);
+    expect(heatmapRowEdges([1, 10, 100], 'log')).toEqual([
+      0.1, 1, 10, 100, 1000,
+    ]);
+  });
+});
+
+describe('toHeatmapResult', () => {
+  it('keeps exact bucket edges and fits the shared schema', () => {
+    const result = toHeatmapResult(
+      {
+        grid: {
+          times: [Date.parse('2026-10-13T00:00:00Z')],
+          stepMs: 0,
+          yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 2, 3, 4] },
+          cells: [0, 1, 2, 0],
+        },
+        scaleType: 'linear',
+        bucketEdges: [1000000000, 1000000050, 1000000100],
+      },
+      { valueExpression: 'Duration', granularity: '1 minute' },
+    );
+    expect(result.valueEdges).toEqual([1000000000, 1000000050, 1000000100]);
+    expect(result.counts).toEqual([[0, 1, 2, 0]]);
+    expect(HeatmapResultSchema.safeParse(result).success).toBe(true);
   });
 });

@@ -184,7 +184,8 @@ same pipeline in three modes: dashboard tiles (`-d`), ad-hoc builder charts
 `shared/adhocChart.ts`), and ad-hoc raw SQL (`--sql` with `$__timeFilter` /
 `$__timeInterval` macros). ANSI colors are stripped automatically when stdout is
 not a TTY (`--color auto|always|never`), and `--json` emits raw rows + column
-metadata.
+metadata (distribution heatmap tiles emit a `heatmap` object in the same shape
+as the MCP `clickstack_heatmap` result).
 
 Do NOT change resolution/shaping rules without checking the web components first
 (see the alignment table below).

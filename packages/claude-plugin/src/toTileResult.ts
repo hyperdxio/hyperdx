@@ -1,10 +1,12 @@
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import type { HeatmapGrid } from '@hyperdx/common-utils/dist/core/heatmap';
+import {
+  type HeatmapGrid,
+  type HeatmapResult,
+  HeatmapResultSchema,
+  heatmapRowEdges,
+} from '@hyperdx/common-utils/dist/core/heatmap';
 import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
-import type {
-  ChartConfigWithDateRange,
-  NumberFormat,
-} from '@hyperdx/common-utils/dist/types';
+import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import type { TileQueryResult } from '@hyperdx/cli/src/shared/tileQuery';
 
@@ -36,14 +38,6 @@ type ToolInput = {
   endTime?: string;
 };
 
-type HeatmapBody = {
-  numberFormat?: NumberFormat;
-  times: string[];
-  valueEdges: number[];
-  counts: number[][];
-  scale: 'log' | 'linear';
-};
-
 type ChartResult = Extract<TileQueryResult, { status: 'ok' | 'heatmap' }>;
 
 /** Matches by MCP tool name suffix, so it works whatever the user named the server. */
@@ -67,6 +61,15 @@ function parseBody(output: unknown): Record<string, unknown> | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Whether a call's result can be drawn, so only those are kept for drawing. */
+export function isChartable(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+): boolean {
+  return toTileResult(toolName, input, output, Date.now()) !== undefined;
 }
 
 /** The server trims results over its size limit and says so in `note`. */
@@ -103,8 +106,9 @@ export function toTileResult(
     : new Date(end.getTime() - DEFAULT_WINDOW_MS);
 
   if (HEATMAP_TOOLS.includes(tool)) {
-    const heatmap = parseBody(output)?.heatmap as HeatmapBody | undefined;
-    if (!heatmap?.counts?.length) return undefined;
+    const parsed = HeatmapResultSchema.safeParse(parseBody(output)?.heatmap);
+    if (!parsed.success || parsed.data.counts.length === 0) return undefined;
+    const heatmap = parsed.data;
     return {
       status: 'heatmap',
       queriedConfig: {
@@ -147,22 +151,16 @@ function toGrid({
   valueEdges,
   counts,
   scale,
-}: HeatmapBody): HeatmapGrid {
+}: HeatmapResult): HeatmapGrid {
   const ms = times.map(t => Date.parse(t));
   return {
     times: ms,
     stepMs: ms.length > 1 ? ms[1]! - ms[0]! : 0,
-    yAxis: { type: 'numeric', scale, edges: withOuterRows(valueEdges, scale) },
+    yAxis: {
+      type: 'numeric',
+      scale,
+      edges: heatmapRowEdges(valueEdges, scale),
+    },
     cells: counts.flat(),
   };
-}
-
-// The server reports the bucket bounds, with an under- and overflow count on
-// either side; give those two rows one bucket's height so they can be drawn.
-function withOuterRows(edges: number[], scale: 'log' | 'linear'): number[] {
-  const [first, second] = [edges[0]!, edges[1] ?? edges[0]!];
-  const [beforeLast, last] = [edges.at(-2) ?? edges.at(-1)!, edges.at(-1)!];
-  return scale === 'log' && first > 0
-    ? [(first * first) / second, ...edges, (last * last) / beforeLast]
-    : [first - (second - first), ...edges, last + (last - beforeLast)];
 }

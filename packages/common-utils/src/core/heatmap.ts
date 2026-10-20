@@ -1,9 +1,11 @@
+import { z } from 'zod';
+
 import type { ColumnMetaType } from '@/clickhouse';
 import {
   convertDateRangeToGranularityString,
   convertGranularityToSeconds,
 } from '@/core/utils';
-import type { PromqlHeatmapMode, SQLInterval } from '@/types';
+import type { NumberFormat, PromqlHeatmapMode, SQLInterval } from '@/types';
 import { SQLIntervalSchema } from '@/types';
 
 /** A heatmap's mode; tiles saved before modes existed are distribution heatmaps. */
@@ -103,6 +105,63 @@ export function heatmapBucketEdges(
 ): number[] {
   const bucketValue = bucketValueFn(scaleType, effectiveMin, max, nBuckets);
   return Array.from({ length: nBuckets + 1 }, (_, j) => bucketValue(j));
+}
+
+/**
+ * Row edges for drawing the `nBuckets + 2` rows: the bucket bounds, with the
+ * under- and overflow rows each given one bucket's height.
+ */
+export function heatmapRowEdges(
+  bucketEdges: number[],
+  scaleType: HeatmapScaleType,
+): number[] {
+  const [first, second] = [bucketEdges[0]!, bucketEdges[1] ?? bucketEdges[0]!];
+  const last = bucketEdges.at(-1)!;
+  const beforeLast = bucketEdges.at(-2) ?? last;
+  return scaleType === 'log' && first > 0
+    ? [(first * first) / second, ...bucketEdges, (last * last) / beforeLast]
+    : [first - (second - first), ...bucketEdges, last + (last - beforeLast)];
+}
+
+/**
+ * A distribution heatmap as returned to agents and scripts: `counts[t][r]`,
+ * where row 0 counts values below `valueEdges[0]`, row r counts
+ * [valueEdges[r - 1], valueEdges[r]) and the last row values at or above the
+ * last edge.
+ */
+export const HeatmapResultSchema = z.object({
+  valueExpression: z.string(),
+  scale: z.enum(['log', 'linear']),
+  granularity: z.string(),
+  // Typed but not re-validated: NumberFormatSchema drags every types.ts schema
+  // into the Claude plugin's bundle, which then fails to load in Claude Code.
+  numberFormat: z
+    .custom<NumberFormat>(v => typeof v === 'object' && v !== null)
+    .optional(),
+  times: z.array(z.string()),
+  valueEdges: z.array(z.number()),
+  counts: z.array(z.array(z.number())),
+});
+export type HeatmapResult = z.infer<typeof HeatmapResultSchema>;
+
+export function toHeatmapResult(
+  heatmap: {
+    grid: HeatmapGrid;
+    scaleType: HeatmapScaleType;
+    bucketEdges: number[];
+  },
+  context: Pick<
+    HeatmapResult,
+    'valueExpression' | 'granularity' | 'numberFormat'
+  >,
+): HeatmapResult {
+  return {
+    ...context,
+    scale: heatmap.scaleType,
+    times: heatmap.grid.times.map(t => new Date(t).toISOString()),
+    valueEdges: heatmap.bucketEdges,
+    counts: heatmapCountColumns(heatmap.grid),
+  };
 }
 
 /** Cells as `[timeIdx][rowIdx]`. */

@@ -132,6 +132,8 @@ test(
 
 test('draws a heatmap result as shaded cells', { options }, async ($, on) => {
   const heatmap = {
+    valueExpression: 'Duration',
+    granularity: '1 minute',
     scale: 'log',
     times: ['2026-10-13T00:00:00.000Z', '2026-10-13T00:01:00.000Z'],
     valueEdges: [1, 10, 100, 1000],

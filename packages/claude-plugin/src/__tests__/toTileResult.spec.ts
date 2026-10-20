@@ -3,6 +3,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 
 import {
   chartedTool,
+  isChartable,
   isTrimmed,
   parseResponse,
   toTileResult,
@@ -172,6 +173,8 @@ describe('toTileResult', () => {
 
   it('turns a heatmap result into a grid, for the heatmap and query_tile tools', () => {
     const heatmap = {
+      valueExpression: 'Duration',
+      granularity: '1 minute',
       scale: 'log',
       numberFormat: { output: 'duration', factor: 1e-9 },
       times: ['2026-10-13T00:00:00.000Z', '2026-10-13T00:01:00.000Z'],
@@ -218,5 +221,55 @@ describe('toTileResult', () => {
         calledAt,
       ),
     ).toBeUndefined();
+  });
+
+  it('rejects a heatmap body that does not match the shared schema', () => {
+    const bad = (heatmap: object) => [
+      { type: 'text', text: JSON.stringify({ heatmap }) },
+    ];
+    const body = {
+      valueExpression: 'Duration',
+      granularity: '1 minute',
+      scale: 'log',
+      times: ['2026-10-13T00:00:00.000Z'],
+      valueEdges: [1, 10],
+      counts: [[0, 1, 0]],
+    };
+    const tool = 'mcp__clickstack__clickstack_heatmap';
+    expect(toTileResult(tool, {}, bad(body), calledAt)).toBeDefined();
+    const { granularity: _omit, ...noGranularity } = body;
+    expect(
+      toTileResult(tool, {}, bad(noGranularity), calledAt),
+    ).toBeUndefined();
+    expect(
+      toTileResult(tool, {}, bad({ ...body, counts: 'x' }), calledAt),
+    ).toBeUndefined();
+  });
+
+  it('keeps only results it can draw for caching', () => {
+    const heatmapBody = [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          heatmap: {
+            valueExpression: 'Duration',
+            granularity: '1 minute',
+            scale: 'log',
+            times: ['2026-10-13T00:00:00.000Z'],
+            valueEdges: [1, 10],
+            counts: [[0, 1, 0]],
+          },
+        }),
+      },
+    ];
+    expect(
+      isChartable('mcp__clickstack__clickstack_query_tile', {}, heatmapBody),
+    ).toBe(true);
+    expect(
+      isChartable('mcp__clickstack__clickstack_query_tile', {}, output),
+    ).toBe(false);
+    expect(isChartable('mcp__clickstack__clickstack_search', {}, output)).toBe(
+      false,
+    );
   });
 });
