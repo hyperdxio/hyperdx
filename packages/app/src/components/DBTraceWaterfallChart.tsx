@@ -1244,11 +1244,15 @@ export function DBTraceWaterfallChartContainer({
         // Process span events into markers (only if showSpanEvents is enabled)
         const markers =
           showSpanEvents && result.SpanEvents
-            ? result.SpanEvents.map(spanEvent => ({
-                timestamp: parseTimestampToMs(spanEvent.Timestamp) - minOffset,
-                name: spanEvent.Name,
-                attributes: spanEvent.Attributes || {},
-              }))
+            ? result.SpanEvents.map(spanEvent => {
+                const epochMs = parseTimestampToMs(spanEvent.Timestamp);
+                return {
+                  timestamp: epochMs - minOffset,
+                  epochMs,
+                  name: spanEvent.Name,
+                  attributes: spanEvent.Attributes || {},
+                };
+              })
             : [];
 
         // Extract status logic

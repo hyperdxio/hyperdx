@@ -68,8 +68,8 @@ describe('TimelineChartRowEvents span event markers', () => {
         makeEvent({
           end: 10,
           markers: [
-            { timestamp: 2, name: 'exception', attributes: {} },
-            { timestamp: 6, name: 'cache.miss', attributes: {} },
+            { timestamp: 2, epochMs: 2, name: 'exception', attributes: {} },
+            { timestamp: 6, epochMs: 6, name: 'cache.miss', attributes: {} },
           ],
         }),
       ],
@@ -85,7 +85,7 @@ describe('TimelineChartRowEvents span event markers', () => {
     ]);
   });
 
-  it('colors the attribute keys of an exception event red in its tooltip', async () => {
+  it('shows the event time and red attribute keys in an exception tooltip', async () => {
     const { container } = renderRow(
       [
         makeEvent({
@@ -93,6 +93,7 @@ describe('TimelineChartRowEvents span event markers', () => {
           markers: [
             {
               timestamp: 2,
+              epochMs: Date.UTC(2024, 5, 15, 12, 0, 0, 345),
               name: 'exception',
               attributes: { 'exception.type': 'TypeError' },
             },
@@ -110,5 +111,7 @@ describe('TimelineChartRowEvents span event markers', () => {
     expect((await screen.findByText('exception.type:')).style.color).toBe(
       'var(--color-text-danger)',
     );
+    // The absolute event time, not its offset from the trace start.
+    expect(screen.getByText(/^Jun 1[56] .*\.345/)).toBeInTheDocument();
   });
 });

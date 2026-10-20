@@ -5,6 +5,7 @@ import { useFormatTime } from '@/useFormatTime';
 
 export type TTimelineSpanEventMarker = {
   timestamp: number; // ms offset from minOffset
+  epochMs: number; // absolute time, shown in the tooltip
   name: string;
   attributes: Record<string, any>;
 };
@@ -35,7 +36,7 @@ export const TimelineSpanEventMarker = memo(function ({
   const tooltipContent = (
     <div>
       <Text size="xxs" c="dimmed" mb="xxs">
-        {formatTime(new Date(marker.timestamp), { format: 'withMs' })}
+        {formatTime(new Date(marker.epochMs), { format: 'withMs' })}
       </Text>
       <Text size="xs">{marker.name}</Text>
       {attributeEntries.length > 0 && (
