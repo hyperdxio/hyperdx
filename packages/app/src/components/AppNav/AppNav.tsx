@@ -31,6 +31,7 @@ import {
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
+import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
 import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
@@ -41,7 +42,6 @@ import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
-import { useWindowSize } from '@/utils';
 
 import {
   AppNavCloudBanner,
@@ -185,15 +185,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const { data: meData } = api.useMe();
 
-  const { width } = useWindowSize();
-
   const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
     key: 'isNavCollapsed',
     defaultValue: false,
   });
 
-  const isSmallScreen = (width ?? 1000) < 900;
-  const isCollapsed = isSmallScreen || isPreferCollapsed;
+  const isCollapsed = useCompactViewport() || isPreferCollapsed;
 
   const navWidth = isCollapsed ? 50 : 250;
 
