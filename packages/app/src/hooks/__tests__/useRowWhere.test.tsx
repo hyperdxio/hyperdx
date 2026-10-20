@@ -3,24 +3,96 @@ import {
   ColumnMetaType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  LEFT_UTF8_HASH_CODE_POINTS,
+  leftUtf8Prefix,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { renderHook } from '@testing-library/react';
 
 import useRowWhere, { processRowToWhereClause } from '@/hooks/useRowWhere';
 
-/** From ClickHouse: lower(hex(SHA256(<json log line>))). */
-const OTEL_LOG_JSON_FOR_SHA256 =
-  '{"caller":"github.com/cloudzero/cloudzero-agent/app/domain/shipper/shipper.go:289","level":"info","message":"Successfully ran the shipper cycle","time":"2026-10-18T00:00:03Z","version":"5d05872b1f292e4bf481c61b187494b9bafff6a8.1.2.10-2026-03-24_02:00:46PM"}';
+type Sha256WhereKind = 'json' | 'leftUtf8';
 
-const OTEL_LOG_JSON_SHA256_HEX =
-  '9bf1e18eb79cfe32fa7abb7c2b5370085a73eb299ffaaa526393084c8681c0b8';
+type Sha256TestCase = {
+  /** ClickHouse expression this hash was verified against. */
+  clickHouse: string;
+  columnMeta: ColumnMetaType[];
+  input: string;
+  expected: string;
+  whereKind: Sha256WhereKind;
+};
 
-/** From ClickHouse: lower(hex(SHA256(leftUTF8(repeat('a', 2000), 1000)))). */
-const LONGER_STRING_SHA256_HEX =
-  '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3';
+const SHA256_TEST_CASES: Record<string, Sha256TestCase> = {
+  'simple JSON object': {
+    clickHouse: 'lower(hex(SHA256(toString(\'{"key": "value"}\'))))',
+    columnMeta: [{ name: 'data', type: 'JSON' }],
+    input: '{"key": "value"}',
+    expected: '9724c1e20e6e3e4d7f57ed25f9d4efb006e508590d528c90da597f6a775c13e5',
+    whereKind: 'json',
+  },
+  'actual log line': {
+    clickHouse: 'lower(hex(SHA256(<json log line>)))',
+    columnMeta: [{ name: 'Body', type: 'JSON' }],
+    input:
+      '{"caller":"github.com/cloudzero/cloudzero-agent/app/domain/shipper/shipper.go:289","level":"info","message":"Successfully ran the shipper cycle","time":"2026-10-18T00:00:03Z","version":"5d05872b1f292e4bf481c61b187494b9bafff6a8.1.2.10-2026-03-24_02:00:46PM"}',
+    expected: '9bf1e18eb79cfe32fa7abb7c2b5370085a73eb299ffaaa526393084c8681c0b8',
+    whereKind: 'json',
+  },
+  '600-char string': {
+    clickHouse: "lower(hex(SHA256(repeat('a', 600))))",
+    columnMeta: [{ name: 'description', type: 'String' }],
+    input: 'a'.repeat(600),
+    expected: 'ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d',
+    whereKind: 'leftUtf8',
+  },
+  '2000-char string truncated to 1000 code points': {
+    clickHouse: "lower(hex(SHA256(leftUTF8(repeat('a', 2000), 1000))))",
+    columnMeta: [{ name: 'description', type: 'String' }],
+    input: 'a'.repeat(2000),
+    expected: '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3',
+    whereKind: 'leftUtf8',
+  },
+  '600 emoji code points': {
+    clickHouse: "lower(hex(SHA256(leftUTF8(repeat('😀', 600), 1000))))",
+    columnMeta: [{ name: 'description', type: 'String' }],
+    input: '😀'.repeat(600),
+    expected: '7f22fd88b289648f5f2a8f290d1010a0cefcf260777d613f34f9fb7948db3e43',
+    whereKind: 'leftUtf8',
+  },
+};
 
-/** From ClickHouse: lower(hex(SHA256(leftUTF8(repeat('😀', 600), 1000)))). */
-const EMOJI_STRING_SHA256_HEX =
-  '7f22fd88b289648f5f2a8f290d1010a0cefcf260777d613f34f9fb7948db3e43';
+function sha256RowWhere(
+  columnName: string,
+  whereKind: Sha256WhereKind,
+  hash: string,
+): string {
+  if (whereKind === 'json') {
+    return `lower(hex(SHA256(toString(${columnName}))))='${hash}'`;
+  }
+  return `lower(hex(SHA256(leftUTF8(${columnName}, 1000))))='${hash}'`;
+}
+
+function jsTypeForSha256Column(chType: string): JSDataType {
+  if (chType === 'JSON') {
+    return JSDataType.JSON;
+  }
+  return JSDataType.String;
+}
+
+function columnMapForSha256TestCase(testCase: Sha256TestCase) {
+  const { name, type } = testCase.columnMeta[0]!;
+  return new Map([
+    [
+      name,
+      {
+        name,
+        type,
+        valueExpr: name,
+        jsType: jsTypeForSha256Column(type),
+      },
+    ],
+  ]);
+}
 
 // Mock convertCHDataTypeToJSType
 jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
@@ -41,11 +113,16 @@ jest.mock('@hyperdx/common-utils/dist/clickhouse', () => ({
 }));
 
 describe('SHA256 matches ClickHouse lower(hex(SHA256(...)))', () => {
-  it('matches ClickHouse lower(hex(SHA256(...))) for a real otel log JSON string', () => {
-    expect(SHA256(OTEL_LOG_JSON_FOR_SHA256).toString()).toBe(
-      OTEL_LOG_JSON_SHA256_HEX,
-    );
-  });
+  it.each(Object.entries(SHA256_TEST_CASES))(
+    'matches ClickHouse for %s',
+    (_label, testCase) => {
+      const inputForHash =
+        testCase.whereKind === 'leftUtf8'
+          ? leftUtf8Prefix(testCase.input, LEFT_UTF8_HASH_CODE_POINTS)
+          : testCase.input;
+      expect(SHA256(inputForHash).toString()).toBe(testCase.expected);
+    },
+  );
 });
 
 describe('processRowToWhereClause', () => {
@@ -129,50 +206,20 @@ describe('processRowToWhereClause', () => {
     );
   });
 
-  it('should handle JSON columns with SHA256', () => {
-    const columnMap = new Map([
-      [
-        'data',
-        {
-          name: 'data',
-          type: 'JSON',
-          valueExpr: 'data',
-          jsType: JSDataType.JSON,
-        },
-      ],
-    ]);
+  it.each(Object.entries(SHA256_TEST_CASES))(
+    'SHA256 row WHERE matches ClickHouse for %s',
+    (_label, testCase) => {
+      const columnName = testCase.columnMeta[0]!.name;
+      const result = processRowToWhereClause(
+        { [columnName]: testCase.input },
+        columnMapForSha256TestCase(testCase),
+      );
 
-    const jsonValue = '{"key": "value"}';
-    const row = { data: jsonValue };
-    const result = processRowToWhereClause(row, columnMap);
-
-    // in ClickHouse: SELECT lower(hex(SHA256(toString('{"key": "value"}')));
-    const expected =
-      '9724c1e20e6e3e4d7f57ed25f9d4efb006e508590d528c90da597f6a775c13e5';
-
-    expect(result).toBe(`lower(hex(SHA256(toString(data))))='${expected}'`);
-  });
-
-  it('should handle JSON columns with SHA256 for otel log payload', () => {
-    const columnMap = new Map([
-      [
-        'Body',
-        {
-          name: 'Body',
-          type: 'JSON',
-          valueExpr: 'Body',
-          jsType: JSDataType.JSON,
-        },
-      ],
-    ]);
-
-    const row = { Body: OTEL_LOG_JSON_FOR_SHA256 };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe(
-      `lower(hex(SHA256(toString(Body))))='${OTEL_LOG_JSON_SHA256_HEX}'`,
-    );
-  });
+      expect(result).toBe(
+        sha256RowWhere(columnName, testCase.whereKind, testCase.expected),
+      );
+    },
+  );
 
   it('should handle Dynamic columns with null value', () => {
     const columnMap = new Map([
@@ -299,74 +346,6 @@ describe('processRowToWhereClause', () => {
     const result = processRowToWhereClause(row, columnMap);
     expect(result).toBe(
       "toJSONString(dynamic_field) = coalesce(toJSONString(JSONExtract('[\\'foo\\', \\'bar\\']', 'Dynamic')), toJSONString('[\\'foo\\', \\'bar\\']'))",
-    );
-  });
-
-  it('should handle long strings with SHA256', () => {
-    const columnMap = new Map([
-      [
-        'description',
-        {
-          name: 'description',
-          type: 'String',
-          valueExpr: 'description',
-          jsType: JSDataType.String,
-        },
-      ],
-    ]);
-
-    const longString = 'a'.repeat(600);
-    const row = { description: longString };
-    const result = processRowToWhereClause(row, columnMap);
-
-    // in ClickHouse: SELECT lower(hex(SHA256(repeat('a', 600))));
-    const expected =
-      'ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d';
-
-    expect(result).toBe(
-      `lower(hex(SHA256(leftUTF8(description, 1000))))='${expected}'`,
-    );
-  });
-
-  it('should hash only the first 1000 Unicode code points when the string exceeds that limit', () => {
-    const columnMap = new Map([
-      [
-        'description',
-        {
-          name: 'description',
-          type: 'String',
-          valueExpr: 'description',
-          jsType: JSDataType.String,
-        },
-      ],
-    ]);
-
-    const row = { description: 'a'.repeat(2000) };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe(
-      `lower(hex(SHA256(leftUTF8(description, 1000))))='${LONGER_STRING_SHA256_HEX}'`,
-    );
-  });
-
-  it('should match ClickHouse leftUTF8 code-point truncation for non-BMP strings', () => {
-    const columnMap = new Map([
-      [
-        'description',
-        {
-          name: 'description',
-          type: 'String',
-          valueExpr: 'description',
-          jsType: JSDataType.String,
-        },
-      ],
-    ]);
-
-    const row = { description: '😀'.repeat(600) };
-    const result = processRowToWhereClause(row, columnMap);
-
-    expect(result).toBe(
-      `lower(hex(SHA256(leftUTF8(description, 1000))))='${EMOJI_STRING_SHA256_HEX}'`,
     );
   });
 
