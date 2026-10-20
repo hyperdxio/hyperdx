@@ -296,8 +296,11 @@ function isEmptyResult(result: unknown): boolean {
   return false;
 }
 
-function formatQueryResult(result: unknown) {
-  const { data: trimmedResult, isTrimmed } = trimToolResponse(result);
+function formatQueryResult(result: unknown, maxResponseChars?: number) {
+  const { data: trimmedResult, isTrimmed } = trimToolResponse(
+    result,
+    maxResponseChars,
+  );
   const empty = isEmptyResult(result);
   return {
     content: [
@@ -418,6 +421,8 @@ export async function runConfigTile(
     abortSignal?: AbortSignal;
     /** Dashboard variables and their selected values. Omitted when not in a dashboard context. */
     variables?: ChartVariable[];
+    /** Serialized size the result is trimmed to. Defaults to trimToolResponse's limit. */
+    maxResponseChars?: number;
   },
 ) {
   if (!isConfigTile(tile)) {
@@ -615,7 +620,7 @@ export async function runConfigTile(
           abort_signal: options?.abortSignal,
         },
       });
-      return formatQueryResult(result);
+      return formatQueryResult(result, options?.maxResponseChars);
     } catch (e) {
       return clickHouseErrorResult(e);
     }
@@ -690,7 +695,7 @@ export async function runConfigTile(
         abort_signal: options?.abortSignal,
       },
     });
-    return formatQueryResult(result);
+    return formatQueryResult(result, options?.maxResponseChars);
   } catch (e) {
     return clickHouseErrorResult(e, { rawSql: true });
   }

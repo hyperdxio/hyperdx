@@ -57,3 +57,40 @@ export async function runWithTimeout<T>(
     controller.abort();
   }
 }
+
+/**
+ * Raised by `withDeadline` both when started work overruns the deadline and
+ * when the deadline has already passed before the work could start.
+ */
+export class DeadlineExceededError extends Error {
+  constructor() {
+    super('Query exceeded the batch wall-clock deadline');
+    this.name = 'DeadlineExceededError';
+  }
+}
+
+/**
+ * Run `startWork` under a SHARED absolute deadline (epoch millis) — every item
+ * in a batch passes the same `deadlineAt`, making the budget whole-call.
+ *
+ * `startWork` is a thunk, not an already-started promise, so the deadline is
+ * checked BEFORE the query is issued: once the budget is spent, items a queue
+ * schedules during the drain fail fast without touching ClickHouse.
+ *
+ * Work that did start runs under `runWithTimeout`: at the deadline its query
+ * is cancelled and the call rejects with `DeadlineExceededError`.
+ */
+export async function withDeadline<T>(
+  startWork: (signal: AbortSignal) => Promise<T>,
+  deadlineAt: number,
+): Promise<T> {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) {
+    throw new DeadlineExceededError();
+  }
+  const outcome = await runWithTimeout(startWork, { timeoutMs: remaining });
+  if (outcome.timedOut) {
+    throw new DeadlineExceededError();
+  }
+  return outcome.value;
+}
