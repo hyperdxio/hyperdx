@@ -38,9 +38,13 @@ export function useGroupByKeyOptions({
     () =>
       Array.from(
         new Set(
-          sortLowCardinalityFirst(fields ?? []).map(({ path }) =>
-            toGroupByField(path, jsonColumns ?? [], mapColumns ?? []),
-          ),
+          sortLowCardinalityFirst(fields ?? [])
+            // The histogram only treats string-typed columns as group keys; a
+            // numeric one would be plotted as a value series instead.
+            .filter(({ jsType }) => jsType === 'string')
+            .map(({ path }) =>
+              toGroupByField(path, jsonColumns ?? [], mapColumns ?? []),
+            ),
         ),
       ),
     [fields, jsonColumns, mapColumns],

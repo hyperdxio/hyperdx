@@ -15,6 +15,7 @@ jest.mock('@/hooks/useMetadata', () => ({
       },
       { path: ['LogAttributes', 'user'], type: 'String', jsType: 'string' },
       { path: ['dash-column'], type: 'String', jsType: 'string' },
+      { path: ['Duration'], type: 'UInt64', jsType: 'number' },
     ],
   })),
   useJsonColumns: () => ({ data: [] }),
@@ -122,6 +123,12 @@ describe('SearchGroupBySelect', () => {
     expect(first).toHaveAccessibleName('SeverityText');
     expect(second).toHaveAccessibleName('ServiceName');
     expect(third).toHaveAccessibleName("LogAttributes['user']");
+  });
+
+  it('omits non-string fields', async () => {
+    await renderSelect('');
+    expect(screen.getByText('ServiceName')).toBeInTheDocument();
+    expect(screen.queryByText('Duration')).not.toBeInTheDocument();
   });
 
   it('keeps the key list from the range it opened with while the range moves', async () => {
