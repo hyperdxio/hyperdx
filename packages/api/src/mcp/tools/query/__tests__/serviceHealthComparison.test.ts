@@ -1,8 +1,17 @@
+import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+
+import { ClickhouseClient } from '@/clickhouse';
 import { resolveComparison } from '@/mcp/tools/query/serviceHealth/comparison';
 import { findNewOperations } from '@/mcp/tools/query/serviceHealth/operations';
-import type { QueryContext } from '@/mcp/tools/query/serviceHealth/queries';
+import type {
+  HealthSource,
+  QueryContext,
+} from '@/mcp/tools/query/serviceHealth/queries';
 import { fetchServiceStats } from '@/mcp/tools/query/serviceHealth/queries';
-import { comparisonWindow } from '@/mcp/tools/query/serviceHealth/schema';
+import {
+  comparisonWindow,
+  serviceHealthSchema,
+} from '@/mcp/tools/query/serviceHealth/schema';
 
 jest.mock('@/mcp/tools/query/serviceHealth/queries', () => ({
   ...jest.requireActual('@/mcp/tools/query/serviceHealth/queries'),
@@ -26,7 +35,7 @@ const stats = (services: string[]) => ({
   mvUsed: false,
 });
 
-const source = {
+const source: HealthSource = {
   id: 'src',
   connection: 'conn',
   from: { databaseName: 'db', tableName: 't' },
@@ -41,21 +50,25 @@ const source = {
   mvSource: undefined,
 };
 
-const ctxWith = (queryChartConfig: jest.Mock): QueryContext =>
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test double with only the members the code under test reads
-  ({
-    client: { queryChartConfig },
-    metadata: {},
+const ctxWith = (results: { data: Record<string, string | number>[] }[]) => {
+  const client = new ClickhouseClient({ host: 'http://localhost:1' });
+  const query = jest.spyOn(client, 'queryChartConfig');
+  for (const r of results) query.mockResolvedValueOnce({ data: r.data });
+  const ctx: QueryContext = {
+    client,
+    metadata: getMetadata(client),
     source,
-    input: { spanKind: 'server', where: '', whereLanguage: 'lucene' },
+    input: serviceHealthSchema.parse({ sourceId: 'src' }),
     signal: new AbortController().signal,
-  }) as unknown as QueryContext;
+  };
+  return ctx;
+};
 
 describe('resolveComparison', () => {
   beforeEach(() => fetchStats.mockReset());
 
   it('keeps the requested window when it has data', async () => {
-    const r = await resolveComparison(ctxWith(jest.fn()), {
+    const r = await resolveComparison(ctxWith([]), {
       current,
       requested: yesterday,
       requestedMode: 'yesterday',
@@ -69,7 +82,7 @@ describe('resolveComparison', () => {
 
   it('falls back to the previous period when the requested window is empty', async () => {
     fetchStats.mockResolvedValue(stats(['a']));
-    const r = await resolveComparison(ctxWith(jest.fn()), {
+    const r = await resolveComparison(ctxWith([]), {
       current,
       requested: yesterday,
       requestedMode: 'yesterday',
@@ -83,7 +96,7 @@ describe('resolveComparison', () => {
 
   it('drops the comparison when the previous period is empty too', async () => {
     fetchStats.mockResolvedValue(stats([]));
-    const r = await resolveComparison(ctxWith(jest.fn()), {
+    const r = await resolveComparison(ctxWith([]), {
       current,
       requested: yesterday,
       requestedMode: 'yesterday',
@@ -107,19 +120,11 @@ describe('findNewOperations', () => {
   });
 
   it('reports operations with no prior traffic', async () => {
-    const query = jest
-      .fn()
-      .mockResolvedValueOnce({
-        data: [row('svc', 'GET /old', 900), row('svc', 'GET /new', 100)],
-      })
-      .mockResolvedValueOnce({ data: [row('svc', 'GET /old', 900)] });
-    const r = await findNewOperations(
-      ctxWith(query),
-      current,
-      yesterday!,
-      ['svc'],
-      50,
-    );
+    const ctx = ctxWith([
+      { data: [row('svc', 'GET /old', 900), row('svc', 'GET /new', 100)] },
+      { data: [row('svc', 'GET /old', 900)] },
+    ]);
+    const r = await findNewOperations(ctx, current, yesterday!, ['svc'], 50);
     expect(r.complete).toBe(true);
     expect(r.newOperations.get('svc')).toEqual([
       { operation: 'GET /new', requests: 100, shareOfService: 0.1 },
@@ -130,17 +135,8 @@ describe('findNewOperations', () => {
     const many = Array.from({ length: 5000 }, (_, i) =>
       row('svc', `op${i}`, 20),
     );
-    const query = jest
-      .fn()
-      .mockResolvedValueOnce({ data: many })
-      .mockResolvedValueOnce({ data: [row('svc', 'op0', 900)] });
-    const r = await findNewOperations(
-      ctxWith(query),
-      current,
-      yesterday!,
-      ['svc'],
-      50,
-    );
+    const ctx = ctxWith([{ data: many }, { data: [row('svc', 'op0', 900)] }]);
+    const r = await findNewOperations(ctx, current, yesterday!, ['svc'], 50);
     expect(r.complete).toBe(false);
     expect(r.newOperations.size).toBe(0);
   });
