@@ -1849,7 +1849,8 @@ function DBSqlRowTableComponent({
         if (columnMap.get(c)?._type === JSDataType.JSON) {
           // special rule for json
           // for json {SomePath: /c}, CH will return {SomePath: \/c}
-          // add this to make sure SHA256 get correct result
+          // add this to make sure SHA256 gets the correct result... slashes are escaped so the
+          // client-side JSON string matches ClickHouse's serialization before hashing.
           newRow[c] = JSON.stringify(row[c]).replace(/\//g, '\\/');
         } else {
           newRow[c] = JSON.stringify(row[c]);
