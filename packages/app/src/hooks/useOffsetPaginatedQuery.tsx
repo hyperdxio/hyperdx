@@ -41,6 +41,7 @@ import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useQueryAttribution } from '@/queryAttribution';
 import { useSource } from '@/source';
+import { getTeamClickHouseSettings } from '@/teamSettings';
 import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
 import {
   DEFAULT_TIME_WINDOWS_SECONDS,
@@ -495,7 +496,11 @@ export default function useOffsetPaginatedQuery(
   } = {},
 ) {
   const { data: meData, isLoading: isLoadingMe } = api.useMe();
-  const key = queryKeyFn(queryKeyPrefix, config, meData?.team?.queryTimeout);
+  const key = queryKeyFn(
+    queryKeyPrefix,
+    config,
+    getTeamClickHouseSettings(meData)?.queryTimeout,
+  );
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
   const attribution = useQueryAttribution();

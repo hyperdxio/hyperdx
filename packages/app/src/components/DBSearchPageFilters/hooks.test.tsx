@@ -266,6 +266,26 @@ describe('useFetchFacets', () => {
       const call = useGetKeyValues.mock.calls.at(-1);
       expect(call?.[0]?.mode).toBe('exact');
     });
+
+    it('passes the key sample ratio to the key and value lookups', () => {
+      setupDefaultMocks({ withMVs: false });
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            keySampleRatio: 0.5,
+          }),
+        { wrapper },
+      );
+
+      expect(useAllFields.mock.calls.at(-1)?.[1]?.keySampleRatio).toBe(0.5);
+      expect(useGetKeyValues.mock.calls.at(-1)?.[0]?.keySampleRatio).toBe(0.5);
+    });
   });
 
   // Autocomplete opts into `disableValues: true` so it can render
@@ -811,6 +831,33 @@ describe('useFetchFacets', () => {
       expect(result.current.data.keyValues).toEqual([
         { key: 'ServiceName', value: ['api', 'web'] },
       ]);
+    });
+
+    it('reads every part for the key, whatever the sample size', async () => {
+      setupDefaultMocks({ withMVs: true });
+      const getAllKeyValues = jest.fn().mockResolvedValue([]);
+      useMetadataWithSettings.mockReturnValue({ getAllKeyValues } as any);
+
+      const { wrapper } = makeWrapper();
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            keySampleRatio: 0,
+          }),
+        { wrapper },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey('ServiceName');
+      });
+
+      expect(getAllKeyValues).toHaveBeenCalledWith(
+        expect.objectContaining({ keySampleRatio: 1 }),
+      );
     });
   });
 

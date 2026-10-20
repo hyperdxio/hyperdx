@@ -47,6 +47,7 @@ import {
 import { IS_LOCAL_MODE } from './config';
 import { getLocalDashboardTags } from './dashboard';
 import { getLocalSavedSearchTags } from './savedSearch';
+import { updateLocalTeamSettings } from './teamSettings';
 type ServicesResponse = {
   data: Record<
     string,
@@ -597,11 +598,15 @@ const api = {
       HTTPError,
       TeamClickHouseSettingsUpdate
     >({
-      mutationFn: async settings =>
-        hdxServer(`team/clickhouse-settings`, {
+      mutationFn: async settings => {
+        if (IS_LOCAL_MODE) {
+          return updateLocalTeamSettings(settings);
+        }
+        return hdxServer(`team/clickhouse-settings`, {
           method: 'PATCH',
           json: settings,
-        }).json<UpdateClickHouseSettingsApiResponse>(),
+        }).json<UpdateClickHouseSettingsApiResponse>();
+      },
     });
   },
   getTagsQueryKey: (resourceType?: TagResourceType) =>

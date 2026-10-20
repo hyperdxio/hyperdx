@@ -95,6 +95,7 @@ import {
   MIN_LAST_COLUMN_WIDTH,
   UNDEFINED_WIDTH,
 } from '@/tableUtils';
+import { getTeamClickHouseSettings } from '@/teamSettings';
 import { FormatTime } from '@/useFormatTime';
 import {
   DEFAULT_ROW_CLICK_ACTION,
@@ -1753,7 +1754,7 @@ function DBSqlRowTableComponent({
 
   const mergedConfigObj = useMemo(() => {
     const base = {
-      ...searchChartConfigDefaults(me?.team),
+      ...searchChartConfigDefaults(getTeamClickHouseSettings(me)),
       ...config,
     };
     if (orderByArray.length) {

@@ -496,14 +496,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             {/* Feedback */}
             <AppNavFeedback />
 
-            {/* Team Settings (Cloud only) */}
-            {!IS_LOCAL_MODE && (
-              <AppNavLink
-                label="Team Settings"
-                href="/team"
-                icon={<IconSettings size={16} />}
-              />
-            )}
+            {/* Team Settings */}
+            <AppNavLink
+              label="Team Settings"
+              href="/team"
+              icon={<IconSettings size={16} />}
+            />
           </div>
 
           {!isCollapsed && (

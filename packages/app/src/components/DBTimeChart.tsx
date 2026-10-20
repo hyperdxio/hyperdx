@@ -55,6 +55,7 @@ import {
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useChartNumberFormats, useSource } from '@/source';
+import { getTeamClickHouseSettings } from '@/teamSettings';
 import type { NumberFormat } from '@/types';
 
 import ChartContainer from './charts/ChartContainer';
@@ -432,6 +433,8 @@ function DBTimeChartComponent({
   } = useTimeChartSettings(configWithFloor);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
+  const parallelizeWhenPossible =
+    getTeamClickHouseSettings(me)?.parallelizeWhenPossible;
 
   const queriedConfig = useMemo(
     () => convertToTimeChartConfig(configWithFloor),
@@ -504,13 +507,12 @@ function DBTimeChartComponent({
         {
           disableQueryChunking,
           enableParallelQueries,
-          parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
+          parallelizeWhenPossible,
         },
       ],
       enabled: enabled && !isLoadingMe,
       enableQueryChunking: !disableQueryChunking,
-      enableParallelQueries:
-        enableParallelQueries && me?.team?.parallelizeWhenPossible,
+      enableParallelQueries: enableParallelQueries && parallelizeWhenPossible,
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {

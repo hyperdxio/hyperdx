@@ -18,6 +18,7 @@ import {
   deduplicate2dArray,
   intersect2dArray,
   useGetKeyValues,
+  useKeySample,
   useMultipleAllFields,
   useMultipleGetKeyValues,
 } from '@/hooks/useMetadata';
@@ -451,6 +452,21 @@ describe('useGetKeyValues', () => {
     expect(
       streamAllKeyValues.mock.calls.map(([args]) => args.metadataMVs),
     ).toEqual([{ kvRollupTable: 'logs_kv' }, { kvRollupTable: 'traces_kv' }]);
+  });
+
+  it("passes the key sample ratio to 'all' mode lookups", async () => {
+    const streamAllKeyValues = mockLookups.all([]);
+
+    const { result } = renderValues({
+      mode: 'all',
+      chartConfigs: [logsConfig],
+      keySampleRatio: 0.5,
+    });
+
+    await waitForSettled(result);
+    expect(streamAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({ keySampleRatio: 0.5 }),
+    );
   });
 
   it("passes limit to 'all' mode lookups as maxValuesPerKey", async () => {
@@ -945,6 +961,116 @@ describe('useMultipleAllFields', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(fieldsA);
+  });
+
+  it('passes the key sample ratio to getAllFields', async () => {
+    const getAllFields = jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValue(fieldsA);
+
+    const { result } = renderHook(
+      () => useMultipleAllFields([tcA], { keySampleRatio: 0.5 }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getAllFields).toHaveBeenCalledWith(
+      expect.objectContaining({ keySampleRatio: 0.5 }),
+    );
+  });
+
+  it('keeps the current fields while a larger key sample loads', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValueOnce(fieldsA)
+      .mockReturnValueOnce(new Promise<Field[]>(() => {}));
+
+    const { result, rerender } = renderHook(
+      ({ keySampleRatio }) => useMultipleAllFields([tcA], { keySampleRatio }),
+      { wrapper, initialProps: { keySampleRatio: 0 } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    rerender({ keySampleRatio: 1 });
+
+    await waitFor(() => expect(result.current.isFetching).toBe(true));
+    expect(result.current.data).toEqual(fieldsA);
+  });
+
+  it("does not keep another table connection's fields while loading", async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockResolvedValueOnce(fieldsA)
+      .mockReturnValueOnce(new Promise<Field[]>(() => {}));
+
+    const { result, rerender } = renderHook(
+      ({ tc }) => useMultipleAllFields([tc]),
+      { wrapper, initialProps: { tc: tcA } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    rerender({ tc: tcB });
+
+    await waitFor(() => expect(result.current.isFetching).toBe(true));
+    expect(result.current.data).toBeUndefined();
+  });
+});
+
+describe('useKeySample', () => {
+  let mockMetadata: Metadata;
+  let wrapper: React.ComponentType<{ children: any }>;
+  let team: { fieldMetadataDisabled?: boolean };
+
+  const tableConnection = {
+    databaseName: 'db',
+    tableName: 'logs',
+    connectionId: 'conn1',
+  };
+  const options = {
+    dateRange: [new Date('2024-01-01'), new Date('2024-01-02')] as [Date, Date],
+    timestampValueExpression: 'Timestamp',
+    keySampleRatio: 0,
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    team = {};
+    mockMetadata = createMockMetadata();
+    jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
+    jest
+      .spyOn(api, 'useMe')
+      .mockImplementation(() => ({ data: { team }, isFetched: true }) as any);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    wrapper = ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  });
+
+  it('is null when the Map keys are not sampled', async () => {
+    jest.spyOn(mockMetadata, 'getKeySample').mockResolvedValue(undefined);
+
+    const { result } = renderHook(
+      () => useKeySample(tableConnection, options),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toBeNull();
+  });
+
+  it('does not run when the team disables field metadata', async () => {
+    team = { fieldMetadataDisabled: true };
+    const getKeySample = jest.spyOn(mockMetadata, 'getKeySample');
+
+    const { result } = renderHook(
+      () => useKeySample(tableConnection, options),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(getKeySample).not.toHaveBeenCalled();
   });
 });
 

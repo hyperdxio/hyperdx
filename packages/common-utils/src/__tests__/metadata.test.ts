@@ -6,6 +6,7 @@ import {
   MetadataCache,
   parseKeyPath,
   quoteResultColumnNameIfNeeded,
+  TableMetadata,
 } from '@/core/metadata';
 import * as renderChartConfigModule from '@/core/renderChartConfig';
 import { timeFilterExpr } from '@/core/renderChartConfig';
@@ -1152,6 +1153,47 @@ describe('Metadata', () => {
       expect(sql).toContain('groupUniqArray(');
       expect(sql).toContain('GROUP BY key');
       expect(sql).not.toContain('startsWith(token,');
+    });
+
+    describe('text index part sampling', () => {
+      const textIndexQueries = () =>
+        (mockClickhouseClient.query as jest.Mock).mock.calls
+          .map(([opts]) => opts.query as string)
+          .filter(sql => sql.includes('mergeTreeTextIndex('));
+
+      it('reads the text index of a sample of parts by default', async () => {
+        setupDefaultLogsSchema();
+        jest.spyOn(metadata, 'getTableMetadata').mockResolvedValue(undefined);
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['requestId']", 'TraceId'],
+        });
+
+        const queries = textIndexQueries();
+        expect(queries).toHaveLength(2);
+        for (const sql of queries) {
+          expect(sql).toContain('part_name IN (');
+          expect(sql).toContain('row_number() OVER w AS rank');
+        }
+      });
+
+      it('reads every overlapping part when keySampleRatio is 1', async () => {
+        setupDefaultLogsSchema();
+
+        await metadata.getAllKeyValues({
+          ...baseArgs,
+          keyExpressions: ["LogAttributes['requestId']", 'TraceId'],
+          keySampleRatio: 1,
+        });
+
+        const queries = textIndexQueries();
+        expect(queries).toHaveLength(2);
+        for (const sql of queries) {
+          expect(sql).toContain('FROM system.parts');
+          expect(sql).not.toContain('row_number()');
+        }
+      });
     });
 
     it("routes LogAttributes['requestId'] through getMapTextIndexKeyValues (map KV text index path)", async () => {
@@ -2387,6 +2429,7 @@ describe('Metadata', () => {
         const md = new Metadata(mockClickhouseClient, new MetadataCache());
         jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
         jest.spyOn(md, 'getMapColumnTextIndexes').mockResolvedValue(lookup);
+        jest.spyOn(md, 'getTableMetadata').mockResolvedValue(undefined);
         return md;
       };
 
@@ -2891,6 +2934,50 @@ describe('Metadata', () => {
       ],
     ];
 
+    const keyIndexLookup = textIndexLookups[0][1];
+    const args = {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      column: 'LogAttributes',
+      connectionId: 'test_connection',
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T01:00:00Z'),
+      ] as [Date, Date],
+      timestampValueExpression: 'Timestamp',
+    };
+    const otelLogsColumns = [
+      { name: 'Timestamp', type: 'DateTime64(9)' },
+      { name: 'ServiceName', type: 'LowCardinality(String)' },
+      { name: 'LogAttributes', type: 'Map(LowCardinality(String), String)' },
+    ] as ColumnMeta[];
+
+    const buildMetadata = (
+      textIndexLookup: TextIndexInfoLookup,
+      tableMetadata?: Partial<TableMetadata>,
+    ) => {
+      const md = new Metadata(mockClickhouseClient, new MetadataCache());
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(textIndexLookup);
+      jest
+        .spyOn(md, 'getTableMetadata')
+        .mockResolvedValue(tableMetadata as TableMetadata | undefined);
+      jest.spyOn(md, 'getColumns').mockResolvedValue(otelLogsColumns);
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({ data: [{ key: 'http.method' }, { key: 'k8s' }] }),
+      });
+      return md;
+    };
+
+    const indexQuery = () =>
+      (mockClickhouseClient.query as jest.Mock).mock.calls[0][0] as {
+        query: string;
+        query_params: Record<string, unknown>;
+      };
+
     afterEach(() => {
       jest.restoreAllMocks();
       (mockClickhouseClient.query as jest.Mock).mockReset();
@@ -2899,39 +2986,157 @@ describe('Metadata', () => {
     it.each(textIndexLookups)(
       'ranks keys by row count before the LIMIT on the %s text index path',
       async (_, textIndexLookup) => {
-        const md = new Metadata(mockClickhouseClient, new MetadataCache());
-        jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
-        jest
-          .spyOn(md, 'getMapColumnTextIndexes')
-          .mockResolvedValue(textIndexLookup);
-        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
-          json: () =>
-            Promise.resolve({ data: [{ key: 'http.method' }, { key: 'k8s' }] }),
-        });
+        const md = buildMetadata(textIndexLookup);
 
-        const keys = await md.getMapKeys({
-          databaseName: 'default',
-          tableName: 'otel_logs',
-          column: 'LogAttributes',
-          connectionId: 'test_connection',
-          maxKeys: 2,
-          dateRange: [
-            new Date('2024-01-01T00:00:00Z'),
-            new Date('2024-01-01T01:00:00Z'),
-          ],
-          timestampValueExpression: 'Timestamp',
-        });
+        const keys = await md.getMapKeys({ ...args, maxKeys: 2 });
 
         expect(keys).toEqual(['http.method', 'k8s']);
         expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
-        const { query } = (mockClickhouseClient.query as jest.Mock).mock
-          .calls[0][0];
+        const { query } = indexQuery();
         expect(query).toContain('FROM mergeTreeTextIndex(');
         expect(query).toMatch(
           /GROUP BY key HAVING key != ''\s+ORDER BY sum\(cardinality\) DESC, key\s+LIMIT/,
         );
       },
     );
+
+    it.each(textIndexLookups)(
+      'reads the %s text index of a sample of parts spread across string primary key columns',
+      async (_, textIndexLookup) => {
+        const md = buildMetadata(textIndexLookup, {
+          primary_key:
+            'toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp',
+        });
+
+        await md.getMapKeys(args);
+
+        const { query, query_params } = indexQuery();
+        expect(query).toContain('part_name IN (');
+        expect(query).toContain('row_number() OVER w AS rank');
+        expect(query).toContain('FROM mergeTreeIndex(');
+        // ServiceName is the only string-typed primary key column.
+        expect(query.match(/toString\(\{[^}]+:Identifier\}\)/g)).toHaveLength(
+          1,
+        );
+        expect(Object.values(query_params)).toContain('ServiceName');
+        expect(Object.values(query_params)).not.toContain('Timestamp');
+      },
+    );
+
+    it('samples without the primary key spread when no primary key column is a string', async () => {
+      const md = buildMetadata(keyIndexLookup, { primary_key: 'Timestamp' });
+
+      await md.getMapKeys(args);
+
+      expect(indexQuery().query).toContain('row_number() OVER w AS rank');
+      expect(indexQuery().query).not.toContain('mergeTreeIndex(');
+    });
+
+    it('samples without the primary key spread on a Distributed table', async () => {
+      const md = buildMetadata(keyIndexLookup, {
+        primary_key: 'ServiceName, Timestamp',
+        isPointerTable: true,
+      });
+
+      await md.getMapKeys(args);
+
+      expect(indexQuery().query).not.toContain('mergeTreeIndex(');
+    });
+
+    it('reads every overlapping part when keySampleRatio is 1', async () => {
+      const md = buildMetadata(keyIndexLookup, {
+        primary_key: 'ServiceName, Timestamp',
+      });
+      const getTableMetadata = jest.spyOn(md, 'getTableMetadata');
+
+      await md.getMapKeys({ ...args, keySampleRatio: 1 });
+
+      const { query } = indexQuery();
+      expect(query).toContain('FROM system.parts');
+      expect(query).not.toContain('row_number()');
+      expect(query).not.toContain('mergeTreeIndex(');
+      expect(getTableMetadata).not.toHaveBeenCalled();
+    });
+
+    it('caches keys per sample ratio', async () => {
+      const md = buildMetadata(keyIndexLookup);
+
+      await md.getMapKeys(args);
+      await md.getMapKeys({ ...args, keySampleRatio: 0.5 });
+      await md.getMapKeys(args);
+
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+      expect(
+        Object.values(
+          (mockClickhouseClient.query as jest.Mock).mock.calls[1][0]
+            .query_params,
+        ),
+      ).toContain(0.5);
+    });
+  });
+
+  describe('getKeySample', () => {
+    const args = {
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId: 'test_connection',
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T01:00:00Z'),
+      ] as [Date, Date],
+      timestampValueExpression: 'Timestamp',
+    };
+
+    const buildMetadata = (textIndexLookup: TextIndexInfoLookup) => {
+      const md = new Metadata(mockClickhouseClient, new MetadataCache());
+      jest.spyOn(md, 'getServerVersion').mockResolvedValue([26, 3, 0, 0]);
+      jest
+        .spyOn(md, 'getMapColumnTextIndexes')
+        .mockResolvedValue(textIndexLookup);
+      jest.spyOn(md, 'getTableMetadata').mockResolvedValue(undefined);
+      return md;
+    };
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      (mockClickhouseClient.query as jest.Mock).mockReset();
+    });
+
+    it('counts the sampled parts out of those overlapping the range', async () => {
+      const md = buildMetadata(
+        new Map([
+          [
+            'LogAttributes',
+            {
+              key: {
+                indexName: 'idx_log_attr_keys',
+                mapColumn: 'LogAttributes',
+              },
+            },
+          ],
+        ]),
+      );
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: () =>
+          Promise.resolve({ data: [{ sampledParts: '3', totalParts: '48' }] }),
+      });
+
+      expect(await md.getKeySample(args)).toEqual({
+        sampledParts: 3,
+        totalParts: 48,
+      });
+      const { query } = (mockClickhouseClient.query as jest.Mock).mock
+        .calls[0][0];
+      expect(query).toContain('countIf(');
+      expect(query).toContain('FROM system.parts');
+    });
+
+    it('is undefined when no Map column has a key text index', async () => {
+      const md = buildMetadata(new Map());
+
+      expect(await md.getKeySample(args)).toBeUndefined();
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+    });
   });
 
   describe('getMapValues', () => {

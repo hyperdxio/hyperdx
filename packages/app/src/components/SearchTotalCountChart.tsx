@@ -15,6 +15,7 @@ import {
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { useSource } from '@/source';
+import { getTeamClickHouseSettings } from '@/teamSettings';
 
 function inferCountColumn(meta: ResponseJSON['meta'] | undefined): string {
   if (!meta) return 'count()';
@@ -63,7 +64,8 @@ export function useSearchTotalCount(
       {
         disableQueryChunking,
         enableParallelQueries,
-        parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
+        parallelizeWhenPossible:
+          getTeamClickHouseSettings(me)?.parallelizeWhenPossible,
       },
     ],
     staleTime: 1000 * 60 * 5,
