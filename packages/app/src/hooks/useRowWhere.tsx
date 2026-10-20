@@ -126,7 +126,7 @@ export function processRowToWhereClause(
           if (value.length > MAX_STRING_LENGTH) {
             return SqlString.format(
               // Hash only a prefix so huge payloads do not block the main thread.
-              `lower(hex(SHA256(leftUTF8(?, 1000))))=?`,
+              `lower(hex(SHA256(leftUTF8(?, ${LEFT_UTF8_HASH_CODE_POINTS}))))=?`,
               [
                 SqlString.raw(valueExpr),
                 SHA256(

@@ -126,12 +126,15 @@ function processRowToWhereClause(
           }
           // Handle the case when string is too long
           if ((strValue?.length ?? 0) > MAX_STRING_LENGTH) {
-            return SqlString.format(`lower(hex(SHA256(leftUTF8(?, 1000))))=?`, [
-              SqlString.raw(valueExpr),
-              SHA256(
-                leftUtf8Prefix(strValue ?? '', LEFT_UTF8_HASH_CODE_POINTS),
-              ).toString(),
-            ]);
+            return SqlString.format(
+              `lower(hex(SHA256(leftUTF8(?, ${LEFT_UTF8_HASH_CODE_POINTS}))))=?`,
+              [
+                SqlString.raw(valueExpr),
+                SHA256(
+                  leftUtf8Prefix(strValue ?? '', LEFT_UTF8_HASH_CODE_POINTS),
+                ).toString(),
+              ],
+            );
           }
           return SqlString.format(`?=?`, [
             SqlString.raw(valueExpr), // don't escape expressions
