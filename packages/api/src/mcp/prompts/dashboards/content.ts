@@ -1458,8 +1458,10 @@ the most log volume", or similar pattern-discovery questions.
 
 It samples random events and clusters them with the Drain algorithm, returning:
   - pattern templates (with <*> wildcards for variable parts)
-  - estimated counts (scaled from the sample to the full time range)
-  - time-bucketed trends
+  - sampleCount (rows in the sample) and estimatedCount (sampleCount ×
+    sampleMultiplier, an extrapolation, not an exact count)
+  - time-bucketed trends, also extrapolated; summary.trend gives the actual
+    bucket interval and boundaries
   - a whereSnippet for each pattern to drill into matching raw events
 
 Required parameters:
@@ -1469,15 +1471,37 @@ Required parameters:
 Optional parameters:
   - where: filter to specific services or severity levels before mining
   - sampleSize: increase for more accurate patterns (default 10000, max 25000)
-  - bodyExpression: column to mine (auto-detected: Body for logs, SpanName for traces)
+  - bodyExpression: what to mine (auto-detected: Body for logs, SpanName for
+    traces). A column or map reference, or JSONExtractString over one with
+    string-literal keys, e.g. JSONExtractString(Body, 'error', 'message').
+    Other function calls are rejected.
+  - trendBuckets: maximum trend buckets (0 disables trends)
 
-Example: find top patterns for production services over the last 4 hours:
-  clickstack_event_patterns({
-    sourceId: "<log-source-id>",
-    startTime: "<4 hours ago ISO>",
-    endTime: "<now ISO>",
-    where: "service.name:prod-*"
-  })
+Examples:
+  "What kinds of errors is checkout producing?"
+    { where: "ServiceName:checkout AND SeverityText:error", topN: 5, sampleSize: 1000 }
+  "What messages dominate this service?"
+    { where: "ServiceName:api", trendBuckets: 0 }
+  Patterns in extracted exception names (existing map attribute):
+    { bodyExpression: "LogAttributes['exception.type']",
+      where: "LogAttributes['exception.type'] != ''", whereLanguage: "sql" }
+  A field inside JSON bodies (exclude rows without it):
+    { bodyExpression: "JSONExtractString(Body, 'message')",
+      where: "JSONExtractString(Body, 'message') != ''", whereLanguage: "sql" }
+
+Drilling into a pattern: call clickstack_search with the same sourceId,
+startTime and endTime, where = whereSnippet, whereLanguage = "sql". The snippet
+already includes the source table filter and, unless
+summary.drilldown.includesFilters is false, your where filter, so do not add
+them again. Skip patterns with drilldownUnavailable. It matches events whose
+value has the template's literal tokens in order with one token per <*>; this
+can include events Drain put in a more specific cluster.
+
+Sampling limits: a pattern or trend bucket with 0 sampled events can still have
+real events, especially when sampleMultiplier is large. For exact counts or
+breakdowns by a known field use clickstack_table / clickstack_timeseries; for
+patterns that are new or gone versus an earlier window use
+clickstack_emerging_signals.
 
 == COMMON MISTAKES ==
 

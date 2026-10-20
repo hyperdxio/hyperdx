@@ -1,6 +1,8 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  convertGranularityToSeconds,
   getFirstTimestampValueExpression,
+  type Granularity,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
 import { minePatterns } from '@hyperdx/common-utils/dist/drain';
@@ -8,7 +10,8 @@ import type {
   ChartConfigWithDateRange,
   ChartVariable,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { trace } from '@opentelemetry/api';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
@@ -19,13 +22,21 @@ import {
   mcpUserError,
 } from '@/mcp/utils/errors';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
+import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
   clickHouseErrorResult,
+  normalizeBodyExpression,
   resolveBodyExpression,
-  SAFE_BODY_EXPR_CHARS,
 } from './helpers';
+import {
+  andSql,
+  buildPatternPredicate,
+  MAX_PREDICATE_TEMPLATE_LENGTH,
+  PATTERN_MATCH_SEMANTICS,
+  userWhereAsSql,
+} from './patternDrilldown';
 
 // ─── Reusable window mining ──────────────────────────────────────────────────
 
@@ -50,6 +61,8 @@ export async function mineWindowPatterns(
     abortSignal?: AbortSignal;
     /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
     variables?: ChartVariable[];
+    /** Also render every row filter as one SQL condition for drill-down. */
+    includeDrilldownWhere?: boolean;
   },
 ): Promise<
   | { error: McpErrorResult }
@@ -59,6 +72,15 @@ export async function mineWindowPatterns(
       totalCount: number;
       sampledCount: number;
       bodyColumn: string;
+      trendGranularity?: Granularity;
+      trendBucketStarts: number[];
+      /**
+       * Row filters as one SQL condition ('' when there are none). Undefined
+       * when not requested. The source table filter is always included; the
+       * caller filter only when `includesUserFilter` is true (it could not be
+       * rendered as SQL otherwise).
+       */
+      drilldown?: { where: string; includesUserFilter: boolean };
     }
 > {
   const sampleSize = options?.sampleSize ?? 10_000;
@@ -85,22 +107,26 @@ export async function mineWindowPatterns(
     };
   }
 
-  // Sanitize caller-supplied bodyExpression: must be a single column reference
-  // matching the documented format (e.g. "Body", "SpanAttributes['http.url']").
-  // The allowlist rejects injection attempts like "Body) OR (1=1".
+  // Sanitize caller-supplied bodyExpression: a single column/map reference or
+  // JSONExtractString over one. The allowlist rejects injection attempts like
+  // "Body) OR (1=1".
   let bodyColumn: string | undefined;
   if (options?.bodyExpression) {
     const parts = splitAndTrimWithBracket(options.bodyExpression);
-    if (parts.length !== 1 || !SAFE_BODY_EXPR_CHARS.test(parts[0])) {
+    const normalized =
+      parts.length === 1 ? normalizeBodyExpression(parts[0]) : null;
+    if (normalized == null) {
       return {
         error: mcpUserError(
-          'bodyExpression must be a single column expression ' +
-            '(e.g. "Body", "SpanName", "SpanAttributes[\'http.url\']"). ' +
-            'Multiple expressions, function calls, or sub-queries are not allowed.',
+          'bodyExpression must be a single column or map reference ' +
+            '(e.g. "Body", "SpanName", "SpanAttributes[\'http.url\']"), or ' +
+            'JSONExtractString over one with string-literal keys ' +
+            "(e.g. \"JSONExtractString(Body, 'error', 'message')\"). " +
+            'Other function calls, multiple expressions, or sub-queries are not allowed.',
         ),
       };
     }
-    bodyColumn = parts[0];
+    bodyColumn = normalized;
   } else {
     bodyColumn = resolveBodyExpression(source);
   }
@@ -113,6 +139,16 @@ export async function mineWindowPatterns(
       ),
     };
   }
+
+  const tableFilterSql =
+    source.kind === SourceKind.Log &&
+    'tableFilterExpression' in source &&
+    source.tableFilterExpression
+      ? source.tableFilterExpression
+      : undefined;
+  const filters = tableFilterSql
+    ? [{ type: 'sql' as const, condition: tableFilterSql }]
+    : [];
 
   const clickhouseClient = new ClickhouseClient({
     host: connection.host,
@@ -145,6 +181,7 @@ export async function mineWindowPatterns(
     },
     where: options?.where ?? '',
     whereLanguage: options?.whereLanguage ?? ('lucene' as const),
+    filters,
     connection: source.connection.toString(),
     timestampValueExpression: source.timestampValueExpression,
     implicitColumnExpression: implicitColumn,
@@ -165,6 +202,7 @@ export async function mineWindowPatterns(
     },
     where: options?.where ?? '',
     whereLanguage: options?.whereLanguage ?? ('lucene' as const),
+    filters,
     connection: source.connection.toString(),
     timestampValueExpression: source.timestampValueExpression,
     implicitColumnExpression: implicitColumn,
@@ -174,14 +212,44 @@ export async function mineWindowPatterns(
     variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
-  // The client is constructed fresh per call (not pooled) and is only used for
-  // the two queries below — the Drain mining afterward never touches it. Close
-  // it in a finally so the underlying HTTP agent's sockets are released whether
-  // the queries succeed or throw, rather than leaking one client per call
-  // (emerging_signals opens two per invocation).
+  // Drill-down is optional, so a caller filter that cannot be rendered as SQL
+  // resolves to null instead of failing the mining.
+  const userWherePromise: Promise<string | null | undefined> =
+    options?.includeDrilldownWhere
+      ? userWhereAsSql({
+          where: options.where ?? '',
+          whereLanguage: options.whereLanguage ?? 'lucene',
+          variables: options.variables,
+          metadata,
+          databaseName: source.from.databaseName,
+          tableName: source.from.tableName,
+          connectionId: source.connection.toString(),
+          implicitColumnExpression: implicitColumn,
+          useTextIndexForImplicitColumn,
+        }).catch(err => {
+          trace.getActiveSpan()?.setAttributes({
+            'mcp.event_patterns.drilldown_where_failed': true,
+            'mcp.event_patterns.drilldown_where_error':
+              err instanceof Error ? err.message : String(err),
+          });
+          logger.warn(
+            { err, teamId, sourceId },
+            'event patterns: could not render where as SQL for drill-down',
+          );
+          return null;
+        })
+      : Promise.resolve(undefined);
+
+  // The client is constructed fresh per call (not pooled) and serves the two
+  // queries below plus the metadata lookups of the drill-down rendering — the
+  // Drain mining afterward never touches it. Close it in a finally so the
+  // underlying HTTP agent's sockets are released whether the queries succeed
+  // or throw, rather than leaking one client per call (emerging_signals opens
+  // two per invocation).
   let sampleResult, countResult;
+  let userWhereSql: string | null | undefined;
   try {
-    [sampleResult, countResult] = await Promise.all([
+    [sampleResult, countResult, userWhereSql] = await Promise.all([
       clickhouseClient.queryChartConfig({
         config: sampleConfig,
         metadata,
@@ -204,6 +272,7 @@ export async function mineWindowPatterns(
           abort_signal: options?.abortSignal,
         },
       }),
+      userWherePromise,
     ]);
   } catch (err) {
     return { error: clickHouseErrorResult(err) };
@@ -213,25 +282,22 @@ export async function mineWindowPatterns(
 
   const sampleRows = sampleResult.data ?? [];
   const totalCount = Number(countResult.data?.[0]?.total ?? 0);
-  if (sampleRows.length === 0) {
-    return {
-      patterns: [],
-      sampleMultiplier: 1,
-      totalCount,
-      sampledCount: 0,
-      bodyColumn,
-    };
-  }
+  const drilldown =
+    userWhereSql === undefined
+      ? undefined
+      : {
+          where: andSql(tableFilterSql, userWhereSql ?? undefined),
+          includesUserFilter: userWhereSql !== null,
+        };
 
   // Wrap the synchronous Drain mining in try/catch. Without this a thrown
   // Drain error escapes the helper — and since callers (emerging_signals)
   // await it inside Promise.all and only inspect the returned {error} union
   // AFTER the await, an unwrapped throw becomes an unhandled rejection / 500
   // instead of a clean MCP error result.
-  let patterns: ReturnType<typeof minePatterns>['patterns'];
-  let sampleMultiplier: number;
+  let mined: ReturnType<typeof minePatterns>;
   try {
-    ({ patterns, sampleMultiplier } = minePatterns(sampleRows, {
+    mined = minePatterns(sampleRows, {
       totalCount,
       startDate,
       endDate,
@@ -245,18 +311,21 @@ export async function mineWindowPatterns(
         const tsRaw = row.__hdx_pattern_ts;
         return tsRaw != null ? new Date(String(tsRaw)).getTime() : null;
       },
-    }));
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { error: mcpServerError(`Pattern mining failed: ${message}`) };
   }
 
   return {
-    patterns,
-    sampleMultiplier,
     totalCount,
-    sampledCount: sampleRows.length,
     bodyColumn,
+    drilldown,
+    patterns: mined.patterns,
+    sampleMultiplier: mined.sampleMultiplier,
+    sampledCount: sampleRows.length,
+    trendGranularity: mined.trendGranularity,
+    trendBucketStarts: mined.trendBucketStarts,
   };
 }
 
@@ -318,6 +387,7 @@ export async function runEventPatterns(
     trendBuckets,
     abortSignal: options?.abortSignal,
     variables: options?.variables,
+    includeDrilldownWhere: true,
   });
   if ('error' in mined) return mined.error;
 
@@ -327,7 +397,15 @@ export async function runEventPatterns(
     totalCount,
     sampledCount,
     bodyColumn,
+    trendGranularity,
+    trendBucketStarts,
+    drilldown,
   } = mined;
+
+  const timeRange = {
+    start: startDate.toISOString(),
+    end: endDate.toISOString(),
+  };
 
   if (sampledCount === 0) {
     return {
@@ -343,10 +421,7 @@ export async function runEventPatterns(
                 clusterCount: 0,
                 patternsReturned: 0,
                 bodyColumn,
-                timeRange: {
-                  start: startDate.toISOString(),
-                  end: endDate.toISOString(),
-                },
+                timeRange,
               },
               patterns: [],
               hint: 'No data found in the queried time range. Try setting startTime to a wider window (e.g. 24 hours ago) or check that filters match existing data.',
@@ -360,23 +435,12 @@ export async function runEventPatterns(
   }
 
   // ── Format response ──
-  // Convert trend timestamps to ISO strings, extract sample body texts,
-  // and build a whereSnippet per pattern so the agent can drill into
-  // matching events via a follow-up clickstack_search query.
   const slicedPatterns = rawPatterns.slice(0, topN);
 
   const patterns = slicedPatterns.map((p, i) => {
-    // Build a Lucene-compatible where clause from the pattern's literal
-    // (non-<*>) tokens. This lets agents chain: pattern → search.
-    // Escape \ and " (the phrase-query metachars) in each token.
-    const literalTokens = p.pattern
-      .split(/\s+/)
-      .filter(t => t !== '<*>' && t.length > 0)
-      .map(t => t.replace(/[\\"]/g, '\\$&'));
+    const predicate = buildPatternPredicate(bodyColumn, p.pattern);
     const whereSnippet =
-      literalTokens.length > 0
-        ? `${bodyColumn}:"${literalTokens.join(' ')}"`
-        : '';
+      predicate == null ? '' : andSql(drilldown?.where, predicate);
 
     const shareOfTotal = sampledCount > 0 ? p.sampleCount / sampledCount : 0;
 
@@ -396,6 +460,14 @@ export async function runEventPatterns(
       sampleCount: p.sampleCount,
       shareOfTotal: Math.round(shareOfTotal * 10000) / 10000,
       whereSnippet,
+      whereLanguage: 'sql' as const,
+      ...(predicate == null
+        ? {
+            drilldownUnavailable:
+              `Template is longer than ${MAX_PREDICATE_TEMPLATE_LENGTH} characters, so ` +
+              'whereSnippet is empty. Do not search with it; it would match every row.',
+          }
+        : {}),
       ...(formattedTrend ? { trend: formattedTrend } : {}),
       samples: p.samples.map(row => {
         const raw = row.__hdx_pattern_body;
@@ -404,27 +476,70 @@ export async function runEventPatterns(
     };
   });
 
+  const trendSummary =
+    trendGranularity && trendBucketStarts.length > 0
+      ? {
+          requestedBuckets: trendBuckets,
+          bucketCount: trendBucketStarts.length,
+          bucketInterval: trendGranularity,
+          firstBucketStart: new Date(trendBucketStarts[0]).toISOString(),
+          lastBucketEnd: new Date(
+            trendBucketStarts[trendBucketStarts.length - 1] +
+              convertGranularityToSeconds(trendGranularity) * 1000,
+          ).toISOString(),
+        }
+      : undefined;
+
   const output = {
     summary: {
       totalCount,
       sampledCount,
+      sampleCoverage:
+        totalCount > 0
+          ? Math.round(Math.min(sampledCount / totalCount, 1) * 10000) / 10000
+          : 1,
       sampleMultiplier: Math.round(sampleMultiplier * 100) / 100,
       clusterCount: rawPatterns.length,
       patternsReturned: patterns.length,
       bodyColumn,
-      timeRange: {
-        start: startDate.toISOString(),
-        end: endDate.toISOString(),
+      timeRange,
+      ...(trendSummary ? { trend: trendSummary } : {}),
+      drilldown: {
+        tool: 'clickstack_search',
+        sourceId,
+        startTime: timeRange.start,
+        endTime: timeRange.end,
+        whereLanguage: 'sql',
+        includesFilters: drilldown?.includesUserFilter ?? false,
+        ...(drilldown?.includesUserFilter
+          ? {}
+          : {
+              warning:
+                'The where filter could not be rendered as SQL, so whereSnippet holds only ' +
+                'the pattern predicate and the source table filter. AND your filter onto it ' +
+                '(in SQL) before searching.',
+            }),
+        matchSemantics: PATTERN_MATCH_SEMANTICS,
       },
     },
     patterns,
     usage:
-      'shareOfTotal is the fraction of sampled rows matching this pattern. ' +
-      'estimatedCount = sampleCount * sampleMultiplier. ' +
-      (trendBuckets > 0
-        ? 'trend.count is similarly extrapolated from sample bucket counts. '
+      'totalCount is exact. sampleCount is the number of sampled rows in the pattern. ' +
+      'estimatedCount = sampleCount * sampleMultiplier, an extrapolation, not a count; ' +
+      'use clickstack_table for exact counts. shareOfTotal = sampleCount / sampledCount. ' +
+      (trendSummary
+        ? 'trend.count = round(sampled rows in the bucket * sampleMultiplier). Buckets are ' +
+          'summary.trend.bucketInterval wide and aligned to it, so there can be fewer ' +
+          'than requested and the first/last can extend past timeRange (partial buckets). ' +
+          'A 0 bucket means no SAMPLED row fell in it, not that none occurred: when ' +
+          'sampleMultiplier is N, a bucket with fewer than about N real events often ' +
+          'shows 0. Compare trends only for patterns with many sampled rows. '
         : '') +
-      'Use whereSnippet as the "where" parameter in a clickstack_search call to browse matching raw events.',
+      'To browse raw events of a pattern, call clickstack_search with the sourceId, ' +
+      'startTime and endTime from summary.drilldown, where = whereSnippet, and ' +
+      'whereLanguage = "sql". whereSnippet already includes the source table filter and, ' +
+      'unless summary.drilldown.includesFilters is false, your where filter, so do not ' +
+      'add them again. Skip patterns that have drilldownUnavailable.',
   };
 
   const { data: trimmedOutput, isTrimmed } = trimToolResponse(output);

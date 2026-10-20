@@ -264,6 +264,66 @@ describe('minePatterns', () => {
       // The bucket containing the event should have count = 1 * 100 = 100
       expect(nonZeroBuckets[0].count).toBe(100);
     });
+
+    it('rounds the bucket width up, so fewer buckets than requested can come back', () => {
+      const start = new Date('2024-01-01T00:00:00Z');
+      const end = new Date('2024-01-01T01:00:00Z');
+
+      const result = minePatterns(
+        [{ body: 'event', ts: start.toISOString() }],
+        {
+          totalCount: 1,
+          startDate: start,
+          endDate: end,
+          trendBuckets: 24,
+          ...defaultCallbacks,
+        },
+      );
+
+      // 3600s / 24 = 150s, rounded up to the 5 minute interval.
+      expect(result.trendGranularity).toBe('5 minute');
+      expect(result.trendBucketStarts).toHaveLength(12);
+      expect(result.patterns[0].trend.map(b => b.ts)).toEqual(
+        result.trendBucketStarts,
+      );
+    });
+
+    it('aligns the first bucket to the interval, before an unaligned start', () => {
+      const start = new Date('2024-01-01T00:07:00Z');
+      const end = new Date('2024-01-01T01:07:00Z');
+
+      const result = minePatterns(
+        [{ body: 'event', ts: start.toISOString() }],
+        {
+          totalCount: 1,
+          startDate: start,
+          endDate: end,
+          trendBuckets: 4,
+          ...defaultCallbacks,
+        },
+      );
+
+      expect(result.trendGranularity).toBe('15 minute');
+      expect(result.trendBucketStarts[0]).toBe(
+        new Date('2024-01-01T00:00:00Z').getTime(),
+      );
+      expect(result.trendBucketStarts[0]).toBeLessThan(start.getTime());
+    });
+
+    it('skips trend computation when trendBuckets is 0', () => {
+      const result = minePatterns([makeRow('event')], {
+        totalCount: 1,
+        startDate: baseDate,
+        endDate,
+        trendBuckets: 0,
+        ...defaultCallbacks,
+      });
+
+      expect(result.trendGranularity).toBeUndefined();
+      expect(result.trendBucketStarts).toEqual([]);
+      expect(result.patterns[0].trend).toEqual([]);
+      expect(result.patterns[0].sampleCount).toBe(1);
+    });
   });
 
   describe('NaN/null timestamp handling', () => {
@@ -388,5 +448,58 @@ describe('minePatterns', () => {
       expect(result.patterns).toHaveLength(1);
       expect(result.patterns[0].sampleCount).toBe(2);
     });
+  });
+});
+
+describe('minePatterns template fidelity', () => {
+  // Deterministic PRNG so the fuzz input is stable across runs.
+  function lcg(seed: number) {
+    let s = seed;
+    return () => {
+      s = (s * 1103515245 + 12345) % 2 ** 31;
+      return s / 2 ** 31;
+    };
+  }
+
+  function fits(template: string, body: string): boolean {
+    const t = template.split(/\s+/).filter(Boolean);
+    const b = body.split(/\s+/).filter(Boolean);
+    return (
+      t.length === b.length &&
+      t.every((tok, i) => tok === '<*>' || tok === b[i])
+    );
+  }
+
+  it("reports each cluster's own template, which every member fits", () => {
+    const words = ['a', 'b', 'c', 'ok', 'fail', 'x1', 'y2', '42', 'retry'];
+    for (let seed = 1; seed <= 50; seed++) {
+      const rand = lcg(seed);
+      const rows = Array.from({ length: 300 }, () => {
+        const len = 2 + Math.floor(rand() * 3);
+        const body = Array.from(
+          { length: len },
+          () => words[Math.floor(rand() * words.length)],
+        ).join(' ');
+        return makeRow(body);
+      });
+      const { patterns } = minePatterns(rows, {
+        totalCount: rows.length,
+        startDate: baseDate,
+        endDate,
+        trendBuckets: 0,
+        maxSamples: rows.length,
+        ...defaultCallbacks,
+      });
+      for (const p of patterns) {
+        for (const s of p.samples) {
+          const body = String(s.body);
+          if (!fits(p.pattern, body)) {
+            throw new Error(
+              `seed ${seed}: "${body}" does not fit "${p.pattern}"`,
+            );
+          }
+        }
+      }
+    }
   });
 });

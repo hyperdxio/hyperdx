@@ -78,7 +78,35 @@ export function resolveBodyExpression(
 
 /** Reject bodyExpression values containing SQL-unsafe characters. */
 // eslint-disable-next-line no-useless-escape
-export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
+
+const COLUMN_OR_MAP_REF = /^[A-Za-z_][\w.]*$|^[A-Za-z_][\w.]*\['[^'\\]*'\]$/;
+const SQL_STRING_LITERAL = /^'([^'\\]|\\.)*'$/;
+const JSON_EXTRACT_STRING_CALL = /^JSONExtractString\((.*)\)$/s;
+
+/**
+ * Return a caller-supplied bodyExpression in a form that is safe to embed in
+ * SQL, or null when it is not allowed. Accepts a column or map reference, or
+ * JSONExtractString(<column or map reference>, '<key>', ...), the form the app
+ * generates for JSON fields. The JSONExtractString form is rebuilt from its
+ * validated arguments, so nothing else reaches the SQL.
+ */
+export function normalizeBodyExpression(expression: string): string | null {
+  const trimmed = expression.trim();
+  if (SAFE_BODY_EXPR_CHARS.test(trimmed)) return trimmed;
+  const call = JSON_EXTRACT_STRING_CALL.exec(trimmed);
+  if (!call) return null;
+  const [column, ...keys] = splitAndTrimWithBracket(call[1]);
+  if (
+    column == null ||
+    keys.length === 0 ||
+    !COLUMN_OR_MAP_REF.test(column) ||
+    !keys.every(k => SQL_STRING_LITERAL.test(k))
+  ) {
+    return null;
+  }
+  return `JSONExtractString(${[column, ...keys].join(', ')})`;
+}
 
 // ─── Safety limits ───────────────────────────────────────────────────────────
 
