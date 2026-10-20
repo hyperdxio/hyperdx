@@ -1,8 +1,7 @@
 import type { QueryContext } from './queries';
-import { baseConfig, columns, run, sqlList } from './queries';
+import { baseConfig, columns, run, SERVICE_ALIAS, sqlList } from './queries';
 import type { Window } from './schema';
 
-const SERVICE_ALIAS = '__hdx_service';
 const OP_ALIAS = '__hdx_operation';
 const MAX_OPERATION_ROWS = 5000;
 /** A new operation needs this many requests to be reported. */

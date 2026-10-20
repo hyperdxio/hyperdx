@@ -175,6 +175,14 @@ describe('MCP Service Health Tool', () => {
     expect(getFirstText(result)).toContain('kind="trace"');
   });
 
+  it('points a table name passed as sourceId at the right source ID', async () => {
+    const result = await call({ sourceId: DEFAULT_TRACES_TABLE });
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain(
+      `sourceId:"${traceSource._id.toString()}"`,
+    );
+  });
+
   it('rejects a window longer than the comparison shift', async () => {
     const result = await call({
       startTime: new Date(now - 30 * HOUR).toISOString(),
