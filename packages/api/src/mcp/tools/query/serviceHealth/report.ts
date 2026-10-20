@@ -154,8 +154,9 @@ const USAGE =
   'Any of those makes a service degraded. traffic_spike, new_service and ' +
   'low_volume (under minRequests in both windows, never flagged) and ' +
   'new_errors (a listed error group is new or growing; such services sort ' +
-  'first within their status) are context only. Healthy services are not regressions; report them as steady and do ' +
-  "treat moves below these thresholds as steady (no action needed); each service's " +
+  'first within their status) are context only. Healthy services are not ' +
+  'regressions: report them as steady, and treat moves below these ' +
+  "thresholds as normal variance. Each service's " +
   '`summary` states which moves crossed one. topErrors carry firstSeen / ' +
   'lastSeen / ongoing so a burst that stopped reads as transient. topErrors lists new and ' +
   'growing error groups first (largest gain first), then the largest steady ' +

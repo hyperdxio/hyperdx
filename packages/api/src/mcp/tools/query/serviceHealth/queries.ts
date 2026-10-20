@@ -27,6 +27,7 @@ import type { ServiceHealthInput, Window } from './schema';
 const SERVICE_ALIAS = '__hdx_service';
 const ERROR_COUNT_ALIAS = '__hdx_error_count';
 const FIRST_SEEN_ALIAS = '__hdx_first_seen';
+const HASH_ALIAS = '__hdx_group_hash';
 const LAST_SEEN_ALIAS = '__hdx_last_seen';
 const errorKeyAlias = (i: number) => `__hdx_error_key_${i}`;
 
@@ -75,6 +76,8 @@ export type ErrorGroup = {
   service: string;
   group: Record<string, string>;
   count: number;
+  /** cityHash64 of the group's key, used to look it up in another window. */
+  hash?: string;
   /** Epoch ms of the first and last error in the window, if known. */
   firstSeenMs?: number;
   lastSeenMs?: number;
@@ -88,7 +91,7 @@ export const columns = (row: Record<string, unknown>) =>
 export const groupValue = (g: Pick<ErrorGroup, 'group'>, key: string) =>
   new Map(Object.entries(g.group)).get(key);
 
-const sqlList = (values: string[]) =>
+export const sqlList = (values: string[]) =>
   values.map(v => `'${escapeSqlString(v)}'`).join(', ');
 
 export function baseConfig(
@@ -131,7 +134,7 @@ export function baseConfig(
   };
 }
 
-async function run(
+export async function run(
   ctx: QueryContext,
   config: BuilderChartConfigWithDateRange,
 ): Promise<{ rows: Record<string, string | number>[]; mvUsed: boolean }> {
@@ -241,16 +244,19 @@ export async function fetchErrorGroups(
 ): Promise<ErrorGroup[]> {
   const { source } = ctx;
   const keyExprs = [source.serviceNameExpression, ...groupExprs];
+  // Match groups across windows by a fixed-size hash. Inlining the raw key
+  // text (status messages can be stack traces) can exceed max_query_size.
+  const hashExpr = `cityHash64(${keyExprs.map(e => `toString(${e})`).join(', ')})`;
   const epochMs = `toUnixTimestamp64Milli(toDateTime64(${getFirstTimestampValueExpression(source.timestampValueExpression)}, 3))`;
   const scopeCondition =
     'services' in scope
       ? `${source.serviceNameExpression} IN (${sqlList(scope.services)})`
-      : `tuple(${keyExprs.map(e => `toString(${e})`).join(', ')}) IN (${scope.match
-          .map(
-            g =>
-              `tuple(${sqlList([g.service, ...groupExprs.map(e => groupValue(g, e) ?? '')])})`,
-          )
-          .join(', ')})`;
+      : `${hashExpr} IN (${
+          scope.match
+            .map(g => g.hash)
+            .filter((h): h is string => !!h && /^\d+$/.test(h))
+            .join(', ') || 'NULL'
+        })`;
 
   const { rows } = await run(ctx, {
     ...baseConfig(ctx, window, [
@@ -265,6 +271,8 @@ export async function fetchErrorGroups(
       // Epoch ms, because min/max cast their argument to Float64.
       { aggFn: 'min', valueExpression: epochMs, alias: FIRST_SEEN_ALIAS },
       { aggFn: 'max', valueExpression: epochMs, alias: LAST_SEEN_ALIAS },
+      // 'none' passes the expression through on the sample-weighted path too.
+      { aggFn: 'none', valueExpression: `any(${hashExpr})`, alias: HASH_ALIAS },
     ],
     groupBy: [
       { valueExpression: source.serviceNameExpression, alias: SERVICE_ALIAS },
@@ -285,6 +293,7 @@ export async function fetchErrorGroups(
         groupExprs.map((e, i) => [e, String(c.get(errorKeyAlias(i)) ?? '')]),
       ),
       count: Number(c.get(ERROR_COUNT_ALIAS)) || 0,
+      hash: String(c.get(HASH_ALIAS) ?? '') || undefined,
       firstSeenMs: toNumberOrNull(c.get(FIRST_SEEN_ALIAS)) || undefined,
       lastSeenMs: toNumberOrNull(c.get(LAST_SEEN_ALIAS)) || undefined,
     };

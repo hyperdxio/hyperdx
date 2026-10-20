@@ -1,11 +1,5 @@
-import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
-
-import { mcpQuerySettings } from '@/mcp/tools/trace/shared';
-
 import type { QueryContext } from './queries';
-import { baseConfig, columns } from './queries';
+import { baseConfig, columns, run, sqlList } from './queries';
 import type { Window } from './schema';
 
 const SERVICE_ALIAS = '__hdx_service';
@@ -27,32 +21,21 @@ async function operationCounts(
   window: Window,
   services: string[],
 ): Promise<{ counts: Map<string, Map<string, number>>; truncated: boolean }> {
-  const { source, client, signal } = ctx;
-  const list = services.map(s => `'${escapeSqlString(s)}'`).join(', ');
-  const result = await client.queryChartConfig({
-    config: {
-      ...baseConfig(ctx, window, [
-        {
-          type: 'sql',
-          condition: `${source.serviceNameExpression} IN (${list})`,
-        },
-      ]),
-      displayType: DisplayType.Table,
-      select: [{ aggFn: 'count', valueExpression: '', alias: 'requests' }],
-      groupBy: [
-        { valueExpression: source.serviceNameExpression, alias: SERVICE_ALIAS },
-        { valueExpression: source.spanNameExpression, alias: OP_ALIAS },
-      ],
-      limit: { limit: MAX_OPERATION_ROWS },
-    },
-    metadata: getMetadata(client),
-    querySettings: source.querySettings,
-    opts: {
-      clickhouse_settings: mcpQuerySettings(source.querySettings),
-      abort_signal: signal,
-    },
+  const { source } = ctx;
+  const { rows } = await run(ctx, {
+    ...baseConfig(ctx, window, [
+      {
+        type: 'sql',
+        condition: `${source.serviceNameExpression} IN (${sqlList(services)})`,
+      },
+    ]),
+    select: [{ aggFn: 'count', valueExpression: '', alias: 'requests' }],
+    groupBy: [
+      { valueExpression: source.serviceNameExpression, alias: SERVICE_ALIAS },
+      { valueExpression: source.spanNameExpression, alias: OP_ALIAS },
+    ],
+    limit: { limit: MAX_OPERATION_ROWS },
   });
-  const rows = result.data ?? [];
   const out = new Map<string, Map<string, number>>();
   for (const row of rows) {
     const c = columns(row);
