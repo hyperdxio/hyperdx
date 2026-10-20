@@ -9,6 +9,7 @@ import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
 import { getRequestPanelTitle } from '@/utils/rpcSpanAttributes';
+import { isSet } from '@/utils/spanAttributeReaders';
 
 import {
   getJSONColumnNames,
@@ -27,6 +28,12 @@ import { SpanLinkedFromSubpanel } from './SpanLinkedFromSubpanel';
 import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
+const EXCEPTION_ATTRIBUTE_KEYS = [
+  'exception.type',
+  'exception.message',
+  'exception.stacktrace',
+];
+
 export function RowOverviewPanel({
   source,
   rowId,
@@ -140,16 +147,30 @@ export function RowOverviewPanel({
     [flattenedEventAttributes],
   );
 
+  const exceptionAttributes = useMemo(() => {
+    const spanEventAttributes = firstRow?.__hdx_events_exception_attributes;
+    if (
+      spanEventAttributes != null &&
+      Object.keys(spanEventAttributes).length > 0
+    ) {
+      return spanEventAttributes;
+    }
+    return EXCEPTION_ATTRIBUTE_KEYS.some(key =>
+      isSet(flattenedEventAttributes[key]),
+    )
+      ? flattenedEventAttributes
+      : undefined;
+  }, [firstRow?.__hdx_events_exception_attributes, flattenedEventAttributes]);
+
   const exceptionValues = useMemo(() => {
-    const parsedEvents =
-      firstRow?.__hdx_events_exception_attributes ?? EMPTY_OBJ;
+    const parsedEvents = exceptionAttributes ?? EMPTY_OBJ;
     const stacktrace =
       parsedEvents?.['exception.stacktrace'] ||
       parsedEvents?.['exception.parsed_stacktrace'];
 
     let parsedStacktrace = stacktrace ?? '[]';
     try {
-      parsedStacktrace = JSON.parse(stacktrace);
+      parsedStacktrace = JSON.parse(parsedStacktrace);
     } catch {
       // do nothing
     }
@@ -165,13 +186,9 @@ export function RowOverviewPanel({
         mechanism: parsedEvents?.['exception.mechanism'],
       },
     ];
-  }, [firstRow]);
+  }, [exceptionAttributes]);
 
-  const hasException = useMemo(() => {
-    return (
-      Object.keys(firstRow?.__hdx_events_exception_attributes ?? {}).length > 0
-    );
-  }, [firstRow?.__hdx_events_exception_attributes]);
+  const hasException = exceptionAttributes != null;
 
   const hasSpanEvents = useMemo(() => {
     return (
@@ -252,6 +269,26 @@ export function RowOverviewPanel({
         multiple
         variant="noPadding"
       >
+        {hasException && (
+          <Accordion.Item value="exception">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Exception
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <ExceptionSubpanel
+                  exceptionValues={exceptionValues}
+                  logData={{
+                    timestamp: firstRow?.__hdx_timestamp,
+                  }}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
         {requestPanelTitle != null && (
           <Accordion.Item value="network">
             <Accordion.Control>
@@ -264,27 +301,6 @@ export function RowOverviewPanel({
                 <NetworkPropertySubpanel
                   eventAttributes={flattenedEventAttributes}
                   spanKind={firstRow?.__hdx_span_kind}
-                />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
-        {hasException && (
-          <Accordion.Item value="exception">
-            <Accordion.Control>
-              <Text size="sm" ps={contentPx}>
-                Exception
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px={contentPx}>
-                <ExceptionSubpanel
-                  exceptionValues={exceptionValues}
-                  breadcrumbs={[]}
-                  logData={{
-                    timestamp: firstRow?.__hdx_timestamp,
-                  }}
                 />
               </Box>
             </Accordion.Panel>
