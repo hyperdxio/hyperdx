@@ -100,6 +100,18 @@ describe('buildColumnMap', () => {
     );
   });
 
+  it('uses isNull for null JSON column values', () => {
+    const meta: ColumnMetaType[] = [{ name: 'Body', type: 'JSON' }];
+
+    const where = getRowWhere(
+      { Body: null },
+      buildColumnMap(meta, {}),
+      {},
+    ).where;
+
+    expect(where).toBe('isNull(Body)');
+  });
+
   it('hashes strings longer than MAX_STRING_LENGTH with SHA256', () => {
     const meta: ColumnMetaType[] = [{ name: 'description', type: 'String' }];
 

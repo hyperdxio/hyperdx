@@ -71,7 +71,12 @@ function processRowToWhereClause(
         );
       }
 
-      const strValue = value != null ? String(value) : null;
+      // Handle nullish values for all types uniformly
+      if (value == null) {
+        return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
+      }
+
+      const strValue = String(value);
 
       switch (jsType) {
         case JSDataType.Date:
@@ -95,7 +100,7 @@ function processRowToWhereClause(
           // Handle case for whole json object, ex: json
           return SqlString.format(`lower(hex(SHA256(toString(?))))=?`, [
             SqlString.raw(valueExpr),
-            SHA256(strValue ?? '').toString(),
+            SHA256(strValue).toString(),
           ]);
         case JSDataType.Dynamic:
           // Handle case for json element, ex: json.c
@@ -112,18 +117,14 @@ function processRowToWhereClause(
           );
 
         default:
-          // Handle nullish values
-          if (value == null) {
-            return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
-          }
           // Handle the case when string is too long
-          if ((strValue?.length ?? 0) > MAX_STRING_LENGTH) {
+          if (strValue.length > MAX_STRING_LENGTH) {
             return SqlString.format(
               `lower(hex(SHA256(leftUTF8(?, ${LEFT_UTF8_HASH_CODE_POINTS}))))=?`,
               [
                 SqlString.raw(valueExpr),
                 SHA256(
-                  leftUtf8Prefix(strValue ?? '', LEFT_UTF8_HASH_CODE_POINTS),
+                  leftUtf8Prefix(strValue, LEFT_UTF8_HASH_CODE_POINTS),
                 ).toString(),
               ],
             );
