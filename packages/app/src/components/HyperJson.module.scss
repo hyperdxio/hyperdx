@@ -4,7 +4,7 @@
   width: 100%;
   flex-direction: column;
   padding: var(--mantine-spacing-xs);
-  font-size: 12px;
+  font-size: var(--hdx-content-font-size);
   font-family: var(--font-ibm-plex-mono);
 }
 
@@ -31,7 +31,7 @@
 .line {
   display: flex;
   gap: 10px;
-  padding: 2px 8px;
+  padding: 2px 8px 2px 20px;
   align-items: flex-start;
   border-radius: 3px;
   position: relative;
@@ -56,11 +56,10 @@
     cursor: pointer;
 
     .key {
-      margin-left: -10px;
+      margin-left: -16px;
     }
 
     .valueContainer {
-      margin-left: 10px;
       word-break: break-all;
     }
 
@@ -232,12 +231,12 @@
 
 .object {
   color: var(--color-json-object);
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
 }
 
 .array {
   color: var(--color-json-array);
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
 }
 
 .expandMoreProps {

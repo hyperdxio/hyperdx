@@ -1,6 +1,7 @@
 import PQueue from '@esm2cjs/p-queue';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
@@ -166,7 +167,7 @@ export function registerQueryTiles({
     'clickstack_query_tiles',
     {
       title: 'Query Multiple Dashboard Tiles',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Run the queries for many tiles of a dashboard in ONE call and return a ' +
         'compact per-tile success/failure summary. This is the efficient way to ' +
@@ -182,15 +183,17 @@ export function registerQueryTiles({
         'unrunTileIds — call again with those as tileIds to run the remainder. ' +
         'Drill into a specific failing tile with clickstack_query_tile.',
       inputSchema: z.object({
-        dashboardId: objectIdSchema.describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe(
+          'Dashboard ID, from clickstack_get_dashboard (no id lists dashboards) ' +
+            'or clickstack_search_dashboards.',
+        ),
         tileIds: z
           .array(z.string())
           .max(MAX_TILE_IDS_INPUT)
           .optional()
           .describe(
-            'Tile IDs to run. Default: every non-markdown tile on the ' +
-              'dashboard. Obtain IDs from clickstack_get_dashboard. ' +
-              `At most ${MAX_TILE_IDS_INPUT} IDs per call.`,
+            'Tile IDs to run, from clickstack_get_dashboard. When omitted, every ' +
+              'non-markdown tile on the dashboard runs; an empty array runs none.',
           ),
         startTime: z
           .string()
@@ -221,7 +224,9 @@ export function registerQueryTiles({
         return mcpUserError('Dashboard not found');
       }
 
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromqlTiles: true,
+      });
       const allTiles = externalDashboard.tiles;
 
       const resolved = resolveDashboardVariables(

@@ -12,6 +12,7 @@ import { isString } from 'lodash';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import SqlString from 'sqlstring';
+import { Badge } from '@clickhouse/click-ui';
 import {
   isLogSource,
   isTraceSource,
@@ -23,7 +24,6 @@ import {
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Badge,
   Box,
   Button,
   CopyButton,
@@ -111,8 +111,13 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TLogSource | TTraceSource;
+  source?: TSource;
   onOpenLinkedTrace?: (link: SpanLinkData) => void;
+  /**
+   * onPropertyAddClick updates ad hoc dashboard filters. Tables shape
+   * each cell's key and value for that with getAdhocCellCondition.
+   */
+  isAdhocFilterTarget?: boolean;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -973,9 +978,7 @@ export const DBRowSidePanelInner = ({
             </>
           )}
           {sourceIsTrace && spanKindLabel && (
-            <Badge size="sm" variant="light" radius="sm">
-              {spanKindLabel}
-            </Badge>
+            <Badge size="sm" text={spanKindLabel} state="info" />
           )}
           {(sourceIsTrace ? traceId : showLogTraceActions) && (
             <>

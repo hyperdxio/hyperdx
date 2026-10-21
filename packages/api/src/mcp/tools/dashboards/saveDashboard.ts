@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard, { IDashboard } from '@/models/dashboard';
@@ -19,12 +20,7 @@ import {
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
-import {
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
-  objectIdSchema,
-  tagsSchema,
-} from '@/utils/zod';
+import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
 import type { McpDashboardFilter } from './schemas';
 import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
@@ -47,7 +43,7 @@ export function registerSaveDashboard({
     'clickstack_save_dashboard',
     {
       title: 'Create or Update Dashboard',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new dashboard (omit id) or update an existing one (provide id). ' +
         'Call clickstack_list_sources first to obtain sourceId and connectionId values. ' +
@@ -65,7 +61,7 @@ export function registerSaveDashboard({
         name: z.string().describe('Dashboard name'),
         tiles: mcpTilesParam,
         tags: tagsSchema.describe(
-          `Dashboard tags. Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+          'Labels for organizing the dashboard; clickstack_search_dashboards can filter by them.',
         ),
         containers: mcpContainersParam.optional(),
         filters: mcpFiltersParam.optional(),
@@ -212,7 +208,9 @@ async function createDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(newDashboard);
+  const externalDashboard = convertToExternalDashboard(newDashboard, {
+    hidePromqlTiles: true,
+  });
   return {
     content: [
       {
@@ -377,7 +375,9 @@ async function updateDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(updatedDashboard);
+  const externalDashboard = convertToExternalDashboard(updatedDashboard, {
+    hidePromqlTiles: true,
+  });
   return {
     content: [
       {

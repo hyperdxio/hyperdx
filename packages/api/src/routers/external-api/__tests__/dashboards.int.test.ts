@@ -3645,6 +3645,78 @@ describe('External API v2 Dashboards - new format', () => {
       expect(tiles[2].config).not.toHaveProperty('fitYAxisToData');
     });
 
+    it('persists lineInterpolation on line and stacked line tiles only', async () => {
+      const sourceId = traceSource._id.toString();
+      const connectionId = connection._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+      const select = [
+        { aggFn: 'count' as const, where: '', whereLanguage: 'sql' as const },
+      ];
+      const configs = [
+        { displayType: 'line', sourceId, select, lineInterpolation: 'step' },
+        {
+          displayType: 'stacked_line',
+          sourceId,
+          select,
+          lineInterpolation: 'smooth',
+        },
+        {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId,
+          sqlTemplate,
+          lineInterpolation: 'linear',
+        },
+        {
+          configType: 'sql',
+          displayType: 'stacked_line',
+          connectionId,
+          sqlTemplate,
+          lineInterpolation: 'step',
+        },
+        {
+          displayType: 'stacked_bar',
+          sourceId,
+          select,
+          lineInterpolation: 'step',
+        },
+        { displayType: 'line', sourceId, select },
+      ];
+
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'lineInterpolation dashboard',
+          tiles: configs.map((config, i) => ({
+            name: `Tile ${i}`,
+            x: 0,
+            y: i * 3,
+            w: 6,
+            h: 3,
+            config,
+          })),
+          tags: [],
+        })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${createResponse.body.data.id}`,
+      ).expect(200);
+      const tiles: { config: Record<string, unknown> }[] =
+        getResponse.body.data.tiles;
+
+      expect(tiles.map(t => t.config.lineInterpolation)).toEqual([
+        'step',
+        'smooth',
+        'linear',
+        'step',
+        undefined,
+        undefined,
+      ]);
+      expect(tiles[4].config).not.toHaveProperty('lineInterpolation');
+      expect(tiles[5].config).not.toHaveProperty('lineInterpolation');
+    });
+
     it('should return 400 when source IDs do not exist', async () => {
       const nonExistentSourceId = new ObjectId().toString();
       const mockDashboard = createMockDashboard(nonExistentSourceId);
@@ -5530,6 +5602,71 @@ describe('External API v2 Dashboards - new format', () => {
       expect(await Alert.findById(alert._id)).toBeNull();
     });
 
+    it('should delete alert when tile is updated from builder to PromQL config', async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Builder Tile',
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              ],
+              where: '',
+            },
+          },
+        ],
+      });
+      const webhook = await Webhook.create({
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: team._id,
+      });
+      const alert = await Alert.create({
+        team: team._id,
+        dashboard: dashboard._id,
+        tileId,
+        source: AlertSource.TILE,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      });
+
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: tileId,
+              name: 'PromQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                sourceId: promqlSource._id.toString(),
+                expressions: [{ expression: 'up' }],
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(await Alert.findById(alert._id)).toBeNull();
+    });
+
     it('should delete alert when a tile with an alert is removed from the dashboard', async () => {
       const keepTileId = new ObjectId().toString();
       const removeTileId = new ObjectId().toString();
@@ -7183,10 +7320,12 @@ describe('External API v2 Dashboards - new format', () => {
       // check it would persist as a builder tile AND skip the builder-only
       // rules — here a formula referencing a nonexistent series.
       const res = await postTile({
-        configType: 'promql',
+        configType: 'foo',
         formulas: [{ expression: 'C * 2' }],
       }).expect(400);
-      expect(res.body.message).toContain('configType must be "sql" or omitted');
+      expect(res.body.message).toContain(
+        'configType must be "sql", "promql" or omitted',
+      );
     });
 
     it('round-trips formulas on a log/trace event source', async () => {

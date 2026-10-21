@@ -23,6 +23,7 @@ import {
   convertToNumberChartConfig,
   convertToTableChartConfig,
   getAlignedDateRange,
+  getPercentileAggFnLevel,
   Granularity,
   hasPositiveSeriesLimit,
   TIME_SERIES_DISPLAY_TYPE_BY_NAME,
@@ -50,6 +51,10 @@ import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
+import {
+  encodeJsonUrlParamValue,
+  encodeUrlParamValue,
+} from './utils/urlParamEncoding';
 import {
   DEFAULT_SERIES_LIMIT,
   MAX_RENDERED_TIME_CHART_SERIES,
@@ -542,7 +547,7 @@ function inferValueColumns(
   );
 }
 
-function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
+export function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
   return filterColumnMetaByType(meta, [
     JSDataType.String,
     JSDataType.Map,
@@ -659,6 +664,8 @@ export interface LineData {
   displayName: string;
   /** The original result column name this series' values were pulled from. */
   valueColumnName: string;
+  /** The series' raw group-by values, in group column order. */
+  groupValues: unknown[];
   color: string;
   isDashed?: boolean;
 }
@@ -809,6 +816,7 @@ function addResponseToFormattedData({
           previousPeriodKey: `${currentPeriodKey}${PreviousPeriodSuffix}`,
           displayName: keyName,
           valueColumnName,
+          groupValues: groupColumnNames.map(name => row[name]),
           color: applyLogLevelColor
             ? logLevelColor(row[groupColumnNames[0]])
             : undefined,
@@ -1111,16 +1119,11 @@ const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
   }
   // Map rate-based aggregations to their base aggregation
   if (aggFn.endsWith('_rate')) {
-    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
+    return mapV1AggFnToV2(aggFn.replace(/_rate$/, '') as AggFn);
   }
 
   // Map percentiles to quantile
-  if (
-    aggFn === 'p50' ||
-    aggFn === 'p90' ||
-    aggFn === 'p95' ||
-    aggFn === 'p99'
-  ) {
+  if (getPercentileAggFnLevel(aggFn) != null) {
     return 'quantile';
   }
 
@@ -1218,8 +1221,12 @@ export const convertV1ChartConfigToV2 = (
         const metricDataType = z
           .nativeEnum(MetricsDataTypeV2)
           .parse(rawMetricDataType?.toLowerCase());
+        const percentileLevel = getPercentileAggFnLevel(
+          s.aggFn?.replace(/_rate$/, ''),
+        );
         return {
           aggFn: mapV1AggFnToV2(s.aggFn),
+          ...(percentileLevel != null ? { level: percentileLevel } : {}),
           metricType: metricDataType,
           valueExpression: field,
           metricName,
@@ -1380,11 +1387,19 @@ export function buildEventsSearchUrl({
   const from = dateRange[0].getTime();
   const to = dateRange[1].getTime();
 
+  // `where`, `select` and `filters` carry the search page parsers' own encoding
+  // layer under the query string's. When the search page later writes any
+  // other param, nuqs re-renders every value from the once-decoded query string
+  // without escaping newlines, and the browser strips them — so a
+  // single-encoded multi-line `where` comes back with its lines joined.
   const params: Record<string, string> = {
     source: source?.id ?? '',
-    where: where,
+    where: encodeUrlParamValue(where),
     whereLanguage: whereLanguage,
-    filters: JSON.stringify([...(config.filters ?? []), ...additionalFilters]),
+    filters: encodeJsonUrlParamValue([
+      ...(config.filters ?? []),
+      ...additionalFilters,
+    ]),
     isLive: 'false',
     from: from.toString(),
     to: to.toString(),
@@ -1394,7 +1409,7 @@ export function buildEventsSearchUrl({
   if (isMetricChart) {
     params.where = '';
     params.whereLanguage = 'lucene';
-    params.filters = JSON.stringify([]);
+    params.filters = encodeJsonUrlParamValue([]);
     params.source =
       (source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
         ? source.logSourceId
@@ -1405,7 +1420,7 @@ export function buildEventsSearchUrl({
   // eventTableSelect is used for charts that override select (like histograms with count)
   // to preserve the original table's select expression
   if (config.eventTableSelect) {
-    params.select = config.eventTableSelect;
+    params.select = encodeUrlParamValue(config.eventTableSelect);
   }
 
   return `/search?${new URLSearchParams(params).toString()}`;

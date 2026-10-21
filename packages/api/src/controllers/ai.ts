@@ -5,6 +5,7 @@ import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { resolvePercentileAggFn } from '@hyperdx/common-utils/dist/core/utils';
 import {
   AILineTableResponse,
   AssistantLineTableConfigSchema,
@@ -257,16 +258,18 @@ export function getChartConfigFromResolvedConfig(
 
   return {
     displayType: resObject.displayType,
-    select: resObject.select.map(s => ({
-      aggFn: s.aggregationFunction,
-      valueExpression: s.property,
-      ...(s.condition
-        ? {
-            aggCondition: s.condition,
-            aggConditionLanguage: 'sql',
-          }
-        : {}),
-    })),
+    select: resObject.select.map(s =>
+      resolvePercentileAggFn({
+        aggFn: s.aggregationFunction,
+        valueExpression: s.property,
+        ...(s.condition
+          ? {
+              aggCondition: s.condition,
+              aggConditionLanguage: 'sql',
+            }
+          : {}),
+      }),
+    ),
     from: {
       tableName: source.from.tableName,
       databaseName: source.from.databaseName,

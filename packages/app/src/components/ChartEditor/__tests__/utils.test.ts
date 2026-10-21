@@ -140,6 +140,33 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
+  it.each(['sql', 'promql'] as const)(
+    'persists description for a %s config',
+    configType => {
+      const form: ChartEditorFormState = {
+        configType,
+        displayType: DisplayType.Table,
+        sqlTemplate: 'SELECT 1',
+        promqlExpression: 'up',
+        connection: 'conn-1',
+        description: 'What this tile shows.',
+        series: [],
+      };
+      const result = convertFormStateToSavedChartConfig(form, undefined);
+      expect(result).toMatchObject({ description: 'What this tile shows.' });
+    },
+  );
+
+  it('persists description for a builder config', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Line,
+      description: 'What this tile shows.',
+      series: [seriesItem],
+    };
+    const result = convertFormStateToSavedChartConfig(form, logSource);
+    expect(result).toMatchObject({ description: 'What this tile shows.' });
+  });
+
   it('persists backgroundChart for a promql+number config', () => {
     const form: ChartEditorFormState = {
       configType: 'promql',
@@ -2142,6 +2169,31 @@ describe('color round-trip (sql/promql Number tile)', () => {
     ) as RawSqlSavedChartConfig;
     expect(result).toBeDefined();
     expect(result.color).toBeUndefined();
+  });
+});
+
+describe('lineInterpolation round-trip (sql/promql line tile)', () => {
+  it.each([
+    {
+      configType: 'sql' as const,
+      sqlTemplate: 'SELECT count() FROM logs',
+    },
+    { configType: 'promql' as const, promqlExpression: 'up' },
+  ])('preserves lineInterpolation for $configType tiles', fields => {
+    const form: ChartEditorFormState = {
+      ...fields,
+      displayType: DisplayType.Line,
+      connection: 'conn-1',
+      lineInterpolation: 'step',
+      series: [],
+    };
+
+    expect(convertFormStateToSavedChartConfig(form, undefined)).toMatchObject({
+      lineInterpolation: 'step',
+    });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, undefined),
+    ).toMatchObject({ lineInterpolation: 'step' });
   });
 });
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Badge, Group, Text } from '@mantine/core';
+import { Badge } from '@clickhouse/click-ui';
+import { Group, Text } from '@mantine/core';
 
 import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
 import type { AlertsPageItem } from '@/types';
@@ -94,9 +95,7 @@ export function AlertDetailProperties({ alert }: { alert: AlertsPageItem }) {
           <PropertyRow label="Tags" testId="alert-property-tags">
             <Group gap={4}>
               {tags.map(tag => (
-                <Badge key={tag} variant="light" color="gray" size="xs">
-                  {tag}
-                </Badge>
+                <Badge key={tag} size="sm" text={tag} state="neutral" />
               ))}
             </Group>
           </PropertyRow>

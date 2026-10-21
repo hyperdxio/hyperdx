@@ -92,6 +92,34 @@ export type KeyValues = {
   value: string[] | number[];
 };
 
+type AllKeyValuesQuery = {
+  databaseName: string;
+  tableName: string;
+  keyExpressions: string[];
+  maxValuesPerKey?: number;
+  connectionId: string;
+  metadataMVs?: MetadataMaterializedViews;
+  dateRange: [Date, Date];
+  timestampValueExpression: string;
+  signal?: AbortSignal;
+};
+
+/** Yields each promise's value as it resolves, fastest first. */
+async function* inCompletionOrder<T>(
+  promises: Promise<T>[],
+): AsyncGenerator<T, void, undefined> {
+  const pending = new Map(
+    promises.map(
+      (promise, i) => [i, promise.then(value => ({ i, value }))] as const,
+    ),
+  );
+  while (pending.size > 0) {
+    const { i, value } = await Promise.race(pending.values());
+    pending.delete(i);
+    yield value;
+  }
+}
+
 export type MetricNames = {
   names: string[];
   /** True when more names matched than `limit`, so the page is incomplete. */
@@ -2603,50 +2631,74 @@ export class Metadata {
    * Fetches top values for one or more keys from the text index, metadataMV, or the raw table in a
    * single batched query. Falls back to getMapValues when no rollup is available.
    */
-  async getAllKeyValues({
+  async getAllKeyValues(query: AllKeyValuesQuery): Promise<KeyValues[]> {
+    const results = await Promise.all(
+      await this.dispatchAllKeyValueQueries(query),
+    );
+    return results.filter(v => v !== undefined).flat();
+  }
+
+  /**
+   * `getAllKeyValues`, yielding each query's values as soon as it finishes
+   * instead of waiting for the slowest. Every key is served by exactly one
+   * query, so its values arrive in a single yield.
+   */
+  async *streamAllKeyValues(
+    query: AllKeyValuesQuery,
+  ): AsyncGenerator<KeyValues[], void, undefined> {
+    const queries = await this.dispatchAllKeyValueQueries(query);
+    for await (const keyValues of inCompletionOrder(queries)) {
+      if (keyValues?.length) yield keyValues;
+    }
+  }
+
+  /** Starts every query the keys need, without waiting for any to finish. */
+  private async dispatchAllKeyValueQueries({
+    keyExpressions,
+    maxValuesPerKey = 20,
+    ...query
+  }: AllKeyValuesQuery): Promise<Array<Promise<KeyValues[] | undefined>>> {
+    if (keyExpressions.length === 0) return [];
+
+    if (keyExpressions.length <= GET_ALL_KEY_VALUES_CHUNK_SIZE) {
+      return this.dispatchKeyValueQueries({
+        ...query,
+        keyExpressions,
+        maxValuesPerKey,
+      });
+    }
+
+    // A batch that fails to plan is dropped; the others still answer.
+    const batches = await Promise.allSettled(
+      chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
+        this.dispatchKeyValueQueries({
+          ...query,
+          keyExpressions: batch,
+          maxValuesPerKey,
+        }),
+      ),
+    );
+    return batches.filter(v => v.status === 'fulfilled').flatMap(v => v.value);
+  }
+
+  /**
+   * Routes up to `GET_ALL_KEY_VALUES_CHUNK_SIZE` keys to their cheapest
+   * strategy and starts one query per strategy in use.
+   */
+  private async dispatchKeyValueQueries({
     databaseName,
     tableName,
     keyExpressions,
-    maxValuesPerKey = 20,
+    maxValuesPerKey,
     connectionId,
     metadataMVs,
     dateRange,
     timestampValueExpression,
     signal,
-  }: {
-    databaseName: string;
-    tableName: string;
-    keyExpressions: string[];
-    maxValuesPerKey?: number;
-    connectionId: string;
-    metadataMVs?: MetadataMaterializedViews;
-    dateRange: [Date, Date];
-    timestampValueExpression: string;
-    signal?: AbortSignal;
-  }): Promise<KeyValues[]> {
-    if (keyExpressions.length === 0) return [];
-
-    if (keyExpressions.length > GET_ALL_KEY_VALUES_CHUNK_SIZE) {
-      const batched = await Promise.allSettled(
-        chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
-          this.getAllKeyValues({
-            databaseName,
-            tableName,
-            keyExpressions: batch,
-            maxValuesPerKey,
-            connectionId,
-            metadataMVs,
-            dateRange,
-            timestampValueExpression,
-            signal,
-          }),
-        ),
-      );
-      return batched
-        .filter(v => v.status === 'fulfilled')
-        .flatMap(v => v.value);
-    }
-
+  }: AllKeyValuesQuery &
+    Required<Pick<AllKeyValuesQuery, 'maxValuesPerKey'>>): Promise<
+    Array<Promise<KeyValues[] | undefined>>
+  > {
     // Parse all keys into (rollupColumn, rollupKey) pairs
     const parsed = keyExpressions.map(keyExpr => {
       const path = parseKeyPath(keyExpr);
@@ -2795,9 +2847,8 @@ export class Metadata {
     if (rawQueryOptions.length > 0) {
       promises.push(
         // Isolate raw-table failures (timeout, abort, network) the same way
-        // the three sibling strategies do internally, so a single rejection
-        // here doesn't discard already-successful text-index / MV results
-        // when they're aggregated through `Promise.all` below.
+        // the three sibling strategies do internally, so the failure is
+        // logged rather than silently dropped below.
         this.getKeyValues({
           chartConfig: {
             from: {
@@ -2823,11 +2874,10 @@ export class Metadata {
         }),
       );
     }
-    return (await Promise.allSettled(promises))
-      .filter(res => res.status === 'fulfilled')
-      .map(v => v.value)
-      .filter(v => v !== undefined)
-      .flat();
+    // The strategies isolate their own failures; this catches anything that
+    // slips past them, so one rejection can neither discard the others'
+    // results nor go unhandled while sibling batches are still being planned.
+    return promises.map(promise => promise.catch(() => undefined));
   }
 
   async getKeyValues({

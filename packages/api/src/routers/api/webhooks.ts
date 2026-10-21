@@ -491,6 +491,7 @@ router.post(
         thresholdMax: 10,
         value: 7,
         groupKey: 'test-group',
+        groupValues: { group: 'test-group' },
         sourceQuery: 'SeverityText: "error"',
         teamId: teamId.toString(),
         note: 'Test webhook — no runbook',
