@@ -23,6 +23,8 @@ export type ChartQueryResult = Pick<
   'data' | 'meta' | 'rows'
 > & {
   isComplete: boolean;
+  /** PromQL time series only: each series' labels, by series name. */
+  promqlSeriesLabels?: Record<string, Record<string, string>>;
 };
 
 /**

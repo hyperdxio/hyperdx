@@ -192,6 +192,9 @@ jest.mock('@/components/SearchInput/SearchWhereInput', () => ({
   default: () => <div />,
   getStoredLanguage: () => 'lucene',
 }));
+jest.mock('@/components/SearchGroupBy/SearchGroupBySelect', () => ({
+  SearchGroupBySelect: () => <div />,
+}));
 jest.mock('@/components/SearchPageActionBar', () => () => <div />);
 jest.mock('@/components/SearchTotalCountChart', () => () => <div />);
 jest.mock('@/components/Sources/SourceForm', () => ({
@@ -255,6 +258,7 @@ jest.mock('@/utils', () => ({
     jest.fn(),
   ],
   usePrevious: (value: unknown) => value,
+  useWindowSize: () => ({ width: 1200, height: 800 }),
 }));
 
 jest.mock('@tanstack/react-query', () => ({

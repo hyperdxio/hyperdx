@@ -233,6 +233,96 @@ describe('ChartSeriesTooltip', () => {
     expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
+  describe('series filters', () => {
+    const entriesByKey: Record<string, { key: string; value: string }[]> = {
+      error: [{ key: 'SeverityText', value: 'error' }],
+      warn: [
+        { key: 'SeverityText', value: 'warn' },
+        { key: 'ServiceName', value: 'api' },
+      ],
+    };
+    const getSeriesFilters = (dataKey: string | undefined) =>
+      dataKey ? entriesByKey[dataKey] : undefined;
+
+    it('filters on a series and dismisses the tooltip', () => {
+      const onFilterSeries = jest.fn();
+      const onDismiss = jest.fn();
+      renderWithMantine(
+        <ChartSeriesTooltip
+          {...baseProps}
+          activePayload={multiSeriesPayload}
+          getSeriesFilters={getSeriesFilters}
+          onFilterSeries={onFilterSeries}
+          onDismiss={onDismiss}
+        />,
+      );
+
+      fireEvent.click(screen.getByTestId('chart-filter-series-warn'));
+      expect(onFilterSeries).toHaveBeenCalledWith(entriesByKey.warn, 'include');
+      expect(onDismiss).toHaveBeenCalled();
+    });
+
+    it('offers exclude only for a series with one entry', () => {
+      const onFilterSeries = jest.fn();
+      renderWithMantine(
+        <ChartSeriesTooltip
+          {...baseProps}
+          activePayload={multiSeriesPayload}
+          getSeriesFilters={getSeriesFilters}
+          onFilterSeries={onFilterSeries}
+        />,
+      );
+
+      expect(screen.queryByTestId('chart-exclude-series-warn')).toBeNull();
+      fireEvent.click(screen.getByTestId('chart-exclude-series-error'));
+      expect(onFilterSeries).toHaveBeenCalledWith(
+        entriesByKey.error,
+        'exclude',
+      );
+    });
+
+    it('hides the actions for a series without entries, or without a handler', () => {
+      const { unmount } = renderWithMantine(
+        <ChartSeriesTooltip
+          {...baseProps}
+          activePayload={multiSeriesPayload}
+          getSeriesFilters={() => undefined}
+          onFilterSeries={jest.fn()}
+        />,
+      );
+      expect(screen.queryByTestId('chart-filter-series-error')).toBeNull();
+      unmount();
+
+      renderWithMantine(
+        <ChartSeriesTooltip
+          {...baseProps}
+          activePayload={multiSeriesPayload}
+          getSeriesFilters={getSeriesFilters}
+        />,
+      );
+      expect(screen.queryByTestId('chart-filter-series-error')).toBeNull();
+    });
+
+    it('offers the filter actions for a lone series', () => {
+      renderWithMantine(
+        <ChartSeriesTooltip
+          {...baseProps}
+          activePayload={singleSeriesPayload}
+          getSeriesFilters={() => [{ key: 'ServiceName', value: 'api' }]}
+          onFilterSeries={jest.fn()}
+        />,
+      );
+
+      expect(
+        screen.getByTestId('chart-filter-series-count'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId('chart-exclude-series-count'),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId('chart-focus-series-count')).toBeNull();
+    });
+  });
+
   it('renders no tooltip content when every series value is non-finite', () => {
     renderWithMantine(
       <ChartSeriesTooltip

@@ -395,6 +395,7 @@ describe('scanYAxisValueRange', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#a',
   });
 
@@ -417,6 +418,7 @@ describe('computeYAxisBounds', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#a',
   });
 
@@ -836,6 +838,7 @@ describe('getVisibleLineData', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: displayName ?? dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#abcdef',
   });
 
@@ -903,6 +906,7 @@ describe('getSelectedLineData', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: displayName ?? dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#abcdef',
   });
 
@@ -949,6 +953,7 @@ describe('buildActiveClickSeries', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: displayName ?? dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: `#${dataKey}`,
   });
 
@@ -1022,6 +1027,7 @@ describe('buildActiveClickSeries', () => {
       previousPeriodKey: 'a.prev',
       displayName: 'Alpha (previous)',
       valueColumnName: 'a',
+      groupValues: [],
       color: '#a',
       isDashed: true,
     };

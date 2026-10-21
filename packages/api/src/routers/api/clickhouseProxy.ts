@@ -11,6 +11,7 @@ import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { validateRequestHeaders } from '@/middleware/validation';
 import { recordOperationOutcome } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+import { writeProxyBody } from '@/utils/proxyBody';
 import { IPV6_BRACKET_RE, isPrivateIp } from '@/utils/validators';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -261,22 +262,7 @@ const proxyMiddleware: RequestHandler =
           return res.sendStatus(405);
         }
 
-        let body = _req.body;
-        if (_req.headers['content-type'] === 'application/json') {
-          try {
-            body = JSON.stringify(body);
-          } catch (e) {
-            console.error(e);
-          }
-        }
-
-        try {
-          proxyReq.write(body);
-        } catch {
-          console.error(
-            `clickhouseProxy error writing body, body is type ${typeof body}`,
-          );
-        }
+        writeProxyBody(proxyReq, _req);
       },
       proxyRes: (proxyRes, _req, res) => {
         const startedAt = (res as Response).locals?.hdxProxyStartedAt;
