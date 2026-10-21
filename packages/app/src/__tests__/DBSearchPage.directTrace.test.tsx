@@ -255,6 +255,7 @@ jest.mock('@/utils', () => ({
     jest.fn(),
   ],
   usePrevious: (value: unknown) => value,
+  useWindowSize: () => ({ width: 1200, height: 800 }),
 }));
 
 jest.mock('@tanstack/react-query', () => ({

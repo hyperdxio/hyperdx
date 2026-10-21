@@ -506,7 +506,9 @@ export const ExceptionSubpanel = ({
             {
               category: 'exception',
               timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
-              message: `${firstException.type}: ${firstException.value} `,
+              message: [firstException.type, firstException.value]
+                .filter(Boolean)
+                .join(': '),
             },
           ]
         : []),
@@ -541,10 +543,15 @@ export const ExceptionSubpanel = ({
           firstException && (
             <>
               <div>
-                <Text fw="bold" component="span" size="sm" variant="danger">
-                  {firstException.type}:{' '}
-                </Text>
-                <span className="text-muted">{firstException.value}</span>
+                {firstException.type && (
+                  <Text fw="bold" component="span" size="sm" variant="danger">
+                    {firstException.type}
+                  </Text>
+                )}
+                <span className="text-muted">
+                  {firstException.type && firstException.value && ': '}
+                  {firstException.value}
+                </span>
               </div>
 
               {firstException.mechanism && (

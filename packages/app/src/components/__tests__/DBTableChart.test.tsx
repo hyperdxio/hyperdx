@@ -54,6 +54,10 @@ jest.mock('@/hooks/useOnClickLinkBuilder', () => ({
   useOnClickLinkBuilder: jest.fn().mockReturnValue(null),
 }));
 
+jest.mock('@/hooks/useResultColumnFilterKeys', () => ({
+  useResultColumnFilterKeys: jest.fn(() => new Map()),
+}));
+
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );

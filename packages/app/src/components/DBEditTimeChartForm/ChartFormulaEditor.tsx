@@ -5,8 +5,9 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { Badge } from '@clickhouse/click-ui';
 import { validateFormula } from '@hyperdx/common-utils/dist/core/formula';
-import { Badge, TextInput } from '@mantine/core';
+import { TextInput } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
 import { ChartSeriesControls } from '@/components/ChartEditor/ChartSeriesControls';
@@ -81,11 +82,7 @@ export function ChartFormulaEditor({
         onSubmit={onSubmit}
         onRemove={onRemoveFormula}
         onOpenNumberFormat={openNumberFormat}
-        leadingSection={
-          <Badge size="sm" radius="sm" variant="light" color="teal">
-            Formula
-          </Badge>
-        }
+        leadingSection={<Badge size="sm" text="Formula" state="success" />}
       />
       <Controller
         control={control}

@@ -226,6 +226,7 @@ const markedRows = (() => {
   const makeMarkers = (base: number): TTimelineSpanEventMarker[] =>
     [0, 20, 45, 80].map((offset, idx) => ({
       timestamp: base + offset,
+      epochMs: Date.UTC(2024, 0, 1) + base + offset,
       name: `span.event.${idx}`,
       attributes: {
         'event.index': idx,

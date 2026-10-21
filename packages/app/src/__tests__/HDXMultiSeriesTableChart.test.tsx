@@ -566,4 +566,83 @@ describe('HDXMultiSeriesTableChart <Table>', () => {
       });
     });
   });
+
+  describe('cell filter actions', () => {
+    const filterColumns = [
+      { ...baseColumns[0], filterKey: 'ServiceName' },
+      baseColumns[1],
+      {
+        id: 'attrs',
+        dataKey: 'Attrs',
+        displayName: 'Attrs',
+        filterKey: 'Attrs',
+      },
+    ];
+    const filterData = [{ ServiceName: 'web', Count: 10, Attrs: { a: '1' } }];
+    const renderTable = (onCellFilter = jest.fn()) =>
+      renderWithMantine(
+        <Table
+          data={filterData}
+          columns={filterColumns}
+          onCellFilter={onCellFilter}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+    it('excludes a value by its column filter key', async () => {
+      const onCellFilter = jest.fn();
+      renderTable(onCellFilter);
+
+      await userEvent.hover(screen.getByText('web'));
+      await userEvent.click(
+        await screen.findByRole('button', { name: 'Exclude this value' }),
+      );
+
+      expect(onCellFilter).toHaveBeenCalledWith(
+        'ServiceName',
+        'web',
+        'exclude',
+      );
+    });
+
+    it("keeps row-action links' accessible name when cells are filterable", () => {
+      renderWithMantine(
+        <Table
+          data={filterData}
+          columns={filterColumns}
+          onCellFilter={jest.fn()}
+          getRowAction={() => ({
+            url: '/search?q=web',
+            description: 'Search HyperDX Logs',
+          })}
+          sorting={[]}
+          onSortingChange={() => {}}
+        />,
+      );
+
+      expect(screen.getByRole('link', { name: 'web' })).toBeInTheDocument();
+    });
+
+    it('offers no actions on columns without a filter key', async () => {
+      renderTable();
+
+      await userEvent.hover(screen.getByText('10'));
+
+      // The popover opens through a transition, so wait it out
+      await expect(
+        screen.findByRole('button', { name: 'Copy field value' }),
+      ).rejects.toThrow();
+    });
+
+    it('offers no actions on Map values', async () => {
+      renderTable();
+
+      await userEvent.hover(screen.getByText('{"a":"1"}'));
+
+      await expect(
+        screen.findByRole('button', { name: 'Copy field value' }),
+      ).rejects.toThrow();
+    });
+  });
 });

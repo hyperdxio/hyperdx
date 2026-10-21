@@ -1298,6 +1298,7 @@ const Tile = ({
                             });
                           }
                     }
+                    onFilter={onFilter}
                   />
                 )}
               {effectiveQueriedConfig?.displayType === DisplayType.Table && (
@@ -1321,6 +1322,7 @@ const Tile = ({
                             })
                         : undefined
                     }
+                    onFilter={onFilter}
                   />
                 </Box>
               )}
@@ -1500,6 +1502,7 @@ const Tile = ({
       tileVariables,
       variableNames,
       searchRowContext,
+      onFilter,
     ],
   );
 
