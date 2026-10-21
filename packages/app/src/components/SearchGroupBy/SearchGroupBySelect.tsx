@@ -6,12 +6,13 @@ import {
   Group,
   Popover,
   SegmentedControl,
-  Text,
   TextInput,
-  UnstyledButton,
 } from '@mantine/core';
-import { IconChevronDown } from '@tabler/icons-react';
 
+import {
+  fieldListSummary,
+  SplitValueButton,
+} from '@/components/SplitValueButton/SplitValueButton';
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 
 import { GroupByFieldList } from './GroupByFieldList';
@@ -23,15 +24,7 @@ import {
 } from './searchGroupBy';
 import { useGroupByKeyOptions } from './useGroupByKeyOptions';
 
-import classes from './SearchGroupBySelect.module.scss';
-
 type Mode = 'fields' | 'sql';
-
-function triggerLabel(fields: string[]) {
-  if (fields.length === 0) return 'none';
-  if (fields.length === 1) return fields[0];
-  return `${fields.length} fields`;
-}
 
 export function SearchGroupBySelect({
   source,
@@ -112,8 +105,6 @@ export function SearchGroupBySelect({
       prev.includes(field) ? prev.filter(f => f !== field) : [...prev, field],
     );
 
-  const label = triggerLabel(appliedFields);
-
   return (
     <Popover
       opened={opened}
@@ -123,29 +114,16 @@ export function SearchGroupBySelect({
       shadow="md"
       width={420}
     >
-      <div className={classes.control}>
-        <Text size="xs" fw={500} className={classes.label}>
-          Group by
-        </Text>
-        <Popover.Target>
-          <UnstyledButton
-            className={classes.target}
-            onClick={() => handleOpenChange(!opened)}
-            data-testid="search-group-by-button"
-            aria-label={`Group by ${label}`}
-          >
-            <Text
-              size="xs"
-              fw={600}
-              className={classes.value}
-              c={value == null ? 'dimmed' : undefined}
-            >
-              {label}
-            </Text>
-            <IconChevronDown size={14} />
-          </UnstyledButton>
-        </Popover.Target>
-      </div>
+      <Popover.Target>
+        <SplitValueButton
+          name="Group by"
+          summary={fieldListSummary(appliedFields)}
+          count={appliedFields.length}
+          dimmed={value == null}
+          onClick={() => handleOpenChange(!opened)}
+          data-testid="search-group-by-button"
+        />
+      </Popover.Target>
       <Popover.Dropdown p="xs" data-testid="search-group-by-dropdown">
         <SegmentedControl
           fullWidth
