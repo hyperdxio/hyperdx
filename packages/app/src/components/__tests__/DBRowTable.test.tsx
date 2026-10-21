@@ -1,18 +1,27 @@
 import { Provider } from 'jotai';
-import type { ReactElement } from 'react';
-import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import type { ComponentProps, ReactElement } from 'react';
+import {
+  type BuilderChartConfigWithDateRange,
+  SourceKind,
+  type TLogSource,
+} from '@hyperdx/common-utils/dist/types';
 import { renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+import { RowSidePanelContext } from '@/components/DBRowSidePanel';
 import {
   appendSelectWithAdditionalKeys,
   getPersistedBlockColumns,
+  getSeverityNumberSelect,
   RawLogTable,
+  selectColumnMapWithoutAdditionalKeys,
   useConfigWithAdditionalSelect,
 } from '@/components/DBRowTable';
 import * as useChartConfigModule from '@/hooks/useChartConfig';
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
 import { RowClickAction, UserPreferences } from '@/useUserPreferences';
+import * as utilsModule from '@/utils';
+import * as clipboardModule from '@/utils/clipboard';
 
 const mockSetQueryState = jest.fn();
 
@@ -44,6 +53,54 @@ jest.mock('nuqs', () => ({
 }));
 
 const mockRowWhereResult: RowWhereResult = { where: '', aliasWith: [] };
+
+// jsdom does no layout, so the virtualizer renders no rows. Fake one screen
+// of geometry.
+function fakeOneScreenOfRows() {
+  const VIEWPORT_HEIGHT = 900;
+  let rectSpy: jest.SpyInstance;
+  let clientHeightSpy: jest.SpyInstance;
+
+  beforeAll(() => {
+    rectSpy = jest
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height =
+          this.dataset.testid === 'search-results-table' ? VIEWPORT_HEIGHT : 23;
+        return {
+          width: 580,
+          height,
+          top: 0,
+          left: 0,
+          right: 580,
+          bottom: height,
+          x: 0,
+          y: 0,
+          toJSON: () => ({}),
+        };
+      });
+    clientHeightSpy = jest
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockReturnValue(VIEWPORT_HEIGHT);
+  });
+
+  afterAll(() => {
+    rectSpy.mockRestore();
+    clientHeightSpy.mockRestore();
+  });
+}
+
+const logSource: TLogSource = {
+  id: 'source-id',
+  kind: SourceKind.Log,
+  name: 'logs',
+  connection: 'conn',
+  from: { databaseName: 'default', tableName: 'otel_logs' },
+  timestampValueExpression: 'Timestamp',
+  defaultTableSelectExpression: 'Timestamp, ServiceName, SeverityText, Body',
+  severityTextExpression: 'SeverityText',
+  severityNumberExpression: 'SeverityNumber',
+};
 
 describe('RawLogTable', () => {
   beforeEach(() => {
@@ -275,43 +332,8 @@ describe('RawLogTable', () => {
 
   describe('Row click behavior', () => {
     const ROW_ID = 'Timestamp = 1';
-    const VIEWPORT_HEIGHT = 900;
 
-    // The table is virtualized and jsdom performs no layout, so every element
-    // measures 0px and the virtualizer renders no rows at all. Fake just enough
-    // geometry for one screenful. Same approach as the MetricExplorer tests.
-    let rectSpy: jest.SpyInstance;
-    let clientHeightSpy: jest.SpyInstance;
-
-    beforeAll(() => {
-      rectSpy = jest
-        .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
-        .mockImplementation(function (this: HTMLElement) {
-          const height =
-            this.dataset.testid === 'search-results-table'
-              ? VIEWPORT_HEIGHT
-              : 23;
-          return {
-            width: 580,
-            height,
-            top: 0,
-            left: 0,
-            right: 580,
-            bottom: height,
-            x: 0,
-            y: 0,
-            toJSON: () => ({}),
-          };
-        });
-      clientHeightSpy = jest
-        .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
-        .mockReturnValue(VIEWPORT_HEIGHT);
-    });
-
-    afterAll(() => {
-      rectSpy.mockRestore();
-      clientHeightSpy.mockRestore();
-    });
+    fakeOneScreenOfRows();
 
     const baseProps = {
       displayedColumns: ['col1'],
@@ -532,6 +554,143 @@ describe('RawLogTable', () => {
       expect(
         screen.queryByTestId(`expanded-row-${ROW_ID}`),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Level cell', () => {
+    fakeOneScreenOfRows();
+
+    const onPropertyAddClick = jest.fn();
+    const renderLevelTable = (
+      row: Record<string, unknown>,
+      displayedColumns: string[],
+      props: Partial<ComponentProps<typeof RawLogTable>> = {},
+    ) =>
+      renderWithMantine(
+        <RowSidePanelContext value={{ onPropertyAddClick }}>
+          <RawLogTable
+            displayedColumns={displayedColumns}
+            rows={[row]}
+            dedupRows={false}
+            generateRowId={() => mockRowWhereResult}
+            columnTypeMap={new Map()}
+            source={logSource}
+            {...props}
+          />
+        </RowSidePanelContext>,
+      );
+
+    it('labels and colors from the number but copies and filters on the stored text', async () => {
+      const copyText = jest
+        .spyOn(clipboardModule, 'copyTextToClipboard')
+        .mockResolvedValue(true);
+      renderLevelTable(
+        { SeverityText: 'info', __hyperdx_severity_number: 17 },
+        ['SeverityText'],
+      );
+
+      const cell = await screen.findByText('ERROR (info)');
+      expect(cell.getAttribute('style')).toContain('red');
+      await userEvent.hover(cell);
+      await userEvent.click(await screen.findByLabelText('Copy field value'));
+      await userEvent.click(screen.getByLabelText('Exclude this value'));
+
+      expect(copyText).toHaveBeenCalledWith('info');
+      expect(onPropertyAddClick).toHaveBeenCalledWith(
+        'SeverityText',
+        'info',
+        'exclude',
+      );
+      copyText.mockRestore();
+    });
+
+    // Inference alone would pick ServiceName, the only column with level text.
+    it.each([
+      ['', 17, 'ERROR'],
+      [null, 21, 'FATAL'],
+    ])(
+      'labels a number-only row (text %p) in the severity text column',
+      async (text, severityNumber, label) => {
+        renderLevelTable(
+          {
+            ServiceName: 'tracer',
+            SeverityText: text,
+            __hyperdx_severity_number: severityNumber,
+          },
+          ['ServiceName', 'SeverityText'],
+        );
+
+        expect(
+          (await screen.findByText(label)).getAttribute('style'),
+        ).toContain('red');
+        expect(screen.getByText('tracer').getAttribute('style')).toBeNull();
+      },
+    );
+
+    it('keeps the inferred level column without the hidden severity number', async () => {
+      renderLevelTable({ ServiceName: 'tracer', SeverityText: '' }, [
+        'ServiceName',
+        'SeverityText',
+      ]);
+
+      expect(
+        (await screen.findByText('tracer')).getAttribute('style'),
+      ).not.toBeNull();
+    });
+
+    it.each([
+      // A live-tail placeholder can keep the number after the select dropped
+      // the severity text column.
+      [
+        'an inferred level column that is not the severity text',
+        { lvl: 'info', __hyperdx_severity_number: 17 },
+        ['lvl'],
+        'info',
+      ],
+      [
+        'NULL text next to an unspecified number',
+        { SeverityText: null, __hyperdx_severity_number: 0 },
+        ['SeverityText'],
+        'null',
+      ],
+    ])('shows the stored text for %s', async (_name, row, columns, text) => {
+      renderLevelTable(row, columns);
+
+      expect(await screen.findByText(text)).toBeInTheDocument();
+    });
+
+    it('colors an aliased severity text column, as on the patterns table', async () => {
+      renderLevelTable(
+        { level: '', __hyperdx_severity_number: 13 },
+        ['level'],
+        {
+          source: undefined,
+          severityTextColumn: 'level',
+        },
+      );
+
+      expect(await screen.findByText('WARN')).toBeInTheDocument();
+    });
+
+    it.each([
+      [{ level: 'info', __hyperdx_severity_number: 17 }, 'error'],
+      [{ level: 'warn' }, 'warn'],
+    ])('colors the pattern trend of %p as %p', async (row, level) => {
+      const logLevelColor = jest.spyOn(utilsModule, 'logLevelColor');
+      renderLevelTable(
+        {
+          ...row,
+          __hdx_pattern_trend: {
+            data: [],
+            dateRange: [new Date(0), new Date(1)],
+          },
+        },
+        ['__hdx_pattern_trend'],
+        { source: undefined },
+      );
+
+      await waitFor(() => expect(logLevelColor).toHaveBeenCalledWith(level));
+      logLevelColor.mockRestore();
     });
   });
 
@@ -983,5 +1142,235 @@ describe('useConfigWithAdditionalSelect', () => {
       'Timestamp,ServiceName,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp)',
     );
     expect(result.current?.rowKeyColumns).toBeUndefined();
+  });
+});
+
+describe('getSeverityNumberSelect', () => {
+  const select = 'Timestamp, ServiceName, SeverityText, Body';
+  const tableColumns = [
+    { name: 'SeverityNumber', type: 'UInt8', default_type: '' },
+  ];
+  const ITEM = 'SeverityNumber AS __hyperdx_severity_number';
+
+  type Overrides = Partial<Parameters<typeof getSeverityNumberSelect>[0]>;
+
+  it.each<[string, Overrides]>([
+    ['a plain select', {}],
+    [
+      'a known columns list with the column',
+      {
+        source: {
+          ...logSource,
+          knownColumnsListExpression: 'Timestamp, SeverityText, SeverityNumber',
+        },
+      },
+    ],
+    [
+      'a pattern select with the aliased text',
+      {
+        config: {
+          select: 'Body as __hdx_pattern_field,SeverityText as __hdx_level',
+        },
+        severityTextAlias: '__hdx_level',
+      },
+    ],
+  ])('selects the number for %s', (_name, overrides) => {
+    expect(
+      getSeverityNumberSelect({
+        source: logSource,
+        config: { select },
+        tableColumns,
+        ...overrides,
+      }),
+    ).toBe(ITEM);
+  });
+
+  it.each<[string, Overrides]>([
+    [
+      'no severity number expression',
+      { source: { ...logSource, severityNumberExpression: undefined } },
+    ],
+    ['a select without the severity text', { config: { select: 'Body' } }],
+    ['an aliased severity text', { config: { select: 'SeverityText AS lvl' } }],
+    [
+      'a DISTINCT select',
+      { config: { select: 'DISTINCT Timestamp, SeverityText, Body' } },
+    ],
+    ['a grouped select', { config: { select, groupBy: 'SeverityText' } }],
+    [
+      'a known columns list without the column',
+      {
+        source: {
+          ...logSource,
+          knownColumnsListExpression: 'Timestamp, SeverityText, Body',
+        },
+      },
+    ],
+    [
+      'a user item aliased to the column name',
+      {
+        config: { select: `${select}, LogAttributes['sev'] AS SeverityNumber` },
+      },
+    ],
+    ['a missing column', { tableColumns: [] }],
+    [
+      'a String column',
+      {
+        tableColumns: [
+          { name: 'SeverityNumber', type: 'String', default_type: '' },
+        ],
+      },
+    ],
+    [
+      'an ALIAS column',
+      {
+        tableColumns: [
+          { name: 'SeverityNumber', type: 'UInt8', default_type: 'ALIAS' },
+        ],
+      },
+    ],
+    [
+      'an expression rather than a column',
+      {
+        source: {
+          ...logSource,
+          severityNumberExpression: "toUInt8(LogAttributes['severity'])",
+        },
+      },
+    ],
+    [
+      'a pattern select without the aliased severity text',
+      { config: { select }, severityTextAlias: '__hdx_level' },
+    ],
+  ])('skips %s', (_name, overrides) => {
+    expect(
+      getSeverityNumberSelect({
+        source: logSource,
+        config: { select },
+        tableColumns,
+        ...overrides,
+      }),
+    ).toBeUndefined();
+  });
+});
+
+describe('useConfigWithAdditionalSelect with a severity number source', () => {
+  const config: BuilderChartConfigWithDateRange = {
+    connection: 'conn',
+    from: { databaseName: 'default', tableName: 'otel_logs' },
+    select: 'Timestamp, ServiceName, SeverityText, Body',
+    where: '',
+    whereLanguage: 'sql',
+    timestampValueExpression: 'Timestamp',
+    dateRange: [new Date(0), new Date(1)],
+  };
+  const KEYS = 'Timestamp,ServiceName,SeverityText,Body,toDate(Timestamp)';
+
+  beforeEach(() => {
+    mockUseTableMetadata.mockReturnValue({
+      data: {
+        primary_key: 'Timestamp',
+        partition_key: 'toDate(Timestamp)',
+        engine_full: 'MergeTree ORDER BY Timestamp',
+      },
+    });
+    mockUseColumns.mockReturnValue({
+      data: [{ name: 'SeverityNumber', type: 'UInt8' }],
+      isLoading: false,
+    });
+  });
+
+  afterEach(() => {
+    mockUseTableMetadata.mockReset();
+    mockUseColumns.mockReset();
+  });
+
+  it('appends the number last as a hidden column', () => {
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id', {
+        severityNumberSource: logSource,
+      }),
+    );
+
+    expect(result.current?.select).toBe(
+      `${KEYS},SeverityNumber AS __hyperdx_severity_number`,
+    );
+    expect(result.current?.additionalKeysLength).toBe(1);
+  });
+
+  it('leaves the select alone without the option', () => {
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id'),
+    );
+
+    expect(result.current?.select).toBe(KEYS);
+    expect(result.current?.additionalKeysLength).toBe(1);
+  });
+
+  it('loads the column types for a query without a source id', () => {
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(
+        { ...config, select: 'Body as p,SeverityText as __hdx_level' },
+        undefined,
+        { severityNumberSource: logSource, severityTextAlias: '__hdx_level' },
+      ),
+    );
+
+    expect(mockUseColumns).toHaveBeenCalledWith(expect.anything(), {
+      enabled: true,
+      retry: 1,
+    });
+    expect(result.current?.select).toMatch(
+      /,SeverityNumber AS __hyperdx_severity_number$/,
+    );
+  });
+
+  // A failing lookup started by another observer keeps the default retries.
+  it('stops waiting for the column types after the first failure', () => {
+    mockUseColumns.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      failureCount: 1,
+    });
+
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id', {
+        severityNumberSource: logSource,
+      }),
+    );
+
+    expect(result.current?.select).toBe(KEYS);
+  });
+
+  it('waits for the column types before building the select', () => {
+    mockUseColumns.mockReturnValue({ data: undefined, isLoading: true });
+
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id', {
+        severityNumberSource: logSource,
+      }),
+    );
+
+    expect(result.current).toBeUndefined();
+  });
+});
+
+describe('selectColumnMapWithoutAdditionalKeys', () => {
+  const meta = [
+    { name: 'Body', type: 'String' },
+    { name: 'Timestamp', type: 'DateTime64(9)' },
+  ];
+
+  it('hides the severity number whether or not the result carries it', () => {
+    const withNumber = [
+      ...meta,
+      { name: '__hyperdx_severity_number', type: 'UInt8' },
+    ];
+    expect([...selectColumnMapWithoutAdditionalKeys(meta, 1).keys()]).toEqual([
+      'Body',
+    ]);
+    expect([
+      ...selectColumnMapWithoutAdditionalKeys(withNumber, 1).keys(),
+    ]).toEqual(['Body']);
   });
 });

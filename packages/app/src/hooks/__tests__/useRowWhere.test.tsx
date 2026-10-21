@@ -604,6 +604,44 @@ describe('useRowWhere', () => {
     ]);
   });
 
+  describe('hidden severity number', () => {
+    const meta: ColumnMetaType[] = [
+      { name: 'id', type: 'String' },
+      { name: '__hyperdx_severity_number', type: 'UInt8' },
+    ];
+    const row = { id: '123', __hyperdx_severity_number: 17 };
+
+    // An empty map is what chSqlToAliasMap returns when parsing fails.
+    it('stays out of the where clause without an alias map', () => {
+      const { result } = renderHook(() => useRowWhere({ meta, aliasMap: {} }));
+
+      expect(result.current(row)).toEqual({ where: "id='123'", aliasWith: [] });
+    });
+
+    it('stays out of the alias WITH clauses', () => {
+      const { result } = renderHook(() =>
+        useRowWhere({
+          meta,
+          aliasMap: {
+            id: 'users.id',
+            __hyperdx_severity_number: 'SeverityNumber',
+          },
+        }),
+      );
+
+      expect(result.current(row)).toEqual({
+        where: "users.id='123'",
+        aliasWith: [
+          {
+            name: 'id',
+            sql: { sql: 'users.id', params: {} },
+            isSubquery: false,
+          },
+        ],
+      });
+    });
+  });
+
   it('should memoize the column map', () => {
     const meta: ColumnMetaType[] = [{ name: 'id', type: 'String' }];
 

@@ -1,7 +1,7 @@
 import React from 'react';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
-import { act, render } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 
 // Write-through in-memory nuqs so a real click *sequence* can be replayed: each
 // setter updates the store and re-renders every subscribed hook, the way a URL
@@ -63,6 +63,7 @@ const mockRow = {
   __hdx_timestamp: 1700000000,
   __hdx_body: 'a log line',
   __hdx_severity_text: 'info',
+  __hdx_severity_number: 17,
 };
 
 jest.mock('../DBRowDataPanel', () => ({
@@ -155,7 +156,6 @@ jest.mock('../SidePanelBreadcrumbs', () => ({
   __esModule: true,
   default: () => null,
 }));
-jest.mock('../LogLevel', () => ({ __esModule: true, default: () => null }));
 jest.mock('../ServiceMap/ServiceMapSidePanel', () => ({
   __esModule: true,
   default: () => null,
@@ -279,5 +279,12 @@ describe('DBRowSidePanelInner — remembered tab across a surrounding-context dr
     // A cross-source jump (e.g. "View Trace") targets its own tab and must win.
     act(() => mockTabBarProps.current.onClick?.(Tab.Overview));
     expect(activeTab()).toBe(Tab.Overview);
+  });
+});
+
+describe('DBRowSidePanelInner severity badge', () => {
+  it('labels the badge from the severity number', () => {
+    renderPanel('row-1');
+    expect(screen.getByText('ERROR (info)')).toBeInTheDocument();
   });
 });

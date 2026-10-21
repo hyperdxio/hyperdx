@@ -8,7 +8,7 @@ import React, {
 } from 'react';
 import cx from 'classnames';
 import { formatDistance } from 'date-fns';
-import { isString } from 'lodash';
+import { escapeRegExp, isString } from 'lodash';
 import curry from 'lodash/curry';
 import ms from 'ms';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -23,12 +23,14 @@ import {
 import {
   chSqlToAliasMap,
   ClickHouseQueryError,
+  ColumnMeta,
   ColumnMetaType,
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   isJSDataTypeJSONStringifiable,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { parseSeverityNumber } from '@hyperdx/common-utils/dist/core/severity';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DENOISE_NOISE_THRESHOLD,
@@ -36,6 +38,7 @@ import {
 } from '@hyperdx/common-utils/dist/drain';
 import {
   BuilderChartConfigWithDateRange,
+  isLogSource,
   SelectList,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -78,6 +81,7 @@ import {
   useRenderedSqlChartConfig,
 } from '@/hooks/useChartConfig';
 import { CsvColumn, useCsvExport } from '@/hooks/useCsvExport';
+import { getSelectableSeverityNumberExpression } from '@/hooks/useMaterializedAliasColumnsOption';
 import { useColumns, useTableMetadata } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
@@ -104,6 +108,7 @@ import {
 import {
   getChartColorInfo,
   getLogLevelClass,
+  getLogSeverityLevel,
   logLevelColor,
   useLocalStorage,
   usePrevious,
@@ -389,6 +394,7 @@ export const RawLogTable = memo(
     getRowWhere,
     variant = 'default',
     onRemoveColumn,
+    severityTextColumn: severityTextColumnProp,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -432,6 +438,9 @@ export const RawLogTable = memo(
     getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
     onRemoveColumn?: (column: string) => void;
+    // The column holding the severity text when it isn't the source's
+    // severityTextExpression, e.g. an aliased column.
+    severityTextColumn?: string;
   }) => {
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
@@ -551,9 +560,26 @@ export const RawLogTable = memo(
       }
     }, [isLive, prevIsLive, tableContainerRef]);
 
+    // The inferred level column can be another text column (a ServiceName
+    // like "tracer"), which must not take the number's color.
+    const severityTextColumn =
+      severityTextColumnProp ??
+      (source != null && isLogSource(source)
+        ? source.severityTextExpression?.trim()
+        : undefined);
+
     const logLevelColumn = useMemo(() => {
+      // Inference skips empty text, so it would miss the level column on a
+      // page of number-only rows.
+      if (
+        severityTextColumn != null &&
+        displayedColumns.includes(severityTextColumn) &&
+        dedupedRows.some(row => INTERNAL_ROW_FIELDS.SEVERITY_NUMBER in row)
+      ) {
+        return severityTextColumn;
+      }
       return inferLogLevelColumn(dedupedRows);
-    }, [dedupedRows]);
+    }, [dedupedRows, displayedColumns, severityTextColumn]);
 
     const csvColumns = useMemo<CsvColumn[]>(
       () =>
@@ -682,7 +708,15 @@ export const RawLogTable = memo(
                     <PatternTrendChart
                       data={value.data}
                       dateRange={value.dateRange}
-                      color={logLevelColor(info.row.original.level)}
+                      color={logLevelColor(
+                        getLogSeverityLevel({
+                          severityNumber:
+                            info.row.original[
+                              INTERNAL_ROW_FIELDS.SEVERITY_NUMBER
+                            ],
+                          severityText: info.row.original.level,
+                        }),
+                      )}
                     />
                   </div>
                 );
@@ -700,7 +734,23 @@ export const RawLogTable = memo(
               const strValue = typeof value === 'string' ? value : `${value}`;
 
               if (column === logLevelColumn) {
-                return <LogLevel level={strValue} />;
+                const severityNumber =
+                  column === severityTextColumn
+                    ? info.row.original[INTERNAL_ROW_FIELDS.SEVERITY_NUMBER]
+                    : undefined;
+                // A NULL text next to a valid number is a number-only row,
+                // not the text "null".
+                return (
+                  <LogLevel
+                    level={
+                      value == null &&
+                      parseSeverityNumber(severityNumber) != null
+                        ? ''
+                        : strValue
+                    }
+                    severityNumber={severityNumber}
+                  />
+                );
               }
 
               const maxLen = wrapLinesEnabled
@@ -750,6 +800,7 @@ export const RawLogTable = memo(
         columnNameMap,
         columnTypeMap,
         logLevelColumn,
+        severityTextColumn,
         expandedRows,
         toggleRowExpansion,
         showExpandButton,
@@ -1543,6 +1594,70 @@ export function getPersistedBlockColumns(engineFull: string): string[] {
   return columns;
 }
 
+/**
+ * The `<expr> AS __hyperdx_severity_number` select item for the level cell, or
+ * undefined. It needs the severity text in the select and one stored numeric
+ * column, so unknown data can't fail the query or make it costly, and skips
+ * DISTINCT and GROUP BY, where an extra column changes the rows.
+ */
+export function getSeverityNumberSelect({
+  source,
+  config,
+  tableColumns,
+  severityTextAlias,
+}: {
+  source: TSource;
+  config: Pick<BuilderChartConfigWithDateRange, 'select' | 'groupBy'>;
+  tableColumns:
+    | Pick<ColumnMeta, 'name' | 'type' | 'default_type'>[]
+    | undefined;
+  // Set when the select shows the text as `<text> as <alias>` instead.
+  severityTextAlias?: string;
+}): string | undefined {
+  if (!isLogSource(source)) return undefined;
+  const numberExpr = getSelectableSeverityNumberExpression(source);
+  const textExpr = source.severityTextExpression?.trim();
+  const { select, groupBy } = config;
+  if (
+    !numberExpr ||
+    !textExpr ||
+    typeof select !== 'string' ||
+    /^\s*distinct\b/i.test(select) ||
+    (groupBy != null && groupBy.length > 0)
+  ) {
+    return undefined;
+  }
+  const selectItems = splitAndTrimWithBracket(select);
+  // ClickHouse resolves a select alias before a table column, so a user item
+  // aliased to the column's name would replace the column checked below.
+  const userAlias = new RegExp(
+    `\\bas\\s+[\`"]?${escapeRegExp(numberExpr)}[\`"]?$`,
+    'i',
+  );
+  const textItem =
+    severityTextAlias == null
+      ? textExpr
+      : `${textExpr} as ${severityTextAlias}`;
+  if (
+    !selectItems.includes(textItem) ||
+    selectItems.some(item => userAlias.test(item))
+  ) {
+    return undefined;
+  }
+  const column = tableColumns?.find(c => c.name === numberExpr);
+  // An ALIAS column is computed on every read and an EPHEMERAL one can't be
+  // selected at all.
+  if (
+    column == null ||
+    column.default_type === 'ALIAS' ||
+    column.default_type === 'EPHEMERAL' ||
+    convertCHDataTypeToJSType(column.type) !== JSDataType.Number
+  ) {
+    return undefined;
+  }
+  return `${numberExpr} AS ${INTERNAL_ROW_FIELDS.SEVERITY_NUMBER}`;
+}
+
 function getSelectLength(select: SelectList): number {
   if (typeof select === 'string') {
     return select.split(',').filter(s => s.trim().length > 0).length;
@@ -1554,7 +1669,16 @@ function getSelectLength(select: SelectList): number {
 export function useConfigWithAdditionalSelect(
   config: BuilderChartConfigWithDateRange,
   sourceId?: string,
+  {
+    severityNumberSource,
+    severityTextAlias,
+  }: { severityNumberSource?: TSource; severityTextAlias?: string } = {},
 ) {
+  const wantsSeverityNumber =
+    severityNumberSource != null &&
+    isLogSource(severityNumberSource) &&
+    !!severityNumberSource.severityNumberExpression;
+
   const { data: tableMetadata } = useTableMetadata({
     databaseName: config.from.databaseName,
     tableName: config.from.tableName,
@@ -1562,21 +1686,37 @@ export function useConfigWithAdditionalSelect(
   });
 
   // Only check for row-ID columns for row-level queries (sourceId present).
-  // Skip for aggregate queries (e.g. patterns) where extra keys are irrelevant.
-  const { data: columns } = useColumns(
+  // Skip for aggregate queries (e.g. patterns) where extra keys are irrelevant,
+  // unless the severity number's column type is needed.
+  const {
+    data: columns,
+    isLoading: isColumnsLoading,
+    failureCount: columnsFailureCount,
+  } = useColumns(
     {
       databaseName: config.from.databaseName,
       tableName: config.from.tableName,
       connectionId: config.connection,
     },
-    { enabled: !!sourceId },
+    {
+      enabled: !!sourceId || wantsSeverityNumber,
+      ...(wantsSeverityNumber ? { retry: 1 } : {}),
+    },
   );
+  // React Query keeps the retry option of whichever observer started the fetch
+  // (the search page uses the default), so stop waiting after the first failure.
+  const isWaitingForColumns =
+    wantsSeverityNumber && isColumnsLoading && !columnsFailureCount;
 
   const primaryKey = tableMetadata?.primary_key;
   const partitionKey = tableMetadata?.partition_key;
 
   return useMemo(() => {
     if (primaryKey == null || partitionKey == null) {
+      return undefined;
+    }
+    // Wait for the column types so the query isn't rerun with a new select.
+    if (isWaitingForColumns) {
       return undefined;
     }
 
@@ -1619,11 +1759,39 @@ export function useConfigWithAdditionalSelect(
         ])
       : undefined;
 
-    return { ...config, select, additionalKeysLength, rowKeyColumns };
-  }, [primaryKey, partitionKey, config, tableMetadata, columns, sourceId]);
+    const severityNumberSelect =
+      severityNumberSource != null && typeof select === 'string'
+        ? getSeverityNumberSelect({
+            source: severityNumberSource,
+            config,
+            tableColumns: columns,
+            severityTextAlias,
+          })
+        : undefined;
+
+    return {
+      ...config,
+      select:
+        severityNumberSelect == null
+          ? select
+          : `${select},${severityNumberSelect}`,
+      additionalKeysLength,
+      rowKeyColumns,
+    };
+  }, [
+    primaryKey,
+    partitionKey,
+    config,
+    tableMetadata,
+    columns,
+    isWaitingForColumns,
+    sourceId,
+    severityNumberSource,
+    severityTextAlias,
+  ]);
 }
 
-function selectColumnMapWithoutAdditionalKeys(
+export function selectColumnMapWithoutAdditionalKeys(
   selectMeta: ColumnMetaType[] | undefined,
   additionalKeysLength: number | undefined,
 ): Map<
@@ -1636,7 +1804,15 @@ function selectColumnMapWithoutAdditionalKeys(
   if (selectMeta == null || additionalKeysLength == null) {
     return new Map();
   }
-  const sm = selectMeta.slice(0, selectMeta.length - additionalKeysLength);
+  // The severity number is removed by name rather than counted as a key: a
+  // live-tail placeholder can be the previous result, with or without it.
+  const userAndKeyMeta = selectMeta.filter(
+    c => c.name !== INTERNAL_ROW_FIELDS.SEVERITY_NUMBER,
+  );
+  const sm = userAndKeyMeta.slice(
+    0,
+    userAndKeyMeta.length - additionalKeysLength,
+  );
 
   return new Map(
     sm?.map(c => [
@@ -1677,6 +1853,7 @@ function DBSqlRowTableComponent({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
+  colorLevelBySeverityNumber = false,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1710,6 +1887,9 @@ function DBSqlRowTableComponent({
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  // Selects the source's SeverityNumber for the level cell. Opt-in so only the
+  // search page's query changes.
+  colorLevelBySeverityNumber?: boolean;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -1767,7 +1947,19 @@ function DBSqlRowTableComponent({
     return base;
   }, [me, config, orderByArray]);
 
-  const mergedConfig = useConfigWithAdditionalSelect(mergedConfigObj, sourceId);
+  const { data: source, isLoading: isSourceLoading } = useSource({
+    id: sourceId,
+  });
+  const configWithAdditionalSelect = useConfigWithAdditionalSelect(
+    mergedConfigObj,
+    sourceId,
+    { severityNumberSource: colorLevelBySeverityNumber ? source : undefined },
+  );
+  // Wait for the source so the first query isn't rerun with the severity number.
+  const mergedConfig =
+    colorLevelBySeverityNumber && isSourceLoading
+      ? undefined
+      : configWithAdditionalSelect;
 
   const { data, fetchNextPage, hasNextPage, isFetching, isError, error } =
     useOffsetPaginatedQuery(mergedConfig ?? config, {
@@ -1888,7 +2080,6 @@ function DBSqlRowTableComponent({
     }
   }, [data?.meta, onResolvedColumnsChange]);
 
-  const { data: source } = useSource({ id: sourceId });
   const patternColumn = columns[columns.length - 1];
   const groupedPatterns = useGroupedPatterns({
     config,

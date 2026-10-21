@@ -50,6 +50,7 @@ interface Props {
   selectionResetKey?: string;
   onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  colorLevelBySeverityNumber?: boolean;
   // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
   // it. Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
@@ -82,6 +83,7 @@ export default function DBSqlRowTableWithSideBar({
   selectionResetKey,
   onSelectedRowsChange,
   onResolvedColumnsChange,
+  colorLevelBySeverityNumber,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
 }: Props) {
@@ -163,6 +165,7 @@ export default function DBSqlRowTableWithSideBar({
         selectionResetKey={selectionResetKey}
         onSelectedRowsChange={onSelectedRowsChange}
         onResolvedColumnsChange={onResolvedColumnsChange}
+        colorLevelBySeverityNumber={colorLevelBySeverityNumber}
       />
     </RowSidePanelContext>
   );

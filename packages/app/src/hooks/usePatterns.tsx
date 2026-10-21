@@ -1,13 +1,17 @@
 import { useMemo } from 'react';
 import stripAnsi from 'strip-ansi';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
 import { timeBucketByGranularity, toStartOfInterval } from '@/ChartUtils';
 import { useConfigWithAdditionalSelect } from '@/components/DBRowTable';
 import { reconstructTemplate } from '@/components/Patterns/reconstructTemplate';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { INTERNAL_ROW_FIELDS } from '@/hooks/useRowWhere';
 import { getFirstTimestampValueExpression } from '@/source';
 
 // We don't want to load pyodide over and over again, use react query to cache the async instance
@@ -131,6 +135,7 @@ function usePatterns({
   bodyValueExpression,
   levelExpression,
   serviceNameExpression,
+  severityNumberSource,
   enabled = true,
 }: {
   config: BuilderChartConfigWithDateRange;
@@ -138,25 +143,30 @@ function usePatterns({
   bodyValueExpression: string;
   levelExpression?: string;
   serviceNameExpression?: string;
+  severityNumberSource?: TSource;
   enabled?: boolean;
 }) {
-  const configWithPrimaryAndPartitionKey = useConfigWithAdditionalSelect({
-    ...config,
-    // TODO: User-configurable pattern columns and non-pattern/group by columns
-    select: [
-      `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
-      `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
-      ...(levelExpression
-        ? [`${levelExpression} as ${LEVEL_COLUMN_ALIAS}`]
-        : []),
-      ...(serviceNameExpression
-        ? [`${serviceNameExpression} as ${SERVICE_NAME_COLUMN_ALIAS}`]
-        : []),
-    ].join(','),
-    // TODO: Proper sampling
-    orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
-    limit: { limit: samples },
-  });
+  const configWithPrimaryAndPartitionKey = useConfigWithAdditionalSelect(
+    {
+      ...config,
+      // TODO: User-configurable pattern columns and non-pattern/group by columns
+      select: [
+        `${bodyValueExpression} as ${PATTERN_COLUMN_ALIAS}`,
+        `${getFirstTimestampValueExpression(config.timestampValueExpression)} as ${TIMESTAMP_COLUMN_ALIAS}`,
+        ...(levelExpression
+          ? [`${levelExpression} as ${LEVEL_COLUMN_ALIAS}`]
+          : []),
+        ...(serviceNameExpression
+          ? [`${serviceNameExpression} as ${SERVICE_NAME_COLUMN_ALIAS}`]
+          : []),
+      ].join(','),
+      // TODO: Proper sampling
+      orderBy: [{ ordering: 'DESC', valueExpression: 'rand()' }],
+      limit: { limit: samples },
+    },
+    undefined,
+    { severityNumberSource, severityTextAlias: LEVEL_COLUMN_ALIAS },
+  );
 
   const {
     data: sampleRows,
@@ -226,6 +236,7 @@ export function useGroupedPatterns({
   bodyValueExpression,
   levelExpression,
   serviceNameExpression,
+  severityNumberSource,
   totalCount,
   enabled = true,
 }: {
@@ -234,6 +245,8 @@ export function useGroupedPatterns({
   bodyValueExpression: string;
   levelExpression?: string;
   serviceNameExpression?: string;
+  // Adds the source's SeverityNumber to the samples to color pattern levels.
+  severityNumberSource?: TSource;
   totalCount?: number;
   enabled?: boolean;
 }) {
@@ -248,6 +261,7 @@ export function useGroupedPatterns({
     bodyValueExpression,
     levelExpression,
     serviceNameExpression,
+    severityNumberSource,
     enabled,
   });
 
@@ -309,6 +323,12 @@ export function useGroupedPatterns({
         count,
         countStr: `~${count}`,
         level: lastRow?.[LEVEL_COLUMN_ALIAS], // last level is usually representative of the entire pattern set
+        ...(lastRow != null && INTERNAL_ROW_FIELDS.SEVERITY_NUMBER in lastRow
+          ? {
+              [INTERNAL_ROW_FIELDS.SEVERITY_NUMBER]:
+                lastRow[INTERNAL_ROW_FIELDS.SEVERITY_NUMBER],
+            }
+          : {}),
         samples: rows,
         __hdx_pattern_trend: {
           data: Object.entries(bucketCounts).map(([bucket, count]) => ({

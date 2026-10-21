@@ -12,6 +12,7 @@ import { Box } from '@mantine/core';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import {
   getKnownColumnsList,
+  getSelectableSeverityNumberExpression,
   getSelectAllColumnsQuerySettings,
   useSelectAllColumnsQuerySettings,
 } from '@/hooks/useMaterializedAliasColumnsOption';
@@ -35,6 +36,7 @@ export enum ROW_DATA_ALIASES {
   TRACE_ID = '__hdx_trace_id',
   SPAN_ID = '__hdx_span_id',
   SEVERITY_TEXT = '__hdx_severity_text',
+  SEVERITY_NUMBER = '__hdx_severity_number',
   SERVICE_NAME = '__hdx_service_name',
   RESOURCE_ATTRIBUTES = '__hdx_resource_attributes',
   EVENT_ATTRIBUTES = '__hdx_event_attributes',
@@ -97,6 +99,8 @@ export function useRowData({
   // select that instead of `*` when fetching full row data.
   const knownColumns = getKnownColumnsList(source);
 
+  const severityNumberExpr = getSelectableSeverityNumberExpression(source);
+
   const baseConfig = {
     source: source.id,
     connection: source.connection,
@@ -138,6 +142,14 @@ export function useRowData({
             {
               valueExpression: severityTextExpr,
               alias: ROW_DATA_ALIASES.SEVERITY_TEXT,
+            },
+          ]
+        : []),
+      ...(severityNumberExpr
+        ? [
+            {
+              valueExpression: severityNumberExpr,
+              alias: ROW_DATA_ALIASES.SEVERITY_NUMBER,
             },
           ]
         : []),
