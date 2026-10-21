@@ -226,6 +226,10 @@ export const formatNumber = (
     mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
+    // numbro's default lowPrecision abbreviates anything >= 500 (750 -> "0.8k").
+    // numbro rejects lowPrecision without average, which byte forces off below.
+    ...(options.average &&
+      options.output !== 'byte' && { lowPrecision: false }),
     ...(options.output === 'byte' && {
       base: options.decimalBytes ? 'decimal' : 'general',
       spaceSeparated: true,

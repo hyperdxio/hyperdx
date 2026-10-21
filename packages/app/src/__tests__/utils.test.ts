@@ -508,6 +508,22 @@ describe('formatNumber', () => {
       };
       expect(formatNumber(1234567, format)).toBe('1m');
     });
+
+    it('only abbreviates from 1000, not from 500', () => {
+      const format: NumberFormat = {
+        output: 'number',
+        average: true,
+        mantissa: 1,
+      };
+      expect(formatNumber(750, format)).toBe('750.0');
+      expect(formatNumber(1500, format)).toBe('1.5k');
+    });
+
+    it('still formats byte output when average is set', () => {
+      expect(
+        formatNumber(268435456, { output: 'byte', average: true, mantissa: 1 }),
+      ).toBe('256.0 MB');
+    });
   });
 
   describe('numericUnit with data output (byte)', () => {

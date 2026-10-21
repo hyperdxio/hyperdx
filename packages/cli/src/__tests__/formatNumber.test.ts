@@ -18,6 +18,16 @@ describe('axisTickFormatter', () => {
     expect(format?.(1234)).toBe('1k');
   });
 
+  it('does not abbreviate values between 500 and 999', () => {
+    const format = axisTickFormatter({ output: 'number', mantissa: 1 });
+    expect([250, 500, 750, 1000].map(v => format?.(v))).toEqual([
+      '250',
+      '500',
+      '750',
+      '1k',
+    ]);
+  });
+
   it('honors an explicit mantissa instead of always rounding to 0', () => {
     const format = axisTickFormatter({ output: 'number', mantissa: 2 });
     expect(format?.(0.14)).toBe('0.14');
