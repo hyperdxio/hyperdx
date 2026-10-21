@@ -21,6 +21,7 @@ const column = (name: string, type: string): ColumnMeta => ({
 
 const columns = [
   column('ServiceName', 'LowCardinality(String)'),
+  column('Timestamp', 'DateTime64(9)'),
   column('service-name', 'String'),
   column('my-map', 'Map(String, String)'),
 ];
@@ -51,6 +52,11 @@ describe('useClauseFieldOptions', () => {
     mockAllFields(
       [
         { path: ['ServiceName'], type: 'String', jsType: JSDataType.String },
+        {
+          path: ['Timestamp'],
+          type: 'DateTime64(9)',
+          jsType: JSDataType.Date,
+        },
         { path: ['service-name'], type: 'String', jsType: JSDataType.String },
         { path: ['my-map', 'k'], type: 'String', jsType: null },
       ],
@@ -63,6 +69,7 @@ describe('useClauseFieldOptions', () => {
 
     expect(result.current).toEqual([
       'ServiceName',
+      'Timestamp',
       "`my-map`['k']",
       '`service-name`',
     ]);
@@ -75,6 +82,10 @@ describe('useClauseFieldOptions', () => {
       useClauseFieldOptions({ tableConnection: undefined, columns }),
     );
 
-    expect(result.current).toEqual(['ServiceName', '`service-name`']);
+    expect(result.current).toEqual([
+      'ServiceName',
+      'Timestamp',
+      '`service-name`',
+    ]);
   });
 });
