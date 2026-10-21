@@ -1383,6 +1383,7 @@ describe('webhooks router', () => {
         thresholdMax: 10,
         value: 7,
         groupKey: 'test-group',
+        groupValues: { group: 'test-group' },
         sourceQuery: 'SeverityText: "error"',
         note: 'Test webhook — no runbook',
         teamId: expect.any(String),
