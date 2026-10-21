@@ -2,7 +2,16 @@ import { describe, expect, it } from '@jest/globals';
 
 import { NumericUnit } from '@hyperdx/common-utils/dist/types';
 
-import { axisTickFormatter } from '@/shared/formatNumber';
+import { axisTickFormatter, formatNumber } from '@/shared/formatNumber';
+
+describe('formatNumber average', () => {
+  it('moves to the next unit when rounding reaches 1000 of the current one', () => {
+    const format = { output: 'number' as const, average: true };
+    expect(formatNumber(750, format)).toBe('750');
+    expect(formatNumber(999700, format)).toBe('1m');
+    expect(formatNumber(999.6e6, format)).toBe('1b');
+  });
+});
 
 // Mirrors packages/app/src/__tests__/HDXMultiSeriesTimeChart.test.ts's
 // formatAxisTick suite - this file is a documented @source port of that
