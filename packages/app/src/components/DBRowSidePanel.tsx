@@ -206,6 +206,7 @@ function SidePanelHeaderActions({
             size="sm"
             onClick={onClose}
             aria-label="Close"
+            data-testid="side-panel-close"
           >
             <IconX size={16} />
           </ActionIcon>

@@ -196,7 +196,24 @@ setup_cleanup_trap() {
   fi
 }
 
+# macOS privacy blocks Docker's VM (com.docker.virtualization) from Desktop,
+# Documents, and Downloads even when Docker.app has Full Disk Access. A file
+# elsewhere in the home directory still mounts. Stage the bind-mounted
+# ClickHouse files there so the container can start.
+stage_clickhouse_config_if_needed() {
+  local src="$REPO_ROOT/docker/clickhouse/local"
+  if docker run --rm -v "$src/config.xml:/mnt/probe:ro" alpine true >/dev/null 2>&1; then
+    return 0
+  fi
+  local dest="${HOME}/.cache/hyperdx/e2e-clickhouse"
+  mkdir -p "$dest"
+  cp "$src/config.xml" "$src/users.xml" "$src/init-db-e2e.sh" "$dest/"
+  export HDX_CLICKHOUSE_CONFIG_DIR="$dest"
+  echo "Docker cannot mount this checkout. Staged ClickHouse config at $dest"
+}
+
 setup_clickhouse() {
+  stage_clickhouse_config_if_needed
   echo "Starting ClickHouse..."
   docker compose -p "$E2E_PROJECT" -f "$DOCKER_COMPOSE_FILE" up -d ch-server
 
