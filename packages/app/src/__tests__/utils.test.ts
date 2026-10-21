@@ -30,6 +30,7 @@ import {
   parseTimestampToMs,
   resolveConditionalColor,
   sortingStateToOrderByString,
+  splitClauseList,
   stripTrailingSlash,
   useQueryHistory,
   withMapKeyAlias,
@@ -1506,6 +1507,16 @@ describe('isColumnInSelect', () => {
   });
 });
 
+describe('splitClauseList', () => {
+  it('keeps a comma inside a backtick-quoted name', () => {
+    expect(splitClauseList('Timestamp, `a,b`, Body')).toEqual([
+      'Timestamp',
+      '`a,b`',
+      'Body',
+    ]);
+  });
+});
+
 describe('orderByAfterRemovingSelectItem', () => {
   const item = `ResourceAttributes['service.name'] AS "service.name"`;
 
@@ -1533,6 +1544,33 @@ describe('orderByAfterRemovingSelectItem', () => {
     expect(
       orderByAfterRemovingSelectItem('Body', 'Body DESC', 'Timestamp DESC'),
     ).toBe('Body DESC');
+  });
+
+  it('drops only the removed alias from a multi-field sort', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"service.name" ASC, Timestamp DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('Timestamp DESC');
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"http.method" DESC, "service.name" ASC',
+        'Timestamp DESC',
+      ),
+    ).toBe('"http.method" DESC');
+  });
+
+  it('keeps a comma inside a backtick-quoted sort name', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        'upper(Body) AS "message"',
+        '"message" ASC, `a,b` DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('`a,b` DESC');
   });
 });
 
