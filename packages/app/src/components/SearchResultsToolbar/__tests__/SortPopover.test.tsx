@@ -108,6 +108,9 @@ describe('SortPopover', () => {
     expect(editor).toHaveValue(custom);
     fireEvent.click(screen.getByText('Fields'));
     expect(screen.getByTestId('search-sort-custom')).toBeInTheDocument();
+    expect(
+      screen.queryByTestId('search-sort-add-input'),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByText('SQL'));
     fireEvent.change(screen.getByLabelText('ORDER BY'), {
       target: { value: 'Body ASC' },

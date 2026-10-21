@@ -84,8 +84,10 @@ export function SortPopover({
 
   const addKey = (id: string) => {
     const trimmed = id.trim();
-    if (!trimmed || used.has(trimmed)) return;
-    commitKeys([...(keys ?? []), newSortRow(trimmed, true)]);
+    // A clause the field list cannot split, such as `Timestamp DESC NULLS LAST`,
+    // stays intact. Adding a field here would replace the whole clause.
+    if (keys == null || !trimmed || used.has(trimmed)) return;
+    commitKeys([...keys, newSortRow(trimmed, true)]);
     setSearch('');
   };
 
@@ -174,26 +176,28 @@ export function SortPopover({
               </Stack>
             </ScrollArea.Autosize>
           )}
-          <Autocomplete
-            size="xs"
-            placeholder="Add sort"
-            value={search}
-            onChange={next => {
-              if (ignoreNextChangeRef.current) {
-                ignoreNextChangeRef.current = false;
-                return;
-              }
-              setSearch(next);
-            }}
-            data={addOptions}
-            limit={50}
-            onOptionSubmit={id => {
-              ignoreNextChangeRef.current = true;
-              addKey(id);
-            }}
-            comboboxProps={{ withinPortal: false }}
-            data-testid="search-sort-add-input"
-          />
+          {keys != null && (
+            <Autocomplete
+              size="xs"
+              placeholder="Add sort"
+              value={search}
+              onChange={next => {
+                if (ignoreNextChangeRef.current) {
+                  ignoreNextChangeRef.current = false;
+                  return;
+                }
+                setSearch(next);
+              }}
+              data={addOptions}
+              limit={50}
+              onOptionSubmit={id => {
+                ignoreNextChangeRef.current = true;
+                addKey(id);
+              }}
+              comboboxProps={{ withinPortal: false }}
+              data-testid="search-sort-add-input"
+            />
+          )}
         </Stack>
       )}
       renderSql={apply => (

@@ -84,6 +84,18 @@ describe('ColumnsPopover', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('keeps a backtick-quoted name when another column is removed', async () => {
+    const { onApply } = renderPopover({
+      value: 'Timestamp, `a,b`, Body',
+      defaultValue: 'Timestamp',
+    });
+    openPopover();
+    fireEvent.click(await screen.findByLabelText('Remove Body'));
+    expect(screen.getByLabelText('Remove `a,b`')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('search-columns-button-apply'));
+    expect(onApply).toHaveBeenCalledWith('Timestamp, `a,b`', ['Body']);
+  });
+
   it('removes a column and reports it on apply', async () => {
     const { onApply } = renderPopover();
     openPopover();
