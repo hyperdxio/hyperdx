@@ -61,32 +61,33 @@ function SortableColumn({
         opacity: isDragging ? 0.5 : 1,
       }}
     >
-      <Group gap={4} wrap="nowrap" align="flex-start" w="100%">
+      <Group gap={4} wrap="nowrap" align="center" w="100%">
         <ActionIcon
           variant="subtle"
-          size="sm"
+          size="xs"
           aria-label={`Reorder ${label}`}
           style={{ cursor: 'grab', touchAction: 'none', flexShrink: 0 }}
           {...attributes}
           {...listeners}
         >
-          <IconGripVertical size={12} />
+          <IconGripVertical size={14} />
         </ActionIcon>
         <Text
           size="xs"
           ff="monospace"
+          lh={1.5}
           style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}
         >
           {label}
         </Text>
         <ActionIcon
           variant="subtle"
-          size="sm"
+          size="xs"
           onClick={onRemove}
           aria-label={`Remove ${label}`}
           style={{ flexShrink: 0 }}
         >
-          <IconX size={12} />
+          <IconX size={14} />
         </ActionIcon>
       </Group>
     </Box>
