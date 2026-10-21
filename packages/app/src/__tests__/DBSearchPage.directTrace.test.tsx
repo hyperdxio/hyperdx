@@ -192,6 +192,9 @@ jest.mock('@/components/SearchInput/SearchWhereInput', () => ({
   default: () => <div />,
   getStoredLanguage: () => 'lucene',
 }));
+jest.mock('@/components/SearchGroupBy/SearchGroupBySelect', () => ({
+  SearchGroupBySelect: () => <div />,
+}));
 jest.mock('@/components/SearchPageActionBar', () => () => <div />);
 jest.mock('@/components/SearchResultsToolbar/ColumnsPopover', () => ({
   ColumnsPopover: () => <div />,
