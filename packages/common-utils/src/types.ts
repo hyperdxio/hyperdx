@@ -2708,6 +2708,11 @@ export const LogSourceSchema = BaseSourceSchema.extend({
    */
   serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
+  /**
+   * Expression for the numeric OpenTelemetry SeverityNumber (1-24). No default:
+   * many log tables have no such column, so unset must stay distinguishable.
+   */
+  severityNumberExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),

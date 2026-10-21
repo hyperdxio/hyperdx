@@ -101,6 +101,7 @@ async function addOtelDemoSources({
           'Timestamp, ServiceName, SeverityText, Body',
         serviceNameExpression: 'ServiceName',
         severityTextExpression: 'SeverityText',
+        severityNumberExpression: 'SeverityNumber',
         eventAttributesExpression: 'LogAttributes',
         resourceAttributesExpression: 'ResourceAttributes',
         traceIdExpression: 'TraceId',

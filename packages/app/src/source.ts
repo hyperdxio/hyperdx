@@ -6,6 +6,7 @@ import {
   ColumnMetaType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
+  isCHIntegerType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { inferGranularityFromMVSelect } from '@hyperdx/common-utils/dist/core/materializedViews';
@@ -410,6 +411,12 @@ export async function inferTableSourceConfig({
   // Check if span Links column is available
   const hasSpanLinks = columns.some(col => col.name === 'Links.TraceId');
 
+  // Old exporter tables store SeverityNumber as Int32, current ones as UInt8.
+  // A String column of that name is not the OTel number.
+  const hasSeverityNumber = columns.some(
+    col => col.name === 'SeverityNumber' && isCHIntegerType(col.type),
+  );
+
   // Check if metadata rollup tables exist and, if so, infer the bucketing
   // granularity from the key-rollup view's `as_select`
   const rollupMeta =
@@ -461,6 +468,9 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
 
           severityTextExpression: 'SeverityText',
+          ...(hasSeverityNumber
+            ? { severityNumberExpression: 'SeverityNumber' }
+            : {}),
           ...metadataMVsConfig,
         }
       : {}),
