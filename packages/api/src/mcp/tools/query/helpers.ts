@@ -76,12 +76,42 @@ export function resolveBodyExpression(
   return multiExpr.length === 1 ? expression : multiExpr[0];
 }
 
-/** Reject bodyExpression values containing SQL-unsafe characters. */
+/**
+ * A bodyExpression made only of word characters, `.`, `'`, `:`, `[`, `]` and
+ * `-`. No spaces, parentheses, commas or operators, so it cannot carry a
+ * function call or a second condition.
+ *
+ * Accepts: `Body`, `SpanAttributes['http.url']`
+ * Rejects: `Body) OR (1=1`, `lower(Body)`
+ */
 // eslint-disable-next-line no-useless-escape
 const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 
+/**
+ * The column argument of JSONExtractString: an identifier (letters, digits,
+ * `_`, `.`; not starting with a digit), optionally followed by one map key in
+ * single quotes. The key may not contain `'` or `\`.
+ *
+ * Accepts: `Body`, `ResourceAttributes.service`, `LogAttributes['object']`
+ * Rejects: `lower(Body)`, `Body'`, `LogAttributes['a'']`
+ */
 const COLUMN_OR_MAP_REF = /^[A-Za-z_][\w.]*$|^[A-Za-z_][\w.]*\['[^'\\]*'\]$/;
+
+/**
+ * One complete single-quoted SQL string. Inside the quotes, any character
+ * other than `'` and `\`, a backslash escape (`\'`, `\\`), or a doubled
+ * quote (`''`).
+ *
+ * Accepts: `'message'`, `'it\'s'`, `'it''s'`
+ * Rejects: `message`, `'a' || 'b'`, `'m'' OR 1=1` (unterminated)
+ */
 const SQL_STRING_LITERAL = /^'([^'\\]|\\.|'')*'$/;
+
+/**
+ * A whole expression of the form `JSONExtractString(...)`. Captures the raw
+ * argument list (which may span lines, hence the `s` flag) for
+ * `normalizeBodyExpression` to split and validate argument by argument.
+ */
 const JSON_EXTRACT_STRING_CALL = /^JSONExtractString\((.*)\)$/s;
 
 /**
