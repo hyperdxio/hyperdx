@@ -1507,6 +1507,33 @@ function filterChangedHeatmapTiles(
 }
 
 /**
+ * Returns the source IDs of PromQL tiles to check against the PromQL
+ * source-kind gate. With `existingTiles` (update paths), a tile that was already
+ * a PromQL tile on the same source is skipped, mirroring
+ * `filterChangedHeatmapTiles`: a source whose kind changed after the tile was
+ * saved must not block unrelated dashboard edits.
+ */
+function getChangedPromqlTileSourceIds(
+  tiles: ExternalDashboardTileWithId[],
+  existingTiles: DashboardDocument['tiles'] | undefined,
+): string[] {
+  const existingPromqlSources = new Map(
+    (existingTiles ?? []).flatMap(tile =>
+      isPromqlSavedChartConfig(tile.config)
+        ? [[tile.id, tile.config.source]]
+        : [],
+    ),
+  );
+  return tiles.flatMap(tile =>
+    isConfigTile(tile) &&
+    isPromqlExternalTileConfig(tile.config) &&
+    existingPromqlSources.get(tile.id) !== tile.config.sourceId
+      ? [tile.config.sourceId]
+      : [],
+  );
+}
+
+/**
  * Returns source IDs referenced by onClick search link-outs (mode=id,
  * type=search) whose source kind is not log or trace. The /search destination
  * only supports log and trace sources, so linking to a metric/session source
@@ -1795,11 +1822,7 @@ export async function validateDashboardTiles(
   // connection and TimeSeries table, which only a PromQL source carries.
   const promqlTileError = getNonPromqlSourceError(
     sources,
-    tiles.flatMap(tile =>
-      isConfigTile(tile) && isPromqlExternalTileConfig(tile.config)
-        ? [tile.config.sourceId]
-        : [],
-    ),
+    getChangedPromqlTileSourceIds(tiles, existingTiles),
     'PromQL tiles',
   );
   if (promqlTileError != null) return promqlTileError;

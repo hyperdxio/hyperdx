@@ -7227,6 +7227,49 @@ describe('External API v2 Dashboards - new format', () => {
       );
     });
 
+    describe('when the source kind changes after the tile is saved', () => {
+      const createAndRetypeSource = async () => {
+        const create = await postTile().expect(200);
+        await Source.updateOne(
+          { _id: promqlSource._id },
+          { $set: { kind: SourceKind.Log } },
+        );
+        return create.body.data;
+      };
+
+      it('still lets unrelated edits through', async () => {
+        const { id, tiles, tags } = await createAndRetypeSource();
+
+        await authRequest('put', `${BASE_URL}/${id}`)
+          .send({ name: 'Renamed', tiles, tags })
+          .expect(200);
+      });
+
+      it('rejects pointing the tile at a non-PromQL source', async () => {
+        const { id, tiles, tags } = await createAndRetypeSource();
+        const [tile] = tiles;
+
+        const res = await authRequest('put', `${BASE_URL}/${id}`)
+          .send({
+            name: 'Renamed',
+            tiles: [
+              {
+                ...tile,
+                config: {
+                  ...tile.config,
+                  sourceId: traceSource._id.toString(),
+                },
+              },
+            ],
+            tags,
+          })
+          .expect(400);
+        expect(JSON.stringify(res.body)).toContain(
+          'PromQL tiles require a PromQL source',
+        );
+      });
+    });
+
     // The builder heatmap check requires a Trace source; it must not apply.
     it('accepts a PromQL heatmap on a PromQL source', async () => {
       const create = await postTile({
