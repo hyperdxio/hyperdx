@@ -18,7 +18,7 @@ import {
   listOrgApiKeys,
   updateOrgApiKeyDescription,
 } from '@/controllers/orgApiKey';
-import { getSessionUser } from '@/middleware/auth';
+import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { getCounter } from '@/utils/instrumentation';
 import { canManageOrgApiKeys } from '@/utils/orgApiKeyPolicy';
 import { objectIdSchema } from '@/utils/zod';
@@ -41,7 +41,7 @@ router.get(
   '/',
   async (req, res: express.Response<OrgApiKeysApiResponse>, next) => {
     try {
-      const keys = await listOrgApiKeys(getSessionUser(req).teamId);
+      const keys = await listOrgApiKeys(getNonNullUserWithTeam(req).teamId);
       res.json({ data: keys.map(formatOrgApiKey) });
     } catch (e) {
       next(e);
@@ -54,7 +54,7 @@ router.post(
   processRequest({ body: CreateOrgApiKeyRequestSchema }),
   async (req, res: express.Response<CreateOrgApiKeyApiResponse>, next) => {
     try {
-      const { teamId, userId } = getSessionUser(req);
+      const { teamId, userId } = getNonNullUserWithTeam(req);
       const { doc, key } = await createOrgApiKey(teamId, userId, req.body);
       await doc.populate('createdBy', 'name email');
       orgApiKeyOperations.add(1, { operation: 'create' });
@@ -74,7 +74,7 @@ router.patch(
   async (req, res: express.Response<OrgApiKeyApiResponse>, next) => {
     try {
       const doc = await updateOrgApiKeyDescription(
-        getSessionUser(req).teamId,
+        getNonNullUserWithTeam(req).teamId,
         req.params.id,
         req.body.description,
       );
@@ -95,7 +95,7 @@ router.delete(
   async (req, res, next) => {
     try {
       const doc = await deleteOrgApiKey(
-        getSessionUser(req).teamId,
+        getNonNullUserWithTeam(req).teamId,
         req.params.id,
       );
       if (doc == null) {

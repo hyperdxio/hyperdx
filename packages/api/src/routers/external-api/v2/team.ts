@@ -293,22 +293,23 @@ router.delete(
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
-      // Undefined for org API keys.
       const requestingUserId = req.user?._id;
-      if (!teamId) {
+      if (!teamId || !requestingUserId) {
         return res.sendStatus(403);
       }
 
-      if (req.params.id === requestingUserId?.toString()) {
+      if (req.params.id === requestingUserId.toString()) {
         return res.status(400).json({
           message: 'You cannot remove yourself from the team',
         });
       }
 
-      if (requestingUserId == null) {
+      // People can't remove themselves, so only a key can empty the team.
+      if (req.user?.isServiceAccount) {
         const result = await deleteTeamMemberKeepingOne(
           teamId.toString(),
           req.params.id,
+          requestingUserId,
         );
         if (result === 'not_found') {
           return res.sendStatus(404);

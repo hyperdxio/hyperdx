@@ -192,8 +192,8 @@ describe('External API Alerts', () => {
   };
 
   describe('org API keys', () => {
-    it('creates an alert with no createdBy', async () => {
-      const { key } = await createOrgApiKey(team._id, user._id, {
+    it('attributes the alert to the key service account', async () => {
+      const { doc, key } = await createOrgApiKey(team._id, user._id, {
         description: 'terraform',
         scope: 'member',
         expiry: 'never',
@@ -216,7 +216,7 @@ describe('External API Alerts', () => {
         .expect(200);
 
       const stored = await Alert.findById(response.body.data.id).lean();
-      expect(stored?.createdBy).toBeUndefined();
+      expect(stored?.createdBy).toEqual(doc.serviceAccount);
     });
   });
 

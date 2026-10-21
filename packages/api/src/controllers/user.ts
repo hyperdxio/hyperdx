@@ -8,8 +8,11 @@ import Alert from '@/models/alert';
 import User, { type IUser } from '@/models/user';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+export const NOT_SERVICE_ACCOUNT = { isServiceAccount: { $ne: true } };
+
 export function findUserByAccessKey(accessKey: string) {
-  return User.findOne({ accessKey });
+  // Service accounts authenticate only through their hashed org API key.
+  return User.findOne({ accessKey, ...NOT_SERVICE_ACCOUNT });
 }
 
 /**
@@ -33,7 +36,7 @@ export function findUserByEmail(email: string) {
 }
 
 export function findUsersByTeam(team: string | ObjectId) {
-  return User.find({ team }).sort({ createdAt: 1 });
+  return User.find({ team, ...NOT_SERVICE_ACCOUNT }).sort({ createdAt: 1 });
 }
 
 // Type-guard wrapper over the shared 24-hex check; rejects the synthetic
@@ -86,7 +89,11 @@ export function recordOnboardingTaskCompletion(
     return;
   }
   void User.updateOne(
-    { _id: userId, 'onboardingData.completedTasks': { $ne: taskId } },
+    {
+      _id: userId,
+      ...NOT_SERVICE_ACCOUNT,
+      'onboardingData.completedTasks': { $ne: taskId },
+    },
     { $addToSet: { 'onboardingData.completedTasks': taskId } },
   ).catch(err => {
     logger.warn(
@@ -101,36 +108,39 @@ export async function deleteTeamMember(
   userIdToDelete: string,
   userIdRequestingDelete: string | ObjectId,
 ) {
-  const [, deletedUser] = await Promise.all([
-    Alert.updateMany(
-      { createdBy: new mongoose.Types.ObjectId(userIdToDelete), team: teamId },
-      {
-        $set: {
-          createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete),
-        },
-      },
-    ),
-    User.findOneAndDelete({
-      team: teamId,
-      _id: userIdToDelete,
-    }),
-  ]);
-
+  // Delete first: reassigning alerts for a user that wasn't deleted (such as a
+  // service account) would steal their attribution.
+  const deletedUser = await User.findOneAndDelete({
+    team: teamId,
+    _id: userIdToDelete,
+    ...NOT_SERVICE_ACCOUNT,
+  });
+  if (deletedUser == null) {
+    return null;
+  }
+  await Alert.updateMany(
+    { createdBy: deletedUser._id, team: teamId },
+    {
+      $set: { createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete) },
+    },
+  );
   return deletedUser;
 }
 
 /**
- * Member removal by an org API key, which has no user to hand alerts to and
- * must not empty the team. Mongo here has no transactions, so delete first
- * and put the member back if a concurrent removal left the team empty.
+ * Member removal by an org API key's service account, which must not leave the
+ * team without a person who can sign in. Mongo here has no transactions, so
+ * delete first and put the member back if a concurrent removal emptied it.
  */
 export async function deleteTeamMemberKeepingOne(
   teamId: string | ObjectId,
   userIdToDelete: string,
+  serviceAccountId: ObjectId,
 ): Promise<'deleted' | 'not_found' | 'last_member'> {
   const deletedUser = await User.findOneAndDelete({
     team: teamId,
     _id: userIdToDelete,
+    ...NOT_SERVICE_ACCOUNT,
   })
     .select('+hash +salt')
     .lean();
@@ -139,7 +149,9 @@ export async function deleteTeamMemberKeepingOne(
   }
   let isTeamEmpty = true;
   try {
-    isTeamEmpty = (await User.countDocuments({ team: teamId })) === 0;
+    isTeamEmpty =
+      (await User.countDocuments({ team: teamId, ...NOT_SERVICE_ACCOUNT })) ===
+      0;
   } finally {
     // Also runs if the count throws, so a failed check can't lose the member.
     if (isTeamEmpty) {
@@ -151,7 +163,7 @@ export async function deleteTeamMemberKeepingOne(
   }
   await Alert.updateMany(
     { createdBy: deletedUser._id, team: teamId },
-    { $unset: { createdBy: '' } },
+    { $set: { createdBy: serviceAccountId } },
   );
   return 'deleted';
 }

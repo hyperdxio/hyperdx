@@ -1,4 +1,5 @@
 import express from 'express';
+import omit from 'lodash/omit';
 
 import { EXTERNAL_API_RATE_LIMIT_MAX } from '@/config';
 import { validateUserAccessKey } from '@/middleware/auth';
@@ -24,17 +25,11 @@ const defaultRateLimiter = rateLimiter({
 });
 
 router.get('/', validateUserAccessKey, (req, res) => {
-  if (req.orgApiKey) {
-    // Clients such as the CLI source map upload read `user.team`.
-    return res.json({
-      version: 'v2',
-      user: { team: req.user?.team?.toString() },
-      apiKey: req.orgApiKey,
-    });
-  }
+  const user = req.user?.toJSON();
   res.json({
     version: 'v2',
-    user: req.user?.toJSON(),
+    // A service account's personal key never authenticates; don't hand it out.
+    user: user?.isServiceAccount ? omit(user, 'accessKey') : user,
   });
 });
 

@@ -7,10 +7,13 @@ import {
   hashOrgApiKey,
   listOrgApiKeys,
   touchOrgApiKeyLastUsed,
+  updateOrgApiKeyDescription,
 } from '@/controllers/orgApiKey';
 import { createTeam } from '@/controllers/team';
+import { findUserByAccessKey, findUsersByTeam } from '@/controllers/user';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
 import OrgApiKey from '@/models/orgApiKey';
+import User from '@/models/user';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -70,7 +73,7 @@ describe('orgApiKey controller', () => {
     const team = await createTeam({ name: 'A' });
     const { doc, key } = await create(team._id);
 
-    expect((await findActiveOrgApiKey(key))?._id).toEqual(doc._id);
+    expect((await findActiveOrgApiKey(key))?.orgApiKey._id).toEqual(doc._id);
     expect(
       await findActiveOrgApiKey(key, doc.expiresAt ?? new Date(0)),
     ).toBeNull();
@@ -112,5 +115,53 @@ describe('orgApiKey controller', () => {
     const t6 = new Date(t0.getTime() + 6 * 60_000);
     touchOrgApiKeyLastUsed(fresh, t6);
     expect(await lastUsed()).toBe(t6.getTime());
+  });
+
+  describe('service accounts', () => {
+    it('creates a service account user for each key', async () => {
+      const team = await createTeam({ name: 'A' });
+      const { doc } = await create(team._id);
+      const account = await User.findById(doc.serviceAccount);
+
+      expect(account).toMatchObject({
+        isServiceAccount: true,
+        name: 'terraform',
+      });
+      expect(account?.team).toEqual(team._id);
+      expect(account?.email).toMatch(
+        /^sa-[0-9a-f]{24}@service-accounts\.hyperdx\.invalid$/,
+      );
+    });
+
+    it('resolves the key to its service account', async () => {
+      const team = await createTeam({ name: 'A' });
+      const { doc, key } = await create(team._id);
+      const found = await findActiveOrgApiKey(key);
+      expect(found?.serviceAccount._id).toEqual(doc.serviceAccount);
+    });
+
+    it('keeps service accounts out of members and personal-key auth', async () => {
+      const team = await createTeam({ name: 'A' });
+      const { doc } = await create(team._id);
+      const account = await User.findById(doc.serviceAccount);
+
+      expect(await findUsersByTeam(team._id)).toHaveLength(0);
+      expect(await findUserByAccessKey(account!.accessKey)).toBeNull();
+    });
+
+    it('renames the service account with the key', async () => {
+      const team = await createTeam({ name: 'A' });
+      const { doc } = await create(team._id);
+      await updateOrgApiKeyDescription(team._id, doc._id.toString(), 'ci');
+      expect((await User.findById(doc.serviceAccount))?.name).toBe('ci');
+    });
+
+    it('keeps the service account when the key is revoked', async () => {
+      const team = await createTeam({ name: 'A' });
+      const { doc, key } = await create(team._id);
+      await deleteOrgApiKey(team._id, doc._id.toString());
+      expect(await findActiveOrgApiKey(key)).toBeNull();
+      expect(await User.findById(doc.serviceAccount)).not.toBeNull();
+    });
   });
 });

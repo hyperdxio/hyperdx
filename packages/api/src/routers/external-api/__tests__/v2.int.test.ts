@@ -3,6 +3,7 @@ import { createOrgApiKey } from '@/controllers/orgApiKey';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Dashboard from '@/models/dashboard';
 import OrgApiKey from '@/models/orgApiKey';
+import User from '@/models/user';
 
 describe('external api v2', () => {
   const server = getServer();
@@ -42,18 +43,28 @@ describe('external api v2', () => {
       return { agent, team, user, doc, key };
     };
 
-    it('GET /api/v2 returns only the team and the key', async () => {
+    it('GET /api/v2 returns the key service account as the user', async () => {
       const { agent, team, doc, key } = await setup();
       const resp = await agent
         .get('/api/v2')
         .set('Authorization', `Bearer ${key}`)
         .expect(200);
-      expect(resp.body.user).toEqual({ team: team._id.toString() });
-      expect(resp.body.apiKey).toEqual({
-        id: doc._id.toString(),
-        description: 'terraform',
-        scope: 'member',
+      expect(resp.body.user).toMatchObject({
+        _id: doc.serviceAccount.toString(),
+        team: team._id.toString(),
+        name: 'terraform',
+        isServiceAccount: true,
       });
+      expect(resp.body.user).not.toHaveProperty('accessKey');
+    });
+
+    it("rejects the service account's personal access key", async () => {
+      const { agent, doc } = await setup();
+      const account = await User.findById(doc.serviceAccount);
+      await agent
+        .get('/api/v2')
+        .set('Authorization', `Bearer ${account?.accessKey}`)
+        .expect(401);
     });
 
     it('lists only its own team data', async () => {

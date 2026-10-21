@@ -140,10 +140,7 @@ export function registerSaveAlert({
         return e instanceof BaseError ? mcpUserError(msg) : mcpServerError(msg);
       }
 
-      // ObjectId(undefined) mints a random id, so org API keys must skip it.
-      const mongoUserId = userId
-        ? new mongoose.Types.ObjectId(userId)
-        : undefined;
+      const mongoUserId = new mongoose.Types.ObjectId(userId);
 
       // ── Update existing alert ──
       if (alertId) {

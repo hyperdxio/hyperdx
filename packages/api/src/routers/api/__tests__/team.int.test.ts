@@ -505,6 +505,7 @@ describe('team router', () => {
         description: 'other team',
         scope: 'admin',
         createdBy: new mongoose.Types.ObjectId(),
+        serviceAccount: new mongoose.Types.ObjectId(),
       });
       const list = await agent.get('/team/api-keys').expect(200);
       expect(list.body.data).toHaveLength(0);
@@ -542,6 +543,29 @@ describe('team router', () => {
         .get('/team/api-keys')
         .set('Authorization', `Bearer ${created.key}`)
         .expect(401);
+    });
+
+    it('never lets a service account sign in', async () => {
+      const { agent, user } = await getLoggedInAgent(server);
+      const { body: created } = await agent
+        .post('/team/api-keys')
+        .send(body)
+        .expect(200);
+      const key = await OrgApiKey.findById(created.id);
+      // Give the service account the signed-in user's password hash, so a
+      // correct password is presented and only the service-account check stops it.
+      const human = await User.findById(user._id).select('+hash +salt');
+      const account = await User.findByIdAndUpdate(
+        key?.serviceAccount,
+        { hash: human?.get('hash'), salt: human?.get('salt') },
+        { new: true },
+      );
+
+      const res = await getAgent(server)
+        .post('/login/password')
+        .send({ email: account?.email, password: 'TacoCat!2#4X' });
+      expect(res.status).toBe(303);
+      expect(res.headers.location).toContain('/login?err=');
     });
   });
 });

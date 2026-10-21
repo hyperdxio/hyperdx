@@ -27,15 +27,12 @@ declare global {
   // no non-namespace / non-empty-interface equivalent for extending these types.
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
-    // _id and email are unset for org API key requests, which carry only the
-    // team. Session-only routes use getSessionUser to get them non-null.
-    interface User extends Omit<UserDocument, '_id' | 'email'> {
-      _id?: UserDocument['_id'];
-      email?: UserDocument['email'];
-    }
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    interface User extends UserDocument {}
     interface Request {
       _hdx_connection?: Connection;
-      // Set when the bearer token is a team-owned key rather than a user's.
+      // Set when the bearer token is an org API key; req.user is its service
+      // account.
       orgApiKey?: { id: string; description: string; scope: OrgApiKeyScope };
     }
   }
@@ -146,18 +143,16 @@ async function authenticateOrgApiKey(
   res: Response,
   next: NextFunction,
 ) {
-  const orgApiKey = await findActiveOrgApiKey(key);
-  if (!orgApiKey) {
+  const found = await findActiveOrgApiKey(key);
+  if (!found) {
     if (key.startsWith(ORG_API_KEY_PREFIX)) {
       orgApiKeyAuthFailures.add(1);
     }
     return res.sendStatus(401);
   }
 
-  // Handlers read the team from req.user. Org keys have no user, so _id and
-  // email stay unset and nothing is attributed to the admin who created it.
-  // @ts-expect-error the principal carries only the team, not a full user
-  req.user = { team: orgApiKey.team };
+  const { orgApiKey, serviceAccount } = found;
+  req.user = serviceAccount;
   req.orgApiKey = {
     id: orgApiKey._id.toString(),
     description: orgApiKey.description,
@@ -167,6 +162,8 @@ async function authenticateOrgApiKey(
 
   setBusinessContext({
     teamId: orgApiKey.team.toString(),
+    userId: serviceAccount._id.toString(),
+    'hyperdx.service_account': true,
     'hyperdx.org_api_key.id': req.orgApiKey.id,
     'hyperdx.org_api_key.scope': orgApiKey.scope,
     ...getStaticFeatureFlags(),
@@ -241,12 +238,4 @@ export function getNonNullUserWithTeam(req: Request) {
   }
 
   return { teamId: user.team, userId: user._id, email: user.email };
-}
-
-export function getSessionUser(req: Request) {
-  const { teamId, userId, email } = getNonNullUserWithTeam(req);
-  if (userId == null || email == null) {
-    throw new Error('Route requires a signed-in user');
-  }
-  return { teamId, userId, email };
 }

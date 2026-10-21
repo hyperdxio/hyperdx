@@ -8,7 +8,7 @@ import crypto from 'crypto';
 
 import type { ObjectId } from '@/models';
 import OrgApiKey, { type OrgApiKeyDocument } from '@/models/orgApiKey';
-import type { IUser } from '@/models/user';
+import User, { type IUser, type UserDocument } from '@/models/user';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
@@ -43,15 +43,29 @@ export async function createOrgApiKey(
   { description, scope, expiry }: CreateOrgApiKeyRequest,
 ) {
   const key = `${ORG_API_KEY_PREFIX}${crypto.randomBytes(32).toString('base64url')}`;
-  const doc = await OrgApiKey.create({
+  // `.invalid` is reserved, so the email can never reach a real inbox.
+  const serviceAccount = await User.create({
     team: teamId,
-    keyHash: hashOrgApiKey(key),
-    description,
-    scope,
-    expiresAt: expiresAtFor(expiry, Date.now()),
-    createdBy,
+    name: description,
+    email: `sa-${crypto.randomBytes(12).toString('hex')}@service-accounts.hyperdx.invalid`,
+    isServiceAccount: true,
   });
-  return { doc, key };
+  try {
+    const doc = await OrgApiKey.create({
+      team: teamId,
+      keyHash: hashOrgApiKey(key),
+      description,
+      scope,
+      expiresAt: expiresAtFor(expiry, Date.now()),
+      createdBy,
+      serviceAccount: serviceAccount._id,
+    });
+    return { doc, key };
+  } catch (err) {
+    // Don't leave a service account behind that no key points to.
+    await User.deleteOne({ _id: serviceAccount._id });
+    throw err;
+  }
 }
 
 export function listOrgApiKeys(teamId: string | ObjectId) {
@@ -60,16 +74,23 @@ export function listOrgApiKeys(teamId: string | ObjectId) {
     .populate<{ createdBy: IUser | null }>('createdBy', 'name email');
 }
 
-export function updateOrgApiKeyDescription(
+export async function updateOrgApiKeyDescription(
   teamId: string | ObjectId,
   id: string,
   description: string,
 ) {
-  return OrgApiKey.findOneAndUpdate(
+  const doc = await OrgApiKey.findOneAndUpdate(
     { _id: id, team: teamId },
     { description },
     { new: true },
   ).populate<{ createdBy: IUser | null }>('createdBy', 'name email');
+  if (doc != null) {
+    await User.updateOne(
+      { _id: doc.serviceAccount, team: teamId },
+      { name: description },
+    );
+  }
+  return doc;
 }
 
 export function deleteOrgApiKey(teamId: string | ObjectId, id: string) {
@@ -80,16 +101,21 @@ export async function findActiveOrgApiKey(key: string, now = new Date()) {
   if (!key.startsWith(ORG_API_KEY_PREFIX)) {
     return null;
   }
-  return OrgApiKey.findOne({
+  const doc = await OrgApiKey.findOne({
     keyHash: hashOrgApiKey(key),
     $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
-  });
+  }).populate<{ serviceAccount: UserDocument | null }>('serviceAccount');
+  const serviceAccount = doc?.serviceAccount;
+  if (doc == null || serviceAccount == null) {
+    return null;
+  }
+  return { orgApiKey: doc, serviceAccount };
 }
 
 // Fire-and-forget so auth never waits on or fails because of this write. The
 // conditional filter stops concurrent requests from all writing at once.
 export function touchOrgApiKeyLastUsed(
-  doc: OrgApiKeyDocument,
+  doc: Pick<OrgApiKeyDocument, '_id' | 'lastUsedAt'>,
   now = new Date(),
 ) {
   const staleBefore = new Date(now.getTime() - LAST_USED_WRITE_INTERVAL_MS);

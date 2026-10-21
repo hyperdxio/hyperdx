@@ -4,7 +4,7 @@ import type { NextFunction, Request, Response } from 'express';
 // counts as an admin; EE replaces both functions with its RBAC checks.
 
 export function canManageOrgApiKeys(user: Express.User): boolean {
-  return user.team != null;
+  return user.team != null && !user.isServiceAccount;
 }
 
 function isAdminRequest(req: Request): boolean {

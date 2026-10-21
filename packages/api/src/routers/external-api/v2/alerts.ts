@@ -743,9 +743,8 @@ router.post(
   }),
   async (req, res, next) => {
     const teamId = req.user?.team;
-    // Undefined for org API keys, which leaves createdBy unset.
     const userId = req.user?._id;
-    if (teamId == null) {
+    if (teamId == null || userId == null) {
       return res.status(403).json({ message: 'Forbidden' });
     }
     try {

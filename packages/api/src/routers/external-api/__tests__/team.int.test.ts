@@ -202,7 +202,8 @@ describe('External API v2 Team', () => {
       ).expect(200);
       expect(await User.findById(member._id)).toBeNull();
       const stored = await Alert.findById(alert._id).lean();
-      expect(stored?.createdBy).toBeUndefined();
+      const account = await User.findOne({ isServiceAccount: true });
+      expect(stored?.createdBy).toEqual(account?._id);
     });
 
     it('stops an admin-scoped key removing the last member', async () => {
@@ -227,7 +228,12 @@ describe('External API v2 Team', () => {
         ),
       );
       expect(results.map(r => r.status).sort()).not.toEqual([200, 200]);
-      expect(await User.countDocuments({ team: team._id })).toBeGreaterThan(0);
+      expect(
+        await User.countDocuments({
+          team: team._id,
+          isServiceAccount: { $ne: true },
+        }),
+      ).toBeGreaterThan(0);
     });
 
     it('returns 404 for a non-member before applying the last-member rule', async () => {
@@ -236,6 +242,37 @@ describe('External API v2 Team', () => {
         key,
         agent.delete(`${TEAM_BASE_URL}/member/${new Alert()._id}`),
       ).expect(404);
+    });
+
+    it('hides service accounts from members and member removal', async () => {
+      await keyFor('member');
+      const account = await User.findOne({ isServiceAccount: true });
+
+      const list = await authRequest('get', `${TEAM_BASE_URL}/members`).expect(
+        200,
+      );
+      expect(list.body.data.map((m: { id: string }) => m.id)).not.toContain(
+        account?._id.toString(),
+      );
+
+      const alert = await Alert.create({
+        team: team._id,
+        threshold: 1,
+        interval: '5m',
+        thresholdType: 'above',
+        source: 'saved_search',
+        channel: { type: 'webhook', webhookId: 'x' },
+        createdBy: account?._id,
+      });
+
+      await authRequest(
+        'delete',
+        `${TEAM_BASE_URL}/member/${account?._id}`,
+      ).expect(404);
+      expect(await User.findById(account?._id)).not.toBeNull();
+      expect((await Alert.findById(alert._id))?.createdBy).toEqual(
+        account?._id,
+      );
     });
   });
 });

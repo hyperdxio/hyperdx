@@ -18,7 +18,6 @@ import {
   rotateUserAccessKey,
   setOnboardingDismissed,
 } from '@/controllers/user';
-import { getSessionUser } from '@/middleware/auth';
 import { Api404Error } from '@/utils/errors';
 import { sendJson } from '@/utils/serialization';
 
@@ -30,8 +29,15 @@ router.get('/', async (req, res: express.Response<MeApiResponse>, next) => {
       throw new Api404Error('Request without user found');
     }
 
-    const { userId: id, email, teamId } = getSessionUser(req);
-    const { accessKey, createdAt, name, onboardingData } = req.user;
+    const {
+      _id: id,
+      accessKey,
+      createdAt,
+      email,
+      name,
+      onboardingData,
+      team: teamId,
+    } = req.user;
 
     const team = await getTeam(teamId);
     if (team == null) {

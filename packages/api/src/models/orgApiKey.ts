@@ -13,6 +13,8 @@ interface IOrgApiKey {
   expiresAt: Date | null;
   lastUsedAt: Date | null;
   createdBy: ObjectId;
+  // The user requests made with this key authenticate as.
+  serviceAccount: ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -28,6 +30,11 @@ const OrgApiKeySchema = new Schema<IOrgApiKey>(
     expiresAt: { type: Date, default: null },
     lastUsedAt: { type: Date, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+    serviceAccount: {
+      type: Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
   },
   { timestamps: true },
 );
