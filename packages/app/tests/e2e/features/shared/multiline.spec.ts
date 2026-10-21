@@ -60,10 +60,11 @@ test.describe('Multiline Input', { tag: '@search' }, () => {
     const searchPage = new SearchPage(page);
     await searchPage.goto();
 
-    for (const field of [
-      searchPage.selectClauseField(),
-      searchPage.orderByClauseField(),
-    ]) {
+    for (const [open, field] of [
+      [() => searchPage.openSelectEditor(), searchPage.selectClauseField()],
+      [() => searchPage.openOrderByEditor(), searchPage.orderByClauseField()],
+    ] as const) {
+      await open();
       await expect(field.focusTarget).toBeVisible();
       await searchPage.clearClause(field);
       await expectExpandsAndStaysExpanded(page, field);

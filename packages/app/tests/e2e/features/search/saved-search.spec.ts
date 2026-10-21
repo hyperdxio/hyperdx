@@ -98,10 +98,10 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify custom SELECT is preserved', async () => {
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toContainText(
-          'upper(ServiceName) as service_name',
-        );
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .toContain('upper(ServiceName) as service_name');
       });
     },
   );
@@ -140,11 +140,11 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify different source has its own default SELECT', async () => {
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).not.toContainText(
-          'lower(Body) as body_lower',
-        );
-        await expect(selectEditor).toContainText('Timestamp');
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .not.toContain('lower(Body) as body_lower');
+        await expect.poll(selectValue).toContain('Timestamp');
       });
 
       await test.step('Navigate back to saved search', async () => {
@@ -153,12 +153,12 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify saved search SELECT is restored', async () => {
-        const selectEditor = searchPage.getSELECTEditor();
+        const selectValue = () => searchPage.getSelectValue();
         // Verifies the fix: SELECT restores to saved search's custom value
-        await expect(selectEditor).toContainText('lower(Body) as body_lower');
-        await expect(selectEditor).toContainText(
-          'Timestamp, Body, lower(Body)',
-        );
+        await expect.poll(selectValue).toContain('lower(Body) as body_lower');
+        await expect
+          .poll(selectValue)
+          .toContain('Timestamp, Body, lower(Body)');
       });
     },
   );
@@ -186,11 +186,11 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify SELECT changed to the new source default', async () => {
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).not.toContainText(
-          'lower(ServiceName) as service_name',
-        );
-        await expect(selectEditor).toContainText('Timestamp');
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .not.toContain('lower(ServiceName) as service_name');
+        await expect.poll(selectValue).toContain('Timestamp');
       });
 
       await test.step('Switch back to original source via dropdown', async () => {
@@ -201,10 +201,10 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify SELECT is search custom SELECT', async () => {
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toContainText(
-          'lower(ServiceName) as service_name',
-        );
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .toContain('lower(ServiceName) as service_name');
       });
     },
   );
@@ -255,9 +255,9 @@ test.describe('Saved Search Functionality', () => {
         expect(savedSearchParams.has('to')).toBe(false);
 
         await expect(searchPage.input).toHaveValue('SeverityText:info');
-        await expect(searchPage.getOrderByEditor()).toContainText(
-          customOrderBy,
-        );
+        await expect
+          .poll(() => searchPage.getOrderByValue())
+          .toContain(customOrderBy);
 
         // Capture the saved search URL (without query params)
         savedSearchUrl = page.url().split('?')[0];
@@ -289,8 +289,8 @@ test.describe('Saved Search Functionality', () => {
         await expect(whereInput).toHaveValue('SeverityText:info');
 
         // Verify ORDER BY is restored
-        const orderByEditor = searchPage.getOrderByEditor();
-        await expect(orderByEditor).toContainText('ServiceName ASC');
+        const orderByValue = () => searchPage.getOrderByValue();
+        await expect.poll(orderByValue).toContain('ServiceName ASC');
 
         // Verify search results are visible (search executed automatically)
         await searchPage.table.waitForRowsToPopulate();
@@ -343,11 +343,11 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.table.waitForRowsToPopulate(true);
 
         // Verify SELECT content
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toContainText(
-          'upper(ServiceName) as service_name',
-        );
-        await expect(selectEditor).toContainText('Timestamp, Body');
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .toContain('upper(ServiceName) as service_name');
+        await expect.poll(selectValue).toContain('Timestamp, Body');
       });
     },
   );
@@ -401,9 +401,9 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('The tweak survives, in the form and in the URL', async () => {
-        await expect(searchPage.getSELECTEditor()).toContainText(
-          'lower(Body) as body_lower',
-        );
+        await expect
+          .poll(() => searchPage.getSelectValue())
+          .toContain('lower(Body) as body_lower');
         expect(new URL(page.url()).searchParams.get('select')).toContain(
           'lower(Body)',
         );
@@ -427,10 +427,10 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify default SELECT is loaded', async () => {
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toContainText(
-          'Timestamp, ServiceName, SeverityText, Body',
-        );
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .toContain('Timestamp, ServiceName, SeverityText, Body');
       });
 
       await test.step('Navigate to dashboards page', async () => {
@@ -444,10 +444,10 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify default SELECT is loaded', async () => {
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toContainText(
-          'Timestamp, ServiceName, SeverityText, Body',
-        );
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .toContain('Timestamp, ServiceName, SeverityText, Body');
       });
     },
   );
@@ -531,16 +531,16 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify ORDER BY changed to second source default', async () => {
-        const orderByEditor = searchPage.getOrderByEditor();
+        const orderByValue = () => searchPage.getOrderByValue();
 
         // Should not contain the custom ORDER BY from the saved search
 
-        await expect(orderByEditor).not.toHaveText('Body DESC', {
-          timeout: 5000,
-        });
-        await expect(orderByEditor).toHaveText(/(Timestamp|timestamp)/i, {
-          timeout: 5000,
-        });
+        await expect
+          .poll(orderByValue, { timeout: 5000 })
+          .not.toBe('Body DESC');
+        await expect
+          .poll(orderByValue, { timeout: 5000 })
+          .toMatch(/(Timestamp|timestamp)/i);
       });
 
       await test.step('Switch back to original source', async () => {
@@ -556,8 +556,8 @@ test.describe('Saved Search Functionality', () => {
       });
 
       await test.step('Verify ORDER BY restored to saved search custom value', async () => {
-        const orderByEditor = searchPage.getOrderByEditor();
-        await expect(orderByEditor).toHaveText('Body DESC', { timeout: 5000 });
+        const orderByValue = () => searchPage.getOrderByValue();
+        await expect.poll(orderByValue, { timeout: 5000 }).toBe('Body DESC');
       });
     },
   );
@@ -780,10 +780,10 @@ test.describe('Saved Search Functionality', () => {
 
       await test.step('Verify the new search preserved the SELECT', async () => {
         await searchPage.table.waitForRowsToPopulate();
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toContainText(
-          'upper(ServiceName) as service_upper',
-        );
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .toContain('upper(ServiceName) as service_upper');
       });
 
       await test.step('Verify the new search preserved the WHERE', async () => {
@@ -796,10 +796,10 @@ test.describe('Saved Search Functionality', () => {
         await searchPage.table.waitForRowsToPopulate();
 
         await expect(searchPage.input).toHaveValue('SeverityText:info');
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toContainText(
-          'upper(ServiceName) as service_upper',
-        );
+        const selectValue = () => searchPage.getSelectValue();
+        await expect
+          .poll(selectValue)
+          .toContain('upper(ServiceName) as service_upper');
       });
     },
   );
