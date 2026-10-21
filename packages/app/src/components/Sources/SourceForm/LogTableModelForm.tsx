@@ -13,6 +13,7 @@ import {
   DEFAULT_DATABASE,
   KNOWN_COLUMNS_EXPRESSION_HELP_TEXT,
   SERVICE_VERSION_EXPRESSION_HELP_TEXT,
+  SEVERITY_NUMBER_EXPRESSION_HELP_TEXT,
 } from './constants';
 import { ExpressionFormRow } from './ExpressionFormRow';
 import { FormRow } from './FormRow';
@@ -136,6 +137,17 @@ export function LogTableModelForm(props: TableModelProps) {
           name="severityTextExpression"
           label="Log Level Expression"
           placeholder="SeverityText"
+          columns={columns}
+          sourceKind={SourceKind.Log}
+          tableConnection={tableConnection}
+        />
+        <ExpressionFormRow
+          control={control}
+          setValue={setValue}
+          name="severityNumberExpression"
+          label="Severity Number Expression"
+          placeholder="SeverityNumber"
+          helpText={SEVERITY_NUMBER_EXPRESSION_HELP_TEXT}
           columns={columns}
           sourceKind={SourceKind.Log}
           tableConnection={tableConnection}

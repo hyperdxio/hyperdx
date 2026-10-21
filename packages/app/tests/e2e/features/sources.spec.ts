@@ -24,6 +24,7 @@ const LOG_FIELDS = [
   'Service Name Expression',
   'Service Version Expression',
   'Log Level Expression',
+  'Severity Number Expression',
   'Body Expression',
   'Log Attributes Expression',
   'Resource Attributes Expression',

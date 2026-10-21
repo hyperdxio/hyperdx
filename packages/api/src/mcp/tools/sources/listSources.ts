@@ -285,6 +285,7 @@ export function registerListSources({
             body: s.bodyExpression,
             serviceName: s.serviceNameExpression,
             severityText: s.severityTextExpression,
+            severityNumber: s.severityNumberExpression,
             traceId: s.traceIdExpression,
           };
         } else if (s.kind === SourceKind.Metric) {
