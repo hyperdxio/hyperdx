@@ -38,6 +38,7 @@ import {
   isBrowser,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
+import { describeFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
@@ -177,6 +178,7 @@ import {
   parseAsSortingStateString,
   parseAsStringEncoded,
 } from './utils/queryParsers';
+import { getSeverityClassKey } from './utils/severityClass';
 import { LOCAL_STORE_CONNECTIONS_KEY } from './connection';
 import { DBSearchPageAlertModal } from './DBSearchPageAlertModal';
 import { SearchConfig } from './types';
@@ -649,9 +651,7 @@ function SaveSearchModalComponent({
                   <Stack gap="xs">
                     {searchedConfig.filters.map((filter, idx) => (
                       <Text key={idx} size="xs" c="dimmed">
-                        {filter.type === 'sql_ast'
-                          ? `${filter.left} ${filter.operator} ${filter.right}`
-                          : filter.condition}
+                        {describeFilter(filter)}
                       </Text>
                     ))}
                   </Stack>
@@ -1547,7 +1547,10 @@ function DBSearchPageContent() {
 
       if (pendingFilterReconcileRef.current === watchedSource) {
         pendingFilterReconcileRef.current = null;
-        const dropped = searchFilters.retainFiltersByColumns(allowed);
+        const dropped = searchFilters.retainFiltersByColumns(
+          allowed,
+          getSeverityClassKey(watchedSourceObj) ?? null,
+        );
         if (dropped.length > 0) {
           notifications.show({
             color: 'yellow',

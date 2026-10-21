@@ -1,7 +1,9 @@
+import { buildSeverityClassExpressionV1 } from '@/core/severity';
 import {
   adhocConditionsToFilters,
   adhocConditionsToPromqlFilters,
   deriveVariableName,
+  describeFilter,
   doesFilterApplyToSource,
   FilterState,
   filterStateToPredicate,
@@ -1317,6 +1319,29 @@ describe('filters', () => {
       for (const f of emitted) {
         expect(isRenderablePinnedFilter(f)).toBe(true);
       }
+    });
+  });
+
+  describe('describeFilter', () => {
+    const key = buildSeverityClassExpressionV1({
+      numberExpr: 'SeverityNumber',
+      textExpr: 'SeverityText',
+    });
+    const sql = (condition: string): Filter => ({ type: 'sql', condition });
+
+    it.each([
+      ['one value', `${key} IN ('ERROR')`, 'Severity: ERROR'],
+      ['two values', `${key} IN ('ERROR', 'FATAL')`, 'Severity: ERROR, FATAL'],
+      ['an exclusion', `${key} NOT IN ('OTHER')`, 'Severity: not OTHER'],
+    ])('describes %s', (_, condition, expected) => {
+      expect(describeFilter(sql(condition))).toBe(expected);
+    });
+
+    it.each([
+      ['a severity text filter', "SeverityText IN ('error')"],
+      ['a compound filter', `${key} IN ('ERROR') AND ServiceName = 'api'`],
+    ])('prints %s as its condition', (_, condition) => {
+      expect(describeFilter(sql(condition))).toBe(condition);
     });
   });
 

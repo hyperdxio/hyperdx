@@ -26,6 +26,7 @@ import {
   E2E_PROMQL_METRIC_NAME,
   E2E_PROMQL_TABLE,
   E2E_SESSIONS_TABLE,
+  E2E_SEVERITY_CLASS_LOGS_TABLE,
   E2E_TRACES_MV_TABLE,
   E2E_TRACES_TABLE,
 } from './utils/constants';
@@ -161,6 +162,25 @@ export const METADATA_MV_ROWS = [
     serviceName: 'mv-service-3',
     logAttrValue: 'mv-req-3',
     body: 'mv log body 3',
+  },
+] as const;
+
+// Rows seeded into `e2e_severity_class_logs`, each with a distinct Body, and the
+// class the Severity facet should give them.
+export const SEVERITY_CLASS_ROWS = [
+  { number: 17, text: '', severityClass: 'ERROR', body: 'class row number 17' },
+  { number: 0, text: 'error', severityClass: 'ERROR', body: 'class row error' },
+  {
+    number: 9,
+    text: 'error',
+    severityClass: 'INFO',
+    body: 'class row number 9 error',
+  },
+  {
+    number: 0,
+    text: 'audit',
+    severityClass: 'OTHER',
+    body: 'class row audit',
   },
 ] as const;
 
@@ -817,6 +837,21 @@ function generateMetadataMvLogData(seedRef: number): string {
   }).join(',\n');
 }
 
+/**
+ * Build the VALUES tuples for `e2e_severity_class_logs`. Rows sit a few minutes
+ * before `seedRef`, inside a 'Last 1 days' search long after seeding.
+ */
+function generateSeverityClassLogData(seedRef: number): string {
+  return SEVERITY_CLASS_ROWS.map((row, i) => {
+    const timestampNs = (seedRef - (i + 1) * 60_000) * 1000000;
+    return (
+      `('${timestampNs}', '', '', 0, '${row.text}', ${row.number}, ` +
+      `'severity-class-svc', '${row.body}', '', ` +
+      `{'service.name':'severity-class-svc'}, '', '', '', {}, {})`
+    );
+  }).join(',\n');
+}
+
 // CI can be slower, so use a longer timeout
 const CLICKHOUSE_READY_TIMEOUT_SECONDS = parseInt(
   process.env.E2E_CLICKHOUSE_READY_TIMEOUT || '60',
@@ -900,6 +935,9 @@ async function clearTestData(
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_CUSTOM_SERVICE_LOGS_TABLE}`,
   );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_SEVERITY_CLASS_LOGS_TABLE}`,
+  );
   console.log('  Existing data cleared');
 }
 
@@ -924,12 +962,23 @@ async function createAltMetricsDatabase(
   console.log(`  ${E2E_ALT_METRICS_DATABASE} ready`);
 }
 
+// Created here rather than in `init-db-e2e.sh` for the same reason as the
+// alternate metrics database: that script only runs on a fresh volume.
+async function createSeverityClassLogsTable(
+  client: ReturnType<typeof createClickHouseClient>,
+): Promise<void> {
+  await client.query(
+    `CREATE TABLE IF NOT EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_SEVERITY_CLASS_LOGS_TABLE} AS ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE}`,
+  );
+}
+
 export async function seedClickHouse(): Promise<void> {
   console.log('Seeding ClickHouse with test data...');
   const client = createClickHouseClient();
 
   await waitForClickHouse(client);
   await createAltMetricsDatabase(client);
+  await createSeverityClassLogsTable(client);
   await clearTestData(client);
 
   const seedRef = Date.now();
@@ -1094,6 +1143,18 @@ export async function seedClickHouse(): Promise<void> {
     ) VALUES ${generateCustomServiceLogData(numDataPoints, startMs, endMs)}
   `);
   console.log(`  Inserted ${numDataPoints} generic log entries`);
+
+  console.log('  Inserting severity class logs...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_SEVERITY_CLASS_LOGS_TABLE} (
+      Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
+      ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
+      ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
+    ) VALUES ${generateSeverityClassLogData(seedRef)}
+  `);
+  console.log(
+    `  Inserted ${SEVERITY_CLASS_ROWS.length} severity class log entries`,
+  );
 
   // PromQL series: one per service, labelled with the same `ServiceName` values
   // the logs carry, so a dashboard filter on ServiceName selects values that

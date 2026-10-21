@@ -1,3 +1,7 @@
+import {
+  buildSeverityClassExpressionV1,
+  SEVERITY_CLASS_FACET_VALUES,
+} from '@hyperdx/common-utils/dist/core/severity';
 import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -720,6 +724,49 @@ describe('ActiveFilterPills', () => {
         'Timestamp',
         TS,
         'exclude',
+      );
+    });
+  });
+
+  describe('Severity class pills', () => {
+    const CLASS_KEY = buildSeverityClassExpressionV1({
+      numberExpr: 'OldSeverityNumber',
+      textExpr: "LogAttributes['level']",
+    });
+
+    it('shows "Severity = ERROR" and picks from the fixed classes without a values query', async () => {
+      jest.useRealTimers();
+      const user = userEvent.setup();
+      const searchFilters = makeSearchFilters({
+        [CLASS_KEY]: {
+          included: new Set<string | boolean>(['ERROR']),
+          excluded: new Set<string | boolean>(),
+        },
+      });
+      renderWithMantine(
+        <ActiveFilterPills
+          searchFilters={searchFilters}
+          chartConfig={CHART_CONFIG}
+        />,
+      );
+
+      const pill = screen.getByTestId('active-filter-pill-Severity');
+      expect(pill).toHaveTextContent('Severity = ERROR');
+      expect(screen.queryByText(CLASS_KEY)).not.toBeInTheDocument();
+
+      await user.click(pill);
+      await user.click(await screen.findByLabelText('Change filter value'));
+
+      const options = await screen.findAllByRole('option', { hidden: true });
+      expect(options.map(option => option.textContent).sort()).toEqual(
+        [...SEVERITY_CLASS_FACET_VALUES].sort(),
+      );
+      const classQueries = mockedUseGetKeyValues.mock.calls.filter(([args]) =>
+        args.keys.includes(CLASS_KEY),
+      );
+      expect(classQueries.length).toBeGreaterThan(0);
+      expect(classQueries.map(([, options]) => options.enabled)).not.toContain(
+        true,
       );
     });
   });

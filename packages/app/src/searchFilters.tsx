@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import produce from 'immer';
+import { isSeverityClassKeyV1 } from '@hyperdx/common-utils/dist/core/severity';
 import {
   type FilterState,
   filtersToQuery,
@@ -289,20 +290,50 @@ export const useSearchPageFilterState = ({
   }, [updateFilterQuery]);
 
   // Keep only filters whose root column appears in `allowedColumnNames`.
+  // Severity class keys, matched by shape, move to `severityClassKey` or drop
+  // when it is null.
   // Returns the keys of the filters that were dropped so callers can surface
   // a notice when filter state was thrown away (e.g. on source change).
   const retainFiltersByColumns = useCallback(
-    (allowedColumnNames: Set<string>): string[] => {
+    (
+      allowedColumnNames: Set<string>,
+      severityClassKey?: string | null,
+    ): string[] => {
       const dropped: string[] = [];
       const kept: FilterState = {};
+      let renamed = false;
       for (const [key, value] of Object.entries(filters)) {
+        if (severityClassKey !== undefined && isSeverityClassKeyV1(key)) {
+          if (severityClassKey === null) {
+            dropped.push(key);
+            continue;
+          }
+          renamed ||= severityClassKey !== key;
+          // A stale class key and the current one merge here. The later filter
+          // wins a value both set, so it isn't both IN and NOT IN.
+          const existing = kept[severityClassKey];
+          kept[severityClassKey] = existing
+            ? {
+                included: new Set([
+                  ...[...existing.included].filter(v => !value.excluded.has(v)),
+                  ...value.included,
+                ]),
+                excluded: new Set([
+                  ...[...existing.excluded].filter(v => !value.included.has(v)),
+                  ...value.excluded,
+                ]),
+                range: existing.range ?? value.range,
+              }
+            : value;
+          continue;
+        }
         if (isKeyCompatibleWithColumns(key, allowedColumnNames)) {
           kept[key] = value;
         } else {
           dropped.push(key);
         }
       }
-      if (dropped.length > 0) {
+      if (dropped.length > 0 || renamed) {
         setFilters(kept);
         updateFilterQuery(kept);
       }

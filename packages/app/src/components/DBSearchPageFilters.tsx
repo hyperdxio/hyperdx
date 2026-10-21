@@ -11,6 +11,7 @@ import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { isSeverityClassKeyV1 } from '@hyperdx/common-utils/dist/core/severity';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
@@ -69,6 +70,7 @@ import {
 } from '@/searchFilters';
 import { useSource } from '@/source';
 import { isColumnInSelect, useLocalStorage } from '@/utils';
+import { getSeverityClassKey } from '@/utils/severityClass';
 
 import {
   FILTER_SEARCH_MIN_ITEMS,
@@ -81,6 +83,7 @@ import {
   PinShareIndicator,
   PinShareMenu,
 } from './DBSearchPageFilters/PinShareMenu';
+import { SeverityClassFilterGroup } from './DBSearchPageFilters/SeverityClassFilterGroup';
 import { SharedFiltersSection } from './DBSearchPageFilters/SharedFilters';
 import {
   type FacetEntry,
@@ -142,7 +145,7 @@ type FilterCheckboxProps = {
   onChange?: (checked: boolean) => void;
   onClickOnly?: VoidFunction;
   onClickExclude?: VoidFunction;
-  onClickPin: VoidFunction;
+  onClickPin?: VoidFunction;
   onClickSharedPin?: VoidFunction;
   className?: string;
   percentage?: number;
@@ -314,26 +317,30 @@ const FilterCheckbox = ({
             data-testid={`${testIdPrefix}-exclude`}
           />
         )}
-        <PinShareMenu
+        {onClickPin && (
+          <PinShareMenu
+            personalPinned={pinned}
+            sharedPinned={sharedPinned ?? false}
+            onTogglePersonalPin={onClickPin}
+            onToggleSharedPin={onClickSharedPin}
+            size={12}
+            onChange={setPinMenuOpened}
+            data-testid={`${testIdPrefix}-pin`}
+            aria-label={isPinnedAny ? 'Unpin value' : 'Pin value'}
+          />
+        )}
+      </div>
+      {onClickPin && (
+        <PinShareIndicator
           personalPinned={pinned}
           sharedPinned={sharedPinned ?? false}
-          onTogglePersonalPin={onClickPin}
-          onToggleSharedPin={onClickSharedPin}
-          size={12}
-          onChange={setPinMenuOpened}
-          data-testid={`${testIdPrefix}-pin`}
-          aria-label={isPinnedAny ? 'Unpin value' : 'Pin value'}
+          data-testid={
+            sharedPinned
+              ? `${testIdPrefix}-pin-shared`
+              : `${testIdPrefix}-pin-pinned`
+          }
         />
-      </div>
-      <PinShareIndicator
-        personalPinned={pinned}
-        sharedPinned={sharedPinned ?? false}
-        data-testid={
-          sharedPinned
-            ? `${testIdPrefix}-pin-shared`
-            : `${testIdPrefix}-pin-pinned`
-        }
-      />
+      )}
     </div>
   );
 };
@@ -414,7 +421,8 @@ export type FilterGroupProps = {
   onClearClick: VoidFunction;
   onOnlyClick: (value: string | boolean) => void;
   onExcludeClick: (value: string | boolean) => void;
-  valuePins: ValuePinHandlers;
+  /** Omit to hide value pin controls. */
+  valuePins?: ValuePinHandlers;
   fieldPins?: FieldPinHandlers;
   onColumnToggle?: VoidFunction;
   isColumnDisplayed?: boolean;
@@ -432,6 +440,8 @@ export type FilterGroupProps = {
   isLive?: boolean;
   onRangeChange?: (range: { min: number; max: number }) => void;
   distributionKey?: string;
+  /** Options are the complete, ordered list: keep their order, hide search. */
+  fixedOptions?: boolean;
 };
 
 /**
@@ -460,6 +470,7 @@ const FilterGroupBody = ({
   showDistributions,
   onDistributionError,
   onFetchingDistributionChange,
+  fixedOptions,
 }: {
   name: string;
   options: { value: string | boolean; label: string }[];
@@ -468,8 +479,8 @@ const FilterGroupBody = ({
   onChange: (value: string | boolean) => void;
   onOnlyClick: (value: string | boolean) => void;
   onExcludeClick: (value: string | boolean) => void;
-  isPinned: (value: string | boolean) => boolean;
-  onPinClick: (value: string | boolean) => void;
+  isPinned?: (value: string | boolean) => boolean;
+  onPinClick?: (value: string | boolean) => void;
   isSharedPinned?: (value: string | boolean) => boolean;
   onSharedPinClick?: (value: string | boolean) => void;
   onLoadMore: (key: string) => void;
@@ -481,6 +492,7 @@ const FilterGroupBody = ({
   showDistributions: boolean;
   onDistributionError: () => void;
   onFetchingDistributionChange: (isFetching: boolean) => void;
+  fixedOptions?: boolean;
 }) => {
   const [search, setSearch] = useState('');
   // "Show More" button when there's lots of options
@@ -569,6 +581,8 @@ const FilterGroupBody = ({
 
   // Options matching search, sorted appropriately
   const sortedMatchingOptions = useMemo(() => {
+    if (fixedOptions) return augmentedOptions;
+
     // When searching, sort alphabetically
     if (search) {
       return augmentedOptions
@@ -586,11 +600,11 @@ const FilterGroupBody = ({
     // When not searching, sort by personal pinned, shared pinned, selected,
     // distribution, then alphabetically
     return augmentedOptions.toSorted((a, b) => {
-      const aPinned = isPinned(a.value);
+      const aPinned = isPinned?.(a.value) ?? false;
       const aShared = isSharedPinned?.(a.value) ?? false;
       const aIncluded = selectedValues.included.has(a.value);
       const aExcluded = selectedValues.excluded.has(a.value);
-      const bPinned = isPinned(b.value);
+      const bPinned = isPinned?.(b.value) ?? false;
       const bShared = isSharedPinned?.(b.value) ?? false;
       const bIncluded = selectedValues.included.has(b.value);
       const bExcluded = selectedValues.excluded.has(b.value);
@@ -622,6 +636,7 @@ const FilterGroupBody = ({
       return a.label.localeCompare(b.label, undefined, { numeric: true });
     });
   }, [
+    fixedOptions,
     search,
     augmentedOptions,
     isPinned,
@@ -684,7 +699,7 @@ const FilterGroupBody = ({
 
   return (
     <Stack gap={0}>
-      {augmentedOptions.length > FILTER_SEARCH_MIN_ITEMS && (
+      {!fixedOptions && augmentedOptions.length > FILTER_SEARCH_MIN_ITEMS && (
         <FilterSearchInput
           placeholder="Search values..."
           value={search}
@@ -697,7 +712,7 @@ const FilterGroupBody = ({
           key={option.value.toString()}
           columnName={name}
           label={option.label}
-          pinned={isPinned(option.value)}
+          pinned={isPinned?.(option.value) ?? false}
           className={
             recentlyMoved.has(option.value) ? classes.recentlyMoved : ''
           }
@@ -711,7 +726,7 @@ const FilterGroupBody = ({
           onChange={() => handleChange(option.value)}
           onClickOnly={() => onOnlyClick(option.value)}
           onClickExclude={() => onExcludeClick(option.value)}
-          onClickPin={() => onPinClick(option.value)}
+          onClickPin={onPinClick ? () => onPinClick(option.value) : undefined}
           sharedPinned={isSharedPinned?.(option.value)}
           onClickSharedPin={
             onSharedPinClick ? () => onSharedPinClick(option.value) : undefined
@@ -809,7 +824,7 @@ type FilterGroupActionsProps = {
   totalAppliedFiltersSize: number;
   toggleShowDistributions: VoidFunction;
   onColumnToggle?: VoidFunction;
-  onFieldPinClick: VoidFunction;
+  onFieldPinClick?: VoidFunction;
   onToggleSharedFieldPin: VoidFunction;
   onClearClick: VoidFunction;
 };
@@ -886,12 +901,14 @@ function FilterGroupActions({
               </ActionIcon>
             </Tooltip>
           )}
-          <PinShareMenu
-            personalPinned={isFieldPinned}
-            sharedPinned={isSharedFieldPinned}
-            onTogglePersonalPin={onFieldPinClick}
-            onToggleSharedPin={onToggleSharedFieldPin}
-          />
+          {onFieldPinClick && (
+            <PinShareMenu
+              personalPinned={isFieldPinned}
+              sharedPinned={isSharedFieldPinned}
+              onTogglePersonalPin={onFieldPinClick}
+              onToggleSharedPin={onToggleSharedFieldPin}
+            />
+          )}
         </>
       )}
       {totalAppliedFiltersSize > 0 && (
@@ -945,6 +962,7 @@ export const FilterGroup = ({
   isLive,
   distributionKey,
   onRangeChange,
+  fixedOptions,
 }: FilterGroupProps) => {
   const [uncontrolledExpanded, setUncontrolledExpanded] = useState(
     isDefaultExpanded ?? false,
@@ -1059,7 +1077,9 @@ export const FilterGroup = ({
               isSharedFieldPinned={fieldPins?.isSharedFieldPinned ?? false}
               toggleShowDistributions={toggleShowDistributions}
               onColumnToggle={onColumnToggle}
-              onFieldPinClick={fieldPins?.onFieldPinClick ?? voidFunc}
+              onFieldPinClick={
+                fieldPins && (fieldPins.onFieldPinClick ?? voidFunc)
+              }
               onToggleSharedFieldPin={
                 fieldPins?.onToggleSharedFieldPin ?? voidFunc
               }
@@ -1090,10 +1110,10 @@ export const FilterGroup = ({
                   onChange={onChange}
                   onOnlyClick={onOnlyClick}
                   onExcludeClick={onExcludeClick}
-                  isPinned={valuePins.isPinned}
-                  onPinClick={valuePins.onPinClick}
-                  isSharedPinned={valuePins.isSharedPinned}
-                  onSharedPinClick={valuePins.onSharedPinClick}
+                  isPinned={valuePins?.isPinned}
+                  onPinClick={valuePins?.onPinClick}
+                  isSharedPinned={valuePins?.isSharedPinned}
+                  onSharedPinClick={valuePins?.onSharedPinClick}
                   onLoadMore={onLoadMore}
                   loadMoreLoading={loadMoreLoading}
                   hasLoadedMore={hasLoadedMore}
@@ -1103,6 +1123,7 @@ export const FilterGroup = ({
                   showDistributions={showDistributions}
                   onDistributionError={onDistributionError}
                   onFetchingDistributionChange={setIsFetchingDistribution}
+                  fixedOptions={fixedOptions}
                 />
               )
             )}
@@ -1197,6 +1218,12 @@ const DBSearchPageFiltersComponent = ({
 
   const { data: source } = useSource({ id: sourceId });
   const sourceTableConnection = tcFromSource(source);
+  const severityClassKey = useMemo(() => getSeverityClassKey(source), [source]);
+  // Includes stale class keys from the source's earlier severity expressions.
+  const severityClassFilterKeys = useMemo(
+    () => Object.keys(filterState).filter(isSeverityClassKeyV1),
+    [filterState],
+  );
   const { data: jsonColumns } = useJsonColumns(sourceTableConnection);
 
   // Special case for live tail
@@ -1358,10 +1385,13 @@ const DBSearchPageFiltersComponent = ({
         _facets.push(facet);
       }
     }
-    // get remaining filterState that are not in _facets
+    // get remaining filterState that are not in _facets. Class keys stay out
+    // so a stale one shows as a Severity pill, not a facet named by its SQL.
     const remainingFilterState = Object.keys(filterState).filter(
       key =>
-        !_facets.some(facet => facet.key === key) && !sharedFilterKeys.has(key),
+        !isSeverityClassKeyV1(key) &&
+        !_facets.some(facet => facet.key === key) &&
+        !sharedFilterKeys.has(key),
     );
     for (const key of remainingFilterState) {
       _facets.push({
@@ -1435,13 +1465,15 @@ const DBSearchPageFiltersComponent = ({
   // Check if non-shared facets have active selections
   const showFiltersClearButton = useMemo(
     () =>
-      shownFacets.some(facet => {
-        const f = filterState[facet.key];
-        return (
-          f && (f.included.size > 0 || f.excluded.size > 0 || f.range != null)
-        );
-      }),
-    [shownFacets, filterState],
+      [...shownFacets.map(facet => facet.key), ...severityClassFilterKeys].some(
+        key => {
+          const f = filterState[key];
+          return (
+            f && (f.included.size > 0 || f.excluded.size > 0 || f.range != null)
+          );
+        },
+      ),
+    [shownFacets, filterState, severityClassFilterKeys],
   );
 
   const clearSharedSelections = useCallback(() => {
@@ -1454,7 +1486,10 @@ const DBSearchPageFiltersComponent = ({
     for (const facet of shownFacets) {
       clearFilter(facet.key);
     }
-  }, [shownFacets, clearFilter]);
+    for (const key of severityClassFilterKeys) {
+      clearFilter(key);
+    }
+  }, [shownFacets, clearFilter, severityClassFilterKeys]);
 
   const parentSpanIdExpr =
     source?.kind === SourceKind.Trace
@@ -1923,13 +1958,26 @@ const DBSearchPageFiltersComponent = ({
                     />
                   )}
 
+                {severityClassKey && (
+                  <SeverityClassFilterGroup
+                    classKey={severityClassKey}
+                    filterState={filterState}
+                    setFilterValue={setFilterValue}
+                    clearFilter={clearFilter}
+                    chartConfig={chartConfig}
+                    isLive={isLive}
+                    showFilterCounts={showFilterCounts}
+                  />
+                )}
                 {shownFacets.length === 0 &&
                   (isFacetsLoading ? (
                     <Flex align="center" justify="center">
                       <Loader size="xs" color="gray" />
                     </Flex>
                   ) : (
-                    <Text size="xxs">No filters available</Text>
+                    !severityClassKey && (
+                      <Text size="xxs">No filters available</Text>
+                    )
                   ))}
                 {/* Filters show their own loader until their values arrive */}
                 {renderFacetList(shownFacets)}

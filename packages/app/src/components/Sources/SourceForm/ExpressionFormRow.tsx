@@ -23,6 +23,7 @@ export function ExpressionFormRow({
   columns,
   sourceKind,
   tableConnection,
+  validationExpression,
 }: {
   control: Control<TSource>;
   setValue: UseFormSetValue<TSource>;
@@ -37,6 +38,8 @@ export function ExpressionFormRow({
     tableName: string;
     connectionId: string;
   };
+  /** Wraps the value before validating it, to check how it will be used. */
+  validationExpression?: (expression: string) => string;
 }) {
   const currentValue = useWatch({ control, name });
   const value = typeof currentValue === 'string' ? currentValue : '';
@@ -59,7 +62,7 @@ export function ExpressionFormRow({
       />
       {value.trim() ? (
         <ExpressionValidationStatus
-          expression={value}
+          expression={validationExpression?.(value) ?? value}
           tableConnection={tableConnection}
         />
       ) : (

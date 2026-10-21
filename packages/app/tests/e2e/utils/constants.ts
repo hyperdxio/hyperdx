@@ -43,6 +43,10 @@ export const DEFAULT_TRACES_MV_SOURCE_NAME = 'E2E Traces MV';
 export const DEFAULT_TRACES_MV_AUTOPOPULATE_SOURCE_NAME =
   'E2E Traces MV AutoPopulate';
 
+// Log source with a Severity Number Expression, which E2E Logs lacks (its rows
+// all carry SeverityNumber 0).
+export const SEVERITY_CLASS_LOGS_SOURCE_NAME = 'E2E Severity Class Logs';
+
 // ClickHouse database/table names backing the default E2E sources. Must stay
 // in sync with `tests/e2e/fixtures/e2e-fixtures.json` and the CREATE TABLE
 // statements in `docker/clickhouse/local/init-db-e2e.sh`.
@@ -87,3 +91,6 @@ export const E2E_METADATA_MV_KEY_ROLLUP_TABLE = 'e2e_otel_logs_key_rollup_15m';
 // Table backing CUSTOM_SERVICE_LOGS_SOURCE_NAME. Created in
 // `docker/clickhouse/local/init-db-e2e.sh` and seeded in `seed-clickhouse.ts`.
 export const E2E_CUSTOM_SERVICE_LOGS_TABLE = 'e2e_custom_service_name';
+// Table backing SEVERITY_CLASS_LOGS_SOURCE_NAME. Created and seeded in
+// `seed-clickhouse.ts`.
+export const E2E_SEVERITY_CLASS_LOGS_TABLE = 'e2e_severity_class_logs';

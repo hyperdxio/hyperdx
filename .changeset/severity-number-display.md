@@ -10,6 +10,6 @@ add the stored text in parentheses when it differs, as in
 `INFO (Informational)`, and take their color from the number. The search results
 and pattern table use the number only when the expression names a stored numeric
 column. Copy and filter actions still use the stored text. Rows without a number
-in 1-24, and sources without the field, show the stored text as before. Level
-labels and the waterfall flags also treat `panic`, `dpanic`, `ftl` and `severe`
-as errors and `wrn` as a warning.
+in 1-24, and sources without the field, show the stored text as before, and the
+severity text fallback also recognizes `panic`, `severe` and Serilog short names
+(`FTL`, `WRN`, `INF`, `DBG`, `TRC`, `VRB`).

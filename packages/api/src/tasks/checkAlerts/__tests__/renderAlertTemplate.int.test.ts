@@ -1,3 +1,4 @@
+import { buildSeverityClassExpressionV1 } from '@hyperdx/common-utils/dist/core/severity';
 import {
   AlertState,
   AlertThresholdType,
@@ -719,6 +720,24 @@ describe('enriched message fields', () => {
       sourceQuery:
         "(Body: \"error\") AND (ServiceName = 'checkout') AND (Region = 'us')",
     });
+  });
+
+  it('reports a severity class filter by its classes', async () => {
+    const key = buildSeverityClassExpressionV1({
+      numberExpr: 'SeverityNumber',
+      textExpr: 'SeverityText',
+    });
+    const { dispatched } = await renderWithWebhook(AlertState.ALERT, {
+      where: '',
+      filters: [
+        { type: 'sql', condition: `${key} IN ('ERROR')` },
+        { type: 'sql', condition: "SeverityText IN ('error')" },
+      ] satisfies Filter[],
+    });
+
+    expect(dispatched[0].message.sourceQuery).toBe(
+      "(Severity: ERROR) AND (SeverityText IN ('error'))",
+    );
   });
 
   it('applies the saved search pinned filters to the sample log query', async () => {

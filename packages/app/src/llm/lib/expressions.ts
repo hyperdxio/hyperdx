@@ -1,6 +1,8 @@
 import { errorStatusPredicateSql } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
+import { getSeverityClassErrorCondition } from '@/utils/severityClass';
+
 import { generateCostSqlExpression } from './cost';
 import { buildAnyKeyExistsSql, buildLLMSpanSqlPredicate } from './detect';
 
@@ -487,9 +489,12 @@ export function getLLMLogExpressions(
      * predicate of its own rather than reusing the span-status one: the extra
      * status value that predicate matches cannot appear in a severity-text
      * column, and the values severity text does use for errors are a
-     * different set.
+     * different set. Sources with a Severity Number Expression match the
+     * FATAL and ERROR severity classes instead.
      */
-    isError: `lower(${severityText}) = 'error'`,
+    isError:
+      getSeverityClassErrorCondition(source) ??
+      `lower(${severityText}) = 'error'`,
     /**
      * Log events that belong to LLM activity: explicit LLM markers or any
      * session id (covers tool_result / lifecycle events that carry a

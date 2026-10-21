@@ -1,7 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  isSeverityClassKeyV1,
+  SEVERITY_CLASS_FACET_VALUES,
+} from '@hyperdx/common-utils/dist/core/severity';
 import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { Flex, FlexProps, Text } from '@mantine/core';
 
+import { SEVERITY_CLASS_FACET_NAME } from '@/components/DBSearchPageFilters/utils';
 import { FilterPill, FilterValueEditor } from '@/components/FilterPill';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
@@ -14,6 +19,8 @@ const VALUE_EDIT_LIMIT = 50;
 // Stable identity so a caller that omits the prop doesn't invalidate the
 // flattenFilters useMemo on every render.
 const EMPTY_DATE_TIME_COLUMNS: ReadonlyMap<string, string> = new Map();
+
+const SEVERITY_CLASS_VALUE_OPTIONS = [...SEVERITY_CLASS_FACET_VALUES];
 
 type FormatTime = ReturnType<typeof useFormatTime>;
 
@@ -94,6 +101,8 @@ function SearchFilterPill({
   // (column missing on the active source) can only be removed.
   const isEditable = pill.type !== 'range' && !isInvalid;
   const [opened, setOpened] = useState(false);
+  // By shape, so stale class keys read as Severity too.
+  const isSeverityClass = isSeverityClassKeyV1(pill.field);
 
   // The picker lists values to switch this pill to, so it must not be scoped
   // by the active query or by the pill's own filter. Reusing chartConfig
@@ -112,13 +121,20 @@ function SearchFilterPill({
       keys: [pill.field],
       limit: VALUE_EDIT_LIMIT,
     },
-    { enabled: opened && isEditable },
+    { enabled: opened && isEditable && !isSeverityClass },
   );
-  const valueOptions = useMemo(() => keyValues?.[0]?.value ?? [], [keyValues]);
+  const valueOptions = useMemo(
+    () =>
+      isSeverityClass
+        ? SEVERITY_CLASS_VALUE_OPTIONS
+        : (keyValues?.[0]?.value ?? []),
+    [isSeverityClass, keyValues],
+  );
+  const field = isSeverityClass ? SEVERITY_CLASS_FACET_NAME : pill.field;
 
   return (
     <FilterPill
-      field={pill.field}
+      field={field}
       operator={isExcluded ? '!=' : pill.type === 'range' ? ':' : '='}
       value={pill.value}
       displayValue={pill.displayValue}
@@ -142,7 +158,7 @@ function SearchFilterPill({
             )
           : undefined
       }
-      data-testid={`active-filter-pill-${pill.field}`}
+      data-testid={`active-filter-pill-${field}`}
     />
   );
 }
