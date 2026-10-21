@@ -1,7 +1,5 @@
 import { useRef, useState } from 'react';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
-import { findBalancedParens } from '@hyperdx/common-utils/dist/variables';
 import {
   ActionIcon,
   Autocomplete,
@@ -14,114 +12,22 @@ import {
 import { IconX } from '@tabler/icons-react';
 
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
-import { parseAsSortingStateString } from '@/utils/queryParsers';
 
 import { ClausePopover } from './ClausePopover';
+import {
+  newSortRow,
+  parseSortKeys,
+  sameKeys,
+  serializeSortKeys,
+  SortRow,
+  sortSummary,
+  toRows,
+} from './sortClause';
 
 const DIRECTION_OPTIONS = [
   { label: 'Asc', value: 'asc' },
   { label: 'Desc', value: 'desc' },
 ];
-
-type SortKey = { id: string; desc: boolean };
-type SortRow = SortKey & { rowId: string };
-
-let rowSeq = 0;
-const toRows = (keys: SortKey[] | null): SortRow[] | null =>
-  keys?.map(key => ({ ...key, rowId: `sort-${rowSeq++}` })) ?? null;
-
-/**
- * Sort keys the picker can edit. A parenthesized list with one direction,
- * `(toDateTime(Timestamp), Timestamp) DESC`, is several fields sharing that
- * direction, including function calls. The parentheses have to wrap that whole
- * expression: `(a, b) ASC, (c, d) DESC` is two keys, not one list. Anything
- * without a plain ASC/DESC on each field stays in SQL.
- */
-/** A comma inside backticks cannot be split without breaking the identifier. */
-function hasCommaInsideBackticks(input: string): boolean {
-  let quoted = false;
-  for (let i = 0; i < input.length; i++) {
-    if (input[i] !== '`') {
-      if (quoted && input[i] === ',') return true;
-      continue;
-    }
-    // ClickHouse escapes a backtick by doubling it.
-    if (quoted && input[i + 1] === '`') {
-      i += 1;
-      continue;
-    }
-    quoted = !quoted;
-  }
-  return false;
-}
-
-function parseSortKeys(orderBy: string): SortKey[] | null {
-  const trimmed = orderBy.trim();
-  if (!trimmed) return [];
-  // A comma inside a backtick-quoted name would be split into extra fields.
-  if (hasCommaInsideBackticks(trimmed)) return null;
-
-  // [\s\S] so a newline inside `(toDateTime(Timestamp),\n Timestamp) DESC`
-  // still counts as one direction. `.` would miss it and hide the Fields controls.
-  const direction = trimmed.match(/^([\s\S]*)\s+(asc|desc)$/i);
-  const expr = direction?.[1].trim() ?? '';
-  if (
-    direction &&
-    expr.startsWith('(') &&
-    findBalancedParens(expr, 0) === expr.length - 1
-  ) {
-    const ids = splitAndTrimWithBracket(expr.slice(1, -1));
-    if (ids.length > 1 && ids.every(id => id.length > 0)) {
-      const desc = direction[2].toUpperCase() === 'DESC';
-      return ids.map(id => ({ id, desc }));
-    }
-  }
-
-  const keys: SortKey[] = [];
-  for (const part of splitAndTrimWithBracket(trimmed)) {
-    const parsed = parseAsSortingStateString.parse(part);
-    if (parsed == null || parsed.id.length === 0) return null;
-    keys.push({ id: parsed.id, desc: parsed.desc });
-  }
-  return keys;
-}
-
-function serializeSortKeys(keys: SortKey[]) {
-  return keys
-    .filter(key => key.id.trim())
-    .map(key =>
-      parseAsSortingStateString.serialize({
-        id: key.id.trim(),
-        desc: key.desc,
-      }),
-    )
-    .join(', ');
-}
-
-function sameKeys(a: SortKey[], b: SortKey[]) {
-  return (
-    a.length === b.length &&
-    a.every((key, i) => key.id === b[i].id && key.desc === b[i].desc)
-  );
-}
-
-function sortSummary(orderBy: string): { summary: string; count: number } {
-  const keys = parseSortKeys(orderBy);
-  if (keys == null) {
-    const summary = orderBy.trim() || 'none';
-    // An expression the field list cannot split stays one value. A number
-    // would invent a field count the user cannot see in the list.
-    return { summary, count: summary === 'none' ? 0 : 1 };
-  }
-  if (keys.length === 0) return { summary: 'none', count: 0 };
-  if (keys.length === 1) {
-    return {
-      summary: `${keys[0].id} ${keys[0].desc ? 'desc' : 'asc'}`,
-      count: 1,
-    };
-  }
-  return { summary: `${keys.length} fields`, count: keys.length };
-}
 
 export function SortPopover({
   value,
@@ -179,10 +85,7 @@ export function SortPopover({
   const addKey = (id: string) => {
     const trimmed = id.trim();
     if (!trimmed || used.has(trimmed)) return;
-    commitKeys([
-      ...(keys ?? []),
-      { id: trimmed, desc: true, rowId: `sort-${rowSeq++}` },
-    ]);
+    commitKeys([...(keys ?? []), newSortRow(trimmed, true)]);
     setSearch('');
   };
 

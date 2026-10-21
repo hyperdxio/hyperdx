@@ -1551,6 +1551,16 @@ describe('orderByAfterRemovingSelectItem', () => {
       ),
     ).toBe('"http.method" DESC');
   });
+
+  it('keeps a comma inside a backtick-quoted sort name', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        'upper(Body) AS "message"',
+        '"message" ASC, `a,b` DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('`a,b` DESC');
+  });
 });
 
 describe('getLogSeverityLevel', () => {

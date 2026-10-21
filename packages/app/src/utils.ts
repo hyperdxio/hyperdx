@@ -8,7 +8,11 @@ import {
   TableConnection,
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  replaceBacktickedIdentifiers,
+  restoreReplacements,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
@@ -1306,7 +1310,14 @@ export const orderByAfterRemovingSelectItem = (
     return orderBy;
   }
   const quoted = `"${alias}"`;
-  const keys = splitAndTrimWithBracket(orderBy);
+  // A comma inside a backtick-quoted name is not a separator. Tokenize those
+  // names before splitting so joining the kept keys cannot insert a space
+  // inside one. The shared splitter stays unaware of backticks.
+  const { sqlWithReplacements, replacements } =
+    replaceBacktickedIdentifiers(orderBy);
+  const keys = splitAndTrimWithBracket(sqlWithReplacements).map(key =>
+    restoreReplacements(key, replacements.quotedText),
+  );
   const kept = keys.filter(
     key => key.replace(/\s+(ASC|DESC)$/i, '') !== quoted,
   );
