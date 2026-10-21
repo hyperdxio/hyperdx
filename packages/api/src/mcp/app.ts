@@ -51,24 +51,34 @@ app.post('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
   }
 
   const userId = req.user?._id?.toString();
-  if (!userId) {
-    logger.warn('MCP request rejected: no userId');
+  const orgApiKeyId = req.orgApiKey?.id;
+  const principal = userId
+    ? { userId }
+    : orgApiKeyId
+      ? { orgApiKeyId }
+      : undefined;
+  if (!principal) {
+    logger.warn('MCP request rejected: no userId or org API key');
     res.sendStatus(403);
     return;
   }
 
   const context: McpContext = {
+    ...principal,
     teamId: teamId.toString(),
-    userId,
     mcpClient: userAgentClientInfo(req.get('User-Agent')),
   };
 
   setTraceAttributes({
     'mcp.team.id': context.teamId,
-    'mcp.user.id': userId,
+    ...(userId && { 'mcp.user.id': userId }),
+    ...(orgApiKeyId && { 'mcp.org_api_key.id': orgApiKeyId }),
   });
 
-  logger.info({ teamId: context.teamId, userId }, 'MCP request received');
+  logger.info(
+    { teamId: context.teamId, userId, orgApiKeyId },
+    'MCP request received',
+  );
 
   const server = createServer(context);
 

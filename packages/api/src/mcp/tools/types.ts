@@ -8,9 +8,12 @@ import type { AnyZodObject } from 'zod';
 import type { ToolBehaviorAnnotations } from '@/mcp/tools/annotations';
 import type { McpClientInfo } from '@/mcp/utils/mcpClient';
 
-export type McpContext = {
+export type McpContext = (
+  | { userId: string; orgApiKeyId?: undefined }
+  // Org API keys have no user.
+  | { userId?: undefined; orgApiKeyId: string }
+) & {
   teamId: string;
-  userId: string;
   /**
    * Identity of the calling MCP client application, parsed from User-Agent.
    */

@@ -88,6 +88,7 @@ export function withToolTracing<TArgs>(
       tool: toolName,
       teamId: context.teamId,
       userId: context.userId,
+      orgApiKeyId: context.orgApiKeyId,
       mcpClientName: clientName,
       mcpClientVersion: clientVersion,
     };
@@ -98,7 +99,12 @@ export function withToolTracing<TArgs>(
         const startTime = Date.now();
         span.setAttribute('mcp.tool.name', toolName);
         span.setAttribute('mcp.team.id', context.teamId);
-        span.setAttribute('mcp.user.id', context.userId);
+        if (context.userId) {
+          span.setAttribute('mcp.user.id', context.userId);
+        }
+        if (context.orgApiKeyId) {
+          span.setAttribute('mcp.org_api_key.id', context.orgApiKeyId);
+        }
         if (clientName) {
           span.setAttribute('mcp.client.name', clientName);
         }

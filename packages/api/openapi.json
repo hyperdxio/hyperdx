@@ -8317,6 +8317,9 @@
           },
           "400": {
             "description": "User already exists"
+          },
+          "403": {
+            "description": "The API key does not have admin scope"
           }
         }
       }
@@ -8332,6 +8335,9 @@
         "responses": {
           "200": {
             "description": "Successfully retrieved invitations"
+          },
+          "403": {
+            "description": "The API key does not have admin scope"
           }
         }
       }
@@ -8357,6 +8363,9 @@
         "responses": {
           "200": {
             "description": "Successfully deleted the invitation"
+          },
+          "403": {
+            "description": "The API key does not have admin scope"
           },
           "404": {
             "description": "Invitation not found"
@@ -8387,7 +8396,10 @@
             "description": "Successfully removed the member"
           },
           "400": {
-            "description": "Cannot remove yourself from the team"
+            "description": "Cannot remove yourself or the last team member"
+          },
+          "403": {
+            "description": "The API key does not have admin scope"
           },
           "404": {
             "description": "Member not found"

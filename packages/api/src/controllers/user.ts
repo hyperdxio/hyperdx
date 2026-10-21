@@ -31,6 +31,10 @@ export function findUserByEmail(email: string) {
   return User.findOne({ email: email.toLowerCase() });
 }
 
+export function countUsersInTeam(team: string | ObjectId) {
+  return User.countDocuments({ team });
+}
+
 export function findUsersByTeam(team: string | ObjectId) {
   return User.find({ team }).sort({ createdAt: 1 });
 }
@@ -98,16 +102,19 @@ export function recordOnboardingTaskCompletion(
 export async function deleteTeamMember(
   teamId: string | ObjectId,
   userIdToDelete: string,
-  userIdRequestingDelete: string | ObjectId,
+  // Undefined when an org API key made the request: alerts lose their owner.
+  userIdRequestingDelete?: string | ObjectId,
 ) {
   const [, deletedUser] = await Promise.all([
     Alert.updateMany(
       { createdBy: new mongoose.Types.ObjectId(userIdToDelete), team: teamId },
-      {
-        $set: {
-          createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete),
-        },
-      },
+      userIdRequestingDelete == null
+        ? { $unset: { createdBy: '' } }
+        : {
+            $set: {
+              createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete),
+            },
+          },
     ),
     User.findOneAndDelete({
       team: teamId,

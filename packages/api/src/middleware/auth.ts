@@ -1,13 +1,22 @@
 import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { Connection } from '@hyperdx/common-utils/dist/types';
+import type {
+  Connection,
+  OrgApiKeyScope,
+} from '@hyperdx/common-utils/dist/types';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
+import {
+  findActiveOrgApiKey,
+  ORG_API_KEY_PREFIX,
+  touchOrgApiKeyLastUsed,
+} from '@/controllers/orgApiKey';
 import { findUserByAccessKey } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import {
   getActiveTraceId,
+  getCounter,
   getStaticFeatureFlags,
   setBusinessContext,
 } from '@/utils/instrumentation';
@@ -22,6 +31,8 @@ declare global {
     interface User extends UserDocument {}
     interface Request {
       _hdx_connection?: Connection;
+      // Set when the bearer token is a team-owned key rather than a user's.
+      orgApiKey?: { id: string; description: string; scope: OrgApiKeyScope };
     }
   }
 }
@@ -97,7 +108,7 @@ export async function validateUserAccessKey(
 
   const user = await findUserByAccessKey(key);
   if (!user) {
-    return res.sendStatus(401);
+    return authenticateOrgApiKey(key, req, res, next);
   }
 
   req.user = user;
@@ -108,6 +119,46 @@ export async function validateUserAccessKey(
     teamId: user.team?.toString(),
     userId: user._id?.toString(),
     email: user.email,
+    ...getStaticFeatureFlags(),
+  });
+
+  nextWithQueryAttribution(req, next);
+}
+
+const orgApiKeyAuthFailures = getCounter('hyperdx.org_api_key.auth_failures', {
+  description:
+    'Bearer requests with an org API key that is unknown, revoked, or expired.',
+});
+
+async function authenticateOrgApiKey(
+  key: string,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const orgApiKey = await findActiveOrgApiKey(key);
+  if (!orgApiKey) {
+    if (key.startsWith(ORG_API_KEY_PREFIX)) {
+      orgApiKeyAuthFailures.add(1);
+    }
+    return res.sendStatus(401);
+  }
+
+  // Handlers read the team from req.user. Org keys have no user, so _id and
+  // email stay unset and nothing is attributed to the admin who created it.
+  // @ts-expect-error the principal carries only the team, not a full user
+  req.user = { team: orgApiKey.team };
+  req.orgApiKey = {
+    id: orgApiKey._id.toString(),
+    description: orgApiKey.description,
+    scope: orgApiKey.scope,
+  };
+  touchOrgApiKeyLastUsed(orgApiKey);
+
+  setBusinessContext({
+    teamId: orgApiKey.team.toString(),
+    'hyperdx.org_api_key.id': req.orgApiKey.id,
+    'hyperdx.org_api_key.scope': orgApiKey.scope,
     ...getStaticFeatureFlags(),
   });
 

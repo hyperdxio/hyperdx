@@ -24,6 +24,14 @@ const defaultRateLimiter = rateLimiter({
 });
 
 router.get('/', validateUserAccessKey, (req, res) => {
+  if (req.orgApiKey) {
+    // Clients such as the CLI source map upload read `user.team`.
+    return res.json({
+      version: 'v2',
+      user: { team: req.user?.team?.toString() },
+      apiKey: req.orgApiKey,
+    });
+  }
   res.json({
     version: 'v2',
     user: req.user?.toJSON(),

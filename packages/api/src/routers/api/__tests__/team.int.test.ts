@@ -2,8 +2,9 @@ import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
-import { getLoggedInAgent, getServer } from '@/fixtures';
+import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import OrgApiKey from '@/models/orgApiKey';
 import Team from '@/models/team';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
@@ -426,5 +427,121 @@ describe('team router', () => {
     const resp = await agent.patch('/team/apiKey').expect(200);
 
     expect(resp.body.newApiKey.length).toBeGreaterThan(0);
+  });
+
+  describe('org API keys', () => {
+    const body = {
+      description: 'terraform',
+      scope: 'member',
+      expiry: '30d',
+    } as const;
+
+    it('returns the key on create only', async () => {
+      const { agent, user } = await getLoggedInAgent(server);
+      const created = await agent.post('/team/api-keys').send(body).expect(200);
+      expect(created.body.key).toMatch(/^hdx_org_/);
+
+      const list = await agent.get('/team/api-keys').expect(200);
+      expect(list.body.data).toHaveLength(1);
+      expect(list.body.data[0]).not.toHaveProperty('key');
+      expect(list.body.data[0]).toMatchObject({
+        id: created.body.id,
+        description: 'terraform',
+        scope: 'member',
+        lastUsedAt: null,
+        createdBy: { email: user.email },
+      });
+    });
+
+    it.each([
+      { ...body, description: '' },
+      { ...body, description: 'x'.repeat(101) },
+      { ...body, expiry: '7d' },
+      { ...body, scope: 'owner' },
+    ])('rejects invalid bodies %#', async invalid => {
+      const { agent } = await getLoggedInAgent(server);
+      await agent.post('/team/api-keys').send(invalid).expect(400);
+    });
+
+    it('edits only the description', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const { body: created } = await agent
+        .post('/team/api-keys')
+        .send(body)
+        .expect(200);
+      const updated = await agent
+        .patch(`/team/api-keys/${created.id}`)
+        .send({ description: 'ci', scope: 'admin' })
+        .expect(200);
+      expect(updated.body).toMatchObject({
+        description: 'ci',
+        scope: 'member',
+      });
+    });
+
+    it('revokes immediately', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const { body: created } = await agent
+        .post('/team/api-keys')
+        .send(body)
+        .expect(200);
+      await agent
+        .get('/api/v2')
+        .set('Authorization', `Bearer ${created.key}`)
+        .expect(200);
+      await agent.delete(`/team/api-keys/${created.id}`).expect(204);
+      await agent
+        .get('/api/v2')
+        .set('Authorization', `Bearer ${created.key}`)
+        .expect(401);
+    });
+
+    it('hides other teams keys', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      // OSS allows a single team, so plant a key under a different team id.
+      const other = await OrgApiKey.create({
+        team: new mongoose.Types.ObjectId(),
+        keyHash: 'other',
+        description: 'other team',
+        scope: 'admin',
+        createdBy: new mongoose.Types.ObjectId(),
+      });
+      const list = await agent.get('/team/api-keys').expect(200);
+      expect(list.body.data).toHaveLength(0);
+      await agent
+        .patch(`/team/api-keys/${other._id}`)
+        .send({ description: 'mine now' })
+        .expect(404);
+      await agent.delete(`/team/api-keys/${other._id}`).expect(404);
+      expect(await OrgApiKey.findById(other._id)).not.toBeNull();
+    });
+
+    it('keeps working after the creator is deleted', async () => {
+      const { agent, user } = await getLoggedInAgent(server);
+      const { body: created } = await agent
+        .post('/team/api-keys')
+        .send(body)
+        .expect(200);
+      await User.deleteOne({ _id: user._id });
+
+      const key = await OrgApiKey.findById(created.id).populate('createdBy');
+      expect(key?.createdBy).toBeNull();
+      await getAgent(server)
+        .get('/api/v2')
+        .set('Authorization', `Bearer ${created.key}`)
+        .expect(200);
+    });
+
+    it('rejects bearer auth on the management routes', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const { body: created } = await agent
+        .post('/team/api-keys')
+        .send(body)
+        .expect(200);
+      await getAgent(server)
+        .get('/team/api-keys')
+        .set('Authorization', `Bearer ${created.key}`)
+        .expect(401);
+    });
   });
 });

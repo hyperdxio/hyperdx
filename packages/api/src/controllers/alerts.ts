@@ -341,7 +341,7 @@ const makeAlertUpdate = (
 export const createAlert = async (
   teamId: ObjectId,
   alertInput: z.infer<typeof internalAlertSchema>,
-  userId: ObjectId,
+  userId: ObjectId | undefined,
   refs: AlertRefs = {},
 ) => {
   const alert = await new Alert({

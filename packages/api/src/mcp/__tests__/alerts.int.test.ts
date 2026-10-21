@@ -353,6 +353,31 @@ describe('MCP Alert Tools', () => {
         expect(output.state).toBe('OK');
       });
 
+      it('leaves createdBy unset when called with an org API key', async () => {
+        const savedSearch = await createTestSavedSearch();
+        const webhook = await createTestWebhook();
+        await client.close();
+        client = await createTestClient({
+          teamId: team._id.toString(),
+          userId: undefined,
+          orgApiKeyId: 'org-key-id',
+        });
+
+        const result = await callTool(client, 'clickstack_save_alert', {
+          source: 'saved_search',
+          savedSearchId: savedSearch._id.toString(),
+          threshold: 50,
+          thresholdType: 'above',
+          interval: '5m',
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        });
+
+        expect(result.isError).toBeFalsy();
+        const { id } = JSON.parse(getFirstText(result));
+        const stored = await Alert.findById(id).lean();
+        expect(stored?.createdBy).toBeUndefined();
+      });
+
       it('should create an alert with an explicit displayName and tags', async () => {
         const savedSearch = await createTestSavedSearch();
         const webhook = await createTestWebhook();
