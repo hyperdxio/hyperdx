@@ -2714,6 +2714,11 @@ export const LogSourceSchema = BaseSourceSchema.extend({
    */
   severityNumberExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
+  /**
+   * Expression for the OpenTelemetry log EventName (e.g. browser.web_vital).
+   * No default: older and non-OTel log tables have no such column.
+   */
+  eventNameExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   displayedTimestampValueExpression: z.string().optional(),

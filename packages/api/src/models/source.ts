@@ -159,6 +159,7 @@ export const LogSource = Source.discriminator<ILogSource>(
     severityTextExpression: String,
     severityNumberExpression: String,
     bodyExpression: String,
+    eventNameExpression: String,
     eventAttributesExpression: String,
     resourceAttributesExpression: String,
     displayedTimestampValueExpression: String,

@@ -24,6 +24,9 @@ export const SERVICE_VERSION_EXPRESSION_HELP_TEXT =
 export const SEVERITY_NUMBER_EXPRESSION_HELP_TEXT =
   'Expression for the numeric OpenTelemetry severity (1-24), usually the SeverityNumber column. Leave blank if the table has no such column.';
 
+export const EVENT_NAME_EXPRESSION_HELP_TEXT =
+  'Expression for the OpenTelemetry log event name, usually the EventName column. Leave blank if the table has no such column.';
+
 // Placeholder written into from.databaseName / from.tableName when the
 // selected connection is Prometheus-only.
 export const PROMETHEUS_PLACEHOLDER = 'prometheus';
