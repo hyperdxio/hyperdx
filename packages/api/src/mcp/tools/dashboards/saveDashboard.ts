@@ -208,7 +208,9 @@ async function createDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(newDashboard);
+  const externalDashboard = convertToExternalDashboard(newDashboard, {
+    hidePromqlTiles: true,
+  });
   return {
     content: [
       {
@@ -373,7 +375,9 @@ async function updateDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(updatedDashboard);
+  const externalDashboard = convertToExternalDashboard(updatedDashboard, {
+    hidePromqlTiles: true,
+  });
   return {
     content: [
       {
