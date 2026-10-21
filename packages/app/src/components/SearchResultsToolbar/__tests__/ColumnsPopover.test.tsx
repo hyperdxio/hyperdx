@@ -64,7 +64,7 @@ describe('ColumnsPopover', () => {
   });
 
   it('stays empty after the last column is removed', async () => {
-    renderPopover({
+    const { onApply } = renderPopover({
       value: 'Timestamp',
       defaultValue: 'Timestamp, ServiceName, Body',
     });
@@ -74,6 +74,9 @@ describe('ColumnsPopover', () => {
     expect(
       screen.queryByLabelText('Remove ServiceName'),
     ).not.toBeInTheDocument();
+    expect(screen.getByTestId('search-columns-button-apply')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('search-columns-button-apply'));
+    expect(onApply).not.toHaveBeenCalled();
 
     const input = screen.getByPlaceholderText('Search columns');
     fireEvent.change(input, { target: { value: 'Body' } });
@@ -94,6 +97,37 @@ describe('ColumnsPopover', () => {
     expect(screen.getByLabelText('Remove `a,b`')).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('search-columns-button-apply'));
     expect(onApply).toHaveBeenCalledWith('Timestamp, `a,b`', ['Body']);
+  });
+
+  it('removes one copy when the same column is listed twice', async () => {
+    const { onApply } = renderPopover({
+      value: 'Body, Body',
+      defaultValue: 'Timestamp',
+    });
+    openPopover();
+    const removes = await screen.findAllByLabelText('Remove Body');
+    fireEvent.click(removes[0]);
+    expect(screen.getAllByLabelText('Remove Body')).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('search-columns-button-apply'));
+    expect(onApply).toHaveBeenCalledWith('Body', []);
+  });
+
+  it('does not add a map key that is already selected under its alias', async () => {
+    const column = `LogAttributes['x'] AS "x"`;
+    renderPopover({
+      value: column,
+      defaultValue: 'Timestamp',
+      fieldOptions: ["LogAttributes['x']", 'Body'],
+      knownColumns: new Set(['Body']),
+    });
+    openPopover();
+    const input = await screen.findByPlaceholderText('Search columns');
+    fireEvent.change(input, { target: { value: "LogAttributes['x']" } });
+    expect(
+      screen.queryByRole('option', { name: "LogAttributes['x']" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('search-columns-add-button'));
+    expect(screen.getAllByLabelText(`Remove ${column}`)).toHaveLength(1);
   });
 
   it('removes a column and reports it on apply', async () => {

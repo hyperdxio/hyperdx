@@ -25,7 +25,7 @@ import {
 
 import { fieldListSummary } from '@/components/SplitValueButton/SplitValueButton';
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
-import { splitClauseList, withMapKeyAlias } from '@/utils';
+import { isColumnInSelect, splitClauseList, withMapKeyAlias } from '@/utils';
 
 import { ClausePopover } from './ClausePopover';
 import { SortableColumn } from './SortableColumn';
@@ -66,16 +66,16 @@ export function ColumnsPopover({
     splitClauseList(select || defaultValue);
 
   const shown = storedColumns(value);
-  const items = splitClauseList(draft);
+  const items = useMemo(() => splitClauseList(draft), [draft]);
 
   const options = useMemo(
-    () => fieldOptions.filter(option => !items.includes(option)),
+    () => fieldOptions.filter(option => !isColumnInSelect(items, option)),
     [fieldOptions, items],
   );
 
   const addColumn = (column: string) => {
     const trimmed = column.trim();
-    if (trimmed && !items.includes(trimmed)) {
+    if (trimmed && !isColumnInSelect(items, trimmed)) {
       setDraft(
         [...items, withMapKeyAlias(trimmed, items, knownColumns)].join(', '),
       );
@@ -83,8 +83,8 @@ export function ColumnsPopover({
     setSearch('');
   };
 
-  const removeColumn = (item: string) => {
-    setDraft(items.filter(i => i !== item).join(', '));
+  const removeColumn = (index: number) => {
+    setDraft(items.filter((_, i) => i !== index).join(', '));
   };
 
   const columnIds = items.map(columnId);
@@ -123,6 +123,7 @@ export function ColumnsPopover({
         setSearch('');
       }}
       resetDisabled={draft.trim() === defaultValue.trim()}
+      applyDisabled={draft.trim() === ''}
       onApply={() => {
         const baseline = value || defaultValue;
         // An empty form value means "use the source default", so resetting
@@ -159,7 +160,7 @@ export function ColumnsPopover({
                         key={columnId(item, index)}
                         id={columnId(item, index)}
                         label={item}
-                        onRemove={() => removeColumn(item)}
+                        onRemove={() => removeColumn(index)}
                       />
                     ))}
                   </Stack>

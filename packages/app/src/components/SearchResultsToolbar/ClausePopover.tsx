@@ -25,6 +25,7 @@ export function ClausePopover({
   onApply,
   onReset,
   resetDisabled,
+  applyDisabled,
   renderPick,
   renderSql,
   'data-testid': testId,
@@ -47,6 +48,8 @@ export function ClausePopover({
   /** Restore the source default in the draft. Apply still has to confirm it. */
   onReset: () => void;
   resetDisabled?: boolean;
+  /** An empty clause is stored as the source default, so Apply cannot submit one. */
+  applyDisabled?: boolean;
   renderPick: (apply: () => void) => ReactNode;
   renderSql: (apply: () => void) => ReactNode;
   'data-testid': string;
@@ -61,6 +64,7 @@ export function ClausePopover({
   };
 
   const apply = () => {
+    if (applyDisabled) return;
     onApply();
     setOpened(false);
   };
@@ -118,6 +122,7 @@ export function ClausePopover({
                 variant="primary"
                 size="xs"
                 onClick={apply}
+                disabled={applyDisabled}
                 data-testid={`${testId}-apply`}
               >
                 Apply

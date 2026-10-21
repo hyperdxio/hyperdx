@@ -1,6 +1,6 @@
-import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { findBalancedParens } from '@hyperdx/common-utils/dist/variables';
 
+import { splitClauseList } from '@/utils';
 import { parseAsSortingStateString } from '@/utils/queryParsers';
 
 export type SortKey = { id: string; desc: boolean };
@@ -15,24 +15,6 @@ export function newSortRow(id: string, desc: boolean): SortRow {
 export const toRows = (keys: SortKey[] | null): SortRow[] | null =>
   keys?.map(key => newSortRow(key.id, key.desc)) ?? null;
 
-/** A comma inside backticks cannot be split without breaking the identifier. */
-function hasCommaInsideBackticks(input: string): boolean {
-  let quoted = false;
-  for (let i = 0; i < input.length; i++) {
-    if (input[i] !== '`') {
-      if (quoted && input[i] === ',') return true;
-      continue;
-    }
-    // ClickHouse escapes a backtick by doubling it.
-    if (quoted && input[i + 1] === '`') {
-      i += 1;
-      continue;
-    }
-    quoted = !quoted;
-  }
-  return false;
-}
-
 /**
  * Sort keys the picker can edit. A parenthesized list with one direction,
  * `(toDateTime(Timestamp), Timestamp) DESC`, is several fields sharing that
@@ -43,8 +25,6 @@ function hasCommaInsideBackticks(input: string): boolean {
 export function parseSortKeys(orderBy: string): SortKey[] | null {
   const trimmed = orderBy.trim();
   if (!trimmed) return [];
-  // A comma inside a backtick-quoted name would be split into extra fields.
-  if (hasCommaInsideBackticks(trimmed)) return null;
 
   // [\s\S] so a newline inside `(toDateTime(Timestamp),\n Timestamp) DESC`
   // still counts as one direction. `.` would miss it and hide the Fields controls.
@@ -55,7 +35,7 @@ export function parseSortKeys(orderBy: string): SortKey[] | null {
     expr.startsWith('(') &&
     findBalancedParens(expr, 0) === expr.length - 1
   ) {
-    const ids = splitAndTrimWithBracket(expr.slice(1, -1));
+    const ids = splitClauseList(expr.slice(1, -1));
     if (ids.length > 1 && ids.every(id => id.length > 0)) {
       const desc = direction[2].toUpperCase() === 'DESC';
       return ids.map(id => ({ id, desc }));
@@ -63,7 +43,7 @@ export function parseSortKeys(orderBy: string): SortKey[] | null {
   }
 
   const keys: SortKey[] = [];
-  for (const part of splitAndTrimWithBracket(trimmed)) {
+  for (const part of splitClauseList(trimmed)) {
     const parsed = parseAsSortingStateString.parse(part);
     if (parsed == null || parsed.id.length === 0) return null;
     keys.push({ id: parsed.id, desc: parsed.desc });

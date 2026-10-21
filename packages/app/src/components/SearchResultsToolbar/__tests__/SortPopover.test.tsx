@@ -89,12 +89,25 @@ describe('SortPopover', () => {
     expect(screen.queryByTestId('search-sort-custom')).not.toBeInTheDocument();
   });
 
-  it('keeps a backtick-quoted field that contains a comma on SQL', async () => {
+  it('lists a backtick-quoted field that contains a comma', async () => {
     const orderBy = '(`a,b`, Timestamp) DESC';
     renderPopover({ value: orderBy, defaultValue: orderBy });
     openPopover();
-    expect(await screen.findByLabelText('ORDER BY')).toHaveValue(orderBy);
-    expect(screen.queryByDisplayValue('Timestamp')).not.toBeInTheDocument();
+    expect(await screen.findByDisplayValue('`a,b`')).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Timestamp')).toBeInTheDocument();
+    expect(screen.queryByTestId('search-sort-custom')).not.toBeInTheDocument();
+  });
+
+  it('does not apply an empty sort', async () => {
+    const { onApply } = renderPopover({
+      value: 'Timestamp DESC',
+      defaultValue: 'Body DESC',
+    });
+    openPopover();
+    fireEvent.click(await screen.findByLabelText('Remove Timestamp'));
+    expect(screen.getByTestId('search-sort-button-apply')).toBeDisabled();
+    fireEvent.click(screen.getByTestId('search-sort-button-apply'));
+    expect(onApply).not.toHaveBeenCalled();
   });
 
   it('opens on the SQL tab for a custom ORDER BY', async () => {

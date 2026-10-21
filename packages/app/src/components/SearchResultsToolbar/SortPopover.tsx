@@ -106,6 +106,7 @@ export function SortPopover({
         setSearch('');
       }}
       resetDisabled={draft.trim() === defaultValue.trim()}
+      applyDisabled={draft.trim() === ''}
       onApply={() =>
         onApply(
           draft.trim() === defaultValue.trim()
