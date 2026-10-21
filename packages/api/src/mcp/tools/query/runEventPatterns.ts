@@ -218,7 +218,9 @@ export async function mineWindowPatterns(
   } satisfies ChartConfigWithDateRange;
 
   // Drill-down is optional, so a caller filter that cannot be rendered as SQL
-  // resolves to null instead of failing the mining.
+  // resolves to null instead of failing the mining. Once the queries fail the
+  // client is closed under the rendering, so its failure is not reported.
+  let queriesFailed = false;
   const userWherePromise: Promise<string | null | undefined> =
     options?.includeDrilldownWhere
       ? userWhereAsSql({
@@ -232,6 +234,7 @@ export async function mineWindowPatterns(
           implicitColumnExpression: implicitColumn,
           useTextIndexForImplicitColumn,
         }).catch(err => {
+          if (queriesFailed || options.abortSignal?.aborted) return null;
           trace.getActiveSpan()?.setAttributes({
             'mcp.event_patterns.drilldown_where_failed': true,
             'mcp.event_patterns.drilldown_where_error':
@@ -283,6 +286,7 @@ export async function mineWindowPatterns(
       userWherePromise,
     ]);
   } catch (err) {
+    queriesFailed = true;
     return { error: clickHouseErrorResult(err) };
   } finally {
     await clickhouseClient.close().catch(() => {});

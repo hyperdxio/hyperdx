@@ -5,8 +5,6 @@ import {
   DENOISE_SAMPLE_SIZE,
   flattenBody,
   minePatterns,
-  TemplateMiner,
-  TemplateMinerConfig,
 } from '@hyperdx/common-utils/dist/drain';
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
@@ -17,6 +15,8 @@ import { getSource } from '@/controllers/sources';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
 
 import { resolveBodyExpression } from './helpers';
+
+const PATTERN_WILDCARD = '<*>';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -235,13 +235,7 @@ export async function denoiseSearchResults(
     };
   }
 
-  const isNoisy = buildNoisyBodyMatcher(
-    sampleRows.map(row => {
-      const raw = row.__hdx_pattern_body;
-      return raw != null ? String(raw) : '';
-    }),
-    noisyTemplates,
-  );
+  const isNoisy = buildNoisyBodyMatcher(noisyTemplates);
   const filteredRows = rows.filter(row => {
     const bodyValue = row[bodyColumnKey];
     if (bodyValue == null) return true; // Keep rows with no body
@@ -257,33 +251,29 @@ export async function denoiseSearchResults(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Train a miner on the sample the same way minePatterns does and return a
- * predicate that is true when a body matches a noisy cluster. minePatterns
- * reports each cluster's own template, but `match` can land a member on a
- * different same-length cluster. So the noisy set is the clusters that
- * `match` returns for members of noisy clusters, which removes every sampled
- * noisy row.
+ * Return a predicate that is true when a body fits one of the noisy
+ * templates: same token count, same literal tokens, any token at each <*>.
+ * Every member of a cluster fits its own template. Re-running Drain's
+ * `match` instead can land a member on a different same-length cluster.
  */
 export function buildNoisyBodyMatcher(
-  sampleBodies: string[],
   noisyTemplates: Set<string>,
 ): (body: string) => boolean {
-  const miner = new TemplateMiner(new TemplateMinerConfig());
-  const trained = sampleBodies.map(body => {
-    const text = flattenBody(body);
-    return { text, clusterId: miner.addLogMessage(text).clusterId };
-  });
-  const noisyClusterIds = new Set<number>();
-  for (const { text, clusterId } of trained) {
-    const template = miner.drain.getCluster(clusterId)?.getTemplate();
-    if (template == null || !noisyTemplates.has(template)) continue;
-    const match = miner.match(text, 'fallback');
-    noisyClusterIds.add(match?.clusterId ?? clusterId);
-  }
+  const templates = [...noisyTemplates].map(tokenize);
   return body => {
-    const match = miner.match(flattenBody(body), 'fallback');
-    return match != null && noisyClusterIds.has(match.clusterId);
+    const tokens = tokenize(flattenBody(body));
+    return templates.some(
+      t =>
+        t.length === tokens.length &&
+        t.every((tok, i) => tok === PATTERN_WILDCARD || tok === tokens.at(i)),
+    );
   };
+}
+
+// Drain tokenizes with trim + split(/\s+/).
+function tokenize(text: string): string[] {
+  const trimmed = text.trim();
+  return trimmed === '' ? [] : trimmed.split(/\s+/);
 }
 
 /**

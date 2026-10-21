@@ -39,7 +39,7 @@ describe('buildNoisyBodyMatcher', () => {
         },
       );
       for (const noisy of patterns) {
-        const isNoisy = buildNoisyBodyMatcher(bodies, new Set([noisy.pattern]));
+        const isNoisy = buildNoisyBodyMatcher(new Set([noisy.pattern]));
         for (const { body } of noisy.samples) {
           if (!isNoisy(body)) {
             throw new Error(
@@ -51,16 +51,16 @@ describe('buildNoisyBodyMatcher', () => {
     }
   });
 
-  it('keeps bodies that only match non-noisy clusters', () => {
-    const bodies = [
-      ...Array.from({ length: 20 }, (_, i) => `heartbeat ok ${i}`),
-      ...Array.from({ length: 5 }, (_, i) => `user ${i} logged in`),
-    ];
+  it('keeps bodies that do not fit a noisy template', () => {
     const isNoisy = buildNoisyBodyMatcher(
-      bodies,
-      new Set(['heartbeat ok <*>']),
+      new Set(['heartbeat ok <*>', 'GET <*> <*> ok 200']),
     );
     expect(isNoisy('heartbeat ok 999')).toBe(true);
+    expect(isNoisy('  GET api a ok 200 ')).toBe(true);
     expect(isNoisy('user 7 logged in')).toBe(false);
+    expect(isNoisy('heartbeat ok')).toBe(false);
+    // Drain can match this to a cluster that a noisy member also matches;
+    // it does not fit the noisy template, so it stays.
+    expect(isNoisy('GET user p q r')).toBe(false);
   });
 });
