@@ -1,4 +1,4 @@
-import { screen, waitFor } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
@@ -131,5 +131,49 @@ describe('OrgApiKeysSection', () => {
         expect.anything(),
       ),
     );
+  });
+
+  it('marks a key expired once its expiry passes while the page is open', () => {
+    jest.useFakeTimers({ now: new Date('2026-10-01T00:00:00.000Z') });
+    try {
+      setKeys([key({ expiresAt: '2026-10-01T00:00:30.000Z' })]);
+      renderWithMantine(<OrgApiKeysSection />);
+      expect(screen.queryByText('Expired')).not.toBeInTheDocument();
+      act(() => {
+        jest.advanceTimersByTime(60_000);
+      });
+      expect(screen.getByText('Expired')).toBeInTheDocument();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('limits descriptions to 100 characters and reports failed edits', async () => {
+    setKeys([key()]);
+    mockUseUpdate.mockReturnValue({
+      mutateAsync: jest.fn().mockRejectedValue(new Error('Save failed')),
+    });
+    renderWithMantine(<OrgApiKeysSection />);
+
+    const input = screen.getByLabelText('API key description');
+    expect(input).toHaveAttribute('maxLength', '100');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'ci{Enter}');
+    expect(
+      await screen.findByText("Couldn't rename API key: Save failed"),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the create dialog open while the key is being created', async () => {
+    mockUseCreate.mockReturnValue({ mutate: createMutate, isPending: true });
+    renderWithMantine(<OrgApiKeysSection />);
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Create API key' }),
+    );
+    const cancel = await screen.findByRole('button', { name: 'Cancel' });
+    expect(cancel).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByLabelText('Description')).toBeInTheDocument();
   });
 });

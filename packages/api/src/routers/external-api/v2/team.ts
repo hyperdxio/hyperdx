@@ -5,8 +5,8 @@ import { validateRequest } from 'zod-express-middleware';
 
 import { getTeam, getTeamInviteUrl } from '@/controllers/team';
 import {
-  countUsersInTeam,
   deleteTeamMember,
+  deleteTeamMemberKeepingOne,
   findUserByEmail,
   findUsersByTeam,
 } from '@/controllers/user';
@@ -305,15 +305,20 @@ router.delete(
         });
       }
 
-      // A user can't remove themselves, so only an org key can empty the team
-      // and leave nobody able to manage it.
-      if (
-        requestingUserId == null &&
-        (await countUsersInTeam(teamId.toString())) <= 1
-      ) {
-        return res
-          .status(400)
-          .json({ message: 'Cannot remove the last team member' });
+      if (requestingUserId == null) {
+        const result = await deleteTeamMemberKeepingOne(
+          teamId.toString(),
+          req.params.id,
+        );
+        if (result === 'not_found') {
+          return res.sendStatus(404);
+        }
+        if (result === 'last_member') {
+          return res
+            .status(400)
+            .json({ message: 'Cannot remove the last team member' });
+        }
+        return res.json({ data: { success: true } });
       }
 
       const deletedUser = await deleteTeamMember(

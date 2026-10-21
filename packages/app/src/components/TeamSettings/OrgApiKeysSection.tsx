@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { OrgApiKeyApiResponse } from '@hyperdx/common-utils/dist/types';
 import {
   Badge,
@@ -15,19 +15,40 @@ import { notifications } from '@mantine/notifications';
 import api from '@/api';
 import EmptyState from '@/components/EmptyState';
 import { InlineNameInput } from '@/components/InlineNameInput/InlineNameInput';
-import { NOW } from '@/config';
 import { useConfirm } from '@/useConfirm';
 
 import CreateOrgApiKeyModal from './CreateOrgApiKeyModal';
 
 const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
 
-function OrgApiKeyRow({ apiKey }: { apiKey: OrgApiKeyApiResponse }) {
+// Expiry is shown to the day, so a minute tick is enough to flip the badge.
+const EXPIRY_TICK_MS = 60_000;
+
+// Only read in a state initialiser and the interval, never during render.
+// eslint-disable-next-line no-restricted-syntax
+const currentTime = () => Date.now();
+
+function useNow() {
+  const [now, setNow] = useState(currentTime);
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(currentTime()), EXPIRY_TICK_MS);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
+function OrgApiKeyRow({
+  apiKey,
+  now,
+}: {
+  apiKey: OrgApiKeyApiResponse;
+  now: number;
+}) {
   const updateKey = api.useUpdateOrgApiKey();
   const deleteKey = api.useDeleteOrgApiKey();
   const confirm = useConfirm();
   const isExpired =
-    apiKey.expiresAt != null && Date.parse(apiKey.expiresAt) <= NOW;
+    apiKey.expiresAt != null && Date.parse(apiKey.expiresAt) <= now;
 
   const onRevoke = async () => {
     const confirmed = await confirm(
@@ -54,8 +75,15 @@ function OrgApiKeyRow({ apiKey }: { apiKey: OrgApiKeyApiResponse }) {
           aria-label="API key description"
           placeholder="Untitled API key"
           value={apiKey.description}
+          maxLength={100}
           onCommit={description =>
-            updateKey.mutateAsync({ id: apiKey.id, description })
+            updateKey.mutateAsync({ id: apiKey.id, description }).catch(e => {
+              notifications.show({
+                color: 'red',
+                message: `Couldn't rename API key: ${e.message}`,
+              });
+              throw e;
+            })
           }
         />
       </Table.Td>
@@ -91,6 +119,7 @@ function OrgApiKeyRow({ apiKey }: { apiKey: OrgApiKeyApiResponse }) {
 
 export default function OrgApiKeysSection() {
   const { data, isLoading, isError } = api.useOrgApiKeys();
+  const now = useNow();
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const keys = data?.data ?? [];
 
@@ -131,7 +160,7 @@ export default function OrgApiKeysSection() {
             </Table.Thead>
             <Table.Tbody>
               {keys.map(apiKey => (
-                <OrgApiKeyRow key={apiKey.id} apiKey={apiKey} />
+                <OrgApiKeyRow key={apiKey.id} apiKey={apiKey} now={now} />
               ))}
             </Table.Tbody>
           </Table>

@@ -3,17 +3,24 @@ import type {
   OrgApiKeyApiResponse,
   OrgApiKeyExpiry,
 } from '@hyperdx/common-utils/dist/types';
+import opentelemetry from '@opentelemetry/api';
 import crypto from 'crypto';
 
 import type { ObjectId } from '@/models';
 import OrgApiKey, { type OrgApiKeyDocument } from '@/models/orgApiKey';
 import type { IUser } from '@/models/user';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 export const ORG_API_KEY_PREFIX = 'hdx_org_';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LAST_USED_WRITE_INTERVAL_MS = 5 * 60 * 1000;
+
+const lastUsedWriteFailures = getCounter(
+  'hyperdx.org_api_key.last_used_write_failures',
+  { description: 'Failed writes of an org API key last-used time.' },
+);
 
 function expiresAtFor(expiry: OrgApiKeyExpiry, now: number): Date | null {
   switch (expiry) {
@@ -89,6 +96,8 @@ export function touchOrgApiKeyLastUsed(
   if (doc.lastUsedAt != null && doc.lastUsedAt > staleBefore) {
     return;
   }
+  // Captured now: the write settles after the request may have moved on.
+  const span = opentelemetry.trace.getActiveSpan();
   void OrgApiKey.updateOne(
     {
       _id: doc._id,
@@ -96,6 +105,8 @@ export function touchOrgApiKeyLastUsed(
     },
     { lastUsedAt: now },
   ).catch(err => {
+    lastUsedWriteFailures.add(1);
+    span?.recordException(err instanceof Error ? err : new Error(String(err)));
     logger.warn(
       { error: err, orgApiKeyId: doc._id.toString() },
       'Failed to record org API key last use',

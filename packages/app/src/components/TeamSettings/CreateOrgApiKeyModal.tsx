@@ -43,7 +43,11 @@ export default function CreateOrgApiKeyModal({
   const [expiry, setExpiry] = useState<OrgApiKeyExpiry>('30d');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
+  // Closing mid-request would let the late response reopen on the old key.
   const close = () => {
+    if (createKey.isPending) {
+      return;
+    }
     setDescription('');
     setScope('member');
     setExpiry('30d');
@@ -122,7 +126,11 @@ export default function CreateOrgApiKeyModal({
             />
           </Stack>
           <Group justify="flex-end">
-            <Button variant="secondary" onClick={close}>
+            <Button
+              variant="secondary"
+              onClick={close}
+              disabled={createKey.isPending}
+            >
               Cancel
             </Button>
             <Button

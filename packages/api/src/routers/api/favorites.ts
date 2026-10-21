@@ -7,7 +7,7 @@ import {
   getFavorites,
   removeFavorite,
 } from '@/controllers/favorite';
-import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { getSessionUser } from '@/middleware/auth';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -16,7 +16,7 @@ const resourceTypeSchema = z.enum(['dashboard', 'savedSearch']);
 
 router.get('/', async (req, res, next) => {
   try {
-    const { teamId, userId } = getNonNullUserWithTeam(req);
+    const { teamId, userId } = getSessionUser(req);
 
     const favorites = await getFavorites(userId.toString(), teamId.toString());
 
@@ -36,7 +36,7 @@ router.put(
   }),
   async (req, res, next) => {
     try {
-      const { teamId, userId } = getNonNullUserWithTeam(req);
+      const { teamId, userId } = getSessionUser(req);
 
       const favorite = await addFavorite(
         userId.toString(),
@@ -62,7 +62,7 @@ router.delete(
   }),
   async (req, res, next) => {
     try {
-      const { teamId, userId } = getNonNullUserWithTeam(req);
+      const { teamId, userId } = getSessionUser(req);
 
       await removeFavorite(
         userId.toString(),

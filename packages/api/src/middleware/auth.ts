@@ -27,8 +27,12 @@ declare global {
   // no non-namespace / non-empty-interface equivalent for extending these types.
   // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-    interface User extends UserDocument {}
+    // _id and email are unset for org API key requests, which carry only the
+    // team. Session-only routes use getSessionUser to get them non-null.
+    interface User extends Omit<UserDocument, '_id' | 'email'> {
+      _id?: UserDocument['_id'];
+      email?: UserDocument['email'];
+    }
     interface Request {
       _hdx_connection?: Connection;
       // Set when the bearer token is a team-owned key rather than a user's.
@@ -106,21 +110,27 @@ export async function validateUserAccessKey(
     return res.sendStatus(401);
   }
 
-  const user = await findUserByAccessKey(key);
-  if (!user) {
-    return authenticateOrgApiKey(key, req, res, next);
+  // Express 4 drops rejected promises from middleware, which would leave the
+  // request hanging on a database error.
+  try {
+    const user = await findUserByAccessKey(key);
+    if (!user) {
+      return await authenticateOrgApiKey(key, req, res, next);
+    }
+
+    req.user = user;
+
+    // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
+    // with team/user context so their traces are searchable during incidents.
+    setBusinessContext({
+      teamId: user.team?.toString(),
+      userId: user._id?.toString(),
+      email: user.email,
+      ...getStaticFeatureFlags(),
+    });
+  } catch (err) {
+    return next(err);
   }
-
-  req.user = user;
-
-  // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
-  // with team/user context so their traces are searchable during incidents.
-  setBusinessContext({
-    teamId: user.team?.toString(),
-    userId: user._id?.toString(),
-    email: user.email,
-    ...getStaticFeatureFlags(),
-  });
 
   nextWithQueryAttribution(req, next);
 }
@@ -231,4 +241,12 @@ export function getNonNullUserWithTeam(req: Request) {
   }
 
   return { teamId: user.team, userId: user._id, email: user.email };
+}
+
+export function getSessionUser(req: Request) {
+  const { teamId, userId, email } = getNonNullUserWithTeam(req);
+  if (userId == null || email == null) {
+    throw new Error('Route requires a signed-in user');
+  }
+  return { teamId, userId, email };
 }

@@ -212,7 +212,30 @@ describe('External API v2 Team', () => {
         agent.delete(`${TEAM_BASE_URL}/member/${user._id}`),
       ).expect(400);
       expect(res.body.message).toBe('Cannot remove the last team member');
-      expect(await User.findById(user._id)).not.toBeNull();
+      // The member is deleted then put back, and must keep their credentials.
+      const restored = await User.findById(user._id).select('+hash +salt');
+      expect(restored?.get('hash')).toBeTruthy();
+      expect(restored?.accessKey).toBe(user.accessKey);
+    });
+
+    it('keeps a member when an admin key removes the last two at once', async () => {
+      const key = await keyFor('admin');
+      const member = await createMember();
+      const results = await Promise.all(
+        [user._id, member._id].map(id =>
+          withKey(key, agent.delete(`${TEAM_BASE_URL}/member/${id}`)),
+        ),
+      );
+      expect(results.map(r => r.status).sort()).not.toEqual([200, 200]);
+      expect(await User.countDocuments({ team: team._id })).toBeGreaterThan(0);
+    });
+
+    it('returns 404 for a non-member before applying the last-member rule', async () => {
+      const key = await keyFor('admin');
+      await withKey(
+        key,
+        agent.delete(`${TEAM_BASE_URL}/member/${new Alert()._id}`),
+      ).expect(404);
     });
   });
 });

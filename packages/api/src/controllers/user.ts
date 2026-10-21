@@ -5,7 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
-import User from '@/models/user';
+import User, { type IUser } from '@/models/user';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 export function findUserByAccessKey(accessKey: string) {
   return User.findOne({ accessKey });
@@ -29,10 +30,6 @@ export function findUserById(id: string) {
 export function findUserByEmail(email: string) {
   // Case-insensitive email search - lowercase the email since User model stores emails in lowercase
   return User.findOne({ email: email.toLowerCase() });
-}
-
-export function countUsersInTeam(team: string | ObjectId) {
-  return User.countDocuments({ team });
 }
 
 export function findUsersByTeam(team: string | ObjectId) {
@@ -102,19 +99,16 @@ export function recordOnboardingTaskCompletion(
 export async function deleteTeamMember(
   teamId: string | ObjectId,
   userIdToDelete: string,
-  // Undefined when an org API key made the request: alerts lose their owner.
-  userIdRequestingDelete?: string | ObjectId,
+  userIdRequestingDelete: string | ObjectId,
 ) {
   const [, deletedUser] = await Promise.all([
     Alert.updateMany(
       { createdBy: new mongoose.Types.ObjectId(userIdToDelete), team: teamId },
-      userIdRequestingDelete == null
-        ? { $unset: { createdBy: '' } }
-        : {
-            $set: {
-              createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete),
-            },
-          },
+      {
+        $set: {
+          createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete),
+        },
+      },
     ),
     User.findOneAndDelete({
       team: teamId,
@@ -123,4 +117,62 @@ export async function deleteTeamMember(
   ]);
 
   return deletedUser;
+}
+
+/**
+ * Member removal by an org API key, which has no user to hand alerts to and
+ * must not empty the team. Mongo here has no transactions, so delete first
+ * and put the member back if a concurrent removal left the team empty.
+ */
+export async function deleteTeamMemberKeepingOne(
+  teamId: string | ObjectId,
+  userIdToDelete: string,
+): Promise<'deleted' | 'not_found' | 'last_member'> {
+  const deletedUser = await User.findOneAndDelete({
+    team: teamId,
+    _id: userIdToDelete,
+  })
+    .select('+hash +salt')
+    .lean();
+  if (deletedUser == null) {
+    return 'not_found';
+  }
+  let isTeamEmpty = true;
+  try {
+    isTeamEmpty = (await User.countDocuments({ team: teamId })) === 0;
+  } finally {
+    // Also runs if the count throws, so a failed check can't lose the member.
+    if (isTeamEmpty) {
+      await restoreTeamMember(deletedUser);
+    }
+  }
+  if (isTeamEmpty) {
+    return 'last_member';
+  }
+  await Alert.updateMany(
+    { createdBy: deletedUser._id, team: teamId },
+    { $unset: { createdBy: '' } },
+  );
+  return 'deleted';
+}
+
+const memberRestoreFailures = getCounter(
+  'hyperdx.team.member_restore_failures',
+  {
+    description:
+      'Members deleted by an org API key that could not be put back.',
+  },
+);
+
+async function restoreTeamMember(user: IUser) {
+  try {
+    await User.collection.insertOne(user);
+  } catch (err) {
+    memberRestoreFailures.add(1);
+    logger.error(
+      { error: err, userId: user._id.toString(), teamId: user.team.toString() },
+      'Failed to restore team member removed by an org API key',
+    );
+    throw err;
+  }
 }

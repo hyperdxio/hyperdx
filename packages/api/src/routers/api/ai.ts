@@ -13,7 +13,7 @@ import {
   getChartConfigFromResolvedConfig,
 } from '@/controllers/ai';
 import { getSource } from '@/controllers/sources';
-import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { getSessionUser } from '@/middleware/auth';
 import { llmTelemetry } from '@/utils/aiTelemetry';
 import { Api404Error, Api500Error } from '@/utils/errors';
 import { withOperationMetrics } from '@/utils/instrumentation';
@@ -34,7 +34,7 @@ router.post(
     try {
       const model = getAIModel();
 
-      const { teamId, userId } = getNonNullUserWithTeam(req);
+      const { teamId, userId } = getSessionUser(req);
 
       const { text, sourceId } = req.body;
 

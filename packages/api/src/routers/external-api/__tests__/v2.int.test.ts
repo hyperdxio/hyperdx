@@ -1,3 +1,4 @@
+import * as orgApiKeyController from '@/controllers/orgApiKey';
 import { createOrgApiKey } from '@/controllers/orgApiKey';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Dashboard from '@/models/dashboard';
@@ -119,6 +120,17 @@ describe('external api v2', () => {
 
       await OrgApiKey.deleteOne({ _id: doc._id });
       expect((await listTools()).status).toBe(401);
+    });
+
+    it('responds with an error when the key lookup fails', async () => {
+      const { agent, key } = await setup();
+      jest
+        .spyOn(orgApiKeyController, 'findActiveOrgApiKey')
+        .mockRejectedValueOnce(new Error('mongo unavailable'));
+      await agent
+        .get('/api/v2')
+        .set('Authorization', `Bearer ${key}`)
+        .expect(500);
     });
   });
 });
