@@ -1243,6 +1243,10 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *         - $ref: '#/components/schemas/HeatmapDistributionChartConfig'
  *         - $ref: '#/components/schemas/HeatmapSeriesChartConfig'
  *         - $ref: '#/components/schemas/HeatmapPromqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           promql: '#/components/schemas/HeatmapPromqlChartConfig'
  *
  *     SearchChartConfig:
  *       type: object
