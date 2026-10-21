@@ -31,7 +31,7 @@ describe('SplitValueButton', () => {
         data-testid="columns"
       />,
     );
-    expect(screen.getByTestId('columns')).toHaveTextContent('3');
+    expect(screen.getByTestId('columns')).toHaveTextContent(/^3$/);
     expect(screen.getByTestId('columns')).toHaveAccessibleName(
       'Columns 3 fields',
     );
