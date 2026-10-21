@@ -16,6 +16,7 @@ import {
   computeYAxisBounds,
   formatAxisTick,
   getExpandableYAxisTicks,
+  getLineCurveType,
   getNiceYAxisTicks,
   getSelectedLineData,
   getVisibleLineData,
@@ -394,6 +395,7 @@ describe('scanYAxisValueRange', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#a',
   });
 
@@ -416,6 +418,7 @@ describe('computeYAxisBounds', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#a',
   });
 
@@ -739,6 +742,19 @@ describe('computeYAxisBounds', () => {
   });
 });
 
+describe('getLineCurveType', () => {
+  it.each([
+    [DisplayType.Line, undefined, 'monotone'],
+    [DisplayType.StackedLine, undefined, 'linear'],
+    [DisplayType.Line, 'linear', 'linear'],
+    [DisplayType.StackedLine, 'smooth', 'monotone'],
+    [DisplayType.Line, 'step', 'stepAfter'],
+    [DisplayType.StackedLine, 'step', 'stepAfter'],
+  ] as const)('%s with %s renders %s', (displayType, interpolation, curve) => {
+    expect(getLineCurveType(displayType, interpolation)).toBe(curve);
+  });
+});
+
 describe('getYAxisTicks', () => {
   it('resolves the reported duplicate-tick regression with evenly spaced ticks', () => {
     // 5 ticks collide ("3.3/3.3/3.4/3.5/3.5 GB"); dropping duplicates would
@@ -822,6 +838,7 @@ describe('getVisibleLineData', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: displayName ?? dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#abcdef',
   });
 
@@ -889,6 +906,7 @@ describe('getSelectedLineData', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: displayName ?? dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: '#abcdef',
   });
 
@@ -935,6 +953,7 @@ describe('buildActiveClickSeries', () => {
     previousPeriodKey: `${dataKey}.prev`,
     displayName: displayName ?? dataKey,
     valueColumnName: dataKey,
+    groupValues: [],
     color: `#${dataKey}`,
   });
 
@@ -1008,6 +1027,7 @@ describe('buildActiveClickSeries', () => {
       previousPeriodKey: 'a.prev',
       displayName: 'Alpha (previous)',
       valueColumnName: 'a',
+      groupValues: [],
       color: '#a',
       isDashed: true,
     };

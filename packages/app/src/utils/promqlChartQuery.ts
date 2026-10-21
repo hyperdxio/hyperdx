@@ -157,9 +157,11 @@ function toChartRows(
   const isBucketed = expressions.some(result => result.isBucketed);
 
   const data: Record<string, string | number>[] = [];
+  const promqlSeriesLabels: Record<string, Record<string, string>> = {};
   expressions.forEach(({ result: series }, expressionIndex) => {
-    series.forEach(({ values }, seriesIndex) => {
+    series.forEach(({ values, metric }, seriesIndex) => {
       const seriesName = seriesNames[expressionIndex][seriesIndex];
+      promqlSeriesLabels[seriesName] = metric;
       for (const [ts, value] of values) {
         data.push(
           isBucketed
@@ -185,6 +187,7 @@ function toChartRows(
     ],
     rows: data.length,
     isComplete: true,
+    promqlSeriesLabels,
   };
 }
 

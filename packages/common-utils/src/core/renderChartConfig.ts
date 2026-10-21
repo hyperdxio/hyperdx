@@ -22,6 +22,7 @@ import {
   optimizeTimestampValueExpression,
   parseToStartOfFunction,
   pickBucketTimestampColumn,
+  resolvePercentileAggFn,
   splitAndTrimWithBracket,
 } from '@/core/utils';
 import { isPromqlChartConfig, isRawSqlChartConfig } from '@/guards';
@@ -181,7 +182,7 @@ const quotedColumnName = (name: string) => `"${name.replace(/"/g, '""')}"`;
 // column named GROUP_ALIAS instead of projecting them as individual columns
 // (see translateHistogram), so grouped histogram rows never share a merge key
 // with grouped gauge/sum rows.
-const isHistogramClassSelect = (select: {
+export const isHistogramClassSelect = (select: {
   metricType?: MetricsDataType;
 }): boolean =>
   select.metricType === MetricsDataType.Histogram ||
@@ -3276,7 +3277,18 @@ export async function renderChartConfig(
 
   // Expand dashboard variables before anything reads the config's expressions,
   // so metric translation and the CTEs it builds all see final SQL fragments.
-  const substitutedChartConfig = substituteChartConfigVariables(rawChartConfig);
+  const variableSubstitutedChartConfig =
+    substituteChartConfigVariables(rawChartConfig);
+  const substitutedChartConfig = Array.isArray(
+    variableSubstitutedChartConfig.select,
+  )
+    ? {
+        ...variableSubstitutedChartConfig,
+        select: variableSubstitutedChartConfig.select.map(
+          resolvePercentileAggFn,
+        ),
+      }
+    : variableSubstitutedChartConfig;
 
   // A metric chart with multiple series composes one query per series into a
   // single UNION ALL + pivot statement (each metric type needs its own CTE

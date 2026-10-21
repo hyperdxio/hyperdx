@@ -26,6 +26,13 @@ export const filtersParam = (page: Page): FilterEntry[] | null => {
   return JSON.parse(decodeURIComponent(raw));
 };
 
+/** The conditions of ad hoc filter `name` in the `filters=` param. */
+export const adhocConditionsParam = (page: Page, name: string) =>
+  filtersParam(page)?.find(
+    (entry): entry is Extract<FilterEntry, { type: 'adhoc' }> =>
+      entry.type === 'adhoc' && entry.name === name,
+  )?.conditions ?? [];
+
 /** Wait for the param to settle on `expected` — nuqs writes it asynchronously. */
 export const expectFiltersParam = async (
   page: Page,

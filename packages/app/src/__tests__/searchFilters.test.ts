@@ -886,7 +886,6 @@ describe('searchFilters', () => {
 
       const query = filtersToQuery(originalFilters, { dateTimeColumns });
       // Sanity: produces the DateTime (non-64) wrapper.
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((query[0] as ConditionFilter).condition).toBe(
         "TimestampTime IN (parseDateTimeBestEffort('2026-06-17T11:56:41Z'))",
       );
@@ -930,7 +929,6 @@ describe('searchFilters', () => {
       const query = filtersToQuery(originalFilters, {
         dateTimeColumns: aliasColumns,
       });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((query[0] as ConditionFilter).condition).toBe(
         "time IN (parseDateTime64BestEffort('2026-06-18T10:33:55Z', 9))",
       );
@@ -957,7 +955,6 @@ describe('searchFilters', () => {
       const query = filtersToQuery(originalFilters, {
         dateTimeColumns: exprColumns,
       });
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
       expect((query[0] as ConditionFilter).condition).toBe(
         "toDate(TimestampTime) IN (toDate('2026-06-18'))",
       );

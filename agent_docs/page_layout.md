@@ -131,6 +131,21 @@ Sessions keeps a **single-row** query toolbar (source, where filter, time range,
 - Kubernetes Dashboard, Clickhouse Dashboard — `PageLayout` with `breadcrumbs`, `leading`, `actions`, `padded` (no `title`)
 - Client Sessions — `PageLayout` with custom `PageHeader` containing the full single-row query toolbar
 
+## Compact viewports
+
+A viewport under 900px is compact. `useCompactViewport` (`packages/app/src/components/CompactViewport/useCompactViewport.ts`) is the cutoff, and the nav collapses on the same width. Pages that switch layout use this hook.
+
+A page that is a side panel plus a main pane uses `ResponsiveSidePanel` (`packages/app/src/components/CompactViewport/ResponsiveSidePanel.tsx`):
+
+- Wide: the panel sits beside the main pane.
+- Compact: the main pane uses the full width. The panel opens in a drawer and does not take horizontal space. Pass a `title`; the drawer has no default. The panel stays unmounted until the first open, then stays mounted so closing the drawer does not drop its state.
+
+The caller owns whether the panel is open. Keep that state separate from any desktop collapse preference stored in localStorage. A phone session that wrote the desktop preference would hide the panel the next time the same browser opened the page on a desktop.
+
+Give the main pane `flex: 1` and `min-height: 0` inside a full-height column, so it keeps the space under the toolbar and scrolls inside itself. A hard `min-width` on the panel inside `overflow: hidden` clips the main pane on a phone.
+
+Search is the first page on this pattern. Other side-panel pages should adopt it the same way instead of a one-off media query.
+
 ## Knip
 
 `packages/app` Knip entry roots are `pages/`, `scripts/`, and e2e tests. After you add or move a `PageLayout` import, run `yarn knip` from the repo root (or `yarn knip` in `packages/app` if configured) so new consumers stay wired.
