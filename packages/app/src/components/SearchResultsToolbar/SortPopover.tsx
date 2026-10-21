@@ -11,7 +11,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
-import { IconArrowsSort, IconX } from '@tabler/icons-react';
+import { IconX } from '@tabler/icons-react';
 
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 import { parseAsSortingStateString } from '@/utils/queryParsers';
@@ -62,7 +62,7 @@ function parseSortKeys(orderBy: string): SortKey[] | null {
   if (hasCommaInsideBackticks(trimmed)) return null;
 
   // [\s\S] so a newline inside `(toDateTime(Timestamp),\n Timestamp) DESC`
-  // still counts as one direction. `.` would miss it and hide the Pick controls.
+  // still counts as one direction. `.` would miss it and hide the Fields controls.
   const direction = trimmed.match(/^([\s\S]*)\s+(asc|desc)$/i);
   const expr = direction?.[1].trim() ?? '';
   if (
@@ -105,13 +105,22 @@ function sameKeys(a: SortKey[], b: SortKey[]) {
   );
 }
 
-function sortLabel(orderBy: string) {
+function sortSummary(orderBy: string): { summary: string; count: number } {
   const keys = parseSortKeys(orderBy);
-  if (keys == null || keys.length === 0) return 'Sort';
-  if (keys.length === 1) {
-    return `Sort: ${keys[0].id} ${keys[0].desc ? 'desc' : 'asc'}`;
+  if (keys == null) {
+    const summary = orderBy.trim() || 'none';
+    // An expression the field list cannot split stays one value. A number
+    // would invent a field count the user cannot see in the list.
+    return { summary, count: summary === 'none' ? 0 : 1 };
   }
-  return `Sort: ${keys.length} fields`;
+  if (keys.length === 0) return { summary: 'none', count: 0 };
+  if (keys.length === 1) {
+    return {
+      summary: `${keys[0].id} ${keys[0].desc ? 'desc' : 'asc'}`,
+      count: 1,
+    };
+  }
+  return { summary: `${keys.length} fields`, count: keys.length };
 }
 
 export function SortPopover({
@@ -144,6 +153,7 @@ export function SortPopover({
   const ignoreNextChangeRef = useRef(false);
 
   const baseline = value || defaultValue;
+  const shownSort = sortSummary(baseline);
   const used = new Set((keys ?? []).map(key => key.id));
   const addOptions = fieldOptions.filter(option => !used.has(option));
 
@@ -178,9 +188,11 @@ export function SortPopover({
 
   return (
     <ClausePopover
-      label={sortLabel(baseline)}
+      name="Sort"
+      summary={shownSort.summary}
+      count={shownSort.count}
+      dimmed={value.trim() === ''}
       title={baseline}
-      icon={<IconArrowsSort size={14} />}
       initialMode={parseSortKeys(baseline) != null ? 'pick' : 'sql'}
       onOpen={reset}
       onReset={() => {

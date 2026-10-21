@@ -49,8 +49,8 @@ const openPopover = () =>
 describe('ColumnsPopover', () => {
   it('shows the column count and falls back to the default SELECT', () => {
     renderPopover({ value: '' });
-    expect(screen.getByTestId('search-columns-button')).toHaveTextContent(
-      'Columns (3)',
+    expect(screen.getByTestId('search-columns-button')).toHaveAccessibleName(
+      'Columns 3 fields',
     );
   });
 
@@ -154,7 +154,9 @@ describe('ColumnsPopover', () => {
     });
     fireEvent.click(screen.getByTestId('search-columns-add-button'));
     expect(input).toHaveValue('');
-    expect(screen.getByText('upper(Body) as message')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Remove upper(Body) as message'),
+    ).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('search-columns-button-apply'));
     expect(onApply).toHaveBeenCalledWith(
       'Timestamp, Body, upper(Body) as message',

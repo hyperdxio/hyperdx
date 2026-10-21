@@ -1,11 +1,12 @@
 import { type ReactNode, useState } from 'react';
 import { Button, Group, Popover, SegmentedControl, Stack } from '@mantine/core';
-import { IconChevronDown } from '@tabler/icons-react';
+
+import { SplitValueButton } from '@/components/SplitValueButton/SplitValueButton';
 
 export type ClauseMode = 'pick' | 'sql';
 
 const MODE_OPTIONS = [
-  { label: 'Pick', value: 'pick' },
+  { label: 'Fields', value: 'pick' },
   { label: 'SQL', value: 'sql' },
 ];
 
@@ -14,9 +15,11 @@ const MODE_OPTIONS = [
  * draft owned by the caller until Apply, so closing the popover discards them.
  */
 export function ClausePopover({
-  label,
+  name,
+  summary,
+  count,
+  dimmed,
   title,
-  icon,
   initialMode,
   onOpen,
   onApply,
@@ -26,10 +29,16 @@ export function ClausePopover({
   renderSql,
   'data-testid': testId,
 }: {
-  label: ReactNode;
-  /** The full clause, shown on hover since the label only summarizes it. */
+  /** The muted side of the split button, such as Columns or Sort. */
+  name: string;
+  /** Desktop value: a field name, "3 fields", or "none". */
+  summary: string;
+  /** How many fields the summary counts. */
+  count: number;
+  /** The clause is still the source default, so the value is quiet. */
+  dimmed?: boolean;
+  /** The full clause, shown on hover since the value only summarizes it. */
   title: string;
-  icon?: ReactNode;
   /** The tab to show each time the popover opens. */
   initialMode: ClauseMode;
   /** Reset the caller's draft to the current value. */
@@ -66,17 +75,15 @@ export function ClausePopover({
       withinPortal
     >
       <Popover.Target>
-        <Button
-          variant="secondary"
-          size="xs"
-          leftSection={icon}
-          rightSection={<IconChevronDown size={14} />}
-          onClick={() => (opened ? setOpened(false) : open())}
+        <SplitValueButton
+          name={name}
+          summary={summary}
+          count={count}
+          dimmed={dimmed}
           title={title}
+          onClick={() => (opened ? setOpened(false) : open())}
           data-testid={testId}
-        >
-          {label}
-        </Button>
+        />
       </Popover.Target>
       <Popover.Dropdown data-testid={`${testId}-popover`}>
         <Stack gap="sm">

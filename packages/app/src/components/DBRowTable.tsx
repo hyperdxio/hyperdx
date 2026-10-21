@@ -42,7 +42,6 @@ import {
 import {
   ActionIcon,
   Box,
-  Divider,
   Flex,
   Group,
   Modal,
@@ -1133,8 +1132,7 @@ export const RawLogTable = memo(
               {controlsAboveTable && rowSelectionMenu}
             </Group>
             {controlsAboveTable && (
-              <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
-                <Divider orientation="vertical" />
+              <Group wrap="nowrap" style={{ flexShrink: 0 }}>
                 {tableControls}
               </Group>
             )}

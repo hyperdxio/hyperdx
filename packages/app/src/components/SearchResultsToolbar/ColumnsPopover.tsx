@@ -21,12 +21,14 @@ import {
   Autocomplete,
   Box,
   Button,
+  Code,
   Group,
   Stack,
   Text,
 } from '@mantine/core';
-import { IconColumns, IconGripVertical, IconX } from '@tabler/icons-react';
+import { IconGripVertical, IconX } from '@tabler/icons-react';
 
+import { fieldListSummary } from '@/components/SplitValueButton/SplitValueButton';
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 import { withMapKeyAlias } from '@/utils';
 
@@ -61,7 +63,18 @@ function SortableColumn({
         opacity: isDragging ? 0.5 : 1,
       }}
     >
-      <Group gap={4} wrap="nowrap" align="center" w="100%">
+      <Group
+        gap={4}
+        wrap="nowrap"
+        align="flex-start"
+        w="100%"
+        px={4}
+        py={2}
+        style={{
+          borderRadius: 'var(--mantine-radius-sm)',
+          background: 'var(--color-bg-muted)',
+        }}
+      >
         <ActionIcon
           variant="subtle"
           size="xs"
@@ -127,7 +140,7 @@ export function ColumnsPopover({
   const storedColumns = (select: string) =>
     splitAndTrimWithBracket(select || defaultValue);
 
-  const count = storedColumns(value).length;
+  const shown = storedColumns(value);
   const items = splitAndTrimWithBracket(draft);
 
   const options = useMemo(
@@ -168,9 +181,11 @@ export function ColumnsPopover({
 
   return (
     <ClausePopover
-      label={count > 0 ? `Columns (${count})` : 'Columns'}
+      name="Columns"
+      summary={fieldListSummary(shown)}
+      count={shown.length}
+      dimmed={value.trim() === ''}
       title={value || defaultValue}
-      icon={<IconColumns size={14} />}
       initialMode="pick"
       onOpen={() => {
         // The form stores "" while the source default is in use. Show that
@@ -260,8 +275,8 @@ export function ColumnsPopover({
             </Button>
           </Group>
           <Text size="xs" c="dimmed">
-            Select a column, or type an expression such as upper(Body) as
-            message, then click Add.
+            Select a column, or type an expression such as{' '}
+            <Code>upper(Body) as message</Code>, then click Add.
           </Text>
         </Stack>
       )}

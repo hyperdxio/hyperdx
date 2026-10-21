@@ -48,8 +48,8 @@ const openPopover = () =>
 describe('SortPopover', () => {
   it('labels the button with the parsed field and direction', () => {
     renderPopover({ value: 'Body ASC' });
-    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
-      'Sort: Body asc',
+    expect(screen.getByTestId('search-sort-button')).toHaveAccessibleName(
+      'Sort Body asc',
     );
   });
 
@@ -64,8 +64,8 @@ describe('SortPopover', () => {
   it('lists a tuple sort that spans more than one line', async () => {
     const orderBy = '(toDateTime(Timestamp),\n Timestamp) DESC';
     renderPopover({ value: orderBy, defaultValue: orderBy });
-    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
-      'Sort: 2 fields',
+    expect(screen.getByTestId('search-sort-button')).toHaveAccessibleName(
+      'Sort 2 fields',
     );
     openPopover();
     expect(
@@ -78,8 +78,8 @@ describe('SortPopover', () => {
   it('lists function calls inside a tuple sort', async () => {
     const orderBy = '(toDateTime(Timestamp), Timestamp) DESC';
     renderPopover({ value: orderBy, defaultValue: orderBy });
-    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
-      'Sort: 2 fields',
+    expect(screen.getByTestId('search-sort-button')).toHaveAccessibleName(
+      'Sort 2 fields',
     );
     openPopover();
     expect(
@@ -100,13 +100,13 @@ describe('SortPopover', () => {
   it('opens on the SQL tab for a custom ORDER BY', async () => {
     const custom = 'Timestamp DESC NULLS LAST';
     const { onApply } = renderPopover({ value: custom, defaultValue: custom });
-    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
-      /^Sort$/,
+    expect(screen.getByTestId('search-sort-button')).toHaveAccessibleName(
+      `Sort ${custom}`,
     );
     openPopover();
     const editor = await screen.findByLabelText('ORDER BY');
     expect(editor).toHaveValue(custom);
-    fireEvent.click(screen.getByText('Pick'));
+    fireEvent.click(screen.getByText('Fields'));
     expect(screen.getByTestId('search-sort-custom')).toBeInTheDocument();
     fireEvent.click(screen.getByText('SQL'));
     fireEvent.change(screen.getByLabelText('ORDER BY'), {
@@ -132,8 +132,8 @@ describe('SortPopover', () => {
       defaultValue: '(TimestampTime, Timestamp) DESC',
       fieldOptions: ['Body', 'Timestamp', 'TimestampTime'],
     });
-    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
-      'Sort: 2 fields',
+    expect(screen.getByTestId('search-sort-button')).toHaveAccessibleName(
+      'Sort 2 fields',
     );
     openPopover();
     expect(
@@ -159,8 +159,8 @@ describe('SortPopover', () => {
       value: orderBy,
       defaultValue: orderBy,
     });
-    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
-      'Sort: 2 fields',
+    expect(screen.getByTestId('search-sort-button')).toHaveAccessibleName(
+      'Sort 2 fields',
     );
     openPopover();
     expect(await screen.findByDisplayValue('(a, b)')).toBeInTheDocument();
@@ -172,8 +172,8 @@ describe('SortPopover', () => {
 
   it('lists every key of a multi-field sort', async () => {
     renderPopover({ value: 'ServiceName ASC, Timestamp DESC' });
-    expect(screen.getByTestId('search-sort-button')).toHaveTextContent(
-      'Sort: 2 fields',
+    expect(screen.getByTestId('search-sort-button')).toHaveAccessibleName(
+      'Sort 2 fields',
     );
     openPopover();
     expect(await screen.findByDisplayValue('ServiceName')).toBeInTheDocument();
