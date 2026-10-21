@@ -648,6 +648,7 @@ export const WEBHOOK_TEMPLATE_VARIABLES = [
   'thresholdMax',
   'value',
   'groupKey',
+  'var',
   'sourceQuery',
   'teamId',
   'note',

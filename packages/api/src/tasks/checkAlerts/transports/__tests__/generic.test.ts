@@ -129,6 +129,21 @@ describe('buildWebhookTemplateVariables', () => {
     expect(vars.sourceQuery).toBe('Body: \\"error\\"');
   });
 
+  it('exposes group-by values as JSON-escaped var.<column> entries', () => {
+    const vars = buildWebhookTemplateVariables({
+      ...message,
+      groupValues: { customer_id: 'acme "eu"' },
+    });
+    const rendered = createHandlebarsWithHelpers().compile(
+      '{"summary": "{{var.customer_id}} has an elevated error rate"}',
+      { noEscape: true },
+    )(vars);
+    expect(JSON.parse(rendered).summary).toBe(
+      'acme "eu" has an elevated error rate',
+    );
+    expect(buildWebhookTemplateVariables(message).var).toEqual({});
+  });
+
   it('renders enriched fields as empty strings (never "undefined") when absent', () => {
     const vars = buildWebhookTemplateVariables(message);
     expect(vars.alertId).toBe('');
