@@ -794,6 +794,7 @@ describe('MCP Query Tools', () => {
         estimatedCount: number;
         whereSnippet: string;
         whereLanguage: string;
+        drilldownUnavailable?: string;
         samples: string[];
         trend?: { time: string; count: number }[];
       };
@@ -1013,6 +1014,22 @@ describe('MCP Query Tools', () => {
         } finally {
           spy.mockRestore();
         }
+      });
+
+      it('marks templates too long for a predicate as drilldownUnavailable', async () => {
+        await bulkInsertLogs([
+          {
+            Body: 'x'.repeat(4001),
+            ServiceName: 'long',
+            SeverityText: 'INFO',
+            Timestamp: base,
+          },
+        ]);
+        const output = await mine({ where: 'ServiceName:long' });
+        expect(output.patterns).toHaveLength(1);
+        const [p] = output.patterns;
+        expect(p.whereSnippet).toBe('');
+        expect(p.drilldownUnavailable).toContain('longer than 4000');
       });
 
       it('separates sampled counts from estimates', async () => {

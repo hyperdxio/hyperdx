@@ -204,9 +204,6 @@ export async function denoiseSearchResults(
   }
 
   // ── Identify noisy patterns (>10% of sampled events) ──
-  // Key by template string rather than cluster ID so we are not coupled to
-  // the auto-incrementing IDs generated inside minePatterns(). The matching
-  // miner below produces its own IDs; comparing template strings is stable.
   const sampledRowCount = sampleRows.length;
   const noisyTemplates = new Set<string>();
   const removedPatterns: DenoiseResult['removedPatterns'] = [];
@@ -235,7 +232,10 @@ export async function denoiseSearchResults(
     };
   }
 
-  const isNoisy = buildNoisyBodyMatcher(noisyTemplates);
+  const isNoisy = buildNoisyBodyMatcher(
+    patterns.map(p => p.pattern),
+    noisyTemplates,
+  );
   const filteredRows = rows.filter(row => {
     const bodyValue = row[bodyColumnKey];
     if (bodyValue == null) return true; // Keep rows with no body
@@ -251,22 +251,44 @@ export async function denoiseSearchResults(
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * Return a predicate that is true when a body fits one of the noisy
- * templates: same token count, same literal tokens, any token at each <*>.
- * Every member of a cluster fits its own template. Re-running Drain's
- * `match` instead can land a member on a different same-length cluster.
+ * Return a predicate that is true when the most specific template a body
+ * fits (fewest <*>) is noisy. Fitting means same token count, same literal
+ * tokens, any token at each <*>. Taking the most specific fit keeps rows of
+ * a rare `user login` cluster when a broad `<*> <*>` cluster is noisy; ties
+ * go to the noisy template. Re-running Drain's `match` instead can land a
+ * member on a different same-length cluster than the one it was counted in.
  */
 export function buildNoisyBodyMatcher(
+  templates: string[],
   noisyTemplates: Set<string>,
 ): (body: string) => boolean {
-  const templates = [...noisyTemplates].map(tokenize);
+  const candidates = templates.map(template => {
+    const tokens = tokenize(template);
+    return {
+      tokens,
+      wildcards: tokens.filter(t => t === PATTERN_WILDCARD).length,
+      noisy: noisyTemplates.has(template),
+    };
+  });
   return body => {
     const tokens = tokenize(flattenBody(body));
-    return templates.some(
-      t =>
-        t.length === tokens.length &&
-        t.every((tok, i) => tok === PATTERN_WILDCARD || tok === tokens.at(i)),
-    );
+    let best: (typeof candidates)[number] | undefined;
+    for (const c of candidates) {
+      const fits =
+        c.tokens.length === tokens.length &&
+        c.tokens.every(
+          (tok, i) => tok === PATTERN_WILDCARD || tok === tokens.at(i),
+        );
+      if (!fits) continue;
+      if (
+        best == null ||
+        c.wildcards < best.wildcards ||
+        (c.wildcards === best.wildcards && c.noisy)
+      ) {
+        best = c;
+      }
+    }
+    return best?.noisy ?? false;
   };
 }
 

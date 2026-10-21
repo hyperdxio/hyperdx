@@ -162,6 +162,8 @@ describe('buildPatternPredicate', () => {
   it('returns null for templates too long to turn into a predicate', () => {
     const long = 'x'.repeat(MAX_PREDICATE_TEMPLATE_LENGTH + 1);
     expect(buildPatternPredicate('Body', long)).toBeNull();
+    const atLimit = 'x'.repeat(MAX_PREDICATE_TEMPLATE_LENGTH);
+    expect(buildPatternPredicate('Body', atLimit)).not.toBeNull();
   });
 });
 
