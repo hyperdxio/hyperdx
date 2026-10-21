@@ -1534,6 +1534,23 @@ describe('orderByAfterRemovingSelectItem', () => {
       orderByAfterRemovingSelectItem('Body', 'Body DESC', 'Timestamp DESC'),
     ).toBe('Body DESC');
   });
+
+  it('drops only the removed alias from a multi-field sort', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"service.name" ASC, Timestamp DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('Timestamp DESC');
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"http.method" DESC, "service.name" ASC',
+        'Timestamp DESC',
+      ),
+    ).toBe('"http.method" DESC');
+  });
 });
 
 describe('getLogSeverityLevel', () => {

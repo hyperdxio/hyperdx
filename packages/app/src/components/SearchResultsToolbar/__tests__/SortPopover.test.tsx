@@ -89,6 +89,14 @@ describe('SortPopover', () => {
     expect(screen.queryByTestId('search-sort-custom')).not.toBeInTheDocument();
   });
 
+  it('keeps a backtick-quoted field that contains a comma on SQL', async () => {
+    const orderBy = '(`a,b`, Timestamp) DESC';
+    renderPopover({ value: orderBy, defaultValue: orderBy });
+    openPopover();
+    expect(await screen.findByLabelText('ORDER BY')).toHaveValue(orderBy);
+    expect(screen.queryByDisplayValue('Timestamp')).not.toBeInTheDocument();
+  });
+
   it('opens on the SQL tab for a custom ORDER BY', async () => {
     const custom = 'Timestamp DESC NULLS LAST';
     const { onApply } = renderPopover({ value: custom, defaultValue: custom });

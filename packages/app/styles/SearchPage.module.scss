@@ -186,6 +186,17 @@
   min-width: 0;
 }
 
+.timeControls {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.timePicker {
+  width: 350px;
+  max-width: 100%;
+  min-width: 0;
+}
+
 // Stack the where clause once the form itself is under 900px. Wider than
 // that, it stays beside the time controls. Matches the compact layout cutoff.
 @container (min-width: 900px) {
@@ -196,6 +207,10 @@
 
 @container (max-width: 899px) {
   .whereField {
+    flex-basis: 100%;
+  }
+
+  .timeControls {
     flex-basis: 100%;
   }
 }

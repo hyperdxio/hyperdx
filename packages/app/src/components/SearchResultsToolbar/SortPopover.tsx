@@ -37,9 +37,29 @@ const toRows = (keys: SortKey[] | null): SortRow[] | null =>
  * expression: `(a, b) ASC, (c, d) DESC` is two keys, not one list. Anything
  * without a plain ASC/DESC on each field stays in SQL.
  */
+/** A comma inside backticks cannot be split without breaking the identifier. */
+function hasCommaInsideBackticks(input: string): boolean {
+  let quoted = false;
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] !== '`') {
+      if (quoted && input[i] === ',') return true;
+      continue;
+    }
+    // ClickHouse escapes a backtick by doubling it.
+    if (quoted && input[i + 1] === '`') {
+      i += 1;
+      continue;
+    }
+    quoted = !quoted;
+  }
+  return false;
+}
+
 function parseSortKeys(orderBy: string): SortKey[] | null {
   const trimmed = orderBy.trim();
   if (!trimmed) return [];
+  // A comma inside a backtick-quoted name would be split into extra fields.
+  if (hasCommaInsideBackticks(trimmed)) return null;
 
   // [\s\S] so a newline inside `(toDateTime(Timestamp),\n Timestamp) DESC`
   // still counts as one direction. `.` would miss it and hide the Pick controls.

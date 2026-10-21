@@ -92,6 +92,18 @@ describe('ColumnsPopover', () => {
     expect(onApply).toHaveBeenCalledWith('Timestamp', ['Body']);
   });
 
+  it('leaves a typed map subscript unchanged', async () => {
+    renderPopover({
+      fieldOptions: ["LogAttributes['region']"],
+    });
+    openPopover();
+    const input = await screen.findByPlaceholderText('Search columns');
+    fireEvent.change(input, {
+      target: { value: "LogAttributes['region']" },
+    });
+    expect(input).toHaveValue("LogAttributes['region']");
+  });
+
   it('shows a map key alias in the input before adding it', async () => {
     renderPopover({
       fieldOptions: ["LogAttributes['ads.consent_given']"],

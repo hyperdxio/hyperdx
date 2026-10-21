@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   DndContext,
   type DragEndEvent,
@@ -118,6 +118,9 @@ export function ColumnsPopover({
 }) {
   const [draft, setDraft] = useState(value);
   const [search, setSearch] = useState('');
+  // Autocomplete writes the chosen option back into the input after
+  // onOptionSubmit. Ignore that write so a picked map key keeps its alias.
+  const ignoreNextChangeRef = useRef(false);
 
   // An empty stored SELECT means "use the source default". An empty draft does
   // not: the user may have removed every column before adding a replacement.
@@ -230,14 +233,15 @@ export function ColumnsPopover({
               placeholder="Search columns"
               value={search}
               onChange={next => {
-                // A picked map key is stored with its alias. Show that alias
-                // in the input so it can be edited before Add.
-                const aliased = withMapKeyAlias(
-                  next.trim(),
-                  items,
-                  knownColumns,
-                );
-                setSearch(aliased === next.trim() ? next : aliased);
+                if (ignoreNextChangeRef.current) {
+                  ignoreNextChangeRef.current = false;
+                  return;
+                }
+                setSearch(next);
+              }}
+              onOptionSubmit={option => {
+                ignoreNextChangeRef.current = true;
+                setSearch(withMapKeyAlias(option, items, knownColumns));
               }}
               data={options}
               limit={50}
