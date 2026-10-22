@@ -35,6 +35,7 @@ import {
   IconChevronsDown,
   IconChevronsRight,
   IconLogs,
+  IconPointer,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -51,6 +52,7 @@ import {
   TRACE_WATERFALL_FETCH_LIMIT,
   TRACE_WATERFALL_ROW_LIMIT,
 } from '@/components/traceWaterfallLimits';
+import { useBrowserTraceEvents } from '@/hooks/useBrowserTraceEvents';
 import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import {
@@ -107,6 +109,7 @@ export type SpanRow = {
     Attributes: Record<string, any>;
   }>;
   __hdx_hidden?: boolean | 1 | 0;
+  triggeredBy?: string;
 };
 
 type TimestampedRow = {
@@ -785,7 +788,7 @@ export function DBTraceWaterfallChartContainer({
     logColumns?.some(column => column.name === 'SeverityNumber') ?? false;
 
   const {
-    rows: logRowsData,
+    rows: fetchedLogRows,
     isFetching: logIsFetching,
     meta: logRowsMeta,
     filterError: logFilterError,
@@ -816,8 +819,31 @@ export function DBTraceWaterfallChartContainer({
   // shown), otherwise the fatal error (no logs could be loaded at all).
   const logError = logFilterError ?? logFatalError;
 
+  const [showSpanEvents, setShowSpanEvents] = useState(true);
+  const [showSpans, setShowSpans] = useState(true);
+  const [showLogs, setShowLogs] = useState(true);
+
+  const {
+    logRows: logRowsData,
+    resourceTimingBySpanId,
+    triggerRow,
+  } = useBrowserTraceEvents({
+    traceRows: traceRowsData,
+    logRows: fetchedLogRows,
+    logSource: logTableSource,
+    traceId,
+    highlightedRowWhere,
+    initialRowHighlightHint,
+    // Only while the dots show. A log filter asks for the rows it matches.
+    foldTimingRows: showSpans && showSpanEvents && !logWhere,
+    enabled: !traceIsFetching,
+  });
+
   const rows: any[] = useMemo(() => {
-    const nextRows: Array<(typeof traceRowsData)[number] & TimestampedRow> = [
+    // The trigger row goes first so a click with the same timestamp as the
+    // root span sorts before it (the sort is stable).
+    const nextRows: TimestampedRow[] = [
+      ...(triggerRow ? [triggerRow] : []),
       ...traceRowsData,
       ...logRowsData,
     ];
@@ -833,7 +859,7 @@ export function DBTraceWaterfallChartContainer({
     });
 
     return nextRows;
-  }, [traceRowsData, logRowsData]);
+  }, [triggerRow, traceRowsData, logRowsData]);
 
   const validSpanIDs = useMemo(() => {
     return new Set(
@@ -983,9 +1009,6 @@ export function DBTraceWaterfallChartContainer({
   };
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const [showSpanEvents, setShowSpanEvents] = useState(true);
-  const [showSpans, setShowSpans] = useState(true);
-  const [showLogs, setShowLogs] = useState(true);
 
   const { nodesMap, flattenedNodes, parentIdsByLevel } = useMemo(() => {
     const rootNodes: Node[] = [];
@@ -1128,6 +1151,8 @@ export function DBTraceWaterfallChartContainer({
   const visibleNodes = useMemo(() => {
     if (showSpans && showLogs) return flattenedNodes;
     return flattenedNodes.filter(node => {
+      // The click belongs with the spans it started, not with the logs.
+      if (node.triggeredBy) return showSpans;
       if (node.type === SourceKind.Log) return showLogs;
       return showSpans;
     });
@@ -1137,7 +1162,7 @@ export function DBTraceWaterfallChartContainer({
     node => node.type !== SourceKind.Log,
   ).length;
   const logCount = visibleNodes.filter(
-    node => node.type === SourceKind.Log,
+    node => node.type === SourceKind.Log && !node.triggeredBy,
   ).length;
   const errorCount = visibleNodes.filter(
     node => getRowSeverity(node) === 'error',
@@ -1178,6 +1203,7 @@ export function DBTraceWaterfallChartContainer({
           id,
           type,
           aliasWith,
+          triggeredBy,
         } = result;
         let body = `${_body}`;
         try {
@@ -1193,12 +1219,16 @@ export function DBTraceWaterfallChartContainer({
         const httpUrl = isRpcSpan(spanAttributes)
           ? undefined
           : getHttpUrl(spanAttributes);
-        const displayText = httpUrl ? `${body} ${httpUrl}` : body;
+        const displayText =
+          triggeredBy ?? (httpUrl ? `${body} ${httpUrl}` : body);
+        const startedAt = !isNaN(startOffset)
+          ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}`
+          : '';
 
         // Process span events into markers (only if showSpanEvents is enabled)
-        const markers =
-          showSpanEvents && result.SpanEvents
-            ? result.SpanEvents.map(spanEvent => {
+        const markers = showSpanEvents
+          ? [
+              ...(result.SpanEvents ?? []).map(spanEvent => {
                 const epochMs = parseTimestampToMs(spanEvent.Timestamp);
                 return {
                   timestamp: epochMs - minOffset,
@@ -1206,8 +1236,17 @@ export function DBTraceWaterfallChartContainer({
                   name: spanEvent.Name,
                   attributes: spanEvent.Attributes || {},
                 };
-              })
-            : [];
+              }),
+              // Log rows carry their parent span's SpanId.
+              ...(type !== SourceKind.Log
+                ? (resourceTimingBySpanId.get(result.SpanId) ?? [])
+                : []
+              ).map(marker => ({
+                ...marker,
+                timestamp: marker.epochMs - minOffset,
+              })),
+            ]
+          : [];
 
         const severity = getRowSeverity(result);
         const isError = severity === 'error';
@@ -1316,7 +1355,13 @@ export function DBTraceWaterfallChartContainer({
                 )}
 
                 <Group gap={0} wrap="nowrap">
-                  {type === SourceKind.Log ? (
+                  {triggeredBy ? (
+                    <IconPointer
+                      size={14}
+                      className="align-middle me-2"
+                      aria-label="Triggering click"
+                    />
+                  ) : type === SourceKind.Log ? (
                     <IconLogs
                       size={14}
                       className="align-middle me-2"
@@ -1327,7 +1372,10 @@ export function DBTraceWaterfallChartContainer({
                     size="xxs"
                     truncate="end"
                     span
-                    title={`${serviceName}${httpUrl ? ` ${displayText}` : ''}`}
+                    title={
+                      triggeredBy ??
+                      `${serviceName}${httpUrl ? ` ${displayText}` : ''}`
+                    }
                     role="button"
                   >
                     {serviceName && <>{serviceName} </>}
@@ -1347,7 +1395,9 @@ export function DBTraceWaterfallChartContainer({
               aliasWith,
               start,
               end,
-              tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
+              tooltip: triggeredBy
+                ? `${triggeredBy}${startedAt}`
+                : `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${startedAt}`,
               color: 'var(--color-text-inverted)',
               backgroundColor: barColor({
                 isHighlighted,
@@ -1373,6 +1423,7 @@ export function DBTraceWaterfallChartContainer({
       highlightedRowWhere,
       minOffset,
       onClick,
+      resourceTimingBySpanId,
       serviceColorMap,
       showSpanEvents,
       toggleCollapse,
