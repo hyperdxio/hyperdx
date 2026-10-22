@@ -7,6 +7,7 @@ import {
 import express from 'express';
 import { z } from 'zod';
 
+import * as config from '@/config';
 import { validateConnectionId } from '@/controllers/connection';
 import {
   createSource,
@@ -109,6 +110,21 @@ async function requireValidConnectionId(
   } catch (e) {
     next(e);
   }
+}
+
+// PromQL is a preview feature: without it enabled, a PromQL source cannot be
+// queried. Runs after body validation so req.body is the parsed shape.
+function rejectPromqlSourceWhenDisabled(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  if (req.body?.kind === SourceKind.Promql && !config.IS_PROMQL_ENABLED) {
+    return res
+      .status(400)
+      .json({ message: 'PromQL is not enabled on this deployment' });
+  }
+  next();
 }
 
 function mapSourceToExternalSource(source: TSource): TSource {
@@ -847,7 +863,7 @@ function formatExternalSource(source: SourceDocument) {
  *           example: ResourceAttributes
  *     PromqlSource:
  *       type: object
- *       description: A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true). PromQL is a preview feature and must be enabled on the deployment (ENABLE_PROMQL) before PromQL sources can be queried.
+ *       description: A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true). PromQL is a preview feature, so creating or updating a PromQL source is rejected unless it is enabled on the deployment (ENABLE_PROMQL).
  *       required:
  *         - name
  *         - kind
@@ -1115,6 +1131,7 @@ router.post(
   validateRequest({
     body: SourceSchemaNoId,
   }),
+  rejectPromqlSourceWhenDisabled,
   requireValidConnectionId,
   async (req, res, next) => {
     try {
@@ -1220,6 +1237,7 @@ router.put(
     }),
     body: SourceSchemaNoId,
   }),
+  rejectPromqlSourceWhenDisabled,
   requireValidConnectionId,
   async (req, res, next) => {
     try {
