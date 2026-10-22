@@ -58,6 +58,7 @@ const describeTemplateVariable = (
   thresholdMax: 'Upper bound of a between/outside range (number)',
   value: 'Value that triggered or resolved the alert (number)',
   groupKey: 'The breaching group, if grouped',
+  var: 'Group-by values by column, e.g. {{var.customer_id}}',
   sourceQuery: 'Search expression or SQL behind the alert',
   startTime: 'Window start, Unix ms (number)',
   endTime: 'Window end, Unix ms (number)',

@@ -409,6 +409,76 @@ describe('queryPromqlChartConfig', () => {
     );
   });
 
+  describe('series labels of a time chart', () => {
+    const t0 = dateRange[0].getTime() / 1000;
+    const mockRange = (...metrics: Record<string, string>[][]) => {
+      const mock = jest.mocked(prometheusApi.queryRange).mockReset();
+      for (const series of metrics) {
+        mock.mockResolvedValueOnce({
+          status: 'success',
+          data: {
+            resultType: 'matrix',
+            result: series.map(metric => ({
+              metric,
+              values: [[t0, '1']],
+            })),
+          },
+        });
+      }
+    };
+    const query = (
+      promqlExpression: { expression: string }[],
+      legendTemplate?: string,
+    ) =>
+      queryPromqlChartConfig(
+        {
+          configType: 'promql',
+          displayType: DisplayType.Line,
+          source: 'source-promql',
+          connection: 'conn',
+          granularity: '1 minute',
+          legendTemplate,
+          promqlExpression,
+        },
+        dateRange,
+        new AbortController().signal,
+        {},
+      );
+
+    it('keys each series by its name', async () => {
+      mockRange([
+        { __name__: 'up', service: 'api' },
+        { __name__: 'up', service: 'web' },
+      ]);
+      const result = await query([{ expression: 'up' }]);
+      const names = result.data.map(row => row.series_name);
+      expect(result.promqlSeriesLabels).toEqual({
+        [names[0]]: { __name__: 'up', service: 'api' },
+        [names[1]]: { __name__: 'up', service: 'web' },
+      });
+    });
+
+    it('keys series by their legend-template name', async () => {
+      mockRange([{ service: 'api', pod: 'a' }]);
+      const result = await query([{ expression: 'up' }], '{{service}}');
+      expect(result.promqlSeriesLabels).toEqual({
+        api: { service: 'api', pod: 'a' },
+      });
+    });
+
+    it('covers every expression', async () => {
+      mockRange([{ service: 'api' }], [{ job: 'db' }]);
+      const result = await query([
+        { expression: 'up' },
+        { expression: 'down' },
+      ]);
+      expect(Object.values(result.promqlSeriesLabels ?? {})).toEqual([
+        { service: 'api' },
+        { job: 'db' },
+      ]);
+    });
+  });
+
   it('runs a heatmap as a range query of its first expression', async () => {
     jest
       .mocked(prometheusApi.queryRange)

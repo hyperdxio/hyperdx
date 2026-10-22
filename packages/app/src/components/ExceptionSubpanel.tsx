@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
+import { Badge } from '@clickhouse/click-ui';
 import { Button, Text, Tooltip } from '@mantine/core';
 import { Group, Loader } from '@mantine/core';
 import {
@@ -12,7 +13,10 @@ import {
 } from '@tabler/icons-react';
 import { ColumnDef, Row, Table as TanstackTable } from '@tanstack/react-table';
 
-import { StacktraceFrame as TStacktraceFrame } from '@/types';
+import type {
+  StacktraceBreadcrumb,
+  StacktraceFrame as TStacktraceFrame,
+} from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { useSourceMappedFrame } from '@/useSourceMappedFrame';
 
@@ -95,24 +99,6 @@ const StacktraceFrame = ({
       {isLoading && <Loader size="xs" color="gray" />}
     </Group>
   );
-};
-
-type StacktraceBreadcrumbCategory =
-  | 'ui.click'
-  | 'fetch'
-  | 'xhr'
-  | 'console'
-  | 'navigation'
-  | string;
-
-type StacktraceBreadcrumb = {
-  type?: string;
-  level?: string;
-  event_id?: string;
-  category?: StacktraceBreadcrumbCategory;
-  message?: string;
-  data?: { [key: string]: any };
-  timestamp: number;
 };
 
 const CollapsibleSection = ({
@@ -309,38 +295,21 @@ const StatusChip = React.memo(({ status }: { status?: number }) => {
   if (!status) {
     return null;
   }
-  const className =
-    status >= 500
-      ? 'text-danger bg-danger'
-      : status >= 400
-        ? 'text-warning bg-warning'
-        : 'text-success bg-success';
-  return (
-    <span
-      className={`badge lh-base rounded-5 bg-opacity-10 fw-normal ${className}`}
-    >
-      {status}
-    </span>
-  );
+  const state =
+    status >= 500 ? 'danger' : status >= 400 ? 'warning' : 'success';
+  return <Badge size="sm" text={status} state={state} />;
 });
 
 const LevelChip = React.memo(({ level }: { level?: string }) => {
   if (!level) {
     return null;
   }
-  const className = level.includes('error')
-    ? 'text-danger bg-danger'
-    : level.includes('warn') || level.includes('warning')
-      ? 'text-warning bg-warning'
-      : 'bg-muted';
-
-  return (
-    <span
-      className={`badge lh-base rounded-5 bg-opacity-10 fw-normal ${className}`}
-    >
-      {level}
-    </span>
-  );
+  const state = level.includes('error')
+    ? 'danger'
+    : level.includes('warn')
+      ? 'warning'
+      : 'neutral';
+  return <Badge size="sm" text={level} state={state} />;
 });
 
 const breadcrumbColumns: ColumnDef<StacktraceBreadcrumb>[] = [
@@ -506,7 +475,9 @@ export const ExceptionSubpanel = ({
             {
               category: 'exception',
               timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
-              message: `${firstException.type}: ${firstException.value} `,
+              message: [firstException.type, firstException.value]
+                .filter(Boolean)
+                .join(': '),
             },
           ]
         : []),
@@ -541,10 +512,15 @@ export const ExceptionSubpanel = ({
           firstException && (
             <>
               <div>
-                <Text fw="bold" component="span" size="sm" variant="danger">
-                  {firstException.type}:{' '}
-                </Text>
-                <span className="text-muted">{firstException.value}</span>
+                {firstException.type && (
+                  <Text fw="bold" component="span" size="sm" variant="danger">
+                    {firstException.type}
+                  </Text>
+                )}
+                <span className="text-muted">
+                  {firstException.type && firstException.value && ': '}
+                  {firstException.value}
+                </span>
               </div>
 
               {firstException.mechanism && (

@@ -354,6 +354,27 @@ export const getLogLevelClass = (lvl: string | undefined) => {
 };
 
 /**
+ * Error or warn level of a log row, or undefined when it is neither.
+ * SeverityNumber is normalized by the SDK, so it wins when set; 0 means
+ * unspecified, which falls back to matching SeverityText.
+ * https://github.com/open-telemetry/opentelemetry-specification/blob/v1.59.0/specification/logs/data-model.md#field-severitynumber
+ */
+export function getLogSeverityLevel({
+  severityNumber,
+  severityText,
+}: {
+  severityNumber?: unknown;
+  severityText?: string;
+}): 'error' | 'warn' | undefined {
+  const number = Number(severityNumber);
+  if (number > 0) {
+    return number >= 17 ? 'error' : number >= 13 ? 'warn' : undefined;
+  }
+  const level = getLogLevelClass(severityText);
+  return level === 'error' || level === 'warn' ? level : undefined;
+}
+
+/**
  * Chart Categorical Palette - ten distinguishable hues based on
  * Observable 10 (https://observablehq.com/@d3/color-schemes), with
  * `chart-blue` swapped to `#437eef` to match the brand link color
@@ -980,6 +1001,32 @@ const formatAutoScaleData = (
   return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
 };
 
+const AVERAGE_UNITS = [
+  [1e3, 'thousand'],
+  [1e6, 'million'],
+  [1e9, 'billion'],
+  [1e12, 'trillion'],
+] as const;
+
+// numbro's default lowPrecision abbreviates anything that rounds to the next
+// unit (750 -> "0.8k"), while turning it off picks the unit before rounding
+// (999,700 -> "1000k"). Pick the unit from the rounded value instead.
+function averageUnitOptions(
+  displayed: number,
+  mantissa: number,
+): Pick<numbro.Format, 'forceAverage' | 'lowPrecision'> {
+  const abs = Math.abs(displayed);
+  const round = (v: number) => Math.round(v * 10 ** mantissa) / 10 ** mantissa;
+  let scaled = abs;
+  let unit: numbro.Format['forceAverage'];
+  for (const [power, name] of AVERAGE_UNITS) {
+    if (round(scaled) < 1000) break;
+    unit = name;
+    scaled = abs / power;
+  }
+  return unit ? { forceAverage: unit } : { lowPrecision: false };
+}
+
 export const formatNumber = (
   value?: string | number,
   options?: NumberFormat,
@@ -1036,11 +1083,20 @@ export const formatNumber = (
     return formatDurationMs(ms);
   }
 
+  // Factor is only currently available for the time output
+  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
     mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
+    ...(options.average &&
+      options.output !== 'byte' &&
+      averageUnitOptions(
+        value * factor * (options.output === 'percent' ? 100 : 1),
+        mantissa,
+      )),
     ...(options.output === 'byte' && {
       base: options.decimalBytes ? 'decimal' : 'general',
       spaceSeparated: true,
@@ -1050,9 +1106,6 @@ export const formatNumber = (
       currencySymbol: options.currencySymbol || '$',
     }),
   };
-
-  // Factor is only currently available for the time output
-  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
 
   return (
     numbro(value * factor).format(numbroFormat) +

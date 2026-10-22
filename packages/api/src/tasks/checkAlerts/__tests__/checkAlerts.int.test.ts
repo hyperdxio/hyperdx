@@ -7223,6 +7223,68 @@ describe('checkAlerts', () => {
       expect(resolutionCall).toBeDefined();
     });
 
+    it('Group-by alerts keep the group values on the resolve notification', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+          name: 'Errors for {{attributes.ServiceName}}',
+        },
+        { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+      );
+
+      const error = (Timestamp: Date) => ({
+        ServiceName: 'service-b',
+        Timestamp,
+        SeverityText: 'error',
+        Body: 'Error from service-b',
+      });
+      const firstWindow = new Date('2023-11-16T22:05:00.000Z');
+      // One error in the next window: still present in the data, but below threshold.
+      await bulkInsertLogs([
+        error(firstWindow),
+        error(firstWindow),
+        error(new Date('2023-11-16T22:10:00.000Z')),
+      ]);
+
+      for (const at of [
+        '2023-11-16T22:12:00.000Z',
+        '2023-11-16T22:16:00.000Z',
+      ]) {
+        await processAlertAtTime(
+          new Date(at),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+      }
+
+      const texts = jest
+        .mocked(slack.postMessageToWebhook)
+        .mock.calls.map(call => call[1].text);
+      expect(texts).toHaveLength(2);
+      expect(texts[1]).toBe('✅ Errors for service-b');
+    });
+
     it('TILE alert (metrics) - slack webhook', async () => {
       const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
         await setupSavedSearchAlertTest();

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { Badge } from '@clickhouse/click-ui';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -15,7 +16,6 @@ import {
   Divider,
   Group,
   Loader,
-  Pill,
   Skeleton,
   Stack,
   Text,
@@ -166,7 +166,7 @@ function AIAssistant({
             <Text size="xxs">AI Assistant [A]</Text>
           </Group>
         </Button>
-        <Pill size="xs">Experimental</Pill>
+        <Badge size="sm" text="Experimental" state="info" />
       </Group>
       <Collapse expanded={opened}>
         {opened && (
