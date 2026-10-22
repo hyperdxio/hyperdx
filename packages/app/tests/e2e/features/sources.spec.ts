@@ -26,6 +26,7 @@ const LOG_FIELDS = [
   'Log Level Expression',
   'Severity Number Expression',
   'Body Expression',
+  'Event Name Expression',
   'Log Attributes Expression',
   'Resource Attributes Expression',
   'Displayed Timestamp Column',

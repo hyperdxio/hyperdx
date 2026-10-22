@@ -287,6 +287,13 @@ export const mcpSaveSourceSchema = z.object({
       'Log sources. Expression for the numeric OpenTelemetry SeverityNumber ' +
         '(1-24), e.g. SeverityNumber. Omit if the table has no such column.',
     ),
+  eventNameExpression: z
+    .string()
+    .optional()
+    .describe(
+      'Log sources. Expression for the OpenTelemetry log EventName, e.g. ' +
+        'EventName. Omit if the table has no such column.',
+    ),
 
   // ── Trace (required for trace kind) ──
   durationExpression: z

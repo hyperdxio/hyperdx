@@ -113,7 +113,10 @@ describe('pickTimeSeriesTable', () => {
 });
 
 describe('inferTableSourceConfig', () => {
-  const inferOtelLogConfig = (severityNumberType: string) => {
+  const inferOtelLogConfig = (
+    severityNumberType: string,
+    extraColumns: ColumnMetaType[] = [],
+  ) => {
     const columns = [
       'Timestamp',
       'Body',
@@ -125,6 +128,7 @@ describe('inferTableSourceConfig', () => {
       'ResourceAttributes',
     ].map(name => ({ name, type: 'String' }));
     columns.push({ name: 'SeverityNumber', type: severityNumberType });
+    columns.push(...extraColumns);
 
     return inferTableSourceConfig({
       databaseName: 'default',
@@ -149,6 +153,21 @@ describe('inferTableSourceConfig', () => {
     expect(await inferOtelLogConfig('String')).not.toHaveProperty(
       'severityNumberExpression',
     );
+  });
+
+  it('sets eventNameExpression only for a string EventName column', async () => {
+    for (const type of [
+      'String',
+      'LowCardinality(String)',
+      'Nullable(String)',
+    ]) {
+      expect(
+        await inferOtelLogConfig('UInt8', [{ name: 'EventName', type }]),
+      ).toHaveProperty('eventNameExpression', 'EventName');
+    }
+    expect(
+      await inferOtelLogConfig('UInt8', [{ name: 'EventName', type: 'UInt8' }]),
+    ).not.toHaveProperty('eventNameExpression');
   });
 });
 

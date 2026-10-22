@@ -147,6 +147,7 @@ async function describeSourceSchema(
       serviceName: source.serviceNameExpression,
       severityText: source.severityTextExpression,
       severityNumber: source.severityNumberExpression,
+      eventName: source.eventNameExpression,
       traceId: source.traceIdExpression,
     };
   } else if (source.kind === SourceKind.Metric) {

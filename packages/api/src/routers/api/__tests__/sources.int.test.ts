@@ -659,6 +659,20 @@ describe('sources router', () => {
     });
   });
 
+  it('POST / - round-trips eventNameExpression on a log source', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    await agent
+      .post('/sources')
+      .send({ ...MOCK_SOURCE, eventNameExpression: 'EventName' })
+      .expect(200);
+
+    const response = await agent.get('/sources').expect(200);
+
+    expect(response.body[0]).toMatchObject({
+      eventNameExpression: 'EventName',
+    });
+  });
+
   describe('seriesTable', () => {
     it('POST / - creates a metric source with seriesTable and it round-trips', async () => {
       const { agent } = await getLoggedInAgent(server);

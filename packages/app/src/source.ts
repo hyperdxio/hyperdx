@@ -4,6 +4,7 @@ import objectHash from 'object-hash';
 import {
   ColumnMeta,
   ColumnMetaType,
+  convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
   isCHIntegerType,
@@ -417,6 +418,12 @@ export async function inferTableSourceConfig({
     col => col.name === 'SeverityNumber' && isCHIntegerType(col.type),
   );
 
+  const hasEventName = columns.some(
+    col =>
+      col.name === 'EventName' &&
+      convertCHDataTypeToJSType(col.type) === JSDataType.String,
+  );
+
   // Check if metadata rollup tables exist and, if so, infer the bucketing
   // granularity from the key-rollup view's `as_select`
   const rollupMeta =
@@ -471,6 +478,7 @@ export async function inferTableSourceConfig({
           ...(hasSeverityNumber
             ? { severityNumberExpression: 'SeverityNumber' }
             : {}),
+          ...(hasEventName ? { eventNameExpression: 'EventName' } : {}),
           ...metadataMVsConfig,
         }
       : {}),
