@@ -29,6 +29,10 @@ import {
   E2E_TRACES_MV_TABLE,
   E2E_TRACES_TABLE,
 } from './utils/constants';
+import {
+  generateOtelSessionReplayRows,
+  generateOtelSessionSpans,
+} from './seed-otel-sessions';
 
 interface ClickHouseConfig {
   host: string;
@@ -1004,7 +1008,8 @@ export async function seedClickHouse(): Promise<void> {
       Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
       \`Events.Attributes\`, \`Links.TraceId\`, \`Links.SpanId\`, \`Links.TraceState\`,
       \`Links.Attributes\`
-    ) VALUES ${generateSessionTraces(numDataPoints, startMs, endMs)}
+    ) VALUES ${generateSessionTraces(numDataPoints, startMs, endMs)},
+    ${generateOtelSessionSpans(seedRef)}
   `);
   console.log(`  Inserted ${numDataPoints} session trace data`);
 
@@ -1015,7 +1020,8 @@ export async function seedClickHouse(): Promise<void> {
       Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
       ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
       ScopeName, ScopeVersion, ScopeAttributes, LogAttributes
-    ) VALUES ${generateSessionData(numDataPoints, startMs, endMs)}
+    ) VALUES ${generateSessionData(numDataPoints, startMs, endMs)},
+    ${generateOtelSessionReplayRows(seedRef)}
   `);
   console.log(`  Inserted ${numDataPoints} session entries`);
 

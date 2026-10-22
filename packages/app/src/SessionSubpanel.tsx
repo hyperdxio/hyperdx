@@ -31,6 +31,8 @@ import {
 } from '@tabler/icons-react';
 
 import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import type { SessionIdKey } from '@/utils/sessionId';
+import { buildSessionEventFilters } from '@/utils/sessions';
 
 import SearchWhereInput from './components/SearchInput/SearchWhereInput';
 import useFieldExpressionGenerator from './hooks/useFieldExpressionGenerator';
@@ -47,6 +49,7 @@ const MemoPlaybar = memo(Playbar);
 function useSessionChartConfigs({
   traceSource,
   rumSessionId,
+  sessionIdKey,
   where,
   whereLanguage,
   start,
@@ -55,6 +58,7 @@ function useSessionChartConfigs({
 }: {
   traceSource: TTraceSource;
   rumSessionId: string;
+  sessionIdKey?: SessionIdKey;
   where: string;
   whereLanguage?: SearchConditionLanguage;
   start: Date;
@@ -96,6 +100,15 @@ function useSessionChartConfigs({
         valueExpression: `${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', 'http.url')}`,
         alias: 'http.url',
       },
+      ...['url.full', 'http.request.method', 'http.response.status_code'].map(
+        key => ({
+          valueExpression: getTraceSourceFieldExpression(
+            traceSource.eventAttributesExpression ?? 'SpanAttributes',
+            key,
+          ),
+          alias: key,
+        }),
+      ),
       {
         // Using toString here because Javascript does not have the precision to accurately represent this
         valueExpression: `toString(cityHash64(${traceSource.traceIdExpression}, ${traceSource.parentSpanIdExpression}, ${traceSource.spanIdExpression}))`,
@@ -140,43 +153,18 @@ function useSessionChartConfigs({
     ];
   }, [traceSource, getTraceSourceFieldExpression]);
 
-  // Events shown in the highlighted tab
-  const highlightedEventsFilter = useMemo(
-    () => ({
-      type: 'lucene' as const,
-      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
-    AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:>299
-      OR ${traceSource.eventAttributesExpression}.component:"error"
-      OR ${traceSource.spanNameExpression}:"routeChange"
-      OR ${traceSource.spanNameExpression}:"documentLoad"
-      OR ${traceSource.spanNameExpression}:"intercom.onShow"
-      OR ScopeName:"custom-action"
-    )`,
-    }),
-    [traceSource, rumSessionId],
+  const eventFilters = useMemo(
+    () =>
+      buildSessionEventFilters({
+        traceSource,
+        sessionId: rumSessionId,
+        sessionIdKey,
+      }),
+    [traceSource, rumSessionId, sessionIdKey],
   );
 
-  const allEventsFilter = useMemo(() => {
-    if (!getTraceSourceFieldExpression) return undefined;
-    return {
-      type: 'lucene' as const,
-      condition: `${traceSource.resourceAttributesExpression}.rum.sessionId:"${rumSessionId}"
-    AND (
-      ${traceSource.eventAttributesExpression}.http.status_code:*
-      OR ${traceSource.eventAttributesExpression}.component:"console"
-      OR ${traceSource.eventAttributesExpression}.component:"error"
-      OR ${traceSource.spanNameExpression}:"routeChange"
-      OR ${traceSource.spanNameExpression}:"documentLoad"
-      OR ${traceSource.spanNameExpression}:"intercom.onShow"
-      OR ScopeName:"custom-action"
-    )`,
-    };
-  }, [traceSource, rumSessionId, getTraceSourceFieldExpression]);
-
   const eventsConfig = useMemo<ChartConfigWithOptDateRange | undefined>(() => {
-    if (!getTraceSourceFieldExpression || !select || !allEventsFilter)
-      return undefined;
+    if (!getTraceSourceFieldExpression || !select) return undefined;
     return {
       select: select,
       from: traceSource.from,
@@ -193,9 +181,7 @@ function useSessionChartConfigs({
         limit: 4000,
         offset: 0,
       },
-      filters: [
-        tab === 'highlighted' ? highlightedEventsFilter : allEventsFilter,
-      ],
+      filters: eventFilters[tab === 'highlighted' ? 'highlighted' : 'all'],
     };
   }, [
     select,
@@ -205,8 +191,7 @@ function useSessionChartConfigs({
     where,
     whereLanguage,
     tab,
-    highlightedEventsFilter,
-    allEventsFilter,
+    eventFilters,
     getTraceSourceFieldExpression,
   ]);
 
@@ -242,7 +227,7 @@ export default function SessionSubpanel({
 }: {
   traceSource: TTraceSource;
   sessionSource: TSessionSource;
-  session: { serviceName: string };
+  session: { serviceName: string; sessionIdKey?: SessionIdKey };
   rumSessionId: string;
   start: Date;
   end: Date;
@@ -373,6 +358,7 @@ export default function SessionSubpanel({
   const { eventsConfig, aliasMap } = useSessionChartConfigs({
     traceSource,
     rumSessionId,
+    sessionIdKey: session.sessionIdKey,
     where: searchedQuery,
     whereLanguage,
     start,
@@ -519,6 +505,7 @@ export default function SessionSubpanel({
               serviceName: session.serviceName,
               sourceId: sessionSource.id,
               sessionId: rumSessionId,
+              sessionIdKey: session.sessionIdKey,
               dateRange: [start, end],
             }}
             playerSpeed={playerSpeed}

@@ -727,7 +727,7 @@ export const DBRowSidePanelInner = ({
     [parentContext, handleOpenLinkedTrace, source],
   );
 
-  const { rumSessionId, rumServiceName } = useSessionId({
+  const { rumSessionId, rumServiceName, sessionIdKey } = useSessionId({
     sourceId: traceSourceId,
     traceId,
     dateRange: oneHourRange,
@@ -1276,6 +1276,7 @@ export const DBRowSidePanelInner = ({
               traceSourceId={traceSourceId}
               serviceName={rumServiceName}
               rumSessionId={rumSessionId}
+              sessionIdKey={sessionIdKey}
             />
           </div>
         </ErrorBoundary>
