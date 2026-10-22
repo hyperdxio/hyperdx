@@ -30,8 +30,10 @@ import {
   IconToggleRight,
 } from '@tabler/icons-react';
 
-import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import { RowWhereResult } from '@/hooks/useRowWhere';
+import { useSessionLogEvents } from '@/hooks/useSessionLogEvents';
 import type { SessionIdKey } from '@/utils/sessionId';
+import type { SessionEventNavigate } from '@/utils/sessionLogEvents';
 import { buildSessionEventFilters } from '@/utils/sessions';
 
 import SearchWhereInput from './components/SearchInput/SearchWhereInput';
@@ -234,7 +236,7 @@ export default function SessionSubpanel({
   initialTs?: number;
   whereLanguage?: SearchConditionLanguage;
   onLanguageChange?: (lang: 'sql' | 'lucene') => void;
-  onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
+  onEventNavigate?: SessionEventNavigate;
 }) {
   const [tsQuery, setTsQuery] = useQueryState(
     'ts',
@@ -365,6 +367,16 @@ export default function SessionSubpanel({
     end,
     tab,
   });
+  const logEvents = useSessionLogEvents({
+    traceSource,
+    sessionId: rumSessionId,
+    sessionIdKey: session.sessionIdKey,
+    serviceName: session.serviceName,
+    dateRange: eventsDateRange,
+    tab,
+    searchedQuery,
+    onEventNavigate,
+  });
 
   const [playerFullWidth, setPlayerFullWidth] = useState(false);
 
@@ -485,6 +497,7 @@ export default function SessionSubpanel({
             eventsFollowPlayerPosition={eventsFollowPlayerPosition}
             aliasMap={aliasMap}
             queriedConfig={eventsConfig}
+            logEvents={logEvents}
             onClick={onSessionEventClick}
             focus={focus}
             onTimeClick={onSessionEventTimeClick}
@@ -528,6 +541,7 @@ export default function SessionSubpanel({
               setFocus={setFocus}
               playbackRange={playbackRange}
               queriedConfig={eventsConfig}
+              logEvents={logEvents.events}
             />
           )}
         </div>
