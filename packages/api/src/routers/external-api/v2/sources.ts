@@ -847,7 +847,7 @@ function formatExternalSource(source: SourceDocument) {
  *           example: ResourceAttributes
  *     PromqlSource:
  *       type: object
- *       description: A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true).
+ *       description: A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true). PromQL is a preview feature and must be enabled on the deployment (ENABLE_PROMQL) before PromQL sources can be queried.
  *       required:
  *         - name
  *         - kind

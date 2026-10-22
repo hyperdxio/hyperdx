@@ -2929,7 +2929,7 @@
           "configType",
           "sourceId"
         ],
-        "description": "Shared fields for PromQL chart configs. Set configType to \"promql\" and provide sourceId + expressions. The connection is read from the source.\n",
+        "description": "Shared fields for PromQL chart configs. Set configType to \"promql\" and provide sourceId + expressions. The connection is read from the source. PromQL is a preview feature and must be enabled on the deployment (ENABLE_PROMQL) before PromQL tiles can be queried.\n",
         "properties": {
           "configType": {
             "type": "string",
@@ -4171,7 +4171,7 @@
       },
       "PrometheusLabelFilterInput": {
         "type": "object",
-        "description": "A filter whose dropdown lists the values for a Prometheus label,\nread from a PromQL source over the dashboard's time range.\nSupports variable mode only.\n",
+        "description": "A filter whose dropdown lists the values for a Prometheus label,\nread from a PromQL source over the dashboard's time range.\nSupports variable mode only. PromQL is a preview feature and must be\nenabled on the deployment (ENABLE_PROMQL) before these filters can\nlist values.\n",
         "required": [
           "type",
           "name",
@@ -5675,7 +5675,7 @@
       },
       "PromqlSource": {
         "type": "object",
-        "description": "A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true).",
+        "description": "A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true). PromQL is a preview feature and must be enabled on the deployment (ENABLE_PROMQL) before PromQL sources can be queried.",
         "required": [
           "name",
           "kind",

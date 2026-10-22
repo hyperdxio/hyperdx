@@ -1581,6 +1581,8 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       description: >
  *         Shared fields for PromQL chart configs. Set configType to "promql" and
  *         provide sourceId + expressions. The connection is read from the source.
+ *         PromQL is a preview feature and must be enabled on the deployment
+ *         (ENABLE_PROMQL) before PromQL tiles can be queried.
  *       properties:
  *         configType:
  *           type: string
@@ -2590,7 +2592,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       description: |
  *         A filter whose dropdown lists the values for a Prometheus label,
  *         read from a PromQL source over the dashboard's time range.
- *         Supports variable mode only.
+ *         Supports variable mode only. PromQL is a preview feature and must be
+ *         enabled on the deployment (ENABLE_PROMQL) before these filters can
+ *         list values.
  *       required:
  *         - type
  *         - name
