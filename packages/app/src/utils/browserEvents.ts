@@ -37,7 +37,7 @@ function joinWords(...words: Array<string | undefined>): string {
   return words.filter(Boolean).join(' ');
 }
 
-function firstLine(text: string): string {
+export function firstLine(text: string): string {
   return text.split('\n', 1)[0].trim();
 }
 
@@ -50,7 +50,9 @@ function setPairs(entries: [string, unknown][]): [string, string][] {
 // The SDK sends data-otel-* attributes, prefix removed, as one map. The
 // collector flattens it into `browser.element.attributes.<name>` keys; without
 // that step a Map column holds it as a JSON string.
-function getElementAttributes(attributes: Attributes): [string, string][] {
+export function getElementAttributes(
+  attributes: Attributes,
+): [string, string][] {
   const prefix = `${ELEMENT_ATTRIBUTES_KEY}.`;
   const flatPairs = setPairs(
     Object.entries(attributes)
@@ -152,6 +154,12 @@ function getExceptionLabel(
   };
 }
 
+function toAttributes(attributes: unknown): Attributes {
+  return isRecord(attributes)
+    ? flatten<Attributes, Attributes>(attributes)
+    : {};
+}
+
 export function getBrowserEventLabel({
   eventName,
   body,
@@ -162,9 +170,7 @@ export function getBrowserEventLabel({
   /** Flat keys from a Map column or nested objects from a JSON column. */
   attributes: unknown;
 }): BrowserEventLabel {
-  const flat: Attributes = isRecord(attributes)
-    ? flatten<Attributes, Attributes>(attributes)
-    : {};
+  const flat = toAttributes(attributes);
   const text = typeof body === 'string' ? body : '';
   switch (eventName) {
     case BROWSER_EVENT_NAMES.CLICK:
@@ -184,4 +190,53 @@ export function getBrowserEventLabel({
         eventSource: 'log',
       };
   }
+}
+
+export type BrowserEventKind = 'click' | 'navigation' | 'console';
+
+type BrowserEventRow = {
+  eventName: unknown;
+  /** Flat keys from a Map column or nested objects from a JSON column. */
+  attributes: unknown;
+};
+
+const KIND_BY_EVENT_NAME = new Map<string, BrowserEventKind>([
+  [BROWSER_EVENT_NAMES.CLICK, 'click'],
+  [BROWSER_EVENT_NAMES.NAVIGATION, 'navigation'],
+  [BROWSER_EVENT_NAMES.CONSOLE, 'console'],
+]);
+
+// A row has no event name when its source predates the Event Name Expression
+// field, or when its table (or Known Columns List) has no such column. The SDK
+// always sends these keys with their kind, and only with it.
+const KIND_ATTRIBUTE_KEYS: [BrowserEventKind, string[]][] = [
+  ['click', ['browser.tag_name', 'browser.css_selector']],
+  [
+    'navigation',
+    [
+      'browser.navigation.same_document',
+      'browser.navigation.hash_change',
+      'browser.navigation.type',
+    ],
+  ],
+  ['console', [CONSOLE_METHOD_ATTRIBUTE]],
+];
+
+export function getBrowserEventKind({
+  eventName,
+  attributes,
+}: BrowserEventRow): BrowserEventKind | undefined {
+  if (isSet(eventName)) {
+    return KIND_BY_EVENT_NAME.get(String(eventName));
+  }
+  const flat = toAttributes(attributes);
+  return KIND_ATTRIBUTE_KEYS.find(([, keys]) =>
+    keys.some(key => isSet(flat[key])),
+  )?.[0];
+}
+
+export function isBrowserEventRow(row: BrowserEventRow): boolean {
+  return isSet(row.eventName)
+    ? String(row.eventName).startsWith('browser.')
+    : getBrowserEventKind(row) != null;
 }

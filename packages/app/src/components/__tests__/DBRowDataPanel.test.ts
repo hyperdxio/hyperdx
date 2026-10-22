@@ -126,6 +126,61 @@ describe('DBRowDataPanel', () => {
     expect(config.select).not.toContainEqual({ valueExpression: '*' });
   });
 
+  describe('event name', () => {
+    const eventNameAlias = expect.objectContaining({
+      alias: '__hdx_event_name',
+    });
+    const lookUp = (
+      overrides: Partial<TLogSource>,
+      row: Record<string, unknown> = {},
+    ) => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [row], meta: [], rows: 1, isComplete: true },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      });
+      const { result } = renderHook(() =>
+        useRowData({ source: { ...source, ...overrides }, rowId: "id='a'" }),
+      );
+      return {
+        select: mockUseQueriedChartConfig.mock.calls[0][0].select,
+        row: result.current.data?.data[0],
+      };
+    };
+
+    it('reads a bare column from the row instead of selecting it', () => {
+      const { select, row } = lookUp(
+        { eventNameExpression: 'EventName' },
+        { EventName: 'browser.navigation' },
+      );
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBe('browser.navigation');
+    });
+
+    it('leaves the event name unset when the table has no such column', () => {
+      const { select, row } = lookUp({ eventNameExpression: 'EventName' });
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBeUndefined();
+    });
+
+    it('selects any other expression under the alias', () => {
+      const { select } = lookUp({
+        eventNameExpression: "LogAttributes['event.name']",
+      });
+      expect(select).toContainEqual({
+        valueExpression: "LogAttributes['event.name']",
+        alias: '__hdx_event_name',
+      });
+    });
+
+    it('reads no event name when the expression is unset', () => {
+      const { select, row } = lookUp({}, { EventName: 'browser.navigation' });
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBeUndefined();
+    });
+  });
+
   it('adds no query settings while the viewer option is off', () => {
     renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
 
