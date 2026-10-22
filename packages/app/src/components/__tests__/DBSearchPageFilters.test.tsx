@@ -1,3 +1,4 @@
+import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { UseQueryResult } from '@tanstack/react-query';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -8,6 +9,7 @@ import {
   type FilterGroupProps,
 } from '@/components/DBSearchPageFilters';
 import { NestedFilterGroup } from '@/components/DBSearchPageFilters/NestedFilterGroup';
+import { SeverityClassFilterGroup } from '@/components/DBSearchPageFilters/SeverityClassFilterGroup';
 import {
   cleanClickHouseExpression,
   groupFacetsByBaseName,
@@ -852,6 +854,125 @@ describe('FilterGroup', () => {
     renderWithMantine(<FilterGroup {...defaultProps} name="" />);
 
     expect(screen.getByText('(empty)')).toBeInTheDocument();
+  });
+
+  describe('with fixedOptions', () => {
+    const fixedProps: FilterGroupProps = {
+      ...defaultProps,
+      name: 'Severity',
+      options: ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'].map(
+        value => ({ value, label: value }),
+      ),
+      fixedOptions: true,
+      valuePins: undefined,
+    };
+
+    it('keeps the given order over selections and distributions', async () => {
+      mockDistribution(
+        new Map([
+          ['INFO', 80],
+          ['ERROR', 20],
+        ]),
+      );
+      renderWithMantine(
+        <FilterGroup
+          {...fixedProps}
+          selectedValues={{ included: new Set(), excluded: new Set(['FATAL']) }}
+        />,
+      );
+
+      await userEvent.click(
+        screen.getByTestId('toggle-distribution-button-Severity'),
+      );
+
+      expect(
+        screen
+          .getAllByTestId(/^filter-checkbox-Severity-[A-Z]+$/)
+          .map(row => row.dataset.testid),
+      ).toEqual(
+        ['TRACE', 'DEBUG', 'INFO', 'WARN', 'ERROR', 'FATAL'].map(
+          v => `filter-checkbox-Severity-${v}`,
+        ),
+      );
+      expect(
+        screen.getByTestId('filter-distribution-Severity-INFO'),
+      ).toHaveTextContent('~80%');
+    });
+
+    it('shows no value search or pin controls', () => {
+      renderWithMantine(<FilterGroup {...fixedProps} />);
+
+      expect(
+        screen.queryByPlaceholderText('Search values...'),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Pin value')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Pin')).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('SeverityClassFilterGroup', () => {
+  const classKey = "if(SeverityNumber > 0, 'INFO', 'OTHER')";
+  const renderGroup = (filterState: FilterState, setFilterValue = jest.fn()) =>
+    renderWithMantine(
+      <SeverityClassFilterGroup
+        classKey={classKey}
+        filterState={filterState}
+        setFilterValue={setFilterValue}
+        clearFilter={jest.fn()}
+        chartConfig={{
+          from: { databaseName: 'db', tableName: 'logs' },
+          select: '',
+          where: '',
+          whereLanguage: 'sql',
+          timestampValueExpression: 'Timestamp',
+          connection: 'conn',
+          dateRange: [new Date('2024-01-01'), new Date('2024-01-02')],
+        }}
+      />,
+    );
+
+  it('starts collapsed without a selection', () => {
+    renderGroup({});
+
+    expect(
+      screen.queryByTestId('filter-checkbox-Severity-ERROR'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('opens on a selection and filters through the class key', async () => {
+    const setFilterValue = jest.fn();
+    renderGroup(
+      { [classKey]: { included: new Set(['ERROR']), excluded: new Set() } },
+      setFilterValue,
+    );
+
+    expect(
+      screen.getByTestId('filter-checkbox-Severity-ERROR-input'),
+    ).toBeChecked();
+    expect(
+      screen.queryByTestId('filter-load-more-Severity'),
+    ).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByText('WARN'));
+    expect(setFilterValue).toHaveBeenLastCalledWith(classKey, 'WARN');
+
+    await userEvent.click(
+      screen.getByTestId('filter-checkbox-Severity-FATAL-exclude'),
+    );
+    expect(setFilterValue).toHaveBeenLastCalledWith(
+      classKey,
+      'FATAL',
+      'exclude',
+    );
+
+    await userEvent.click(
+      screen.getByTestId('toggle-distribution-button-Severity'),
+    );
+    expect(jest.mocked(useGetValuesDistribution)).toHaveBeenLastCalledWith(
+      expect.objectContaining({ key: classKey }),
+      expect.objectContaining({ enabled: true }),
+    );
   });
 });
 

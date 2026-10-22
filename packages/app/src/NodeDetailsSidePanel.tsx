@@ -24,6 +24,7 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
 import { formatUptime } from '@/utils';
+import { getLogsResultTypeQuery } from '@/utils/severityClass';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -139,8 +140,6 @@ function NodeLogs({
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
-  const _where = where + (resultType === 'error' ? ' Severity:err' : '');
-
   return (
     <Card p="md">
       <Card.Section p="md" py="xs">
@@ -179,7 +178,7 @@ function NodeLogs({
           sourceId={logSource.id}
           config={{
             ...logSource,
-            where: _where,
+            ...getLogsResultTypeQuery({ source: logSource, where, resultType }),
             whereLanguage: 'lucene',
             select: [
               {

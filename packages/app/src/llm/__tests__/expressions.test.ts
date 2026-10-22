@@ -1,3 +1,4 @@
+import { buildSeverityClassExpressionV1 } from '@hyperdx/common-utils/dist/core/severity';
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { makeLogSource, makeTraceSource } from '@/llm/__fixtures__/sources';
@@ -379,5 +380,19 @@ describe('getLLMLogExpressions', () => {
       [],
     );
     expect(expressions.sessionId).toContain("LogAttributes['session.id']");
+  });
+
+  it.each([
+    ['severity text without', LOG_SOURCE, "lower(SeverityText) = 'error'"],
+    [
+      'the FATAL and ERROR classes with',
+      makeLogSource({ severityNumberExpression: 'SeverityNumber' }),
+      `${buildSeverityClassExpressionV1({
+        numberExpr: 'SeverityNumber',
+        textExpr: 'SeverityText',
+      })} IN ('FATAL', 'ERROR')`,
+    ],
+  ])('matches errors by %s a severity number', (_, source, expected) => {
+    expect(getLLMLogExpressions(source, []).isError).toBe(expected);
   });
 });

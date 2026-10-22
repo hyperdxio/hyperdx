@@ -1,8 +1,7 @@
 /**
  * OpenTelemetry log severity classes (uppercase, as in the spec), from the
- * SeverityNumber with a severity text fallback. Parsing mirrors ClickHouse
- * `accurateCastOrNull(n, 'UInt8')` and `lower()` so SQL built from these
- * tables classifies rows the same way.
+ * SeverityNumber with a severity text fallback. The class SQL is built from
+ * the same tables, and its comparisons are mirrored here.
  * https://github.com/open-telemetry/opentelemetry-specification/blob/v1.61.0/specification/logs/data-model.md#field-severitynumber
  */
 
@@ -13,7 +12,7 @@ export const SEVERITY_CLASSES = [
   'INFO',
   'DEBUG',
   'TRACE',
-  'UNKNOWN',
+  'OTHER',
 ] as const;
 
 export type SeverityClass = (typeof SEVERITY_CLASSES)[number];
@@ -60,8 +59,9 @@ export function getSeverityShortName(
     : `${range.severityClass}${position}`;
 }
 
-// Matched against the start of the lowercased text. No prefix starts another
-// prefix of a different class, so rule order never changes the result.
+// Matched against the start of the text, case-insensitively, in this order.
+// No prefix starts another prefix of a different class, so the order never
+// changes the result.
 export const TEXT_PREFIX_RULES: readonly {
   prefix: string;
   severityClass: SeverityClass;
@@ -77,30 +77,30 @@ export const TEXT_PREFIX_RULES: readonly {
   { prefix: 'severe', severityClass: 'ERROR' },
   { prefix: 'warn', severityClass: 'WARN' },
   { prefix: 'wrn', severityClass: 'WARN' },
-  { prefix: 'info', severityClass: 'INFO' },
   { prefix: 'inf', severityClass: 'INFO' },
   { prefix: 'notice', severityClass: 'INFO' },
-  { prefix: 'ok', severityClass: 'INFO' },
-  { prefix: 'unset', severityClass: 'INFO' },
   { prefix: 'debug', severityClass: 'DEBUG' },
   { prefix: 'dbg', severityClass: 'DEBUG' },
   { prefix: 'trace', severityClass: 'TRACE' },
   { prefix: 'trc', severityClass: 'TRACE' },
   { prefix: 'verbose', severityClass: 'TRACE' },
+  { prefix: 'vrb', severityClass: 'TRACE' },
 ];
 
-/**
- * The SeverityNumber as an integer in 1-24, or undefined. ClickHouse quotes
- * 64-bit integers in JSON, so digit strings count too; they are not trimmed
- * because accurateCastOrNull rejects surrounding spaces.
- */
+// Highest first, so the first range whose min a number reaches is its class.
+// FATAL has no upper bound, to keep the class SQL to plain comparisons.
+const NUMBER_RANGES_DESC = [...NUMBER_RANGES].reverse();
+
+// ClickHouse quotes 64-bit integers in JSON, so digit strings count too.
+function toNumber(value: unknown): number | undefined {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && /^\+?\d+$/.test(value)) return Number(value);
+  return undefined;
+}
+
+/** The SeverityNumber as an integer in 1-24, or undefined. */
 export function parseSeverityNumber(value: unknown): number | undefined {
-  const number =
-    typeof value === 'number'
-      ? value
-      : typeof value === 'string' && /^\+?\d+$/.test(value)
-        ? Number(value)
-        : undefined;
+  const number = toNumber(value);
 
   return number != null &&
     Number.isInteger(number) &&
@@ -110,14 +110,14 @@ export function parseSeverityNumber(value: unknown): number | undefined {
     : undefined;
 }
 
-// ClickHouse lower() only folds ASCII.
+// The prefixes and short names are ASCII, so only ASCII needs folding.
 function lowerAscii(text: string): string {
   return text.replace(/[A-Z]/g, c => c.toLowerCase());
 }
 
 /**
- * The severity class of a log row. A SeverityNumber in 1-24 wins because the
- * SDK normalizes it; anything else (0 means unspecified) falls back to a
+ * The severity class of a log row. A SeverityNumber of 1 or more decides
+ * (21 and up is FATAL); anything else (0 means unspecified) falls back to a
  * case-insensitive prefix match on the text.
  */
 export function getSeverityClass({
@@ -127,14 +127,16 @@ export function getSeverityClass({
   severityNumber?: unknown;
   severityText?: string | null;
 }): SeverityClass {
-  const number = parseSeverityNumber(severityNumber);
-  if (number != null) return getNumberRange(number).severityClass;
+  const number = toNumber(severityNumber);
+  const range =
+    number == null ? undefined : NUMBER_RANGES_DESC.find(r => number >= r.min);
+  if (range != null) return range.severityClass;
 
   const text = lowerAscii(severityText ?? '');
 
   return (
     TEXT_PREFIX_RULES.find(r => text.startsWith(r.prefix))?.severityClass ??
-    'UNKNOWN'
+    'OTHER'
   );
 }
 
@@ -166,4 +168,82 @@ export function collapseSeverityClass(
   if (SEVERITY_CLASS_ERROR_VALUES.includes(severityClass)) return 'error';
 
   return severityClass === 'WARN' ? 'warn' : undefined;
+}
+
+/** The Severity facet's values, in severity order. */
+export const SEVERITY_CLASS_FACET_VALUES: readonly SeverityClass[] = [
+  ...NUMBER_RANGES.map(r => r.severityClass),
+  'OTHER',
+];
+
+const numberBranch = (
+  numberExpr: string,
+  { min, severityClass }: { min: number; severityClass: SeverityClass },
+) => `${numberExpr} >= ${min}, '${severityClass}', `;
+
+const numberBranches = (numberExpr: string) =>
+  NUMBER_RANGES_DESC.map(r => numberBranch(numberExpr, r)).join('');
+
+// ILIKE folds a few non-ASCII letters to ASCII (the Kelvin sign to k), but
+// none in these prefixes, so here it matches lowerAscii.
+const textBranches = (textExpr: string) =>
+  TEXT_PREFIX_RULES.map(
+    r => `${textExpr} ILIKE '${r.prefix}%', '${r.severityClass}', `,
+  ).join('');
+
+const V1_START = 'multiIf(';
+const V1_END = "'OTHER')";
+
+/**
+ * A ClickHouse String expression that classifies rows like getSeverityClass,
+ * used as the key of stored Severity filters (`<key> IN ('ERROR')`). Without a
+ * text expression the text branches are left out.
+ *
+ * V1 is a stored contract: saved searches, alerts and URLs hold the exact
+ * string. Change the rules or template only in a V2 builder, keep V1 on a
+ * frozen copy of these tables, and keep recognizing V1 keys.
+ *
+ * The number expression must be numeric: ClickHouse rejects comparing a String
+ * column with a number. A Bool (or a JSON/Dynamic value holding true) counts as
+ * 1, TRACE, while getSeverityClass ignores booleans and falls back to the text.
+ */
+export function buildSeverityClassExpressionV1({
+  numberExpr,
+  textExpr,
+}: {
+  numberExpr: string;
+  textExpr?: string;
+}): string {
+  return `${V1_START}${numberBranches(numberExpr)}${
+    textExpr ? textBranches(textExpr) : ''
+  }${V1_END}`;
+}
+
+/** Whether a filter key is a V1 severity class expression, for any source. */
+export function isSeverityClassKeyV1(key: string): boolean {
+  if (!key.startsWith(V1_START) || !key.endsWith(V1_END)) return false;
+
+  // The number expression ends at one of these; try each, and size the text
+  // expression from what's left, since every branch repeats it.
+  const numberEnd = numberBranch('', NUMBER_RANGES_DESC[0]);
+  const textTemplateLength = textBranches('').length;
+  for (
+    let end = key.indexOf(numberEnd, V1_START.length + 1);
+    end !== -1;
+    end = key.indexOf(numberEnd, end + 1)
+  ) {
+    const numberExpr = key.slice(V1_START.length, end);
+    const rest = key.slice(
+      V1_START.length + numberBranches(numberExpr).length,
+      -V1_END.length,
+    );
+    const textExpr = rest.slice(
+      0,
+      (rest.length - textTemplateLength) / TEXT_PREFIX_RULES.length,
+    );
+    if (buildSeverityClassExpressionV1({ numberExpr, textExpr }) === key) {
+      return true;
+    }
+  }
+  return false;
 }

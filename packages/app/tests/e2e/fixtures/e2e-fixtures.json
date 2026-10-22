@@ -275,6 +275,27 @@
         "tableName": "e2e_promql"
       },
       "timestampValueExpression": "timestamp"
+    },
+    {
+      "id": "E2E Severity Class Logs",
+      "kind": "log",
+      "name": "E2E Severity Class Logs",
+      "connection": "local",
+      "from": {
+        "databaseName": "default",
+        "tableName": "e2e_severity_class_logs"
+      },
+      "timestampValueExpression": "Timestamp",
+      "defaultTableSelectExpression": "Timestamp, ServiceName, SeverityText, Body",
+      "serviceNameExpression": "ServiceName",
+      "severityTextExpression": "SeverityText",
+      "severityNumberExpression": "SeverityNumber",
+      "eventAttributesExpression": "LogAttributes",
+      "resourceAttributesExpression": "ResourceAttributes",
+      "traceIdExpression": "TraceId",
+      "spanIdExpression": "SpanId",
+      "implicitColumnExpression": "Body",
+      "displayedTimestampValueExpression": "Timestamp"
     }
   ]
 }

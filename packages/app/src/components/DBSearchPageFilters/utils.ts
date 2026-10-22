@@ -10,6 +10,8 @@ import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 import type { Facet } from '@/hooks/useMetadata';
 import { mergePath } from '@/utils';
 
+export const SEVERITY_CLASS_FACET_NAME = 'Severity';
+
 /** A filter key and its values, as the sidebar lists it. */
 export type FacetEntry = {
   key: string;

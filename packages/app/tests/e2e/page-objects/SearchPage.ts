@@ -661,6 +661,14 @@ export class SearchPage {
     return this.page.getByText(/filter.* didn't apply to this source/i);
   }
 
+  /**
+   * The active filter pill above the results for a field, by its displayed
+   * field label (e.g. 'SeverityText', or 'Severity' for the class facet).
+   */
+  getActiveFilterPill(field: string) {
+    return this.page.getByTestId(`active-filter-pill-${field}`);
+  }
+
   // Getters for assertions in spec files
 
   get form() {

@@ -22,7 +22,7 @@ export const SERVICE_VERSION_EXPRESSION_HELP_TEXT =
   "Identifies the running release of a service. Defaults to the OpenTelemetry service.version resource attribute. Point it elsewhere if your release identifier lives in another attribute - under GitOps it is often the container image tag. If services in this table use different attributes, fall back across them: coalesce(nullIf(ResourceAttributes['service.version'], ''), nullIf(ResourceAttributes['container.image.tag'], '')).";
 
 export const SEVERITY_NUMBER_EXPRESSION_HELP_TEXT =
-  'Expression for the numeric OpenTelemetry severity (1-24), usually the SeverityNumber column. Leave blank if the table has no such column.';
+  'Must be an OpenTelemetry SeverityNumber (1-24), such as the SeverityNumber column; leave blank otherwise.';
 
 export const EVENT_NAME_EXPRESSION_HELP_TEXT =
   'Expression for the OpenTelemetry log event name, usually the EventName column. Leave blank if the table has no such column.';

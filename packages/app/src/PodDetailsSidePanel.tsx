@@ -25,6 +25,7 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { KubeTimeline, useV2LogBatch } from '@/components/KubeComponents';
 import { WithClause } from '@/hooks/useRowWhere';
+import { getLogsResultTypeQuery } from '@/utils/severityClass';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -136,13 +137,11 @@ function PodLogs({
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
-  const _where = where + (resultType === 'error' ? ' Severity:err' : '');
-
   // Create a properly typed config object for DBSqlRowTable
   const tableConfig = React.useMemo(() => {
     return {
       from: logSource.from,
-      where: _where,
+      ...getLogsResultTypeQuery({ source: logSource, where, resultType }),
       whereLanguage: 'lucene' as const,
       timestampValueExpression: logSource.timestampValueExpression,
       implicitColumnExpression: logSource.implicitColumnExpression,
@@ -175,7 +174,7 @@ function PodLogs({
       limit: { limit: 200, offset: 0 },
       dateRange,
     };
-  }, [_where, dateRange, logSource]);
+  }, [where, resultType, dateRange, logSource]);
 
   return (
     <Card p="md">

@@ -1,5 +1,6 @@
 import * as SQLParser from 'node-sql-parser';
 
+import { isSeverityClassKeyV1 } from '@/core/severity';
 import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
 import {
@@ -646,6 +647,32 @@ export function isRenderablePinnedFilter(filter: Filter): boolean {
   // AND, a single BETWEEN has exactly one (its own `min AND max`).
   const expectedAnds = state[keys[0]].range ? 1 : 0;
   return countTopLevelAnd(filter.condition) === expectedAnds;
+}
+
+/**
+ * "Severity: ERROR" for a Severity facet filter, whose SQL runs to ~600
+ * characters; undefined otherwise.
+ */
+function describeSeverityClassFilter(filter: Filter): string | undefined {
+  if (!isRenderablePinnedFilter(filter)) return undefined;
+
+  const [[key, { included, excluded }]] = Object.entries(
+    parseQuery([filter]).filters,
+  );
+  if (!isSeverityClassKeyV1(key)) return undefined;
+
+  if (included.size > 0) return `Severity: ${[...included].join(', ')}`;
+  if (excluded.size > 0) return `Severity: not ${[...excluded].join(', ')}`;
+  return undefined;
+}
+
+export function describeFilter(filter: Filter): string {
+  return (
+    describeSeverityClassFilter(filter) ??
+    (filter.type === 'sql_ast'
+      ? `${filter.left} ${filter.operator} ${filter.right}`
+      : filter.condition)
+  );
 }
 
 export type SavedFilterValueIssue = {

@@ -1,4 +1,5 @@
 import { enableMapSet } from 'immer';
+import { buildSeverityClassExpressionV1 } from '@hyperdx/common-utils/dist/core/severity';
 import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import { act, renderHook } from '@testing-library/react';
 
@@ -1251,6 +1252,83 @@ describe('searchFilters', () => {
         expect(onFilterChangeLocal).toHaveBeenLastCalledWith([
           { type: 'sql', condition: `ServiceName IN ('app')` },
         ]);
+      });
+
+      describe('with a severity class key', () => {
+        const OLD = buildSeverityClassExpressionV1({
+          numberExpr: 'OldSeverityNumber',
+          textExpr: 'SeverityText',
+        });
+        const NEW = buildSeverityClassExpressionV1({
+          numberExpr: 'SeverityNumber',
+          textExpr: 'SeverityText',
+        });
+        const sql = (condition: string): ConditionFilter => ({
+          type: 'sql',
+          condition,
+        });
+
+        it.each([
+          [
+            'renames a stale key',
+            [sql(`${OLD} IN ('ERROR')`), sql(`ServiceName IN ('app')`)],
+            NEW,
+            [],
+            [sql(`${NEW} IN ('ERROR')`), sql(`ServiceName IN ('app')`)],
+          ],
+          [
+            'keeps the current key without a URL update',
+            [sql(`${NEW} IN ('ERROR')`)],
+            NEW,
+            [],
+            null,
+          ],
+          [
+            'drops class keys for a source without one',
+            [sql(`${OLD} IN ('ERROR')`), sql(`ServiceName IN ('app')`)],
+            null,
+            [OLD],
+            [sql(`ServiceName IN ('app')`)],
+          ],
+          [
+            'merges a stale key into the current one, the later key winning',
+            [
+              sql(`${OLD} IN ('ERROR', 'WARN')`),
+              sql(`${NEW} IN ('FATAL')`),
+              sql(`${NEW} NOT IN ('ERROR')`),
+            ],
+            NEW,
+            [],
+            [
+              sql(`${NEW} IN ('WARN', 'FATAL')`),
+              sql(`${NEW} NOT IN ('ERROR')`),
+            ],
+          ],
+        ])('%s', (_, searchQuery, classKey, expectedDropped, expectedUrl) => {
+          const onFilterChangeLocal = jest.fn();
+          const { result } = renderHook(() =>
+            useSearchPageFilterState({
+              searchQuery,
+              onFilterChange: onFilterChangeLocal,
+              knownColumns: new Set(),
+            }),
+          );
+
+          let dropped: string[] = [];
+          act(() => {
+            dropped = result.current.retainFiltersByColumns(
+              new Set(['ServiceName']),
+              classKey,
+            );
+          });
+
+          expect(dropped).toEqual(expectedDropped);
+          if (expectedUrl == null) {
+            expect(onFilterChangeLocal).not.toHaveBeenCalled();
+          } else {
+            expect(onFilterChangeLocal).toHaveBeenLastCalledWith(expectedUrl);
+          }
+        });
       });
     });
   });

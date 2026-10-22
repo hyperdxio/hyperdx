@@ -152,6 +152,10 @@ export function LogTableModelForm(props: TableModelProps) {
           columns={columns}
           sourceKind={SourceKind.Log}
           tableConnection={tableConnection}
+          // The Severity filter compares it with numbers, which ClickHouse
+          // rejects for a String; flag that here rather than on the LLM and
+          // K8s pages, which apply the filter automatically.
+          validationExpression={expression => `${expression} >= 1`}
         />
         <ExpressionFormRow
           control={control}

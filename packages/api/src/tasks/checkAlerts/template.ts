@@ -4,6 +4,7 @@ import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
+import { describeFilter } from '@hyperdx/common-utils/dist/filters';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -13,7 +14,6 @@ import {
   AlertThresholdType,
   BuilderChartConfigWithOptDateRange,
   ChartConfigWithOptDateRange,
-  Filter,
   isRangeThresholdType,
   SavedChartConfig,
   SourceKind,
@@ -112,11 +112,6 @@ const describeThreshold = (alert: AlertInput): string => {
     ? `${alert.threshold} and ${alert.thresholdMax ?? '?'}`
     : `${alert.threshold}`;
 };
-
-const describeFilter = (filter: Filter): string =>
-  filter.type === 'sql_ast'
-    ? `${filter.left} ${filter.operator} ${filter.right}`
-    : filter.condition;
 
 const joinConditions = (...parts: (string | undefined)[]): string => {
   const present = parts

@@ -24,6 +24,7 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
+import { getLogsResultTypeQuery } from '@/utils/severityClass';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -126,8 +127,6 @@ function NamespaceLogs({
 }) {
   const [resultType, setResultType] = React.useState<'all' | 'error'>('all');
 
-  const _where = where + (resultType === 'error' ? ' Severity:err' : '');
-
   return (
     <Card p="md">
       <Card.Section p="md" py="xs">
@@ -166,7 +165,7 @@ function NamespaceLogs({
           sourceId={logSource.id}
           config={{
             ...logSource,
-            where: _where,
+            ...getLogsResultTypeQuery({ source: logSource, where, resultType }),
             whereLanguage: 'lucene',
             select: [
               {
