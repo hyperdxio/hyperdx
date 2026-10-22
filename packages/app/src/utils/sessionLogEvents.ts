@@ -4,6 +4,7 @@ import SqlString from 'sqlstring';
 import type {
   BuilderChartConfigWithDateRange,
   Filter,
+  SelectList,
   TLogSource,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -91,6 +92,86 @@ function eventNameCondition(
       ]);
 }
 
+/** A log source with the fields every session log event query reads. */
+export type SessionLogEventSource = TLogSource &
+  Required<
+    Pick<TLogSource, 'eventNameExpression' | 'eventAttributesExpression'>
+  >;
+
+export function isSessionLogEventSource(
+  source: TLogSource | null | undefined,
+): source is SessionLogEventSource {
+  return !!source?.eventNameExpression && !!source.eventAttributesExpression;
+}
+
+/** The select and filters every session log event query shares. */
+export function getSessionLogEventQueryParts({
+  logSource,
+  sessionId,
+  serviceName,
+  sessionIdExpression,
+}: {
+  logSource: SessionLogEventSource;
+  sessionId: string;
+  serviceName: string | undefined;
+  sessionIdExpression: string;
+}): {
+  aliasMap: Record<string, string>;
+  select: SelectList;
+  sessionFilter: Filter;
+  serviceFilters: Filter[];
+} {
+  const attrs = logSource.eventAttributesExpression;
+  // toString: a JSON path is Dynamic, which IN rejects.
+  const eventName = `toString(${logSource.eventNameExpression})`;
+  const timestamp = getDisplayedTimestampValueExpression(logSource);
+  const timestampKey = getFirstTimestampValueExpression(
+    logSource.timestampValueExpression,
+  );
+  const body = getEventBody(logSource);
+  const aliasMap: Record<string, string> = {
+    timestamp,
+    ...(timestampKey !== timestamp ? { timestamp_key: timestampKey } : {}),
+    event_name: eventName,
+    session_id: sessionIdExpression,
+    ...(body ? { body } : {}),
+    attributes: attrs,
+  };
+  return {
+    aliasMap,
+    select: Object.entries(aliasMap).map(([alias, valueExpression]) => ({
+      valueExpression,
+      alias,
+    })),
+    sessionFilter: {
+      type: 'lucene',
+      condition: sessionIdFilter(
+        {
+          resource:
+            logSource.resourceAttributesExpression ?? 'ResourceAttributes',
+          attrs,
+        },
+        sessionId,
+        'session.id',
+      ),
+    },
+    // Matches the replay query, and keeps backend exceptions that carry a
+    // propagated session.id off the browser timeline.
+    serviceFilters:
+      logSource.serviceNameExpression && serviceName
+        ? [
+            {
+              type: 'sql',
+              condition: SqlString.format('? = ?', [
+                SqlString.raw(logSource.serviceNameExpression),
+                serviceName,
+              ]),
+            },
+          ]
+        : [],
+  };
+}
+
 /** Null when the session has no browser log events to query. */
 export function buildSessionLogEventsQuery({
   logSource,
@@ -116,83 +197,48 @@ export function buildSessionLogEventsQuery({
   config: BuilderChartConfigWithDateRange;
   aliasMap: Record<string, string>;
 } | null {
-  const attrs = logSource?.eventAttributesExpression;
   // Only OTel browser SDKs write these events, and the search box is written
   // against trace fields.
   if (
     sessionIdKey !== 'session.id' ||
     searchedQuery !== '' ||
-    !logSource?.eventNameExpression ||
-    !attrs ||
+    !isSessionLogEventSource(logSource) ||
     !sessionIdExpression ||
     !consoleMethodExpression
   ) {
     return null;
   }
-  // toString: a JSON path is Dynamic, which IN rejects.
-  const eventName = `toString(${logSource.eventNameExpression})`;
-  const timestamp = getDisplayedTimestampValueExpression(logSource);
-  const timestampKey = getFirstTimestampValueExpression(
-    logSource.timestampValueExpression,
-  );
-  const body = getEventBody(logSource);
-  const aliasMap: Record<string, string> = {
-    timestamp,
-    ...(timestampKey !== timestamp ? { timestamp_key: timestampKey } : {}),
-    event_name: eventName,
-    session_id: sessionIdExpression,
-    ...(body ? { body } : {}),
-    attributes: attrs,
-  };
-  const filters: Filter[] = [
-    {
-      type: 'lucene',
-      condition: sessionIdFilter(
-        {
-          resource:
-            logSource.resourceAttributesExpression ?? 'ResourceAttributes',
-          attrs,
-        },
-        sessionId,
-        'session.id',
-      ),
-    },
-    {
-      type: 'sql',
-      condition: eventNameCondition(
-        eventName,
-        consoleMethodExpression,
-        tab === 'highlighted',
-      ),
-    },
-  ];
-  // Matches the replay query, and keeps backend exceptions that carry a
-  // propagated session.id off the browser timeline.
-  if (logSource.serviceNameExpression && serviceName) {
-    filters.push({
-      type: 'sql',
-      condition: SqlString.format('? = ?', [
-        SqlString.raw(logSource.serviceNameExpression),
-        serviceName,
-      ]),
+  const { aliasMap, select, sessionFilter, serviceFilters } =
+    getSessionLogEventQueryParts({
+      logSource,
+      sessionId,
+      serviceName,
+      sessionIdExpression,
     });
-  }
   return {
     aliasMap,
     config: {
       source: logSource.id,
-      select: Object.entries(aliasMap).map(([alias, valueExpression]) => ({
-        valueExpression,
-        alias,
-      })),
+      select,
       from: logSource.from,
       connection: logSource.connection,
       timestampValueExpression: logSource.timestampValueExpression,
       dateRange,
       where: '',
       whereLanguage: 'sql',
-      filters,
-      orderBy: `${timestamp} ASC`,
+      filters: [
+        sessionFilter,
+        {
+          type: 'sql',
+          condition: eventNameCondition(
+            aliasMap.event_name,
+            consoleMethodExpression,
+            tab === 'highlighted',
+          ),
+        },
+        ...serviceFilters,
+      ],
+      orderBy: `${aliasMap.timestamp} ASC`,
       limit: { limit: 4000, offset: 0 },
     },
   };
