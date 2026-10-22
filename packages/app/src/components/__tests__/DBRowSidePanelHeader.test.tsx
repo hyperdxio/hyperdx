@@ -84,4 +84,18 @@ describe('DBRowSidePanelHeader: body section (HDX-4373)', () => {
     renderWithMantine(<DBRowSidePanelHeader mainContent="" />);
     expect(screen.queryByText('No body for this event.')).toBeInTheDocument();
   });
+
+  it('drops the empty-state paper when hideEmptyBody is set', () => {
+    renderWithMantine(<DBRowSidePanelHeader mainContent="" hideEmptyBody />);
+    expect(
+      screen.queryByText('No body for this event.'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('still renders a non-empty body when hideEmptyBody is set', () => {
+    renderWithMantine(
+      <DBRowSidePanelHeader mainContent="checkout failed" hideEmptyBody />,
+    );
+    expect(screen.getByText('checkout failed')).toBeInTheDocument();
+  });
 });
