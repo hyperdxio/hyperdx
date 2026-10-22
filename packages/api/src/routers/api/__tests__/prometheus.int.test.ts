@@ -7,6 +7,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import * as config from '@/config';
+import { joinPrometheusUpstreamUrl } from '@/controllers/promql';
 import {
   DEFAULT_DATABASE,
   dropTimeSeriesTable,
@@ -20,7 +21,6 @@ import { Source } from '@/models/source';
 import {
   CLICKHOUSE_PROMETHEUS_API_PREFIX,
   clickhousePrometheusUpstream,
-  joinPrometheusUpstreamUrl,
   PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC,
 } from '@/routers/api/prometheus';
 

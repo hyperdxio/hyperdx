@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { getConnectionsByTeam } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
 import type { PromptDefinition } from '@/mcp/tools/types';
+import { isHiddenSource } from '@/mcp/utils/promql';
 import logger from '@/utils/logger';
 
 import {
@@ -44,10 +45,11 @@ const dashboardPrompts: PromptDefinition = (server, context) => {
       let logSourceId: string;
 
       try {
-        const [sources, connections] = await Promise.all([
+        const [allSources, connections] = await Promise.all([
           getSources(teamId),
           getConnectionsByTeam(teamId),
         ]);
+        const sources = allSources.filter(s => !isHiddenSource(context, s));
 
         sourceSummary = buildSourceSummary(
           sources.map(s => ({
