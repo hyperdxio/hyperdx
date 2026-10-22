@@ -5,6 +5,7 @@ import {
   WebhookTemplateVariable,
 } from '@hyperdx/common-utils/dist/types';
 import Handlebars from 'handlebars';
+import _ from 'lodash';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
 
@@ -96,6 +97,7 @@ export const buildWebhookTemplateVariables = (message: Message) =>
     alertType: escapeJsonString(message.alertType ?? ''),
     comparator: escapeJsonString(message.comparator ?? ''),
     groupKey: escapeJsonString(message.groupKey ?? ''),
+    var: _.mapValues(message.groupValues ?? {}, v => escapeJsonString(v)),
     note: escapeJsonString(message.note ?? ''),
     sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
     status: escapeJsonString(message.status ?? ''),
@@ -103,7 +105,10 @@ export const buildWebhookTemplateVariables = (message: Message) =>
     threshold: message.threshold,
     thresholdMax: message.thresholdMax,
     value: message.value,
-  }) satisfies Record<WebhookTemplateVariable, string | number | undefined>;
+  }) satisfies Record<
+    WebhookTemplateVariable,
+    string | number | undefined | Record<string, string>
+  >;
 
 /**
  * Creates a Handlebars instance with common helpers registered.

@@ -23,6 +23,8 @@ export interface Message {
   thresholdMax?: number;
   value?: number; // the value that triggered/resolved the alert
   groupKey?: string;
+  // The group's values keyed by group-by column, exposed as `{{var.<column>}}`.
+  groupValues?: Record<string, string>;
   sourceQuery?: string; // the search expr / SQL that defines the alert
   teamId?: string;
   note?: string; // freeform alert note (markdown); commonly holds a runbook link

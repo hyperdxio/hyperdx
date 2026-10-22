@@ -5602,6 +5602,71 @@ describe('External API v2 Dashboards - new format', () => {
       expect(await Alert.findById(alert._id)).toBeNull();
     });
 
+    it('should delete alert when tile is updated from builder to PromQL config', async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Builder Tile',
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              ],
+              where: '',
+            },
+          },
+        ],
+      });
+      const webhook = await Webhook.create({
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: team._id,
+      });
+      const alert = await Alert.create({
+        team: team._id,
+        dashboard: dashboard._id,
+        tileId,
+        source: AlertSource.TILE,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      });
+
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: tileId,
+              name: 'PromQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                sourceId: promqlSource._id.toString(),
+                expressions: [{ expression: 'up' }],
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(await Alert.findById(alert._id)).toBeNull();
+    });
+
     it('should delete alert when a tile with an alert is removed from the dashboard', async () => {
       const keepTileId = new ObjectId().toString();
       const removeTileId = new ObjectId().toString();
@@ -7073,6 +7138,152 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  describe('PromQL tiles', () => {
+    const promqlTile = (config: Record<string, unknown> = {}) => ({
+      name: 'PromQL',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        configType: 'promql',
+        displayType: 'line',
+        sourceId: promqlSource._id.toString(),
+        expressions: [{ expression: 'up', alias: 'Up' }],
+        legendTemplate: '{{job}}',
+        ...config,
+      },
+    });
+
+    const postTile = (config: Record<string, unknown> = {}) =>
+      authRequest('post', BASE_URL).send({
+        name: 'PromQL dashboard',
+        tiles: [promqlTile(config)],
+        tags: [],
+      });
+
+    it('round-trips a PromQL tile through POST and GET', async () => {
+      const create = await postTile().expect(200);
+      const expected = { ...promqlTile().config, fillNulls: true };
+      expect(create.body.data.tiles[0].config).toEqual(expected);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config).toEqual(expected);
+    });
+
+    it('keeps PromQL tiles when a dashboard is read and saved back', async () => {
+      const promqlConfig = {
+        configType: 'promql',
+        name: 'Saved in the app',
+        displayType: DisplayType.Number,
+        source: promqlSource._id.toString(),
+        promqlExpression: [{ expression: 'up', reducer: 'max' }],
+      };
+      const dashboard = await createTestDashboard({
+        tiles: [
+          { id: 'promql-tile', x: 0, y: 0, w: 6, h: 3, config: promqlConfig },
+          {
+            id: 'markdown-tile',
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Notes',
+              displayType: DisplayType.Markdown,
+              markdown: 'Notes',
+              source: '',
+              where: '',
+              select: [],
+            },
+          },
+        ],
+      });
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      const { name, tiles, tags } = get.body.data;
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({ name, tiles, tags })
+        .expect(200);
+
+      const stored = await Dashboard.findById(dashboard._id).lean();
+      expect(stored?.tiles.find(t => t.id === 'promql-tile')?.config).toEqual(
+        promqlConfig,
+      );
+    });
+
+    it('rejects a PromQL tile whose source is not a PromQL source', async () => {
+      const res = await postTile({
+        sourceId: traceSource._id.toString(),
+      }).expect(400);
+      expect(JSON.stringify(res.body)).toContain(
+        `PromQL tiles require a PromQL source. The following source IDs are not PromQL sources: ${traceSource._id.toString()}`,
+      );
+    });
+
+    describe('when the source kind changes after the tile is saved', () => {
+      const createAndRetypeSource = async () => {
+        const create = await postTile().expect(200);
+        await Source.updateOne(
+          { _id: promqlSource._id },
+          { $set: { kind: SourceKind.Log } },
+        );
+        return create.body.data;
+      };
+
+      it('still lets unrelated edits through', async () => {
+        const { id, tiles, tags } = await createAndRetypeSource();
+
+        await authRequest('put', `${BASE_URL}/${id}`)
+          .send({ name: 'Renamed', tiles, tags })
+          .expect(200);
+      });
+
+      it('rejects pointing the tile at a non-PromQL source', async () => {
+        const { id, tiles, tags } = await createAndRetypeSource();
+        const [tile] = tiles;
+
+        const res = await authRequest('put', `${BASE_URL}/${id}`)
+          .send({
+            name: 'Renamed',
+            tiles: [
+              {
+                ...tile,
+                config: {
+                  ...tile.config,
+                  sourceId: traceSource._id.toString(),
+                },
+              },
+            ],
+            tags,
+          })
+          .expect(400);
+        expect(JSON.stringify(res.body)).toContain(
+          'PromQL tiles require a PromQL source',
+        );
+      });
+    });
+
+    // The builder heatmap check requires a Trace source; it must not apply.
+    it('accepts a PromQL heatmap on a PromQL source', async () => {
+      const create = await postTile({
+        displayType: 'heatmap',
+        heatmapMode: 'histogram',
+        expressions: [{ expression: 'sum by (le) (rate(x_bucket[5m]))' }],
+      }).expect(200);
+      expect(create.body.data.tiles[0].config).toMatchObject({
+        displayType: 'heatmap',
+        heatmapMode: 'histogram',
+      });
+    });
+  });
+
   describe('Chart formulas', () => {
     // Two metric operand series (A, B) — the shape the formula grammar
     // references by position. Payloads go through `.send()` (untyped) so
@@ -7255,10 +7466,12 @@ describe('External API v2 Dashboards - new format', () => {
       // check it would persist as a builder tile AND skip the builder-only
       // rules — here a formula referencing a nonexistent series.
       const res = await postTile({
-        configType: 'promql',
+        configType: 'foo',
         formulas: [{ expression: 'C * 2' }],
       }).expect(400);
-      expect(res.body.message).toContain('configType must be "sql" or omitted');
+      expect(res.body.message).toContain(
+        'configType must be "sql", "promql" or omitted',
+      );
     });
 
     it('round-trips formulas on a log/trace event source', async () => {
