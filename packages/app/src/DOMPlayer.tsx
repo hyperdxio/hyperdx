@@ -1,10 +1,25 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import throttle from 'lodash/throttle';
 import { useHotkeys } from 'react-hotkeys-hook';
-import { Replayer } from 'rrweb';
-import { ActionIcon, CopyButton, Group, HoverCard } from '@mantine/core';
 import {
+  ActionIcon,
+  CopyButton,
+  Group,
+  HoverCard,
+  Tooltip,
+} from '@mantine/core';
+import { Replayer } from '@rrweb/replay';
+import {
+  IconAlertTriangle,
   IconArrowsMaximize,
   IconCheck,
   IconCopy,
@@ -16,6 +31,10 @@ import {
 
 import { useRRWebEventStream } from '@/sessions';
 import { useDebugMode } from '@/utils';
+import {
+  createRrwebChunkAssembler,
+  RRWebStreamRow,
+} from '@/utils/rrwebChunkAssembler';
 
 import { FieldExpressionGenerator } from './hooks/useFieldExpressionGenerator';
 
@@ -116,20 +135,113 @@ export default function DOMPlayer({
   getSessionSourceFieldExpression: FieldExpressionGenerator;
 }) {
   const debug = useDebugMode();
-  const wrapper = useRef<HTMLDivElement>(null);
-  const playerContainer = useRef<HTMLDivElement>(null);
-  const replayer = useRef<Replayer | null>(null);
-  const initialEvents = useRef<any[]>([]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const replayerRef = useRef<Replayer | null>(null);
+  const initialEventsRef = useRef<any[]>([]);
 
   const lastEventTsLoadedRef = useRef(0);
   const [lastEventTsLoaded, _setLastEventTsLoaded] = useState(0);
-  const setLastEventTsLoaded = useRef(
+  const setLastEventTsLoadedRef = useRef(
     throttle(_setLastEventTsLoaded, 100, { leading: true, trailing: true }),
   );
   const [isInitialEventsLoaded, setIsInitialEventsLoaded] = useState(false);
   const [isReplayFullyLoaded, setIsReplayFullyLoaded] = useState(false);
+  const [droppedEventCount, setDroppedEventCount] = useState(0);
 
-  let currentRrwebEvent = '';
+  const handleDroppedEventRef = useRef<
+    (error: unknown, context: unknown) => void
+  >(() => {});
+  handleDroppedEventRef.current = (error, context) => {
+    // Surfaced unconditionally: dropped events (e.g. a dropped full snapshot)
+    // can render the replay empty/unstyled with no other signal.
+    // https://github.com/hyperdxio/hyperdx/issues/2569
+    console.error('Failed to load session replay event', context, error);
+    setDroppedEventCount(count => count + 1);
+  };
+
+  const handleParsedEventRef = useRef<(parsedEvent: any) => void>(() => {});
+  handleParsedEventRef.current = (parsedEvent: any) => {
+    if (replayerRef.current != null) {
+      try {
+        replayerRef.current.addEvent(parsedEvent);
+      } catch (error) {
+        handleDroppedEventRef.current(error, {
+          reason: 'add-event-error',
+          eventType: parsedEvent?.type,
+        });
+        return;
+      }
+    } else {
+      if (
+        setPlayerStartTimestamp != null &&
+        initialEventsRef.current.length === 0
+      ) {
+        setPlayerStartTimestamp(parsedEvent.timestamp);
+      }
+
+      initialEventsRef.current.push(parsedEvent);
+    }
+
+    setLastEventTsLoadedRef.current(parsedEvent.timestamp);
+    // Used for setting the player end timestamp on onEnd
+    // we can't use state since the onEnd function is declared
+    // at the beginning of the component lifecylce.
+    // We can't use the rrweb metadata as it's not updated fast enough
+    lastEventTsLoadedRef.current = parsedEvent.timestamp;
+  };
+
+  // Reassembles chunked rrweb events, one assembler instance per stream.
+  //
+  // A replaced or unmounted stream is cancelled at the source (the fetch is
+  // aborted, see useRRWebEventStream), but rows of an already-received chunk
+  // can still be delivered synchronously after the abort, so the assembler
+  // instance doubles as the stream's identity as a second line of defense:
+  //  - buffer isolation: each stream's onEvent/onEnd closures are captured
+  //    when the fetch starts, and useMemo hands every stream change a fresh
+  //    instance (previous values aren't cached across dependency changes),
+  //    so a stream ends and flushes only the assembler it captured — even
+  //    when two streams have identical query params (switching away from a
+  //    session and back while the first stream is still loading);
+  //  - delivery gating: only the active instance may feed the replayer or
+  //    update player state, so a stale stream's events, errors, and
+  //    completion can't pollute the replacement replay.
+  //
+  // streamKey must mirror useRRWebEventStream's internal queryKey exactly:
+  // an assembler may only be replaced when the fetch is actually replaced,
+  // otherwise the still-running stream fails the identity gate and its
+  // remaining events are silently discarded. (The hook does not refetch on
+  // serviceName/sourceId changes, so they must not be part of this key.)
+  const streamKey = `${sessionId}|${dateRange[0].getTime()}|${dateRange[1].getTime()}`;
+  const activeAssemblerRef = useRef<unknown>(null);
+  const assembler = useMemo(() => {
+    const instance = createRrwebChunkAssembler({
+      onEvent: parsedEvent => {
+        if (activeAssemblerRef.current === instance) {
+          handleParsedEventRef.current(parsedEvent);
+        }
+      },
+      onError: (error, info) => {
+        if (activeAssemblerRef.current === instance) {
+          handleDroppedEventRef.current(error, info);
+        }
+      },
+    });
+    return instance;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streamKey]);
+  // Publish the active instance from a layout effect: it never runs for a
+  // discarded render (so an uncommitted assembler can't take over the gate),
+  // and it runs synchronously within the commit task (so no stream delivery
+  // — a network callback — can observe a stale gate between the commit and
+  // the ref flip). Passive effects, including the one that starts a
+  // replacement fetch, run after it.
+  useLayoutEffect(() => {
+    activeAssemblerRef.current = assembler;
+  }, [assembler]);
+  useEffect(() => {
+    setDroppedEventCount(0);
+  }, [streamKey]);
 
   const { isFetching: isSearchResultsFetching, abort } = useRRWebEventStream(
     {
@@ -139,53 +251,29 @@ export default function DOMPlayer({
       startDate: dateRange[0],
       endDate: dateRange[1],
       limit: 1000000, // large enough to get all events
-      onEvent: (event: { b: string; ck: number; tcks: number; t: number }) => {
-        try {
-          const { b: body, ck: chunk, tcks: totalChunks } = event;
-          currentRrwebEvent += body;
-          if (!chunk || chunk === totalChunks) {
-            const parsedEvent = JSON.parse(currentRrwebEvent);
+      onEvent: (event: RRWebStreamRow) => {
+        assembler.push(event);
 
-            if (replayer.current != null) {
-              replayer.current.addEvent(parsedEvent);
-            } else {
-              if (
-                setPlayerStartTimestamp != null &&
-                initialEvents.current.length === 0
-              ) {
-                setPlayerStartTimestamp(parsedEvent.timestamp);
-              }
-
-              initialEvents.current.push(parsedEvent);
-            }
-
-            setLastEventTsLoaded.current(parsedEvent.timestamp);
-            // Used for setting the player end timestamp on onEnd
-            // we can't use state since the onEnd function is declared
-            // at the beginning of the component lifecylce.
-            // We can't use the rrweb metadata as it's not updated fast enough
-            lastEventTsLoadedRef.current = parsedEvent.timestamp;
-
-            currentRrwebEvent = '';
-          }
-        } catch (e) {
-          if (debug) {
-            console.error(e);
-          }
-
-          currentRrwebEvent = '';
-        }
-
-        if (initialEvents.current.length > 5) {
+        if (
+          activeAssemblerRef.current === assembler &&
+          initialEventsRef.current.length > 5
+        ) {
           setIsInitialEventsLoaded(true);
         }
       },
       onEnd: () => {
+        // Flush the stream's own buffers, but only let the active stream
+        // update player state — a stale stream finishing must not mark the
+        // replacement replay as loaded or move its end timestamp.
+        assembler.end();
+        if (activeAssemblerRef.current !== assembler) {
+          return;
+        }
         setIsInitialEventsLoaded(true);
         setIsReplayFullyLoaded(true);
 
         if (setPlayerEndTimestamp != null) {
-          if (replayer.current != null) {
+          if (replayerRef.current != null) {
             const endTime = lastEventTsLoadedRef.current;
 
             // Might want to merge with the below logic at some point, since
@@ -193,9 +281,9 @@ export default function DOMPlayer({
             setPlayerEndTimestamp(endTime ?? 0);
           } else {
             // If there's no events (empty replay session), there's no point in setting a timestamp
-            if (initialEvents.current.length > 0) {
+            if (initialEventsRef.current.length > 0) {
               setPlayerEndTimestamp(
-                initialEvents.current[initialEvents.current.length - 1]
+                initialEventsRef.current[initialEventsRef.current.length - 1]
                   .timestamp ?? 0,
               );
             }
@@ -214,26 +302,26 @@ export default function DOMPlayer({
   const [lastHref, setLastHref] = useState('');
 
   const play = useCallback(() => {
-    if (replayer.current != null) {
+    if (replayerRef.current != null) {
       try {
-        replayer.current.play(getPlayerCurrentTime(replayer.current));
+        replayerRef.current.play(getPlayerCurrentTime(replayerRef.current));
       } catch (e) {
         console.error(e);
       }
     }
-  }, [replayer]);
+  }, [replayerRef]);
 
   const pause = useCallback(
     (ts?: number) => {
-      if (replayer.current != null) {
+      if (replayerRef.current != null) {
         try {
-          replayer.current.pause(ts);
+          replayerRef.current.pause(ts);
         } catch (e) {
           console.error(e);
         }
       }
     },
-    [replayer],
+    [replayerRef],
   );
 
   useHotkeys(['space'], () => {
@@ -253,18 +341,17 @@ export default function DOMPlayer({
   const updatePlayerTimeRafRef = useRef(0);
   const updatePlayerTime = useCallback(() => {
     if (
-      replayer.current != null &&
-      replayer.current.service.state.matches('playing')
+      replayerRef.current != null &&
+      replayerRef.current.service.state.matches('playing')
     ) {
       setPlayerTimeRef.current(
         Math.round(
-          replayer.current.getMetaData().startTime +
-            getPlayerCurrentTime(replayer.current),
+          replayerRef.current.getMetaData().startTime +
+            getPlayerCurrentTime(replayerRef.current),
         ),
       );
     }
 
-    // eslint-disable-next-line react-hooks/immutability
     updatePlayerTimeRafRef.current = requestAnimationFrame(updatePlayerTime);
   }, []);
 
@@ -278,7 +365,7 @@ export default function DOMPlayer({
 
   // Manage playback pause/play state, rrweb only
   useEffect(() => {
-    if (replayer.current != null) {
+    if (replayerRef.current != null) {
       if (playerState === 'playing') {
         play();
       } else if (playerState === 'paused') {
@@ -288,41 +375,41 @@ export default function DOMPlayer({
   }, [playerState, play, pause]);
 
   useEffect(() => {
-    if (replayer.current != null) {
+    if (replayerRef.current != null) {
       if (playerState === 'playing') {
         pause();
-        replayer.current?.setConfig({ speed: playerSpeed, skipInactive });
+        replayerRef.current?.setConfig({ speed: playerSpeed, skipInactive });
         play();
       } else if (playerState === 'paused') {
-        replayer.current?.setConfig({ speed: playerSpeed, skipInactive });
+        replayerRef.current?.setConfig({ speed: playerSpeed, skipInactive });
       }
     }
   }, [playerState, playerSpeed, skipInactive, pause, play]);
 
   const handleResize = useCallback(() => {
-    if (wrapper.current == null || playerContainer.current == null) {
+    if (wrapperRef.current == null || playerContainerRef.current == null) {
       return;
     }
 
-    playerContainer.current.style.transform = `scale(0.0001)`;
+    playerContainerRef.current.style.transform = `scale(0.0001)`;
 
     window.requestAnimationFrame(() => {
-      if (wrapper.current == null || playerContainer.current == null) {
+      if (wrapperRef.current == null || playerContainerRef.current == null) {
         return;
       }
 
-      const wrapperRect = wrapper.current.getBoundingClientRect();
-      const playerWidth = replayer?.current?.iframe?.offsetWidth ?? 1280;
-      const playerHeight = replayer?.current?.iframe?.offsetHeight ?? 720;
+      const wrapperRect = wrapperRef.current.getBoundingClientRect();
+      const playerWidth = replayerRef?.current?.iframe?.offsetWidth ?? 1280;
+      const playerHeight = replayerRef?.current?.iframe?.offsetHeight ?? 720;
 
       const xScale = wrapperRect.width / playerWidth;
       const yScale = wrapperRect.height / playerHeight;
-      playerContainer.current.style.transform = `scale(${Math.min(
+      playerContainerRef.current.style.transform = `scale(${Math.min(
         xScale,
         yScale,
       )})`;
     });
-  }, [wrapper, playerContainer]);
+  }, [wrapperRef, playerContainerRef]);
 
   // Listen to window resizes to resize player
   useEffect(() => {
@@ -340,16 +427,16 @@ export default function DOMPlayer({
     if (
       // If we have no events yet, we can't mount yet.
       // (results ?? []).length == 0 ||
-      initialEvents.current.length < 2 ||
+      initialEventsRef.current.length < 2 ||
       // Just skip if we're already enabled
-      playerContainer.current == null ||
-      replayer.current != null
+      playerContainerRef.current == null ||
+      replayerRef.current != null
     ) {
       return;
     }
 
-    replayer.current = new Replayer(initialEvents.current, {
-      root: playerContainer.current,
+    replayerRef.current = new Replayer(initialEventsRef.current, {
+      root: playerContainerRef.current,
       mouseTail: true,
       pauseAnimation: false,
       showWarning: debug,
@@ -359,11 +446,11 @@ export default function DOMPlayer({
 
     if (debug) {
       // @ts-expect-error this is for debugging purposes only
-      window.__hdx_replayer = replayer.current;
+      window.__hdx_replayer = replayerRef.current;
     }
 
-    replayer.current.enableInteract();
-    replayer.current.on('event-cast', (e: any) => {
+    replayerRef.current.enableInteract();
+    replayerRef.current.on('event-cast', (e: any) => {
       try {
         // if this is an incremental update from a resize
         // OR if its a full snapshot `type=4`, we'll want to resize just in case
@@ -387,10 +474,10 @@ export default function DOMPlayer({
     // If we're supposed to be playing, let's start playing.
     if (
       playerState === 'playing' &&
-      replayer.current.getMetaData().endTime > (focus?.ts ?? 0)
+      replayerRef.current.getMetaData().endTime > (focus?.ts ?? 0)
     ) {
       if (focus != null) {
-        pause(focus.ts - replayer.current.getMetaData().startTime);
+        pause(focus.ts - replayerRef.current.getMetaData().startTime);
       }
       play();
     }
@@ -419,11 +506,11 @@ export default function DOMPlayer({
     ) {
       return;
     }
-    if (focus?.setBy !== 'player' && replayer.current != null) {
+    if (focus?.setBy !== 'player' && replayerRef.current != null) {
       pause(
         focus?.ts == null
           ? 0
-          : focus?.ts - replayer.current.getMetaData().startTime,
+          : focus?.ts - replayerRef.current.getMetaData().startTime,
       );
       handleResize();
       if (playerState === 'playing') {
@@ -444,9 +531,9 @@ export default function DOMPlayer({
 
   useEffect(() => {
     return () => {
-      if (replayer.current != null) {
-        replayer.current?.destroy();
-        replayer.current = null;
+      if (replayerRef.current != null) {
+        replayerRef.current?.destroy();
+        replayerRef.current = null;
       }
       abort();
     };
@@ -456,20 +543,20 @@ export default function DOMPlayer({
   // TODO: Handle when ts is set to a value that's outside of this session
   const isBuffering =
     isReplayFullyLoaded === false &&
-    (replayer.current?.getMetaData()?.endTime ?? 0) < (focus?.ts ?? 0);
+    (replayerRef.current?.getMetaData()?.endTime ?? 0) < (focus?.ts ?? 0);
 
   useEffect(() => {
     // If we're trying to play, but the player is paused
     // try to play again if we've loaded the event we're trying to play
     // this is relevant when you click or load on a timestamp that hasn't loaded yet
     if (
-      replayer.current != null &&
+      replayerRef.current != null &&
       focus != null &&
-      replayer.current.getMetaData().endTime > focus.ts &&
+      replayerRef.current.getMetaData().endTime > focus.ts &&
       playerState === 'playing' &&
-      replayer.current?.service?.state?.matches('paused')
+      replayerRef.current?.service?.state?.matches('paused')
     ) {
-      pause(focus.ts - replayer.current.getMetaData().startTime);
+      pause(focus.ts - replayerRef.current.getMetaData().startTime);
       play();
     }
   }, [lastEventTsLoaded, focus, playerState, pause, play]);
@@ -503,6 +590,20 @@ export default function DOMPlayer({
             </>
           )}
         </CopyButton>
+        {droppedEventCount > 0 && (
+          <Tooltip
+            label={`${droppedEventCount} replay ${
+              droppedEventCount === 1 ? 'event' : 'events'
+            } could not be decoded — replay may be incomplete`}
+            withArrow
+          >
+            <IconAlertTriangle
+              size={14}
+              color="var(--mantine-color-yellow-6)"
+              data-testid="replay-dropped-events-warning"
+            />
+          </Tooltip>
+        )}
       </div>
 
       <div className={styles.playerContainer}>
@@ -511,21 +612,21 @@ export default function DOMPlayer({
             <IconRefresh className="spin-animate" size={14} />
             {isBuffering ? 'Buffering to time...' : 'Loading replay...'}
           </Group>
-        ) : isReplayFullyLoaded && replayer.current == null ? (
+        ) : isReplayFullyLoaded && replayerRef.current == null ? (
           <div className="text-center">
             No replay available for this session, most likely due to this
             session starting and ending in a background tab.
           </div>
         ) : null}
         <div
-          ref={wrapper}
+          ref={wrapperRef}
           className={cx(styles.domPlayerWrapper, 'overflow-hidden', {
             'd-none': isLoading || isBuffering,
-            started: (replayer.current?.getCurrentTime() ?? 0) > 0,
+            started: (replayerRef.current?.getCurrentTime() ?? 0) > 0,
             [styles.domPlayerWrapperPaused]: playerState === 'paused',
           })}
         >
-          <div className="player rr-block" ref={playerContainer} />
+          <div className="player rr-block" ref={playerContainerRef} />
         </div>
       </div>
     </>

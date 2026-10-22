@@ -87,25 +87,25 @@ describe('buildRawSqlCompletions', () => {
     });
 
     it('inserts the one-argument filter as written', () => {
-      // Not rewritten to `$__filter(ServiceName, service)`: the one-argument
+      // Not rewritten to `$__filter(ServiceName, $service)`: the one-argument
       // form is valid on its own, and the bare `$__filter` completion is
       // already there for anyone who wants to pass an expression.
-      expect(find([SERVICE], '$__filter(service)')?.apply).toBe(
-        '$__filter(service)',
+      expect(find([SERVICE], '$__filter($service)')?.apply).toBe(
+        '$__filter($service)',
       );
     });
 
     it('withholds the one-argument filter when the variable has no expression', () => {
-      // Nothing for `$__filter(env)` to filter on, so it would throw at render.
+      // Nothing for `$__filter($env)` to filter on, so it would throw at render.
       const staticVariable: ChartVariable = { name: 'env', values: ['prod'] };
-      expect(labels([staticVariable])).not.toContain('$__filter(env)');
+      expect(labels([staticVariable])).not.toContain('$__filter($env)');
       expect(labels([staticVariable])).toContain('$env');
     });
 
     it('offers the bare reference and warns about it in the hover text', () => {
       expect(find([SERVICE], '$service')?.apply).toBe('$service');
       expect(infoText([SERVICE], '$service')).toContain(
-        '$__filter(<expression>, service)',
+        '$__filter(<expression>, $service)',
       );
     });
 
@@ -142,7 +142,7 @@ describe('buildRawSqlCompletions', () => {
 
     it.each([
       [
-        '$__filter(service)',
+        '$__filter($service)',
         "Expands to: (toString(ServiceName) IN ('api', 'web'))",
       ],
       ['$service', "Expands to: 'api', 'web'"],
@@ -166,7 +166,7 @@ describe('buildRawSqlCompletions', () => {
     });
 
     it.each([
-      ['$__filter(service)', 'Expands to: (1=1'],
+      ['$__filter($service)', 'Expands to: (1=1'],
       ['$service', 'Expands to: NULL'],
       ['${service:csv}', 'Expands to: (empty string)'],
       ['${service:regex}', 'Expands to: .*'],
@@ -187,11 +187,11 @@ describe('buildRawSqlCompletions', () => {
       };
       expect(labels([SERVICE, second])).toEqual(
         expect.arrayContaining([
-          '$__filter(service)',
+          '$__filter($service)',
           '$service',
           '${service}',
           '${service:csv}',
-          '$__filter(env)',
+          '$__filter($env)',
           '$env',
           '${env}',
           '${env:csv}',

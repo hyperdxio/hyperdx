@@ -374,14 +374,44 @@ jobs:
 
           # Changeset entries carry short commit ids; resolve them to PR numbers
           # and titles so the model can cite `(#NNN)` without network access.
+          # The same call carries the author and their association with the repo,
+          # which is what tells an outside contribution from one of ours — the
+          # model has no network, so a contributor it is not handed here cannot
+          # be thanked.
           : > /tmp/inputs/pr-references.txt
+          : > /tmp/inputs/contributors.txt
           grep -ohE '^\+- [0-9a-f]{8}:' /tmp/inputs/package-changelogs.diff \
             | sed 's/^+- //; s/://' | sort -u \
             | while read -r sha; do
-                pr="$(gh api "repos/${REPO}/commits/${sha}/pulls" \
-                  --jq '.[0] | "#\(.number) \(.title)"' 2>/dev/null || true)"
-                [ -n "$pr" ] && echo "${sha} ${pr}" >> /tmp/inputs/pr-references.txt
+                rec="$(gh api "repos/${REPO}/commits/${sha}/pulls" \
+                  --jq '.[0] | select(. != null)
+                        | [.number, .title, .user.login, .user.type,
+                           .author_association] | @tsv' 2>/dev/null || true)"
+                if [ -z "$rec" ]; then
+                  continue
+                fi
+                num="$(printf '%s' "$rec" | cut -f1)"
+                title="$(printf '%s' "$rec" | cut -f2)"
+                login="$(printf '%s' "$rec" | cut -f3)"
+                kind="$(printf '%s' "$rec" | cut -f4)"
+                assoc="$(printf '%s' "$rec" | cut -f5)"
+                echo "${sha} #${num} ${title}" >> /tmp/inputs/pr-references.txt
+                # Anyone carrying repo rights is us; everyone else contributed
+                # from outside. Bots are neither, and thanking one reads as a
+                # mistake in notes users see.
+                case "$assoc" in
+                  MEMBER | OWNER | COLLABORATOR) continue ;;
+                esac
+                if [ "$kind" = "Bot" ]; then
+                  continue
+                fi
+                case "$login" in
+                  *'[bot]') continue ;;
+                esac
+                echo "#${num} @${login}" >> /tmp/inputs/contributors.txt
               done || true
+          # One person can land several PRs in a release.
+          sort -u -o /tmp/inputs/contributors.txt /tmp/inputs/contributors.txt
 
           # The generator's own instructions and the style reference, copied out
           # of the checkout so every path the model may read lives under /tmp
@@ -402,7 +432,8 @@ jobs:
           done
 
           echo "--- collected inputs ---"
-          wc -l /tmp/inputs/package-changelogs.diff /tmp/inputs/pr-references.txt
+          wc -l /tmp/inputs/package-changelogs.diff \
+            /tmp/inputs/pr-references.txt /tmp/inputs/contributors.txt
 
       - name: Generate release notes with Claude
         if:
@@ -622,7 +653,7 @@ jobs:
         # corpus under `node --test`. It used to be inline greps here, which is
         # how several CommonMark constructs slipped past unnoticed. These checks
         # are fail-fast feedback, not the security boundary — that is
-        # ChangelogModal.tsx, which drops image nodes and allowlists link
+        # WhatsNewDrawer.tsx, which drops image nodes and allowlists link
         # targets on the parsed AST.
         run: |
           set -euo pipefail

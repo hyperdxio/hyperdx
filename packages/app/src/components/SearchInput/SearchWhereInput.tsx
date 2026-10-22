@@ -1,9 +1,10 @@
 import { FieldPath, useController, UseControllerProps } from 'react-hook-form';
 import { TableConnectionChoice } from '@hyperdx/common-utils/dist/core/metadata';
-import { ActionIcon, Box, Flex, Kbd, Tooltip } from '@mantine/core';
+import { ActionIcon, Box, Flex, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconHelp } from '@tabler/icons-react';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 import InputLanguageSwitch from './InputLanguageSwitch';
@@ -59,14 +60,6 @@ export type SearchWhereInputProps = {
    */
   size?: 'xs' | 'sm';
   /**
-   * Show label on SQL input (default true). Use label to customize text (e.g. "GLOBAL WHERE").
-   */
-  showLabel?: boolean;
-  /**
-   * Label text when showLabel is true (default "WHERE")
-   */
-  label?: string;
-  /**
    * Enable multiline for SQL input
    */
   allowMultiline?: boolean;
@@ -120,6 +113,8 @@ export type SearchWhereInputProps = {
    */
   sourceId?: string;
   parentRef?: HTMLElement | null;
+  /** Whether the dashboard variables in scope apply to this expression. */
+  enableVariables?: boolean;
 } & TableConnectionChoice &
   UseControllerProps<any>;
 
@@ -152,8 +147,6 @@ export default function SearchWhereInput({
   onLanguageChange,
   enableHotkey,
   size = 'sm',
-  showLabel = true,
-  label: labelText = 'WHERE',
   allowMultiline = true,
   sqlQueryHistoryType,
   luceneQueryHistoryType,
@@ -168,6 +161,7 @@ export default function SearchWhereInput({
   languageName = `${name}Language`,
   sourceId,
   parentRef,
+  enableVariables = false,
 }: SearchWhereInputProps) {
   const [syntaxRefOpened, { open: openSyntaxRef, close: closeSyntaxRef }] =
     useDisclosure(false);
@@ -187,7 +181,8 @@ export default function SearchWhereInput({
   };
 
   const tc = tableConnection ? { tableConnection } : { tableConnections };
-  const sizeClass = size === 'xs' ? styles.sizeXs : styles.sizeSm;
+  const baseHeight =
+    size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <>
@@ -202,31 +197,34 @@ export default function SearchWhereInput({
           width,
           maxWidth,
           minWidth,
+          ['--editor-base-height' as string]: `${baseHeight}px`,
         }}
       >
         <Flex
-          align="center"
-          className={`${styles.languageSwitch} ${sizeClass}`}
+          align="flex-start"
+          className={styles.languageSwitch}
           data-testid="where-language-switch"
           onMouseDown={e => e.preventDefault()}
         >
-          <InputLanguageSwitch
-            language={language}
-            onLanguageChange={handleLanguageChange}
-          />
-          <Tooltip label="Syntax reference" withArrow position="top">
-            <ActionIcon
-              variant="subtle"
-              size="xs"
-              aria-label="Open syntax reference"
-              onClick={openSyntaxRef}
-              style={{ marginRight: 4 }}
-            >
-              <IconHelp size={14} />
-            </ActionIcon>
-          </Tooltip>
+          <Flex align="center" className={styles.languageSwitchRow}>
+            <InputLanguageSwitch
+              language={language}
+              onLanguageChange={handleLanguageChange}
+            />
+            <Tooltip label="Syntax reference" withArrow position="top">
+              <ActionIcon
+                variant="subtle"
+                size="xs"
+                aria-label="Open syntax reference"
+                onClick={openSyntaxRef}
+                style={{ marginRight: 4 }}
+              >
+                <IconHelp size={14} />
+              </ActionIcon>
+            </Tooltip>
+          </Flex>
         </Flex>
-        <Box className={`${styles.inputWrapper} ${sizeClass}`}>
+        <Box className={styles.inputWrapper}>
           {isSql ? (
             <SQLInlineEditorControlled
               {...tc}
@@ -234,7 +232,6 @@ export default function SearchWhereInput({
               name={name}
               placeholder={sqlPlaceholder}
               onSubmit={onSubmit}
-              label={showLabel ? labelText : undefined}
               queryHistoryType={sqlQueryHistoryType}
               enableHotkey={enableHotkey}
               allowMultiline={allowMultiline}
@@ -243,6 +240,7 @@ export default function SearchWhereInput({
               dateRange={dateRange}
               sourceId={sourceId}
               parentRef={parentRef}
+              enableVariables={enableVariables}
             />
           ) : (
             <SearchInputV2
@@ -253,21 +251,14 @@ export default function SearchWhereInput({
               placeholder={lucenePlaceholder}
               queryHistoryType={luceneQueryHistoryType}
               enableHotkey={enableHotkey}
+              allowMultiline={allowMultiline}
               size={size}
               data-testid={dataTestId}
               additionalSuggestions={additionalSuggestions}
               dateRange={dateRange}
               sourceId={sourceId}
+              enableVariables={enableVariables}
             />
-          )}
-          {enableHotkey && (
-            <Box
-              className={styles.shortcutHint}
-              title="Press / or s to focus search"
-              aria-hidden
-            >
-              <Kbd size="xs">/</Kbd>
-            </Box>
           )}
         </Box>
       </Box>

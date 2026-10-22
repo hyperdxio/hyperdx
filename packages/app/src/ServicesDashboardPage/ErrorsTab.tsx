@@ -7,7 +7,7 @@ import {
 import { Grid } from '@mantine/core';
 
 import { INTEGER_NUMBER_FORMAT } from '@/ChartUtils';
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
@@ -33,7 +33,7 @@ function ErrorsTab({
   return (
     <Grid mt="md" grow={false} w="100%" maw="100%">
       <Grid.Col span={12}>
-        <ChartBox style={{ height: 350 }}>
+        <ChartCard style={{ height: 350 }}>
           {source && expressions && (
             <DBTimeChart
               title="Error Events per Service"
@@ -67,7 +67,7 @@ function ErrorsTab({
               }}
             />
           )}
-        </ChartBox>
+        </ChartCard>
       </Grid.Col>
     </Grid>
   );

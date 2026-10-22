@@ -140,6 +140,40 @@ describe('MCP Source Tools', () => {
       expect(output.nextStep).toContain('clickstack_describe_source');
     });
 
+    // clickstack_sql callers need this for FROM. Without it they guess
+    // otel_logs, which only resolves when the tables sit in the
+    // connection's default database.
+    it('includes the database-qualified table each log and trace source reads', async () => {
+      const result = await callTool(client, 'clickstack_list_sources');
+      const output = JSON.parse(getFirstText(result));
+
+      const trace = output.sources.find(
+        (s: any) => s.kind === SourceKind.Trace,
+      );
+      const log = output.sources.find((s: any) => s.kind === SourceKind.Log);
+      expect(trace.table).toBe(`${DEFAULT_DATABASE}.${DEFAULT_TRACES_TABLE}`);
+      expect(log.table).toBe(`${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE}`);
+    });
+
+    it('quotes table parts that are not bare identifiers so FROM still parses', async () => {
+      const source = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: 'observability-prod', tableName: 'otel.logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Quoted logs',
+      });
+
+      const result = await callTool(client, 'clickstack_list_sources');
+      const output = JSON.parse(getFirstText(result));
+
+      const log = output.sources.find(
+        (s: any) => s.id === source._id.toString(),
+      );
+      expect(log.table).toBe('`observability-prod`.`otel.logs`');
+    });
+
     it('should include keyColumns from source config without ClickHouse queries', async () => {
       const result = await callTool(client, 'clickstack_list_sources');
       const output = JSON.parse(getFirstText(result));
@@ -187,6 +221,202 @@ describe('MCP Source Tools', () => {
       expect(output.connections).toHaveLength(0);
 
       await client2.close();
+    });
+
+    describe('metric-name previews', () => {
+      const createMetricSource = (name = 'Metrics') =>
+        Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+            [MetricsDataType.Sum.toLowerCase()]: 'otel_metrics_sum',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name,
+        });
+
+      it('includes metricNamesPreview and metricsUsage for metric sources with recent data', async () => {
+        const metricSource = await createMetricSource();
+        const now = new Date();
+        await bulkInsertMetricsGauge([
+          {
+            MetricName: 'system.cpu.utilization',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Value: 0.42,
+          },
+        ]);
+        await bulkInsertMetricsSum([
+          {
+            MetricName: 'http.server.request.count',
+            AggregationTemporality: 1,
+            IsMonotonic: true,
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Value: 100,
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        expect(metric.metricNamesPreview).toBeDefined();
+        expect(metric.metricNamesPreview.gauge).toEqual(
+          expect.arrayContaining(['system.cpu.utilization']),
+        );
+        expect(metric.metricNamesPreview.sum).toEqual(
+          expect.arrayContaining(['http.server.request.count']),
+        );
+
+        // Top-level usage note explains direct metric querying.
+        expect(output.metricsUsage).toContain('metricType + metricName');
+      });
+
+      it('includes the database its metricTables live in', async () => {
+        const metricSource = await createMetricSource();
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric.database).toBe(DEFAULT_DATABASE);
+        expect(metric.table).toBeUndefined();
+      });
+
+      // Metric sources may also set from.tableName, but their queryable
+      // tables are still the ones in metricTables.
+      it('includes the database for a metric source that also names a table', async () => {
+        const metricSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: {
+            databaseName: DEFAULT_DATABASE,
+            tableName: 'otel_metrics_gauge',
+          },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name: 'Named metrics',
+        });
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric.database).toBe(DEFAULT_DATABASE);
+        expect(metric.table).toBeUndefined();
+      });
+
+      it('falls back to a wider lookback when no metrics reported in the last 24h', async () => {
+        const metricSource = await createMetricSource('Sparse Metrics');
+        const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+        await bulkInsertMetricsGauge([
+          {
+            MetricName: 'batch.job.duration',
+            ResourceAttributes: { 'service.name': 'batch-svc' },
+            ServiceName: 'batch-svc',
+            TimeUnix: threeDaysAgo,
+            Value: 60,
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        expect(metric.metricNamesPreview?.gauge).toEqual(
+          expect.arrayContaining(['batch.job.duration']),
+        );
+      });
+
+      it('excludes non-queryable summary metrics from metricNamesPreview', async () => {
+        const metricSource = await Source.create({
+          kind: SourceKind.Metric,
+          team: team._id,
+          from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+          metricTables: {
+            [MetricsDataType.Gauge.toLowerCase()]: 'otel_metrics_gauge',
+            [MetricsDataType.Summary.toLowerCase()]: 'otel_metrics_summary',
+          },
+          timestampValueExpression: 'TimeUnix',
+          connection: connection._id,
+          name: 'Metrics With Summary',
+        });
+        const now = new Date();
+        await bulkInsertMetricsGauge([
+          {
+            MetricName: 'system.memory.usage',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Value: 1024,
+          },
+        ]);
+        await bulkInsertMetricsSummary([
+          {
+            MetricName: 'rpc.server.duration.summary',
+            ResourceAttributes: { 'service.name': 'svc-a' },
+            ServiceName: 'svc-a',
+            TimeUnix: now,
+            Count: 10,
+            Sum: 123,
+          },
+        ]);
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        // The summary table stays discoverable in metricTables...
+        expect(metric.metricTables.summary).toBe('otel_metrics_summary');
+        // ...but its metrics are not previewed, since the query builder
+        // tools reject metricType 'summary'.
+        expect(metric.metricNamesPreview.gauge).toEqual(
+          expect.arrayContaining(['system.memory.usage']),
+        );
+        expect(metric.metricNamesPreview.summary).toBeUndefined();
+      });
+
+      it('omits metricNamesPreview when the metric tables are empty', async () => {
+        const metricSource = await createMetricSource('Empty Metrics');
+
+        const result = await callTool(client, 'clickstack_list_sources');
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+
+        const metric = output.sources.find(
+          (s: any) => s.id === metricSource._id.toString(),
+        );
+        expect(metric).toBeDefined();
+        expect(metric.metricTables).toBeDefined();
+        expect(metric.metricNamesPreview).toBeUndefined();
+        // The usage note still appears — a metric source exists.
+        expect(output.metricsUsage).toBeDefined();
+      });
     });
   });
 
@@ -738,6 +968,64 @@ describe('MCP Source Tools', () => {
       for (const entry of secondOutput.metrics as { name: string }[]) {
         expect(firstNames.has(entry.name)).toBe(false);
       }
+    });
+
+    it('walks every kind across pages without repeating or dropping names', async () => {
+      const metricSource = await createMetricSource();
+      await seedMetricNames();
+
+      const seen: string[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 10; page++) {
+        const result = await callTool(client, 'clickstack_list_metrics', {
+          sourceId: metricSource._id.toString(),
+          limit: 1,
+          ...(cursor && { cursor }),
+        });
+        expect(result.isError).toBeFalsy();
+        const output: {
+          metrics: { kind: string; name: string }[];
+          nextCursor?: string;
+        } = JSON.parse(getFirstText(result));
+        seen.push(...output.metrics.map(m => `${m.kind}:${m.name}`));
+        cursor = output.nextCursor;
+        if (!cursor) break;
+      }
+      expect(seen).toEqual([
+        'gauge:system.cpu.utilization',
+        'gauge:system.memory.usage',
+        'sum:http.server.request.count',
+        'histogram:http.server.request.duration',
+      ]);
+    });
+
+    it('returns unit and description for each listed metric', async () => {
+      const metricSource = await createMetricSource();
+      await bulkInsertMetricsGauge([
+        {
+          MetricName: 'system.cpu.utilization',
+          MetricUnit: '1',
+          MetricDescription: 'CPU utilization',
+          ResourceAttributes: { 'service.name': 'svc-a' },
+          ServiceName: 'svc-a',
+          TimeUnix: new Date(),
+          Value: 0.42,
+        },
+      ]);
+
+      const result = await callTool(client, 'clickstack_list_metrics', {
+        sourceId: metricSource._id.toString(),
+        kind: 'gauge',
+      });
+      const output = JSON.parse(getFirstText(result));
+      expect(output.metrics).toEqual([
+        {
+          name: 'system.cpu.utilization',
+          kind: 'gauge',
+          unit: '1',
+          description: 'CPU utilization',
+        },
+      ]);
     });
 
     it('rejects a malformed cursor with an actionable error', async () => {
@@ -1301,6 +1589,42 @@ describe('MCP Source Tools', () => {
   });
 
   describe('clickstack_save_source (update)', () => {
+    it('preserves minAutoGranularity through a describe -> rename -> save round trip', async () => {
+      const created = await Source.create({
+        kind: SourceKind.Metric,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+        timestampValueExpression: 'TimeUnix',
+        resourceAttributesExpression: 'ResourceAttributes',
+        metricTables: { gauge: 'otel_metrics_gauge' },
+        connection: connection._id,
+        name: 'Rename Me',
+        minAutoGranularity: '1 minute',
+      });
+
+      // Regression: an agent renaming a source via describe -> save (the
+      // documented clone/update flow) must not silently drop fields that
+      // extractSourceConfig/mcpSaveSourceSchema haven't been told about -
+      // findOneAndReplace below would otherwise wipe them with no warning.
+      const described = await callTool(client, 'clickstack_describe_source', {
+        sourceId: created._id.toString(),
+      });
+      const config = JSON.parse(getFirstText(described)).source.config;
+      expect(config.minAutoGranularity).toBe('1 minute');
+
+      const { id: _id, ...renameInput } = config;
+      const result = await callTool(client, 'clickstack_save_source', {
+        ...renameInput,
+        id: created._id.toString(),
+        name: 'Renamed',
+      });
+      expect(result.isError).toBeFalsy();
+
+      const stored = await Source.findById(created._id);
+      expect(stored?.name).toBe('Renamed');
+      expect(stored?.get('minAutoGranularity')).toBe('1 minute');
+    });
+
     it('updates an existing log source (full replace)', async () => {
       const created = await Source.create({
         kind: SourceKind.Log,

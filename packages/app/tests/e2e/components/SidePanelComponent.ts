@@ -4,6 +4,8 @@
  */
 import { Locator, Page } from '@playwright/test';
 
+import { WhereInputComponent } from './WhereInputComponent';
+
 export class SidePanelComponent {
   readonly page: Page;
   private readonly panelContainer: Locator;
@@ -119,6 +121,17 @@ export class SidePanelComponent {
       .click({ timeout: 10_000 });
   }
 
+  /** Click the "Add to Filters" line action on a top-level field of the parsed row. */
+  async addParsedFieldToFilter(field: string) {
+    await this.clickTab('parsed');
+    const line = this.panelContainer
+      .getByTestId('json-viewer-line')
+      .filter({ has: this.page.getByText(field, { exact: true }) })
+      .first();
+    await line.hover();
+    await line.getByTitle(/add to filters/i).click();
+  }
+
   /**
    * The cross-source "View Trace" action rendered in a log panel's metadata row
    * when the log has trace context (TraceId + a configured trace source).
@@ -192,9 +205,128 @@ export class SidePanelComponent {
     return this.page.getByTestId('trace-logs-filter');
   }
 
+  /** The spans filter's WHERE control. Call `toggleTraceFilters` first. */
+  get traceSpansWhereInput() {
+    return new WhereInputComponent(this.page, this.traceSpansFilter);
+  }
+
   /** Expand or collapse the trace waterfall's filter inputs. */
   async toggleTraceFilters() {
     await this.page.getByTestId('trace-filters-toggle').click();
+  }
+
+  /**
+   * A clickable span row in the trace waterfall, matched by its label text.
+   * Clicking it opens the span detail panel (Overview tab).
+   */
+  getWaterfallSpan(name: string) {
+    return this.panelContainer
+      .locator('[role="button"]')
+      .filter({ hasText: name });
+  }
+
+  async clickWaterfallSpan(name: string) {
+    await this.getWaterfallSpan(name).first().click({ timeout: 10_000 });
+  }
+
+  /**
+   * The waterfall label currently marked selected. The highlighted class sits
+   * on the span's own `role="button"` row.
+   */
+  getHighlightedWaterfallSpan(name: string) {
+    return this.panelContainer
+      .locator('[role="button"][class*="traceTimelineLabelHighlighted"]')
+      .filter({ hasText: name });
+  }
+
+  /**
+   * The span detail drawer beside the waterfall. Trace sources don't render an
+   * Overview tab of their own, so `tab-overview` plus the close control only
+   * exist together on this drawer. The tab bar's spacer is also `flex-grow-1`,
+   * so that class alone matches the tab chrome and misses the overview body.
+   * The overview root is `flex-grow-1 overflow-auto`.
+   */
+  get spanDetailsPanel() {
+    const closeSpanDetails = this.page.getByRole('button', {
+      name: 'Close span details',
+    });
+    return this.panelContainer
+      .locator('div')
+      .filter({ has: closeSpanDetails })
+      .filter({ has: this.page.getByTestId('tab-overview') })
+      .filter({ has: this.page.locator('.flex-grow-1.overflow-auto') })
+      .last();
+  }
+
+  /**
+   * Rows in the span detail's "Span Links" section. Each row's open action
+   * (`span-link-open-trace`) shows the linked span's name once the target
+   * span is resolved, or "Open trace" as the unresolved fallback.
+   */
+  get spanLinkRows() {
+    return this.panelContainer.getByTestId('span-link-row');
+  }
+
+  get spanLinkOpenActions() {
+    return this.panelContainer.getByTestId('span-link-open-trace');
+  }
+
+  /**
+   * Rows in the span detail's "Linked from" section (spans whose links
+   * reference the selected span), and the per-row action that opens the
+   * referencing span's trace.
+   */
+  get linkedFromRows() {
+    return this.panelContainer.getByTestId('linked-from-row');
+  }
+
+  get linkedFromOpenActions() {
+    return this.panelContainer.getByTestId('linked-from-open-span');
+  }
+
+  /**
+   * Key labels of the JSON viewer's depth-0 rows. Nested rows are excluded so
+   * the list is a flat sequence that reverses cleanly when the order flips —
+   * nested children stay grouped under their parent, so a full-tree list does
+   * not.
+   */
+  get jsonViewerTopLevelKeys() {
+    return this.panelContainer.locator(
+      '[data-testid="json-viewer-line"][data-depth="0"] [class*="keyContainer"] > [class*="key"]',
+    );
+  }
+
+  async getJsonViewerTopLevelKeys(): Promise<string[]> {
+    await this.jsonViewerTopLevelKeys
+      .first()
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    const keys = await this.jsonViewerTopLevelKeys.allInnerTexts();
+    return keys.map(key => key.trim()).filter(Boolean);
+  }
+
+  /**
+   * Sort in the browser, where the viewer's own `localeCompare` runs — Node's
+   * ICU orders mixed-case keys differently, so sorting test-side would compare
+   * against a different collation than the one under test.
+   */
+  async sortKeysLikeViewer(keys: string[]): Promise<string[]> {
+    return this.page.evaluate(
+      (ks: string[]) =>
+        [...ks].sort((a, b) =>
+          a.localeCompare(b, undefined, { numeric: true }),
+        ),
+      keys,
+    );
+  }
+
+  /** Pick a key-order option from the JSON viewer's view options menu. */
+  async selectJsonKeyOrder(order: 'asc' | 'desc' | 'original') {
+    await this.panelContainer
+      .getByTestId('json-viewer-options-menu')
+      .click({ timeout: this.defaultTimeout });
+    await this.panelContainer
+      .getByTestId(`json-viewer-key-order-${order}`)
+      .click({ timeout: this.defaultTimeout });
   }
 
   /**

@@ -9,6 +9,11 @@ import {
 
 import EventTag from './EventTag';
 import { SectionWrapper, useShowMoreRows } from './ExceptionSubpanel';
+import {
+  LinkedSpanDetails,
+  linkedSpanKey,
+  LinkedSpanMetaLine,
+} from './linkedSpans';
 
 // Make sure SpanLinkData implements Record<string, unknown>
 export interface SpanLinkData extends Record<string, unknown> {
@@ -37,9 +42,11 @@ export function getValidSpanLinks(
 
 function SpanLinkRow({
   link,
+  details,
   onOpenTrace,
 }: {
   link: SpanLinkData;
+  details?: LinkedSpanDetails;
   onOpenTrace?: (link: SpanLinkData) => void;
 }) {
   const attributeEntries = Object.entries(link.Attributes ?? {});
@@ -71,9 +78,11 @@ function SpanLinkRow({
           className="d-inline-flex align-items-center"
         >
           <IconArrowUpRight size={14} className="me-1" />
-          Open trace
+          {details?.spanName || 'Open trace'}
         </Anchor>
       </Tooltip>
+
+      {details ? <LinkedSpanMetaLine details={details} /> : null}
 
       {hasChips ? (
         <Flex wrap="wrap" gap="2px" align="baseline">
@@ -104,9 +113,14 @@ function SpanLinkRow({
 
 export const SpanLinksSubpanel = ({
   spanLinks,
+  linkedSpanDetails,
   onOpenTrace,
 }: {
   spanLinks?: Record<string, unknown>[] | null;
+  // Resolved details for the spans the links point to, keyed by
+  // `linkedSpanKey`. Links without an entry render with the bare
+  // "Open trace" fallback.
+  linkedSpanDetails?: Map<string, LinkedSpanDetails>;
   onOpenTrace?: (link: SpanLinkData) => void;
 }) => {
   const links = useMemo(() => getValidSpanLinks(spanLinks), [spanLinks]);
@@ -148,7 +162,13 @@ export const SpanLinksSubpanel = ({
                   index > 0 ? 'pt-2 border-top border-dark' : undefined
                 }
               >
-                <SpanLinkRow link={link} onOpenTrace={onOpenTrace} />
+                <SpanLinkRow
+                  link={link}
+                  details={linkedSpanDetails?.get(
+                    linkedSpanKey(link.TraceId, link.SpanId),
+                  )}
+                  onOpenTrace={onOpenTrace}
+                />
               </div>
             ))}
           </Stack>

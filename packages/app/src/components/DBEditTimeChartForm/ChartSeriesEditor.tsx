@@ -6,6 +6,8 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { Badge } from '@clickhouse/click-ui';
+import { indexToSeriesRef } from '@hyperdx/common-utils/dist/core/formula';
 import {
   DateRange,
   isChartPaletteToken,
@@ -13,40 +15,30 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import {
-  ActionIcon,
-  Button,
-  Divider,
-  Flex,
-  Group,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { ActionIcon, Flex, Group, Text, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import {
-  IconArrowDown,
-  IconArrowUp,
-  IconCopy,
-  IconPalette,
-  IconTrash,
-} from '@tabler/icons-react';
+import { IconListSearch, IconPalette } from '@tabler/icons-react';
 
 import { AGG_FNS } from '@/ChartUtils';
 import {
   AggFnSelectControlled,
+  defaultAggFnForMetricType,
   HISTOGRAM_SUPPORTED_AGG_FNS,
 } from '@/components/AggFnSelect';
+import { ChartSeriesControls } from '@/components/ChartEditor/ChartSeriesControls';
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
-import {
-  CheckBoxControlled,
-  TextInputControlled,
-} from '@/components/InputControlled';
+import { isFormulaSourceKind } from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
+import { CheckBoxControlled } from '@/components/InputControlled';
 import { MetricAttributeHelperPanel } from '@/components/MetricAttributeHelperPanel';
+import {
+  MetricExplorerModal,
+  type MetricExplorerSelection,
+} from '@/components/MetricExplorer/MetricExplorerModal';
 import { MetricNameSelect } from '@/components/MetricNameSelect';
-import { FORMAT_ICONS } from '@/components/NumberFormat';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SeriesColorDrawer from '@/components/SeriesColorDrawer';
 import SeriesNumberFormatDrawer from '@/components/SeriesNumberFormatDrawer';
@@ -79,6 +71,7 @@ type ChartSeriesEditorProps = {
   showHaving: boolean;
   showDuplicate: boolean;
   showColor: boolean;
+  showSeriesNumberFormat?: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -102,6 +95,7 @@ export function ChartSeriesEditor({
   showHaving,
   showDuplicate,
   showColor,
+  showSeriesNumberFormat = true,
   tableName: _tableName,
   parentRef,
   length,
@@ -205,6 +199,53 @@ export function ChartSeriesEditor({
     [aggCondition, namePrefix, setValue, onSubmit],
   );
 
+  const [
+    isMetricExplorerOpen,
+    { open: openMetricExplorer, close: closeMetricExplorer },
+  ] = useDisclosure(false);
+
+  // Applying from the explorer also resets the aggregation, so a metric picked
+  // for its own sake charts something meaningful instead of inheriting whatever
+  // the previous metric used. The coercion effects above accept every value
+  // `defaultAggFnForMetricType` can return.
+  const applyExplorerMetric = useCallback(
+    ({
+      name,
+      type,
+      where,
+      groupBy: stagedGroupBy,
+    }: MetricExplorerSelection) => {
+      setValue(`${namePrefix}metricName`, name);
+      setValue(`${namePrefix}metricType`, type);
+      setValue(`${namePrefix}valueExpression`, 'Value');
+      const { aggFn: nextAggFn, level } = defaultAggFnForMetricType(type);
+      setValue(`${namePrefix}aggFn`, nextAggFn);
+      if (level != null) {
+        setValue(`${namePrefix}level`, level);
+      }
+
+      // Filters were written against this metric's attributes, so they replace
+      // the series' condition rather than stacking onto the previous metric's.
+      // Unconditionally, including when nothing was staged: leaving the old
+      // condition in place would silently apply the previous metric's
+      // attributes to the new one, which reads as an empty chart rather than
+      // an error (a Map lookup for an absent key yields '', not a failure).
+      setValue(`${namePrefix}aggCondition`, where.join(' AND '));
+
+      // Staged group-bys replace the chart's, same as the filters above: they
+      // were chosen against this metric's tags. Only when something was staged
+      // though — group by is chart-level, so clearing it on every apply would
+      // discard a grouping the user set by hand elsewhere.
+      if (stagedGroupBy.length > 0) {
+        setValue('groupBy', stagedGroupBy.join(', '));
+      }
+
+      clearErrors(`${namePrefix}metricName`);
+      onSubmit();
+    },
+    [namePrefix, setValue, clearErrors, onSubmit],
+  );
+
   const handleAddToGroupBy = useCallback(
     (clause: string) => {
       const currentValue = groupBy || '';
@@ -251,103 +292,55 @@ export function ChartSeriesEditor({
 
   return (
     <>
-      <Divider
-        label={
-          <Group gap="xs">
-            <Text size="xxs">Alias</Text>
-
-            <div style={{ width: 150 }}>
-              <TextInputControlled
-                name={`${namePrefix}alias`}
-                control={control}
-                placeholder="Series alias"
-                onChange={() => onSubmit()}
-                size="xs"
-                data-testid="series-alias-input"
+      <ChartSeriesControls
+        control={control}
+        aliasName={`${namePrefix}alias`}
+        aliasPlaceholder="Series alias"
+        index={index}
+        length={length}
+        numberFormat={seriesNumberFormat}
+        onSubmit={onSubmit}
+        onSwap={onSwapSeries}
+        onRemove={length > 1 ? onRemoveSeries : undefined}
+        onDuplicate={showDuplicate ? onDuplicateSeries : undefined}
+        onOpenNumberFormat={
+          showSeriesNumberFormat ? openSeriesNumberFormat : undefined
+        }
+        leadingSection={
+          isFormulaSourceKind(tableSource?.kind) ? (
+            <Tooltip label="Reference this series in a formula by this letter">
+              <Badge
+                size="sm"
+                text={indexToSeriesRef(index) ?? index + 1}
+                state="neutral"
+                data-testid="series-ref-badge"
               />
-            </div>
-            {(index ?? -1) > 0 && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onSwapSeries(index, index - 1)}
-                title="Move up"
-              >
-                <IconArrowUp size={14} />
-              </Button>
-            )}
-            {(index ?? -1) < length - 1 && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onSwapSeries(index, index + 1)}
-                title="Move down"
-              >
-                <IconArrowDown size={14} />
-              </Button>
-            )}
-            {showDuplicate && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xxs"
-                onClick={() => onDuplicateSeries(index)}
-                title="Duplicate series"
-                data-testid="series-duplicate-button"
-              >
-                <IconCopy size={14} />
-              </Button>
-            )}
-            {((index ?? -1) > 0 || length > 1) && (
-              <Button
-                variant="subtle"
-                color="gray"
-                size="xs"
-                onClick={() => onRemoveSeries(index)}
-              >
-                <IconTrash size={14} className="me-2" />
-                Remove Series
-              </Button>
-            )}
-            <Tooltip label="Edit series display format">
+            </Tooltip>
+          ) : undefined
+        }
+        trailingSection={
+          showColor ? (
+            <Tooltip label="Edit column color">
               <ActionIcon
                 variant="subtle"
                 color="gray"
                 size="xs"
-                onClick={openSeriesNumberFormat}
-                aria-label="Edit series display format"
+                onClick={openSeriesColor}
+                aria-label="Edit column color"
+                data-testid="series-color-button"
               >
-                {FORMAT_ICONS[seriesNumberFormat?.output ?? 'number']}
+                <IconPalette
+                  size={16}
+                  color={
+                    seriesColor && isChartPaletteToken(seriesColor)
+                      ? getColorFromCSSToken(seriesColor)
+                      : undefined
+                  }
+                />
               </ActionIcon>
             </Tooltip>
-            {showColor && (
-              <Tooltip label="Edit column color">
-                <ActionIcon
-                  variant="subtle"
-                  color="gray"
-                  size="xs"
-                  onClick={openSeriesColor}
-                  aria-label="Edit column color"
-                  data-testid="series-color-button"
-                >
-                  <IconPalette
-                    size={16}
-                    color={
-                      seriesColor && isChartPaletteToken(seriesColor)
-                        ? getColorFromCSSToken(seriesColor)
-                        : undefined
-                    }
-                  />
-                </ActionIcon>
-              </Tooltip>
-            )}
-          </Group>
+          ) : undefined
         }
-        labelPosition="right"
-        mb={8}
-        mt="sm"
       />
       <Flex gap="sm" mt="xs" align="start">
         <div
@@ -368,31 +361,54 @@ export function ChartSeriesEditor({
         </div>
         {tableSource?.kind === SourceKind.Metric && metricType && (
           <div style={{ minWidth: 220 }}>
-            <MetricNameSelect
-              metricName={metricName}
-              metricType={metricType}
-              setMetricName={value => {
-                setValue(`${namePrefix}metricName`, value);
-                setValue(`${namePrefix}valueExpression`, 'Value');
-              }}
-              setMetricType={value =>
-                setValue(`${namePrefix}metricType`, value)
-              }
+            <Group gap="xs" wrap="nowrap" align="start">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <MetricNameSelect
+                  metricName={metricName}
+                  metricType={metricType}
+                  setMetricName={value => {
+                    setValue(`${namePrefix}metricName`, value);
+                    setValue(`${namePrefix}valueExpression`, 'Value');
+                  }}
+                  setMetricType={value =>
+                    setValue(`${namePrefix}metricType`, value)
+                  }
+                  metricSource={tableSource}
+                  dateRange={dateRange}
+                  data-testid="metric-name-selector"
+                  error={errors?.metricName?.message}
+                  onFocus={() => clearErrors(`${namePrefix}metricName`)}
+                />
+              </div>
+              <Tooltip label="Browse metrics" withArrow>
+                <ActionIcon
+                  variant="subtle"
+                  size="input-sm"
+                  onClick={openMetricExplorer}
+                  aria-label="Browse metrics"
+                  data-testid="metric-explorer-open"
+                >
+                  <IconListSearch size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+            <MetricExplorerModal
+              opened={isMetricExplorerOpen}
+              onClose={closeMetricExplorer}
               metricSource={tableSource}
-              data-testid="metric-name-selector"
-              error={errors?.metricName?.message}
-              onFocus={() => clearErrors(`${namePrefix}metricName`)}
+              dateRange={dateRange}
+              value={{ metricName, metricType }}
+              language={aggConditionLanguage === 'sql' ? 'sql' : 'lucene'}
+              onApply={applyExplorerMetric}
             />
             {metricType === 'gauge' && (
-              <Flex justify="end">
-                <CheckBoxControlled
-                  control={control}
-                  name={`${namePrefix}isDelta`}
-                  label="Delta"
-                  size="xs"
-                  className="mt-2"
-                />
-              </Flex>
+              <CheckBoxControlled
+                control={control}
+                name={`${namePrefix}isDelta`}
+                label="Delta"
+                size="xs"
+                className="mt-2"
+              />
             )}
           </div>
         )}
@@ -405,24 +421,30 @@ export function ChartSeriesEditor({
           >
             <SQLInlineEditorControlled
               tableConnection={tableConnection}
+              sourceId={tableSource?.id}
+              dateRange={dateRange}
               control={control}
               name={`${namePrefix}valueExpression`}
               placeholder="SQL Column"
               onSubmit={onSubmit}
+              enableVariables
             />
           </div>
         )}
         {(showWhere || showGroupBy || showHaving) && (
           <div
-            className="flex-grow-1 gap-2 align-items-center"
+            className="flex-grow-1 gap-2"
             style={{
               display: 'grid',
               gridTemplateColumns: 'auto 1fr auto 1fr',
+              alignItems: 'start',
             }}
           >
             {showWhere && (
               <>
-                <Text size="sm">Where</Text>
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+                  <Text size="sm">Where</Text>
+                </Flex>
                 <div
                   style={{
                     gridColumn:
@@ -436,18 +458,20 @@ export function ChartSeriesEditor({
                     control={control}
                     name={`${namePrefix}aggCondition`}
                     onSubmit={onSubmit}
-                    showLabel={false}
                     additionalSuggestions={attributeSuggestions}
                     data-testid="series-where-input"
+                    enableVariables
                   />
                 </div>
               </>
             )}
             {showGroupBy && (
               <>
-                <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                  Group By
-                </Text>
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+                  <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                    Group By
+                  </Text>
+                </Flex>
                 <div
                   style={{
                     minWidth: 200,
@@ -459,26 +483,34 @@ export function ChartSeriesEditor({
                   <SQLInlineEditorControlled
                     parentRef={parentRef}
                     tableConnection={tableConnection}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
                     disableKeywordAutocomplete
                     onSubmit={onSubmit}
+                    enableVariables
                   />
                 </div>
                 {showHaving && (
                   <>
-                    <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
-                      Having
-                    </Text>
+                    <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
+                      <Text size="sm" style={{ whiteSpace: 'nowrap' }}>
+                        Having
+                      </Text>
+                    </Flex>
                     <div style={{ minWidth: 300, maxWidth: '100%' }}>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         disableKeywordAutocomplete
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>

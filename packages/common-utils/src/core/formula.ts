@@ -510,3 +510,49 @@ const findRefPosition = (expression: string, ref: string): number => {
   const position = expression.indexOf(ref);
   return position >= 0 ? position : 0;
 };
+
+// ─── SQL compiler ────────────────────────────────────────────────────────────
+
+/**
+ * Compile a validated formula AST into a SQL expression over per-series value
+ * expressions.
+ *
+ * `resolveSeriesRef` maps a zero-based `select` index to the SQL expression
+ * producing that series' value — for the composed multi-series metric query
+ * this is the pivot expression `anyOrNullIf(__hdx_value, __hdx_series_idx =
+ * i)`, which is NULL when the series has no row at the joined key.
+ *
+ * Missing-data semantics mirror the existing `seriesReturnType: 'ratio'`
+ * projection so a formula `A / B` behaves exactly like the ratio toggle:
+ *  - a series ref compiles to `coalesce(<value>, 0)` — a missing operand
+ *    counts as 0 (a zero-error group reads 0%, not "no data");
+ *  - a division denominator is wrapped in `nullif(<denominator>, 0)` — a
+ *    missing or zero denominator makes the quotient NULL, which renders as a
+ *    gap rather than 0 or an error.
+ *
+ * The compiler only walks the validated AST (produced by `parseFormula` /
+ * `validateFormula`); user input is never spliced into SQL as raw text.
+ */
+export const compileFormulaAst = (
+  ast: FormulaAst,
+  resolveSeriesRef: (index: number) => string,
+): string => {
+  switch (ast.type) {
+    case 'number':
+      // JS number stringification of a parsed non-negative literal is plain
+      // digits / decimal notation, valid as a SQL numeric literal.
+      return String(ast.value);
+    case 'seriesRef':
+      return `coalesce(${resolveSeriesRef(ast.index)}, 0)`;
+    case 'unary':
+      return `(-${compileFormulaAst(ast.operand, resolveSeriesRef)})`;
+    case 'binary': {
+      const left = compileFormulaAst(ast.left, resolveSeriesRef);
+      const right = compileFormulaAst(ast.right, resolveSeriesRef);
+      if (ast.op === '/') {
+        return `(${left} / nullif(${right}, 0))`;
+      }
+      return `(${left} ${ast.op} ${right})`;
+    }
+  }
+};

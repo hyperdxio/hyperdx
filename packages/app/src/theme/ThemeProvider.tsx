@@ -1,12 +1,14 @@
 import React, {
   createContext,
+  use,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 
 import {
   DEFAULT_THEME,
@@ -178,15 +180,11 @@ export function AppThemeProvider({
     };
   }, [theme, setTheme, toggleTheme, clearThemeOverride]);
 
-  return (
-    <ThemeContext.Provider value={contextValue}>
-      {children}
-    </ThemeContext.Provider>
-  );
+  return <ThemeContext value={contextValue}>{children}</ThemeContext>;
 }
 
 export function useAppTheme(): ThemeContextValue {
-  const context = useContext(ThemeContext);
+  const context = use(ThemeContext);
   if (!context) {
     // Fallback for when used outside provider - always use default to avoid hydration issues
     const theme = getTheme(DEFAULT_THEME);
@@ -244,4 +242,15 @@ export function useThemeName(): ThemeName {
 export function useBrandDisplayName(): string {
   const { theme } = useAppTheme();
   return theme.displayName;
+}
+
+/**
+ * Hook to build a `<title>`/`<NextSeo title>` value: brand name plus the
+ * configured instance label, with an optional page name prepended.
+ * e.g. usePageTitle('Search') => "Search - HyperDX USA"
+ */
+export function usePageTitle(page?: string): string {
+  const brandName = useBrandDisplayName();
+  const brandTitle = `${brandName}${INSTANCE_TITLE_SUFFIX}`;
+  return page ? `${page} - ${brandTitle}` : brandTitle;
 }

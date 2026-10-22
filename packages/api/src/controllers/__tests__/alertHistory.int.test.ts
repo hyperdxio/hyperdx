@@ -1,4 +1,5 @@
 import { ObjectId } from 'mongodb';
+import { Types } from 'mongoose';
 
 import {
   ALERT_EVALUATION_GROUPS_LIMIT,
@@ -498,7 +499,7 @@ describe('alertHistory controller', () => {
       });
     };
 
-    const createOkWindow = (alertId: any, createdAt: Date) =>
+    const createOkWindow = (alertId: Types.ObjectId, createdAt: Date) =>
       AlertHistory.create({
         alert: alertId,
         createdAt,
@@ -1052,7 +1053,7 @@ describe('alertHistory controller', () => {
     };
 
     const createHistory = (
-      alertId: any,
+      alertId: Types.ObjectId,
       createdAt: Date,
       state: AlertState,
       counts: number,
@@ -1261,6 +1262,195 @@ describe('alertHistory controller', () => {
 
       expect(transitions).toHaveLength(1);
       expect(transitions[0].state).toBe(AlertState.ALERT);
+    });
+
+    describe('bucketStart', () => {
+      const createHistoryWithBuckets = (
+        alertId: Types.ObjectId,
+        createdAt: Date,
+        state: AlertState,
+        bucketStarts: Date[],
+        group?: string,
+      ) =>
+        AlertHistory.create({
+          alert: alertId,
+          createdAt,
+          state,
+          counts: state === AlertState.ALERT ? 1 : 0,
+          ...(group != null ? { group } : {}),
+          lastValues: bucketStarts.map(startTime => ({
+            startTime,
+            count: 1,
+          })),
+        });
+
+      it('emits the newest evaluated bucket start for each transition', async () => {
+        // Evaluation at t(20) covered 1-minute buckets t(25)..t(21) (anomaly
+        // alerts bucket finer than the interval) — the marker belongs on the
+        // newest bucket, where the chart plots the transitioning value.
+        const alert = await createAlert();
+        await createHistory(alert._id, t(25), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(20), AlertState.ALERT, [
+          t(25),
+          t(24),
+          t(23),
+          t(22),
+          t(21),
+        ]);
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(22),
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].createdAt).toBe(t(20).toISOString());
+        expect(transitions[0].bucketStart).toBe(t(21).toISOString());
+      });
+
+      it('falls back to createdAt − interval when the window has no lastValues', async () => {
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(20), AlertState.ALERT, []);
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(28),
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].bucketStart).toBe(t(25).toISOString());
+      });
+
+      it("derives a recovery's bucketStart from the recovering window's lastValues", async () => {
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(25), AlertState.ALERT, [
+          t(27),
+          t(26),
+        ]);
+        await createHistoryWithBuckets(alert._id, t(20), AlertState.OK, [
+          t(22),
+          t(21),
+        ]);
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(26),
+          endTime: t(5),
+        });
+
+        expect(transitions.map(tr => tr.state)).toEqual([
+          AlertState.ALERT,
+          AlertState.OK,
+        ]);
+        expect(transitions[1].createdAt).toBe(t(20).toISOString());
+        expect(transitions[1].bucketStart).toBe(t(21).toISOString());
+      });
+
+      it('floors bucketStart at the range start for an edge crossing', async () => {
+        // A crossing whose evaluation lands just inside the range derives a
+        // bucketStart one bucket earlier — before startTime. It is floored at
+        // startTime so the marker never renders left of a carry-in pin.
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.OK, 0);
+        await createHistoryWithBuckets(alert._id, t(25), AlertState.ALERT, []);
+
+        const startTime = t(25); // crossing evaluated exactly at range start
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime,
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].state).toBe(AlertState.ALERT);
+        // Empty lastValues → createdAt − interval = t(30), before startTime —
+        // floored to startTime.
+        expect(transitions[0].bucketStart).toBe(startTime.toISOString());
+      });
+
+      it('keeps a recovery after the carry-in pin it follows', async () => {
+        // Firing on entry, recovering on the first in-range tick: the
+        // recovery's derived bucket start precedes startTime, but the carry-in
+        // pin sits at startTime — the floor keeps firing → recovery ordered.
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.ALERT, 5);
+        await createHistoryWithBuckets(alert._id, t(25), AlertState.OK, []);
+
+        const startTime = t(25);
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime,
+          endTime: t(5),
+        });
+
+        expect(transitions.map(tr => tr.state)).toEqual([
+          AlertState.ALERT,
+          AlertState.OK,
+        ]);
+        expect(transitions[0].bucketStart).toBe(startTime.toISOString());
+        expect(
+          new Date(transitions[1].bucketStart!) >=
+            new Date(transitions[0].bucketStart!),
+        ).toBe(true);
+      });
+
+      it('takes the newest bucket across group rows in one window', async () => {
+        // Group-by alerts write one history row per group; the marker should
+        // reflect the newest bucket evaluated by any of them.
+        const alert = await createAlert();
+        await createHistory(alert._id, t(25), AlertState.OK, 0);
+        await createHistoryWithBuckets(
+          alert._id,
+          t(20),
+          AlertState.ALERT,
+          [t(23)],
+          'group-a',
+        );
+        await createHistoryWithBuckets(
+          alert._id,
+          t(20),
+          AlertState.OK,
+          [t(21)],
+          'group-b',
+        );
+
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime: t(22),
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].state).toBe(AlertState.ALERT);
+        expect(transitions[0].bucketStart).toBe(t(21).toISOString());
+      });
+
+      it('pins the carry-in marker bucketStart to the range start', async () => {
+        const alert = await createAlert();
+        await createHistory(alert._id, t(30), AlertState.ALERT, 5);
+        await createHistory(alert._id, t(25), AlertState.ALERT, 5);
+
+        const startTime = t(27);
+        const transitions = await getAlertTransitionsInRange({
+          alertId: new ObjectId(alert._id),
+          interval: '5m',
+          startTime,
+          endTime: t(5),
+        });
+
+        expect(transitions).toHaveLength(1);
+        expect(transitions[0].bucketStart).toBe(startTime.toISOString());
+      });
     });
   });
 });

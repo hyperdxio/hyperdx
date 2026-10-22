@@ -3,12 +3,12 @@ import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import Script from 'next/script';
 import cx from 'classnames';
+import { Badge } from '@clickhouse/click-ui';
 import HyperDX from '@hyperdx/browser';
 import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Anchor,
-  Badge,
   Collapse,
   Flex,
   Group,
@@ -30,19 +30,18 @@ import {
 
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
-import { IS_LOCAL_MODE } from '@/config';
+import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
+import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
+import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
+import { setHdxIdentity } from '@/hdxDebug';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
 import { useUserPreferences } from '@/useUserPreferences';
-import { useWindowSize } from '@/utils';
-
-// eslint-disable-next-line no-restricted-imports -- package.json lives outside src, no @/ alias reaches it
-import packageJson from '../../../package.json';
 
 import {
   AppNavCloudBanner,
@@ -55,9 +54,11 @@ import { AppNavFeedback } from './AppNavFeedback';
 
 import styles from './AppNav.module.scss';
 
-// Expose the same value Next injected at build time; fall back to package.json for dev tooling
-const APP_VERSION =
-  process.env.NEXT_PUBLIC_APP_VERSION ?? packageJson.version ?? 'dev';
+// Newest release version in the notes, inlined by next.config.mjs. Separate from
+// APP_VERSION on purpose: this one answers "what is the latest release?", which
+// is what the Help sparkle is for, while APP_VERSION answers "what build is
+// this?" and carries a build id that moves on every deploy.
+const WHATS_NEW_VERSION = process.env.NEXT_PUBLIC_WHATS_NEW_VERSION;
 
 // Reo.dev client ID for our usage tracking. USAGE_STATS_ENABLED is the opt-out.
 const REO_CLIENT_ID = '38b2e79cdb32fa7';
@@ -184,15 +185,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const { data: meData } = api.useMe();
 
-  const { width } = useWindowSize();
-
   const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
     key: 'isNavCollapsed',
     defaultValue: false,
   });
 
-  const isSmallScreen = (width ?? 1000) < 900;
-  const isCollapsed = isSmallScreen || isPreferCollapsed;
+  const isCollapsed = useCompactViewport() || isPreferCollapsed;
 
   const navWidth = isCollapsed ? 50 : 250;
 
@@ -210,6 +208,15 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         userEmail: meData.email,
         userName: meData.name,
         teamName: meData.team.name,
+      });
+      // Fold user/team ids + per-user toggles into window.hdx for debug reports.
+      setHdxIdentity({
+        userId: meData.id,
+        teamId: meData.team.id,
+        features: {
+          usageStats: meData.usageStatsEnabled,
+          aiAssistant: meData.aiAssistantEnabled,
+        },
       });
     }
   }, [meData]);
@@ -301,7 +308,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       pathname?.startsWith('/dashboards/') ||
       pathname === '/services' ||
       pathname === '/clickhouse' ||
-      pathname === '/kubernetes';
+      pathname === '/kubernetes' ||
+      pathname === '/llm';
 
     if (!isDashboardsPathname) return false;
 
@@ -321,7 +329,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   ]);
 
   return (
-    <AppNavContext.Provider value={{ isCollapsed, pathname }}>
+    <AppNavContext value={{ isCollapsed, pathname }}>
       {fixed && (
         <div
           className={styles.navGhost}
@@ -354,19 +362,27 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               {isCollapsed ? (
                 <div className={styles.logoIconWrapper}>{logomark}</div>
               ) : (
-                <Group gap="xs" align="center">
+                <Group
+                  gap="xs"
+                  align="center"
+                  wrap="nowrap"
+                  style={{ minWidth: 0 }}
+                >
                   {wordmark}
-                  {isUTC && (
-                    <Badge
-                      size="xs"
-                      color="gray"
-                      variant="light"
-                      fw="normal"
-                      title="Showing time in UTC"
-                    >
-                      UTC
-                    </Badge>
-                  )}
+                  {/* Label and UTC badge are mutually exclusive - showing both
+                      would be redundant and crowd this already-tight row. */}
+                  <InstanceLabel
+                    fallback={
+                      isUTC && (
+                        <Badge
+                          size="sm"
+                          text="UTC"
+                          state="neutral"
+                          title="Showing time in UTC"
+                        />
+                      )
+                    }
+                  />
                 </Group>
               )}
             </Link>
@@ -472,7 +488,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             )}
 
             {/* Help */}
-            <AppNavHelpMenu version={APP_VERSION} />
+            <AppNavHelpMenu
+              version={APP_VERSION}
+              whatsNewVersion={WHATS_NEW_VERSION}
+            />
 
             {/* Feedback */}
             <AppNavFeedback />
@@ -539,6 +558,6 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
         opened={UserPreferencesOpen}
         onClose={closeUserPreferences}
       />
-    </AppNavContext.Provider>
+    </AppNavContext>
   );
 }

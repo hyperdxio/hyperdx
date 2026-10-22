@@ -4,8 +4,18 @@ import {
   hasMacro,
   isMissingFiltersMacro,
   replaceMacros,
+  substitutePromqlChartConfigTemplates,
 } from '@/macros';
-import type { MetricTable } from '@/types';
+import type { ChartVariable, MetricTable } from '@/types';
+import { DisplayType } from '@/types';
+
+const variable = (name: string, values: string[]): ChartVariable => ({
+  name,
+  values,
+});
+
+const SERVICE = variable('service', ['api', 'web']);
+const EMPTY_SERVICE = variable('service', []);
 
 const ALL_METRIC_TABLES: MetricTable = {
   gauge: 'otel_metrics_gauge',
@@ -46,11 +56,11 @@ describe('isMissingFiltersMacro', () => {
 
   it('is false when a variable macro applies filtering instead', () => {
     expect(
-      isMissingFiltersMacro('SELECT * WHERE $__filter(ServiceName, service)'),
+      isMissingFiltersMacro('SELECT * WHERE $__filter(ServiceName, $service)'),
     ).toBe(false);
     expect(
       isMissingFiltersMacro(
-        'SELECT * WHERE $__conditionalAll(ServiceName IN ${service}, service)',
+        'SELECT * WHERE $__conditionalAll(ServiceName IN ${service}, $service)',
       ),
     ).toBe(false);
   });
@@ -368,7 +378,7 @@ describe('replaceMacros with variables', () => {
 
     it('leaves the variable macros verbatim, arguments and all', () => {
       const sqlTemplate =
-        "WHERE $__filter(ServiceName, service) AND $__conditionalAll(x = 'a)b', env)";
+        "WHERE $__filter(ServiceName, $service) AND $__conditionalAll(x = 'a)b', $env)";
       expect(replaceMacros({ sqlTemplate })).toBe(sqlTemplate);
     });
 
@@ -387,8 +397,8 @@ describe('replaceMacros with variables', () => {
         {
           sqlTemplate:
             'SELECT $__timeInterval(ts) FROM $__sourceTable ' +
-            'WHERE $__timeFilter(ts) AND $__filters AND $__filter(service) ' +
-            'AND svc IN ($service) AND $__conditionalAll(Env != $service, service)',
+            'WHERE $__timeFilter(ts) AND $__filters AND $__filter($service) ' +
+            'AND svc IN ($service) AND $__conditionalAll(Env != $service, $service)',
           from: { databaseName: 'otel', tableName: 'otel_logs' },
           variables,
         },
@@ -411,7 +421,8 @@ describe('replaceMacros with variables', () => {
       expect(
         replaceMacros(
           {
-            sqlTemplate: 'WHERE $__filters AND $__filter(ServiceName, service)',
+            sqlTemplate:
+              'WHERE $__filters AND $__filter(ServiceName, $service)',
             variables,
           },
           '(1=2)',
@@ -422,7 +433,7 @@ describe('replaceMacros with variables', () => {
     it('expands an unselected variable to a no-op predicate', () => {
       expect(
         replaceMacros({
-          sqlTemplate: 'WHERE $__filter(env)',
+          sqlTemplate: 'WHERE $__filter($env)',
           variables,
         }),
       ).toBe("WHERE (1=1 /** no values selected for variable 'env' */)");
@@ -449,7 +460,7 @@ describe('replaceMacros with variables', () => {
     it('throws when a variable macro names an unknown variable', () => {
       expect(() =>
         replaceMacros({
-          sqlTemplate: 'WHERE $__filter(ServiceName, nope)',
+          sqlTemplate: 'WHERE $__filter(ServiceName, $nope)',
           variables,
         }),
       ).toThrow("references unknown variable 'nope'");
@@ -461,13 +472,395 @@ describe('replaceMacros with variables', () => {
       ).toBe("SELECT '$100 $nope'");
     });
 
+    it('escapes a regex reference for the SQL literal it sits in', () => {
+      // Raw SQL and the chart builder share one substitution path, so both get
+      // a pattern ClickHouse's literal parser hands to the regex engine intact.
+      expect(
+        replaceMacros({
+          sqlTemplate: "WHERE match(msg, '${service:regex}')",
+          variables: [{ name: 'service', values: ['v1.2'] }],
+        }),
+      ).toBe("WHERE match(msg, 'v1\\\\.2')");
+    });
+
     it('treats an empty variables array as a provided context', () => {
       expect(() =>
         replaceMacros({
-          sqlTemplate: 'WHERE $__filter(ServiceName, service)',
+          sqlTemplate: 'WHERE $__filter(ServiceName, $service)',
           variables: [],
         }),
       ).toThrow("references unknown variable 'service'");
     });
+  });
+
+  describe('nested in macro arguments', () => {
+    const nested = [
+      ...variables,
+      { name: 'tsCol', values: ['Timestamp'] },
+      { name: 'noCol', values: [] },
+      { name: 'metricType', values: ['gauge'] },
+    ];
+
+    /** What `$__timeFilter(<col>)` expands to, so each test shows its column. */
+    const timeFilterOn = (col: string) =>
+      `${col} >= toDateTime(fromUnixTimestamp64Milli({startDateMilliseconds:Int64})) AND ` +
+      `${col} <= toDateTime(fromUnixTimestamp64Milli({endDateMilliseconds:Int64}))`;
+
+    it('filters on the column a variable names', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${tsCol:csv})',
+          variables: nested,
+        }),
+      ).toBe(`WHERE ${timeFilterOn('Timestamp')}`);
+    });
+
+    it('leaves a csv column expression unescaped, quotes and all', () => {
+      // `csv` is the raw escape hatch: it carries identifiers, and escaping a
+      // column expression for the surrounding literal would corrupt it.
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${mapCol:csv})',
+          variables: [
+            ...nested,
+            { name: 'mapCol', values: ["toDateTime(Attributes['ts'])"] },
+          ],
+        }),
+      ).toBe(`WHERE ${timeFilterOn("toDateTime(Attributes['ts'])")}`);
+    });
+
+    it('renders a bare reference in the quoted sqlstring format', () => {
+      // The default format doesn't change inside an argument, so the column
+      // form needs `:csv` — as the editor's warning on `$tsCol` says.
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter($tsCol)',
+          variables: nested,
+        }),
+      ).toBe(`WHERE ${timeFilterOn("'Timestamp'")}`);
+    });
+
+    it('renders an unselected variable as empty, with no special case', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${noCol:csv})',
+          variables: nested,
+        }),
+      ).toBe(`WHERE ${timeFilterOn('')}`);
+    });
+
+    it('expands a reference in a $__sourceTable argument', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'FROM $__sourceTable(${metricType:csv})',
+          from: { databaseName: 'otel', tableName: '' },
+          metricTables: ALL_METRIC_TABLES,
+          variables: nested,
+        }),
+      ).toBe('FROM `otel`.`otel_metrics_gauge`');
+    });
+
+    it('expands a macro nested in a variable macro argument', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate:
+            'WHERE $__conditionalAll($__timeFilter(Timestamp), $service)',
+          variables: nested,
+        }),
+      ).toBe(`WHERE (${timeFilterOn('Timestamp')})`);
+    });
+
+    it('expands to any depth', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate:
+            'WHERE $__filter(if($__conditionalAll($__timeFilter(${tsCol:csv}), $service), a, b), $service)',
+          variables: nested,
+        }),
+      ).toBe(
+        `WHERE (if((${timeFilterOn('Timestamp')}), a, b) IN ('api', 'web'))`,
+      );
+    });
+
+    it('leaves the variable name argument unexpanded', () => {
+      // Expanding it there would hand the macro the selected values, leaving it
+      // with no variable to filter by.
+      expect(
+        replaceMacros({
+          sqlTemplate:
+            'WHERE $__filter(ServiceName, $service) AND $__conditionalAll(1=1, $service)',
+          variables: nested,
+        }),
+      ).toBe("WHERE (ServiceName IN ('api', 'web')) AND (1=1)");
+    });
+
+    it('does not re-expand a value that lands in an argument', () => {
+      expect(
+        replaceMacros({
+          sqlTemplate: 'WHERE $__timeFilter(${tricky:csv})',
+          variables: [{ name: 'tricky', values: ['$__fromTime'] }],
+        }),
+      ).toBe(`WHERE ${timeFilterOn('$__fromTime')}`);
+    });
+
+    it('throws when a nested argument list is never closed', () => {
+      expect(() =>
+        replaceMacros({
+          sqlTemplate: 'WHERE $__conditionalAll($__timeFilter(ts, service)',
+          variables: nested,
+        }),
+      ).toThrow(MalformedMacroArgsError);
+    });
+  });
+});
+
+const PROMQL_DATE_RANGE: [Date, Date] = [
+  new Date('2024-01-01T00:00:00Z'),
+  new Date('2024-01-01T01:00:00Z'),
+];
+
+describe('substitutePromqlChartConfigTemplates', () => {
+  const promqlConfig = (
+    promqlExpression: string,
+    variables?: ChartVariable[],
+  ) => ({
+    configType: 'promql' as const,
+    promqlExpression,
+    connection: 'local',
+    variables,
+    dateRange: PROMQL_DATE_RANGE,
+  });
+
+  it('leaves references as written when there is no variable context', () => {
+    expect(
+      substitutePromqlChartConfigTemplates(
+        promqlConfig('up{service=~"$service"}'),
+      ).promqlExpression,
+    ).toBe('up{service=~"$service"}');
+  });
+
+  it('expands the expression and consumes the variables', () => {
+    expect(
+      substitutePromqlChartConfigTemplates(
+        promqlConfig('up{service=~"$service"}', [SERVICE]),
+      ),
+    ).toMatchObject({
+      promqlExpression: 'up{service=~"(api|web)"}',
+      variables: undefined,
+    });
+  });
+
+  it('renders an empty selection as an unconstrained matcher', () => {
+    expect(
+      substitutePromqlChartConfigTemplates(
+        promqlConfig('up{service=~"$service"}', [EMPTY_SERVICE]),
+      ).promqlExpression,
+    ).toBe('up{service=~".*"}');
+  });
+
+  it('expands every expression of a multi-expression config', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [
+          { expression: 'up{service=~"$service"}', alias: 'up' },
+          { expression: 'rate(errors{service=~"$service"}[5m])' },
+        ],
+        variables: [SERVICE],
+        dateRange: PROMQL_DATE_RANGE,
+      }),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up{service=~"(api|web)"}', alias: 'up' },
+        { expression: 'rate(errors{service=~"(api|web)"}[5m])' },
+      ],
+      variables: undefined,
+    });
+  });
+
+  it('adds its filters to every selector after expanding variables', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [
+          { expression: 'up' },
+          { expression: 'rate(errors{service=~"$service"}[5m])' },
+        ],
+        variables: [SERVICE],
+        filters: [
+          { type: 'promql', condition: 'job="api"' },
+          { type: 'promql', condition: 'env!="dev"' },
+        ],
+        displayType: DisplayType.Line,
+        dateRange: PROMQL_DATE_RANGE,
+      }),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up{job="api", env!="dev"}' },
+        {
+          expression:
+            'rate(errors{service=~"(api|web)", job="api", env!="dev"}[5m])',
+        },
+      ],
+      filters: undefined,
+    });
+  });
+
+  it('rejects an unparseable expression when there are filters', () => {
+    expect(() =>
+      substitutePromqlChartConfigTemplates({
+        ...promqlConfig('up{job=}'),
+        filters: [{ type: 'promql', condition: 'job="api"' }],
+      }),
+    ).toThrow(/failed to parse/);
+  });
+
+  it('adds filters only to the expressions the display queries', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [{ expression: 'up' }, { expression: 'up{job=}' }],
+        filters: [{ type: 'promql', condition: 'env="prod"' }],
+        displayType: DisplayType.Number,
+        dateRange: PROMQL_DATE_RANGE,
+      }).promqlExpression,
+    ).toEqual([{ expression: 'up{env="prod"}' }, { expression: 'up{job=}' }]);
+  });
+
+  it('leaves blank rows blank when there are filters', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [{ expression: 'up' }, { expression: '  ' }],
+        filters: [{ type: 'promql', condition: 'env="prod"' }],
+        displayType: DisplayType.Line,
+        dateRange: PROMQL_DATE_RANGE,
+      }).promqlExpression,
+    ).toEqual([{ expression: 'up{env="prod"}' }, { expression: '  ' }]);
+  });
+
+  it('leaves an unparseable expression alone when there are no filters', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        ...promqlConfig('up{job=}'),
+        filters: [],
+      }).promqlExpression,
+    ).toBe('up{job=}');
+  });
+});
+
+describe('substitutePromqlChartConfigTemplates macros', () => {
+  const substitute = (
+    promqlExpression: string,
+    {
+      variables,
+      granularity = '5 minute',
+      dateRange = PROMQL_DATE_RANGE,
+      minGranularitySeconds,
+    }: {
+      variables?: ChartVariable[];
+      granularity?: string;
+      dateRange?: [Date, Date];
+      minGranularitySeconds?: number;
+    } = {},
+  ) =>
+    substitutePromqlChartConfigTemplates({
+      configType: 'promql' as const,
+      connection: 'local',
+      promqlExpression,
+      variables,
+      granularity,
+      dateRange,
+      minGranularitySeconds,
+    }).promqlExpression;
+
+  it('expands macros without a variable context', () => {
+    expect(
+      substitute(
+        'rate(a[$__rate_interval]) + avg_over_time(b[$__interval]) + increase(c[$__range])',
+      ),
+    ).toBe('rate(a[315s]) + avg_over_time(b[300s]) + increase(c[3600s])');
+  });
+
+  it('expands macros and variables together', () => {
+    expect(
+      substitute('rate(up{service=~"$service"}[$__rate_interval])', {
+        variables: [SERVICE],
+      }),
+    ).toBe('rate(up{service=~"(api|web)"}[315s])');
+  });
+
+  it("sizes `$__rate_interval` from the source's minimum auto granularity", () => {
+    // max(15 + 60, 4 * 60): without the floor this would be 60s, a window that
+    // holds a single sample of data scraped every 60s.
+    expect(
+      substitute('rate(a[$__rate_interval])', {
+        granularity: '15 second',
+        minGranularitySeconds: 60,
+      }),
+    ).toBe('rate(a[240s])');
+  });
+
+  it('floors `$__interval` only while the granularity is auto', () => {
+    expect(
+      substitute('avg_over_time(a[$__interval])', {
+        granularity: 'auto',
+        minGranularitySeconds: 300,
+      }),
+    ).toBe('avg_over_time(a[300s])');
+    expect(
+      substitute('avg_over_time(a[$__interval])', {
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      }),
+    ).toBe('avg_over_time(a[15s])');
+  });
+
+  it('expands every expression of a multi-expression config', () => {
+    expect(
+      substitutePromqlChartConfigTemplates({
+        configType: 'promql' as const,
+        connection: 'local',
+        promqlExpression: [
+          { expression: 'rate(a[$__interval])' },
+          { expression: 'increase(b[$__range])' },
+        ],
+        granularity: '1 minute',
+        dateRange: PROMQL_DATE_RANGE,
+      }).promqlExpression,
+    ).toEqual([
+      { expression: 'rate(a[60s])' },
+      { expression: 'increase(b[3600s])' },
+    ]);
+  });
+
+  it('leaves a selected value that looks like a macro inert', () => {
+    expect(
+      substitute('up{path=~"${path:csv}"}', {
+        variables: [variable('path', ['$__interval'])],
+      }),
+    ).toBe('up{path=~"$__interval"}');
+  });
+
+  it('leaves SQL-only and unknown macros as written', () => {
+    expect(substitute('up{a="$__filter($service)"} $__foo $__intervals')).toBe(
+      'up{a="$__filter($service)"} $__foo $__intervals',
+    );
+  });
+
+  it('throws for a macro given arguments', () => {
+    expect(() => substitute('rate(a[$__interval(1)])')).toThrow(
+      "Macro 'interval' expects 0 argument(s), but got 1",
+    );
+  });
+
+  it('throws for a macro with an unclosed argument list', () => {
+    expect(() => substitute('up offset $__interval(')).toThrow(
+      MalformedMacroArgsError,
+    );
   });
 });

@@ -50,6 +50,11 @@ describe('isTestFile', () => {
     assert.ok(isTestFile('packages/app/tests/e2e/navigation.ts'));
   });
 
+  it('matches Storybook story files', () => {
+    assert.ok(isTestFile('packages/app/src/components/Alert.stories.tsx'));
+    assert.ok(isTestFile('packages/app/src/HDXMultiSeriesTable.stories.ts'));
+  });
+
   it('matches the E2E-only ClickHouse fixture, but not its shipped siblings', () => {
     assert.ok(isTestFile('docker/clickhouse/local/init-db-e2e.sh'));
     // config.xml / users.xml are copied into the all-in-one image — production config

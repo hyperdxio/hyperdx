@@ -1,5 +1,15 @@
 import { createParser } from 'nuqs';
+import {
+  DashboardFilterValue,
+  DashboardFilterValueSchema,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
+
+import {
+  decodeUrlParamValue,
+  encodeJsonUrlParamValue,
+  encodeUrlParamValue,
+} from './urlParamEncoding';
 
 /**
  * Problem: nuqs serializes spaces as '+' (form-encoding). When
@@ -21,15 +31,8 @@ import { SortingState } from '@tanstack/react-table';
  * as %0A automatically).
  */
 export const parseAsStringEncoded = createParser<string>({
-  parse: value => {
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      // Malformed URI sequence – return as-is for robustness.
-      return value;
-    }
-  },
-  serialize: value => encodeURIComponent(value),
+  parse: decodeUrlParamValue,
+  serialize: encodeUrlParamValue,
 });
 
 /**
@@ -48,7 +51,9 @@ export const parseAsStringEncoded = createParser<string>({
  * the safe default rather than a value that throws downstream during render.
  * Zod schemas satisfy this signature via `schema.parse`.
  */
-export function parseAsJsonEncoded<T>(validate?: (value: unknown) => T) {
+export function parseAsJsonEncoded<T>(
+  validate?: (value: unknown) => T | null | undefined,
+) {
   const finalize = (parsed: unknown): T | null => {
     if (!validate) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -74,26 +79,49 @@ export function parseAsJsonEncoded<T>(validate?: (value: unknown) => T) {
       }
 
       try {
-        return finalize(JSON.parse(decodeURIComponent(value)));
+        return finalize(JSON.parse(decodeUrlParamValue(value)));
       } catch {
         return null;
       }
     },
-    serialize: value => encodeURIComponent(JSON.stringify(value)),
+    serialize: encodeJsonUrlParamValue,
   });
 }
+
+/**
+ * The dashboard `filters=` param: an array of filter-value entries, each either
+ * expression-keyed (`{type:'sql'}`) or variable-keyed (`{type:'variable'}`).
+ *
+ * Lenient by design — an unrecognized entry is dropped and the rest of the
+ * array survives.
+ */
+export const dashboardFilterValuesParser = parseAsJsonEncoded<
+  DashboardFilterValue[]
+>(value =>
+  Array.isArray(value)
+    ? value.flatMap(entry => {
+        const parsed = DashboardFilterValueSchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+    : null,
+);
 
 export const parseAsSortingStateString = createParser<SortingState[number]>({
   parse: value => {
     if (!value) {
       return null;
     }
-    const keys = value.split(' ');
-    const direction = keys.pop();
-    const key = keys.join(' ');
+    // Column ids are select expressions and may contain spaces, so everything
+    // before a trailing ASC/DESC is the id. Without an explicit direction (e.g.
+    // "(TimestampTime, Timestamp)" or "x DESC NULLS LAST") return null so
+    // DBSqlRowTable leaves the raw ORDER BY string untouched.
+    const match = value.trim().match(/^(.+?)\s+(asc|desc)$/i);
+    if (!match) {
+      return null;
+    }
     return {
-      id: key,
-      desc: direction === 'DESC',
+      id: match[1],
+      desc: match[2].toUpperCase() === 'DESC',
     };
   },
   serialize: value => {

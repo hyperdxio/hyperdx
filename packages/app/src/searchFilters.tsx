@@ -43,6 +43,19 @@ const unescapeFilterStateKeys = (filters: FilterState): FilterState => {
   return cleaned;
 };
 
+// Whether a clean FilterState key belongs to one of `allowedColumnNames`.
+// Top-level columns are stored as-is, nested JSON/Map keys as
+// `Root.nested.path`. An exact match handles the rare case of a column with
+// dots in its name.
+export const isKeyCompatibleWithColumns = (
+  key: string,
+  allowedColumnNames: Set<string>,
+): boolean => {
+  const dotIdx = key.indexOf('.');
+  const rootColumn = dotIdx > 0 ? key.slice(0, dotIdx) : key;
+  return allowedColumnNames.has(key) || allowedColumnNames.has(rootColumn);
+};
+
 export const areFiltersEqual = (a: FilterState, b: FilterState) => {
   const aKeys = Object.keys(a);
   const bKeys = Object.keys(b);
@@ -283,12 +296,7 @@ export const useSearchPageFilterState = ({
       const dropped: string[] = [];
       const kept: FilterState = {};
       for (const [key, value] of Object.entries(filters)) {
-        // Filter keys are dot-normalized, top-level columns are stored as-is,
-        // nested JSON/Map keys as `Root.nested.path`. An exact match handles
-        // the rare case of a column with dots in its name.
-        const dotIdx = key.indexOf('.');
-        const rootColumn = dotIdx > 0 ? key.slice(0, dotIdx) : key;
-        if (allowedColumnNames.has(key) || allowedColumnNames.has(rootColumn)) {
+        if (isKeyCompatibleWithColumns(key, allowedColumnNames)) {
           kept[key] = value;
         } else {
           dropped.push(key);

@@ -14,19 +14,27 @@ import { expect, Locator } from '@playwright/test';
 const SUGGESTION_TIMEOUT = 15_000;
 
 /**
- * Switch a WHERE input to Lucene via its language select.
+ * Switch a WHERE input's query language via its language select.
  *
  * Takes the input's own `where-language-switch` rather than looking it up on
  * the page, because a page commonly renders several: the trace waterfall has
  * one per filter, and the dashboard's tile editor overlays the dashboard's own.
  */
-export async function switchWhereToLucene(languageSwitch: Locator) {
+export async function switchWhereLanguage(
+  languageSwitch: Locator,
+  language: 'SQL' | 'Lucene',
+) {
   await languageSwitch.getByLabel('Query language').click();
   // The Select's dropdown is portalled out of the switch, so go via the page.
   await languageSwitch
     .page()
-    .getByRole('option', { name: 'Lucene', exact: true })
+    .getByRole('option', { name: language, exact: true })
     .click();
+}
+
+/** Switch a WHERE input to Lucene. */
+export async function switchWhereToLucene(languageSwitch: Locator) {
+  await switchWhereLanguage(languageSwitch, 'Lucene');
 }
 
 /**

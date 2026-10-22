@@ -2,39 +2,38 @@ import * as React from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
-import { AlertInterval, AlertSource } from '@hyperdx/common-utils/dist/types';
+import { AlertInterval } from '@hyperdx/common-utils/dist/types';
 import {
+  ActionIcon,
   Anchor,
   Breadcrumbs,
-  Button,
   Container,
   Group,
   Skeleton,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
 import { IconExternalLink } from '@tabler/icons-react';
 
 import { AckAlert } from '@/components/alerts/AckAlert';
 import { AlertDetailChart } from '@/components/alerts/AlertDetailChart';
+import { AlertDetailProperties } from '@/components/alerts/AlertDetailProperties';
+import { AlertNote } from '@/components/alerts/AlertDetails';
 import { AlertEvaluationsTable } from '@/components/alerts/AlertEvaluationsTable';
 import { AlertHistoryCardList } from '@/components/alerts/AlertHistoryCards';
-import { AlertPropertiesSummary } from '@/components/alerts/AlertPropertiesSummary';
+import { AlertRowMenu } from '@/components/alerts/AlertRowMenu';
 import { AlertStateBadge } from '@/components/alerts/AlertStateBadge';
 import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
+import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 
-import { useBrandDisplayName } from './theme/ThemeProvider';
-import {
-  AlertNote,
-  getAlertDisplayName,
-  getAlertSourceUrl,
-} from './AlertsPage';
+import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
-import { withAppNav } from './layout';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { withAppNavForSurface } from './layout';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 import type { AlertsPageItem } from './types';
 
 import styles from '@styles/AlertsPage.module.scss';
@@ -71,7 +70,7 @@ const TIMELINE_ITEMS = 60;
 function AlertProperties({ alert }: { alert: AlertsPageItem }) {
   return (
     <Stack gap={2}>
-      <AlertPropertiesSummary alert={alert} showSchedule />
+      <AlertDetailProperties alert={alert} />
       {alert.note && <AlertNote note={alert.note} />}
     </Stack>
   );
@@ -79,15 +78,13 @@ function AlertProperties({ alert }: { alert: AlertsPageItem }) {
 
 function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
   const alertUrl = getAlertSourceUrl(alert);
+  const router = useRouter();
 
   // Interval-dependent, but fixed for the page lifetime: the body only
   // mounts once the alert has loaded, and useNewTimeQuery reads the initial
   // values once (a from/to in the URL still takes precedence).
   const defaultTimeRangeLabel = getDefaultTimeRangeLabel(alert.interval);
-  const defaultTimeRange = React.useMemo(
-    () => parseTimeQuery(defaultTimeRangeLabel, false) as [Date, Date],
-    [defaultTimeRangeLabel],
-  );
+  const defaultTimeRange = useDefaultTimeRange(defaultTimeRangeLabel);
   const [displayedTimeInputValue, setDisplayedTimeInputValue] = React.useState(
     defaultTimeRangeLabel,
   );
@@ -131,32 +128,51 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
               Alerts
             </Anchor>
             <Text fz="sm" c="dimmed">
-              {getAlertDisplayName(alert) || 'Alert'}
+              {alert.displayName || 'Alert'}
             </Text>
           </Breadcrumbs>
         }
         leading={
           <Group gap="sm">
             {alert.state != null && <AlertStateBadge state={alert.state} />}
-            <Text fw={500}>{getAlertDisplayName(alert)}</Text>
+            <Text fw={500} data-testid="alert-detail-name">
+              {alert.displayName}
+            </Text>
+            {alertUrl && (
+              /* Next to the name rather than in the actions row: it navigates
+                 to what the alert watches, so it belongs with the identity,
+                 not with the verbs acting on the alert. */
+              <Tooltip
+                label={`Open ${getAlertSourceLabel(alert).toLowerCase()}`}
+                withArrow
+              >
+                <ActionIcon
+                  component={Link}
+                  href={alertUrl}
+                  variant="subtle"
+                  size="md"
+                  aria-label={`Open ${getAlertSourceLabel(alert).toLowerCase()}`}
+                  data-testid="open-alert-source"
+                >
+                  <IconExternalLink size={16} />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
         }
         actions={
           <Group gap="sm" wrap="nowrap">
             <AckAlert alert={alert} />
-            {alertUrl && (
-              <Button
-                component={Link}
-                href={alertUrl}
-                variant="secondary"
-                size="compact-sm"
-                rightSection={<IconExternalLink size={14} />}
-              >
-                {alert.source === AlertSource.TILE
-                  ? 'Open dashboard tile'
-                  : 'Open saved search'}
-              </Button>
-            )}
+            {/* Edit, Terraform export and Delete live behind one overflow
+                control, shared with the alerts list so both surfaces offer the
+                same actions. The menu's own source-link item is suppressed:
+                this page carries that link next to the title instead. */}
+            <AlertRowMenu
+              alert={alert}
+              alertName={alert.displayName}
+              dateRange={searchedTimeRange}
+              onDeleted={() => router.push('/alerts')}
+            />
             <TimePicker
               inputValue={displayedTimeInputValue}
               setInputValue={setDisplayedTimeInputValue}
@@ -207,7 +223,6 @@ function AlertDetailBody({ alert }: { alert: AlertsPageItem }) {
 }
 
 export default function AlertDetailPage() {
-  const brandName = useBrandDisplayName();
   const router = useRouter();
   const alertId =
     typeof router.query.alertId === 'string' ? router.query.alertId : undefined;
@@ -222,6 +237,9 @@ export default function AlertDetailPage() {
 
   const { data, isLoading, isError } = api.useAlert(alertId);
   const alert = data?.data;
+  const title = usePageTitle(
+    alert ? `${alert.displayName} - Alerts` : 'Alerts',
+  );
 
   if (!IS_ALERT_DETAILS_ENABLED) {
     return null;
@@ -233,10 +251,7 @@ export default function AlertDetailPage() {
       style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
     >
       <Head>
-        <title>
-          {alert ? `${getAlertDisplayName(alert)} - Alerts` : 'Alerts'} -{' '}
-          {brandName}
-        </title>
+        <title>{title}</title>
       </Head>
       {isLoading && (
         <Container size="xl" py="md" w="100%">
@@ -265,4 +280,4 @@ export default function AlertDetailPage() {
   );
 }
 
-AlertDetailPage.getLayout = withAppNav;
+AlertDetailPage.getLayout = withAppNavForSurface('alert', 'alert-detail');

@@ -6,15 +6,33 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { expect, Locator, Page } from '@playwright/test';
 
 import { ChartEditorComponent } from '../components/ChartEditorComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
-import { getSqlEditor } from '../utils/locators';
+import {
+  dismissSqlAutocomplete,
+  getSqlEditor,
+  replaceEditorText,
+} from '../utils/locators';
+import { switchWhereLanguage } from '../utils/lucene-autocomplete';
+
+/** The "Dropdown values filter" on a dashboard filter, and its language. */
+export type FilterWhereOptions = {
+  value: string;
+  language?: 'sql' | 'lucene';
+};
+
+/** The "Required" checkbox and the "Block every tile" one nested under it. */
+export type FilterRequirementOptions = {
+  required?: boolean;
+  globalRequirement?: boolean;
+};
 
 /**
  * Config format tile config, as accepted by the external dashboard API.
  * Used with verifyTileFormFromConfig
  */
 export type TileConfig = {
-  displayType: Exclude<DisplayType, 'heatmap'>;
+  displayType: DisplayType;
   sourceId?: string;
   select?:
     | {
@@ -38,7 +56,8 @@ type SeriesType =
   | 'markdown'
   | 'pie'
   | 'event_patterns'
-  | 'bar';
+  | 'bar'
+  | 'heatmap';
 
 /**
  * Series data structure for chart verification
@@ -53,7 +72,7 @@ export type SeriesData = {
   whereLanguage?: 'sql' | 'lucene';
   groupBy?: string[];
   alias?: string;
-  displayType?: 'line' | 'stacked_bar';
+  displayType?: 'line' | 'stacked_bar' | 'stacked_line';
   sortOrder?: 'desc' | 'asc';
   fields?: string[]; // For search type
   content?: string; // For markdown type
@@ -74,7 +93,6 @@ export class DashboardPage {
   private readonly addDropdownButton: Locator;
   private readonly addTileMenuItem: Locator;
   private readonly addGroupMenuItem: Locator;
-  private readonly dashboardNameHeading: Locator;
   private readonly searchSubmitButton: Locator;
   private readonly liveButton: Locator;
   private readonly tempDashboardBanner: Locator;
@@ -87,6 +105,9 @@ export class DashboardPage {
   readonly appliesToSourceSelector: Locator;
   readonly broadcastFilterCheckbox: Locator;
   readonly variableEnabledCheckbox: Locator;
+  readonly requiredFilterCheckbox: Locator;
+  readonly globalRequirementCheckbox: Locator;
+  readonly singleSelectCheckbox: Locator;
   readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
@@ -102,6 +123,7 @@ export class DashboardPage {
   private readonly removeDefaultQueryAndFiltersMenuItem: Locator;
   private readonly exportDashboardMenuItem: Locator;
   private readonly enterKioskModeMenuItem: Locator;
+  private readonly toggleReleaseAnnotationsMenuItem: Locator;
   private readonly exitKioskModeBtn: Locator;
   private readonly kioskHeaderContainer: Locator;
   private readonly kioskLiveStatusBadge: Locator;
@@ -127,7 +149,6 @@ export class DashboardPage {
       '[data-testid="search-submit-button"]',
     );
     this.liveButton = page.locator('button:has-text("Live")');
-    this.dashboardNameHeading = page.getByRole('heading', { level: 3 });
     this.granularityPicker = page.getByTestId('granularity-picker');
     this.tempDashboardBanner = page.locator(
       '[data-testid="temporary-dashboard-banner"]',
@@ -148,6 +169,13 @@ export class DashboardPage {
     );
     this.variableEnabledCheckbox = page.getByTestId(
       'filter-variable-enabled-checkbox',
+    );
+    this.requiredFilterCheckbox = page.getByTestId('filter-required-checkbox');
+    this.globalRequirementCheckbox = page.getByTestId(
+      'filter-global-requirement-checkbox',
+    );
+    this.singleSelectCheckbox = page.getByTestId(
+      'filter-single-select-checkbox',
     );
     this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
@@ -177,6 +205,9 @@ export class DashboardPage {
     );
     this.enterKioskModeMenuItem = page.getByTestId(
       'enter-kiosk-mode-menu-item',
+    );
+    this.toggleReleaseAnnotationsMenuItem = page.getByTestId(
+      'toggle-release-annotations-menu-item',
     );
     this.exitKioskModeBtn = page.getByTestId('exit-kiosk-mode-button');
     this.kioskHeaderContainer = page.getByTestId('kiosk-header');
@@ -230,27 +261,7 @@ export class DashboardPage {
    * Edit dashboard name
    */
   async editDashboardName(newName: string) {
-    // Wait for initial dashboard name to load
-    const defaultNameHeading = this.page.getByRole('heading', {
-      name: 'My Dashboard',
-      level: 3,
-    });
-    await defaultNameHeading.waitFor({ state: 'visible', timeout: 5000 });
-
-    // Double-click to enter edit mode
-    await defaultNameHeading.dblclick();
-
-    // Fill in new name
-    const nameInput = this.page.locator('input[placeholder="Name"]');
-    await nameInput.fill(newName);
-    await this.page.keyboard.press('Enter');
-
-    // Wait for the name to be saved
-    const updatedHeading = this.page.getByRole('heading', {
-      name: newName,
-      level: 3,
-    });
-    await updatedHeading.waitFor({ state: 'visible', timeout: 10000 });
+    await this.renameDashboard('My Dashboard', newName);
   }
 
   /**
@@ -259,23 +270,18 @@ export class DashboardPage {
    * earlier in the same test).
    */
   async renameDashboard(currentName: string, newName: string) {
-    const currentHeading = this.page.getByRole('heading', {
-      name: currentName,
-      level: 3,
-    });
-    await currentHeading.waitFor({ state: 'visible', timeout: 10000 });
+    const nameInput = this.page.getByTestId('dashboard-name-input');
+    await expect(nameInput).toHaveValue(currentName, { timeout: 10000 });
 
-    await currentHeading.dblclick();
-
-    const nameInput = this.page.locator('input[placeholder="Name"]');
     await nameInput.fill(newName);
-    await this.page.keyboard.press('Enter');
+    await nameInput.press('Enter');
 
-    const updatedHeading = this.page.getByRole('heading', {
-      name: newName,
-      level: 3,
+    // The document title comes from the saved dashboard, so it only changes
+    // once the rename has persisted.
+    const escaped = newName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} - `), {
+      timeout: 10000,
     });
-    await updatedHeading.waitFor({ state: 'visible', timeout: 10000 });
   }
 
   /**
@@ -585,13 +591,24 @@ export class DashboardPage {
    * Add a tile bound to an explicit source. Unlike addTileWithConfig (which
    * relies on the editor's default source), this selects a known source so the
    * exported tile carries a deterministic source name that auto-maps on import.
+   *
+   * `seriesWhere` sets the tile's own filter, which a time chart stores as its
+   * series' `aggCondition` — a different field from the dashboard-wide filter
+   * that `setGlobalFilter` drives.
    */
-  async addTileWithSource(chartName: string, sourceName: string) {
+  async addTileWithSource(
+    chartName: string,
+    sourceName: string,
+    seriesWhere?: string,
+  ) {
     await this.addTile();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
     await this.chartEditor.setChartName(chartName);
     await this.chartEditor.selectSource(sourceName);
+    if (seriesWhere != null) {
+      await this.chartEditor.setSeriesWhere(seriesWhere);
+    }
     await this.chartEditor.runQuery(false);
     await this.chartEditor.save();
     await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
@@ -609,6 +626,10 @@ export class DashboardPage {
    */
   getTile(index: number) {
     return this.getTiles().nth(index);
+  }
+
+  getTileHeatmap(tileIndex = 0) {
+    return new HeatmapComponent(this.page, this.getTile(tileIndex));
   }
 
   /**
@@ -634,6 +655,33 @@ export class DashboardPage {
       .locator('[data-testid^="tile-actions-button-"]')
       .nth(tileIndex)
       .click();
+  }
+
+  /**
+   * Open the actions menu of the tile with this id. Narrow tiles swap the
+   * toolbar for a single collapsed menu button.
+   */
+  async openTileActionsMenuById(tileId: string, { narrow = false } = {}) {
+    const tile = this.page.getByTestId(`dashboard-tile-${tileId}`);
+    await tile.scrollIntoViewIfNeeded();
+    await tile.hover();
+    const trigger = narrow
+      ? tile.locator('button').filter({ visible: true })
+      : this.page.getByTestId(`tile-actions-button-${tileId}`);
+    await trigger.click();
+  }
+
+  getTileMenuItem(name: string): Locator {
+    return this.page.getByRole('menuitem', { name, exact: true });
+  }
+
+  /**
+   * Open the "Move to group" submenu of an open tile menu.
+   */
+  async openMoveToGroupSubmenu(): Promise<Locator> {
+    const item = this.getTileMenuItem('Move to group');
+    await item.hover();
+    return this.page.locator(`#${await item.getAttribute('aria-controls')}`);
   }
 
   /**
@@ -675,6 +723,10 @@ export class DashboardPage {
    */
   async setGlobalFilter(filter: string) {
     await this.searchInput.fill(filter);
+    // Dismiss the suggestion popover, which otherwise overlays the submit
+    // button and fails its actionability check. Blur (not Escape) so it can't
+    // close a surrounding modal — same reasoning as `dismissSqlAutocomplete`.
+    await this.searchInput.blur();
     await this.searchSubmitButton.click();
   }
 
@@ -787,6 +839,16 @@ export class DashboardPage {
     return this.page.locator('.recharts-responsive-container');
   }
 
+  /** A time-chart display-switcher option in a tile's toolbar. */
+  getTileDisplaySwitcherOption(
+    displayType: 'line' | 'stacked_bar' | 'stacked_line',
+    tileIndex = 0,
+  ) {
+    return this.getTile(tileIndex).getByTestId(
+      `display-switcher-${displayType}`,
+    );
+  }
+
   /**
    * Read the trimmed text of all th cells in the first thead tr of the
    * given tile's rendered table. Waits for the table to be visible first.
@@ -818,12 +880,62 @@ export class DashboardPage {
     await this.addFiltersButton.click();
   }
 
+  /** The filter edit form's display-name input. */
+  getFilterNameInput(): Locator {
+    return this.page.getByTestId('filter-name-input');
+  }
+
+  /**
+   * Fill only the filter's display name in the open edit form. Enough to mark
+   * the react-hook-form dirty without completing the whole form.
+   */
+  async fillFilterName(name: string) {
+    await this.getFilterNameInput().fill(name);
+  }
+
+  /** Open the edit form for an already-saved filter, without saving. */
+  async openEditFilterForm(filterName: string) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+  }
+
+  /**
+   * Replace the filter expression in the open edit form, then blur the SQL
+   * editor so its autocomplete tooltip closes — left open it overlaps the save
+   * button and makes the click flake on "element is not stable".
+   */
+  async fillFilterExpression(expression: string) {
+    const editor = getSqlEditor(this.page, 'expression');
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    await this.page.keyboard.insertText(expression);
+    await this.getFilterNameInput().click();
+  }
+
   /** Pick the data source in the filter edit form. */
   async selectFilterSource(sourceName: string) {
     await this.filtersSourceSelector.click();
     await this.page
       .getByRole('option', { name: sourceName, exact: true })
       .click();
+  }
+
+  /**
+   * Set the filter form's requirement checkboxes, leaving either alone when the
+   * caller says nothing about it. The nested "Block every tile" box only exists
+   * while "Required" is checked, so the order matters.
+   */
+  private async setFilterRequirement(options?: FilterRequirementOptions) {
+    if (options?.required !== undefined) {
+      await this.requiredFilterCheckbox.setChecked(options.required);
+    }
+    if (options?.globalRequirement !== undefined) {
+      await this.globalRequirementCheckbox.setChecked(
+        options.globalRequirement,
+      );
+    }
   }
 
   async fillFilterForm(
@@ -836,7 +948,8 @@ export class DashboardPage {
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
       variableName?: string;
-    },
+    } & FilterRequirementOptions,
+    whereOptions?: FilterWhereOptions,
   ) {
     const filterNameInput = this.page.getByTestId('filter-name-input');
     await filterNameInput.fill(name);
@@ -853,27 +966,36 @@ export class DashboardPage {
         .click();
     }
 
+    if (whereOptions) {
+      await this.fillFilterDropdownValuesWhere(whereOptions);
+    }
+
     // Applied before the applies-to selector below, because unchecking broadcast
     // hides that control.
     if (variableOptions?.isBroadcastEnabled === false) {
       await this.broadcastFilterCheckbox.uncheck();
     }
+    // New filters default to broadcast-only, so the variable box is opt-in here:
+    // asking for a variable name, or for the mode outright, checks it.
     if (variableOptions?.isVariableEnabled === false) {
       await this.variableEnabledCheckbox.uncheck();
-    } else if (variableOptions?.variableName !== undefined) {
+    } else if (
+      variableOptions?.isVariableEnabled === true ||
+      variableOptions?.variableName !== undefined
+    ) {
       await this.variableEnabledCheckbox.check();
-      await this.variableNameInput.fill(variableOptions.variableName);
+      if (variableOptions.variableName !== undefined) {
+        await this.variableNameInput.fill(variableOptions.variableName);
+      }
     }
 
+    await this.setFilterRequirement(variableOptions);
+
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
-      for (const appliesName of appliesToSourceNames) {
-        await this.appliesToSourceSelector.click();
-        await this.page
-          .getByRole('option', { name: appliesName, exact: true })
-          .click();
-      }
-      // Close the dropdown so the save button is clickable.
-      await this.page.keyboard.press('Escape');
+      await this.selectSourcesInMultiSelect(
+        this.appliesToSourceSelector,
+        appliesToSourceNames,
+      );
     }
 
     const saveFilterButton = this.page.getByTestId('save-filter-button');
@@ -890,7 +1012,8 @@ export class DashboardPage {
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
       variableName?: string;
-    },
+    } & FilterRequirementOptions,
+    whereOptions?: FilterWhereOptions,
   ) {
     await this.addFiltersButton.click();
 
@@ -901,7 +1024,75 @@ export class DashboardPage {
       metricType,
       appliesToSourceNames,
       variableOptions,
+      whereOptions,
     );
+  }
+
+  /** The filter edit form's dialog, scoped so page-level locators stay unambiguous. */
+  getFilterForm(): Locator {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.page.getByTestId('filter-name-input') });
+  }
+
+  /**
+   * The "Dropdown values filter" input's root, reached from its language switch.
+   *
+   * Located this way because the input itself carries no test id, and matching
+   * it by placeholder only works while it is empty.
+   */
+  getFilterWhereRoot(): Locator {
+    return this.getFilterForm()
+      .getByTestId('where-language-switch')
+      .locator('xpath=..');
+  }
+
+  /** The CodeMirror editor behind the SQL form of the dropdown values filter. */
+  getFilterWhereSqlEditor(): Locator {
+    return this.getFilterWhereRoot().locator('div.cm-editor');
+  }
+
+  /** What the dropdown values filter flags about the variables it references. */
+  getFilterWhereVariableWarning(): Locator {
+    return this.getFilterWhereRoot().getByTestId('variable-validation');
+  }
+
+  /**
+   * Fill the "Dropdown values filter" (the filter's `where`) in the open filter
+   * edit form, replacing whatever is there.
+   *
+   * The language is always set explicitly: the form seeds it from the
+   * `hdx-search-where-language` localStorage key, which other specs write, so
+   * "it defaults to SQL" is not safe to assume.
+   */
+  async fillFilterDropdownValuesWhere({
+    value,
+    language = 'sql',
+  }: FilterWhereOptions) {
+    await switchWhereLanguage(
+      this.getFilterForm().getByTestId('where-language-switch'),
+      language === 'sql' ? 'SQL' : 'Lucene',
+    );
+
+    if (language === 'lucene') {
+      const input = this.getFilterWhereRoot().getByRole('textbox');
+      await input.click();
+      await input.fill(value);
+      // Blur so the Lucene suggestion dropdown can't cover the save button.
+      await this.page.getByTestId('filter-name-input').click();
+      return;
+    }
+
+    const editor = this.getFilterWhereSqlEditor();
+    await editor.click();
+    await this.page.keyboard.press(
+      process.platform === 'darwin' ? 'Meta+A' : 'Control+A',
+    );
+    await this.page.keyboard.press('Backspace');
+    // insertText, not type: CodeMirror's bracket auto-closing would corrupt a
+    // clause containing `(`, as every macro reference does.
+    await this.page.keyboard.insertText(value);
+    await dismissSqlAutocomplete(this.page);
   }
 
   getFilterLabel(name: string) {
@@ -938,6 +1129,41 @@ export class DashboardPage {
     await this.page.getByTestId('save-filter-button').click();
   }
 
+  /**
+   * Toggle "Required" on an already-saved filter and save. Assumes the filters
+   * list modal is open.
+   */
+  async setFilterRequiredForSavedFilter(filterName: string, enabled: boolean) {
+    await this.page.getByTestId(`edit-filter-button-${filterName}`).click();
+    await this.requiredFilterCheckbox.setChecked(enabled);
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(filterName).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The caution icon shown when a required filter has no selected value. */
+  getFilterRequiredWarning(filterName: string): Locator {
+    return this.page.getByTestId(`dashboard-filter-required-${filterName}`);
+  }
+
+  /**
+   * The placeholder a tile renders instead of its chart while a required
+   * filter has no selected value.
+   */
+  getTileMissingRequiredFilters(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).getByTestId('tile-missing-required-filters');
+  }
+
+  /**
+   * The warning shown in the filter edit form when a filter both broadcasts and
+   * is a variable, with no "Applies to sources" scope to limit the broadcast.
+   */
+  get unscopedBroadcastWarning() {
+    return this.page.getByTestId('filter-unscoped-broadcast-warning');
+  }
+
   /** The warning icon shown when a filter neither broadcasts nor is a variable. */
   getFilterNoEffectIcon(name: string) {
     return this.page.getByTestId(`dashboard-filter-no-effect-${name}`);
@@ -945,6 +1171,11 @@ export class DashboardPage {
 
   getFilterItemByName(name: string) {
     return this.page.getByTestId(`dashboard-filter-item-${name}`);
+  }
+
+  /** The filters list's summary of which sources a filter broadcasts to. */
+  getFilterBroadcastTarget(name: string) {
+    return this.page.getByTestId(`dashboard-filter-applies-to-${name}`);
   }
 
   getFilterSelectByName(name: string) {
@@ -981,6 +1212,37 @@ export class DashboardPage {
    */
   getFilterEmptyDropdownState(): Locator {
     return this.page.getByText('Nothing found...').first();
+  }
+
+  /**
+   * Open a dashboard filter's dropdown, leaving it open so the caller can
+   * assert on the options it offers.
+   */
+  async openFilterDropdown(filterName: string) {
+    const select = this.getFilterSelectByName(filterName);
+    await select.waitFor({ state: 'visible', timeout: 15000 });
+    await select.scrollIntoViewIfNeeded();
+    await select.click();
+  }
+
+  /**
+   * Locator for one option in a dashboard filter's (open) dropdown. The
+   * dropdown is portaled out of the select, so this is located at page level.
+   */
+  getFilterOption(value: string): Locator {
+    return this.page.getByRole('option', { name: value, exact: true });
+  }
+
+  /** The warning shown when a filter's dropdown query awaits a variable's value. */
+  getFilterPendingVariableWarning(filterName: string): Locator {
+    return this.page.getByTestId(
+      `dashboard-filter-pending-variable-${filterName}`,
+    );
+  }
+
+  /** The error shown when a filter's dropdown values query failed. */
+  getFilterErrorIcon(filterName: string): Locator {
+    return this.page.getByTestId(`dashboard-filter-error-${filterName}`);
   }
 
   /**
@@ -1022,18 +1284,44 @@ export class DashboardPage {
   /**
    * Create a Number tile that counts events from `sourceName`. The tile editor's
    * default aggregation is "Count of Events", so no agg configuration is needed.
-   * Leaves exactly one tile on the dashboard.
+   *
+   * `sqlSeriesWhere` sets the tile's own SQL filter, the usual place a tile
+   * references a `$variable`.
    */
-  async addNumberTile(name: string, sourceName: string) {
+  async addNumberTile(
+    name: string,
+    sourceName: string,
+    options?: { sqlSeriesWhere?: string },
+  ) {
+    const existingTiles = await this.getTiles().count();
     await this.addTile();
     await expect(this.chartEditor.nameInput).toBeVisible();
     await this.chartEditor.waitForDataToLoad();
     await this.chartEditor.setChartType(DisplayType.Number);
     await this.chartEditor.setChartName(name);
     await this.chartEditor.selectSource(sourceName);
+    if (options?.sqlSeriesWhere != null) {
+      await this.chartEditor.setSqlWhere(options.sqlSeriesWhere, 'series');
+    }
     await this.chartEditor.runQuery(false);
     await this.chartEditor.save();
-    await expect(this.getTiles()).toHaveCount(1, { timeout: 10000 });
+    await expect(this.getTiles()).toHaveCount(existingTiles + 1, {
+      timeout: 10000,
+    });
+  }
+
+  /** Create a Markdown tile, which needs neither a source nor a query. */
+  async addMarkdownTile(name: string, content: string) {
+    const existingTiles = await this.getTiles().count();
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.setChartType(DisplayType.Markdown);
+    await this.chartEditor.setChartName(name);
+    await this.markdownTextarea.first().fill(content);
+    await this.chartEditor.save();
+    await expect(this.getTiles()).toHaveCount(existingTiles + 1, {
+      timeout: 10000,
+    });
   }
 
   /** Locator for the rendered value of a Number tile. */
@@ -1053,7 +1341,12 @@ export class DashboardPage {
    * or backticks. Assumes the Edit Filters modal is already open; leaves it open
    * (on the filters list) so multiple filters can be added in sequence.
    */
-  async addCustomFilter(name: string, sourceName: string, expression: string) {
+  async addCustomFilter(
+    name: string,
+    sourceName: string,
+    expression: string,
+    variableOptions?: { variableName: string },
+  ) {
     await this.addFiltersButton.click();
     const nameInput = this.page.getByTestId('filter-name-input');
     await nameInput.waitFor({ state: 'visible', timeout: 10000 });
@@ -1073,6 +1366,10 @@ export class DashboardPage {
     // closes — left open it overlaps the save button and makes the click flake
     // on "element is not stable".
     await nameInput.click();
+    if (variableOptions) {
+      await this.variableEnabledCheckbox.check();
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
     const saveButton = this.page.getByTestId('save-filter-button');
     await expect(saveButton).toBeEnabled();
     await saveButton.click();
@@ -1082,6 +1379,414 @@ export class DashboardPage {
       state: 'visible',
       timeout: 10000,
     });
+  }
+
+  /**
+   * The type dropdown at the top of the filter edit form. Only rendered where
+   * dashboard variables are on. It is a Mantine `Select`, whose test id lands
+   * on the underlying text input.
+   */
+  getFilterTypePicker(): Locator {
+    return this.page.getByTestId('filter-type-picker');
+  }
+
+  /** Switch the add-filter form between the available value types. */
+  async selectFilterType(
+    label:
+      | 'Queried values'
+      | 'Static values'
+      | 'PromQL label values'
+      | 'Ad hoc keys and values',
+  ) {
+    await this.getFilterTypePicker().click();
+    await this.getFilterOption(label).click();
+  }
+
+  /**
+   * The static filter form's options field — a Mantine `TagsInput`, whose test
+   * id lands on the underlying text input.
+   */
+  getFilterOptionsInput(): Locator {
+    return this.page.getByTestId('filter-options-input');
+  }
+
+  /**
+   * The authored options currently held by the options field, in order. Each
+   * is a Mantine `Pill`, matched by class because the pills carry no role or
+   * test id of their own and the filter form has no other pills.
+   *
+   * `allTextContents` does not auto-wait, so the field is waited for first —
+   * a read taken before the form has rendered would otherwise return `[]`.
+   */
+  async getFilterOptionValues(): Promise<string[]> {
+    await this.getFilterOptionsInput().waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+    const texts = await this.getFilterForm()
+      .locator('[class*="Pill-label"]')
+      .allTextContents();
+    return texts.map(text => text.trim());
+  }
+
+  /** Append `options` to the static filter form's options field, in order. */
+  async fillFilterOptions(options: string[]) {
+    const input = this.getFilterOptionsInput();
+    await input.click();
+    for (const option of options) {
+      await input.fill(option);
+      await input.press('Enter');
+    }
+  }
+
+  /**
+   * Add a dashboard filter whose dropdown offers a hand-authored list. Kept
+   * separate from `fillFilterForm` because a static filter shares only the
+   * display name and variable name with a queried one — it has no source,
+   * expression, or broadcast mode to configure.
+   *
+   * Assumes the Edit Filters modal is already open; leaves it open on the
+   * filters list, having waited for the new filter to land there so a slow
+   * save cannot race the next add.
+   */
+  async addStaticListFilterToDashboard(
+    name: string,
+    options: string[],
+    variableOptions?: {
+      variableName?: string;
+      singleSelect?: boolean;
+    } & FilterRequirementOptions,
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('Static values');
+    const nameInput = this.getFilterNameInput();
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.fillFilterOptions(options);
+    if (variableOptions?.variableName !== undefined) {
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    if (variableOptions?.singleSelect !== undefined) {
+      await this.singleSelectCheckbox.setChecked(variableOptions.singleSelect);
+    }
+    await this.setFilterRequirement(variableOptions);
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The PromQL filter form's label field. */
+  getFilterLabelInput(): Locator {
+    return this.page.getByTestId('filter-label-input');
+  }
+
+  /**
+   * The PromQL filter form's series-selector editor. Only rendered when the
+   * chosen source sits on a connection that proxies to a real Prometheus.
+   */
+  getFilterMatchInput(): Locator {
+    return this.getFilterForm().getByTestId('filter-match-input');
+  }
+
+  /** Replace the contents of the series-selector editor. */
+  async fillFilterMatch(selector: string) {
+    await replaceEditorText(
+      this.page,
+      this.getFilterMatchInput().locator('.cm-content'),
+      selector,
+    );
+  }
+
+  /** The current text of the series-selector editor. */
+  async getFilterMatchText(): Promise<string> {
+    return this.getFilterMatchInput().locator('.cm-content').innerText();
+  }
+
+  /**
+   * The series-selector editor's completion options. Portalled to the body
+   * rather than rendered in the modal, so this is not scoped to the form.
+   */
+  filterMatchCompletionOptions(): Locator {
+    return this.page.locator('.cm-tooltip-autocomplete > ul > li');
+  }
+
+  /** Accept the completion labelled `label` from that popup. */
+  async acceptFilterMatchCompletion(label: string) {
+    const option = this.filterMatchCompletionOptions()
+      .filter({ has: this.page.getByText(label, { exact: true }) })
+      .first();
+    await option.waitFor({ state: 'visible', timeout: 10000 });
+    await option.click();
+  }
+
+  /**
+   * Add a dashboard filter whose dropdown lists the values of one Prometheus
+   * label. Like the static variant it shares only the display name and variable
+   * name with a queried filter — there is no expression or broadcast mode, and
+   * the source must be a PromQL one.
+   *
+   * Assumes the Edit Filters modal is already open; leaves it open on the
+   * filters list, having waited for the new filter to land there so a slow
+   * save cannot race the next add.
+   */
+  async addPromqlLabelFilterToDashboard(
+    name: string,
+    sourceName: string,
+    label: string,
+    variableOptions?: {
+      variableName?: string;
+      match?: string;
+    } & FilterRequirementOptions,
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('PromQL label values');
+    const nameInput = this.getFilterNameInput();
+    await nameInput.waitFor({ state: 'visible', timeout: 10000 });
+    await nameInput.fill(name);
+    await this.selectFilterSource(sourceName);
+    await this.getFilterLabelInput().fill(label);
+    if (variableOptions?.match !== undefined) {
+      await this.fillFilterMatch(variableOptions.match);
+    }
+    if (variableOptions?.variableName !== undefined) {
+      await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    await this.setFilterRequirement(variableOptions);
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The ad hoc filter form's ClickHouse / Prometheus source type control. */
+  getAdhocFilterSourceTypeControl(): Locator {
+    return this.getFilterForm().getByTestId('adhoc-filter-source-type');
+  }
+
+  /** The ad hoc filter form's data sources multi-select. */
+  getAdhocFilterSourcesInput(): Locator {
+    return this.getFilterForm().getByTestId('adhoc-filter-sources');
+  }
+
+  /** Switch the ad hoc filter form between ClickHouse and Prometheus sources. */
+  async selectAdhocFilterSourceType(label: 'ClickHouse' | 'Prometheus') {
+    await this.getAdhocFilterSourceTypeControl()
+      .getByText(label, { exact: true })
+      .click();
+  }
+
+  /** Add `sourceNames` to a source multi-select, then close its dropdown. */
+  async selectSourcesInMultiSelect(input: Locator, sourceNames: string[]) {
+    for (const sourceName of sourceNames) {
+      await input.click();
+      await this.getFilterOption(sourceName).click();
+    }
+    // Close the dropdown so the save button is clickable.
+    await this.page.keyboard.press('Escape');
+  }
+
+  /**
+   * Add an ad hoc filter over `sourceNames` and save it. Assumes the Edit
+   * Filters modal is already open; leaves it open on the filters list, having
+   * waited for the new filter to land there.
+   */
+  async addAdhocFilterToDashboard(
+    name: string,
+    sourceNames: string[],
+    options?: {
+      variableName?: string;
+      sourceType?: 'ClickHouse' | 'Prometheus';
+    },
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('Ad hoc keys and values');
+    await this.getFilterNameInput().fill(name);
+    // Before the sources, since switching the type clears them.
+    if (options?.sourceType) {
+      await this.selectAdhocFilterSourceType(options.sourceType);
+    }
+    await this.selectSourcesInMultiSelect(
+      this.getAdhocFilterSourcesInput(),
+      sourceNames,
+    );
+    if (options?.variableName !== undefined) {
+      await this.variableNameInput.fill(options.variableName);
+    }
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The filter bar control of an ad hoc filter. */
+  getAdhocFilter(filterName: string): Locator {
+    return this.page.getByTestId(`adhoc-filter-${filterName}`);
+  }
+
+  /** The condition pills of an ad hoc filter in the filter bar. */
+  getAdhocConditionPills(filterName: string): Locator {
+    return this.getAdhocFilter(filterName).getByTestId('adhoc-condition-pill');
+  }
+
+  /** Add a Search tile and save it. */
+  async addSearchTile({
+    chartName,
+    sourceName,
+    select,
+  }: {
+    chartName: string;
+    sourceName: string;
+    select?: string;
+  }) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartType(DisplayType.Search);
+    await this.chartEditor.setChartName(chartName);
+    await this.chartEditor.selectSource(sourceName);
+    if (select) await this.chartEditor.setSearchSelect(select);
+    await this.chartEditor.save();
+  }
+
+  /**
+   * A hover action of the tile cell under the mouse: `include` / `exclude`
+   * filter on its value, `copy` copies it.
+   */
+  getTileCellActionButton(
+    tile: Locator,
+    action: 'include' | 'exclude' | 'copy',
+  ): Locator {
+    const name = {
+      include: 'Toggle filter for this value',
+      exclude: 'Exclude this value',
+      copy: 'Copy field value',
+    }[action];
+    // The previous cell's popover can still be closing
+    return tile.getByRole('button', { name }).last();
+  }
+
+  /** Hover a tile cell showing `value` and return one of its actions. */
+  async getTileCellAction(
+    tile: Locator,
+    value: string | RegExp,
+    action: 'include' | 'exclude' | 'copy',
+  ): Promise<Locator> {
+    await tile.getByText(value, { exact: true }).first().hover();
+    return this.getTileCellActionButton(tile, action);
+  }
+
+  /** Hover a tile cell showing `value` and click its include / exclude action. */
+  async filterTileCell(
+    tile: Locator,
+    value: string,
+    action: 'include' | 'exclude',
+  ) {
+    await (await this.getTileCellAction(tile, value, action)).click();
+  }
+
+  /**
+   * Click a time chart tile until its tooltip pins. Recharts only pins when the
+   * click lands on a bucket, so retry.
+   */
+  async pinTimeChart(tile: Locator) {
+    const chart = tile.locator('.recharts-responsive-container');
+    const pinnedRow = this.page.locator('[data-testid^="chart-copy-name-"]');
+    await expect(async () => {
+      await chart.click();
+      await expect(pinnedRow.first()).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
+  }
+
+  /** The pinned tooltip's filter (`include`) or exclude action per series. */
+  getPinnedSeriesFilterActions(action: 'include' | 'exclude'): Locator {
+    const prefix =
+      action === 'include' ? 'chart-filter-series-' : 'chart-exclude-series-';
+    return this.page.locator(`[data-testid^="${prefix}"]`);
+  }
+
+  /** The open condition editor of an ad hoc filter. */
+  getAdhocConditionEditor(filterName: string): Locator {
+    return this.page.getByTestId(`adhoc-condition-editor-${filterName}`);
+  }
+
+  /** The key, operator, or value input of an ad hoc filter's open editor. */
+  getAdhocConditionInput(
+    filterName: string,
+    input: 'key' | 'operator' | 'value',
+  ): Locator {
+    return this.page.getByTestId(
+      `adhoc-condition-editor-${filterName}-${input}`,
+    );
+  }
+
+  /** A suggestion, matched exactly, in an ad hoc filter's open editor. */
+  getAdhocConditionOption(filterName: string, name: string): Locator {
+    return this.getAdhocConditionEditor(filterName).getByRole('option', {
+      name,
+      exact: true,
+    });
+  }
+
+  /** Open the editor that adds a condition to an ad hoc filter. */
+  async openAddAdhocCondition(filterName: string) {
+    await this.page.getByTestId(`adhoc-filter-add-${filterName}`).click();
+    await this.getAdhocConditionEditor(filterName).waitFor({
+      state: 'visible',
+    });
+  }
+
+  /** Click a condition's pill and change any part of it in the editor. */
+  async editAdhocCondition(
+    filterName: string,
+    pillText: string,
+    changes: { key?: string; operatorLabel?: string; value?: string },
+  ) {
+    await this.getAdhocConditionPills(filterName)
+      .filter({ hasText: pillText })
+      .click();
+    await this.fillAdhocConditionEditor(filterName, changes);
+  }
+
+  /** Fill the open editor's inputs, then apply it. */
+  async fillAdhocConditionEditor(
+    filterName: string,
+    {
+      key,
+      operatorLabel,
+      value,
+    }: { key?: string; operatorLabel?: string; value?: string },
+  ) {
+    if (key !== undefined) {
+      await this.getAdhocConditionInput(filterName, 'key').fill(key);
+    }
+    if (operatorLabel !== undefined) {
+      await this.getAdhocConditionInput(filterName, 'operator').click();
+      await this.getAdhocConditionOption(filterName, operatorLabel).click();
+    }
+    const valueInput = this.getAdhocConditionInput(filterName, 'value');
+    if (value !== undefined) {
+      await valueInput.fill(value);
+    }
+    // Enter applies. Escape would close the whole popover, and the value
+    // suggestions can cover the Apply button.
+    await valueInput.press('Enter');
+    await this.getAdhocConditionEditor(filterName).waitFor({ state: 'hidden' });
+  }
+
+  /**
+   * The options offered by the dashboard filter dropdown that is currently
+   * open, in render order. Scoped to visible nodes: a just-closed dropdown's
+   * portal can linger in the DOM.
+   */
+  async getOpenFilterDropdownOptions(): Promise<string[]> {
+    const texts = await this.page
+      .locator('[role="option"]:visible')
+      .allTextContents();
+    return texts.map(text => text.trim());
   }
 
   /**
@@ -1144,7 +1849,9 @@ export class DashboardPage {
     }
 
     const type: SeriesData['type'] =
-      config.displayType === 'line' || config.displayType === 'stacked_bar'
+      config.displayType === 'line' ||
+      config.displayType === 'stacked_bar' ||
+      config.displayType === 'stacked_line'
         ? 'time'
         : config.displayType;
 
@@ -1403,6 +2110,46 @@ export class DashboardPage {
       .click();
   }
 
+  // ---- Chart annotation helpers ----
+
+  /**
+   * Open the dashboard overflow menu and toggle deployment markers on tile
+   * charts. Expects the menu item with
+   * data-testid="toggle-release-annotations-menu-item", which only renders once
+   * the dashboard has at least one tile.
+   */
+  async toggleReleaseAnnotations() {
+    await this.dashboardMenuButton.click();
+    await this.toggleReleaseAnnotationsMenuItem.click();
+  }
+
+  /**
+   * Annotation markers (deployments, alerts) drawn on a tile's time chart as
+   * dashed vertical Recharts reference lines.
+   */
+  getAnnotationMarkers(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('.recharts-reference-line');
+  }
+
+  /**
+   * Transparent hover targets over the annotation markers, one per cluster.
+   * Hovering one opens a tooltip naming the services that released.
+   */
+  getAnnotationHitTargets(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator(
+      '.recharts-annotation-hit-layer rect',
+    );
+  }
+
+  /**
+   * Text labels for the annotation markers. Recharts hoists reference-line
+   * labels into a separate z-index layer, so they are NOT descendants of the
+   * `.recharts-reference-line` group and cannot be matched by filtering it.
+   */
+  getAnnotationLabels(tileIndex = 0): Locator {
+    return this.getTile(tileIndex).locator('text.recharts-label');
+  }
+
   // ---- Kiosk mode helpers ----
 
   /**
@@ -1487,7 +2234,7 @@ export class DashboardPage {
   }
 
   get dashboardName() {
-    return this.dashboardNameHeading;
+    return this.page.getByTestId('dashboard-name-input');
   }
 
   get filterInput() {

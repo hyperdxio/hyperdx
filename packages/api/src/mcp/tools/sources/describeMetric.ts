@@ -6,26 +6,35 @@ import {
   JSDataType,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
+import {
+  clickHouseErrorResult,
+  parseTimeRange,
+} from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import {
+  mcpServerError,
+  mcpUserError,
+  sanitizeFetchError,
+} from '@/mcp/utils/errors';
+import { MCP_TOOL_TIMEOUT_MS, runWithTimeout } from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
   DISCOVERABLE_METRIC_KINDS,
   type DiscoverableMetricKind,
+  METRIC_DEFAULT_LOOKBACK_MS,
 } from './metricKinds';
 
-const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const DESCRIBE_TIMEOUT_MS = 10_000;
+const DESCRIBE_TIMEOUT_MS = MCP_TOOL_TIMEOUT_MS;
 
 // Server-side safety nets for the attribute-keys discovery query.
 // Sample at most N rows that match (MetricName, time range), then
@@ -34,7 +43,10 @@ const DESCRIBE_TIMEOUT_MS = 10_000;
 // wall-clock budget. 100k rows is plenty to surface every unique map
 // key on a healthy OTel metric.
 const METRIC_ATTR_KEYS_SAMPLE_SIZE = 100_000;
-const METRIC_ATTR_KEYS_MAX_EXEC_SECONDS = 8;
+// Attribute keys and value sampling run back to back, so each gets under half
+// the wall-clock budget; with timeout_overflow_mode: 'break' both return
+// partial results before DESCRIBE_TIMEOUT_MS fires.
+const METRIC_ATTR_KEYS_MAX_EXEC_SECONDS = 14;
 
 // Max sampled values per attribute key (when sampleValues is true).
 const MAX_ATTR_VALUES = 10;
@@ -77,7 +89,7 @@ const describeMetricSchema = z.object({
   kind: z
     .enum(DISCOVERABLE_METRIC_KINDS)
     .describe(
-      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram" | "summary". Required. ' +
+      'OTel metric kind of metricName, which selects the metric table to read. ' +
         'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
         'or clickstack_describe_source (which groups metric-name samples by kind). ' +
         'A metric name can legitimately live in more than one kind (e.g. ' +
@@ -99,7 +111,7 @@ const describeMetricSchema = z.object({
     .optional()
     .default(true)
     .describe(
-      'When true (default), sample up to ' +
+      'Sample up to ' +
         `${MAX_ATTR_VALUES} distinct values per attribute key for the top ${MAX_ATTR_KEYS_TO_SAMPLE} attributes. ` +
         'Set false to skip value sampling for faster responses on high-cardinality metrics.',
     ),
@@ -131,34 +143,6 @@ type KindDetail = {
  * need different agent guidance (retry/report vs. widen the window).
  */
 type FetchResult<T> = { ok: true; data: T } | { ok: false; error: string };
-
-/**
- * Compact an error for inclusion in a tool response: single line,
- * capped length, no stack frames.
- */
-function sanitizeFetchError(e: unknown): string {
-  const message = e instanceof Error ? e.message : String(e);
-  return message.replace(/\s+/g, ' ').trim().slice(0, 200);
-}
-
-function parseTimeRange(
-  startTime?: string,
-  endTime?: string,
-): { error: string } | { startDate: Date; endDate: Date } {
-  const endDate = endTime ? new Date(endTime) : new Date();
-  const startDate = startTime
-    ? new Date(startTime)
-    : new Date(endDate.getTime() - DEFAULT_LOOKBACK_MS);
-  if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
-    return {
-      error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
-    };
-  }
-  if (startDate >= endDate) {
-    return { error: 'endTime must be greater than startTime' };
-  }
-  return { startDate, endDate };
-}
 
 /**
  * Fetch unit and description for a metric name on a single kind table.
@@ -500,7 +484,11 @@ async function describeMetricImpl(
     );
   }
 
-  const timeRange = parseTimeRange(input.startTime, input.endTime);
+  const timeRange = parseTimeRange(
+    input.startTime,
+    input.endTime,
+    METRIC_DEFAULT_LOOKBACK_MS,
+  );
   if ('error' in timeRange) {
     return mcpUserError(timeRange.error);
   }
@@ -726,7 +714,7 @@ export function registerDescribeMetric({
     'clickstack_describe_metric',
     {
       title: 'Describe Metric',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'DRILL-DOWN: Use after clickstack_list_metrics (or after a clickstack_describe_source ' +
         'sample) to get attribute keys, sampled values, unit, and description for a ' +
@@ -752,40 +740,23 @@ export function registerDescribeMetric({
       // optional-field types into `unknown`, but the parser produces
       // the typed shape we need for downstream calls.
       const input = describeMetricSchema.parse(rawInput);
-      const controller = new AbortController();
-      // Hoist the timer handle so the finally block can cancel it on the
-      // success path — otherwise a stale controller.abort() fires
-      // DESCRIBE_TIMEOUT_MS after every successful call and the
-      // setTimeout closure stays pinned for the same duration.
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(new Error('DESCRIBE_METRIC_TIMEOUT'));
-        }, DESCRIBE_TIMEOUT_MS);
-      });
-      try {
-        return await Promise.race([
-          describeMetricImpl(teamId.toString(), input, controller.signal),
-          timeoutPromise,
-        ]);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'DESCRIBE_METRIC_TIMEOUT') {
-          logger.warn(
-            { teamId, sourceId: input.sourceId, metricName: input.metricName },
-            'clickstack_describe_metric timed out',
-          );
-          return mcpServerError(
-            'Discovery timed out. The metric table may be under load or the ' +
-              'attribute set may be very high-cardinality. Try narrowing ' +
-              'startTime/endTime or setting sampleValues:false to skip the ' +
-              'value-sampling stage.',
-          );
-        }
-        throw e;
-      } finally {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      const outcome = await runWithTimeout(
+        signal => describeMetricImpl(teamId.toString(), input, signal),
+        { timeoutMs: DESCRIBE_TIMEOUT_MS },
+      );
+      if (!outcome.timedOut) {
+        return outcome.value;
       }
+      logger.warn(
+        { teamId, sourceId: input.sourceId, metricName: input.metricName },
+        'clickstack_describe_metric timed out',
+      );
+      return mcpServerError(
+        'Discovery timed out. The metric table may be under load or the ' +
+          'attribute set may be very high-cardinality. Try narrowing ' +
+          'startTime/endTime or setting sampleValues:false to skip the ' +
+          'value-sampling stage.',
+      );
     },
   );
 }

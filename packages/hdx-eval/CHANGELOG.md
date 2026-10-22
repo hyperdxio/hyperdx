@@ -1,5 +1,17 @@
 # @hyperdx/hdx-eval
 
+## 0.3.3
+
+### Patch Changes
+
+- 892cc653: feat(mcp): improve metric discovery, add quiet-saturation eval scenario
+
+## 0.3.2
+
+### Patch Changes
+
+- 6662379e: feat: expose summary metrics through the mcp
+
 ## 0.3.1
 
 ### Patch Changes

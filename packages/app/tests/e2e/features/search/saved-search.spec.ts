@@ -277,8 +277,8 @@ test.describe('Saved Search Functionality', () => {
 
         // Wait for the search page to load
         await expect(page.getByTestId('search-page')).toBeVisible();
-        await expect(searchPage.savedSearchNameTitle).toBeVisible();
-        await expect(searchPage.savedSearchNameTitle).toHaveText(
+        await expect(searchPage.savedSearchNameInput).toBeVisible();
+        await expect(searchPage.savedSearchNameInput).toHaveValue(
           'Info Logs Navigation Test',
         );
       });

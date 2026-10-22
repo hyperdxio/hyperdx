@@ -55,7 +55,7 @@ describe('logger redaction', () => {
 
   it('censors a redirect Location header', () => {
     const out = logAndCapture({
-      res: { headers: { location: '/ext/silence-alert/secret-token' } },
+      res: { headers: { location: '/team/setup/secret-token' } },
     });
 
     expect(out).not.toContain('secret-token');
@@ -72,16 +72,15 @@ describe('logger redaction', () => {
 
 /**
  * `redact` addresses object paths, so a token living inside a URL string is
- * out of its reach. These two routes take a standalone bearer credential as a
+ * out of its reach. This route takes a standalone bearer credential as a
  * path segment.
  */
 describe('scrubUrlTokens', () => {
   it.each([
-    ['/ext/silence-alert/abc123', '/ext/silence-alert/[REDACTED]'],
     ['/team/setup/tok-xyz', '/team/setup/[REDACTED]'],
-    ['/api/ext/silence-alert/abc123', '/api/ext/silence-alert/[REDACTED]'],
+    ['/api/team/setup/tok-xyz', '/api/team/setup/[REDACTED]'],
     // Query strings and fragments must not be swallowed into the token.
-    ['/ext/silence-alert/abc123?x=1', '/ext/silence-alert/[REDACTED]?x=1'],
+    ['/team/setup/tok-xyz?x=1', '/team/setup/[REDACTED]?x=1'],
   ])('scrubs %s', (input, expected) => {
     expect(scrubUrlTokens(input)).toBe(expected);
   });
@@ -114,7 +113,7 @@ describe('scrubbedRequestSerializer', () => {
 
     const req = new IncomingMessage(socket);
     req.method = 'GET';
-    req.url = '/api/ext/silence-alert/super-secret-token?ack=1';
+    req.url = '/api/team/setup/super-secret-token?ack=1';
     req.headers = { authorization: 'Bearer x' };
     return req;
   };
@@ -124,7 +123,7 @@ describe('scrubbedRequestSerializer', () => {
       pino.stdSerializers.req(rawRequest()),
     );
 
-    expect(out.url).toBe('/api/ext/silence-alert/[REDACTED]?ack=1');
+    expect(out.url).toBe('/api/team/setup/[REDACTED]?ack=1');
     expect(out.remoteAddress).toBe('203.0.113.7');
     expect(out.remotePort).toBe(51234);
     expect(out.method).toBe('GET');
@@ -175,7 +174,7 @@ describe('production log line', () => {
     Object.defineProperty(socket, 'remoteAddress', { value: '203.0.113.7' });
     const req = new IncomingMessage(socket);
     req.method = 'GET';
-    req.url = '/api/ext/silence-alert/super-secret-token';
+    req.url = '/api/team/setup/super-secret-token';
     req.headers = {
       authorization: 'Bearer super-secret-key',
       cookie: 'connect.sid=secret-session',

@@ -78,6 +78,9 @@ const TEST_FILE_PATTERNS = [
   /\/__tests__\//,
   /\.test\.[jt]sx?$/,
   /\.spec\.[jt]sx?$/,
+  // Storybook stories are dev-only fixtures — never shipped in the app bundle,
+  // so they carry no production risk and should not drive the tier.
+  /\.stories\.[jt]sx?$/,
   /^packages\/app\/tests\//,
   // E2E-only ClickHouse fixture, mounted solely by packages/app/tests/e2e. Its
   // siblings (config.xml, users.xml) ship in the image and stay critical.

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { z } from 'zod';
 
 /**
  * Error category for MCP tool failures.
@@ -72,4 +73,31 @@ export function validateObjectId(
     return mcpUserError(`Invalid ${label}`);
   }
   return null;
+}
+
+/**
+ * Compact an error for inclusion in a tool response: single line,
+ * capped length, no stack frames.
+ */
+export function sanitizeFetchError(e: unknown): string {
+  const message = e instanceof Error ? e.message : String(e);
+  return message.replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
+/** Render a Zod error as one `path: message` line per issue. */
+export function formatZodIssues(error: z.ZodError): string {
+  return error.errors
+    .map(issue => {
+      const path = issue.path
+        .map((segment, index) =>
+          typeof segment === 'number'
+            ? `[${segment}]`
+            : index === 0
+              ? segment
+              : `.${segment}`,
+        )
+        .join('');
+      return path ? `${path}: ${issue.message}` : issue.message;
+    })
+    .join('\n');
 }

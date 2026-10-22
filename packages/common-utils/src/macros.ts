@@ -1,23 +1,37 @@
+import {
+  getPromqlMacroInputs,
+  getPromqlSeries,
+  getQueriedPromqlSeries,
+  PROMQL_MACRO_NAMES,
+  PROMQL_MACROS,
+  PromqlMacroName,
+} from './core/promql';
+import { injectPromqlLabelMatchers } from './core/promqlLabelInjection';
 import { splitAndTrimWithBracket } from './core/utils';
 import { MacroExpansionError, MalformedMacroArgsError } from './macroErrors';
 import { RawSqlQueryParam, renderQueryParam } from './rawSqlParams';
 import {
+  ChartVariable,
+  DisplayType,
   MetricsDataType,
   MetricsDataTypeSchema,
+  PromqlConditionFilter,
+  PromqlExpressionList,
+  PromqlSeries,
   RawSqlChartConfig,
 } from './types';
 import {
+  expandTemplate,
   expandVariableToken,
   findBalancedParens,
   hasVariableMacro,
-  scanTemplateTokens,
   VARIABLE_MACRO_NAMES,
   VariableContext,
   VariableMacroName,
 } from './variables';
 
 function expectArgs(
-  macroName: MacroName,
+  macroName: MacroName | PromqlMacroName,
   args: string[],
   minArgs: number,
   maxArgs: number,
@@ -239,14 +253,14 @@ export const VARIABLE_MACRO_SUGGESTIONS: MacroSuggestion[] = [
     minArgs: 1,
     maxArgs: 2,
     description:
-      "$__filter(<expression>, <variable>) — matches the expression against the variable's selected values. Expands to 1=1 when nothing is selected, so the query stays valid. The recommended way to use a variable in SQL.",
+      "$__filter(<expression>, $<variable>) — matches the expression against the variable's selected values. Expands to 1=1 when nothing is selected, so the query stays valid. The recommended way to use a variable in SQL.",
   },
   {
     name: 'conditionalAll',
     minArgs: 2,
     maxArgs: 2,
     description:
-      '$__conditionalAll(<condition>, <variable>) — applies the condition only while the variable has a selection, and expands to 1=1 otherwise. Use it for operators IN cannot express, such as NOT IN or LIKE.',
+      '$__conditionalAll(<condition>, $<variable>) — applies the condition only while the variable has a selection, and expands to 1=1 otherwise. Use it for operators IN cannot express, such as NOT IN or LIKE.',
   },
 ];
 
@@ -382,9 +396,14 @@ const NO_FILTERS = '(1=1 /** no filters applied */)';
  * Expand every macro and (when a variable context is present) every dashboard
  * variable reference in a raw SQL template.
  *
- * The template is scanned once, left to right, and each token is expanded into
- * an output buffer — an expansion is never re-scanned, so neither `$__filters`
- * output nor a selected variable value can trigger further substitution.
+ * The template is scanned left to right and each token is expanded into an
+ * output buffer. A macro's arguments are expanded first, recursively, so a
+ * variable or macro nested in an argument resolves before the enclosing macro
+ * sees it — `$__timeFilter(${TsColumn:csv})` filters on the selected column, and
+ * `$__conditionalAll($__timeFilter(ts), $env)` expands the inner macro. Only
+ * template source is recursed into: an expansion is never re-scanned, so neither
+ * `$__filters` output nor a selected variable value can trigger further
+ * substitution.
  *
  * `chartConfig.variables` being undefined means variable references and
  * the variable macros are left exactly as written; an empty array means the
@@ -473,7 +492,7 @@ export function replaceMacros(
 
   const variableContext: VariableContext | undefined = variables && {
     variables,
-    defaultFormat: 'sqlstring',
+    inputLanguage: 'sql',
   };
 
   const macroNames = [
@@ -483,21 +502,112 @@ export function replaceMacros(
     ...(variableContext ? VARIABLE_MACRO_NAMES : []),
   ];
 
-  return scanTemplateTokens(chartConfig.sqlTemplate, macroNames)
-    .map(token => {
-      if (token.kind === 'text') return token.text;
+  return expandTemplate(chartConfig.sqlTemplate, {
+    macroNames,
+    expandMacro: token => {
+      const macro = macrosByName.get(token.name);
+      return macro
+        ? macro.replace(token.args) // Non-variable-referencing macro
+        : expandVariableToken(token, variableContext!); // Variable-referencing macro
+    },
+    // Braced and bare variable references ($var, ${var}, or ${var:format})
+    expandReference: token =>
+      variableContext ? expandVariableToken(token, variableContext) : token.raw,
+  });
+}
 
-      if (token.kind === 'macro') {
-        const macro = macrosByName.get(token.name);
-        return macro
-          ? macro.replace(token.args) // Non-variable-referencing macro
-          : expandVariableToken(token, variableContext!); // Variable-referencing macro
-      }
+/**
+ * Expand the macros (`$__interval`, `$__range`, `$__rate_interval`) and variable
+ * references in a PromQL config's expression(s), then add its `filters` to
+ * every selector of the expressions its display queries, returning it with
+ * `variables` and `filters` consumed.
+ * References to names that aren't variables are left as written, so `$1` in a
+ * `label_replace` replacement reaches Prometheus unchanged.
+ *
+ * Macros and variables expand in one pass, so a selected value that looks like
+ * `$__range` stays inert. Dropping `variables` and `filters` from the result
+ * ensures neither can be applied twice.
+ */
+export function substitutePromqlChartConfigTemplates<
+  T extends {
+    promqlExpression: PromqlExpressionList;
+    variables?: ChartVariable[];
+    filters?: PromqlConditionFilter[];
+    displayType?: DisplayType;
+    granularity?: string;
+    dateRange: [Date, Date];
+    minGranularitySeconds?: number;
+  },
+>(config: T): T {
+  const {
+    promqlExpression,
+    variables = [],
+    filters = [],
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+  } = config;
+  const variableContext: VariableContext = {
+    variables,
+    inputLanguage: 'promql',
+  };
+  const macroInputs = getPromqlMacroInputs(
+    granularity,
+    dateRange,
+    minGranularitySeconds,
+  );
+  const macrosByName = new Map<string, Macro>(
+    PROMQL_MACROS.map(({ name, minArgs, maxArgs, description, expand }) => [
+      name,
+      {
+        name,
+        minArgs,
+        maxArgs,
+        description,
+        replace: args => {
+          expectArgs(name, args, minArgs, maxArgs);
+          return expand(macroInputs);
+        },
+      },
+    ]),
+  );
 
-      // Braced and bare variable references ($var, ${var}, or ${var:format})
-      return variableContext
-        ? expandVariableToken(token, variableContext)
-        : token.raw;
-    })
-    .join('');
+  const matchers = filters.map(filter => filter.condition).join(', ');
+
+  // Matchers go only into expressions the display queries: the editor saves
+  // every row, and an unfinished one that's never queried mustn't fail to parse.
+  const allSeries = getPromqlSeries(config);
+  const queriedSeries = new Set(
+    getQueriedPromqlSeries({
+      promqlExpression: allSeries,
+      displayType: config.displayType,
+    }),
+  );
+
+  const substitute = (series: PromqlSeries) => {
+    const expanded = expandTemplate(series.expression, {
+      // `$__filter` / `$__conditionalAll` are scanned only so a reference in
+      // their arguments isn't expanded; they have no meaning in PromQL.
+      macroNames: [...VARIABLE_MACRO_NAMES, ...PROMQL_MACRO_NAMES],
+      expandMacro: token =>
+        macrosByName.get(token.name)?.replace(token.args) ?? token.raw,
+      expandReference: token => expandVariableToken(token, variableContext),
+    });
+    return queriedSeries.has(series)
+      ? injectPromqlLabelMatchers(expanded, matchers)
+      : expanded;
+  };
+
+  return {
+    ...config,
+    promqlExpression:
+      typeof promqlExpression === 'string'
+        ? substitute(allSeries[0])
+        : allSeries.map(series => ({
+            ...series,
+            expression: substitute(series),
+          })),
+    variables: undefined,
+    filters: undefined,
+  };
 }

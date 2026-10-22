@@ -22,12 +22,10 @@ const mockTableConnection = {
 function SearchWhereInputWrapper({
   defaultLanguage = 'lucene',
   width,
-  showLabel,
   allowMultiline,
 }: {
   defaultLanguage?: 'sql' | 'lucene';
   width?: string;
-  showLabel?: boolean;
   allowMultiline?: boolean;
 }) {
   const { control } = useForm({
@@ -46,7 +44,6 @@ function SearchWhereInputWrapper({
           name="where"
           enableHotkey
           width={width}
-          showLabel={showLabel}
           allowMultiline={allowMultiline}
         />
       </Stack>
@@ -66,11 +63,6 @@ export const CustomWidth = () => (
   <SearchWhereInputWrapper defaultLanguage="sql" width="50%" />
 );
 CustomWidth.storyName = 'Custom Width (50%)';
-
-export const NoLabel = () => (
-  <SearchWhereInputWrapper defaultLanguage="sql" showLabel={false} />
-);
-NoLabel.storyName = 'SQL Without Label';
 
 export const NoMultiline = () => (
   <SearchWhereInputWrapper defaultLanguage="sql" allowMultiline={false} />

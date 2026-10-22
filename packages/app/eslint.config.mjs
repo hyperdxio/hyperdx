@@ -93,6 +93,7 @@ export default [
       '.next/**',
       '.next-e2e/**',
       '.storybook/**',
+      'storybook-static/**',
       'node_modules/**',
       'out/**',
       'build/**',
@@ -146,6 +147,14 @@ export default [
       
       'react-hook-form/no-use-watch': 'error',
       '@eslint-react/no-unstable-default-props': 'error',
+      // React 19 API adoption (all migrated): render <Context> instead of
+      // <Context.Provider>, use the `use` hook instead of `useContext`, and
+      // pass `ref` as a regular prop instead of wrapping in forwardRef.
+      '@eslint-react/no-context-provider': 'error',
+      '@eslint-react/no-use-context': 'error',
+      '@eslint-react/no-forward-ref': 'error',
+      // useRef values must be named `ref` or end in `Ref` for readability.
+      '@eslint-react/naming-convention/ref-name': 'error',
       '@typescript-eslint/ban-ts-comment': 'error',
       // Empty no-op functions are common and intentional (test mocks, default
       // callback props like onClose/onChange). Flagging them adds noise without
@@ -263,6 +272,8 @@ export default [
           assertFunctionNames: [
             'expectFieldSuggestion',
             'expectValueSuggestion',
+            'expectTileBlockedOn',
+            'expectTileLoaded',
           ],
         },
       ],

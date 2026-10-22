@@ -3,10 +3,13 @@ import { z } from 'zod';
 
 import * as config from '@/config';
 import { getDashboards } from '@/controllers/dashboard';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
+
+import { withResolvedFilterVariableNames } from './variables';
 
 export function registerGetDashboard({
   context,
@@ -19,7 +22,7 @@ export function registerGetDashboard({
     'clickstack_get_dashboard',
     {
       title: 'Get Dashboard(s)',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Without an ID: list all dashboards (returns IDs, names, tags). ' +
         'With an ID: get full dashboard detail including all tiles and configuration.',
@@ -57,13 +60,19 @@ export function registerGetDashboard({
       if (!dashboard) {
         return mcpUserError('Dashboard not found');
       }
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromqlTiles: true,
+      });
       return {
         content: [
           {
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...convertToExternalDashboard(dashboard),
+                ...externalDashboard,
+                filters: withResolvedFilterVariableNames(
+                  externalDashboard.filters ?? [],
+                ),
                 ...(frontendUrl
                   ? { url: `${frontendUrl}/dashboards/${dashboard._id}` }
                   : {}),

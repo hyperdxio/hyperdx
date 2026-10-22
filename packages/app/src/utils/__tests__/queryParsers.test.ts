@@ -1,4 +1,9 @@
-import { parseAsJsonEncoded, parseAsStringEncoded } from '@/utils/queryParsers';
+import {
+  dashboardFilterValuesParser,
+  parseAsJsonEncoded,
+  parseAsSortingStateString,
+  parseAsStringEncoded,
+} from '@/utils/queryParsers';
 
 // Helper: extract the parse/serialize functions from the parser object
 const stringParser = parseAsStringEncoded;
@@ -140,7 +145,7 @@ describe('parseAsJsonEncoded', () => {
     });
 
     it('returns null when the validator returns null instead of throwing', () => {
-      const nullingParser = parseAsJsonEncoded<number[]>(() => null as never);
+      const nullingParser = parseAsJsonEncoded<number[]>(() => null);
       expect(nullingParser.parse(encodeURIComponent('[1,2,3]'))).toBeNull();
     });
 
@@ -150,5 +155,199 @@ describe('parseAsJsonEncoded', () => {
       expect(parser.parse('not-json')).toBeNull();
       expect(validate).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('parseAsSortingStateString', () => {
+  describe('parse', () => {
+    it('parses a single column with DESC', () => {
+      expect(parseAsSortingStateString.parse('Timestamp DESC')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('parses a single column with ASC', () => {
+      expect(parseAsSortingStateString.parse('Timestamp ASC')).toEqual({
+        id: 'Timestamp',
+        desc: false,
+      });
+    });
+
+    it('is case-insensitive on the direction', () => {
+      expect(parseAsSortingStateString.parse('Timestamp desc')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('returns null for an empty string', () => {
+      expect(parseAsSortingStateString.parse('')).toBeNull();
+    });
+
+    it('returns null when no explicit direction is present', () => {
+      expect(parseAsSortingStateString.parse('Timestamp')).toBeNull();
+    });
+
+    it('returns null for a multi-column tuple with no direction', () => {
+      expect(
+        parseAsSortingStateString.parse('(TimestampTime, Timestamp)'),
+      ).toBeNull();
+    });
+
+    it('keeps a multi-column tuple with a direction as the id', () => {
+      expect(
+        parseAsSortingStateString.parse('(TimestampTime, Timestamp) DESC'),
+      ).toEqual({ id: '(TimestampTime, Timestamp)', desc: true });
+    });
+
+    it('parses an id that contains spaces', () => {
+      expect(
+        parseAsSortingStateString.parse('round(Duration / 1e6, 2) DESC'),
+      ).toEqual({ id: 'round(Duration / 1e6, 2)', desc: true });
+    });
+
+    it('parses a quoted alias that contains spaces', () => {
+      expect(parseAsSortingStateString.parse('"my alias" ASC')).toEqual({
+        id: '"my alias"',
+        desc: false,
+      });
+    });
+
+    it('tolerates repeated and surrounding whitespace', () => {
+      expect(parseAsSortingStateString.parse('  Timestamp   DESC  ')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('returns null for whitespace only', () => {
+      expect(parseAsSortingStateString.parse('   ')).toBeNull();
+    });
+
+    it('returns null for a decorated expression like NULLS LAST', () => {
+      expect(parseAsSortingStateString.parse('x DESC NULLS LAST')).toBeNull();
+    });
+  });
+
+  describe('serialize', () => {
+    it('serializes DESC', () => {
+      expect(
+        parseAsSortingStateString.serialize({ id: 'Timestamp', desc: true }),
+      ).toBe('Timestamp DESC');
+    });
+
+    it('serializes ASC', () => {
+      expect(
+        parseAsSortingStateString.serialize({ id: 'Timestamp', desc: false }),
+      ).toBe('Timestamp ASC');
+    });
+
+    it('round-trips a single-column ORDER BY string', () => {
+      const parsed = parseAsSortingStateString.parse('ServiceName ASC');
+      expect(parsed).not.toBeNull();
+      expect(parseAsSortingStateString.serialize(parsed!)).toBe(
+        'ServiceName ASC',
+      );
+    });
+  });
+
+  // Reproduces the ORDER BY data flow on the search page (DBSearchPage.tsx):
+  // the config's raw orderBy string is run through parse to build the table's
+  // sort state (initialSortBy), and a header click is serialized back with the
+  // same "<id> <ASC|DESC>" shape. A null parse means no sort state, which is
+  // the signal for DBSqlRowTable to leave the raw ORDER BY string alone.
+  describe('search page ORDER BY round-trip', () => {
+    // Mirrors DBSearchPage's onSortingChange serialization of a header click.
+    const serializeHeaderSort = (sort: { id: string; desc: boolean }) =>
+      `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`;
+
+    it.each(['Timestamp', 'round(Duration / 1e6, 2)', '"my alias"'])(
+      'round-trips a header sort on %s through the config string',
+      id => {
+        const orderBy = serializeHeaderSort({ id, desc: true });
+        const sortState = parseAsSortingStateString.parse(orderBy);
+        expect(sortState).toEqual({ id, desc: true });
+        expect(serializeHeaderSort(sortState!)).toBe(orderBy);
+      },
+    );
+
+    it.each(['(TimestampTime, Timestamp)', 'x DESC NULLS LAST'])(
+      'leaves an ORDER BY without a trailing direction (%s) untouched by parsing to null',
+      orderBy => {
+        // null → initialSortBy is empty → DBSqlRowTable keeps the raw string
+        // instead of rebuilding a broken one like "(TimestampTime, ASC".
+        expect(parseAsSortingStateString.parse(orderBy)).toBeNull();
+      },
+    );
+  });
+});
+
+describe('dashboardFilterValuesParser', () => {
+  // Encoded the same way `serialize` does, but built here so the malformed
+  // shapes below don't have to be cast through the parser's value type.
+  const parse = (value: unknown) =>
+    dashboardFilterValuesParser.parse(
+      encodeURIComponent(JSON.stringify(value)),
+    );
+
+  const sqlEntry = { type: 'sql', condition: "ServiceName IN ('accounting')" };
+  const variableEntry = {
+    type: 'variable',
+    name: 'svc',
+    values: ['accounting'],
+  };
+
+  it('parses an array of legacy expression-keyed entries', () => {
+    expect(parse([sqlEntry])).toEqual([sqlEntry]);
+  });
+
+  it('parses an array of variable-keyed entries', () => {
+    expect(parse([variableEntry])).toEqual([variableEntry]);
+  });
+
+  it('parses a mixed array, preserving order', () => {
+    expect(parse([sqlEntry, variableEntry])).toEqual([sqlEntry, variableEntry]);
+  });
+
+  it('parses an empty array', () => {
+    expect(parse([])).toEqual([]);
+  });
+
+  it.each([
+    ['a bare number', 5],
+    ['an object', {}],
+    ['a bare string', 'x'],
+    ['a null literal', null],
+  ])('returns null for %s', (_label, input) => {
+    expect(parse(input)).toBeNull();
+  });
+
+  it('drops a single invalid entry and keeps the rest', () => {
+    // A variable entry with no `name` can't address anything; the sql entry
+    // beside it should still apply.
+    expect(parse([{ type: 'variable', values: ['a'] }, sqlEntry])).toEqual([
+      sqlEntry,
+    ]);
+  });
+
+  it('reads raw JSON written by an older client', () => {
+    expect(
+      dashboardFilterValuesParser.parse(JSON.stringify([sqlEntry])),
+    ).toEqual([sqlEntry]);
+  });
+
+  it('reads a percent-encoded param', () => {
+    expect(
+      dashboardFilterValuesParser.parse(
+        encodeURIComponent(JSON.stringify([variableEntry])),
+      ),
+    ).toEqual([variableEntry]);
+  });
+
+  it('strips unknown keys from an entry', () => {
+    expect(parse([{ ...variableEntry, somethingNew: true }])).toEqual([
+      variableEntry,
+    ]);
   });
 });

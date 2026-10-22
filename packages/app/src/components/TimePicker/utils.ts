@@ -1,13 +1,18 @@
 import * as chrono from 'chrono-node';
 import ms from 'ms';
+import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
+
+function currentDate(): Date {
+  // eslint-disable-next-line no-restricted-syntax
+  return new Date();
+}
 
 function normalizeParsedDate(parsed?: chrono.ParsedComponents): Date | null {
   if (!parsed) {
     return null;
   }
 
-  // eslint-disable-next-line no-restricted-syntax
-  const now = new Date();
+  const now = currentDate();
   const parsedDate = parsed.date();
 
   // If all of the time components have been inferred, set the time components of now
@@ -59,8 +64,7 @@ export function parseTimeRangeInput(
       ? parsedTimeResults[0]
       : parsedTimeResults[1];
   const start = normalizeParsedDate(parsedTimeResult.start);
-  // eslint-disable-next-line no-restricted-syntax
-  const end = normalizeParsedDate(parsedTimeResult.end) || new Date();
+  const end = normalizeParsedDate(parsedTimeResult.end) || currentDate();
   if (end && start && end < start) {
     // For date range strings that omit years, the chrono parser will infer the year
     // using the current year. This can cause the start date to be in the future, and
@@ -70,6 +74,41 @@ export function parseTimeRangeInput(
   } else {
     return [start, end];
   }
+}
+
+// Range text without a year is re-parsed with an inferred year (the current
+// one, or the previous one for dates >1 day ahead). Only past dates in the
+// current year survive that, so every other range needs an explicit year.
+export function rangeNeedsExplicitYear(
+  range: readonly [Date, Date],
+  isUTC: boolean = false,
+): boolean {
+  const now = currentDate();
+  const getYear = (d: Date) => (isUTC ? d.getUTCFullYear() : d.getFullYear());
+  return range.some(d => getYear(d) !== getYear(now) || d > now);
+}
+
+// Formats a range as text that parseTimeRangeInput maps back to the same dates.
+// The year is only included when it's needed to do so, to keep the text short.
+export function formatTimeRangeText(
+  range: readonly [Date, Date],
+  {
+    isUTC = false,
+    clock = '24h',
+  }: { isUTC?: boolean; clock?: '12h' | '24h' } = {},
+): string {
+  const format = rangeNeedsExplicitYear(range, isUTC) ? 'withYear' : 'normal';
+  return range.map(d => formatDate(d, { isUTC, format, clock })).join(' - ');
+}
+
+// Duration of a time range input in seconds, or null if it doesn't parse.
+export function timeRangeInputToSeconds(
+  str: string,
+  isUTC: boolean,
+): number | null {
+  const [start, end] = parseTimeRangeInput(str, isUTC);
+  if (start == null || end == null) return null;
+  return (end.getTime() - start.getTime()) / 1000;
 }
 
 export const LIVE_TAIL_TIME_QUERY = 'Live Tail' as const;
@@ -89,8 +128,8 @@ export const RELATIVE_TIME_OPTIONS: (
   ['Last 45 minutes', ms('45m'), true],
   'divider',
   ['Last 1 hour', ms('1h'), true],
-  ['Last 3 hours', ms('3h')],
-  ['Last 6 hours', ms('6h')],
+  ['Last 3 hours', ms('3h'), true],
+  ['Last 6 hours', ms('6h'), true],
   ['Last 12 hours', ms('12h')],
   'divider',
   ['Last 1 days', ms('1d')],

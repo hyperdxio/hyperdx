@@ -22,39 +22,32 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
-import { parseTimeRangeInput } from './components/TimePicker/utils';
+import {
+  formatTimeRangeText,
+  parseTimeRangeInput,
+} from './components/TimePicker/utils';
 import { useUserPreferences } from './useUserPreferences';
 import { usePrevious } from './utils';
 
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
-export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
-  return `${formatDate(range[0], {
-    isUTC,
-    format: 'normal',
-    clock: '24h',
-  })} - ${formatDate(range[1], {
-    isUTC,
-    format: 'normal',
-    clock: '24h',
-  })}`;
-};
+export const dateRangeToString = (range: [Date, Date], isUTC: boolean) =>
+  formatTimeRangeText(range, { isUTC, clock: '24h' });
 
 function isInputTimeQueryLive(inputTimeQuery: string) {
   return inputTimeQuery === '' || inputTimeQuery.includes(LIVE_TAIL_TIME_QUERY);
 }
 
-export function parseRelativeTimeQuery(interval: number) {
+export function parseRelativeTimeQuery(interval: number): [Date, Date] {
   // eslint-disable-next-line no-restricted-syntax
   const end = startOfSecond(new Date());
   return [subMilliseconds(end, interval), end];
 }
 
-export function parseTimeQuery(
+function parseTimeQuery(
   timeQuery: string,
   isUTC: boolean,
 ): [Date | null, Date | null] {
@@ -520,4 +513,36 @@ export function useNewTimeQuery({
       [setTimeRangeQuery, isUTC, _setDisplayedTimeInputValue],
     ),
   };
+}
+
+function getRangeOrFallback(query: string, isUTC: boolean): [Date, Date] {
+  return (
+    parseValidTimeRange(query, isUTC) ??
+    // This fallback catches arbitrary inputs but shouldn't be reachable
+    // for standard literal labels (e.g., 'Past 1h') since they are always valid.
+    parseRelativeTimeQuery(60 * 60 * 1000)
+  );
+}
+
+export function useDefaultTimeRange(query: string): [Date, Date] {
+  const {
+    userPreferences: { isUTC },
+  } = useUserPreferences();
+  const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
+    () => ({
+      query,
+      range: getRangeOrFallback(query, isUTC),
+    }),
+  );
+
+  if (state.query !== query) {
+    const newState = {
+      query,
+      range: getRangeOrFallback(query, isUTC),
+    };
+    setState(newState);
+    return newState.range;
+  }
+
+  return state.range;
 }

@@ -484,7 +484,7 @@ Why each is wrong:
 - [ ] If you added or changed a semantic hex, changed it in **both** places
       (`chart-semantic-tokens` mixin in `_chart-categorical-tokens.scss`,
       `SEMANTIC_CHART_PALETTE.{theme}` in `utils.ts`).
-- [ ] Storybook `Design Tokens / Chart Colors` still renders correctly.
+- [ ] Storybook `Design tokens / Chart colors` still renders correctly.
 
 ## File reference summary
 

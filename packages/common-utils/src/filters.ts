@@ -3,11 +3,29 @@ import * as SQLParser from 'node-sql-parser';
 import { escapeSqlString, replaceJsonExpressions } from '@/core/utils';
 import { parse } from '@/queryParser';
 import {
+  AdhocDashboardFilter,
+  AdhocFilterCondition,
+  AdhocFilterOperator,
+  AdhocFilterSourceType,
+  AdhocFilterValue,
+  BroadcastFilter,
+  ChartVariable,
+  ConditionFilter,
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardFilter,
+  DashboardFilterValue,
   Filter,
+  PROMQL_ADHOC_FILTER_OPERATORS,
+  PromqlConditionFilter,
+  SourceKind,
+  SQL_ADHOC_FILTER_OPERATORS,
 } from '@/types';
+import {
+  escapePromqlStringValue,
+  getVariableReferences,
+  substituteVariables,
+} from '@/variables';
 
 export type FilterState = {
   [key: string]: {
@@ -52,7 +70,7 @@ export const filtersToQuery = (
     /** Map of DateTime/Date column name → its ClickHouse type. */
     dateTimeColumns?: ReadonlyMap<string, string>;
   } = {},
-): Filter[] => {
+): ConditionFilter[] => {
   return Object.entries(filters)
     .filter(
       ([_, values]) =>
@@ -61,7 +79,7 @@ export const filtersToQuery = (
         values.range != null,
     )
     .flatMap(([key, values]) => {
-      const conditions: Filter[] = [];
+      const conditions: ConditionFilter[] = [];
       const actualKey = stringifyKeys ? `toString(${key})` : key;
 
       // DateTime/DateTime64 columns can't be compared against a bare string
@@ -244,14 +262,22 @@ function splitValuesOnComma(valuesStr: string): (string | boolean)[] {
   return values;
 }
 
-// Check whether a SQL fragment contains a keyword or operator outside of
-// single-quoted strings.  Accepts either single characters (=, <, >) or
-// multi-character keywords (' OR ', ' BETWEEN ') to search for.
+// Check whether a SQL fragment contains a keyword or operator at the *top
+// level* — outside single-quoted strings and outside any parentheses.  Accepts
+// either single characters (=, <, >) or multi-character keywords (' OR ',
+// ' BETWEEN ') to search for.
+//
+// Parenthesis-depth awareness is what lets a complex expression key survive
+// parsing: in `if(SeverityText = 'error' OR SeverityText = 'fatal', ...) IN
+// ('Errors')` the `=` and ` OR ` live inside the `if(...)` sub-expression, so
+// they must not be mistaken for top-level operators that would disqualify the
+// clause. Parentheses inside quoted strings don't affect depth.
 function containsOutsideQuotes(
   text: string,
   targets: (string | { char: string })[],
 ): boolean {
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < text.length; i++) {
     const char = text[i];
     if (isQuoteBoundary(text, i)) {
@@ -266,6 +292,16 @@ function containsOutsideQuotes(
       continue;
     }
     if (inString) continue;
+
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
 
     for (const target of targets) {
       if (typeof target === 'object') {
@@ -288,15 +324,24 @@ function containsOperatorOutsideQuotes(part: string): boolean {
   ]);
 }
 
-// Split a string on the first occurrence of `delimiter` that is outside
-// single-quoted strings.  Returns [before, after] or null if not found.
+// Split a string on the first occurrence of `delimiter` that is at the top
+// level — outside single-quoted strings and outside any parentheses.  Returns
+// [before, after] or null if not found.
+//
+// Depth awareness makes the split land on the separator between the key
+// expression and its value list rather than on an operator nested inside the
+// key: `if(SeverityText IN ('error','fatal'), ...) IN ('Errors')` must split on
+// the outer ` IN `, keeping the whole `if(...)` as the key, not on the ` IN `
+// inside the `if(...)`.
 function splitOnFirstOutsideQuotes(
   text: string,
   delimiter: string,
 ): [string, string] | null {
   let inString = false;
+  let depth = 0;
   const upper = delimiter.toUpperCase();
   for (let i = 0; i < text.length; i++) {
+    const char = text.charAt(i);
     if (isQuoteBoundary(text, i)) {
       if (inString) {
         const esc = handleQuoteEscape(text, i);
@@ -309,6 +354,15 @@ function splitOnFirstOutsideQuotes(
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (text.slice(i, i + upper.length).toUpperCase() === upper) {
       return [text.slice(0, i), text.slice(i + upper.length)];
     }
@@ -329,10 +383,15 @@ function extractInClauses(condition: string): Array<{
     isExclude: boolean;
   }> = [];
 
-  // Split on ' AND ' while respecting quoted strings (including SQL-escaped quotes)
+  // Split on ' AND ' while respecting quoted strings (including SQL-escaped
+  // quotes) and parenthesis depth. Only a *top-level* ` AND ` joins two
+  // separate predicates; an ` AND ` nested inside parentheses belongs to a key
+  // sub-expression (e.g. `if(x BETWEEN 1 AND 2, ...) IN (...)`) and must not
+  // split the clause.
   const parts: string[] = [];
   let currentPart = '';
   let inString = false;
+  let depth = 0;
 
   for (let i = 0; i < condition.length; i++) {
     const char = condition[i];
@@ -351,13 +410,22 @@ function extractInClauses(condition: string): Array<{
       continue;
     }
 
-    if (!inString && condition.slice(i, i + 5).toUpperCase() === ' AND ') {
-      if (currentPart.trim()) {
-        parts.push(currentPart.trim());
+    if (!inString) {
+      if (char === '(') {
+        depth++;
+      } else if (char === ')') {
+        if (depth > 0) depth--;
+      } else if (
+        depth === 0 &&
+        condition.slice(i, i + 5).toUpperCase() === ' AND '
+      ) {
+        if (currentPart.trim()) {
+          parts.push(currentPart.trim());
+        }
+        currentPart = '';
+        i += 4; // Skip past ' AND '
+        continue;
       }
-      currentPart = '';
-      i += 4; // Skip past ' AND '
-      continue;
     }
 
     currentPart += char;
@@ -370,7 +438,10 @@ function extractInClauses(condition: string): Array<{
   // Process each part to extract IN/NOT IN clauses
   for (const part of parts) {
     // Skip parts that contain OR (not supported) or comparison operators,
-    // but only when those operators appear outside of quoted strings.
+    // but only when those operators appear at the top level — outside quoted
+    // strings and outside any parentheses. Operators nested inside a key
+    // expression's parentheses (e.g. `if(a = 'x' OR b = 'y', ...)`) are part of
+    // that expression and must not disqualify the clause.
     if (containsOperatorOutsideQuotes(part)) {
       continue;
     }
@@ -491,12 +562,16 @@ export const parseQuery = (
   return { filters: Object.fromEntries(state) };
 };
 
-// Count top-level ` AND ` separators (outside quoted strings). Used to detect
-// conjuncts the pinned-filter parser silently drops.
+// Count top-level ` AND ` separators (outside quoted strings and outside any
+// parentheses). Used to detect conjuncts the pinned-filter parser silently
+// drops. An ` AND ` nested inside parentheses belongs to a key sub-expression
+// and is not a top-level conjunct.
 function countTopLevelAnd(condition: string): number {
   let count = 0;
   let inString = false;
+  let depth = 0;
   for (let i = 0; i < condition.length; i++) {
+    const char = condition.charAt(i);
     if (isQuoteBoundary(condition, i)) {
       if (inString) {
         const esc = handleQuoteEscape(condition, i);
@@ -509,6 +584,15 @@ function countTopLevelAnd(condition: string): number {
       continue;
     }
     if (inString) continue;
+    if (char === '(') {
+      depth++;
+      continue;
+    }
+    if (char === ')') {
+      if (depth > 0) depth--;
+      continue;
+    }
+    if (depth > 0) continue;
     if (condition.slice(i, i + 5).toUpperCase() === ' AND ') {
       count++;
       i += 4;
@@ -629,9 +713,11 @@ export function isValidFilterCondition(
  *
  * Empty / whitespace-only conditions are treated as valid (they're no-ops at
  * query time, not errors), as are structurally-validated `sql_ast` filters.
+ * Variable-keyed entries carry no condition text at all, so there is nothing to
+ * validate and they are skipped by the same `type` guard.
  */
 export function validateSavedFilterValues(
-  filters: Filter[],
+  filters: DashboardFilterValue[],
 ): SavedFilterValueIssue[] {
   const issues: SavedFilterValueIssue[] = [];
   filters.forEach((filter, index) => {
@@ -686,6 +772,8 @@ export type DashboardFilterQueryIssue = {
   language: 'lucene' | 'sql';
   /** The raw `where` clause that failed to parse */
   where: string;
+  /** Why it failed, when the clause itself parses but its variables don't resolve. */
+  detail?: string;
 };
 
 /**
@@ -697,6 +785,8 @@ export type DashboardFilterQueryIssue = {
  * after opening the dashboard. Returns one issue per filter whose `where`
  * fails to parse as its declared language.
  *
+ * Variable references are expanded before the parse validation.
+ *
  * Note: this only checks that the `where` clause *parses*. It cannot catch a
  * `where`/`expression` that references a non-existent column — that only fails
  * when the query runs against ClickHouse.
@@ -705,12 +795,29 @@ export function validateDashboardFilterQueries(
   filters: DashboardFilter[],
 ): DashboardFilterQueryIssue[] {
   const issues: DashboardFilterQueryIssue[] = [];
+
+  // Variables are expanded with an empty selection.
+  const variables: ChartVariable[] = getDashboardVariableDeclarations(
+    filters,
+  ).map(declaration => ({ ...declaration, values: [] }));
+
   for (const filter of filters) {
+    // Only ClickHouse-queried filters carry a values query to validate.
+    if (!isQueryExpressionFilter(filter)) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
     if (language !== 'lucene' && language !== 'sql') continue;
-    if (!isValidFilterCondition(where, language)) {
+    const resolved = resolveFilterValuesWhere(filter, variables);
+    if (resolved.error) {
+      issues.push({
+        filterId: filter.id,
+        filterName: filter.name,
+        language,
+        where,
+        detail: resolved.error,
+      });
+    } else if (!isValidFilterCondition(resolved.where, language)) {
       issues.push({
         filterId: filter.id,
         filterName: filter.name,
@@ -755,6 +862,321 @@ export function isFilterVariableEnabled(filter: {
 }
 
 /**
+ * Whether a filter must have at least one value selected before the tiles it
+ * covers will load.
+ */
+export function isFilterRequired(
+  filter: DashboardFilter | { minSelections?: number },
+): boolean {
+  return 'minSelections' in filter && (filter.minSelections ?? 0) > 0;
+}
+
+/**
+ * Whether the given required filter blocks every tile on the dashboard,
+ * rather than only the tiles that read it.
+ */
+export function isFilterGlobalRequirement(
+  filter: DashboardFilter | { isGlobalRequirement?: boolean },
+): boolean {
+  return 'isGlobalRequirement' in filter && !!filter.isGlobalRequirement;
+}
+
+/** The discriminant every dashboard-filter shape carries. */
+export type DashboardFilterKind = DashboardFilter['type'];
+
+/** The source kinds a QUERY_EXPRESSION filter can run its `SELECT` against. */
+export const QUERY_EXPRESSION_FILTER_SOURCE_KINDS: SourceKind[] = [
+  SourceKind.Log,
+  SourceKind.Trace,
+  SourceKind.Session,
+  SourceKind.Metric,
+];
+
+/**
+ * The source kinds an ADHOC filter of the given source type can read keys
+ * from. Metric sources need a metric type to pick a table, so they are left out.
+ */
+export function getAdhocFilterSourceKinds(
+  sourceType: AdhocFilterSourceType,
+): SourceKind[] {
+  switch (sourceType) {
+    case 'sql':
+      return [SourceKind.Log, SourceKind.Trace, SourceKind.Session];
+    case 'promql':
+      return [SourceKind.Promql];
+  }
+}
+
+/** Type guard for QUERY_EXPRESSION type filters. */
+export function isQueryExpressionFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'QUERY_EXPRESSION' }> {
+  return filter.type === 'QUERY_EXPRESSION';
+}
+
+/** Type guard for STATIC_LIST type filters. */
+export function isStaticListFilter<T extends { type: DashboardFilterKind }>(
+  filter: T,
+): filter is Extract<T, { type: 'STATIC_LIST' }> {
+  return filter.type === 'STATIC_LIST';
+}
+
+/** Type guard for PROMETHEUS_LABEL type filters. */
+export function isPrometheusLabelFilter<
+  T extends { type: DashboardFilterKind },
+>(filter: T): filter is Extract<T, { type: 'PROMETHEUS_LABEL' }> {
+  return filter.type === 'PROMETHEUS_LABEL';
+}
+
+/** Type guard for ADHOC type filters. */
+export function isAdhocFilter<T extends { type: DashboardFilterKind }>(
+  filter: T,
+): filter is Extract<T, { type: 'ADHOC' }> {
+  return filter.type === 'ADHOC';
+}
+
+/**
+ * The sources an ADHOC filter broadcasts its conditions to: its
+ * `appliesToSourceIds`, or its own `sources` when that is unset or empty.
+ */
+export function getAdhocFilterAppliesToSourceIds(
+  filter: Pick<AdhocDashboardFilter, 'sources' | 'appliesToSourceIds'>,
+): string[] {
+  return filter.appliesToSourceIds?.length
+    ? filter.appliesToSourceIds
+    : filter.sources;
+}
+
+/** Type guard for the saved conditions of an ADHOC filter. */
+export function isAdhocFilterValue(
+  value: DashboardFilterValue,
+): value is AdhocFilterValue {
+  return value.type === 'adhoc';
+}
+
+/**
+ * Whether a SQL ad hoc condition on a value of this ClickHouse type can match.
+ * Conditions compare `toString(key)` with the value as queries return it, and
+ * queries return DateTimes as ISO UTC, unlike toString's space-separated form
+ * in the column's timezone.
+ */
+export const isAdhocComparableDataType = (type: string): boolean =>
+  !/\bDateTime/.test(type);
+
+const renderAdhocConditionSql = ({
+  key,
+  operator,
+  value,
+}: AdhocFilterCondition): string => {
+  // Stringified like broadcast filter selections, so Map/JSON/Dynamic values
+  // compare as strings.
+  const target = `toString(${key})`;
+  const literal = `'${escapeSqlString(value)}'`;
+  switch (operator) {
+    case '=':
+    case '!=':
+    case 'LIKE':
+    case 'NOT LIKE':
+      return `${target} ${operator} ${literal}`;
+    case '=~':
+      return `match(${target}, ${literal})`;
+    case '!~':
+      return `NOT match(${target}, ${literal})`;
+    default:
+      operator satisfies never;
+      throw new Error(`Unknown ad hoc filter operator '${operator}'`);
+  }
+};
+
+/**
+ * Render the conditions of a SQL ad hoc filter as filters, one per condition.
+ * Keys are SQL expressions and are used verbatim.
+ */
+export function adhocConditionsToFilters(
+  conditions: AdhocFilterCondition[],
+): ConditionFilter[] {
+  return conditions.map(
+    (condition): ConditionFilter => ({
+      type: 'sql',
+      condition: renderAdhocConditionSql(condition),
+    }),
+  );
+}
+
+/** How a value clicked in a tile updates an ad hoc filter. */
+export type AdhocConditionAction = 'include' | 'exclude' | 'add';
+
+/** A clicked `key = value` pair, before an action gives it an operator. */
+export type AdhocConditionEntry = Pick<AdhocFilterCondition, 'key' | 'value'>;
+
+/**
+ * Apply a click-to-filter action for `entries` (one per key, e.g. each group-by
+ * value of a chart series) to an ad hoc filter's conditions.
+ *
+ * `include` / `exclude` add a condition per entry, replacing the opposite
+ * condition on the same key and value. When every entry's condition already
+ * exists, they are removed instead, so a second click undoes the first.
+ * `add` is `include` without the undo, for actions labeled as adding.
+ */
+export function mergeAdhocConditions(
+  existingConditions: AdhocFilterCondition[],
+  newConditions: AdhocConditionEntry[],
+  action: AdhocConditionAction,
+): AdhocFilterCondition[] {
+  const operator: AdhocFilterOperator = action === 'exclude' ? '!=' : '=';
+  const matches = (
+    condition: AdhocFilterCondition,
+    entry: AdhocConditionEntry,
+    op: AdhocFilterOperator,
+  ) =>
+    condition.key === entry.key &&
+    condition.value === entry.value &&
+    condition.operator === op;
+
+  const isApplied = newConditions.every(entry =>
+    existingConditions.some(condition => matches(condition, entry, operator)),
+  );
+  if (isApplied && action !== 'add') {
+    return existingConditions.filter(
+      condition =>
+        !newConditions.some(entry => matches(condition, entry, operator)),
+    );
+  }
+
+  const opposite: AdhocFilterOperator = action === 'exclude' ? '=' : '!=';
+  const kept = existingConditions.filter(
+    condition =>
+      !newConditions.some(entry => matches(condition, entry, opposite)),
+  );
+  const added = newConditions
+    .filter(
+      entry => !kept.some(condition => matches(condition, entry, operator)),
+    )
+    .map((entry): AdhocFilterCondition => ({ ...entry, operator }));
+  return [...kept, ...added];
+}
+
+const LEGACY_LABEL_NAME = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
+
+const renderAdhocMatcherPromql = ({
+  key,
+  operator,
+  value,
+}: AdhocFilterCondition): string => {
+  // Label names outside the legacy charset must be quoted (Prometheus 3).
+  const label = LEGACY_LABEL_NAME.test(key)
+    ? key
+    : `"${escapePromqlStringValue(key)}"`;
+  switch (operator) {
+    case '=':
+    case '!=':
+    case '=~':
+    case '!~':
+      return `${label}${operator}"${escapePromqlStringValue(value)}"`;
+    case 'LIKE':
+    case 'NOT LIKE':
+      throw new Error(
+        `Ad hoc filter operator '${operator}' is not supported for PromQL`,
+      );
+    default:
+      operator satisfies never;
+      throw new Error(`Unknown ad hoc filter operator '${operator}'`);
+  }
+};
+
+/**
+ * Whether an ad hoc filter of `sourceType` can apply `condition`. A filter
+ * switched from SQL to PromQL keeps its conditions, and PromQL has no LIKE.
+ */
+export function isAdhocConditionSupported(
+  sourceType: AdhocFilterSourceType,
+  { operator }: AdhocFilterCondition,
+): boolean {
+  switch (sourceType) {
+    case 'sql':
+      return SQL_ADHOC_FILTER_OPERATORS.includes(operator);
+    case 'promql':
+      return PROMQL_ADHOC_FILTER_OPERATORS.includes(operator);
+    default:
+      sourceType satisfies never;
+      throw new Error(`Unknown ad hoc filter source type '${sourceType}'`);
+  }
+}
+
+/**
+ * Render the conditions of a PromQL ad hoc filter as label matchers, one per
+ * condition. Conditions PromQL can't express are skipped; callers report them
+ * using `isAdhocConditionSupported`.
+ */
+export function adhocConditionsToPromqlFilters(
+  conditions: AdhocFilterCondition[],
+): PromqlConditionFilter[] {
+  return conditions
+    .filter(condition => isAdhocConditionSupported('promql', condition))
+    .map(
+      (condition): PromqlConditionFilter => ({
+        type: 'promql',
+        condition: renderAdhocMatcherPromql(condition),
+      }),
+    );
+}
+
+function isPromqlFilter(
+  filter: BroadcastFilter,
+): filter is PromqlConditionFilter {
+  return filter.type === 'promql';
+}
+
+/** The broadcast filters a SQL, Lucene or builder query can apply. */
+export function getSqlFilters(filters: BroadcastFilter[]): ConditionFilter[] {
+  return filters.filter(
+    (filter): filter is ConditionFilter => !isPromqlFilter(filter),
+  );
+}
+
+/** The broadcast filters a PromQL query can apply. */
+export function getPromqlFilters(
+  filters: BroadcastFilter[],
+): PromqlConditionFilter[] {
+  return filters.filter(isPromqlFilter);
+}
+
+/** The SQL expression associated with the filter, if any. */
+export function getFilterExpression(
+  filter: DashboardFilter,
+): string | undefined {
+  return isQueryExpressionFilter(filter) ? filter.expression : undefined;
+}
+
+/** Where the filter broadcasts, or undefined when it cannot broadcast. */
+export function getFilterBroadcastTarget(
+  filter: DashboardFilter,
+): { appliesToSourceIds?: string[] } | undefined {
+  if (!isFilterBroadcastEnabled(filter)) return undefined;
+  if (isAdhocFilter(filter)) {
+    return { appliesToSourceIds: getAdhocFilterAppliesToSourceIds(filter) };
+  }
+  if (!isQueryExpressionFilter(filter)) return undefined;
+  return { appliesToSourceIds: filter.appliesToSourceIds };
+}
+
+/**
+ * Whether a filter broadcasts its selected value onto a tile whose source is
+ * `sourceId`. A broadcasting filter with no `appliesToSourceIds` reaches every
+ * tile, including one with no source of its own.
+ */
+export function doesFilterApplyToSource(
+  filter: DashboardFilter,
+  sourceId: string | undefined,
+): boolean {
+  const target = getFilterBroadcastTarget(filter);
+  if (!target) return false;
+  const appliesTo = target.appliesToSourceIds;
+  if (!appliesTo || appliesTo.length === 0) return true;
+  return !!sourceId && appliesTo.includes(sourceId);
+}
+
+/**
  * Whether a filter does anything at all with the value it collects — broadcast
  * it as a condition, expose it as `$variableName`, or both.
  */
@@ -776,6 +1198,170 @@ export function getFilterVariableName(filter: {
   return (
     filter.variableName?.trim() || deriveVariableName(filter.name) || undefined
   );
+}
+
+/** A dashboard variable's identity, before any selection is attached. */
+export type DashboardVariableDeclaration = Pick<
+  ChartVariable,
+  'name' | 'expression' | 'maxSelections'
+>;
+
+/** Minimal projection of fields necessary to extract the variables a dashboard declares. */
+export type FilterForVariableDeclaration = {
+  name: string;
+  expression?: string;
+  variableName?: string;
+  isVariableEnabled?: boolean;
+  maxSelections?: number;
+};
+
+/**
+ * The variable-enabled filters a dashboard declares, paired with the name each
+ * one answers to, in filter order.
+ */
+export function getDashboardVariableFilters<
+  T extends FilterForVariableDeclaration,
+>(filters: T[] | undefined): { filter: T; name: string }[] {
+  const results: { filter: T; name: string }[] = [];
+  const takenNames = new Set<string>();
+
+  for (const filter of filters ?? []) {
+    if (!isFilterVariableEnabled(filter)) continue;
+
+    // There shouldn't be any duplicate names, but if there are then the first one wins.
+    const name = getFilterVariableName(filter);
+    if (!name || takenNames.has(name)) continue;
+    takenNames.add(name);
+
+    results.push({ filter, name });
+  }
+
+  return results;
+}
+
+/** The variables a dashboard declares, in filter order. */
+export function getDashboardVariableDeclarations(
+  filters: FilterForVariableDeclaration[] | undefined,
+): DashboardVariableDeclaration[] {
+  return getDashboardVariableFilters(filters).map(({ filter, name }) => ({
+    name,
+    expression: filter.expression,
+    maxSelections: filter.maxSelections,
+  }));
+}
+
+export type ResolvedFilterValuesQuery = {
+  /** The clause the values lookup actually runs. */
+  where: string;
+  whereLanguage: 'lucene' | 'sql';
+  /** Set when expansion failed; `where` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a filter's dropdown-values query references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the clause as written, so
+ * downstream lookup still runs and reports an `error`.
+ */
+export function resolveFilterValuesWhere(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): ResolvedFilterValuesQuery {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim()) {
+    return { where, whereLanguage };
+  }
+
+  try {
+    return {
+      where: substituteVariables(where, {
+        variables,
+        inputLanguage: whereLanguage,
+      }),
+      whereLanguage,
+    };
+  } catch (e) {
+    return {
+      where,
+      whereLanguage,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
+export type ResolvedPromqlLabelFilterMatch = {
+  /** The selector the values lookup actually sends, or undefined for none. */
+  match?: string;
+  /** Set when expansion failed; `match` is then the template as written. */
+  error?: string;
+};
+
+/**
+ * Expand the dashboard variables a Prometheus label filter's series selector
+ * references.
+ *
+ * Never throws. Failures (unknown variables, etc) leave the selector as
+ * written and report an `error`.
+ */
+export function resolvePromqlLabelFilterMatch(
+  filter: { match?: string },
+  variables: ChartVariable[] | undefined,
+): ResolvedPromqlLabelFilterMatch {
+  const match = filter.match?.trim();
+  if (!match) return {};
+  if (variables == null) return { match };
+
+  try {
+    return {
+      match: substituteVariables(match, {
+        variables,
+        inputLanguage: 'promql',
+      }),
+    };
+  } catch (e) {
+    return { match, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * Variables whose selection a filter's dropdown-values query needs before it can
+ * match anything.
+ *
+ * Only bare and braced SQL references qualify. `$__filter` /
+ * `$__conditionalAll` expand to `(1=1)`, the `regex` format to `.*`, and a
+ * Lucene reference to `("")` (rendered as `(1=1)`), so all of those list every
+ * value while their variable is empty. A `sqlstring` reference renders as
+ * `NULL` and a `csv` one as nothing at all, which match no rows.
+ */
+export function getPendingFilterValuesVariables(
+  filter: { where?: string; whereLanguage?: 'lucene' | 'sql' },
+  variables: ChartVariable[] | undefined,
+): string[] {
+  const where = filter.where ?? '';
+  const whereLanguage = filter.whereLanguage ?? 'sql';
+  if (variables == null || !where.trim() || whereLanguage !== 'sql') return [];
+
+  const emptyVariableNames = new Set(
+    variables.filter(v => v.values.length === 0).map(v => v.name),
+  );
+  if (emptyVariableNames.size === 0) return [];
+
+  const pending = getVariableReferences(where)
+    .filter(
+      reference =>
+        reference.kind !== 'macro' &&
+        // A reference inside the macro that guards it is only emitted once the
+        // variable has values, so it needs no empty-state rendering of its own.
+        reference.guardedBy !== reference.name &&
+        // regex and promql have a valid empty-selection rendering.
+        !['regex', 'promql'].includes(reference.format ?? 'sqlstring') &&
+        emptyVariableNames.has(reference.name),
+    )
+    .map(reference => reference.name);
+
+  return Array.from(new Set(pending));
 }
 
 /**

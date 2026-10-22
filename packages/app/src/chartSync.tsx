@@ -1,4 +1,4 @@
-import { createContext, useContext, useId } from 'react';
+import { createContext, use, useId } from 'react';
 
 /**
  * The default recharts `syncId` group. Charts sharing a syncId cross-highlight
@@ -14,7 +14,7 @@ const DEFAULT_CHART_SYNC_ID = 'hdx';
 const ChartSyncContext = createContext<string>(DEFAULT_CHART_SYNC_ID);
 
 export function useChartSyncId() {
-  return useContext(ChartSyncContext);
+  return use(ChartSyncContext);
 }
 
 /**
@@ -28,9 +28,5 @@ export function IsolatedChartSyncProvider({
   children: React.ReactNode;
 }) {
   const syncId = useId();
-  return (
-    <ChartSyncContext.Provider value={syncId}>
-      {children}
-    </ChartSyncContext.Provider>
-  );
+  return <ChartSyncContext value={syncId}>{children}</ChartSyncContext>;
 }

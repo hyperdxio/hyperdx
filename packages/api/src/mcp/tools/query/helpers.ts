@@ -1,14 +1,23 @@
-import { ClickHouseError } from '@clickhouse/client-common';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
+import {
+  ClickHouseError,
+  type ClickHouseSettings,
+} from '@clickhouse/client-common';
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
+  isTimeSeriesDisplayType,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
+import { UnknownVariableError } from '@hyperdx/common-utils/dist/macroErrors';
 import type {
   ChartConfigWithDateRange,
+  ChartVariable,
   MetricTable,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -19,14 +28,21 @@ import {
 import { ObjectId } from 'mongodb';
 import ms from 'ms';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
+  MCP_QUERY_MAX_EXECUTION_SEC,
+  MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
+} from '@/mcp/utils/timeout';
+import {
   convertToInternalTileConfig,
   isConfigTile,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { isQueryTimeoutError } from '@/tasks/checkAlerts/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
@@ -67,19 +83,18 @@ export const SAFE_BODY_EXPR_CHARS = /^[\w.':\[\]\-]+$/;
 // ─── Safety limits ───────────────────────────────────────────────────────────
 
 /** ClickHouse settings applied to all MCP query-tool executions.
- *  readonly=2 so max_execution_time can be set
- *  (readonly=1 rejects all setting changes). */
-const MCP_CLICKHOUSE_SETTINGS = {
-  max_execution_time: 30,
-  readonly: 2,
-} as const;
+ *  readonly=2 so max_execution_time can be set (readonly=1 rejects it). */
+export const MCP_CLICKHOUSE_SETTINGS: ClickHouseSettings = {
+  max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+  readonly: '2',
+};
 
 /**
- * HTTP request timeout for MCP query-tool ClickHouse clients.
- * Set slightly above max_execution_time so ClickHouse can return a clean
- * timeout error before the HTTP connection is aborted.
+ * HTTP request timeout for MCP query-tool ClickHouse clients. Set above
+ * max_execution_time so ClickHouse returns a clean timeout before the HTTP
+ * connection is aborted.
  */
-const MCP_REQUEST_TIMEOUT = 32_000; // 30s query limit + 2s buffer
+export const MCP_REQUEST_TIMEOUT = MCP_TOOL_TIMEOUT_MS + MCP_TIMEOUT_GRACE_MS;
 
 // ─── Increase top-N cap hint ────────────────────────────────────────────────
 
@@ -251,11 +266,12 @@ export function buildTile(
 export function parseTimeRange(
   startTime?: string,
   endTime?: string,
+  defaultLookbackMs: number = ms('15m'),
 ): { error: string } | { startDate: Date; endDate: Date } {
   const endDate = endTime ? new Date(endTime) : new Date();
   const startDate = startTime
     ? new Date(startTime)
-    : new Date(endDate.getTime() - ms('15m'));
+    : new Date(endDate.getTime() - defaultLookbackMs);
   if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
     return {
       error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
@@ -400,6 +416,8 @@ export async function runConfigTile(
     maxResults?: number;
     granularity?: string;
     abortSignal?: AbortSignal;
+    /** Dashboard variables and their selected values. Omitted when not in a dashboard context. */
+    variables?: ChartVariable[];
   },
 ) {
   if (!isConfigTile(tile)) {
@@ -442,6 +460,7 @@ export async function runConfigTile(
           whereLanguage:
             (builderConfig.whereLanguage as 'lucene' | 'sql') ?? 'lucene',
           bodyExpression: selectStr || undefined,
+          variables: options?.variables,
           // Forward the batch deadline's abort signal so an event-patterns
           // tile that overruns is cancelled server-side alongside the generic
           // chart-config path, rather than escaping cancellation and letting
@@ -545,11 +564,15 @@ export async function runConfigTile(
     // collapses to one row per group. Default to "auto" so the renderer
     // picks a bucket, mirroring the REST charts path
     // (packages/api/src/routers/external-api/v2/charts.ts:289).
-    // Search tiles intentionally have no granularity (handled above).
+    // Series heatmaps bucket by time like line charts; distribution heatmaps
+    // compute their own buckets. Search tiles intentionally have no
+    // granularity (handled above).
+    const isSeriesHeatmap =
+      builderConfig.displayType === DisplayType.Heatmap &&
+      getHeatmapMode(builderConfig) === 'series';
     const granularityOverride =
       !isSearch &&
-      (builderConfig.displayType === DisplayType.Line ||
-        builderConfig.displayType === DisplayType.StackedBar)
+      (isTimeSeriesDisplayType(builderConfig.displayType) || isSeriesHeatmap)
         ? { granularity: options?.granularity ?? 'auto' }
         : {};
 
@@ -570,6 +593,7 @@ export async function runConfigTile(
       implicitColumnExpression: implicitColumn,
       useTextIndexForImplicitColumn,
       dateRange: [startDate, endDate] as [Date, Date],
+      variables: options?.variables,
     } satisfies ChartConfigWithDateRange;
 
     // Apply seriesLimit as LIMIT to categorical charts (pie/bar)
@@ -595,6 +619,11 @@ export async function runConfigTile(
     } catch (e) {
       return clickHouseErrorResult(e);
     }
+  }
+
+  // PromQL is evaluated by the Prometheus API, not the SQL renderer.
+  if (isPromqlSavedChartConfig(savedConfig)) {
+    return mcpUserError('PromQL tiles cannot be queried through MCP yet.');
   }
 
   // Raw SQL tile — hydrate source fields for macro support ($__sourceTable, $__filters)
@@ -647,6 +676,7 @@ export async function runConfigTile(
     ...savedConfig,
     ...sourceFields,
     dateRange: [startDate, endDate] as [Date, Date],
+    variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
   const metadata = getMetadata(clickhouseClient);
@@ -662,7 +692,7 @@ export async function runConfigTile(
     });
     return formatQueryResult(result);
   } catch (e) {
-    return clickHouseErrorResult(e);
+    return clickHouseErrorResult(e, { rawSql: true });
   }
 }
 
@@ -679,6 +709,9 @@ const SERVER_CH_ERROR_TYPES = new Set([
   'SOCKET_TIMEOUT',
   'POCO_EXCEPTION',
   'ALL_CONNECTION_TRIES_FAILED',
+  // A query hitting max_execution_time is a resource failure, not a user
+  // mistake; the `user` default hid these in error views.
+  'TIMEOUT_EXCEEDED',
 ]);
 
 /**
@@ -816,11 +849,11 @@ function hasNodeErrorCode(val: unknown, codes: ReadonlySet<string>): boolean {
  */
 export function clickHouseErrorResult(
   e: unknown,
-  context?: string | { prefix?: string; suffix?: string },
+  context?: string | { prefix?: string; suffix?: string; rawSql?: boolean },
 ): McpErrorResult {
-  const { prefix, suffix } =
+  const { prefix, suffix, rawSql } =
     typeof context === 'string'
-      ? { prefix: context, suffix: undefined }
+      ? { prefix: context, suffix: undefined, rawSql: undefined }
       : (context ?? {});
 
   // Prefer .message, but fall back to .cause.message when the wrapper
@@ -832,7 +865,7 @@ export function clickHouseErrorResult(
         (e.cause instanceof Error ? e.cause.message : '') ||
         String(e)
       : String(e);
-  const hint = errorHint(raw);
+  const hint = errorHint(raw, e, { rawSql });
   const base = hint ? `${raw}\n\nHINT: ${hint}` : raw;
   const text = `${prefix ? `${prefix}: ` : ''}${base}${suffix ? ` ${suffix}` : ''}`;
 
@@ -842,8 +875,52 @@ export function clickHouseErrorResult(
   return isServerError(e) ? mcpServerError(text) : mcpUserError(text);
 }
 
+/** Walk the cause chain looking for an error of the given class. */
+function findCause<T>(
+  error: unknown,
+  is: (e: unknown) => e is T,
+  depth = 5,
+): T | undefined {
+  let current = error;
+  for (let i = 0; i <= depth; i++) {
+    if (is(current)) return current;
+    if (!(current instanceof Error)) return undefined;
+    current = current.cause;
+  }
+  return undefined;
+}
+
+const SOCKET_TIMEOUT_CODES: ReadonlySet<string> = new Set(['ETIMEDOUT']);
+
+/**
+ * True when a query ran out of time: ClickHouse's max_execution_time or the
+ * client request timeout. A socket ETIMEDOUT is excluded because ClickHouse
+ * was unreachable, so narrowing the query won't help.
+ */
+export function isQueryOutOfTime(e: unknown): boolean {
+  const socketTimeout = findCause(e, (c): c is Error =>
+    hasNodeErrorCode(c, SOCKET_TIMEOUT_CODES),
+  );
+  return !socketTimeout && isQueryTimeoutError(e);
+}
+
 /** @internal Exported for testing only. */
-export function errorHint(msg: string): string | null {
+export function errorHint(
+  msg: string,
+  error?: unknown,
+  options?: { rawSql?: boolean },
+): string | null {
+  const unknownVariableError = findCause(
+    error,
+    (e): e is UnknownVariableError => e instanceof UnknownVariableError,
+  );
+  if (unknownVariableError) {
+    return (
+      "A variable exists only when one of the dashboard's filters sets " +
+      'isVariableEnabled. Call clickstack_get_dashboard to see the declared ' +
+      'filters and the names they can be referenced by.'
+    );
+  }
   if (
     /Cannot (convert|parse) string .* (to|as) (type )?DateTime64/i.test(msg)
   ) {
@@ -870,10 +947,39 @@ export function errorHint(msg: string): string | null {
       'The result row count is too large to serialize back to the agent.'
     );
   }
+  // Match only real timeouts. A bare `max_execution_time` substring would also
+  // hijack SETTING_CONSTRAINT_VIOLATION / readonly errors ("Setting
+  // max_execution_time shouldn't be greater than…"), which need a different fix.
+  if (
+    /TIMEOUT_EXCEEDED|Timeout exceeded/i.test(msg) ||
+    isQueryOutOfTime(error)
+  ) {
+    return (
+      'The query exceeded its execution-time limit. Narrow the time range so ' +
+      'ClickHouse can prune partitions, add filters to reduce the rows scanned, ' +
+      'or lower the requested LIMIT.'
+    );
+  }
   if (/TOO_MANY_ROWS_OR_BYTES|RESULT_IS_TOO_LARGE/i.test(msg)) {
     return (
       'The query returned too many rows. ' +
       'Add a LIMIT, narrow the time range, or add filters to reduce the result set.'
+    );
+  }
+  // Checked before unknown identifiers: "Unknown table expression identifier"
+  // names a table, so describe_source's column list would not help. Only raw
+  // SQL names its own table; source-based tools would be sent back to the
+  // same source table that just failed.
+  if (
+    options?.rawSql &&
+    /Unknown table expression identifier|(Table|Database) \S+ does not exist|UNKNOWN_(TABLE|DATABASE)/.test(
+      msg,
+    )
+  ) {
+    return (
+      'Use the `table` of a source from clickstack_list_sources, which is ' +
+      'qualified with its database. Unqualified names resolve only in the ' +
+      "connection's default database."
     );
   }
   if (

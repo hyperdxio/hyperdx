@@ -14,6 +14,7 @@ import {
   E2E_ALT_METRICS_GAUGE_TABLE,
   E2E_ALT_METRICS_SUM_TABLE,
   E2E_CLICKHOUSE_DATABASE,
+  E2E_CUSTOM_SERVICE_LOGS_TABLE,
   E2E_INTERESTING_FILTER_KEYS_TABLE,
   E2E_LOGS_TABLE,
   E2E_METADATA_MV_KEY_ROLLUP_TABLE,
@@ -21,6 +22,9 @@ import {
   E2E_METADATA_MV_LOGS_TABLE,
   E2E_METRICS_GAUGE_TABLE,
   E2E_METRICS_SUM_TABLE,
+  E2E_PROMQL_HISTOGRAM_METRIC_NAME,
+  E2E_PROMQL_METRIC_NAME,
+  E2E_PROMQL_TABLE,
   E2E_SESSIONS_TABLE,
   E2E_TRACES_MV_TABLE,
   E2E_TRACES_TABLE,
@@ -160,6 +164,22 @@ export const METADATA_MV_ROWS = [
   },
 ] as const;
 
+// Service (`AppName`) values seeded into `e2e_custom_service_name`.
+export const CUSTOM_SERVICE_LOGS_APP_NAMES = [
+  'checkout-app',
+  'payments-app',
+  'inventory-app',
+  'auth-app',
+] as const;
+
+// Body templates for `e2e_custom_service_name`.
+const CUSTOM_SERVICE_LOG_MESSAGES = [
+  'Started request handler for endpoint',
+  'Completed background reconciliation loop for object',
+  'Cache lookup finished for entry',
+  'Connection pool statistics reported for shard',
+] as const;
+
 const LOG_MESSAGES = [
   'Request processed successfully',
   'Database connection established',
@@ -253,6 +273,35 @@ function generateLogData(
 
     rows.push(
       `('${timestampNs}', '${traceId}', '', 0, '${severity}', 0, '${service}', '${message}', '', {'service.name':'${service}','environment':'test'}, '', '', '', {}, {'request.id':'req-${i}','user.id':'user-${i % 5}'})`,
+    );
+  }
+
+  return rows.join(',\n');
+}
+
+/**
+ * Build the VALUES tuples for `e2e_custom_service_name`. Rows cycle through
+ * CUSTOM_SERVICE_LOGS_APP_NAMES and CUSTOM_SERVICE_LOG_MESSAGES so every Drain pattern's
+ * samples span multiple services. Spread across the seed window like the other
+ * log data so relative time ranges find them.
+ */
+function generateCustomServiceLogData(
+  count: number,
+  startMs: number,
+  endMs: number,
+): string {
+  const rows: string[] = [];
+  const span = endMs - startMs;
+
+  for (let i = 0; i < count; i++) {
+    const t = count > 1 ? startMs + (i / (count - 1)) * span : startMs;
+    const timestampNs = Math.round(t) * 1000000;
+    const appName =
+      CUSTOM_SERVICE_LOGS_APP_NAMES[i % CUSTOM_SERVICE_LOGS_APP_NAMES.length];
+    const severity = SEVERITIES[i % SEVERITIES.length];
+    const message = `${CUSTOM_SERVICE_LOG_MESSAGES[i % CUSTOM_SERVICE_LOG_MESSAGES.length]} ${i}`;
+    rows.push(
+      `('${timestampNs}', '${appName}', '${severity}', '${message}', {'level':'${severity}'})`,
     );
   }
 
@@ -372,6 +421,39 @@ function generateTraceData(
   }
 
   return rows.join(',\n');
+}
+
+// Cross-trace span-link pair: a consumer span in its own trace whose Links
+// reference a producer span in another trace. Exercises both directions of
+// span-link resolution in the span detail panel (resolved "Span Links"
+// details and the reverse "Linked from" section). Exported so specs can
+// search for these spans by name.
+export const SPAN_LINK_SEED = {
+  producer: {
+    traceId: 'e2e-link-producer-trace',
+    spanId: 'e2e-link-producer-span',
+    spanName: 'E2E Link Producer Publish',
+    serviceName: 'link-producer-svc',
+  },
+  consumer: {
+    traceId: 'e2e-link-consumer-trace',
+    spanId: 'e2e-link-consumer-span',
+    spanName: 'E2E Link Consumer Process',
+    serviceName: 'link-consumer-svc',
+  },
+} as const;
+
+function generateSpanLinkTraces(seedRef: number): string {
+  const { producer, consumer } = SPAN_LINK_SEED;
+  // Producer runs first; the consumer picks the message up 30s later and
+  // links back — inside both lookup windows (reverse −1h/+24h from the
+  // producer, forward −24h/+1h from the consumer).
+  const producerNs = (seedRef - 60_000) * 1_000_000;
+  const consumerNs = (seedRef - 30_000) * 1_000_000;
+  return [
+    `('${producerNs}', '${producer.traceId}', '${producer.spanId}', '', '', '${producer.spanName}', 'SPAN_KIND_PRODUCER', '${producer.serviceName}', {'service.name':'${producer.serviceName}','environment':'test'}, '', '', {}, 12000000, 'STATUS_CODE_OK', '', [], [], [], [], [], [], [])`,
+    `('${consumerNs}', '${consumer.traceId}', '${consumer.spanId}', '', '', '${consumer.spanName}', 'SPAN_KIND_CONSUMER', '${consumer.serviceName}', {'service.name':'${consumer.serviceName}','environment':'test'}, '', '', {}, 34000000, 'STATUS_CODE_OK', '', [], [], [], ['${producer.traceId}'], ['${producer.spanId}'], [''], [{'link.kind':'follows_from'}])`,
+  ].join(',\n');
 }
 
 function generateSessionData(
@@ -496,7 +578,7 @@ function generateK8sGaugeMetrics(
         : startMs;
     for (let sample = 0; sample < samplesPerPod; sample++) {
       const timestampMs = podSlotStart + sample * stepMs;
-      const timestampNs = timestampMs * 1000000;
+      const timestampNs = Math.round(timestampMs * 1000000);
       const _timeUnix = timestampMs / 1000;
 
       // CPU metrics (percentage, 0-100)
@@ -513,39 +595,39 @@ function generateK8sGaugeMetrics(
 
       // k8s.pod.phase
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.phase', 'Pod phase', '', {}, ${timestampNs}, ${timestampNs}, ${phase}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.phase', 'Pod phase', '', {}, '${timestampNs}', '${timestampNs}', ${phase}, 0, [], [], [], [], [])`,
       );
 
       // k8s.container.restarts
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.container.restarts', 'Container restarts', '', {}, ${timestampNs}, ${timestampNs}, ${restarts}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.container.restarts', 'Container restarts', '', {}, '${timestampNs}', '${timestampNs}', ${restarts}, 0, [], [], [], [], [])`,
       );
 
       // container.cpu.utilization (0-100%)
       const containerCpuUtilization =
         5 + (podIdx % 30) + Math.sin(sample / 3) * 3;
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'container.cpu.utilization', 'Container CPU utilization', '%', {}, ${timestampNs}, ${timestampNs}, ${containerCpuUtilization}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'container.cpu.utilization', 'Container CPU utilization', '%', {}, '${timestampNs}', '${timestampNs}', ${containerCpuUtilization}, 0, [], [], [], [], [])`,
       );
 
       // k8s.pod.cpu.utilization
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.cpu.utilization', 'Pod CPU utilization', '', {}, ${timestampNs}, ${timestampNs}, ${cpuUsage}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.cpu.utilization', 'Pod CPU utilization', '', {}, '${timestampNs}', '${timestampNs}', ${cpuUsage}, 0, [], [], [], [], [])`,
       );
 
       // k8s.pod.cpu_limit_utilization
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.cpu_limit_utilization', 'Pod CPU limit utilization', '%', {}, ${timestampNs}, ${timestampNs}, ${cpuLimitUtilization}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.cpu_limit_utilization', 'Pod CPU limit utilization', '%', {}, '${timestampNs}', '${timestampNs}', ${cpuLimitUtilization}, 0, [], [], [], [], [])`,
       );
 
       // k8s.pod.memory.usage
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.memory.usage', 'Pod memory usage', 'bytes', {}, ${timestampNs}, ${timestampNs}, ${memoryUsage}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.memory.usage', 'Pod memory usage', 'bytes', {}, '${timestampNs}', '${timestampNs}', ${memoryUsage}, 0, [], [], [], [], [])`,
       );
 
       // k8s.pod.memory_limit_utilization
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.memory_limit_utilization', 'Pod memory limit utilization', '%', {}, ${timestampNs}, ${timestampNs}, ${memoryLimitUtilization}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.memory_limit_utilization', 'Pod memory limit utilization', '%', {}, '${timestampNs}', '${timestampNs}', ${memoryLimitUtilization}, 0, [], [], [], [], [])`,
       );
     }
   }
@@ -562,7 +644,7 @@ function generateK8sGaugeMetrics(
 
     for (let sample = 0; sample < samplesPerPod; sample++) {
       const timestampMs = nodeSlotStart + sample * stepMs;
-      const timestampNs = timestampMs * 1000000;
+      const timestampNs = Math.round(timestampMs * 1000000);
 
       const nodeCpuUsage = 30 + (nodeIdx % 30) + Math.sin(sample / 2) * 10;
       const nodeMemoryUsage = (2 + nodeIdx) * 1024 * 1024 * 1024; // 2-4 GB
@@ -572,17 +654,17 @@ function generateK8sGaugeMetrics(
 
       // k8s.node.cpu.utilization
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.node.cpu.utilization', 'Node CPU utilization', '', {}, ${timestampNs}, ${timestampNs}, ${nodeCpuUsage}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.node.cpu.utilization', 'Node CPU utilization', '', {}, '${timestampNs}', '${timestampNs}', ${nodeCpuUsage}, 0, [], [], [], [], [])`,
       );
 
       // k8s.node.memory.usage
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.node.memory.usage', 'Node memory usage', 'bytes', {}, ${timestampNs}, ${timestampNs}, ${nodeMemoryUsage}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.node.memory.usage', 'Node memory usage', 'bytes', {}, '${timestampNs}', '${timestampNs}', ${nodeMemoryUsage}, 0, [], [], [], [], [])`,
       );
 
       // k8s.node.condition_ready
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.node.condition_ready', 'Node condition ready', '', {}, ${timestampNs}, ${timestampNs}, ${nodeConditionReady}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.node.condition_ready', 'Node condition ready', '', {}, '${timestampNs}', '${timestampNs}', ${nodeConditionReady}, 0, [], [], [], [], [])`,
       );
     }
   }
@@ -600,13 +682,13 @@ function generateK8sGaugeMetrics(
 
     for (let sample = 0; sample < samplesPerPod; sample++) {
       const timestampMs = nsSlotStart + sample * stepMs;
-      const timestampNs = timestampMs * 1000000;
+      const timestampNs = Math.round(timestampMs * 1000000);
 
       const resourceAttrs = `{'k8s.cluster.name':'${cluster}','k8s.namespace.name':'${namespace}'}`;
 
       // k8s.namespace.phase
       rows.push(
-        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.namespace.phase', 'Namespace phase', '', {}, ${timestampNs}, ${timestampNs}, ${namespacePhase}, 0, [], [], [], [], [])`,
+        `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.namespace.phase', 'Namespace phase', '', {}, '${timestampNs}', '${timestampNs}', ${namespacePhase}, 0, [], [], [], [], [])`,
       );
     }
   }
@@ -631,7 +713,7 @@ function generateK8sSumMetrics(
 
     const timestampMs =
       podCount > 1 ? startMs + (podIdx / (podCount - 1)) * span : startMs;
-    const timestampNs = timestampMs * 1000000;
+    const timestampNs = Math.round(timestampMs * 1000000);
 
     // Pod uptime in seconds (1-10 hours)
     const uptimeSeconds = (1 + (podIdx % 10)) * 3600;
@@ -641,7 +723,7 @@ function generateK8sSumMetrics(
     // k8s.pod.uptime (Sum metric)
     // AggregationTemporality: 1 = Delta, 2 = Cumulative
     rows.push(
-      `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.uptime', 'Pod uptime', 's', {}, ${timestampNs}, ${timestampNs}, ${uptimeSeconds}, 0, 2, true, [], [], [], [], [])`,
+      `(${resourceAttrs}, '', '', '', {}, 0, '', 'k8s-metrics', 'k8s.pod.uptime', 'Pod uptime', 's', {}, '${timestampNs}', '${timestampNs}', ${uptimeSeconds}, 0, 2, true, [], [], [], [], [])`,
     );
   }
 
@@ -815,6 +897,9 @@ async function clearTestData(
   await client.query(
     `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_METADATA_MV_KEY_ROLLUP_TABLE}`,
   );
+  await client.query(
+    `TRUNCATE TABLE IF EXISTS ${E2E_CLICKHOUSE_DATABASE}.${E2E_CUSTOM_SERVICE_LOGS_TABLE}`,
+  );
   console.log('  Existing data cleared');
 }
 
@@ -896,6 +981,19 @@ export async function seedClickHouse(): Promise<void> {
     ) VALUES ${generateTraceData(numDataPoints, startMs, endMs)}
   `);
   console.log(`  Inserted ${numDataPoints} trace spans`);
+
+  // Insert the cross-trace span-link pair (producer + consumer)
+  console.log('  Inserting span-link trace pair...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_TRACES_TABLE} (
+      Timestamp, TraceId, SpanId, ParentSpanId, TraceState, SpanName, SpanKind,
+      ServiceName, ResourceAttributes, ScopeName, ScopeVersion, SpanAttributes,
+      Duration, StatusCode, StatusMessage, \`Events.Timestamp\`, \`Events.Name\`,
+      \`Events.Attributes\`, \`Links.TraceId\`, \`Links.SpanId\`, \`Links.TraceState\`,
+      \`Links.Attributes\`
+    ) VALUES ${generateSpanLinkTraces(seedRef)}
+  `);
+  console.log('  Inserted span-link trace pair');
 
   // Insert session trace data (spans with rum.sessionId for session tracking)
   console.log('  Inserting session trace data...');
@@ -989,7 +1087,137 @@ export async function seedClickHouse(): Promise<void> {
     `  Inserted ${METADATA_MV_ROWS.length} metadata-MV source entries`,
   );
 
+  console.log('  Inserting custom service name logs data...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_CUSTOM_SERVICE_LOGS_TABLE} (
+      Timestamp, AppName, SeverityText, Body, LogAttributes
+    ) VALUES ${generateCustomServiceLogData(numDataPoints, startMs, endMs)}
+  `);
+  console.log(`  Inserted ${numDataPoints} generic log entries`);
+
+  // PromQL series: one per service, labelled with the same `ServiceName` values
+  // the logs carry, so a dashboard filter on ServiceName selects values that
+  // actually match a `service` label here.
+  console.log('  Inserting PromQL series...');
+  await seedPromqlSeries(client, startMs, endMs);
+  console.log(`  Inserted ${SERVICES.length} PromQL series`);
+
+  await seedPromqlHistogram(client, startMs, endMs);
+  console.log(`  Inserted ${SERVICES.length} PromQL histograms`);
+
   console.log('ClickHouse seeding complete');
+}
+
+/**
+ * Insert a metric family and its series into the PromQL table, one sample a
+ * minute across the window. `valueSql` computes the nth sample's value. Written
+ * through the TimeSeries table itself, not its inner tables: the engine derives
+ * each series' `id` and splits samples across inner tables in ways that change
+ * between ClickHouse versions, and rows written around it are invisible to the
+ * PromQL engine.
+ */
+async function insertPromqlMetric(
+  client: ReturnType<typeof createClickHouseClient>,
+  startMs: number,
+  endMs: number,
+  family: { name: string; type: string; unit: string; help: string },
+  series: {
+    metricName: string;
+    tags: Record<string, string>;
+    valueSql: string;
+  }[],
+) {
+  const table = `${E2E_CLICKHOUSE_DATABASE}.${E2E_PROMQL_TABLE}`;
+
+  await client.query(`
+    INSERT INTO ${table} (metric_family, type, unit, help)
+    VALUES ('${family.name}', '${family.type}', '${family.unit}', '${family.help}')
+  `);
+
+  const stepMs = 60000;
+  const sampleCount = Math.max(1, Math.floor((endMs - startMs) / stepMs));
+  const rows = series
+    .map(({ metricName, tags, valueSql }) => {
+      const tagArgs = Object.entries(tags)
+        .flatMap(([key, value]) => [`'${key}'`, `'${value}'`])
+        .join(', ');
+      return (
+        `SELECT '${metricName}', map(${tagArgs}), ` +
+        `arrayMap(n -> (fromUnixTimestamp64Milli(toInt64(${startMs} + n * ${stepMs})), ${valueSql}), range(${sampleCount}))`
+      );
+    })
+    .join('\n    UNION ALL\n    ');
+
+  await client.query(`
+    INSERT INTO ${table} (metric_name, tags, time_series)
+    ${rows}
+  `);
+}
+
+/** Seed one `E2E_PROMQL_METRIC_NAME` series per service, always 1. */
+async function seedPromqlSeries(
+  client: ReturnType<typeof createClickHouseClient>,
+  startMs: number,
+  endMs: number,
+) {
+  await insertPromqlMetric(
+    client,
+    startMs,
+    endMs,
+    {
+      name: E2E_PROMQL_METRIC_NAME,
+      type: 'gauge',
+      unit: '',
+      help: 'E2E service liveness',
+    },
+    SERVICES.map(service => ({
+      metricName: E2E_PROMQL_METRIC_NAME,
+      tags: { service },
+      valueSql: '1.0',
+    })),
+  );
+}
+
+/**
+ * Each bucket's per-minute increase, keyed by its `le` label. Cumulative, so a
+ * minute adds 1 observation <= 0.1, 2 in (0.1, 0.5], 1 in (0.5, 1] and 1 above.
+ */
+const PROMQL_HISTOGRAM_BUCKET_INCREASES: Record<string, number> = {
+  '0.1': 1,
+  '0.5': 3,
+  '1': 4,
+  '+Inf': 5,
+};
+
+/**
+ * Seed a classic histogram, `E2E_PROMQL_HISTOGRAM_METRIC_NAME`, per service:
+ * one cumulative counter series per `le` bucket, growing at a fixed rate.
+ */
+async function seedPromqlHistogram(
+  client: ReturnType<typeof createClickHouseClient>,
+  startMs: number,
+  endMs: number,
+) {
+  await insertPromqlMetric(
+    client,
+    startMs,
+    endMs,
+    {
+      name: E2E_PROMQL_HISTOGRAM_METRIC_NAME,
+      type: 'histogram',
+      unit: 'seconds',
+      help: 'E2E request duration',
+    },
+    SERVICES.flatMap(service =>
+      Object.entries(PROMQL_HISTOGRAM_BUCKET_INCREASES).map(
+        ([le, increase]) => ({
+          metricName: `${E2E_PROMQL_HISTOGRAM_METRIC_NAME}_bucket`,
+          tags: { service, le },
+          valueSql: `toFloat64(n * ${increase})`,
+        }),
+      ),
+    ),
+  );
 }
 
 // Allow running directly for testing

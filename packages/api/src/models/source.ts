@@ -133,6 +133,19 @@ const SourceModel = mongoose.model<MongooseSourceBase>(
 // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
 export const Source = SourceModel as unknown as mongoose.Model<ISource>;
 
+// Declared as a nested Schema with `_id: false`, like metricTables below.
+// Left as an inline object, Mongoose makes this a single-nested subdoc with an
+// auto-generated `_id`; documents stored without one get a fresh ObjectId on
+// every hydration, so every /api/sources response body and ETag differs
+const MetadataMaterializedViewsMongoSchema = new Schema(
+  {
+    keyRollupTable: String,
+    kvRollupTable: String,
+    granularity: String,
+  },
+  { _id: false },
+);
+
 // --------------------------
 // Log discriminator
 // --------------------------
@@ -144,7 +157,9 @@ export const LogSource = Source.discriminator<ILogSource>(
     serviceNameExpression: String,
     serviceVersionExpression: String,
     severityTextExpression: String,
+    severityNumberExpression: String,
     bodyExpression: String,
+    eventNameExpression: String,
     eventAttributesExpression: String,
     resourceAttributesExpression: String,
     displayedTimestampValueExpression: String,
@@ -170,11 +185,7 @@ export const LogSource = Source.discriminator<ILogSource>(
       type: mongoose.Schema.Types.Array,
     },
     metadataMaterializedViews: {
-      type: {
-        keyRollupTable: String,
-        kvRollupTable: String,
-        granularity: String,
-      },
+      type: MetadataMaterializedViewsMongoSchema,
       default: undefined,
     },
     orderByExpression: String,
@@ -225,11 +236,7 @@ export const TraceSource = Source.discriminator<ITraceSource>(
       type: mongoose.Schema.Types.Array,
     },
     metadataMaterializedViews: {
-      type: {
-        keyRollupTable: String,
-        kvRollupTable: String,
-        granularity: String,
-      },
+      type: MetadataMaterializedViewsMongoSchema,
       default: undefined,
     },
     orderByExpression: String,
@@ -266,6 +273,15 @@ const MetricTablesSchema = new Schema(
   { _id: false },
 );
 
+// See MinAutoGranularitySchema in @hyperdx/common-utils, shared by the metric
+// and PromQL sources. The setter mirrors that schema's '' -> undefined
+// preprocess, since validateRequest doesn't write the parsed body back to
+// req.body.
+const minAutoGranularityField = {
+  type: String,
+  set: (v: string | null | undefined) => (v === '' ? undefined : v),
+};
+
 type IMetricSource = Extract<ISource, { kind: SourceKind.Metric }>;
 export const MetricSource = Source.discriminator<IMetricSource>(
   SourceKind.Metric,
@@ -279,6 +295,7 @@ export const MetricSource = Source.discriminator<IMetricSource>(
     logSourceId: String,
     // Unified metrics series table. Available only when `isMetricsSeriesTableEnabled` is set on the team document.
     seriesTable: String,
+    minAutoGranularity: minAutoGranularityField,
   }),
 );
 
@@ -288,5 +305,7 @@ export const MetricSource = Source.discriminator<IMetricSource>(
 type IPromqlSource = Extract<ISource, { kind: SourceKind.Promql }>;
 export const PromqlSource = Source.discriminator<IPromqlSource>(
   SourceKind.Promql,
-  new Schema<Extract<ISource, { kind: SourceKind.Promql }>>({}),
+  new Schema<Extract<ISource, { kind: SourceKind.Promql }>>({
+    minAutoGranularity: minAutoGranularityField,
+  }),
 );

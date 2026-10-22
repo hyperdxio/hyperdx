@@ -38,6 +38,7 @@ import SidePanelBreadcrumbs, {
   BreadcrumbItem,
 } from '@/components/SidePanelBreadcrumbs';
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
+import { useClearSpanSelection } from '@/hooks/useOpenedRowSpanSelection';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
@@ -129,6 +130,8 @@ export default function SessionSidePanel({
     initialRowId: selectedEvent?.rowId,
   });
 
+  const clearSpanSelection = useClearSpanSelection();
+
   const handleBackToSession = useCallback(() => {
     setSelectedEvent(null);
     sidePanelStack.clearTrail();
@@ -136,18 +139,20 @@ export default function SessionSidePanel({
 
   const handleEventNavigate = useCallback(
     (rowId: string, aliasWith: WithClause[]) => {
+      clearSpanSelection();
       sidePanelStack.clearTrail();
       setSelectedEvent({ rowId, aliasWith, sessionId });
     },
-    [setSelectedEvent, sidePanelStack, sessionId],
+    [clearSpanSelection, setSelectedEvent, sidePanelStack, sessionId],
   );
 
   // X / Esc-at-root closes the whole panel and clears the session-panel params.
   const handleClose = useCallback(() => {
+    clearSpanSelection();
     setSelectedEvent(null);
     sidePanelStack.clearTrail();
     onClose();
-  }, [setSelectedEvent, sidePanelStack, onClose]);
+  }, [clearSpanSelection, setSelectedEvent, sidePanelStack, onClose]);
 
   useHotkeys(['esc'], handleClose, { enabled: !selectedEvent });
 

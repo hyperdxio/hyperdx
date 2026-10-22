@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
@@ -7,7 +8,11 @@ import Dashboard from '@/models/dashboard';
 import { convertToExternalDashboard } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
-import { getRawSqlTileMacroWarnings } from './validation';
+import {
+  getRawSqlTileMacroWarnings,
+  getTileVariableWarnings,
+} from './validation';
+import { mcpVariableValuesParam, resolveDashboardVariables } from './variables';
 
 export function registerQueryTile({
   context,
@@ -19,14 +24,22 @@ export function registerQueryTile({
     'clickstack_query_tile',
     {
       title: 'Query a Dashboard Tile',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Execute the query for a specific tile on an existing dashboard. ' +
         'Useful for validating that a tile returns data or for spot-checking results ' +
         'without rebuilding the query from scratch. ' +
+        'Returns JSON with `result` (the query output rows), plus `note` when the ' +
+        'result was trimmed for size, `hints` when no data matched, and `warnings` ' +
+        'for missing raw SQL macros or dashboard-variable reference problems. Event-pattern tiles ' +
+        'return pattern-mining output like clickstack_event_patterns; markdown tiles ' +
+        'return a plain "no query" message. Query failures come back as tool errors. ' +
         'Use clickstack_get_dashboard with an ID to find tile IDs.',
       inputSchema: z.object({
-        dashboardId: objectIdSchema.describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe(
+          'Dashboard ID, from clickstack_get_dashboard (no id lists dashboards) ' +
+            'or clickstack_search_dashboards.',
+        ),
         tileId: z
           .string()
           .describe(
@@ -44,9 +57,10 @@ export function registerQueryTile({
           .string()
           .optional()
           .describe('End of the query window as ISO 8601. Default: now.'),
+        variableValues: mcpVariableValuesParam.optional(),
       }),
     },
-    async ({ dashboardId, tileId, startTime, endTime }) => {
+    async ({ dashboardId, tileId, startTime, endTime, variableValues }) => {
       const timeRange = parseTimeRange(startTime, endTime);
       if ('error' in timeRange) {
         return mcpUserError(timeRange.error);
@@ -61,7 +75,9 @@ export function registerQueryTile({
         return mcpUserError('Dashboard not found');
       }
 
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromqlTiles: true,
+      });
       const tile = externalDashboard.tiles.find(t => t.id === tileId);
       if (!tile) {
         return mcpUserError(
@@ -69,25 +85,37 @@ export function registerQueryTile({
         );
       }
 
+      const resolvedVariables = resolveDashboardVariables(
+        externalDashboard.filters,
+        variableValues,
+      );
+      if ('error' in resolvedVariables) {
+        return mcpUserError(resolvedVariables.error);
+      }
+
       const result = await runConfigTile(
         teamId.toString(),
         tile,
         startDate,
         endDate,
+        { variables: resolvedVariables.variables },
       );
 
-      // Surface non-blocking missing macro warnings alongside
+      // Surface non-blocking missing macro and variable warnings alongside
       // the successful result so the agent can spot a tile that runs but
       // ignores dashboard controls.
-      const macroWarnings = getRawSqlTileMacroWarnings([tile]);
+      const warnings = [
+        ...getRawSqlTileMacroWarnings([tile]),
+        ...getTileVariableWarnings([tile], externalDashboard.filters),
+      ];
       if (
-        macroWarnings.length > 0 &&
+        warnings.length > 0 &&
         !('isError' in result && result.isError) &&
         result.content?.[0]?.type === 'text'
       ) {
         try {
           const parsed = JSON.parse(result.content[0].text);
-          parsed.warnings = macroWarnings;
+          parsed.warnings = warnings;
           result.content[0].text = JSON.stringify(parsed, null, 2);
         } catch {
           // leave result unmodified

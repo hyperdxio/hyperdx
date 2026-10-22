@@ -8,32 +8,29 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
+  formatZodIssues,
   mcpServerError,
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
-import { type AlertChannel, AlertSource } from '@/models/alert';
-import { BaseError } from '@/utils/errors';
-import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
-
+import { AlertSource } from '@/models/alert';
 import {
-  type McpSaveAlertInput,
-  mcpSaveAlertSchema,
-  validateSaveAlertInput,
-} from './schemas';
+  convertExternalAlertChartConfigToInternal,
+  translateAlertDocumentToExternalAlertWithChartConfig,
+} from '@/routers/external-api/v2/utils/alertChartConfig';
+import { BaseError } from '@/utils/errors';
+import { externalAlertChartConfigSchema } from '@/utils/zod';
 
-/**
- * Convert the flat MCP channel object into the discriminated-union
- * `AlertChannel` that the controller layer expects.
- */
-function toAlertChannel(ch: McpSaveAlertInput['channel']): AlertChannel {
-  return {
-    type: 'webhook',
-    webhookId: ch.webhookId,
-  };
-}
+import { mcpSaveAlertSchema, validateSaveAlertInput } from './schemas';
+
+const MCP_SOURCE_TO_ALERT_SOURCE = {
+  saved_search: AlertSource.SAVED_SEARCH,
+  tile: AlertSource.TILE,
+  inline: AlertSource.INLINE,
+} as const;
 
 export function registerSaveAlert({
   context,
@@ -46,11 +43,23 @@ export function registerSaveAlert({
     'clickstack_save_alert',
     {
       title: 'Create or Update Alert',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new alert (omit id) or update an existing one (provide id). ' +
-        'Alerts monitor a saved search or dashboard tile and fire when the ' +
-        'metric crosses a threshold. A webhook notification channel is required.',
+        'Alerts monitor a saved search, a dashboard tile, or an inline chart ' +
+        'config (source "inline" + chartConfig — no saved search or dashboard ' +
+        'needed) and fire when the metric crosses a threshold. Once saved, the ' +
+        'alert is evaluated every interval and notifies its webhook channels ' +
+        'when it fires and when it resolves. At least one webhook channel is ' +
+        'required: pass "channels", or the legacy singular "channel" for one ' +
+        '(webhook IDs come from clickstack_get_webhook). Updates replace the ' +
+        'alert configuration rather than merging it: channels you do not resend are ' +
+        'removed, omitted name and message are cleared, omitted displayName and tags ' +
+        'are re-derived from the source, and settings this tool cannot set ' +
+        '(note, consecutive-window count) are cleared. Omitting both ' +
+        'scheduleStartAt and scheduleOffsetMinutes keeps the stored schedule; ' +
+        'clearing scheduleStartAt without an offset resets the offset to 0. Read the alert with ' +
+        'clickstack_get_alert first and resend every field you want to keep.',
       inputSchema: mcpSaveAlertSchema,
     },
     async input => {
@@ -67,13 +76,36 @@ export function registerSaveAlert({
         if (idError) return idError;
       }
 
+      // Inline alerts: run the chart config through the shared external
+      // schema (same one the v2 REST API parses) so formula validation and
+      // the number single-select rule cannot drift between the surfaces,
+      // then convert to the internal shape the controllers persist.
+      let internalChartConfig: AlertInput['chartConfig'];
+      if (input.source === 'inline') {
+        // The MCP tile dialect spells the gauge delta flag `isDelta`; the
+        // shared external schema spells it `periodAggFn: 'delta'` and strips
+        // unknown keys. The MCP select-item schema already emits both
+        // spellings in agreement (see mcpTileSelectItemSchema), so the flag
+        // survives this parse.
+        const parsed = externalAlertChartConfigSchema.safeParse(
+          input.chartConfig,
+        );
+        if (!parsed.success) {
+          return mcpUserError(
+            `Invalid chartConfig:\n${formatZodIssues(parsed.error)}`,
+          );
+        }
+        internalChartConfig = convertExternalAlertChartConfigToInternal(
+          parsed.data,
+        );
+      }
+
       // Build the alert input matching the shape expected by controllers.
-      const channel = toAlertChannel(input.channel);
-      const source =
-        input.source === 'tile' ? AlertSource.TILE : AlertSource.SAVED_SEARCH;
+      const source = MCP_SOURCE_TO_ALERT_SOURCE[input.source];
       const alertInput: AlertInput = {
         source,
-        channel,
+        // `channel` is omitted; makeAlert mirrors it from channels[0].
+        channels: input.channels ?? (input.channel ? [input.channel] : []),
         interval: input.interval,
         threshold: input.threshold,
         thresholdType: input.thresholdType as AlertThresholdType,
@@ -82,16 +114,20 @@ export function registerSaveAlert({
         scheduleStartAt: input.scheduleStartAt,
         name: input.name,
         message: input.message,
+        displayName: input.displayName,
+        tags: input.tags,
         groupBy: input.groupBy,
         savedSearchId: input.savedSearchId,
         dashboardId: input.dashboardId,
         tileId: input.tileId,
+        chartConfig: internalChartConfig,
       };
 
       // ── Validate referenced entities exist ──
       const mongoTeamId = new mongoose.Types.ObjectId(teamId);
+      let refs;
       try {
-        await validateAlertInput(mongoTeamId, alertInput);
+        refs = await validateAlertInput(mongoTeamId, alertInput);
       } catch (e) {
         // BaseError subclasses (Api400Error, Api404Error, etc.) store the
         // descriptive message in `name` and a generic string in `message`.
@@ -108,7 +144,13 @@ export function registerSaveAlert({
 
       // ── Update existing alert ──
       if (alertId) {
-        const updated = await updateAlert(alertId, mongoTeamId, alertInput);
+        const updated = await updateAlert(
+          alertId,
+          mongoTeamId,
+          alertInput,
+          refs,
+          mongoUserId,
+        );
         if (!updated) {
           return mcpUserError('Alert not found');
         }
@@ -118,7 +160,9 @@ export function registerSaveAlert({
               type: 'text' as const,
               text: JSON.stringify(
                 {
-                  ...translateAlertDocumentToExternalAlert(updated),
+                  ...translateAlertDocumentToExternalAlertWithChartConfig(
+                    updated,
+                  ),
                   ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
                 },
                 null,
@@ -134,6 +178,7 @@ export function registerSaveAlert({
         mongoTeamId,
         alertInput as Parameters<typeof createAlert>[1],
         mongoUserId,
+        refs,
       );
       return {
         content: [
@@ -141,7 +186,9 @@ export function registerSaveAlert({
             type: 'text' as const,
             text: JSON.stringify(
               {
-                ...translateAlertDocumentToExternalAlert(created),
+                ...translateAlertDocumentToExternalAlertWithChartConfig(
+                  created,
+                ),
                 ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
               },
               null,

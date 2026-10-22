@@ -105,6 +105,23 @@ jest.mock('../TimelineChart/utils', () => ({
   __esModule: true,
   renderMs: () => '',
 }));
+// The linked-span lookups issue real queries through useQueriedChartConfig,
+// whose providers this harness doesn't set up.
+jest.mock('../linkedSpans', () => ({
+  __esModule: true,
+  useReverseSpanLinks: () => ({ links: [], isLoading: false, error: null }),
+  useLinkedSpanDetails: () => ({
+    details: new Map(),
+    isLoading: false,
+    error: null,
+  }),
+  linkedSpanKey: (traceId: string, spanId: string) => `${traceId}:${spanId}`,
+  LinkedSpanMetaLine: () => null,
+}));
+jest.mock('../SpanLinkedFromSubpanel', () => ({
+  __esModule: true,
+  SpanLinkedFromSubpanel: () => null,
+}));
 jest.mock('../DrawerUtils', () => ({
   __esModule: true,
   DrawerFullWidthToggle: () => null,

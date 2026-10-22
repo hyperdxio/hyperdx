@@ -4,7 +4,11 @@ import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import { AggFnSelectControlled } from '@/components/AggFnSelect';
+import {
+  AggFnSelectControlled,
+  defaultAggFnForMetricType,
+  HISTOGRAM_SUPPORTED_AGG_FNS,
+} from '@/components/AggFnSelect';
 
 // Mantine's Combobox calls scrollIntoView when its dropdown opens; jsdom lacks it.
 window.HTMLElement.prototype.scrollIntoView = jest.fn();
@@ -87,4 +91,47 @@ describe('AggFnSelect', () => {
     expect(screen.queryByText('Any')).not.toBeInTheDocument();
     expect(screen.queryByText('Increase')).not.toBeInTheDocument();
   });
+});
+
+describe('defaultAggFnForMetricType', () => {
+  it('averages a gauge', () => {
+    expect(defaultAggFnForMetricType(MetricsDataType.Gauge)).toEqual({
+      aggFn: 'avg',
+    });
+  });
+
+  it('sums a counter', () => {
+    expect(defaultAggFnForMetricType(MetricsDataType.Sum)).toEqual({
+      aggFn: 'sum',
+    });
+  });
+
+  it.each([
+    ['histogram', MetricsDataType.Histogram],
+    ['exponential histogram', MetricsDataType.ExponentialHistogram],
+  ])('picks p95 for a %s', (_label, type) => {
+    expect(defaultAggFnForMetricType(type)).toEqual({
+      aggFn: 'quantile',
+      level: 0.95,
+    });
+  });
+
+  it.each(Object.values(MetricsDataType))(
+    'returns a level only for quantiles (%s)',
+    type => {
+      const { aggFn, level } = defaultAggFnForMetricType(type);
+      expect(level != null).toBe(aggFn === 'quantile');
+    },
+  );
+
+  it.each([MetricsDataType.Histogram, MetricsDataType.ExponentialHistogram])(
+    'returns an aggregation the series editor will not coerce away (%s)',
+    type => {
+      // ChartSeriesEditor resets any histogram aggFn outside this list, which
+      // would silently undo what the explorer just applied.
+      expect(HISTOGRAM_SUPPORTED_AGG_FNS).toContain(
+        defaultAggFnForMetricType(type).aggFn,
+      );
+    },
+  );
 });

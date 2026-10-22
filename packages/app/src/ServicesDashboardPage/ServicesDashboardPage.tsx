@@ -38,6 +38,7 @@ import {
   IconRefresh,
 } from '@tabler/icons-react';
 
+import DashboardFiltersModal from '@/components/DashboardFiltersModal';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
@@ -49,16 +50,15 @@ import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { IS_LOCAL_MODE } from '@/config';
 import DashboardFilters from '@/DashboardFilters';
-import DashboardFiltersModal from '@/DashboardFiltersModal';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import usePresetDashboardFilters from '@/hooks/usePresetDashboardFilters';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
-import { withAppNav } from '@/layout';
+import { withAppNavForSurface } from '@/layout';
 import { useServiceDashboardExpressions } from '@/serviceDashboard';
 import { useSource, useSources } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { usePageTitle } from '@/theme/ThemeProvider';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import DatabaseTab from './DatabaseTab';
 import ErrorsTab from './ErrorsTab';
@@ -139,9 +139,6 @@ function ServiceSelectControlled({
   );
 }
 
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
-
 const appliedConfigMap = {
   source: parseAsString,
   where: parseAsString,
@@ -165,8 +162,11 @@ export function getEffectiveTraceSourceId(
   return (isUsable ? sourceId : traceSources?.[0]?.id) || '';
 }
 
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function ServicesDashboardPage() {
-  const brandName = useBrandDisplayName();
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
+  const title = usePageTitle('Services Dashboard');
   const [tab, setTab] = useQueryState(
     'tab',
     parseAsStringEnum<string>(['http', 'database', 'errors']).withDefault(
@@ -236,7 +236,7 @@ function ServicesDashboardPage() {
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const {
     filters,
-    filterValues,
+    selectionByFilterId,
     setFilterValue,
     filterQueries: additionalFilters,
     handleSaveFilter,
@@ -268,7 +268,6 @@ function ServicesDashboardPage() {
     syncSourceParam(appliedConfigWithoutFilters.source);
   }, [appliedConfigWithoutFilters.source]);
 
-  const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
@@ -314,7 +313,7 @@ function ServicesDashboardPage() {
   return (
     <Box p="sm" data-testid="services-dashboard-page">
       <Head>
-        <title>Services Dashboard – {brandName}</title>
+        <title>{title}</title>
       </Head>
       <Breadcrumbs mb="sm" mt="xs" fz="sm">
         <Anchor component={Link} href="/dashboards/list" fz="sm" c="dimmed">
@@ -343,7 +342,13 @@ function ServicesDashboardPage() {
         }}
       >
         <Group gap="xs">
-          <Group justify="space-between" gap="xs" wrap="nowrap" flex={1}>
+          <Group
+            justify="space-between"
+            gap="xs"
+            wrap="nowrap"
+            flex={1}
+            align="flex-start"
+          >
             <SourceSelectControlled
               control={control}
               name="source"
@@ -377,6 +382,7 @@ function ServicesDashboardPage() {
                   variant="secondary"
                   onClick={() => setShowFiltersModal(true)}
                   size="lg"
+                  data-testid="edit-filters-button"
                 >
                   <IconFilterEdit size={18} />
                 </ActionIcon>
@@ -409,7 +415,7 @@ function ServicesDashboardPage() {
       </form>
       <DashboardFilters
         filters={filters}
-        filterValues={filterValues}
+        selectionByFilterId={selectionByFilterId}
         onSetFilterValue={setFilterValue}
         dateRange={searchedTimeRange}
       />
@@ -459,6 +465,7 @@ function ServicesDashboardPage() {
         source={source}
         isLoading={isFetchingFilters || isFiltersMutationPending}
         showVariableOptions={false}
+        showRequiredFilterOptions={false}
       />
     </Box>
   );
@@ -472,6 +479,9 @@ const ServicesDashboardPageDynamic = dynamic(
 );
 
 // @ts-expect-error Next.js layout typing
-ServicesDashboardPageDynamic.getLayout = withAppNav;
+ServicesDashboardPageDynamic.getLayout = withAppNavForSurface(
+  'service-dashboard',
+  'services',
+);
 
 export default ServicesDashboardPageDynamic;

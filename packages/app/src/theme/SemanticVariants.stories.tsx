@@ -14,7 +14,10 @@ import {
  * toolbar toggles to verify each variant across all four combinations.
  */
 const story = {
-  title: 'Design Tokens/Semantic Variants',
+  title: 'Design tokens/Semantic variants',
+  parameters: {
+    layout: 'padded',
+  },
 };
 export default story;
 

@@ -68,6 +68,10 @@ Key (`validateUserAccessKey` middleware), rate-limited to 100 req/min.
 When adding or modifying external API endpoints, run `yarn docgen` to regenerate
 the OpenAPI spec and `yarn lint:openapi` to validate it.
 
+`scripts/ci/check-openapi-sync.sh` (run by `make ci-lint` and by CI) fails if the
+committed spec is stale. `swaggerOptions` in `src/utils/swagger.ts` is also an
+input, and the spec is in `.prettierignore` because docgen owns its formatting.
+
 ### MCP Server (`src/mcp/`)
 
 [Model Context Protocol](https://modelcontextprotocol.io/) server that lets AI
@@ -83,6 +87,9 @@ Key, rate-limited to 600 req/min.
   tracing)
 - **Dev/debug**: `yarn dev:mcp` launches the MCP Inspector for interactive
   testing
+- **Response size**: each tool call records the UTF-8 bytes it returns
+  (`mcp.tool.response.size_bytes` span attribute,
+  `hyperdx.mcp.tool.response.size_bytes` histogram)
 
 See `MCP.md` in the repo root for user-facing setup instructions.
 

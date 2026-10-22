@@ -78,7 +78,7 @@ jest.mock('@/DashboardFilters', () => ({
   __esModule: true,
   default: () => null,
 }));
-jest.mock('@/DashboardFiltersModal', () => ({
+jest.mock('@/components/DashboardFiltersModal', () => ({
   __esModule: true,
   default: () => null,
 }));
@@ -131,6 +131,7 @@ jest.mock('@/serviceDashboard', () => ({
 jest.mock('@/timeQuery', () => ({
   __esModule: true,
   parseTimeQuery: () => [new Date(0), new Date(1)],
+  useDefaultTimeRange: () => [new Date(0), new Date(1)],
   useNewTimeQuery: () => ({
     searchedTimeRange: [new Date(0), new Date(1)],
     onSearch: jest.fn(),
@@ -158,11 +159,13 @@ jest.mock('@/hooks/useChartConfig', () => ({
 jest.mock('@/layout', () => ({
   __esModule: true,
   withAppNav: (page: unknown) => page,
+  withAppNavForSurface: () => (page: unknown) => page,
 }));
 
 jest.mock('@/theme/ThemeProvider', () => ({
   __esModule: true,
   useBrandDisplayName: () => 'HyperDX',
+  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
 }));
 
 import ServicesDashboardPage from '@/ServicesDashboardPage';

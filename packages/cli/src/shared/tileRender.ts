@@ -72,7 +72,8 @@ export function renderTileContent({
 
   switch (displayType) {
     case DisplayType.Line:
-    case DisplayType.StackedBar: {
+    case DisplayType.StackedBar:
+    case DisplayType.StackedLine: {
       const timeChartData = formatResponseForTimeChart({
         response: data,
         dateRange: queriedConfig.dateRange,
@@ -85,10 +86,12 @@ export function renderTileContent({
         source,
         data.meta,
       );
+      // Stacked lines render as stacked bars: the terminal has no filled
+      // areas, and stacked series drawn as bare lines are hard to read.
       const renderFn =
-        displayType === DisplayType.StackedBar
-          ? renderStackedBarChart
-          : renderLineChart;
+        displayType === DisplayType.Line
+          ? renderLineChart
+          : renderStackedBarChart;
       const chart = renderFn({
         data: timeChartData,
         width,

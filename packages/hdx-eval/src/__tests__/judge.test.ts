@@ -97,6 +97,39 @@ describe('judgeTrajectory', () => {
     expect(result.scores.clarity.score).toBe(5);
   });
 
+  it('sends the rubric as instructions and the answer as the prompt', async () => {
+    // Checks the option name only; judge.sdk.test.ts verifies the real SDK
+    // delivers it to the model as the system message.
+    mockJudgeResult({
+      object: {
+        scores: {
+          accuracy: { score: 3, rationale: '' },
+          clarity: { score: 3, rationale: '' },
+        },
+      },
+    });
+
+    await judgeTrajectory(baseOpts());
+
+    const callArg = mockGenerateObject.mock.calls[0][0] as {
+      instructions?: unknown;
+      system?: unknown;
+      prompt?: unknown;
+    };
+    expect(callArg.instructions).toEqual(
+      expect.stringContaining(
+        '- "accuracy" (weight 2): Is the answer correct?',
+      ),
+    );
+    expect(callArg.instructions).toEqual(
+      expect.stringContaining('SCENARIO: test-scenario'),
+    );
+    expect(callArg.system).toBeUndefined();
+    expect(callArg.prompt).toEqual(
+      expect.stringContaining('Because the database timed out.'),
+    );
+  });
+
   it('builds a CLOSED schema keyed by rubric criteria (OpenAI strict-mode safe)', async () => {
     // OpenAI's strict structured-output mode rejects open `z.record` maps and
     // any object property missing from `required`. The judge must therefore

@@ -1,16 +1,45 @@
 name: Docker Build
-# Verifies the release Docker images actually build on PRs, without pushing.
+# Verifies the release Docker images actually build, without pushing.
 # A source-level type check (`make ci-lint`) cannot catch build failures that
 # only surface inside the image — e.g. a declaration file that exists in the
-# repo but was never COPYed into the Docker build stage. Each image is built
-# only when files that affect it change, so unrelated PRs stay fast.
+# repo but was never COPYed into the Docker build stage.
+#
+# On pull requests each image is built only when files that affect it change,
+# so unrelated PRs stay fast.
+#
+# On pushes to main every image is built regardless of what changed. The path
+# filter is the wrong instrument there, because these builds can break with no
+# repo change at all: the Dockerfile pins floating upstream tags
+# (`node:${NODE_VERSION}-alpine`, `clickhouse-server:${CLICKHOUSE_VERSION}-alpine`)
+# and the registry re-points them whenever upstream publishes a patch. That is
+# exactly how the 26.8-alpine break reached a release: the tag moved from
+# ClickHouse 26.8.6 to 26.8.7 mid-afternoon, upgrading apk-tools 3.0.6 -> 3.0.8
+# underneath us. The PR check and the nightly had both already passed against
+# the older digest, two commits then merged to main with no image build between
+# them, and the failure only appeared in the release run hours later. Building
+# unconditionally on main turns that into a red build on the next merge.
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Keyed on the event as well as the ref to separate a manual run on main from
+  # a merge: both carry `refs/heads/main`, so they would otherwise contend for
+  # one group. (A pull request run never collides with either — its ref is
+  # `refs/pull/<n>/merge`.)
+  #
+  # Pushes to main do not cancel in progress, so a merge cannot kill the build
+  # verifying the commit before it. This guarantees the tip of main gets built,
+  # not that every individual commit does: GitHub holds only one pending run per
+  # group, so a third merge arriving during a long build supersedes the queued
+  # one. That is fine for what this job is for — an upstream base-image move
+  # affects every commit equally, and a Dockerfile break in a superseded commit
+  # is still present at the tip. Per-commit attribution comes from the pull
+  # request run, not from here.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 jobs:
@@ -24,6 +53,7 @@ jobs:
         uses: actions/checkout@v6
       - name: Get changed files
         id: changed-files
+        if: github.event_name == 'pull_request'
         uses: tj-actions/changed-files@v47.0.6
         with:
           files: |
@@ -31,13 +61,13 @@ jobs:
             packages/otel-collector/**
       - name: Setup Docker Buildx
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v3
       - name: Build (no push)
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -62,6 +92,7 @@ jobs:
         uses: actions/checkout@v6
       - name: Get changed files
         id: changed-files
+        if: github.event_name == 'pull_request'
         uses: tj-actions/changed-files@v47.0.6
         with:
           files: |
@@ -79,13 +110,13 @@ jobs:
             nx.json
       - name: Setup Docker Buildx
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v3
       - name: Build (no push)
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -115,10 +146,11 @@ jobs:
   #
   # This target's base does `COPY --from=prod /app /app`, so it already
   # rebuilds the entire App/prod image. To avoid duplicating that ~8-minute
-  # Node build on every app change, this job is gated ONLY on the incremental
-  # bundling inputs (ClickHouse / OTel / the shared Dockerfile) — NOT on
-  # api/app/common-utils/deps. Those are covered by the App Image job above,
-  # and they can't break the bundling layers, which only COPY the prod output.
+  # Node build on every app change, the pull-request path filter below is
+  # scoped ONLY to the incremental bundling inputs (ClickHouse / OTel / the
+  # shared Dockerfile) — NOT api/app/common-utils/deps. Those are covered by
+  # the App Image job above, and they can't break the bundling layers, which
+  # only COPY the prod output. Pushes to main ignore the filter entirely.
   all-in-one-image:
     name: Build All-in-One Image
     runs-on: ubuntu-24.04
@@ -128,6 +160,7 @@ jobs:
         uses: actions/checkout@v6
       - name: Get changed files
         id: changed-files
+        if: github.event_name == 'pull_request'
         uses: tj-actions/changed-files@v47.0.6
         with:
           files: |
@@ -138,13 +171,13 @@ jobs:
             .vex/**
       - name: Setup Docker Buildx
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/setup-buildx-action@v3
       - name: Build all-in-one-auth (no push)
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -169,8 +202,8 @@ jobs:
       # the final noauth COPY layer.
       - name: Build all-in-one-noauth / Local (no push)
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -195,7 +228,7 @@ jobs:
       # ClickHouse. Proves the artefact we ship actually runs, not just builds.
       - name: Smoke test the built image
         if:
-          steps.changed-files.outputs.any_changed == 'true' || github.event_name
-          == 'workflow_dispatch'
+          github.event_name != 'pull_request' ||
+          steps.changed-files.outputs.any_changed == 'true'
         timeout-minutes: 10
         run: scripts/ci/smoke-all-in-one.sh hyperdx-aio-smoke:pr

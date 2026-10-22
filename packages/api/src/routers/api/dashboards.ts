@@ -1,13 +1,21 @@
 import {
   validateDashboardFilterModes,
+  validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
 import {
+  getAdhocFilterSourceKinds,
+  isAdhocFilter,
+  isPrometheusLabelFilter,
+} from '@hyperdx/common-utils/dist/filters';
+import {
+  DashboardFilter,
   DashboardSchema,
   DashboardWithoutIdSchema,
   PresetDashboard,
   PresetDashboardFilterSchema,
   resolveChartPaletteToken,
+  SourceKind,
   walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
@@ -28,19 +36,22 @@ import {
   getPresetDashboardFilters,
   updatePresetDashboardFilter,
 } from '@/controllers/presetDashboardFilters';
+import { getSources } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import type { ObjectId } from '@/models';
 import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
 const router = express.Router();
 
 /**
- * Additional filter validation (uniqueness, at least one mode enabled).
+ * Additional filter validation (variable name and option uniqueness, at least one mode enabled).
  */
 const addFilterIssues = (
   data: {
     filters?: {
       name: string;
+      options?: string[];
       variableName?: string;
       isBroadcastEnabled?: boolean;
       isVariableEnabled?: boolean;
@@ -50,7 +61,66 @@ const addFilterIssues = (
 ) => {
   validateDashboardFilterVariableNames(data.filters ?? [], ctx);
   validateDashboardFilterModes(data.filters ?? [], ctx);
+  validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
 };
+
+/** The sources a filter reads from, each with the kinds it must be. */
+function getFilterSourceRefs(
+  filter: DashboardFilter,
+): { id: string; kinds: SourceKind[] }[] {
+  if (isPrometheusLabelFilter(filter)) {
+    return [{ id: filter.source, kinds: [SourceKind.Promql] }];
+  }
+  if (isAdhocFilter(filter)) {
+    const kinds = getAdhocFilterSourceKinds(filter.sourceType);
+    return [...filter.sources, ...(filter.appliesToSourceIds ?? [])].map(
+      id => ({ id, kinds }),
+    );
+  }
+  return [];
+}
+
+/**
+ * Rejects PROMETHEUS_LABEL and ADHOC filters that reference a source that is
+ * missing or of the wrong kind. Resolving these filters needs a live source of
+ * the right kind, unlike other filter types. References the stored filter with
+ * the same ID already made are skipped, so a since-deleted source doesn't block
+ * unrelated saves. Returns an error message, or null when there is nothing to
+ * reject.
+ */
+async function validateFilterSources(
+  teamId: ObjectId,
+  filters: DashboardFilter[] = [],
+  existingFilters: DashboardFilter[] = [],
+): Promise<string | null> {
+  const refKey = ({ id, kinds }: { id: string; kinds: SourceKind[] }) =>
+    `${id}:${kinds.join(',')}`;
+  const existingRefsById = new Map(
+    existingFilters.map(filter => [
+      filter.id,
+      new Set(getFilterSourceRefs(filter).map(refKey)),
+    ]),
+  );
+  const newRefs = filters.flatMap(filter =>
+    getFilterSourceRefs(filter).filter(
+      ref => !existingRefsById.get(filter.id)?.has(refKey(ref)),
+    ),
+  );
+  if (newRefs.length === 0) return null;
+
+  const sources = await getSources(teamId.toString());
+  const kindById = new Map(sources.map(s => [s._id.toString(), s.kind]));
+  const invalid = new Set(
+    newRefs
+      .filter(({ id, kinds }) => {
+        const kind = kindById.get(id);
+        return kind === undefined || !kinds.includes(kind);
+      })
+      .map(({ id }) => id),
+  );
+  if (invalid.size === 0) return null;
+  return `The following filter source IDs do not exist or are not a kind of source the filter supports: ${[...invalid].join(', ')}`;
+}
 
 /**
  * Heal legacy `chart-1`..`chart-10` tile colors from #2265 on the request
@@ -108,6 +178,11 @@ router.post(
       // dashboard to the provisioner.
       const dashboard = _.omit(req.body, 'provisioned');
 
+      const sourceError = await validateFilterSources(teamId, req.body.filters);
+      if (sourceError != null) {
+        return res.status(400).json({ message: sourceError });
+      }
+
       const newDashboard = await createDashboard(teamId, dashboard, userId);
 
       res.json(newDashboard.toJSON());
@@ -140,6 +215,15 @@ router.patch(
       // Only omit undefined values, keep null (which signals field removal)
       // `provisioned` is server-owned — see the POST handler above.
       const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
+
+      const sourceError = await validateFilterSources(
+        teamId,
+        req.body.filters,
+        dashboard.filters,
+      );
+      if (sourceError != null) {
+        return res.status(400).json({ message: sourceError });
+      }
 
       const updatedDashboard = await updateDashboard(
         dashboardId,

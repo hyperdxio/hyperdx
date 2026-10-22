@@ -9,8 +9,10 @@ import { DashboardsListPage } from '../page-objects/DashboardsListPage';
 import { getApiUrl, getSources } from '../utils/api-helpers';
 import { expect, test } from '../utils/base-test';
 import {
+  DEFAULT_CONNECTION_NAME,
   DEFAULT_LOGS_SOURCE_NAME,
   DEFAULT_METRICS_SOURCE_NAME,
+  DEFAULT_SESSIONS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
 
@@ -89,6 +91,78 @@ function makeTemplateWithOnClick({
   };
 }
 
+const ADHOC_TILE_NAME = 'Events';
+
+/**
+ * Build a single-tile dashboard template with one SQL ad hoc filter and a saved
+ * condition for it. Source names that don't match a workspace source are left
+ * for the test to map.
+ */
+function makeAdhocFilterTemplate({
+  dashboardName,
+  tileSourceName,
+  sources,
+  appliesToSourceIds,
+}: {
+  dashboardName: string;
+  tileSourceName: string;
+  sources: string[];
+  appliesToSourceIds?: string[];
+}) {
+  return {
+    version: '0.1.0',
+    name: dashboardName,
+    tiles: [
+      {
+        id: 'tile-1',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 4,
+        config: {
+          name: ADHOC_TILE_NAME,
+          source: tileSourceName,
+          displayType: 'number',
+          granularity: 'auto',
+          select: [{ aggFn: 'count', valueExpression: '' }],
+          where: '',
+          whereLanguage: 'sql',
+        },
+      },
+    ],
+    filters: [
+      {
+        id: 'filter-1',
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources,
+        appliesToSourceIds,
+        isVariableEnabled: true,
+        variableName: 'conditions',
+      },
+    ],
+    savedFilterValues: [
+      {
+        type: 'adhoc',
+        name: 'conditions',
+        conditions: [{ key: 'ServiceName', operator: '=', value: 'api' }],
+      },
+    ],
+  };
+}
+
+async function getSourceId(
+  page: Page,
+  kind: 'log' | 'trace' | 'session',
+  name: string,
+): Promise<string> {
+  const sources = await getSources(page, kind);
+  const match = sources.find((s: { name: string }) => s.name === name);
+  expect(match, `seeded ${kind} source "${name}"`).toBeDefined();
+  return match.id;
+}
+
 test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
   let dashboardsListPage: DashboardsListPage;
   let dashboardImportPage: DashboardImportPage;
@@ -157,11 +231,13 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         await expect(
           dashboardImportPage.getImportSuccessNotification(),
         ).toBeVisible();
-        await page.waitForURL(/\/dashboards\/.+/);
+        // Match the dashboard id, not just any /dashboards/ path: a looser
+        // pattern also matches /dashboards/import, so a slow client-side
+        // navigation slips through and fails on the heading instead.
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
       });
 
       await test.step('Verify the new dashboard has the correct name', async () => {
-        await expect(page).toHaveURL(/\/dashboards\/.+/);
         await expect(
           dashboardPage.getDashboardHeading('.NET Runtime Metrics'),
         ).toBeVisible();
@@ -289,12 +365,12 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
 
       await test.step('Verify both tile source and onClick source rows are rendered', async () => {
         await expect(
-          dashboardImportPage.getMappingRow(tileName, 'Data Source'),
+          dashboardImportPage.getMappingRow(tileName, 'Data source'),
         ).toBeVisible();
         await expect(
           dashboardImportPage.getMappingRow(
             tileName,
-            'On Click - Search Source',
+            'On click - search source',
           ),
         ).toBeVisible();
       });
@@ -302,7 +378,7 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
       await test.step('Verify the onClick source dropdown only lists log and trace sources', async () => {
         const onClickRow = dashboardImportPage.getMappingRow(
           tileName,
-          'On Click - Search Source',
+          'On click - search source',
         );
         await onClickRow.getByPlaceholder('Select a source').click();
         await expect(
@@ -330,12 +406,12 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
       await test.step('Map the tile source and onClick search source', async () => {
         await dashboardImportPage.selectMapping(
           tileName,
-          'Data Source',
+          'Data source',
           DEFAULT_METRICS_SOURCE_NAME,
         );
         await dashboardImportPage.selectMapping(
           tileName,
-          'On Click - Search Source',
+          'On click - search source',
           DEFAULT_LOGS_SOURCE_NAME,
         );
       });
@@ -407,19 +483,19 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
 
       await test.step('Verify the onClick dashboard row is rendered', async () => {
         await expect(
-          dashboardImportPage.getMappingRow(tileName, 'On Click - Dashboard'),
+          dashboardImportPage.getMappingRow(tileName, 'On click - dashboard'),
         ).toBeVisible();
       });
 
       await test.step('Map the tile source and onClick target dashboard', async () => {
         await dashboardImportPage.selectMapping(
           tileName,
-          'Data Source',
+          'Data source',
           DEFAULT_METRICS_SOURCE_NAME,
         );
         await dashboardImportPage.selectMapping(
           tileName,
-          'On Click - Dashboard',
+          'On click - dashboard',
           targetDashboardName,
         );
       });
@@ -478,10 +554,10 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
       });
 
-      await test.step('Select only the tile Data Source mapping', async () => {
+      await test.step('Select only the tile Data source mapping', async () => {
         await dashboardImportPage.selectMapping(
           tileName,
-          'Data Source',
+          'Data source',
           DEFAULT_LOGS_SOURCE_NAME,
         );
       });
@@ -489,7 +565,7 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
       await test.step('Verify the onClick source select auto-filled with the same source', async () => {
         const onClickRow = dashboardImportPage.getMappingRow(
           tileName,
-          'On Click - Search Source',
+          'On click - search source',
         );
         await expect(
           onClickRow.getByPlaceholder('Select a source'),
@@ -575,12 +651,12 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
 
       await test.step('Verify the applies-to row is rendered alongside the filter source row', async () => {
         await expect(
-          dashboardImportPage.getMappingRow('Service (Filter)', 'Data Source'),
+          dashboardImportPage.getMappingRow('Service (Filter)', 'Data source'),
         ).toBeVisible();
         await expect(
           dashboardImportPage.getMappingRow(
             'Service (Filter)',
-            'Applies to Sources',
+            'Applies to sources',
           ),
         ).toBeVisible();
       });
@@ -604,6 +680,702 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         expect(dashboard.filters).toHaveLength(1);
         expect(dashboard.filters[0].source).toBe(logsSourceId);
         expect(dashboard.filters[0].appliesToSourceIds).toEqual([logsSourceId]);
+      });
+    },
+  );
+
+  test(
+    'should remap ad hoc filter sources and applies-to sources on import',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Ad Hoc Filter ${ts}`;
+      // `E2E Logs` auto-resolves; the other names exist only in the exporting
+      // workspace, so the test maps them by hand.
+      const missingTracesName = `Exported Traces ${ts}`;
+      const template = makeAdhocFilterTemplate({
+        dashboardName,
+        tileSourceName: DEFAULT_LOGS_SOURCE_NAME,
+        sources: [DEFAULT_LOGS_SOURCE_NAME, missingTracesName],
+        appliesToSourceIds: [missingTracesName],
+      });
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+      });
+
+      await test.step('Map the unresolved source and applies-to names', async () => {
+        await dashboardImportPage.selectMapping(
+          'Conditions (Filter)',
+          'Data sources',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+        await dashboardImportPage.selectMapping(
+          'Conditions (Filter)',
+          'Applies to sources',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Finish import', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the saved filter carries the mapped source ids and its saved conditions', async () => {
+        const logsSourceId = await getSourceId(
+          page,
+          'log',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        const tracesSourceId = await getSourceId(
+          page,
+          'trace',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+
+        const dashboard = await fetchDashboardById(
+          page,
+          dashboardPage.getCurrentDashboardId(),
+        );
+        expect(dashboard.filters).toHaveLength(1);
+        expect(dashboard.filters[0]).toMatchObject({
+          type: 'ADHOC',
+          sources: [logsSourceId, tracesSourceId],
+          appliesToSourceIds: [tracesSourceId],
+        });
+        expect(dashboard.savedFilterValues).toEqual(template.savedFilterValues);
+      });
+    },
+  );
+
+  test(
+    'should block the import until an ad hoc filter has a source, and propagate tile source remaps to it',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Ad Hoc Filter Required ${ts}`;
+      const missingSourceName = `Exported Logs ${ts}`;
+      const template = makeAdhocFilterTemplate({
+        dashboardName,
+        tileSourceName: DEFAULT_LOGS_SOURCE_NAME,
+        sources: [missingSourceName],
+        appliesToSourceIds: [DEFAULT_LOGS_SOURCE_NAME],
+      });
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+      });
+
+      await test.step('Finish import is blocked and the ad hoc sources row shows the error', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getMappingRowError(
+            'Conditions (Filter)',
+            'Data sources',
+          ),
+        ).toBeVisible();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeHidden();
+        await expect(page).toHaveURL(/\/dashboards\/import/);
+        // Submitting focuses the invalid multiselect, which opens its dropdown
+        // over the rows below.
+        await page.keyboard.press('Escape');
+      });
+
+      await test.step('Remapping the tile source carries over to the applies-to list', async () => {
+        await dashboardImportPage.selectMapping(
+          ADHOC_TILE_NAME,
+          'Data source',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Picking a source clears the error and lets the import finish', async () => {
+        await dashboardImportPage.selectMapping(
+          'Conditions (Filter)',
+          'Data sources',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await expect(
+          dashboardImportPage.getMappingRowError(
+            'Conditions (Filter)',
+            'Data sources',
+          ),
+        ).toBeHidden();
+
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the saved filter carries the picked and propagated source ids', async () => {
+        const logsSourceId = await getSourceId(
+          page,
+          'log',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        const tracesSourceId = await getSourceId(
+          page,
+          'trace',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+
+        const dashboard = await fetchDashboardById(
+          page,
+          dashboardPage.getCurrentDashboardId(),
+        );
+        expect(dashboard.filters[0]).toMatchObject({
+          type: 'ADHOC',
+          sources: [logsSourceId],
+          appliesToSourceIds: [tracesSourceId],
+        });
+      });
+    },
+  );
+
+  test(
+    'should replace an ad hoc filter source when a tile is remapped to a source already in the list',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Ad Hoc Filter Remap Duplicate ${ts}`;
+      const template = makeAdhocFilterTemplate({
+        dashboardName,
+        tileSourceName: DEFAULT_LOGS_SOURCE_NAME,
+        sources: [DEFAULT_LOGS_SOURCE_NAME, DEFAULT_TRACES_SOURCE_NAME],
+      });
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+      });
+
+      await test.step('Remap the tile source from logs to traces', async () => {
+        await dashboardImportPage.selectMapping(
+          ADHOC_TILE_NAME,
+          'Data source',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Finish import', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify logs was replaced rather than kept alongside traces', async () => {
+        const tracesSourceId = await getSourceId(
+          page,
+          'trace',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+
+        const dashboard = await fetchDashboardById(
+          page,
+          dashboardPage.getCurrentDashboardId(),
+        );
+        expect(dashboard.filters[0]).toMatchObject({
+          type: 'ADHOC',
+          sources: [tracesSourceId],
+        });
+      });
+    },
+  );
+
+  test(
+    'should keep ad hoc filter sources in place across successive tile remaps',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Ad Hoc Filter Successive Remaps ${ts}`;
+      const tracesTileName = 'Spans';
+      const baseTemplate = makeAdhocFilterTemplate({
+        dashboardName,
+        tileSourceName: DEFAULT_LOGS_SOURCE_NAME,
+        sources: [
+          DEFAULT_LOGS_SOURCE_NAME,
+          DEFAULT_TRACES_SOURCE_NAME,
+          DEFAULT_SESSIONS_SOURCE_NAME,
+        ],
+      });
+      const template = {
+        ...baseTemplate,
+        tiles: [
+          ...baseTemplate.tiles,
+          {
+            ...baseTemplate.tiles[0],
+            id: 'tile-2',
+            y: 4,
+            config: {
+              ...baseTemplate.tiles[0].config,
+              name: tracesTileName,
+              source: DEFAULT_TRACES_SOURCE_NAME,
+            },
+          },
+        ],
+      };
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+      });
+
+      // The first remap collapses the list to two entries; the second must
+      // still replace the traces entry rather than the sessions one.
+      await test.step('Remap the logs tile to traces, then the traces tile to logs', async () => {
+        await dashboardImportPage.selectMapping(
+          ADHOC_TILE_NAME,
+          'Data source',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+        await dashboardImportPage.selectMapping(
+          tracesTileName,
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Finish import', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify every template source maps to its latest remap', async () => {
+        const logsSourceId = await getSourceId(
+          page,
+          'log',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        const tracesSourceId = await getSourceId(
+          page,
+          'trace',
+          DEFAULT_TRACES_SOURCE_NAME,
+        );
+        const sessionsSourceId = await getSourceId(
+          page,
+          'session',
+          DEFAULT_SESSIONS_SOURCE_NAME,
+        );
+
+        const dashboard = await fetchDashboardById(
+          page,
+          dashboardPage.getCurrentDashboardId(),
+        );
+        expect(dashboard.filters[0]).toMatchObject({
+          type: 'ADHOC',
+          sources: [tracesSourceId, logsSourceId, sessionsSourceId],
+        });
+      });
+    },
+  );
+
+  test(
+    'should fill unresolved ad hoc filter sources and applies-to sources from a tile remap',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Ad Hoc Filter Unresolved Remap ${ts}`;
+      const missingLogsName = `Exported Logs ${ts}`;
+      const template = makeAdhocFilterTemplate({
+        dashboardName,
+        tileSourceName: missingLogsName,
+        sources: [missingLogsName],
+        appliesToSourceIds: [missingLogsName],
+      });
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+      });
+
+      await test.step('Map the tile source only', async () => {
+        await dashboardImportPage.selectMapping(
+          ADHOC_TILE_NAME,
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+      });
+
+      await test.step('Finish import', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the filter picked up the tile mapping', async () => {
+        const logsSourceId = await getSourceId(
+          page,
+          'log',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+
+        const dashboard = await fetchDashboardById(
+          page,
+          dashboardPage.getCurrentDashboardId(),
+        );
+        expect(dashboard.filters[0]).toMatchObject({
+          type: 'ADHOC',
+          sources: [logsSourceId],
+          appliesToSourceIds: [logsSourceId],
+        });
+      });
+    },
+  );
+
+  test(
+    'should block the import until a queried filter has a source picked',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Filter Source Required ${ts}`;
+      const tileName = `Logs Number ${ts}`;
+      // The tile's source auto-resolves; the filter's does not, so its mapping
+      // select stays empty and the import must refuse to proceed.
+      const template = {
+        version: '0.1.0',
+        name: dashboardName,
+        tiles: [
+          {
+            id: 'tile-1',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              name: tileName,
+              source: DEFAULT_LOGS_SOURCE_NAME,
+              displayType: 'number',
+              granularity: 'auto',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              whereLanguage: 'sql',
+            },
+          },
+        ],
+        filters: [
+          {
+            id: 'filter-1',
+            type: 'QUERY_EXPRESSION',
+            name: 'Machine',
+            expression: 'ServiceName',
+            source: `Nonexistent Source ${ts}`,
+            whereLanguage: 'sql',
+          },
+        ],
+      };
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Finish import is blocked and the filter row shows the error', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getMappingRowError('Machine (Filter)'),
+        ).toBeVisible();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeHidden();
+        await expect(page).toHaveURL(/\/dashboards\/import/);
+      });
+
+      await test.step('Picking a source clears the error and lets the import finish', async () => {
+        await dashboardImportPage.selectMapping(
+          'Machine (Filter)',
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await expect(
+          dashboardImportPage.getMappingRowError('Machine (Filter)'),
+        ).toBeHidden();
+
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the saved filter carries the picked source id', async () => {
+        const logSources = await getSources(page, 'log');
+        const logsSourceId = logSources.find(
+          (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+        ).id;
+
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const dashboard = await fetchDashboardById(page, dashboardId);
+        expect(dashboard.filters).toHaveLength(1);
+        expect(dashboard.filters[0].source).toBe(logsSourceId);
+      });
+    },
+  );
+
+  test(
+    'should block the import until required tile mappings are picked',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Tile Mappings Required ${ts}`;
+      const markdownTileName = `Notes ${ts}`;
+      const builderTileName = `Logs Number ${ts}`;
+      const sqlTileName = `Raw SQL ${ts}`;
+      // None of the three names resolve against the workspace, so every select
+      // starts empty. Only the builder tile's source and the raw SQL tile's
+      // connection are required — markdown renders static content.
+      const template = {
+        version: '0.1.0',
+        name: dashboardName,
+        tiles: [
+          {
+            id: 'tile-markdown',
+            x: 0,
+            y: 0,
+            w: 24,
+            h: 1,
+            config: {
+              name: markdownTileName,
+              source: `Stale Markdown Source ${ts}`,
+              displayType: 'markdown',
+              select: [],
+              where: '',
+              whereLanguage: 'sql',
+              markdown: '## Notes',
+            },
+          },
+          {
+            id: 'tile-builder',
+            x: 0,
+            y: 1,
+            w: 6,
+            h: 4,
+            config: {
+              name: builderTileName,
+              source: `Nonexistent Source ${ts}`,
+              displayType: 'number',
+              granularity: 'auto',
+              select: [{ aggFn: 'count', valueExpression: '' }],
+              where: '',
+              whereLanguage: 'sql',
+            },
+          },
+          {
+            id: 'tile-sql',
+            x: 6,
+            y: 1,
+            w: 6,
+            h: 4,
+            config: {
+              name: sqlTileName,
+              displayType: 'table',
+              configType: 'sql',
+              connection: `Nonexistent Connection ${ts}`,
+              sqlTemplate: 'SELECT 1',
+            },
+          },
+        ],
+      };
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Finish import is blocked and only the required rows show errors', async () => {
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getMappingRowError(builderTileName),
+        ).toBeVisible();
+        await expect(
+          dashboardImportPage.getMappingRowError(
+            sqlTileName,
+            'Data connection',
+          ),
+        ).toBeVisible();
+        // Markdown needs no source, so its row is not flagged.
+        await expect(
+          dashboardImportPage.getMappingRowError(markdownTileName),
+        ).toBeHidden();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeHidden();
+        await expect(page).toHaveURL(/\/dashboards\/import/);
+      });
+
+      await test.step('Picking the tile source and connection lets the import finish', async () => {
+        await dashboardImportPage.selectMapping(
+          builderTileName,
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await dashboardImportPage.selectMapping(
+          sqlTileName,
+          'Data connection',
+          DEFAULT_CONNECTION_NAME,
+        );
+
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
+      });
+
+      await test.step('Verify the saved tiles carry the picked source and connection ids', async () => {
+        const logSources = await getSources(page, 'log');
+        const logsSourceId = logSources.find(
+          (s: { name: string }) => s.name === DEFAULT_LOGS_SOURCE_NAME,
+        ).id;
+
+        const dashboardId = dashboardPage.getCurrentDashboardId();
+        const dashboard = await fetchDashboardById(page, dashboardId);
+        expect(dashboard.tiles).toHaveLength(3);
+
+        const builderTile = dashboard.tiles.find(
+          (t: any) => t.config.name === builderTileName,
+        );
+        expect(builderTile.config.source).toBe(logsSourceId);
+
+        const sqlTile = dashboard.tiles.find(
+          (t: any) => t.config.name === sqlTileName,
+        );
+        expect(sqlTile.config.connection).toMatch(/^[a-f0-9]{24}$/);
+      });
+    },
+  );
+
+  test(
+    'should flag the row whose source was cleared, not only the rows it propagated to',
+    { tag: '@full-stack' },
+    async ({ page }) => {
+      const ts = Date.now();
+      const dashboardName = `E2E Import Cleared Source ${ts}`;
+      const firstTileName = `First Tile ${ts}`;
+      const secondTileName = `Second Tile ${ts}`;
+      // Both tiles name the same unresolvable source, so picking one cascades
+      // to the other — and so does clearing it.
+      const sharedSourceName = `Shared Source ${ts}`;
+      const template = {
+        version: '0.1.0',
+        name: dashboardName,
+        tiles: [firstTileName, secondTileName].map((name, i) => ({
+          id: `tile-${i}`,
+          x: 0,
+          y: i * 4,
+          w: 6,
+          h: 4,
+          config: {
+            name,
+            source: sharedSourceName,
+            displayType: 'number',
+            granularity: 'auto',
+            select: [{ aggFn: 'count', valueExpression: '' }],
+            where: '',
+            whereLanguage: 'sql',
+          },
+        })),
+      };
+
+      const templatePath = writeTempTemplate(template);
+
+      await test.step('Upload the template and wait for mapping step', async () => {
+        await dashboardImportPage.gotoImport();
+        await dashboardImportPage.uploadTemplateFile(templatePath);
+        await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
+        await expect(dashboardImportPage.dashboardNameInput).toHaveValue(
+          dashboardName,
+        );
+      });
+
+      await test.step('Pick the first tile source and verify it propagates to the second', async () => {
+        await dashboardImportPage.selectMapping(
+          firstTileName,
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await expect(
+          dashboardImportPage
+            .getMappingRow(secondTileName, 'Data source')
+            .getByPlaceholder('Select a source'),
+        ).toHaveValue(DEFAULT_LOGS_SOURCE_NAME);
+      });
+
+      await test.step('Clearing it flags both rows, including the one that was cleared', async () => {
+        await dashboardImportPage.clearMapping(
+          firstTileName,
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await expect(
+          dashboardImportPage.getMappingRowError(firstTileName),
+        ).toBeVisible();
+        await expect(
+          dashboardImportPage.getMappingRowError(secondTileName),
+        ).toBeVisible();
+      });
+
+      await test.step('Re-picking the source clears both errors and lets the import finish', async () => {
+        await dashboardImportPage.selectMapping(
+          firstTileName,
+          'Data source',
+          DEFAULT_LOGS_SOURCE_NAME,
+        );
+        await expect(
+          dashboardImportPage.getMappingRowError(firstTileName),
+        ).toBeHidden();
+        await expect(
+          dashboardImportPage.getMappingRowError(secondTileName),
+        ).toBeHidden();
+
+        await dashboardImportPage.finishImportButton.click();
+        await expect(
+          dashboardImportPage.getImportSuccessNotification(),
+        ).toBeVisible();
+        await page.waitForURL(/\/dashboards\/[a-f0-9]{24}/);
       });
     },
   );
@@ -823,11 +1595,11 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         await expect(
           dashboardImportPage.getMappingRow(
             tileName,
-            'On Click - Search Source',
+            'On click - search source',
           ),
         ).toBeHidden();
         await expect(
-          dashboardImportPage.getMappingRow(tileName, 'On Click - Dashboard'),
+          dashboardImportPage.getMappingRow(tileName, 'On click - dashboard'),
         ).toBeHidden();
       });
 
@@ -881,10 +1653,10 @@ test.describe('Dashboard Template Import', { tag: ['@dashboard'] }, () => {
         await expect(dashboardImportPage.mappingStepHeading).toBeVisible();
       });
 
-      await test.step('Only map the tile Data Source, leave onClick source empty', async () => {
+      await test.step('Only map the tile Data source, leave onClick source empty', async () => {
         await dashboardImportPage.selectMapping(
           tileName,
-          'Data Source',
+          'Data source',
           DEFAULT_METRICS_SOURCE_NAME,
         );
       });

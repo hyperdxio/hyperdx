@@ -20,25 +20,31 @@ import DBDeltaChart from '@/components/DBDeltaChart';
 import DBHeatmapChart, {
   ColorLegend,
   darkPalette,
+  HEATMAP_DURATION_NUMBER_FORMAT,
   type HeatmapScaleType,
   lightPalette,
   type SelectionBounds,
-  toHeatmapChartConfig,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import HeatmapSettingsDrawer from '@/components/HeatmapSettingsDrawer';
 import { getDurationMsExpression } from '@/source';
-import type { NumberFormat } from '@/types';
 
 export function DBSearchHeatmapChart({
   chartConfig,
   source,
   isReady,
   onAddFilter,
+  isPriorityProperty,
+  deltaSelectExpression,
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   source: TTraceSource;
   isReady: boolean;
   onAddFilter?: AddFilterFn;
+  /** Pin matching properties to the top of the delta breakdown. */
+  isPriorityProperty?: (flattenedKey: string) => boolean;
+  /** Select list for the delta sampling queries (defaults to '*'). */
+  deltaSelectExpression?: string;
 }) {
   const [fields, setFields] = useQueryStates({
     value: parseAsString.withDefault(getDurationMsExpression(source)),
@@ -133,27 +139,21 @@ export function DBSearchHeatmapChart({
         }}
       >
         <DBHeatmapChart
-          config={
-            toHeatmapChartConfig({
-              ...chartConfig,
-              select: [
-                {
-                  valueExpression: fields.value,
-                  countExpression: fields.count || undefined,
-                  heatmapScaleType: scaleType,
-                },
-              ],
-              numberFormat:
-                fields.value === getDurationMsExpression(source)
-                  ? ({
-                      output: 'duration',
-                      factor: 0.001,
-                    } satisfies NumberFormat)
-                  : undefined,
-            }).heatmapConfig
-          }
+          query={toHeatmapQuery({
+            ...chartConfig,
+            select: [
+              {
+                valueExpression: fields.value,
+                countExpression: fields.count || undefined,
+                heatmapScaleType: scaleType,
+              },
+            ],
+            numberFormat:
+              fields.value === getDurationMsExpression(source)
+                ? HEATMAP_DURATION_NUMBER_FORMAT
+                : undefined,
+          })}
           enabled={isReady}
-          scaleType={scaleType}
           selectionBounds={selectionBounds}
           onFilter={(xMin, xMax, yMin, yMax) => {
             setFields({ xMin, xMax, yMin, yMax });
@@ -168,6 +168,7 @@ export function DBSearchHeatmapChart({
             variant="subtle"
             size="sm"
             onClick={settingsHandlers.open}
+            data-testid="heatmap-settings-button"
             style={{
               position: 'absolute',
               top: 4,
@@ -183,6 +184,8 @@ export function DBSearchHeatmapChart({
         opened={settingsOpened}
         onClose={settingsHandlers.close}
         connection={tcFromSource(source)}
+        sourceId={source.id}
+        dateRange={chartConfig.dateRange}
         parentRef={container}
         defaultValues={heatmapSettingsDefaults}
         onSubmit={data => {
@@ -217,6 +220,8 @@ export function DBSearchHeatmapChart({
           }
           spanIdExpression={source.spanIdExpression}
           legendPrefix={<ColorLegend colors={palette} />}
+          isPriorityProperty={isPriorityProperty}
+          selectExpression={deltaSelectExpression}
         />
       </Box>
     </Flex>

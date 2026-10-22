@@ -1,11 +1,14 @@
 import {
   ChSql,
   chSqlToAliasMap,
+  chSqlToSelectColumns,
   convertCHDataTypeToJSType,
+  isCHFixedStringType,
   JSDataType,
 } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
+import { replaceMacros } from '@/macros';
 
 describe('convertCHDataTypeToJSType - unit - type', () => {
   it('Date type', () => {
@@ -141,6 +144,20 @@ describe('convertCHDataTypeToJSType - unit - type', () => {
   });
 });
 
+describe('isCHFixedStringType', () => {
+  it('matches FixedString and wrappers, and ignores String', () => {
+    expect(isCHFixedStringType('FixedString(32)')).toBe(true);
+    expect(isCHFixedStringType('Nullable(FixedString(32))')).toBe(true);
+    expect(isCHFixedStringType('LowCardinality(FixedString(16))')).toBe(true);
+    expect(
+      isCHFixedStringType('LowCardinality(Nullable(FixedString(32)))'),
+    ).toBe(true);
+    expect(isCHFixedStringType('String')).toBe(false);
+    expect(isCHFixedStringType('Nullable(String)')).toBe(false);
+    expect(isCHFixedStringType('LowCardinality(String)')).toBe(false);
+  });
+});
+
 describe('chSqlToAliasMap - alias unit test', () => {
   it('No alias', () => {
     const chSqlInput: ChSql = {
@@ -265,6 +282,17 @@ describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () =>
     });
   });
 
+  it('recovers a quoted alias through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT client_ip as \`x-host-header\`, ServiceName as service FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      'x-host-header': 'client_ip',
+      service: 'ServiceName',
+    });
+  });
+
   it('restores JSON-path aliases recovered through the fallback', () => {
     const chSqlInput: ChSql = {
       sql: `${samplingCte} SELECT ResourceAttributes.service.name as service, Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
@@ -303,6 +331,98 @@ describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () =>
       params: {},
     };
     expect(chSqlToAliasMap(chSqlInput)).toEqual({});
+  });
+});
+
+describe('chSqlToAliasMap - backtick-quoted identifiers', () => {
+  it('resolves an alias whose name needs quoting, keeping its siblings', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT client_ip AS `x-host-header`,time AS `__hdx_timestamp`,ServiceName AS svc FROM otel.logs WHERE time > 1 LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({
+      'x-host-header': 'client_ip',
+      __hdx_timestamp: 'time',
+      svc: 'ServiceName',
+    });
+  });
+
+  it('keeps the quoting on a column whose name needs it', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT `x-host-header` AS host,`M-1`['a'] AS mapped FROM otel.logs LIMIT 10",
+      params: {},
+    });
+    expect(res).toEqual({
+      host: '`x-host-header`',
+      mapped: "`M-1`['a']",
+    });
+  });
+
+  it('records no entry for a quoted column selected without an alias', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT `x-host-header`,ServiceName AS svc FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ svc: 'ServiceName' });
+  });
+
+  it('keeps aliases when the only quoted identifier is in the WHERE', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT ServiceName AS svc FROM otel.logs WHERE `x-host-header`='v' LIMIT 10",
+      params: {},
+    });
+    expect(res).toEqual({ svc: 'ServiceName' });
+  });
+
+  it('preserves quoting inside an aliased expression', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT lower(`x-host-header`) AS host,multiIf(`a-b` > 1, `c-d`, 0) AS m FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({
+      host: 'lower(`x-host-header`)',
+      m: 'multiIf(`a-b` > 1, `c-d`, 0)',
+    });
+  });
+
+  it('re-quotes a double-quoted column name', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT "x-host-header" AS host FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ host: '`x-host-header`' });
+  });
+
+  it('restores more than ten quoted identifiers', () => {
+    const select = Array.from(
+      { length: 12 },
+      (_, i) => `\`c-${i}\` AS a${i}`,
+    ).join(',');
+    const res = chSqlToAliasMap({
+      sql: `SELECT ${select} FROM otel.logs LIMIT 10`,
+      params: {},
+    });
+    expect(res).toEqual(
+      Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [`a${i}`, `\`c-${i}\``]),
+      ),
+    );
+  });
+
+  it('restores quoted identifiers alongside a JSON path', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT concat(j.p0, `c-1`, `c-10`) AS m FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ m: 'concat(j.p0, `c-1`, `c-10`)' });
+  });
+
+  it('leaves backticks inside string literals alone', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT Body AS body FROM otel.logs WHERE Body = 'a `b` c' LIMIT 10",
+      params: {},
+    });
+    expect(res).toEqual({ body: 'Body' });
   });
 });
 
@@ -414,6 +534,10 @@ describe('processClickhouseSettings - optimization settings', () => {
       // { name: 'use_top_k_dynamic_filtering', value: '1' },
       { name: 'use_skip_indexes_on_data_read', value: '1' },
       { name: 'use_skip_indexes_for_disjunctions', value: '1' },
+      {
+        name: 'allow_calculating_subcolumns_sizes_for_merge_tree_reading',
+        value: '1',
+      },
     ]);
 
     await client.query({
@@ -440,9 +564,13 @@ describe('processClickhouseSettings - optimization settings', () => {
       // use_top_k_dynamic_filtering: '1',
       use_skip_indexes_on_data_read: '1',
       use_skip_indexes_for_disjunctions: '1',
+      allow_calculating_subcolumns_sizes_for_merge_tree_reading: '0',
     });
   });
 
+  // The exact-equality assertion below is what keeps unavailable settings off
+  // the wire — e.g. a pre-26.3 server that would reject
+  // allow_calculating_subcolumns_sizes_for_merge_tree_reading as unknown.
   it('should only apply available optimization settings', async () => {
     setupMockQuery([
       { name: 'use_skip_indexes_for_top_k', value: '1' },
@@ -570,5 +698,179 @@ describe('processClickhouseSettings - optimization settings', () => {
         call[0].query === 'SELECT name, value FROM system.settings',
     );
     expect(settingsCalls.length).toEqual(1);
+  });
+});
+
+describe('chSqlToSelectColumns', () => {
+  const columns = (sql: string, params: Record<string, unknown> = {}) =>
+    chSqlToSelectColumns({ sql, params });
+
+  it('resolves aliases to their expressions and marks group-by items', () => {
+    expect(
+      columns(
+        "SELECT ServiceName AS svc, LogAttributes['k'] AS k, count() AS c FROM logs GROUP BY svc, k ORDER BY c LIMIT 10",
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: "LogAttributes['k']", isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('keeps complex expressions verbatim', () => {
+    expect(
+      columns(
+        "SELECT toStartOfHour(Timestamp) AS hour, concat(ServiceName, '-', SeverityText), count() FROM logs GROUP BY hour, concat(ServiceName, '-', SeverityText)",
+      ),
+    ).toEqual([
+      { expression: 'toStartOfHour(Timestamp)', isGroupBy: true },
+      { expression: "concat(ServiceName, '-', SeverityText)", isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it.each([
+    ['aliased', 'AS k', 'k'],
+    ['followed by a comma', '', "ParentSpanId = ''"],
+  ])('trims binary expressions %s', (_case, alias, groupBy) => {
+    expect(
+      columns(
+        `SELECT ParentSpanId = ''  ${alias}, ServiceName || '-' || SpanName   AS name, count() FROM logs GROUP BY ${groupBy}, name`,
+      ),
+    ).toEqual([
+      { expression: "ParentSpanId = ''", isGroupBy: true },
+      { expression: "ServiceName || '-' || SpanName", isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches GROUP BY items by position', () => {
+    expect(columns('SELECT count(), ServiceName FROM logs GROUP BY 2')).toEqual(
+      [
+        { expression: 'count()', isGroupBy: false },
+        { expression: 'ServiceName', isGroupBy: true },
+      ],
+    );
+  });
+
+  it('matches GROUP BY expressions ignoring whitespace and case', () => {
+    expect(
+      columns(
+        'SELECT lower(ServiceName), count() FROM logs GROUP BY LOWER( ServiceName )',
+      ),
+    ).toEqual([
+      { expression: 'lower(ServiceName)', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it.each([
+    ['double-quoted', '"Svc Name"'],
+    ['backtick-quoted', '`Svc Name`'],
+    ['quoted bare', '"svc"'],
+  ])('matches %s GROUP BY aliases', (_case, alias) => {
+    expect(
+      columns(
+        `SELECT ServiceName AS ${alias}, count() FROM logs GROUP BY ${alias}`,
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches quoted GROUP BY columns', () => {
+    expect(
+      columns(
+        'SELECT ServiceName, `x-host`, count() FROM logs GROUP BY "ServiceName", `x-host`',
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: '`x-host`', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches parenthesized GROUP BY items', () => {
+    expect(
+      columns(
+        'SELECT ServiceName, lower(SeverityText), count() FROM logs GROUP BY (ServiceName), (lower(SeverityText))',
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'lower(SeverityText)', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches GROUP BY expressions over backtick-quoted identifiers', () => {
+    expect(
+      columns(
+        'SELECT lower(`x-host`), count() FROM logs GROUP BY lower(`x-host`)',
+      ),
+    ).toEqual([
+      { expression: 'lower(`x-host`)', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('reads the outer query of a CTE', () => {
+    expect(
+      columns(
+        'WITH recent AS (SELECT ServiceName AS s FROM logs GROUP BY s) SELECT s AS service, count() FROM recent GROUP BY service',
+      ),
+    ).toEqual([
+      { expression: 's', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('restores JSON paths', () => {
+    expect(
+      columns(
+        'SELECT LogAttributes.user.id AS user, count() FROM logs GROUP BY user',
+      ),
+    ).toEqual([
+      { expression: 'LogAttributes.user.id', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('reads queries with query params and a SETTINGS clause', () => {
+    expect(
+      columns(
+        'SELECT ServiceName, count() FROM logs WHERE Timestamp > fromUnixTimestamp64Milli({start:Int64}) GROUP BY ServiceName SETTINGS max_threads = 1',
+        { start: 1 },
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it.each([
+    ['there is no GROUP BY', 'SELECT ServiceName, Body FROM logs'],
+    ['it selects *', 'SELECT *, count() FROM logs GROUP BY ServiceName'],
+    ['it groups by ALL', 'SELECT ServiceName, count() FROM logs GROUP BY ALL'],
+    ['it does not parse', 'SELECT ServiceName, count( FROM logs GROUP BY 1'],
+  ])('returns undefined when %s', (_case, sql) => {
+    expect(columns(sql)).toBeUndefined();
+  });
+
+  it('parses a raw SQL template once its macros are replaced', () => {
+    const sql = replaceMacros(
+      {
+        sqlTemplate:
+          'SELECT ServiceName AS svc, count() FROM $__sourceTable WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY svc',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+      },
+      "(toString(SeverityText) = 'error')",
+    );
+    expect(
+      columns(sql, { startDateMilliseconds: 1, endDateMilliseconds: 2 }),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
   });
 });

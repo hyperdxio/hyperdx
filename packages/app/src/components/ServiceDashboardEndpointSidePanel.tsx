@@ -15,7 +15,7 @@ import {
   ERROR_RATE_PERCENTAGE_NUMBER_FORMAT,
   INTEGER_NUMBER_FORMAT,
 } from '@/ChartUtils';
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import ServiceDashboardEndpointPerformanceChart from '@/components/ServiceDashboardEndpointPerformanceChart';
@@ -86,7 +86,7 @@ export default function ServiceDashboardEndpointSidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
           <div className={styles.panel}>
             <DrawerHeader
@@ -106,7 +106,7 @@ export default function ServiceDashboardEndpointSidePanel({
             <DrawerBody>
               <Grid grow={false} w="100%" maw="100%">
                 <Grid.Col span={6}>
-                  <ChartBox style={{ height: 350 }}>
+                  <ChartCard style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
                         title="Request Error Rate"
@@ -148,10 +148,10 @@ export default function ServiceDashboardEndpointSidePanel({
                         showDisplaySwitcher={false}
                       />
                     )}
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={6}>
-                  <ChartBox style={{ height: 350 }}>
+                  <ChartCard style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
                         title="Request Throughput"
@@ -185,7 +185,7 @@ export default function ServiceDashboardEndpointSidePanel({
                         }}
                       />
                     )}
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={6}>
                   <ServiceDashboardEndpointPerformanceChart
@@ -217,7 +217,7 @@ export default function ServiceDashboardEndpointSidePanel({
             </DrawerBody>
           </div>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

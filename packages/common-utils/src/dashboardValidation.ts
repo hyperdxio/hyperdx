@@ -1,11 +1,13 @@
 import { z } from 'zod';
 
+import { validateFormula } from './core/formula';
 import {
   getFilterVariableName,
   hasFilterEffect,
+  isFilterBroadcastEnabled,
   isFilterVariableEnabled,
 } from './filters';
-import { DashboardContainerSchema } from './types';
+import { DashboardContainerSchema, DisplayType } from './types';
 
 // Inputs shared by the internal `DashboardSchema` refinement and the
 // external API body schema: the validation only depends on the
@@ -24,6 +26,10 @@ type FilterForModeValidation = {
   name: string;
   isBroadcastEnabled?: boolean;
   isVariableEnabled?: boolean;
+};
+type FilterForGatingValidation = FilterForModeValidation & {
+  variableName?: string;
+  appliesToSourceIds?: string[];
 };
 
 /**
@@ -223,4 +229,148 @@ export function validateDashboardFilterModes<T extends FilterForModeValidation>(
       path: [...filtersPath, filterIdx, 'isBroadcastEnabled'],
     });
   });
+}
+
+/**
+ * Validate that the `variableName` and `appliesToSourceIds` fields are only set
+ * on filters with the appropriate modes enabled.
+ *
+ * Issues raised:
+ * - `variableName` on a filter that is not variable-enabled (path `<filtersPath>[i].variableName`).
+ * - A non-empty `appliesToSourceIds` on a filter that does not broadcast (path `<filtersPath>[i].appliesToSourceIds`).
+ */
+export function validateDashboardFilterFieldGating<
+  T extends FilterForGatingValidation,
+>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (filter.variableName !== undefined && !isFilterVariableEnabled(filter)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Filter "${filter.name}" sets variableName but is not available as a variable; set isVariableEnabled to true or drop variableName`,
+        path: [...filtersPath, filterIdx, 'variableName'],
+      });
+    }
+
+    if (
+      filter.appliesToSourceIds !== undefined &&
+      filter.appliesToSourceIds.length > 0 &&
+      !isFilterBroadcastEnabled(filter)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Filter "${filter.name}" sets appliesToSourceIds but does not broadcast its value; set isBroadcastEnabled to true or drop appliesToSourceIds`,
+        path: [...filtersPath, filterIdx, 'appliesToSourceIds'],
+      });
+    }
+  });
+}
+
+type FilterForOptionsValidation = {
+  name: string;
+  options?: string[];
+};
+
+/** Validates uniqueness of options within each filter. */
+export function validateDashboardFilterOptionUniqueness<
+  T extends FilterForOptionsValidation,
+>(
+  filters: T[],
+  ctx: z.RefinementCtx,
+  paths?: { filtersPath?: (string | number)[] },
+): void {
+  const filtersPath = paths?.filtersPath ?? ['filters'];
+
+  filters.forEach((filter, filterIdx) => {
+    if (!filter.options?.length) return;
+    const seen = new Set<string>();
+    for (const option of filter.options) {
+      if (seen.has(option)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Filter "${filter.name}" repeats the option "${option}"; options must be unique`,
+          path: [...filtersPath, filterIdx, 'options'],
+        });
+        return;
+      }
+      seen.add(option);
+    }
+  });
+}
+
+// Structural because the internal and external chart-config shapes differ
+// (internal `seriesReturnType: 'ratio'` vs external `asRatio: true`); only
+// these fields decide formula validity. `select` stays loosely typed — a
+// string select (search tiles) simply has zero letter-referenceable series.
+type ChartConfigForFormulaValidation = {
+  displayType?: DisplayType | string;
+  select?: unknown;
+  formulas?: { expression: string }[];
+  asRatio?: boolean;
+};
+
+/**
+ * Structural validation for a chart config's formulas, mirroring the chart
+ * editor's save-time rules (`validateChartForm` in
+ * `packages/app/src/components/ChartEditor/utils.ts`) so the API cannot
+ * persist a config the editor refuses:
+ *
+ * - Every formula expression must parse and only reference existing series
+ *   (`A` = select[0], ...), via the same `validateFormula` the editor and
+ *   the query renderer use.
+ * - Formulas are mutually exclusive with the ratio toggle (`asRatio`).
+ * - Number charts display a single value, so they support at most one
+ *   formula.
+ *
+ * The source-kind gate deliberately lives with the callers that can see the
+ * tile's source (`validateDashboardTiles` in the external API) — this
+ * helper only sees the config.
+ *
+ * Issues raised:
+ * - Invalid expression (path `<configPath>.formulas[i].expression`).
+ * - `asRatio` combined with formulas (path `<configPath>.formulas`).
+ * - More than one formula on a number chart (path `<configPath>.formulas`).
+ */
+export function validateChartConfigFormulas(
+  config: ChartConfigForFormulaValidation,
+  ctx: z.RefinementCtx,
+  paths?: { configPath?: (string | number)[] },
+): void {
+  const formulas = config.formulas;
+  if (!formulas || formulas.length === 0) return;
+  const configPath = paths?.configPath ?? [];
+
+  const seriesCount = Array.isArray(config.select) ? config.select.length : 0;
+  formulas.forEach((formula, formulaIdx) => {
+    const result = validateFormula(formula.expression ?? '', { seriesCount });
+    if (!result.ok) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.errors.map(e => e.message).join('; '),
+        path: [...configPath, 'formulas', formulaIdx, 'expression'],
+      });
+    }
+  });
+
+  if (config.asRatio) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'formulas cannot be combined with asRatio; express the ratio as a formula instead (e.g. "A / B")',
+      path: [...configPath, 'formulas'],
+    });
+  }
+
+  if (config.displayType === DisplayType.Number && formulas.length > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Number charts support a single formula',
+      path: [...configPath, 'formulas'],
+    });
+  }
 }

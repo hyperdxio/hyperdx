@@ -1,16 +1,20 @@
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 
-import { getFilterEffect } from '@/DashboardFilters';
+import {
+  getFilterEffect,
+  getPendingVariablesTooltip,
+  getRequiredFilterTooltip,
+} from '@/DashboardFilters';
+
+const baseFilter: DashboardFilter = {
+  id: 'filter1',
+  type: 'QUERY_EXPRESSION',
+  name: 'Service Name',
+  expression: 'ServiceName',
+  source: 'logs',
+};
 
 describe('getFilterEffect', () => {
-  const baseFilter: DashboardFilter = {
-    id: 'filter1',
-    type: 'QUERY_EXPRESSION',
-    name: 'Service Name',
-    expression: 'ServiceName',
-    source: 'logs',
-  };
-
   it('describes both effects when broadcast and variable are on', () => {
     expect(
       getFilterEffect({
@@ -85,6 +89,23 @@ describe('getFilterEffect', () => {
     ).toEqual('Filters 2 sources');
   });
 
+  it('describes a static filter as a variable only', () => {
+    expect(
+      getFilterEffect({
+        id: 'filter2',
+        type: 'STATIC_LIST',
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        variableName: 'env',
+      }),
+    ).toEqual({
+      hasEffect: true,
+      tooltip: 'Available as variable ($env)',
+    });
+  });
+
   it('ignores the stored scope while broadcasting is off', () => {
     expect(
       getFilterEffect({
@@ -95,5 +116,60 @@ describe('getFilterEffect', () => {
         variableName: 'svc',
       }).tooltip,
     ).toEqual('Available as variable ($svc)');
+  });
+
+  it('counts the sources an ad hoc filter broadcasts to', () => {
+    expect(
+      getFilterEffect({
+        id: 'adhoc1',
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources: ['logs', 'traces'],
+        isVariableEnabled: true,
+        variableName: 'conds',
+      }),
+    ).toEqual({
+      hasEffect: true,
+      tooltip: 'Filters 2 sources, available as variable ($conds)',
+    });
+  });
+});
+
+describe('getPendingVariablesTooltip', () => {
+  it('names the variable that has no selected value', () => {
+    expect(getPendingVariablesTooltip(['svc'])).toBe(
+      'Filter depends on $svc, which has no selected value.',
+    );
+  });
+
+  it('agrees with more than one pending variable', () => {
+    expect(getPendingVariablesTooltip(['svc', 'env'])).toContain(
+      '$svc, $env, which have no selected value',
+    );
+  });
+});
+
+describe('getRequiredFilterTooltip', () => {
+  it('warns only about the tiles that use the filter by default', () => {
+    for (const isGlobalRequirement of [undefined, false]) {
+      expect(
+        getRequiredFilterTooltip({
+          ...baseFilter,
+          minSelections: 1,
+          isGlobalRequirement,
+        }),
+      ).toContain('Tiles that use this filter do not load');
+    }
+  });
+
+  it('warns that the whole dashboard is held back by a global requirement', () => {
+    expect(
+      getRequiredFilterTooltip({
+        ...baseFilter,
+        minSelections: 1,
+        isGlobalRequirement: true,
+      }),
+    ).toContain('No tile on this dashboard loads');
   });
 });

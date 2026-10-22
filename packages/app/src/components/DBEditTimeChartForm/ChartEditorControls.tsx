@@ -1,30 +1,35 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   Control,
   FieldArrayWithId,
   FieldErrors,
+  useFieldArray,
   UseFormClearErrors,
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  HEATMAP_ALLOWED_SOURCE_KINDS,
-  isBuilderChartConfig,
-} from '@hyperdx/common-utils/dist/guards';
+import { displayTypeSupportsBuilderAlerts } from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
+  HeatmapMode,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
-import { IconBell, IconCirclePlus } from '@tabler/icons-react';
+import { Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
+import { IconCirclePlus, IconMathFunction } from '@tabler/icons-react';
 
 import {
   ChartEditorFormState,
   SavedChartConfigWithSelectArray,
 } from '@/components/ChartEditor/types';
+import {
+  isFormulaDisplayType,
+  isFormulaSourceKind,
+} from '@/components/ChartEditor/utils';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import SourceSchemaPreview, {
@@ -37,6 +42,8 @@ import { getEventBody, isSingleExpression } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
+import { AlertPanelButton } from './AlertPanelButton';
+import { ChartFormulaEditor } from './ChartFormulaEditor';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
 import { TileAlertEditor } from './TileAlertEditor';
@@ -54,6 +61,7 @@ type ChartEditorControlsProps = {
   duplicateSeries: (index: number) => void;
   tableSource?: TSource;
   tableConnection: TableConnection;
+  allowedSourceKinds: SourceKind[];
   databaseName?: string;
   tableName?: string;
   dateRange: [Date, Date];
@@ -63,13 +71,19 @@ type ChartEditorControlsProps = {
   seriesReturnType: ChartEditorFormState['seriesReturnType'];
   ratioMode: ChartEditorFormState['ratioMode'];
   alert: ChartEditorFormState['alert'];
+  additionalWarnings?: string[];
+  /** Whether this editor offers an alert (see EditTimeChartForm.enableAlerts). */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control. */
+  isAlertRequired?: boolean;
   isRawSqlInput: boolean;
   dashboardId?: string;
   parentRef: HTMLElement | null;
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
-  openHeatmapSettings: () => void;
+  heatmapMode: HeatmapMode;
+  onHeatmapModeChange: (mode: HeatmapMode) => void;
 };
 
 export function ChartEditorControls({
@@ -84,6 +98,7 @@ export function ChartEditorControls({
   duplicateSeries,
   tableSource,
   tableConnection,
+  allowedSourceKinds,
   databaseName,
   tableName,
   dateRange,
@@ -93,21 +108,66 @@ export function ChartEditorControls({
   seriesReturnType,
   ratioMode,
   alert,
+  additionalWarnings,
+  alertsEnabled,
+  isAlertRequired,
   isRawSqlInput,
   dashboardId,
   parentRef,
   chartConfigForExplanations,
   onSubmit,
   openDisplaySettings,
-  openHeatmapSettings,
+  heatmapMode,
+  onHeatmapModeChange,
 }: ChartEditorControlsProps) {
+  // Formulas (HDX-5080): derived series computed from the chart's series via
+  // letter-ref arithmetic expressions. Metric and event (log/trace) sources,
+  // and only on display types the formula query paths render (time series /
+  // table / number).
+  const {
+    fields: formulaFields,
+    append: appendFormula,
+    remove: removeFormula,
+  } = useFieldArray({ control, name: 'formulas' });
+  const hasFormulas = formulaFields.length > 0;
+  const showOperandSeries = useWatch({ control, name: 'showOperandSeries' });
+  const sourceSupportsFormulas =
+    isFormulaSourceKind(tableSource?.kind) && isFormulaDisplayType(displayType);
+  // Formulas and the ratio toggle are mutually exclusive (formulas supersede
+  // ratio in the renderer, so the editor never lets both be set). Number
+  // tiles display a single value, so they take exactly one formula.
+  const canAddFormula =
+    sourceSupportsFormulas &&
+    seriesReturnType !== 'ratio' &&
+    !(displayType === DisplayType.Number && hasFormulas);
+
+  const handleAddFormula = useCallback(() => {
+    appendFormula({ expression: '', alias: '' });
+  }, [appendFormula]);
+
+  const handleRemoveFormula = useCallback(
+    (index: number) => {
+      removeFormula(index);
+      if (formulaFields.length <= 1) {
+        // Removing the last formula: clear the keys entirely so saved
+        // configs don't carry an empty formulas array or a dangling
+        // showOperandSeries flag.
+        setValue('formulas', undefined);
+        setValue('showOperandSeries', undefined);
+      }
+      onSubmit(true);
+    },
+    [removeFormula, formulaFields.length, setValue, onSubmit],
+  );
+
   const canAddSeries =
     displayType !== DisplayType.Pie &&
     displayType !== DisplayType.Bar &&
     displayType !== DisplayType.Heatmap &&
     // Number tiles support up to two series (numerator + denominator for
-    // ratio mode); Line/Table types remain unbounded.
-    !(displayType === DisplayType.Number && fields.length >= 2);
+    // ratio mode); Line/Table types remain unbounded. With formulas the
+    // series are operands (e.g. A / (A + B + C)), so the cap is lifted.
+    !(displayType === DisplayType.Number && fields.length >= 2 && !hasFormulas);
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
@@ -123,7 +183,20 @@ export function ChartEditorControls({
   // Grouped ratios can divide two ways (see RatioModeSchema); the mode toggle
   // is only meaningful when a Group By is set, so gate it on a non-empty value.
   const groupBy = useWatch({ control, name: 'groupBy' });
+  const chartName = useWatch({ control, name: 'name' });
   const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
+
+  const showAlertButton =
+    (alert != null && !isRawSqlInput) ||
+    (displayTypeSupportsBuilderAlerts(displayType) &&
+      alertsEnabled &&
+      !IS_LOCAL_MODE);
+
+  const alertWarning = useMemo(
+    () =>
+      additionalWarnings?.length ? additionalWarnings.join(' ') : undefined,
+    [additionalWarnings],
+  );
 
   return (
     <>
@@ -137,11 +210,7 @@ export function ChartEditorControls({
             control={control}
             name="source"
             data-testid="source-selector"
-            allowedSourceKinds={
-              displayType === DisplayType.Heatmap
-                ? [...HEATMAP_ALLOWED_SOURCE_KINDS]
-                : undefined
-            }
+            allowedSourceKinds={allowedSourceKinds}
             onSchemaPreview={() => setIsSourceSchemaPreviewOpen(true)}
             isSchemaPreviewEnabled={isSourceSchemaPreviewEnabled(tableSource)}
           />
@@ -168,17 +237,25 @@ export function ChartEditorControls({
       </Flex>
       {displayType === DisplayType.Heatmap && Array.isArray(select) ? (
         <HeatmapSeriesEditor
+          key={fields[0]?.id}
           control={control}
           setValue={setValue}
+          clearErrors={clearErrors}
+          errors={errors}
           tableSource={tableSource}
           dateRange={dateRange}
+          parentRef={parentRef}
           onSubmit={onSubmit}
-          onOpenDisplaySettings={openHeatmapSettings}
+          onOpenDisplaySettings={openDisplaySettings}
+          mode={heatmapMode}
+          onModeChange={onHeatmapModeChange}
         />
       ) : displayType === DisplayType.EventPatterns ? (
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
@@ -188,6 +265,7 @@ export function ChartEditorControls({
             }
             onSubmit={onSubmit}
             label="Pattern Expression"
+            enableVariables
           />
           {typeof select === 'string' &&
             select.length > 0 &&
@@ -208,7 +286,7 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
+            enableVariables
           />
         </Flex>
       ) : displayType !== DisplayType.Search && Array.isArray(select) ? (
@@ -247,17 +325,30 @@ export function ChartEditorControls({
               clearErrors={clearErrors}
             />
           ))}
+          {sourceSupportsFormulas &&
+            formulaFields.map((field, index) => (
+              <ChartFormulaEditor
+                key={field.id}
+                control={control}
+                index={index}
+                namePrefix={`formulas.${index}.`}
+                onRemoveFormula={handleRemoveFormula}
+                onSubmit={onSubmit}
+                setValue={setValue}
+              />
+            ))}
           {fields.length > 1 && displayType !== DisplayType.Number && (
             <>
               <Divider mt="md" mb="sm" />
               <div
-                className="gap-2 align-items-center"
+                className="gap-2"
                 style={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr)',
+                  alignItems: 'start',
                 }}
               >
-                <div>
+                <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                   <Text
                     me="sm"
                     size="sm"
@@ -267,20 +358,23 @@ export function ChartEditorControls({
                   >
                     Group By
                   </Text>
-                </div>
+                </Flex>
                 <div>
                   <SQLInlineEditorControlled
                     {...groupByConnectionProps}
+                    sourceId={tableSource?.id}
+                    dateRange={dateRange}
                     control={control}
                     name={`groupBy`}
                     placeholder="SQL Columns"
                     onSubmit={onSubmit}
                     disableKeywordAutocomplete
+                    enableVariables
                   />
                 </div>
                 {displayType === DisplayType.Table && (
                   <>
-                    <div>
+                    <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">
                       <Text
                         me="sm"
                         size="sm"
@@ -290,14 +384,17 @@ export function ChartEditorControls({
                       >
                         Having
                       </Text>
-                    </div>
+                    </Flex>
                     <div>
                       <SQLInlineEditorControlled
                         tableConnection={tableConnection}
+                        sourceId={tableSource?.id}
+                        dateRange={dateRange}
                         control={control}
                         name="having"
                         placeholder="SQL HAVING clause (ex. count() > 100)"
                         onSubmit={onSubmit}
+                        enableVariables
                       />
                     </div>
                   </>
@@ -326,10 +423,47 @@ export function ChartEditorControls({
                   Add Series
                 </Button>
               )}
+              {canAddFormula && (
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  color="gray"
+                  onClick={handleAddFormula}
+                  data-testid="add-formula-button"
+                >
+                  <IconMathFunction size={14} className="me-2" />
+                  Add Formula
+                </Button>
+              )}
+              {/* Only the formula column(s) vs formula + raw operand series
+                  (renderer: showOperandSeries, default shown). Not offered on
+                  Number tiles: they display the first value column, so the
+                  operand series are always hidden there (hardcoded in
+                  normalizeChartConfig / convertToNumberChartConfig). */}
+              {sourceSupportsFormulas &&
+                hasFormulas &&
+                displayType !== DisplayType.Number && (
+                  <Switch
+                    label="Show input series"
+                    size="sm"
+                    color="gray"
+                    variant="subtle"
+                    onClick={() => {
+                      setValue(
+                        'showOperandSeries',
+                        showOperandSeries === false ? undefined : false,
+                      );
+                      onSubmit();
+                    }}
+                    checked={showOperandSeries !== false}
+                  />
+                )}
               {/* Ratio merges exactly two series via divide(); only
                   Line/StackedBar/Table/Number can reach two series, so gating
-                  on the count alone covers them all (Number included). */}
-              {fields.length === 2 && (
+                  on the count alone covers them all (Number included).
+                  Formulas supersede ratio in the renderer, so the toggle is
+                  hidden while any formula exists (mutually exclusive). */}
+              {fields.length === 2 && !hasFormulas && (
                 <Switch
                   label="As Ratio"
                   size="sm"
@@ -374,22 +508,18 @@ export function ChartEditorControls({
                     checked={ratioMode === 'share_of_total'}
                   />
                 )}
-              {(displayType === DisplayType.Line ||
-                displayType === DisplayType.StackedBar ||
-                displayType === DisplayType.Number) &&
-                dashboardId &&
-                !alert &&
-                !IS_LOCAL_MODE && (
-                  <Button
-                    variant="subtle"
-                    data-testid="alert-button"
-                    size="sm"
-                    onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
-                  >
-                    <IconBell size={14} className="me-2" />
-                    Add Alert
-                  </Button>
-                )}
+              {showAlertButton && (
+                <AlertPanelButton
+                  hasAlert={alert != null}
+                  warning={alertWarning}
+                  onAddAlert={() =>
+                    setValue('alert', {
+                      ...DEFAULT_TILE_ALERT,
+                      ...(chartName && { displayName: chartName }),
+                    })
+                  }
+                />
+              )}
             </Group>
             <Group>
               {displayType === DisplayType.Table && (
@@ -414,6 +544,8 @@ export function ChartEditorControls({
         <Flex gap="xs" direction="column">
           <SQLInlineEditorControlled
             tableConnection={tableConnection}
+            sourceId={tableSource?.id}
+            dateRange={dateRange}
             control={control}
             name="select"
             placeholder={
@@ -430,6 +562,7 @@ export function ChartEditorControls({
             }
             onSubmit={onSubmit}
             label="SELECT"
+            enableVariables
           />
           <SearchWhereInput
             tableConnection={tableConnection}
@@ -441,19 +574,21 @@ export function ChartEditorControls({
             onLanguageChange={(lang: 'sql' | 'lucene') =>
               setValue('whereLanguage', lang)
             }
-            showLabel={false}
+            enableVariables
           />
         </Flex>
       )}
       {alert && !isRawSqlInput && (
-        <Box mt="sm">
-          <TileAlertEditor
-            control={control}
-            setValue={setValue}
-            alert={alert}
-            onRemove={() => setValue('alert', undefined)}
-          />
-        </Box>
+        <TileAlertEditor
+          control={control}
+          setValue={setValue}
+          alert={alert}
+          dashboardId={dashboardId}
+          onRemove={
+            isAlertRequired ? undefined : () => setValue('alert', undefined)
+          }
+          warning={alertWarning}
+        />
       )}
     </>
   );

@@ -1,182 +1,406 @@
 import { useCallback, useMemo } from 'react';
+import { partition, uniqBy } from 'lodash';
 import { useQueryState } from 'nuqs';
 import {
+  FilterSelection,
+  filterSelectionKey,
+  getUnsatisfiedRequiredFilters,
+  parseDashboardFilterValues,
+  ParsedDashboardFilterValues,
+  resolveFilterSelection,
+  serializeDashboardFilterValues,
+  VariableEntryValue,
+} from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import {
+  AdhocConditionAction,
+  AdhocConditionEntry,
+  adhocConditionsToFilters,
+  adhocConditionsToPromqlFilters,
+  doesFilterApplyToSource,
   FilterState,
   filtersToQuery,
+  getDashboardVariableFilters,
+  getFilterExpression,
   getFilterVariableName,
+  getSqlFilters,
+  isAdhocFilter,
   isFilterBroadcastEnabled,
-  isFilterVariableEnabled,
+  isQueryExpressionFilter,
+  mergeAdhocConditions,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  ADHOC_FILTER_MAX_CONDITIONS,
+  AdhocDashboardFilter,
+  AdhocFilterCondition,
+  AdhocFilterConditionSchema,
+  AdhocFilterValueSchema,
+  BroadcastFilter,
   ChartVariable,
   DashboardFilter,
-  Filter,
 } from '@hyperdx/common-utils/dist/types';
 
-import { parseQuery } from '@/searchFilters';
-import { parseAsJsonEncoded } from '@/utils/queryParsers';
+import {
+  notifyAdhocConditionTooLong,
+  notifyAdhocFilterFull,
+} from '@/components/AdhocDashboardFilter/notifications';
+import { dashboardFilterValuesParser } from '@/utils/queryParsers';
 
-const filterQueriesParser = parseAsJsonEncoded<Filter[]>();
+const hasSelection = (selection: FilterSelection): boolean =>
+  selection.included.size > 0 ||
+  selection.excluded.size > 0 ||
+  selection.range != null;
 
 /**
- * Whether a filter definition broadcasts its selected value onto a tile
- * whose source is `sourceId`.
+ * The variable-keyed format carries a plain list of selected values, so it can
+ * only represent an inclusion. An (unsupported) `NOT IN` / `BETWEEN` entry stays
+ * expression-keyed.
  */
-const definitionAppliesToSource = (
-  definition: DashboardFilter,
-  sourceId: string | undefined,
-): boolean => {
-  if (!isFilterBroadcastEnabled(definition)) return false;
-  const appliesTo = definition.appliesToSourceIds;
-  if (!appliesTo || appliesTo.length === 0) return true;
-  return !!sourceId && appliesTo.includes(sourceId);
+const isRepresentableAsVariable = (selection: FilterSelection): boolean =>
+  selection.excluded.size === 0 && selection.range == null;
+
+/** Conditions are identified by content (e.g. pill keys), so drop repeats. */
+const uniqConditions = (conditions: AdhocFilterCondition[]) =>
+  uniqBy(conditions, condition => JSON.stringify(condition));
+
+/**
+ * Rebuild the whole state array from the selections every declared filter
+ * currently resolves to. Anything that belongs to no declared filter is
+ * carried over untouched.
+ */
+const rebuildEntries = (
+  filters: DashboardFilter[],
+  parsed: ParsedDashboardFilterValues,
+) => {
+  const byExpression: FilterState = {};
+  const byVariable = new Map<string, VariableEntryValue>();
+  const declaredExpressions = new Set<string>();
+  const declaredVariableNames = new Set<string>();
+
+  for (const filter of filters) {
+    if (isAdhocFilter(filter)) continue;
+    const expression = getFilterExpression(filter);
+    if (expression) declaredExpressions.add(expression);
+
+    const key = filterSelectionKey(filter);
+    if (key.kind !== 'variable') continue;
+    declaredVariableNames.add(key.name);
+    if (byVariable.has(key.name)) continue; // First definition of a name wins.
+
+    const selection = resolveFilterSelection(filter, parsed);
+    if (!selection) continue;
+    if (!isRepresentableAsVariable(selection) && expression) {
+      byExpression[expression] = selection;
+    } else if (selection.included.size > 0) {
+      byVariable.set(key.name, {
+        type: 'variable',
+        values: Array.from(selection.included).map(String),
+      });
+    }
+  }
+
+  // Filters that aren't variable-enabled stay expression-keyed. Written after
+  // the loop above so that when a plain and a variable-enabled filter share an
+  // expression, the surviving entry carries the plain filter's selection.
+  for (const filter of filters) {
+    const key = filterSelectionKey(filter);
+    if (key.kind !== 'expression') continue;
+    const selection = resolveFilterSelection(filter, parsed);
+    if (selection && hasSelection(selection)) {
+      byExpression[key.expression] = selection;
+    }
+  }
+
+  // Pass through any entries that don't correspond to a declared filter. Ad hoc
+  // filters are skipped above, so their conditions pass through here too.
+  for (const [name, value] of parsed.byVariable) {
+    if (!declaredVariableNames.has(name)) byVariable.set(name, value);
+  }
+  for (const [expression, selection] of Object.entries(parsed.byExpression)) {
+    if (!declaredExpressions.has(expression)) {
+      byExpression[expression] = selection;
+    }
+  }
+
+  return serializeDashboardFilterValues({
+    byExpression,
+    byVariable,
+    passthrough: parsed.passthrough,
+  });
 };
 
 const useDashboardFilters = (filters: DashboardFilter[]) => {
-  const [filterQueries, setFilterQueries] = useQueryState(
+  const [filterValueEntries, setFilterValueEntries] = useQueryState(
     'filters',
-    filterQueriesParser,
+    dashboardFilterValuesParser,
   );
 
   const setFilterValue = useCallback(
-    (expression: string, values: string[]) => {
-      setFilterQueries(prev => {
-        const { filters: filterValues } = parseQuery(prev ?? []);
-        if (values.length === 0) {
-          delete filterValues[expression];
+    (filterId: string, values: string[]) => {
+      setFilterValueEntries(prev => {
+        const target = filters.find(f => f.id === filterId);
+        if (!target) return prev;
+
+        const parsed = parseDashboardFilterValues(prev ?? []);
+
+        // Apply the change to the parsed state rather than to the rebuilt
+        // output, so the filter it targets resolves to the new values even when
+        // a sibling shares its variable name or expression.
+        const key = filterSelectionKey(target);
+        if (key.kind === 'variable') {
+          // Set even when empty to avoid falling back to a legacy expression-keyed value
+          parsed.byVariable.set(key.name, { type: 'variable', values });
+        } else if (values.length === 0) {
+          delete parsed.byExpression[key.expression];
         } else {
-          filterValues[expression] = {
+          parsed.byExpression[key.expression] = {
             included: new Set(values),
             excluded: new Set(),
           };
         }
 
-        return filtersToQuery(
-          filterValues,
-          { stringifyKeys: false }, // Don't wrap keys with toString(), to preserve exact key names in URL query parameters
-        );
+        return rebuildEntries(filters, parsed);
       });
     },
-    [setFilterQueries],
+    [setFilterValueEntries, filters],
+  );
+
+  /** Replace the conditions of several ad hoc filters in one update. */
+  const setAdhocConditionsByFilterId = useCallback(
+    (conditionsByFilterId: ReadonlyMap<string, AdhocFilterCondition[]>) => {
+      setFilterValueEntries(prev => {
+        const parsed = parseDashboardFilterValues(prev ?? []);
+        let changed = false;
+        for (const [filterId, conditions] of conditionsByFilterId) {
+          const target = filters.find(f => f.id === filterId);
+          const name = target && getFilterVariableName(target);
+          // The URL parser drops an invalid entry whole, losing every condition
+          const unique = uniqConditions(conditions);
+          const isStorable =
+            AdhocFilterValueSchema.shape.conditions.safeParse(unique).success;
+          if (!name || !isStorable) continue;
+          parsed.byVariable.set(name, { type: 'adhoc', conditions: unique });
+          changed = true;
+        }
+        return changed ? rebuildEntries(filters, parsed) : prev;
+      });
+    },
+    [setFilterValueEntries, filters],
+  );
+
+  const setAdhocConditions = useCallback(
+    (filterId: string, conditions: AdhocFilterCondition[]) =>
+      setAdhocConditionsByFilterId(new Map([[filterId, conditions]])),
+    [setAdhocConditionsByFilterId],
   );
 
   const {
-    valuesForExistingFilters,
-    queriesForExistingFilters,
+    selectionByFilterId,
+    adhocConditionsByFilterId,
     ignoredExpressions,
-    filtersByExpression,
+    ignoredVariableNames,
     variables,
-  } = useMemo(() => {
-    const { filters: parsedFilters } = parseQuery(filterQueries ?? []);
-    const valuesForExistingFilters: FilterState = {};
-    const knownExpressions = new Set(filters.map(f => f.expression));
-    const ignored: string[] = [];
+    unsatisfiedRequiredFilters,
+  } = useMemo<{
+    selectionByFilterId: ReadonlyMap<string, FilterSelection>;
+    adhocConditionsByFilterId: ReadonlyMap<string, AdhocFilterCondition[]>;
+    ignoredExpressions: string[];
+    ignoredVariableNames: string[];
+    variables: ChartVariable[];
+    unsatisfiedRequiredFilters: DashboardFilter[];
+  }>(() => {
+    const parsed = parseDashboardFilterValues(filterValueEntries ?? []);
+    // Ad hoc filters aren't exposed as variables yet
+    const [adhocFilters, nonAdhocFilters] = partition(filters, isAdhocFilter);
 
-    for (const { expression } of filters) {
-      if (expression in parsedFilters) {
-        valuesForExistingFilters[expression] = parsedFilters[expression];
-      }
-    }
-    for (const key of Object.keys(parsedFilters)) {
-      if (!knownExpressions.has(key)) {
-        ignored.push(key);
-      }
-    }
-
-    // Multiple filter definitions may share the same expression but each
-    // declare a different `appliesToSourceIds` scope.
-    const filtersByExpression = new Map<string, DashboardFilter[]>();
-    for (const f of filters) {
-      const existing = filtersByExpression.get(f.expression);
-      if (existing) {
-        existing.push(f);
-      } else {
-        filtersByExpression.set(f.expression, [f]);
-      }
+    // Keyed by filter ID: two definitions may share one expression
+    const selectionByFilterId = new Map<string, FilterSelection>();
+    for (const filter of nonAdhocFilters) {
+      const selection = resolveFilterSelection(filter, parsed);
+      if (selection) selectionByFilterId.set(filter.id, selection);
     }
 
-    const broadcastValues: FilterState = {};
-    for (const [expression, state] of Object.entries(
-      valuesForExistingFilters,
-    )) {
-      const definitions = filtersByExpression.get(expression) ?? [];
-      if (definitions.some(isFilterBroadcastEnabled)) {
-        broadcastValues[expression] = state;
+    const adhocConditionsByFilterId = new Map<string, AdhocFilterCondition[]>();
+    for (const filter of adhocFilters) {
+      const value = parsed.byVariable.get(getFilterVariableName(filter) ?? '');
+      if (value?.type === 'adhoc') {
+        adhocConditionsByFilterId.set(
+          filter.id,
+          uniqConditions(value.conditions),
+        );
       }
     }
 
-    const variables: ChartVariable[] = [];
-    const takenNames = new Set<string>();
-    for (const definition of filters) {
-      if (!isFilterVariableEnabled(definition)) continue;
+    // Find state that doesn't correspond to any declared filter, so the caller can surface a warning.
+    const knownExpressions = new Set(
+      filters.filter(isQueryExpressionFilter).map(f => f.expression),
+    );
+    const ignoredExpressions = Object.keys(parsed.byExpression).filter(
+      expression => !knownExpressions.has(expression),
+    );
 
-      // There shouldn't be any duplicate names, but if there are then the first one wins.
-      const name = getFilterVariableName(definition);
-      if (!name || takenNames.has(name)) continue;
-      takenNames.add(name);
+    const variableFilters = getDashboardVariableFilters(nonAdhocFilters);
+    const declaredVariableNames = new Set([
+      ...variableFilters.map(v => v.name),
+      ...adhocFilters.flatMap(filter => getFilterVariableName(filter) ?? []),
+    ]);
+    const ignoredVariableNames = Array.from(parsed.byVariable.keys()).filter(
+      name => !declaredVariableNames.has(name),
+    );
 
-      const selection = valuesForExistingFilters[definition.expression];
-      variables.push({
-        name,
-        expression: definition.expression,
-        values: selection
-          ? Array.from(selection.included).map(String).sort() // Sorted for deterministic react-query keys
-          : [],
-      });
-    }
+    const variables: ChartVariable[] = variableFilters.map(
+      ({ filter, name }) => {
+        const selection = selectionByFilterId.get(filter.id);
+        return {
+          name,
+          expression: getFilterExpression(filter),
+          // Sorted for deterministic react-query keys. Built explicitly rather
+          // than by spreading the definition, so no extra key leaks into them.
+          values: selection
+            ? Array.from(selection.included).map(String).sort()
+            : [],
+          maxSelections:
+            'maxSelections' in filter ? filter.maxSelections : undefined,
+        };
+      },
+    );
 
     return {
-      valuesForExistingFilters,
+      selectionByFilterId,
+      adhocConditionsByFilterId,
       variables,
-      queriesForExistingFilters: filtersToQuery(
-        broadcastValues,
+      ignoredExpressions,
+      ignoredVariableNames,
+      unsatisfiedRequiredFilters: getUnsatisfiedRequiredFilters(
+        filters,
+        selectionByFilterId,
+      ),
+    };
+  }, [filterValueEntries, filters]);
+
+  /** Returns the set of rendered filter conditions corresponding to filters matching the given predicate */
+  const getFiltersQueriesFor = useCallback(
+    (predicate: (filter: DashboardFilter) => boolean): BroadcastFilter[] => {
+      const seen = new Set<string>();
+      const queries: BroadcastFilter[] = [];
+      const emit = (emitted: BroadcastFilter[]) => {
+        for (const query of emitted) {
+          // Two definitions resolving to the same selection would otherwise
+          // emit an identical condition twice, churning react-query keys.
+          const dedupeKey = JSON.stringify(query);
+          if (!seen.has(dedupeKey)) {
+            seen.add(dedupeKey);
+            queries.push(query);
+          }
+        }
+      };
+
+      for (const filter of filters) {
+        if (!predicate(filter)) continue;
+        if (isAdhocFilter(filter)) {
+          const conditions = adhocConditionsByFilterId.get(filter.id);
+          if (!conditions) continue;
+          emit(
+            filter.sourceType === 'promql'
+              ? adhocConditionsToPromqlFilters(conditions)
+              : adhocConditionsToFilters(conditions),
+          );
+          continue;
+        }
+        const expression = getFilterExpression(filter);
+        if (expression == null) continue;
+        const selection = selectionByFilterId.get(filter.id);
+        if (!selection) continue;
         // Wrap keys in `toString()` to support JSON/Dynamic-type columns.
         // All keys can be stringified, since filter select values are stringified as well.
-        { stringifyKeys: true },
-      ),
-      ignoredExpressions: ignored,
-      filtersByExpression,
-    };
-  }, [filterQueries, filters]);
-
-  // Return only the filter queries that should be applied to a tile whose
-  // source is `sourceId`. When multiple filter definitions share the same
-  // expression, their scopes are unioned: the filter value applies if ANY
-  // sibling broadcasts to `sourceId`. A filter with no `appliesToSourceIds`
-  // (or an empty array) is treated as "applies to all"; a filter with
-  // broadcasting disabled applies to nothing. If `sourceId` is undefined
-  // (e.g. a RawSQL tile with no resolvable source), scoped filters are
-  // skipped and only unscoped filters are returned.
-  const getFilterQueriesForSource = useCallback(
-    (sourceId: string | undefined): Filter[] => {
-      const scoped: FilterState = {};
-      for (const [expression, state] of Object.entries(
-        valuesForExistingFilters,
-      )) {
-        const definitions = filtersByExpression.get(expression) ?? [];
-        const applies = definitions.some(def =>
-          definitionAppliesToSource(def, sourceId),
+        emit(
+          filtersToQuery({ [expression]: selection }, { stringifyKeys: true }),
         );
-        if (applies) {
-          scoped[expression] = state;
-        }
       }
-      // Wrap keys in `toString()` to support JSON/Dynamic-type columns,
-      // consistent with the transformation applied in `queriesForExistingFilters` above.
-      return filtersToQuery(scoped, { stringifyKeys: true });
+      return queries;
     },
-    [valuesForExistingFilters, filtersByExpression],
+    [filters, selectionByFilterId, adhocConditionsByFilterId],
+  );
+
+  /**
+   * Apply a value clicked in a tile to each of the given ad hoc filters. A
+   * filter that would exceed its condition limit is left unchanged.
+   */
+  const applyAdhocAction = useCallback(
+    (
+      filterIds: string[],
+      entries: AdhocConditionEntry[],
+      action: AdhocConditionAction,
+    ) => {
+      const targets = filters.filter(
+        (filter): filter is AdhocDashboardFilter =>
+          isAdhocFilter(filter) && filterIds.includes(filter.id),
+      );
+      const isStorable = entries.every(
+        ({ key, value }) =>
+          AdhocFilterConditionSchema.safeParse({ key, operator: '=', value })
+            .success,
+      );
+      if (!isStorable) {
+        if (targets[0]) notifyAdhocConditionTooLong(targets[0]);
+        return;
+      }
+
+      const next = new Map<string, AdhocFilterCondition[]>();
+      for (const filter of targets) {
+        const merged = mergeAdhocConditions(
+          adhocConditionsByFilterId.get(filter.id) ?? [],
+          entries,
+          action,
+        );
+        if (merged.length > ADHOC_FILTER_MAX_CONDITIONS) {
+          notifyAdhocFilterFull(filter);
+          continue;
+        }
+        next.set(filter.id, merged);
+      }
+      if (next.size > 0) setAdhocConditionsByFilterId(next);
+    },
+    [filters, adhocConditionsByFilterId, setAdhocConditionsByFilterId],
+  );
+
+  // Its consumers apply it as SQL; PromQL conditions reach tiles by source only.
+  const broadcastedFilters = useMemo(
+    () => getSqlFilters(getFiltersQueriesFor(isFilterBroadcastEnabled)),
+    [getFiltersQueriesFor],
+  );
+
+  /**
+   * Returns the set of rendered filter conditions which should be
+   * broadcast to tiles with the given sourceId
+   **/
+  const getFilterQueriesForSource = useCallback(
+    (sourceId: string | undefined): BroadcastFilter[] =>
+      getFiltersQueriesFor(definition =>
+        doesFilterApplyToSource(definition, sourceId),
+      ),
+    [getFiltersQueriesFor],
   );
 
   return {
-    filterValues: valuesForExistingFilters,
+    /** Each declared filter's current selection, keyed by `filter.id`. */
+    selectionByFilterId,
     /**
      * Queries for the broadcasting filters, unscoped by source. Callers with a
      * per-tile source should prefer `getFilterQueriesForSource`.
      */
-    filterQueries: queriesForExistingFilters,
+    broadcastedFilters,
+    /** Set the selected values for a filter, by its ID */
     setFilterValue,
-    setFilterQueries,
+    /** Each ad hoc filter's current conditions, keyed by `filter.id`. */
+    adhocConditionsByFilterId,
+    /** Replace the conditions of an ad hoc filter, by its ID */
+    setAdhocConditions,
+    /** Apply a value clicked in a tile to the given ad hoc filters, by ID */
+    applyAdhocAction,
+    /** Set the raw filter value state */
+    setFilterValueEntries,
+    /** The raw persisted entries, as they appear in the URL param. */
+    filterValueEntries,
     /**
      * Expressions parsed from the URL `filters=` param that don't correspond
      * to any of this dashboard's declared filters — i.e., values that would
@@ -184,15 +408,24 @@ const useDashboardFilters = (filters: DashboardFilter[]) => {
      */
     ignoredFilterExpressions: ignoredExpressions,
     /**
+     * Variable names from the URL `filters=` param that name no declared
+     * variable-enabled filter — orphaned by a rename, a deletion, or a filter
+     * whose variable was turned off.
+     */
+    ignoredVariableNames,
+    /**
      * Returns the subset of filter queries that should apply to a tile whose
      * source is `sourceId`. Filters with no `appliesToSourceIds` apply to all
      * tiles. Filters with `appliesToSourceIds` defined apply only to tiles
      * whose source ID is in the list. Filters with broadcasting disabled
-     * apply to no tiles at all.
+     * apply to no tiles at all. PromQL ad hoc filters yield `promql` label
+     * matchers; the rest yield SQL or Lucene conditions.
      */
     getFilterQueriesForSource,
     /** The dashboard's variable-enabled filters and their currently selected values. */
     variables,
+    /** Filters marked required that have nothing selected, if any. */
+    unsatisfiedRequiredFilters,
   };
 };
 

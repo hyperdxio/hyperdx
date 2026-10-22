@@ -1,4 +1,4 @@
-import { useContext } from 'react';
+import { use } from 'react';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { Handle, Node, NodeProps, NodeToolbar, Position } from '@xyflow/react';
@@ -53,14 +53,16 @@ export default function ServiceMapNode(
     onFocusService,
   } = data;
 
-  const { metric, metricMax } = useContext(ServiceMapMetricContext);
+  const { metric, metricMax } = use(ServiceMapMetricContext);
 
-  const { backgroundColor, borderColor } = getNodeColors(
-    getServiceMetricValue(data, metric),
-    metricMax[metric],
-    props.selected,
-    metric,
-  );
+  const { backgroundColor, borderColor, borderStyle, borderWidth } =
+    getNodeColors(
+      getServiceMetricValue(data, metric),
+      metricMax[metric],
+      props.selected,
+      metric,
+      totalIncomingRequestCount > 0,
+    );
 
   // Fallback matches the schema default (3 = ms); in practice the field is
   // always present on a parsed source.
@@ -116,6 +118,8 @@ export default function ServiceMapNode(
             style={{
               backgroundColor,
               borderColor,
+              borderStyle,
+              borderWidth,
               width: size,
               height: size,
             }}

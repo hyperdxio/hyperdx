@@ -2,9 +2,44 @@ import {
   ClickHouseQueryError,
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
+  isAccessDeniedError,
+  isJSDataTypeScalar,
   isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
+import { ClickhouseClient } from '@/clickhouse/node';
+
+describe('isAccessDeniedError', () => {
+  const withCause = (cause: object) =>
+    Object.assign(new ClickHouseQueryError('query failed', 'SELECT 1'), {
+      cause,
+    });
+
+  it('detects ACCESS_DENIED from the client error type', () => {
+    expect(isAccessDeniedError(withCause({ type: 'ACCESS_DENIED' }))).toBe(
+      true,
+    );
+  });
+
+  it('detects ACCESS_DENIED from the numeric code', () => {
+    expect(isAccessDeniedError(withCause({ code: '497' }))).toBe(true);
+  });
+
+  it.each([
+    'Code: 497. DB::Exception: Not enough privileges. (ACCESS_DENIED)',
+    'Cannot read from `mergeTreeTextIndex` because a row policy is applied on table default.otel_logs',
+  ])('detects ACCESS_DENIED from the message: %s', msg => {
+    expect(isAccessDeniedError(new Error(msg))).toBe(true);
+  });
+
+  it('returns false for other errors', () => {
+    expect(
+      isAccessDeniedError(withCause({ type: 'BAD_ARGUMENTS', code: '36' })),
+    ).toBe(false);
+    expect(isAccessDeniedError(new Error('Code: 4970. Timeout'))).toBe(false);
+    expect(isAccessDeniedError(undefined)).toBe(false);
+  });
+});
 
 describe('isMissingColumnError', () => {
   it.each([
@@ -122,5 +157,107 @@ describe('convertCHDataTypeToJSType', () => {
 
   it('should handle Nullable(Bool) as Bool', () => {
     expect(convertCHDataTypeToJSType('Nullable(Bool)')).toBe(JSDataType.Bool);
+  });
+
+  // A UNION ALL over columns with no least supertype (e.g. Float64 and
+  // Int64) produces Variant(...) when the server runs with
+  // use_variant_as_common_type = 1. All-numeric variants chart as numbers.
+  it('should handle all-numeric Variant as Number', () => {
+    expect(convertCHDataTypeToJSType('Variant(Float64, Int64)')).toBe(
+      JSDataType.Number,
+    );
+    expect(convertCHDataTypeToJSType('Variant(Int64, UInt64)')).toBe(
+      JSDataType.Number,
+    );
+    expect(convertCHDataTypeToJSType('Variant(Float64, Nullable(Int32))')).toBe(
+      JSDataType.Number,
+    );
+  });
+
+  it('should not classify mixed or non-numeric Variant', () => {
+    expect(convertCHDataTypeToJSType('Variant(Float64, String)')).toBeNull();
+    expect(
+      convertCHDataTypeToJSType('Variant(String, Array(Int64))'),
+    ).toBeNull();
+    expect(convertCHDataTypeToJSType('Variant()')).toBeNull();
+  });
+});
+
+describe('isJSDataTypeScalar', () => {
+  it.each([
+    JSDataType.String,
+    JSDataType.Number,
+    JSDataType.Bool,
+    JSDataType.Date,
+    JSDataType.Dynamic,
+    null,
+  ])('treats %s as scalar', dataType => {
+    expect(isJSDataTypeScalar(dataType)).toBe(true);
+  });
+
+  it.each([
+    JSDataType.Map,
+    JSDataType.JSON,
+    JSDataType.Array,
+    JSDataType.Tuple,
+  ])('treats %s as non-scalar', dataType => {
+    expect(isJSDataTypeScalar(dataType)).toBe(false);
+  });
+});
+
+// logQuery is protected on the base class; this subclass exposes it so the
+// tests can drive it without reaching through the client's public query path.
+class TestClickhouseClient extends ClickhouseClient {
+  logQuery(query: string, query_params: Record<string, any> = {}): void {
+    super.logQuery(query, query_params);
+  }
+}
+
+describe('BaseClickhouseClient.logQuery', () => {
+  const makeLogger = () => ({
+    trace: jest.fn(),
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('stays silent when no customLogger is configured', () => {
+    const debugSpy = jest.spyOn(console, 'debug').mockImplementation(() => {});
+    const client = new TestClickhouseClient({ host: 'http://localhost' });
+    client.logQuery('SELECT 1 FROM system.one');
+    expect(debugSpy).not.toHaveBeenCalled();
+  });
+
+  it('logs through the customLogger passed to the client', () => {
+    const customLogger = makeLogger();
+    const client = new TestClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    client.logQuery('SELECT 1 FROM system.one');
+    expect(customLogger.debug).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 1 FROM system.one' },
+    });
+  });
+
+  it('interpolates query_params into the logged SQL', () => {
+    const customLogger = makeLogger();
+    const client = new TestClickhouseClient({
+      host: 'http://localhost',
+      customLogger,
+    });
+    client.logQuery('SELECT {id:Int32}', { id: 5 });
+    expect(customLogger.debug).toHaveBeenCalledWith({
+      module: 'clickhouse',
+      message: 'Sending query',
+      args: { sql: 'SELECT 5' },
+    });
   });
 });

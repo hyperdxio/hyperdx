@@ -6,6 +6,11 @@ import { z } from 'zod';
 
 export { default as objectHash } from 'object-hash';
 
+import {
+  isAdhocFilter,
+  isQueryExpressionFilter,
+  isStaticListFilter,
+} from '@/filters';
 import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
@@ -28,25 +33,52 @@ import {
   DashboardTemplateSchema,
   DashboardWithoutId,
   DisplayType,
+  PERCENTILE_AGG_FN_LEVELS,
+  PercentileAggregateFunctionSchema,
   QuerySettings,
   RawSqlChartConfig,
   SavedChartConfig,
   SortSpecificationList,
+  SourceKind,
   SQLInterval,
   TileTemplateSchema,
   TSource,
 } from '@/types';
-import {
-  getVariableReferences,
-  VARIABLE_FORMATS,
-  VariableFormat,
-  VariableReference,
-} from '@/variables';
+import { validateVariableReferencesInTemplate } from '@/variables';
 
 import { SkipIndexMetadata, TableMetadata } from './metadata';
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
+
+/**
+ * Returns the quantile level of a percentile shorthand aggFn (`p95` -> 0.95),
+ * or undefined for any other aggFn.
+ */
+export function getPercentileAggFnLevel(
+  aggFn: string | undefined,
+): number | undefined {
+  const parsed = PercentileAggregateFunctionSchema.safeParse(aggFn);
+  return parsed.success ? PERCENTILE_AGG_FN_LEVELS[parsed.data] : undefined;
+}
+
+/** A select item rewritten by `resolvePercentileAggFn` as `quantile` at a level. */
+export type QuantileResolvedSelect<T> = Omit<T, 'aggFn' | 'level'> & {
+  aggFn: 'quantile';
+  level: number;
+};
+
+/**
+ * Rewrites a select item with a percentile shorthand aggFn (`p50`, `p90`,
+ * `p95`, `p99`) as `quantile` with the matching level. Any other select item
+ * is returned unchanged.
+ */
+export function resolvePercentileAggFn<T extends { aggFn?: string }>(
+  select: T,
+): T | QuantileResolvedSelect<T> {
+  const level = getPercentileAggFnLevel(select.aggFn);
+  return level == null ? select : { ...select, aggFn: 'quantile', level };
+}
 
 /**
  * Whether a tile's `seriesLimit` should apply an actual limit. Per the schema
@@ -405,6 +437,108 @@ export function replaceJsonExpressions(sql: string) {
   return { sqlWithReplacements, replacements };
 }
 
+const QUOTED_IDENTIFIER_REPLACEMENT_PREFIX = '__hdx_quoted_identifier_';
+
+export type QuotedIdentifierReplacements = {
+  /** Map from sentinel token -> the original quoted SQL text, e.g. `` `x-host-header` `` */
+  quotedText: Map<string, string>;
+  /** Map from sentinel token -> the bare identifier, e.g. `x-host-header` */
+  names: Map<string, string>;
+};
+
+/**
+ * Replaces backtick-quoted identifiers with bare placeholder tokens.
+ *
+ * node-sql-parser's Postgresql dialect accepts a backtick-quoted identifier
+ * wherever a column is referenced, but rejects one used as an alias, so one
+ * backtick-quoted alias broke any other aliases.
+ *
+ * Pairs with `replaceJsonExpressions`: run this first, then tokenize JSON
+ * expressions, and restore in the opposite order (JSON, then identifiers).
+ * A JSON replacement's stored text is sliced from the already-tokenized SQL,
+ * so it can hold identifier tokens; restoring identifiers first would strand
+ * the ones that JSON restoration puts back afterwards.
+ */
+export function replaceBacktickedIdentifiers(sql: string): {
+  sqlWithReplacements: string;
+  replacements: QuotedIdentifierReplacements;
+} {
+  const quotedText = new Map<string, string>();
+  const names = new Map<string, string>();
+  let out = '';
+  let i = 0;
+
+  while (i < sql.length) {
+    const c = sql.charAt(i);
+
+    // Copy string literals and double-quoted identifiers verbatim so
+    // backticks inside them survive.
+    if (c === "'" || c === '"') {
+      out += c;
+      i++;
+      while (i < sql.length) {
+        const char = sql.charAt(i);
+        out += char;
+        i++;
+        if (c === "'" && char === '\\' && i < sql.length) {
+          out += sql.charAt(i);
+          i++;
+          continue;
+        }
+        if (char === c) break;
+      }
+      continue;
+    }
+
+    if (c === '`') {
+      const quotedStart = i;
+      i++;
+      let name = '';
+      while (i < sql.length) {
+        if (sql.charAt(i) === '`') {
+          // A doubled backtick is an escaped literal backtick.
+          if (sql.charAt(i + 1) === '`') {
+            name += '`';
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        name += sql.charAt(i);
+        i++;
+      }
+      const token = `${QUOTED_IDENTIFIER_REPLACEMENT_PREFIX}${quotedText.size}`;
+      quotedText.set(token, sql.slice(quotedStart, i));
+      names.set(token, name);
+      out += token;
+      continue;
+    }
+
+    out += c;
+    i++;
+  }
+
+  return { sqlWithReplacements: out, replacements: { quotedText, names } };
+}
+
+/**
+ * Substitutes placeholder tokens from `replaceBacktickedIdentifiers` or
+ * `replaceJsonExpressions` back into an expression.
+ */
+export function restoreReplacements(
+  expression: string,
+  replacements: Map<string, string>,
+): string {
+  let restored = expression;
+  for (const [token, original] of [...replacements].sort(
+    ([a], [b]) => b.length - a.length,
+  )) {
+    restored = restored.replaceAll(token, original);
+  }
+  return restored;
+}
+
 /**
  * To best support Pre-aggregation in Materialized Views, any new
  * granularities should be multiples of all smaller granularities.
@@ -443,11 +577,24 @@ export function hashCode(str: string) {
 export function convertDateRangeToGranularityString(
   dateRange: [Date, Date],
   maxNumBuckets: number = DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS,
+  /**
+   * Floor for the auto-inferred bucket size, in seconds. Useful when the
+   * underlying data is reported on a fixed interval (e.g. a metrics scrape
+   * interval): without this, a short selected date range can auto-infer a
+   * bucket smaller than that interval, producing sparse/steppy-looking
+   * series (buckets alternating between a real sample and an empty one).
+   * Sourced from `MetricSource.minAutoGranularity` where applicable -
+   * undefined/0 preserves the previous unfloored behavior.
+   */
+  minGranularitySeconds?: number,
 ): Granularity {
   const start = dateRange[0].getTime();
   const end = dateRange[1].getTime();
   const diffSeconds = Math.floor((end - start) / 1000);
-  const granularitySizeSeconds = Math.ceil(diffSeconds / maxNumBuckets);
+  const granularitySizeSeconds = Math.max(
+    Math.ceil(diffSeconds / maxNumBuckets),
+    minGranularitySeconds ?? 0,
+  );
 
   if (granularitySizeSeconds <= 15) {
     return Granularity.FifteenSecond;
@@ -704,17 +851,25 @@ export function convertToDashboardTemplate(
     input: DashboardFilter,
     sources: TSource[],
   ): DashboardFilter => {
-    const filter = DashboardFilterSchema.strip().parse(structuredClone(input));
-    // Extract name from source or default to '' if not found
-    filter.source =
-      sources.find(source => source.id === input.source)?.name ?? '';
-    if (input.appliesToSourceIds?.length) {
-      const remapped = input.appliesToSourceIds
-        .map(id => sources.find(source => source.id === id)?.name)
-        .filter((name): name is string => !!name && name.length > 0);
-      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
+    const filter = DashboardFilterSchema.parse(structuredClone(input));
+
+    // A static filter references nothing in the workspace
+    if (isStaticListFilter(filter)) return filter;
+
+    const getSourceName = (id: string) =>
+      sources.find(source => source.id === id)?.name ?? '';
+
+    if (isAdhocFilter(filter)) {
+      filter.sources = filter.sources.map(getSourceName);
     } else {
-      filter.appliesToSourceIds = undefined;
+      filter.source = getSourceName(filter.source);
+    }
+
+    if (isQueryExpressionFilter(filter) || isAdhocFilter(filter)) {
+      const remapped = (filter.appliesToSourceIds ?? [])
+        .map(getSourceName)
+        .filter(name => name.length > 0);
+      filter.appliesToSourceIds = remapped.length > 0 ? remapped : undefined;
     }
     return filter;
   };
@@ -882,11 +1037,21 @@ export function convertToCategoricalChartConfig(
 /**
  * Number charts collapse to a single aggregate value, so drop the time bucket
  * (granularity) and any group-by.
+ *
+ * Metric formula configs (HDX-5080) additionally always hide their operand
+ * series: the number chart displays the first value column of the result, so
+ * the formula column must be the only one projected — never a raw operand.
+ * Enforced here (the choke point every number render passes through) so it
+ * holds for stale saved configs and display-type switches alike, regardless
+ * of the tile's "Show input series" setting on other display types.
  */
 export function convertToNumberChartConfig(
   config: BuilderChartConfigWithOptTimestamp,
 ): BuilderChartConfigWithOptTimestamp {
-  return omit(config, ['granularity', 'groupBy']);
+  const converted = omit(config, ['granularity', 'groupBy']);
+  return config.formulas?.length
+    ? { ...converted, showOperandSeries: false }
+    : converted;
 }
 
 /**
@@ -1080,6 +1245,44 @@ export function isDateRangeEqual(range1: [Date, Date], range2: [Date, Date]) {
   );
 }
 
+/**
+ * Index of the first standalone SETTINGS keyword, or -1. Occurrences inside
+ * quoted strings, comments or identifiers (e.g. `'app.settings.reloads'`,
+ * `AppSettings`, `LogAttributes.settings`) are not the clause and must not
+ * split the query.
+ */
+function findSettingsKeyword(sql: string): number {
+  const isWordChar = (c: string) => /\w/.test(c);
+  const nextNonSpace = (from: number) => sql.slice(from).trimStart().charAt(0);
+  let quote: string | undefined;
+  for (let i = 0; i < sql.length; i++) {
+    const c = sql.charAt(i);
+    if (quote) {
+      if (c === '\\') i++;
+      else if (c === quote) quote = undefined;
+    } else if (c === "'" || c === '"' || c === '`') {
+      quote = c;
+    } else if (c === '-' && sql.charAt(i + 1) === '-') {
+      const lineEnd = sql.indexOf('\n', i + 2);
+      if (lineEnd === -1) break;
+      i = lineEnd;
+    } else if (c === '/' && sql.charAt(i + 1) === '*') {
+      const blockEnd = sql.indexOf('*/', i + 2);
+      if (blockEnd === -1) break;
+      i = blockEnd + 1;
+    } else if (
+      sql.substring(i, i + 8).toUpperCase() === 'SETTINGS' &&
+      !isWordChar(sql.charAt(i - 1)) &&
+      !isWordChar(sql.charAt(i + 8)) &&
+      sql.slice(0, i).trimEnd().slice(-1) !== '.' &&
+      !['.', '['].includes(nextNonSpace(i + 8))
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 /*
   This function extracts the SETTINGS clause from the end(!) of the sql string.
 */
@@ -1090,7 +1293,7 @@ export function extractSettingsClauseFromEnd(
     ? sqlInput.trim().slice(0, -1)
     : sqlInput.trim();
 
-  const settingsIndex = sql.toUpperCase().indexOf('SETTINGS');
+  const settingsIndex = findSettingsKeyword(sql);
 
   if (settingsIndex === -1) {
     return [sql, undefined] as const;
@@ -1370,9 +1573,7 @@ export function displayTypeSupportsRawSqlAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
   return (
-    displayType === DisplayType.Line ||
-    displayType === DisplayType.StackedBar ||
-    displayType === DisplayType.Number
+    isTimeSeriesDisplayType(displayType) || displayType === DisplayType.Number
   );
 }
 
@@ -1380,11 +1581,43 @@ export function displayTypeSupportsBuilderAlerts(
   displayType: DisplayType | undefined,
 ): boolean {
   return (
-    displayType === DisplayType.Line ||
-    displayType === DisplayType.StackedBar ||
-    displayType === DisplayType.Number
+    isTimeSeriesDisplayType(displayType) || displayType === DisplayType.Number
   );
 }
+
+/**
+ * Display types that can carry formulas — the shapes the formula query
+ * paths render (composed multi-series for metrics, inline single-scan for
+ * events). Shared by the chart editor's "Add Formula" gating and the
+ * external API / MCP tile validation, so the surfaces cannot drift.
+ */
+export const isFormulaDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is
+  | DisplayType.Line
+  | DisplayType.StackedBar
+  | DisplayType.StackedLine
+  | DisplayType.Table
+  | DisplayType.Number =>
+  displayType === DisplayType.Line ||
+  displayType === DisplayType.StackedBar ||
+  displayType === DisplayType.StackedLine ||
+  displayType === DisplayType.Table ||
+  displayType === DisplayType.Number;
+
+/**
+ * Source kinds that can carry formulas: metric sources (rendered via the
+ * composed multi-series metric query) and log/trace event sources (compiled
+ * inline in the single-scan SELECT). Shared by the chart editor's
+ * "Add Formula" gating and the external API / MCP tile validation, so the
+ * surfaces cannot drift. Session (and other) sources stay gated off.
+ */
+export const isFormulaSourceKind = (
+  kind: SourceKind | undefined,
+): kind is SourceKind.Metric | SourceKind.Log | SourceKind.Trace =>
+  kind === SourceKind.Metric ||
+  kind === SourceKind.Log ||
+  kind === SourceKind.Trace;
 
 export function displayTypeSupportsPromQLAlerts(
   displayType: DisplayType | undefined,
@@ -1465,105 +1698,6 @@ export function validateRawSqlForAlert(chartConfig: RawSqlChartConfig): {
   return { errors, warnings };
 }
 
-/** `$a, $b` — deduplicated, in source order, for use in a message. */
-function formatReferenceList(references: VariableReference[]): string {
-  return [...new Set(references.map(reference => reference.raw))].join(', ');
-}
-
-const isKnownFormat = (format: string): format is VariableFormat =>
-  (VARIABLE_FORMATS as readonly string[]).includes(format);
-
-/**
- * Checks on the dashboard variables a raw SQL template references.
- *
- * `chartConfig.variables` is tri-state and each state means something
- * different here: `undefined` is "no variable context" (the chart explorer, or
- * a dashboard with the feature flag off) where nothing is substituted at all;
- * `[]` is a dashboard whose filters expose no variables.
- *
- * Only *value* references (`$name`, `${name}`, `${name:format}`) are inspected.
- * The macro forms either expand correctly or throw, and those messages reach
- * the user through `resolveRawSqlMacros` — except when there is no context at
- * all, in which case they silently pass through and are reported here.
- */
-function validateVariableReferences(chartConfig: RawSqlChartConfig): {
-  errors: string[];
-  warnings: string[];
-} {
-  const errors: string[] = [];
-  const warnings: string[] = [];
-
-  const references = getVariableReferences(chartConfig.sqlTemplate);
-  if (references.length === 0) return { errors, warnings };
-
-  const macroReferences = references.filter(r => r.kind === 'macro');
-  const valueReferences = references.filter(r => r.kind !== 'macro');
-  const { variables } = chartConfig;
-
-  // Variables are not available on chart explorer (and maybe other contexts)
-  if (variables == null) {
-    // Macros are always an error, we assume no query will intentionally include them without variable context.
-    if (macroReferences.length > 0) {
-      errors.push(
-        `SQL uses ${formatReferenceList(macroReferences)}, but no variables are available here.`,
-      );
-    }
-
-    // $var and ${var} references only trigger a warning since they may be a literal the user means to keep.
-    if (valueReferences.length > 0) {
-      warnings.push(
-        `SQL references ${formatReferenceList(valueReferences)}, but no variables are available here.`,
-      );
-    }
-    return { errors, warnings };
-  }
-
-  const knownVariableNames = new Set(variables.map(variable => variable.name));
-  const available =
-    variables.length > 0
-      ? variables.map(variable => variable.name).join(', ')
-      : '(none)';
-
-  const unknown = valueReferences.filter(r => !knownVariableNames.has(r.name));
-  if (unknown.length > 0) {
-    warnings.push(
-      `SQL references unknown variable ${formatReferenceList(unknown)}. Available variables: ${available}.`,
-    );
-  }
-
-  // An unrecognized format throws during expansion, so it is already reported.
-  const resolved = valueReferences.filter(
-    r =>
-      knownVariableNames.has(r.name) &&
-      (r.format == null || isKnownFormat(r.format)),
-  );
-
-  const quoted = resolved.filter(
-    r => (r.format ?? 'sqlstring') === 'sqlstring' && r.inStringLiteral,
-  );
-  if (quoted.length > 0) {
-    const [{ name }] = quoted;
-    errors.push(
-      `${formatReferenceList(quoted)} is wrapped in quotes, but the default sqlstring format already quotes each value. Did you mean to use $__filter(<expression>, ${name}) or \${${name}:csv} instead?`,
-    );
-  }
-
-  const unguarded = resolved.filter(
-    r =>
-      (r.format ?? 'sqlstring') === 'sqlstring' &&
-      !r.inStringLiteral &&
-      r.guardedBy !== r.name,
-  );
-  if (unguarded.length > 0) {
-    const [{ name }] = unguarded;
-    warnings.push(
-      `${formatReferenceList(unguarded)} has no valid empty-selection value — it renders as NULL before anything is selected. Prefer $__filter(<expression>, ${name}) or $__conditionalAll(<condition>, ${name}) so the query stays valid when no values are selected.`,
-    );
-  }
-
-  return { errors, warnings };
-}
-
 /**
  * General-purpose raw SQL chart validation, surfaced in the chart editor
  * regardless of whether an alert is configured.
@@ -1585,7 +1719,7 @@ export function validateRawSqlChartConfig(
   }
 
   // Track macros this function has already described with an error, to avoid repetition.
-  const reportedMacros = new Set<MacroName>();
+  const reportedMacros = new Set<MacroExpansionError['macro']>();
   const pushError = (message: string, macro?: MacroName) => {
     errors.push(message);
     if (macro != null) reportedMacros.add(macro);
@@ -1609,7 +1743,11 @@ export function validateRawSqlChartConfig(
       }
     }
 
-    const variableIssues = validateVariableReferences(chartConfig);
+    const variableIssues = validateVariableReferencesInTemplate(
+      chartConfig.sqlTemplate,
+      chartConfig.variables,
+      { subject: 'SQL', language: 'sql' },
+    );
     errors.push(...variableIssues.errors);
     warnings.push(...variableIssues.warnings);
 
@@ -1667,8 +1805,14 @@ export function validateRawSqlChartConfig(
 
       // Everything else — an unknown variable, a bad argument count, an
       // unrecognized `${v:format}`, an unconfigured metric type — is invisible
-      // to the user until the query fails, so it is reported verbatim.
-      if (!isStillTyping && !isAlreadyReported) {
+      // to the user until the query fails, so it is reported verbatim. A
+      // variable macro's message can already have come from the variable checks
+      // above, which expand the same template.
+      if (
+        !isStillTyping &&
+        !isAlreadyReported &&
+        !errors.includes(error.message)
+      ) {
         errors.push(error.message);
       }
     }
@@ -1690,11 +1834,20 @@ export function validateRawSqlChartConfig(
   return { errors, warnings };
 }
 
+/** Maps the time-series display type names used by the external API and v1 chart configs. */
+export const TIME_SERIES_DISPLAY_TYPE_BY_NAME = {
+  line: DisplayType.Line,
+  stacked_bar: DisplayType.StackedBar,
+  stacked_line: DisplayType.StackedLine,
+} as const satisfies Record<string, DisplayType>;
+
 export const isTimeSeriesDisplayType = (
   displayType: DisplayType | undefined,
 ): boolean => {
   return (
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar
+    displayType === DisplayType.Line ||
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.StackedLine
   );
 };
 

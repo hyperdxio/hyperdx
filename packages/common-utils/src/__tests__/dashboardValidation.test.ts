@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 import {
+  validateChartConfigFormulas,
+  validateDashboardFilterFieldGating,
   validateDashboardFilterModes,
+  validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
 } from '@/dashboardValidation';
 
@@ -274,6 +277,370 @@ describe('validateDashboardFilterModes', () => {
       'filters',
       0,
       'isBroadcastEnabled',
+    ]);
+  });
+});
+
+type GatingFilter = ModeFilter & {
+  variableName?: string;
+  appliesToSourceIds?: string[];
+};
+
+const collectGatingIssues = (
+  filters: GatingFilter[],
+  paths?: { filtersPath?: (string | number)[] },
+) => {
+  const schema = z
+    .object({})
+    .superRefine((_, ctx) =>
+      validateDashboardFilterFieldGating(filters, ctx, paths),
+    );
+  const result = schema.safeParse({});
+  return result.success ? [] : result.error.issues;
+};
+
+describe('validateDashboardFilterFieldGating', () => {
+  it('accepts an empty filter list', () => {
+    expect(collectGatingIssues([])).toEqual([]);
+  });
+
+  it('accepts a filter that carries neither field', () => {
+    expect(collectGatingIssues([{ name: 'Service' }])).toEqual([]);
+  });
+
+  it('accepts each field in the mode that uses it', () => {
+    expect(
+      collectGatingIssues([
+        {
+          name: 'Variable',
+          isVariableEnabled: true,
+          variableName: 'service',
+        },
+        {
+          name: 'Broadcast',
+          isBroadcastEnabled: true,
+          appliesToSourceIds: ['source-1'],
+        },
+        {
+          name: 'Both',
+          isVariableEnabled: true,
+          variableName: 'environment',
+          appliesToSourceIds: ['source-1'],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('rejects a variableName on a filter that is not variable-enabled', () => {
+    const issues = collectGatingIssues([
+      { name: 'Service', variableName: 'service' },
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['filters', 0, 'variableName']);
+    expect(issues[0].message).toBe(
+      'Filter "Service" sets variableName but is not available as a variable; set isVariableEnabled to true or drop variableName',
+    );
+  });
+
+  it('rejects a variableName when the variable is explicitly disabled', () => {
+    expect(
+      collectGatingIssues([
+        { name: 'Service', isVariableEnabled: false, variableName: 'service' },
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it('rejects appliesToSourceIds on a filter that does not broadcast', () => {
+    const issues = collectGatingIssues([
+      {
+        name: 'Service',
+        isBroadcastEnabled: false,
+        isVariableEnabled: true,
+        appliesToSourceIds: ['source-1'],
+      },
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['filters', 0, 'appliesToSourceIds']);
+    expect(issues[0].message).toBe(
+      'Filter "Service" sets appliesToSourceIds but does not broadcast its value; set isBroadcastEnabled to true or drop appliesToSourceIds',
+    );
+  });
+
+  // An empty array is what "applies to all tiles" looks like, so it restricts
+  // nothing and cannot contradict a disabled broadcast.
+  it('accepts an empty appliesToSourceIds on a non-broadcasting filter', () => {
+    expect(
+      collectGatingIssues([
+        {
+          name: 'Service',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          appliesToSourceIds: [],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  // Missing means broadcasting, so a filter that predates the flag keeps its
+  // scope.
+  it('accepts appliesToSourceIds when the broadcast flag is omitted', () => {
+    expect(
+      collectGatingIssues([
+        { name: 'Service', appliesToSourceIds: ['source-1'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('reports both fields on one filter, and every offending filter', () => {
+    const issues = collectGatingIssues([
+      { name: 'Fine', isVariableEnabled: true, variableName: 'service' },
+      {
+        name: 'Both wrong',
+        isBroadcastEnabled: false,
+        variableName: 'environment',
+        appliesToSourceIds: ['source-1'],
+      },
+      { name: 'Stray name', variableName: 'region' },
+    ]);
+
+    expect(issues.map(i => i.path)).toEqual([
+      ['filters', 1, 'variableName'],
+      ['filters', 1, 'appliesToSourceIds'],
+      ['filters', 2, 'variableName'],
+    ]);
+  });
+
+  it('honors a custom filters path', () => {
+    const issues = collectGatingIssues(
+      [{ name: 'Service', variableName: 'service' }],
+      { filtersPath: ['body', 'filters'] },
+    );
+
+    expect(issues[0].path).toEqual(['body', 'filters', 0, 'variableName']);
+  });
+});
+
+type OptionsFilter = Parameters<
+  typeof validateDashboardFilterOptionUniqueness
+>[0][number];
+
+const collectOptionIssues = (
+  filters: OptionsFilter[],
+  paths?: { filtersPath?: (string | number)[] },
+) => {
+  const schema = z
+    .object({})
+    .superRefine((_, ctx) =>
+      validateDashboardFilterOptionUniqueness(filters, ctx, paths),
+    );
+  const result = schema.safeParse({});
+  return result.success ? [] : result.error.issues;
+};
+
+// Everything else per-type — which fields exist, `options` being non-empty, the
+// literal variable-only modes — is carried by the `DashboardFilterSchema`
+// variants and covered in `types.test.ts`. Uniqueness is what a shape cannot
+// state, so it lives here.
+describe('validateDashboardFilterOptions', () => {
+  it('accepts an empty filter list', () => {
+    expect(collectOptionIssues([])).toEqual([]);
+  });
+
+  it('accepts a filter with no options at all', () => {
+    expect(collectOptionIssues([{ name: 'Service' }])).toEqual([]);
+  });
+
+  it('accepts distinct options', () => {
+    expect(
+      collectOptionIssues([
+        { name: 'Environment', options: ['prod', 'staging', 'dev'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('reports a repeated option once, naming it', () => {
+    const issues = collectOptionIssues([
+      { name: 'Environment', options: ['prod', 'dev', 'prod', 'dev'] },
+    ]);
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['filters', 0, 'options']);
+    expect(issues[0].message).toBe(
+      'Filter "Environment" repeats the option "prod"; options must be unique',
+    );
+  });
+
+  // Case and whitespace make a distinct value: the dropdown offers them as
+  // written and a selection carries them verbatim.
+  it('compares options exactly', () => {
+    expect(
+      collectOptionIssues([
+        { name: 'Environment', options: ['prod', 'PROD', ' prod'] },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('reports every offending filter, by index', () => {
+    const issues = collectOptionIssues([
+      { name: 'Fine', options: ['a', 'b'] },
+      { name: 'Broken A', options: ['a', 'a'] },
+      { name: 'Broken B', options: ['b', 'b'] },
+    ]);
+
+    expect(issues.map(i => i.path)).toEqual([
+      ['filters', 1, 'options'],
+      ['filters', 2, 'options'],
+    ]);
+  });
+
+  it('honors a custom filters path', () => {
+    const issues = collectOptionIssues(
+      [{ name: 'Environment', options: ['prod', 'prod'] }],
+      { filtersPath: ['body', 'filters'] },
+    );
+
+    expect(issues[0].path).toEqual(['body', 'filters', 0, 'options']);
+  });
+});
+
+describe('validateChartConfigFormulas', () => {
+  type TestConfig = Parameters<typeof validateChartConfigFormulas>[0];
+
+  const collectFormulaIssues = (
+    config: TestConfig,
+    paths?: { configPath?: (string | number)[] },
+  ) => {
+    const schema = z
+      .object({})
+      .superRefine((_, ctx) => validateChartConfigFormulas(config, ctx, paths));
+    const result = schema.safeParse({});
+    return result.success ? [] : result.error.issues;
+  };
+
+  const twoSeries = [{ aggFn: 'max' }, { aggFn: 'max' }];
+
+  it('accepts a config without formulas', () => {
+    expect(collectFormulaIssues({ select: twoSeries })).toEqual([]);
+    expect(collectFormulaIssues({ select: twoSeries, formulas: [] })).toEqual(
+      [],
+    );
+  });
+
+  it('accepts a valid formula over existing series', () => {
+    expect(
+      collectFormulaIssues({
+        displayType: 'line',
+        select: twoSeries,
+        formulas: [{ expression: 'A / (A + B) * 100' }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('reports an unknown series ref at the formula expression path', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [{ expression: 'A / C' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas', 0, 'expression']);
+    expect(issues[0].message).toContain('Unknown series "C"');
+  });
+
+  it('reports a malformed expression', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [{ expression: 'A +' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas', 0, 'expression']);
+  });
+
+  it('reports every invalid formula, not just the first', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [
+        { expression: 'A / Z' },
+        { expression: 'A + B' },
+        { expression: '' },
+      ],
+    });
+
+    expect(issues.map(i => i.path)).toEqual([
+      ['formulas', 0, 'expression'],
+      ['formulas', 2, 'expression'],
+    ]);
+  });
+
+  it('treats a string select as zero referenceable series', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: 'Body',
+      formulas: [{ expression: 'A' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].message).toContain('no series');
+  });
+
+  it('rejects formulas combined with asRatio', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'line',
+      select: twoSeries,
+      formulas: [{ expression: 'A / B' }],
+      asRatio: true,
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas']);
+    expect(issues[0].message).toContain('asRatio');
+  });
+
+  it('rejects multiple formulas on a number chart', () => {
+    const issues = collectFormulaIssues({
+      displayType: 'number',
+      select: twoSeries,
+      formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+    });
+
+    expect(issues).toHaveLength(1);
+    expect(issues[0].path).toEqual(['formulas']);
+    expect(issues[0].message).toBe('Number charts support a single formula');
+  });
+
+  it('allows multiple formulas on a line chart', () => {
+    expect(
+      collectFormulaIssues({
+        displayType: 'line',
+        select: twoSeries,
+        formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+      }),
+    ).toEqual([]);
+  });
+
+  it('honors a custom config path', () => {
+    const issues = collectFormulaIssues(
+      {
+        displayType: 'line',
+        select: twoSeries,
+        formulas: [{ expression: 'A / C' }],
+      },
+      { configPath: ['tiles', 3, 'config'] },
+    );
+
+    expect(issues[0].path).toEqual([
+      'tiles',
+      3,
+      'config',
+      'formulas',
+      0,
+      'expression',
     ]);
   });
 });

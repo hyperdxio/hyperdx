@@ -7,6 +7,7 @@ import {
 import express from 'express';
 import { z } from 'zod';
 
+import * as config from '@/config';
 import { validateConnectionId } from '@/controllers/connection';
 import {
   createSource,
@@ -109,6 +110,21 @@ async function requireValidConnectionId(
   } catch (e) {
     next(e);
   }
+}
+
+// PromQL is a preview feature: without it enabled, a PromQL source cannot be
+// queried. Runs after body validation so req.body is the parsed shape.
+function rejectPromqlSourceWhenDisabled(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+) {
+  if (req.body?.kind === SourceKind.Promql && !config.IS_PROMQL_ENABLED) {
+    return res
+      .status(400)
+      .json({ message: 'PromQL is not enabled on this deployment' });
+  }
+  next();
 }
 
 function mapSourceToExternalSource(source: TSource): TSource {
@@ -408,11 +424,21 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression to extract the severity/log level text.
  *           nullable: true
  *           example: SeverityText
+ *         severityNumberExpression:
+ *           type: string
+ *           description: Expression for the numeric OpenTelemetry SeverityNumber (1-24).
+ *           nullable: true
+ *           example: SeverityNumber
  *         bodyExpression:
  *           type: string
  *           description: Expression to extract the log message body.
  *           nullable: true
  *           example: Body
+ *         eventNameExpression:
+ *           type: string
+ *           description: Expression for the OpenTelemetry log EventName.
+ *           nullable: true
+ *           example: EventName
  *         eventAttributesExpression:
  *           type: string
  *           description: Expression to extract event-level attributes.
@@ -428,6 +454,10 @@ function formatExternalSource(source: SourceDocument) {
  *           description: This DateTime column is used to display and order search results.
  *           nullable: true
  *           example: TimestampTime
+ *         orderByExpression:
+ *           type: string
+ *           description: Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.
+ *           example: Timestamp DESC
  *         metricSourceId:
  *           type: string
  *           description: HyperDX Source for metrics associated with logs. Optional
@@ -626,6 +656,10 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression identifying the running release of a service. Defaults to the OpenTelemetry service.version resource attribute when unset. Where services carry the release on different attributes, fall back across them with coalesce(nullIf(a, ''), nullIf(b, '')).
  *           nullable: true
  *           example: ResourceAttributes['service.version']
+ *         sampleRateExpression:
+ *           type: string
+ *           description: Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation. Leave empty if spans are not sampled.
+ *           example: SampleRate
  *         resourceAttributesExpression:
  *           type: string
  *           description: Expression to extract resource-level attributes.
@@ -641,6 +675,10 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)
  *           nullable: true
  *           example: Events
+ *         spanLinksValueExpression:
+ *           type: string
+ *           description: Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )
+ *           example: Links
  *         implicitColumnExpression:
  *           type: string
  *           description: Column used for full text search if no property is specified in a Lucene-based search. Typically the message body of a log.
@@ -669,6 +707,14 @@ function formatExternalSource(source: SourceDocument) {
  *           items:
  *             $ref: '#/components/schemas/HighlightedAttributeExpression'
  *           nullable: true
+ *         displayedTimestampValueExpression:
+ *           type: string
+ *           description: This DateTime column is used to display and order search results.
+ *           example: Timestamp
+ *         orderByExpression:
+ *           type: string
+ *           description: Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.
+ *           example: Timestamp DESC
  *         materializedViews:
  *           type: array
  *           description: Configure materialized views for query optimization. These pre-aggregated views can significantly improve query performance on aggregation queries.
@@ -811,9 +857,13 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: HyperDX Source for traces associated with sessions.
  *           example: 507f1f77bcf86cd799439021
+ *         resourceAttributesExpression:
+ *           type: string
+ *           description: Expression to extract resource-level attributes.
+ *           example: ResourceAttributes
  *     PromqlSource:
  *       type: object
- *       description: A source backed by a Prometheus-compatible endpoint, queried with PromQL. The referenced connection should be a Prometheus connection (isPrometheusEndpoint set to true).
+ *       description: A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true). PromQL is a preview feature, so creating or updating a PromQL source is rejected unless it is enabled on the deployment (ENABLE_PROMQL).
  *       required:
  *         - name
  *         - kind
@@ -847,11 +897,11 @@ function formatExternalSource(source: SourceDocument) {
  *           example: promql
  *         connection:
  *           type: string
- *           description: ID of the connection used by this source. Should reference a Prometheus-compatible connection.
+ *           description: ID of the connection used by this source. Either a ClickHouse connection holding the TimeSeries table, or a Prometheus-compatible connection.
  *           example: 507f1f77bcf86cd799439012
  *         from:
  *           $ref: '#/components/schemas/SourceFrom'
- *           description: Required by the API for all source kinds; not used when querying a Prometheus endpoint (empty strings are not accepted — use placeholder values such as "default").
+ *           description: The database and TimeSeries table to query on a ClickHouse connection. Not used for a Prometheus-compatible connection, but still required (empty strings are not accepted — use placeholder values such as "default").
  *         querySettings:
  *           type: array
  *           description: Optional ClickHouse query settings applied when querying this source.
@@ -860,7 +910,7 @@ function formatExternalSource(source: SourceDocument) {
  *           nullable: true
  *         timestampValueExpression:
  *           type: string
- *           description: Required by the API for all source kinds; not used when querying a Prometheus endpoint.
+ *           description: Required by the API for all source kinds; not used by PromQL queries.
  *           example: timestamp
  *     Source:
  *       oneOf:
@@ -1081,6 +1131,7 @@ router.post(
   validateRequest({
     body: SourceSchemaNoId,
   }),
+  rejectPromqlSourceWhenDisabled,
   requireValidConnectionId,
   async (req, res, next) => {
     try {
@@ -1186,6 +1237,7 @@ router.put(
     }),
     body: SourceSchemaNoId,
   }),
+  rejectPromqlSourceWhenDisabled,
   requireValidConnectionId,
   async (req, res, next) => {
     try {

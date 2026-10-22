@@ -4,7 +4,10 @@ import { formatDistanceToNowStrict } from 'date-fns';
 import numbro from 'numbro';
 import type { SetStateAction } from 'react';
 import TimestampNano from 'timestamp-nano';
-import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  unquoteIdentifier,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
@@ -55,10 +58,6 @@ export const isValidUrl = (input: string) => {
   } catch {
     return false;
   }
-};
-
-export const capitalizeFirstLetter = (input: string) => {
-  return input.charAt(0).toUpperCase() + input.slice(1);
 };
 
 export const getShortUrl = (url: string) => {
@@ -272,16 +271,16 @@ export function useQueryHistory(type: string | undefined) {
 }
 
 export function useIntersectionObserver(onIntersect: () => void) {
-  const observer = useRef<IntersectionObserver | null>(null);
+  const observerInstanceRef = useRef<IntersectionObserver | null>(null);
   const observerRef = useCallback(
     (node: Element | null) => {
-      if (observer.current) observer.current.disconnect();
-      observer.current = new IntersectionObserver(entries => {
+      if (observerInstanceRef.current) observerInstanceRef.current.disconnect();
+      observerInstanceRef.current = new IntersectionObserver(entries => {
         if (entries[0].isIntersecting) {
           onIntersect();
         }
       });
-      if (node) observer.current.observe(node);
+      if (node) observerInstanceRef.current.observe(node);
     },
     [onIntersect],
   );
@@ -353,6 +352,27 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         ? 'info'
         : undefined;
 };
+
+/**
+ * Error or warn level of a log row, or undefined when it is neither.
+ * SeverityNumber is normalized by the SDK, so it wins when set; 0 means
+ * unspecified, which falls back to matching SeverityText.
+ * https://github.com/open-telemetry/opentelemetry-specification/blob/v1.59.0/specification/logs/data-model.md#field-severitynumber
+ */
+export function getLogSeverityLevel({
+  severityNumber,
+  severityText,
+}: {
+  severityNumber?: unknown;
+  severityText?: string;
+}): 'error' | 'warn' | undefined {
+  const number = Number(severityNumber);
+  if (number > 0) {
+    return number >= 17 ? 'error' : number >= 13 ? 'warn' : undefined;
+  }
+  const level = getLogLevelClass(severityText);
+  return level === 'error' || level === 'warn' ? level : undefined;
+}
 
 /**
  * Chart Categorical Palette - ten distinguishable hues based on
@@ -940,6 +960,14 @@ const NUMERIC_UNIT_CONFIGS: Record<NumericUnit, UnitFormatConfig> = {
   [NumericUnit.Wpm]: { type: 'fixed', suffix: 'wpm' },
 };
 
+// A fixed unit's suffix is the same on every value, unlike an auto-scale
+// one (KiB/MiB/GiB...), so it carries no information on its own.
+export function isFixedNumericUnit(numericUnit?: NumericUnit): boolean {
+  return (
+    numericUnit != null && NUMERIC_UNIT_CONFIGS[numericUnit]?.type === 'fixed'
+  );
+}
+
 const IEC_BYTE_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
 const SI_BYTE_UNITS = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
 const IEC_BIT_UNITS = ['b', 'Kibit', 'Mibit', 'Gibit', 'Tibit', 'Pibit'];
@@ -972,6 +1000,32 @@ const formatAutoScaleData = (
   const scaledValue = value < 0 ? -absVal : absVal;
   return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
 };
+
+const AVERAGE_UNITS = [
+  [1e3, 'thousand'],
+  [1e6, 'million'],
+  [1e9, 'billion'],
+  [1e12, 'trillion'],
+] as const;
+
+// numbro's default lowPrecision abbreviates anything that rounds to the next
+// unit (750 -> "0.8k"), while turning it off picks the unit before rounding
+// (999,700 -> "1000k"). Pick the unit from the rounded value instead.
+function averageUnitOptions(
+  displayed: number,
+  mantissa: number,
+): Pick<numbro.Format, 'forceAverage' | 'lowPrecision'> {
+  const abs = Math.abs(displayed);
+  const round = (v: number) => Math.round(v * 10 ** mantissa) / 10 ** mantissa;
+  let scaled = abs;
+  let unit: numbro.Format['forceAverage'];
+  for (const [power, name] of AVERAGE_UNITS) {
+    if (round(scaled) < 1000) break;
+    unit = name;
+    scaled = abs / power;
+  }
+  return unit ? { forceAverage: unit } : { lowPrecision: false };
+}
 
 export const formatNumber = (
   value?: string | number,
@@ -1029,11 +1083,20 @@ export const formatNumber = (
     return formatDurationMs(ms);
   }
 
+  // Factor is only currently available for the time output
+  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
     mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
+    ...(options.average &&
+      options.output !== 'byte' &&
+      averageUnitOptions(
+        value * factor * (options.output === 'percent' ? 100 : 1),
+        mantissa,
+      )),
     ...(options.output === 'byte' && {
       base: options.decimalBytes ? 'decimal' : 'general',
       spaceSeparated: true,
@@ -1043,9 +1106,6 @@ export const formatNumber = (
       currencySymbol: options.currencySymbol || '$',
     }),
   };
-
-  // Factor is only currently available for the time output
-  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
 
   return (
     numbro(value * factor).format(numbroFormat) +
@@ -1096,21 +1156,27 @@ export function formatDurationMs(ms: number): string {
   return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
 }
 
-/** Compact duration labels for axis ticks — fewer decimals, shorter units. */
-export function formatDurationMsCompact(ms: number): string {
-  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+// Compact duration labels for axis ticks. An explicit `precision` overrides
+// each branch's own default significant-digit count.
+export function formatDurationMsCompact(
+  ms: number,
+  precision?: number,
+): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms, precision)}`;
   if (ms === 0) return '0';
-  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(precision ?? 2)}ns`;
   if (ms < 1) {
     const µs = ms * 1000;
+    if (precision != null) return `${+µs.toPrecision(precision)}µs`;
     return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
   }
   if (ms < 1000) {
+    if (precision != null) return `${+ms.toPrecision(precision)}ms`;
     return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
   }
-  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
-  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
-  return `${+(ms / 3_600_000).toPrecision(2)}h`;
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(precision ?? 3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(precision ?? 2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(precision ?? 2)}h`;
 }
 
 // format uptime as days, hours, minutes or seconds
@@ -1187,6 +1253,93 @@ export const mergePath = (
     .join('')}`;
 };
 
+// A bare Map subscript as the UI builds it: `LogAttributes['key']` or `` `LogAttributes`['key'] ``
+const MAP_SUBSCRIPT_REGEX =
+  /^(`[^`]+`|[A-Za-z_][A-Za-z0-9_]*)\['((?:[^'\\]|\\.)*)'\]$/;
+// A trailing `AS alias` on a SELECT item, with the alias quoted or bare
+const SELECT_ALIAS_REGEX =
+  /\s+AS\s+("(?:[^"\\]|\\.)*"|`[^`]*`|[A-Za-z_][A-Za-z0-9_]*)\s*$/i;
+
+/**
+ * The expression of a SELECT item, without its `AS alias`
+ */
+export const selectItemExpression = (item: string): string =>
+  item.replace(SELECT_ALIAS_REGEX, '').trim();
+
+/**
+ * The alias of a SELECT item, unquoted, or undefined if it has none
+ */
+const selectItemAlias = (item: string): string | undefined => {
+  const alias = SELECT_ALIAS_REGEX.exec(item)?.[1];
+  return alias == null ? undefined : unquoteIdentifier(alias);
+};
+
+/**
+ * Whether a column picked in the UI is in the SELECT list, aliased or not
+ */
+export const isColumnInSelect = (
+  displayedColumns: string[] | undefined,
+  column: string,
+): boolean =>
+  displayedColumns?.some(
+    item => item === column || selectItemExpression(item) === column,
+  ) ?? false;
+
+/**
+ * Label a Map subscript picked in the UI with its key, so the results column
+ * reads `service.name` instead of `arrayElement(LogAttributes, 'service.name')`.
+ * The alias is left off whenever it could change the query.
+ */
+export const withMapKeyAlias = (
+  column: string,
+  selectItems: string[],
+  tableColumns: Set<string>,
+): string => {
+  const match = MAP_SUBSCRIPT_REGEX.exec(column);
+  if (!match) {
+    return column;
+  }
+  // Inverse of escapeSqlSingleQuoted, which mergePath uses to build the subscript
+  const key = match[2].replace(/\\(.)/g, '$1');
+  const selectedNames = selectItems.map(
+    item => selectItemAlias(item) ?? item.trim(),
+  );
+  if (
+    // Nothing to label
+    key === '' ||
+    // Would need escaping inside the quoted alias
+    /["\\]/.test(key) ||
+    // Table columns not loaded yet, so a clash with one cannot be ruled out
+    tableColumns.size === 0 ||
+    // ClickHouse resolves an alias before a column of the same name
+    tableColumns.has(key) ||
+    // Two selected columns cannot share a name
+    selectedNames.includes(key)
+  ) {
+    return column;
+  }
+  return `${column} AS "${key}"`;
+};
+
+/**
+ * The sort to keep once a SELECT item is removed. Sorting on an aliased column
+ * from the table header orders by the alias itself (`"service.name" DESC`),
+ * which stops resolving once the item is gone, so that falls back to the
+ * default sort.
+ */
+export const orderByAfterRemovingSelectItem = (
+  item: string,
+  orderBy: string,
+  defaultOrderBy: string,
+): string => {
+  const alias = selectItemAlias(item);
+  if (alias == null) {
+    return orderBy;
+  }
+  const sortedBy = orderBy.trim().replace(/\s+(ASC|DESC)$/i, '');
+  return sortedBy === `"${alias}"` ? defaultOrderBy : orderBy;
+};
+
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
   let output = null;
   let error = null;
@@ -1208,6 +1361,14 @@ export const optionsToSelectData = (options: Record<string, string>) =>
   Object.entries(options).map(([value, label]) => ({ value, label }));
 
 // Helper function to format attribute clause
+function escapeSqlValueSingleQuoted(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/'/g, "''");
+}
+
+function escapeLuceneDoubleQuoted(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export function formatAttributeClause(
   column: string,
   field: string,
@@ -1215,8 +1376,19 @@ export function formatAttributeClause(
   isSql: boolean,
 ): string {
   return isSql
-    ? `${column}['${field}']='${value}'`
-    : `${column}.${field}:"${value}"`;
+    ? `${column}['${field}']='${escapeSqlValueSingleQuoted(value)}'`
+    : `${column}.${field}:"${escapeLuceneDoubleQuoted(value)}"`;
+}
+
+export function formatColumnEquals(
+  column: string,
+  value: string,
+  isSql: boolean,
+): string {
+  if (isSql) {
+    return `${column} = '${escapeSqlValueSingleQuoted(value)}'`;
+  }
+  return `${column}:"${escapeLuceneDoubleQuoted(value)}"`;
 }
 
 /**

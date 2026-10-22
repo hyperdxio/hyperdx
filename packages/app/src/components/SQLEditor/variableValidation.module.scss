@@ -1,0 +1,11 @@
+.indicator {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 6px;
+  line-height: 1;
+  cursor: help;
+
+  /* Keep the icon on the editor's first row as multiline content grows. */
+  min-height: var(--editor-base-height, 100%);
+}

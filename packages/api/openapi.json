@@ -92,9 +92,88 @@
         "type": "string",
         "enum": [
           "saved_search",
-          "tile"
+          "tile",
+          "inline"
         ],
-        "description": "Alert source type."
+        "description": "Alert source type. \"saved_search\" alerts monitor a saved search, \"tile\" alerts monitor a dashboard tile, and \"inline\" alerts carry their own chart configuration (see AlertChartConfig) without requiring a saved search or dashboard.\n"
+      },
+      "AlertChartConfigOverlay": {
+        "type": "object",
+        "description": "Fields an alert's chart config carries on top of the dashboard tile config dialect. Unlike a tile (whose name lives on the tile, not its config), an inline alert's config is standalone.\n",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name for the alert query. Used in notification titles and as an alert-name fallback when the alert itself has no name.\n",
+            "example": "Error Rate Query"
+          },
+          "where": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Chart-level filter applied on top of every select item's own \"where\" (combined via AND). Builder variants only; rejected on Raw SQL variants (filter inside the sqlTemplate instead).\n",
+            "example": "ServiceName:api"
+          },
+          "whereLanguage": {
+            "$ref": "#/components/schemas/QueryLanguage",
+            "description": "Language of the chart-level \"where\" filter."
+          }
+        }
+      },
+      "AlertLineChartConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/LineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertBarChartConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertStackedLineChartConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/StackedLineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertNumberChartConfig": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/NumberChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertChartConfigOverlay"
+          }
+        ]
+      },
+      "AlertChartConfig": {
+        "description": "The chart configuration an inline alert evaluates, in the same dialect as dashboard tile configs plus the alert-only fields in AlertChartConfigOverlay. Only the display types the alert evaluator supports are accepted: line, stacked_bar, stacked_line, and number, in both builder and Raw SQL (configType \"sql\") variants. Raw SQL templates must reference the evaluation window via the time-filter and interval macros (e.g. $__timeFilter and $__timeInterval), and the referenced source/connection must belong to the team.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AlertLineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertBarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertStackedLineChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/AlertNumberChartConfig"
+          }
+        ]
       },
       "AlertState": {
         "type": "string",
@@ -204,6 +283,15 @@
           "propertyName": "type"
         }
       },
+      "AlertChannels": {
+        "type": "array",
+        "description": "Notification channels to trigger when the alert fires or resolves. Between 1 and 10 channels; duplicates are rejected.\n",
+        "minItems": 1,
+        "maxItems": 10,
+        "items": {
+          "$ref": "#/components/schemas/AlertChannel"
+        }
+      },
       "Alert": {
         "type": "object",
         "properties": {
@@ -230,6 +318,10 @@
             "description": "Group-by key for saved search alerts.",
             "nullable": true,
             "example": "ServiceName"
+          },
+          "chartConfig": {
+            "$ref": "#/components/schemas/AlertChartConfig",
+            "description": "Chart configuration for inline alerts. Required when source is \"inline\" and rejected otherwise. Returned on single-alert responses (GET by ID, POST, PUT); the list endpoint omits it.\n"
           },
           "threshold": {
             "type": "number",
@@ -273,13 +365,39 @@
           },
           "channel": {
             "$ref": "#/components/schemas/AlertChannel",
-            "description": "Alert notification channel configuration."
+            "description": "First notification channel, mirrored from \"channels\" for pre-multi-channel clients."
+          },
+          "channels": {
+            "$ref": "#/components/schemas/AlertChannels",
+            "description": "All notification channels to trigger when the alert fires or resolves."
           },
           "name": {
             "type": "string",
-            "description": "Human-friendly alert name.",
+            "description": "Alert name template (Handlebars), rendered as the notification title. When omitted, a default title is generated from the display name, value and threshold.",
             "nullable": true,
-            "example": "Test Alert"
+            "example": "Errors for {{group}} hit {{value}}"
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Display name shown in the alerts list and in notification titles. Defaults to the name of the referenced saved search, dashboard tile, or inline chart when omitted or null.",
+            "nullable": true,
+            "minLength": 1,
+            "maxLength": 512,
+            "example": "Checkout error spike"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "maxItems": 50,
+            "description": "Tags for the alert. Defaults to the tags of the referenced saved search or dashboard when omitted or null; inline alerts have no parent to inherit from and default to an empty list.",
+            "nullable": true,
+            "example": [
+              "checkout",
+              "p1"
+            ]
           },
           "message": {
             "type": "string",
@@ -311,7 +429,27 @@
           },
           {
             "type": "object",
+            "required": [
+              "displayName",
+              "tags"
+            ],
             "properties": {
+              "displayName": {
+                "type": "string",
+                "description": "The display name for the alert in the UI. Derived from the saved search name, dashboard tile name, or inline chartConfig name when not explicitly set.",
+                "example": "Checkout error spike"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The tags for the alert. Derived from the tags of the referenced saved search or dashboard when not explicitly set; inline alerts default to an empty list.",
+                "example": [
+                  "checkout",
+                  "p1"
+                ]
+              },
               "id": {
                 "type": "string",
                 "description": "Unique alert identifier.",
@@ -365,11 +503,11 @@
           },
           {
             "type": "object",
+            "description": "At least one of \"channel\" or \"channels\" must be provided. Sending both is allowed only when \"channel\" matches the first entry of \"channels\", so a response body can be echoed back unchanged. Responses always include both, with \"channel\" mirroring the first entry of \"channels\".\n",
             "required": [
               "threshold",
               "interval",
-              "thresholdType",
-              "channel"
+              "thresholdType"
             ]
           }
         ]
@@ -381,11 +519,11 @@
           },
           {
             "type": "object",
+            "description": "At least one of \"channel\" or \"channels\" must be provided. Sending both is allowed only when \"channel\" matches the first entry of \"channels\", so a response body can be echoed back unchanged. Responses always include both, with \"channel\" mirroring the first entry of \"channels\". Updates replace the alert's configuration rather than merging it: sending only the legacy \"channel\" field for an alert that has several channels reduces it to that one channel. Fetch the alert and resend the complete \"channels\" array to preserve them.\n",
             "required": [
               "threshold",
               "interval",
-              "thresholdType",
-              "channel"
+              "thresholdType"
             ]
           }
         ]
@@ -821,6 +959,17 @@
         "description": "Query language for the where clause."
       },
       "SavedFilterValue": {
+        "description": "A single saved dashboard filter selection. Either a rendered SQL condition, or a selection addressed by the name of the dashboard variable it belongs to.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/SqlSavedFilterValue"
+          },
+          {
+            "$ref": "#/components/schemas/VariableSavedFilterValue"
+          }
+        ]
+      },
+      "SqlSavedFilterValue": {
         "type": "object",
         "required": [
           "condition"
@@ -832,13 +981,51 @@
               "sql"
             ],
             "default": "sql",
-            "description": "Filter type. Currently only \"sql\" is supported.",
+            "description": "Filter type.",
             "example": "sql"
           },
           "condition": {
             "type": "string",
+            "maxLength": 10000,
             "description": "SQL filter condition. For example use expressions in the form \"column IN ('value')\".",
             "example": "ServiceName IN ('hdx-oss-dev-api')"
+          }
+        }
+      },
+      "VariableSavedFilterValue": {
+        "type": "object",
+        "required": [
+          "type",
+          "name",
+          "values"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "variable"
+            ],
+            "description": "Filter type.",
+            "example": "variable"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "The variableName of the dashboard variable this selection belongs to. Only allowed for variable-enabled filters.\n",
+            "example": "service"
+          },
+          "values": {
+            "type": "array",
+            "maxItems": 1000,
+            "description": "Selected values",
+            "items": {
+              "type": "string",
+              "maxLength": 10000
+            },
+            "example": [
+              "hdx-oss-dev-api"
+            ]
           }
         }
       },
@@ -857,6 +1044,7 @@
         "type": "string",
         "enum": [
           "stacked_bar",
+          "stacked_line",
           "line"
         ],
         "description": "Visual representation type for the time series."
@@ -1578,6 +1766,30 @@
           }
         }
       },
+      "Formula": {
+        "type": "object",
+        "required": [
+          "expression"
+        ],
+        "description": "A derived series computed from the chart's select items via a letter-ref arithmetic expression (metric, log, and trace sources only). \"A\" refers to select[0], \"B\" to select[1], and so on. The grammar supports + - * /, parentheses, and numeric constants; expressions are parsed and validated, never passed through as raw SQL. Division by zero or a missing operand yields NULL (rendered as a gap).\n",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Arithmetic expression over the select items by position, e.g. \"A / (A + B) * 100\" for a success-rate percentage.\n",
+            "example": "A / (A + B) * 100"
+          },
+          "alias": {
+            "type": "string",
+            "description": "Display label for the formula series in chart legends and column headers. Falls back to the raw expression text when unset.\n",
+            "example": "Success rate %"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Per-series number formatting options for the formula series.\n"
+          }
+        }
+      },
       "LineBuilderChartConfig": {
         "type": "object",
         "required": [
@@ -1635,6 +1847,16 @@
             "description": "Set the y-axis lower bound to the minimum of the displayed data instead of zero, making small fluctuations between series easier to see.\n",
             "default": false
           },
+          "lineInterpolation": {
+            "type": "string",
+            "enum": [
+              "smooth",
+              "linear",
+              "step"
+            ],
+            "example": "step",
+            "description": "How points are connected. Defaults to \"smooth\" when omitted.\n"
+          },
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
             "description": "Number formatting options for displayed values."
@@ -1649,6 +1871,19 @@
             "minimum": 0,
             "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.\n",
             "example": 5
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            }
+          },
+          "showOperandSeries": {
+            "type": "boolean",
+            "description": "Only meaningful with formulas. When false, only the formula series are returned; the raw operand series are hidden.\n",
+            "default": true
           }
         }
       },
@@ -1713,6 +1948,106 @@
             "minimum": 0,
             "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.",
             "example": 5
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            }
+          },
+          "showOperandSeries": {
+            "type": "boolean",
+            "description": "Only meaningful with formulas. When false, only the formula series are returned; the raw operand series are hidden.\n",
+            "default": true
+          }
+        }
+      },
+      "StackedLineBuilderChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "sourceId",
+          "select"
+        ],
+        "description": "Builder configuration for a stacked-line time-series chart.",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "stacked_line"
+            ],
+            "description": "Display type discriminator. Must be \"stacked_line\" for stacked-line charts.",
+            "example": "stacked_line"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "description": "One or more aggregated values to plot. When asRatio is true, exactly two select items are required.\n",
+            "items": {
+              "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "groupBy": {
+            "type": "string",
+            "description": "Field expression to group results by (creates separate stacked bands per group value).",
+            "example": "service",
+            "maxLength": 10000
+          },
+          "asRatio": {
+            "type": "boolean",
+            "description": "Plot select[0] / select[1] as a ratio. Requires exactly two select items.",
+            "default": false
+          },
+          "alignDateRangeToGranularity": {
+            "type": "boolean",
+            "description": "Align the date range boundaries to the query granularity interval.",
+            "default": true
+          },
+          "fillNulls": {
+            "type": "boolean",
+            "description": "Fill missing time buckets with zero instead of leaving gaps.",
+            "default": true
+          },
+          "lineInterpolation": {
+            "type": "string",
+            "enum": [
+              "smooth",
+              "linear",
+              "step"
+            ],
+            "example": "step",
+            "description": "How points are connected. Defaults to \"linear\" when omitted.\n"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
+          },
+          "seriesLimit": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.",
+            "example": 5
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Derived series computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            }
+          },
+          "showOperandSeries": {
+            "type": "boolean",
+            "description": "Only meaningful with formulas. When false, only the formula series are returned; the raw operand series are hidden.\n",
+            "default": true
           }
         }
       },
@@ -1783,6 +2118,19 @@
           "onClick": {
             "$ref": "#/components/schemas/OnClick",
             "description": "Optional link-out configuration applied when a user clicks a row."
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 10,
+            "description": "Derived columns computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Cannot be combined with asRatio.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            }
+          },
+          "showOperandSeries": {
+            "type": "boolean",
+            "description": "Only meaningful with formulas. When false, only the formula columns are returned; the raw operand columns are hidden.\n",
+            "default": true
           }
         }
       },
@@ -1811,10 +2159,18 @@
           "select": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 1,
-            "description": "Exactly one aggregated value to display as a single number.",
+            "maxItems": 20,
+            "description": "Exactly one aggregated value to display as a single number — unless \"formulas\" is set, in which case the select items are the formula's operands and the (single) formula value is displayed instead.\n",
             "items": {
               "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "formulas": {
+            "type": "array",
+            "maxItems": 1,
+            "description": "A single derived value computed from the select items via letter-ref arithmetic (\"A\" = select[0], \"B\" = select[1], ...). Metric, log, and trace sources only. Number tiles display the formula value and always hide the operand series.\n",
+            "items": {
+              "$ref": "#/components/schemas/Formula"
             }
           },
           "numberFormat": {
@@ -1980,14 +2336,14 @@
           }
         }
       },
-      "HeatmapChartConfig": {
+      "HeatmapDistributionChartConfig": {
         "type": "object",
         "required": [
           "displayType",
           "sourceId",
           "select"
         ],
-        "description": "Builder configuration for a heatmap tile. Heatmap is builder-only (no Raw SQL variant) and currently supports trace sources. The row-level filter lives at the chart-config level (where / whereLanguage), matching the HeatmapSeriesEditor in the UI.\n",
+        "description": "Builder configuration for a distribution-mode heatmap tile, which buckets a numeric value on the y-axis. Requires a trace source. The row-level filter lives at the chart-config level (where / whereLanguage), matching the HeatmapSeriesEditor in the UI.\n",
         "properties": {
           "displayType": {
             "type": "string",
@@ -1996,6 +2352,14 @@
             ],
             "description": "Display type discriminator. Must be \"heatmap\" for heatmap tiles.",
             "example": "heatmap"
+          },
+          "heatmapMode": {
+            "type": "string",
+            "enum": [
+              "distribution"
+            ],
+            "description": "Heatmap mode. \"distribution\" is the default when omitted.",
+            "example": "distribution"
           },
           "sourceId": {
             "type": "string",
@@ -2026,6 +2390,78 @@
           "numberFormat": {
             "$ref": "#/components/schemas/NumberFormat",
             "description": "Number formatting options for displayed values."
+          }
+        }
+      },
+      "HeatmapSeriesChartConfig": {
+        "type": "object",
+        "required": [
+          "displayType",
+          "heatmapMode",
+          "sourceId",
+          "select"
+        ],
+        "description": "Builder configuration for a series-mode heatmap tile, which shows one aggregated series per groupBy value as a row on the y-axis. Requires a trace, log, or metric source. Any filter lives on the select item (where / whereLanguage).\n",
+        "properties": {
+          "displayType": {
+            "type": "string",
+            "enum": [
+              "heatmap"
+            ],
+            "description": "Display type discriminator. Must be \"heatmap\" for heatmap tiles.",
+            "example": "heatmap"
+          },
+          "heatmapMode": {
+            "type": "string",
+            "enum": [
+              "series"
+            ],
+            "description": "Heatmap mode. Must be \"series\" for series heatmaps.",
+            "example": "series"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the data source to query.",
+            "example": "65f5e4a3b9e77c001a111111"
+          },
+          "select": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1,
+            "description": "Exactly one aggregated value used to color each cell.",
+            "items": {
+              "$ref": "#/components/schemas/SelectItem"
+            }
+          },
+          "groupBy": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Field expression to group results by (one row per group value).",
+            "example": "ServiceName"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
+          }
+        }
+      },
+      "HeatmapChartConfig": {
+        "description": "Heatmap tile. There is no Raw SQL variant. For the builder variant, omit heatmapMode (or set it to \"distribution\") for the distribution heatmap, or set it to \"series\" for the series heatmap. Set configType to \"promql\" for the PromQL variant.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/HeatmapDistributionChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/HeatmapSeriesChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/HeatmapPromqlChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "configType",
+          "mapping": {
+            "promql": "#/components/schemas/HeatmapPromqlChartConfig"
           }
         }
       },
@@ -2213,6 +2649,16 @@
                 "type": "boolean",
                 "description": "Set the y-axis lower bound to the minimum of the displayed data instead of zero, making small fluctuations between series easier to see.\n",
                 "default": false
+              },
+              "lineInterpolation": {
+                "type": "string",
+                "enum": [
+                  "smooth",
+                  "linear",
+                  "step"
+                ],
+                "example": "step",
+                "description": "How points are connected. Defaults to \"smooth\" when omitted.\n"
               }
             }
           }
@@ -2247,6 +2693,50 @@
                 "type": "boolean",
                 "description": "Expand date range boundaries to the query granularity interval.",
                 "default": true
+              }
+            }
+          }
+        ]
+      },
+      "StackedLineRawSqlChartConfig": {
+        "description": "Raw SQL configuration for a stacked-line time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/RawSqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "stacked_line"
+                ],
+                "description": "Display as a stacked-line time-series chart.",
+                "example": "stacked_line"
+              },
+              "fillNulls": {
+                "type": "boolean",
+                "description": "Fill missing time buckets with zero instead of leaving gaps.",
+                "default": true
+              },
+              "alignDateRangeToGranularity": {
+                "type": "boolean",
+                "description": "Expand date range boundaries to the query granularity interval.",
+                "default": true
+              },
+              "lineInterpolation": {
+                "type": "string",
+                "enum": [
+                  "smooth",
+                  "linear",
+                  "step"
+                ],
+                "example": "step",
+                "description": "How points are connected. Defaults to \"linear\" when omitted.\n"
               }
             }
           }
@@ -2302,7 +2792,15 @@
               },
               "color": {
                 "$ref": "#/components/schemas/ChartPaletteToken",
-                "description": "Optional static color applied to the displayed number. Raw SQL number tiles do not support conditional colorRules.\n"
+                "description": "Optional static color applied to the displayed number."
+              },
+              "colorRules": {
+                "type": "array",
+                "maxItems": 10,
+                "description": "Ordered conditional color rules evaluated against the displayed value (last match wins). Falls back to color, then the default text color when no rule matches.\n",
+                "items": {
+                  "$ref": "#/components/schemas/NumberTileColorCondition"
+                }
               }
             }
           }
@@ -2356,37 +2854,547 @@
           }
         ]
       },
+      "PromqlRangeExpression": {
+        "type": "object",
+        "required": [
+          "expression"
+        ],
+        "description": "A PromQL expression evaluated over the dashboard time range.",
+        "properties": {
+          "expression": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "PromQL expression. Supports dashboard variables and the $__interval, $__rate_interval, and $__range macros.\n",
+            "example": "sum by (job) (rate(http_requests_total[$__rate_interval]))"
+          },
+          "alias": {
+            "type": "string",
+            "maxLength": 10000,
+            "description": "Prefixed to every series name this expression produces.",
+            "example": "Requests"
+          }
+        }
+      },
+      "PromqlInstantExpression": {
+        "description": "A PromQL expression on a table, number, pie, or bar tile, which can be evaluated at a single instant instead of over a range.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlRangeExpression"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "queryType": {
+                "type": "string",
+                "enum": [
+                  "range",
+                  "instant"
+                ],
+                "description": "Whether to evaluate over the time range or at its end. Defaults to \"range\" when omitted.\n",
+                "example": "instant"
+              }
+            }
+          }
+        ]
+      },
+      "PromqlReducibleExpression": {
+        "description": "A PromQL expression on a number, pie, or bar tile, which reduces each series of a range query to a single value.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlInstantExpression"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "reducer": {
+                "type": "string",
+                "enum": [
+                  "lastNotNull",
+                  "min",
+                  "max",
+                  "mean",
+                  "sum",
+                  "count"
+                ],
+                "description": "How each series' samples are reduced to one value. Defaults to \"lastNotNull\" when omitted. It also applies to instant queries, where each series has a single sample, so e.g. \"count\" turns every value into 1.\n",
+                "example": "max"
+              }
+            }
+          }
+        ]
+      },
+      "PromqlChartConfigBase": {
+        "type": "object",
+        "required": [
+          "configType",
+          "sourceId"
+        ],
+        "description": "Shared fields for PromQL chart configs. Set configType to \"promql\" and provide sourceId + expressions. The connection is read from the source. PromQL is a preview feature and must be enabled on the deployment (ENABLE_PROMQL) before PromQL tiles can be queried.\n",
+        "properties": {
+          "configType": {
+            "type": "string",
+            "enum": [
+              "promql"
+            ],
+            "description": "Must be \"promql\" to use the PromQL chart config variant.",
+            "example": "promql"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "ID of the PromQL source to query. Must be a source of kind \"promql\".",
+            "example": "65f5e4a3b9e77c001a333333"
+          },
+          "granularity": {
+            "type": "string",
+            "pattern": "^(\\d+ (second|minute|hour|day)|auto)$",
+            "description": "Resolution of range queries, used as the Prometheus step and the $__interval macro. Defaults to \"auto\", which picks one from the time range.\n",
+            "example": "5 minute"
+          },
+          "numberFormat": {
+            "$ref": "#/components/schemas/NumberFormat",
+            "description": "Number formatting options for displayed values."
+          }
+        }
+      },
+      "PromqlTimeChartConfigBase": {
+        "description": "Shared fields for PromQL time-series chart configs.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "expressions"
+            ],
+            "properties": {
+              "expressions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "description": "PromQL expressions to plot.",
+                "items": {
+                  "$ref": "#/components/schemas/PromqlRangeExpression"
+                }
+              },
+              "legendTemplate": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Template for series names, using the series' Prometheus labels in double braces.\n",
+                "example": "{{job}} - {{instance}}"
+              },
+              "fillNulls": {
+                "type": "boolean",
+                "description": "Fill missing time buckets with zero instead of leaving gaps.",
+                "default": true
+              },
+              "alignDateRangeToGranularity": {
+                "type": "boolean",
+                "description": "Expand date range boundaries to the query granularity interval.",
+                "default": true
+              },
+              "seriesLimit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Maximum number of series rendered (top-N by value). Omit to use the default render cap, set 0 for unlimited, or a positive N to keep the top N series.\n",
+                "example": 5
+              }
+            }
+          }
+        ]
+      },
+      "LinePromqlChartConfig": {
+        "description": "PromQL configuration for a line time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlTimeChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "line"
+                ],
+                "description": "Display as a line time-series chart.",
+                "example": "line"
+              },
+              "compareToPreviousPeriod": {
+                "type": "boolean",
+                "description": "Overlay the equivalent previous time period for comparison.",
+                "default": false
+              },
+              "lineInterpolation": {
+                "type": "string",
+                "enum": [
+                  "smooth",
+                  "linear",
+                  "step"
+                ],
+                "example": "step",
+                "description": "How points are connected. Defaults to \"smooth\" when omitted.\n"
+              }
+            }
+          }
+        ]
+      },
+      "BarPromqlChartConfig": {
+        "description": "PromQL configuration for a stacked-bar time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlTimeChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "stacked_bar"
+                ],
+                "description": "Display as a stacked-bar time-series chart.",
+                "example": "stacked_bar"
+              }
+            }
+          }
+        ]
+      },
+      "StackedLinePromqlChartConfig": {
+        "description": "PromQL configuration for a stacked-line time-series chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlTimeChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "stacked_line"
+                ],
+                "description": "Display as a stacked-line time-series chart.",
+                "example": "stacked_line"
+              },
+              "lineInterpolation": {
+                "type": "string",
+                "enum": [
+                  "smooth",
+                  "linear",
+                  "step"
+                ],
+                "example": "step",
+                "description": "How points are connected. Defaults to \"linear\" when omitted.\n"
+              }
+            }
+          }
+        ]
+      },
+      "TablePromqlChartConfig": {
+        "description": "PromQL configuration for a table chart, with one row per sample: a column per label, a Value column, and a Timestamp column when the expression is a range query. An instant query gives one row per series.\n",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType",
+              "expressions"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "table"
+                ],
+                "description": "Display as a table chart.",
+                "example": "table"
+              },
+              "expressions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
+                "items": {
+                  "$ref": "#/components/schemas/PromqlInstantExpression"
+                }
+              }
+            }
+          }
+        ]
+      },
+      "NumberPromqlChartConfig": {
+        "description": "PromQL configuration for a single big-number chart.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType",
+              "expressions"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "number"
+                ],
+                "description": "Display as a single big-number chart.",
+                "example": "number"
+              },
+              "expressions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored. The tile displays the first value.\n",
+                "items": {
+                  "$ref": "#/components/schemas/PromqlReducibleExpression"
+                }
+              },
+              "color": {
+                "$ref": "#/components/schemas/ChartPaletteToken",
+                "description": "Optional static color applied to the displayed number."
+              },
+              "colorRules": {
+                "type": "array",
+                "maxItems": 10,
+                "description": "Ordered conditional color rules evaluated against the displayed value (last match wins). Falls back to color, then the default text color when no rule matches.\n",
+                "items": {
+                  "$ref": "#/components/schemas/NumberTileColorCondition"
+                }
+              },
+              "backgroundChart": {
+                "$ref": "#/components/schemas/BackgroundChart",
+                "description": "Optional trend sparkline drawn behind the number. Only rendered when the expression uses a range query.\n"
+              }
+            }
+          }
+        ]
+      },
+      "PiePromqlChartConfig": {
+        "description": "PromQL configuration for a pie chart, with one slice per series.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType",
+              "expressions"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "pie"
+                ],
+                "description": "Display as a pie chart.",
+                "example": "pie"
+              },
+              "expressions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
+                "items": {
+                  "$ref": "#/components/schemas/PromqlReducibleExpression"
+                }
+              },
+              "legendTemplate": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Template for slice names, using the series' Prometheus labels in double braces.\n",
+                "example": "{{job}}"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Maximum number of slices (top-N by value), at most 500. Omit or set 0 to show up to 500.\n",
+                "example": 10
+              }
+            }
+          }
+        ]
+      },
+      "CategoricalBarPromqlChartConfig": {
+        "description": "PromQL configuration for a categorical bar chart, with one bar per series.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType",
+              "expressions"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "bar"
+                ],
+                "description": "Display as a categorical bar chart.",
+                "example": "bar"
+              },
+              "expressions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
+                "items": {
+                  "$ref": "#/components/schemas/PromqlReducibleExpression"
+                }
+              },
+              "legendTemplate": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Template for bar names, using the series' Prometheus labels in double braces.\n",
+                "example": "{{job}}"
+              },
+              "limit": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Maximum number of bars (top-N by value), at most 500. Omit or set 0 to show up to 500.\n",
+                "example": 10
+              }
+            }
+          }
+        ]
+      },
+      "HeatmapPromqlChartConfig": {
+        "description": "PromQL configuration for a heatmap.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PromqlChartConfigBase"
+          },
+          {
+            "type": "object",
+            "required": [
+              "displayType",
+              "expressions"
+            ],
+            "properties": {
+              "displayType": {
+                "type": "string",
+                "enum": [
+                  "heatmap"
+                ],
+                "description": "Display as a heatmap.",
+                "example": "heatmap"
+              },
+              "expressions": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 10,
+                "description": "PromQL expressions. Only the first is queried; the rest are kept but ignored.\n",
+                "items": {
+                  "$ref": "#/components/schemas/PromqlRangeExpression"
+                }
+              },
+              "heatmapMode": {
+                "type": "string",
+                "enum": [
+                  "distribution",
+                  "series",
+                  "histogram"
+                ],
+                "description": "\"distribution\" buckets the values of all series over time, \"series\" draws one row per series, and \"histogram\" draws one row per Prometheus histogram bucket (series need an \"le\" label). Defaults to \"distribution\" when omitted.\n",
+                "example": "histogram"
+              },
+              "heatmapScaleType": {
+                "type": "string",
+                "enum": [
+                  "log",
+                  "linear"
+                ],
+                "description": "Y-axis scale of a distribution heatmap.",
+                "example": "log"
+              },
+              "legendTemplate": {
+                "type": "string",
+                "maxLength": 1024,
+                "description": "Template for row names of a series heatmap, using the series' Prometheus labels in double braces.\n",
+                "example": "{{job}}"
+              }
+            }
+          }
+        ]
+      },
       "LineChartConfig": {
-        "description": "Line chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "description": "Line chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate), or to \"promql\" for the PromQL variant (requires sourceId and expressions).\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/LineBuilderChartConfig"
           },
           {
             "$ref": "#/components/schemas/LineRawSqlChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/LinePromqlChartConfig"
           }
         ],
         "discriminator": {
           "propertyName": "configType",
           "mapping": {
-            "sql": "#/components/schemas/LineRawSqlChartConfig"
+            "sql": "#/components/schemas/LineRawSqlChartConfig",
+            "promql": "#/components/schemas/LinePromqlChartConfig"
           }
         }
       },
       "BarChartConfig": {
-        "description": "Stacked-bar chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "description": "Stacked-bar chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate), or to \"promql\" for the PromQL variant (requires sourceId and expressions).\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/BarBuilderChartConfig"
           },
           {
             "$ref": "#/components/schemas/BarRawSqlChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/BarPromqlChartConfig"
           }
         ],
         "discriminator": {
           "propertyName": "configType",
           "mapping": {
-            "sql": "#/components/schemas/BarRawSqlChartConfig"
+            "sql": "#/components/schemas/BarRawSqlChartConfig",
+            "promql": "#/components/schemas/BarPromqlChartConfig"
+          }
+        }
+      },
+      "StackedLineChartConfig": {
+        "description": "Stacked-line chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate), or to \"promql\" for the PromQL variant (requires sourceId and expressions).\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/StackedLineBuilderChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/StackedLineRawSqlChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/StackedLinePromqlChartConfig"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "configType",
+          "mapping": {
+            "sql": "#/components/schemas/StackedLineRawSqlChartConfig",
+            "promql": "#/components/schemas/StackedLinePromqlChartConfig"
           }
         }
       },
@@ -2597,81 +3605,100 @@
         }
       },
       "TableChartConfig": {
-        "description": "Table chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "description": "Table chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate), or to \"promql\" for the PromQL variant (requires sourceId and expressions).\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/TableBuilderChartConfig"
           },
           {
             "$ref": "#/components/schemas/TableRawSqlChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/TablePromqlChartConfig"
           }
         ],
         "discriminator": {
           "propertyName": "configType",
           "mapping": {
-            "sql": "#/components/schemas/TableRawSqlChartConfig"
+            "sql": "#/components/schemas/TableRawSqlChartConfig",
+            "promql": "#/components/schemas/TablePromqlChartConfig"
           }
         }
       },
       "NumberChartConfig": {
-        "description": "Single big-number chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "description": "Single big-number chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate), or to \"promql\" for the PromQL variant (requires sourceId and expressions).\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/NumberBuilderChartConfig"
           },
           {
             "$ref": "#/components/schemas/NumberRawSqlChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/NumberPromqlChartConfig"
           }
         ],
         "discriminator": {
           "propertyName": "configType",
           "mapping": {
-            "sql": "#/components/schemas/NumberRawSqlChartConfig"
+            "sql": "#/components/schemas/NumberRawSqlChartConfig",
+            "promql": "#/components/schemas/NumberPromqlChartConfig"
           }
         }
       },
       "PieChartConfig": {
-        "description": "Pie chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "description": "Pie chart. Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate), or to \"promql\" for the PromQL variant (requires sourceId and expressions).\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/PieBuilderChartConfig"
           },
           {
             "$ref": "#/components/schemas/PieRawSqlChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/PiePromqlChartConfig"
           }
         ],
         "discriminator": {
           "propertyName": "configType",
           "mapping": {
-            "sql": "#/components/schemas/PieRawSqlChartConfig"
+            "sql": "#/components/schemas/PieRawSqlChartConfig",
+            "promql": "#/components/schemas/PiePromqlChartConfig"
           }
         }
       },
       "CategoricalBarChartConfig": {
-        "description": "Categorical bar chart (one bar per group value; not a time series). Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate).\n",
+        "description": "Categorical bar chart (one bar per group value; not a time series). Omit configType for the builder variant (requires sourceId and select). Set configType to \"sql\" for the Raw SQL variant (requires connectionId and sqlTemplate), or to \"promql\" for the PromQL variant (requires sourceId and expressions).\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/CategoricalBarBuilderChartConfig"
           },
           {
             "$ref": "#/components/schemas/CategoricalBarRawSqlChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/CategoricalBarPromqlChartConfig"
           }
         ],
         "discriminator": {
           "propertyName": "configType",
           "mapping": {
-            "sql": "#/components/schemas/CategoricalBarRawSqlChartConfig"
+            "sql": "#/components/schemas/CategoricalBarRawSqlChartConfig",
+            "promql": "#/components/schemas/CategoricalBarPromqlChartConfig"
           }
         }
       },
       "TileConfig": {
-        "description": "Tile chart configuration. displayType is the primary discriminant and determines which variant group applies. For displayTypes that support both builder and Raw SQL modes (line, stacked_bar, table, number, pie, bar), configType is the secondary discriminant: omit it for the builder variant or set it to \"sql\" for the Raw SQL variant. The heatmap, search, event_patterns, and markdown displayTypes only have a builder variant.\n",
+        "description": "Tile chart configuration. displayType is the primary discriminant and determines which variant group applies. configType is the secondary discriminant: omit it for the builder variant, set it to \"sql\" for the Raw SQL variant, or set it to \"promql\" for the PromQL variant. Line, stacked_bar, stacked_line, table, number, pie, and bar support all three. Heatmap supports builder and PromQL. Search, event_patterns, and markdown only have a builder variant.\n",
         "oneOf": [
           {
             "$ref": "#/components/schemas/LineChartConfig"
           },
           {
             "$ref": "#/components/schemas/BarChartConfig"
+          },
+          {
+            "$ref": "#/components/schemas/StackedLineChartConfig"
           },
           {
             "$ref": "#/components/schemas/TableChartConfig"
@@ -2703,6 +3730,7 @@
           "mapping": {
             "line": "#/components/schemas/LineChartConfig",
             "stacked_bar": "#/components/schemas/BarChartConfig",
+            "stacked_line": "#/components/schemas/StackedLineChartConfig",
             "table": "#/components/schemas/TableChartConfig",
             "number": "#/components/schemas/NumberChartConfig",
             "pie": "#/components/schemas/PieChartConfig",
@@ -2847,6 +3875,12 @@
             "maxLength": 256,
             "description": "References a tab inside the tile's container by id. Requires containerId to be set, and the container to declare a matching tab.",
             "example": "errors"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Short explanation of the tile, shown as a tooltip next to its name.",
+            "example": "Share of API requests that returned a 5xx response."
           }
         }
       },
@@ -2907,8 +3941,30 @@
         ]
       },
       "FilterInput": {
+        "description": "A drop-down filter on a dashboard. Depending on type, filters can either broadcast\nselected value(s) to every tile (isBroadcastEnabled), expose selected\nvalues as a variable (isVariableEnabled) or both. Typically a filter should\ndo just one of these things. Any filter may additionally be marked\nrequired via minSelections, which blocks the tiles that read it until it\nhas a selected value - or every tile on the dashboard, with\nisGlobalRequirement.\n",
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/QueryExpressionFilterInput"
+          },
+          {
+            "$ref": "#/components/schemas/StaticListFilterInput"
+          },
+          {
+            "$ref": "#/components/schemas/PrometheusLabelFilterInput"
+          }
+        ],
+        "discriminator": {
+          "propertyName": "type",
+          "mapping": {
+            "QUERY_EXPRESSION": "#/components/schemas/QueryExpressionFilterInput",
+            "STATIC_LIST": "#/components/schemas/StaticListFilterInput",
+            "PROMETHEUS_LABEL": "#/components/schemas/PrometheusLabelFilterInput"
+          }
+        }
+      },
+      "QueryExpressionFilterInput": {
         "type": "object",
-        "description": "Dashboard filter key that can be added to a dashboard",
+        "description": "A filter whose dropdown values are queried from ClickHouse: \"expression\"\nnames the column and \"sourceId\" the source to read them from. Its\nselection can be broadcast into matching tiles' WHERE clauses.\n",
         "required": [
           "type",
           "name",
@@ -2921,7 +3977,7 @@
             "enum": [
               "QUERY_EXPRESSION"
             ],
-            "description": "Filter type. Must be \"QUERY_EXPRESSION\".",
+            "description": "Filter type discriminator. Must be \"QUERY_EXPRESSION\".",
             "example": "QUERY_EXPRESSION"
           },
           "name": {
@@ -2933,7 +3989,7 @@
           "expression": {
             "type": "string",
             "minLength": 1,
-            "description": "Key expression used when applying this dashboard filter key",
+            "description": "SQL expression used when querying values for this filter, and when applying this dashboard filter to tiles.",
             "example": "environment"
           },
           "sourceId": {
@@ -2973,10 +4029,236 @@
             "items": {
               "type": "string"
             },
-            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s).\n",
+            "description": "Optional list of source IDs this filter applies to. Omit or provide\nan empty array to apply the filter to ALL tiles regardless of source.\nA non-empty array restricts the filter to only tiles whose source ID\nis in the list; tiles using other sources are not affected by the\nselected filter value(s). Scopes the broadcast condition only, so a\nnon-empty array is rejected when isBroadcastEnabled is false, and is\nomitted from responses for such a filter.\n",
             "example": [
               "65f5e4a3b9e77c001a111111"
             ]
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "description": "Whether the selected value is applied as a filter condition on every\nbuilder tile this filter applies to (see appliesToSourceIds), and every\nraw sql tile using the $__filters macro. Omitting the field means enabled.\n",
+            "default": true,
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "description": "Whether the selected value is exposed to tile queries as a dashboard\nvariable named by variableName. Tiles may reference it as `$variableName`\nor using the (preferred) `$__filter($<variableName>)` and\n`$__conditionalAll(<condition>, $<variableName>)` macros.\n",
+            "default": false,
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
+            "example": "environment"
+          },
+          "minSelections": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Minimum number of values that must be selected before tiles load.\nSet to 1 to make the filter required. Only 0 and 1 are accepted.\nOmit the field (or send 0) for the default optional behavior.\n",
+            "example": 1
+          },
+          "isGlobalRequirement": {
+            "type": "boolean",
+            "default": false,
+            "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
+            "example": true
+          },
+          "maxSelections": {
+            "type": "integer",
+            "enum": [
+              1
+            ],
+            "description": "Maximum number of values that can be selected at once. Set to 1 to make\nthe filter single-select. Omit the field for the default multi-select\nbehavior.\n",
+            "example": 1
+          }
+        }
+      },
+      "StaticListFilterInput": {
+        "type": "object",
+        "description": "A filter whose dropdown offers a static custom \"options\" list. It carries no\nexpression, so it cannot be broadcast, and supports only variable mode.\n",
+        "required": [
+          "type",
+          "name",
+          "options"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "STATIC_LIST"
+            ],
+            "description": "Discriminator. Must be \"STATIC_LIST\".",
+            "example": "STATIC_LIST"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter key",
+            "example": "Environment"
+          },
+          "options": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 1000,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 10000
+            },
+            "description": "The values this filter's dropdown offers. Must be non-empty and\nfree of duplicates.\n",
+            "example": [
+              "prod",
+              "staging",
+              "dev"
+            ]
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false — there is no expression to broadcast. Omit it and it\nis false.\n",
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true,
+            "description": "Must be true if provided, and is true when omitted. Tiles reference\nthe selection as `$variableName`, or with the `$__filter(<expression>, $<variableName>)`\nand `$__conditionalAll(<condition>, $<variableName>)` macros. The\none-argument `$__filter($<variableName>)` form renders the filter's\nown expression, which this kind of filter does not have, so it\nreports that the expression must be passed explicitly.\n",
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved, so a variable-enabled filter whose name derives nothing\nusable must send this field explicitly. Variable names must be unique\nacross a dashboard's variable-enabled filters. Names the variable\nonly, so the field is rejected when isVariableEnabled is not true, and\nis omitted from responses for such a filter.\n",
+            "example": "environment"
+          },
+          "minSelections": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Minimum number of values that must be selected before tiles load.\nSet to 1 to make the filter required. Only 0 and 1 are accepted.\nOmit the field (or send 0) for the default optional behavior.\n",
+            "example": 1
+          },
+          "isGlobalRequirement": {
+            "type": "boolean",
+            "default": false,
+            "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
+            "example": true
+          },
+          "maxSelections": {
+            "type": "integer",
+            "enum": [
+              1
+            ],
+            "description": "Maximum number of values that can be selected at once. Set to 1 to make\nthe filter single-select. Omit the field for the default multi-select\nbehavior.\n",
+            "example": 1
+          }
+        }
+      },
+      "PrometheusLabelFilterInput": {
+        "type": "object",
+        "description": "A filter whose dropdown lists the values for a Prometheus label,\nread from a PromQL source over the dashboard's time range.\nSupports variable mode only. PromQL is a preview feature and must be\nenabled on the deployment (ENABLE_PROMQL) before these filters can\nlist values.\n",
+        "required": [
+          "type",
+          "name",
+          "sourceId",
+          "label"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "PROMETHEUS_LABEL"
+            ],
+            "description": "Discriminator. Must be \"PROMETHEUS_LABEL\".",
+            "example": "PROMETHEUS_LABEL"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name for the dashboard filter",
+            "example": "Pod"
+          },
+          "sourceId": {
+            "type": "string",
+            "description": "Id of the PromQL source the label values are read from.\n",
+            "example": "65f5e4a3b9e77c001a123456"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "Label whose values populate the dropdown. Use \"__name__\" to list\nmetric names.\n",
+            "example": "pod"
+          },
+          "match": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Optional Prometheus series selector narrowing which series the\nlabel values are read from.\n",
+            "example": "up{job=\"api\"}"
+          },
+          "isBroadcastEnabled": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "default": false,
+            "description": "Must be false or omitted.",
+            "example": false
+          },
+          "isVariableEnabled": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "default": true,
+            "description": "Must be true if provided, and is true when omitted. Tiles reference\nthe selection as `$variableName`.\n",
+            "example": true
+          },
+          "variableName": {
+            "type": "string",
+            "maxLength": 64,
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]*$",
+            "description": "Token that tiles reference this filter's selected value by, as\n`$variableName`. Must start with a letter and may contain only\nletters, numbers, and underscores. Defaults to the display name with\nwhitespace replaced by underscores and remaining illegal characters\nremoved. Variable names must be unique across a dashboard's\nvariable-enabled filters.\n",
+            "example": "pod"
+          },
+          "minSelections": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 0,
+            "description": "Minimum number of values that must be selected before tiles load.\nSet to 1 to make the filter required. Only 0 and 1 are accepted.\nOmit the field (or send 0) for the default optional behavior.\n",
+            "example": 1
+          },
+          "isGlobalRequirement": {
+            "type": "boolean",
+            "default": false,
+            "description": "Widens a required filter's block to every tile on the dashboard. False\n(the default) blocks only the tiles that read the filter: those\nreferencing its variableName, and those its broadcast applies to.\nIgnored unless minSelections is 1.\n",
+            "example": true
+          },
+          "maxSelections": {
+            "type": "integer",
+            "enum": [
+              1
+            ],
+            "description": "Maximum number of values that can be selected at once. Set to 1 to make\nthe filter single-select. Omit the field for the default multi-select\nbehavior.\n",
+            "example": 1
           }
         }
       },
@@ -3036,7 +4318,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys added to the dashboard and applied to all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/Filter"
             }
@@ -3106,7 +4388,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys to add to the dashboard and apply across all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/FilterInput"
             }
@@ -3177,7 +4459,7 @@
           },
           "filters": {
             "type": "array",
-            "description": "Dashboard filter keys on the dashboard, applied across all tiles",
+            "description": "Dropdown filters added to the dashboard. Each one broadcasts\nits selected value as a condition, acts as a variable which\ncan be referenced in tile queries, or both.\n",
             "items": {
               "$ref": "#/components/schemas/Filter"
             }
@@ -3833,11 +5115,23 @@
             "nullable": true,
             "example": "SeverityText"
           },
+          "severityNumberExpression": {
+            "type": "string",
+            "description": "Expression for the numeric OpenTelemetry SeverityNumber (1-24).",
+            "nullable": true,
+            "example": "SeverityNumber"
+          },
           "bodyExpression": {
             "type": "string",
             "description": "Expression to extract the log message body.",
             "nullable": true,
             "example": "Body"
+          },
+          "eventNameExpression": {
+            "type": "string",
+            "description": "Expression for the OpenTelemetry log EventName.",
+            "nullable": true,
+            "example": "EventName"
           },
           "eventAttributesExpression": {
             "type": "string",
@@ -3856,6 +5150,11 @@
             "description": "This DateTime column is used to display and order search results.",
             "nullable": true,
             "example": "TimestampTime"
+          },
+          "orderByExpression": {
+            "type": "string",
+            "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "example": "Timestamp DESC"
           },
           "metricSourceId": {
             "type": "string",
@@ -4107,6 +5406,11 @@
             "nullable": true,
             "example": "ResourceAttributes['service.version']"
           },
+          "sampleRateExpression": {
+            "type": "string",
+            "description": "Column or expression for upstream sampling weight (1/N). When set, aggregations (count, avg, sum, quantile) are corrected for sampling. Percentiles use quantileTDigestWeighted, which is an approximation. Leave empty if spans are not sampled.",
+            "example": "SampleRate"
+          },
           "resourceAttributesExpression": {
             "type": "string",
             "description": "Expression to extract resource-level attributes.",
@@ -4124,6 +5428,11 @@
             "description": "Expression to extract span events. Used to capture events associated with spans. Expected to be Nested ( Timestamp DateTime64(9), Name LowCardinality(String), Attributes Map(LowCardinality(String), String)",
             "nullable": true,
             "example": "Events"
+          },
+          "spanLinksValueExpression": {
+            "type": "string",
+            "description": "Expression to extract span links. Used to capture links from a span to spans in other traces. Expected to be Nested ( TraceId String, SpanId String, TraceState String, Attributes Map(LowCardinality(String), String) )",
+            "example": "Links"
           },
           "implicitColumnExpression": {
             "type": "string",
@@ -4163,6 +5472,16 @@
               "$ref": "#/components/schemas/HighlightedAttributeExpression"
             },
             "nullable": true
+          },
+          "displayedTimestampValueExpression": {
+            "type": "string",
+            "description": "This DateTime column is used to display and order search results.",
+            "example": "Timestamp"
+          },
+          "orderByExpression": {
+            "type": "string",
+            "description": "Custom ORDER BY expression that overrides the default ordering. Leave empty to use the auto-detected default.",
+            "example": "Timestamp DESC"
           },
           "materializedViews": {
             "type": "array",
@@ -4346,12 +5665,17 @@
             "type": "string",
             "description": "HyperDX Source for traces associated with sessions.",
             "example": "507f1f77bcf86cd799439021"
+          },
+          "resourceAttributesExpression": {
+            "type": "string",
+            "description": "Expression to extract resource-level attributes.",
+            "example": "ResourceAttributes"
           }
         }
       },
       "PromqlSource": {
         "type": "object",
-        "description": "A source backed by a Prometheus-compatible endpoint, queried with PromQL. The referenced connection should be a Prometheus connection (isPrometheusEndpoint set to true).",
+        "description": "A source queried with PromQL. It reads either a ClickHouse TimeSeries table (through a ClickHouse connection) or a Prometheus-compatible endpoint (through a connection with isPrometheusEndpoint set to true). PromQL is a preview feature, so creating or updating a PromQL source is rejected unless it is enabled on the deployment (ENABLE_PROMQL).",
         "required": [
           "name",
           "kind",
@@ -4393,12 +5717,12 @@
           },
           "connection": {
             "type": "string",
-            "description": "ID of the connection used by this source. Should reference a Prometheus-compatible connection.",
+            "description": "ID of the connection used by this source. Either a ClickHouse connection holding the TimeSeries table, or a Prometheus-compatible connection.",
             "example": "507f1f77bcf86cd799439012"
           },
           "from": {
             "$ref": "#/components/schemas/SourceFrom",
-            "description": "Required by the API for all source kinds; not used when querying a Prometheus endpoint (empty strings are not accepted — use placeholder values such as \"default\")."
+            "description": "The database and TimeSeries table to query on a ClickHouse connection. Not used for a Prometheus-compatible connection, but still required (empty strings are not accepted — use placeholder values such as \"default\")."
           },
           "querySettings": {
             "type": "array",
@@ -4410,7 +5734,7 @@
           },
           "timestampValueExpression": {
             "type": "string",
-            "description": "Required by the API for all source kinds; not used when querying a Prometheus endpoint.",
+            "description": "Required by the API for all source kinds; not used by PromQL queries.",
             "example": "timestamp"
           }
         }
@@ -4733,7 +6057,7 @@
           "body": {
             "type": "string",
             "maxLength": 16384,
-            "description": "Optional request body template. Only for generic/incidentio; rejected for slack.",
+            "description": "Optional Handlebars request body template. Only for generic/incidentio; rejected for slack. Rejected with a 400 if it does not compile or calls a helper other than `eq` and the Handlebars built-ins.",
             "example": "{\"alert\": \"{{title}}\", \"severity\": \"{{level}}\"}"
           },
           "headers": {
@@ -4822,6 +6146,11 @@
                         "teamId": "65f5e4a3b9e77c001a345678",
                         "tileId": "65f5e4a3b9e77c001a901234",
                         "dashboardId": "65f5e4a3b9e77c001a567890",
+                        "displayName": "Checkout error spike",
+                        "tags": [
+                          "checkout",
+                          "p1"
+                        ],
                         "numConsecutiveWindows": 3,
                         "createdAt": "2023-03-15T10:20:30.000Z",
                         "updatedAt": "2023-03-15T14:25:10.000Z"
@@ -4905,7 +6234,12 @@
                       "webhookId": "65f5e4a3b9e77c001a789012"
                     },
                     "name": "Updated Alert Name",
-                    "message": "Updated threshold and interval"
+                    "message": "Updated threshold and interval",
+                    "displayName": "Checkout error spike",
+                    "tags": [
+                      "checkout",
+                      "p1"
+                    ]
                   }
                 }
               }
@@ -5089,6 +6423,11 @@
                           "teamId": "65f5e4a3b9e77c001a345678",
                           "tileId": "65f5e4a3b9e77c001a901234",
                           "dashboardId": "65f5e4a3b9e77c001a567890",
+                          "displayName": "Checkout error spike",
+                          "tags": [
+                            "checkout",
+                            "p1"
+                          ],
                           "createdAt": "2023-01-01T00:00:00.000Z",
                           "updatedAt": "2023-01-01T00:00:00.000Z"
                         }
@@ -5159,7 +6498,58 @@
                     },
                     "name": "Error Spike Alert",
                     "message": "Error rate has exceeded 100 in the last hour",
+                    "displayName": "Checkout error spike",
+                    "tags": [
+                      "checkout",
+                      "p1"
+                    ],
                     "numConsecutiveWindows": 3
+                  }
+                },
+                "multiChannelAlert": {
+                  "summary": "Create an alert that notifies several webhooks",
+                  "value": {
+                    "savedSearchId": "65f5e4a3b9e77c001a345678",
+                    "threshold": 10,
+                    "interval": "5m",
+                    "source": "saved_search",
+                    "thresholdType": "above",
+                    "channels": [
+                      {
+                        "type": "webhook",
+                        "webhookId": "65f5e4a3b9e77c001a789012"
+                      },
+                      {
+                        "type": "webhook",
+                        "webhookId": "65f5e4a3b9e77c001a789013"
+                      }
+                    ],
+                    "name": "Error Spike Alert"
+                  }
+                },
+                "inlineAlert": {
+                  "summary": "Create an inline alert that carries its own chart config",
+                  "value": {
+                    "source": "inline",
+                    "chartConfig": {
+                      "displayType": "line",
+                      "sourceId": "65f5e4a3b9e77c001a123456",
+                      "select": [
+                        {
+                          "aggFn": "count",
+                          "where": "level:error",
+                          "whereLanguage": "lucene"
+                        }
+                      ]
+                    },
+                    "threshold": 100,
+                    "interval": "5m",
+                    "thresholdType": "above",
+                    "channel": {
+                      "type": "webhook",
+                      "webhookId": "65f5e4a3b9e77c001a789012"
+                    },
+                    "name": "Error log spike"
                   }
                 }
               }
@@ -5974,6 +7364,18 @@
                         "name": "Service",
                         "expression": "service_name",
                         "sourceId": "65f5e4a3b9e77c001a111111"
+                      },
+                      {
+                        "type": "STATIC_LIST",
+                        "name": "Environment",
+                        "options": [
+                          "prod",
+                          "staging",
+                          "dev"
+                        ],
+                        "isBroadcastEnabled": false,
+                        "isVariableEnabled": true,
+                        "variableName": "env"
                       }
                     ]
                   }
@@ -7636,6 +9038,126 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v2/webhooks/validate": {
+      "post": {
+        "summary": "Validate Webhook",
+        "description": "Validates a webhook body against the same schema, URL rules, and body\ntemplate check used by POST /api/v2/webhooks. The webhook is **never\npersisted**. Use this endpoint at plan time (e.g. from a Terraform\nprovider) to check that a webhook configuration is valid before\napplying it. Name uniqueness is not checked.\n",
+        "operationId": "validateWebhook",
+        "tags": [
+          "Webhooks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Validation result. HTTP 200 is always returned for valid **and**\ninvalid bodies — a non-200 response means the request itself\nfailed (auth, server error, etc.).\n",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "valid",
+                    "errors",
+                    "normalized"
+                  ],
+                  "properties": {
+                    "valid": {
+                      "type": "boolean",
+                      "description": "True when the body passes all validation rules."
+                    },
+                    "errors": {
+                      "type": "array",
+                      "description": "Validation errors. Empty when valid is true.",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "path",
+                          "message"
+                        ],
+                        "properties": {
+                          "path": {
+                            "type": "string",
+                            "description": "Dot-separated field path, or empty string for top-level errors."
+                          },
+                          "message": {
+                            "type": "string",
+                            "description": "Human-readable error description."
+                          }
+                        }
+                      }
+                    },
+                    "normalized": {
+                      "type": "object",
+                      "nullable": true,
+                      "description": "The parsed webhook body, without the write-only\n`headers` and `queryParams`. Populated when valid is\ntrue, null when valid is false.\n"
+                    }
+                  }
+                },
+                "examples": {
+                  "valid": {
+                    "summary": "Valid webhook body",
+                    "value": {
+                      "valid": true,
+                      "errors": [],
+                      "normalized": {
+                        "name": "Alerts",
+                        "service": "generic",
+                        "url": "https://example.com/webhooks/alerts",
+                        "body": "{\"alert\": \"{{title}}\"}"
+                      }
+                    }
+                  },
+                  "invalid": {
+                    "summary": "Body template that does not compile",
+                    "value": {
+                      "valid": false,
+                      "errors": [
+                        {
+                          "path": "body",
+                          "message": "Invalid webhook body template (line 1, column 12): Parse error on line 1: ..."
+                        }
+                      ],
+                      "normalized": null
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "message": "Unauthorized access. API key is missing or invalid."
                 }
               }
             }

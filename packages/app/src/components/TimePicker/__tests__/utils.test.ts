@@ -1,4 +1,10 @@
-import { dateParser, parseTimeRangeInput } from '@/components/TimePicker/utils';
+import {
+  dateParser,
+  formatTimeRangeText,
+  parseTimeRangeInput,
+  rangeNeedsExplicitYear,
+  timeRangeInputToSeconds,
+} from '@/components/TimePicker/utils';
 
 describe('dateParser', () => {
   let mockDate: Date;
@@ -152,5 +158,135 @@ describe('parseTimeRangeInput', () => {
       new Date('2024-01-15T12:00:00'),
       new Date('2024-01-16T12:00:00'),
     ]);
+  });
+});
+
+describe('rangeNeedsExplicitYear', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2025-06-15T12:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('is false for a past range in the current year', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2025-03-01T10:00:00'),
+        new Date('2025-03-02T10:00:00'),
+      ]),
+    ).toBe(false);
+  });
+
+  it('is true when either date is in another year', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2024-03-01T10:00:00'),
+        new Date('2025-03-02T10:00:00'),
+      ]),
+    ).toBe(true);
+  });
+
+  it('is true when a date in the current year is in the future', () => {
+    expect(
+      rangeNeedsExplicitYear([
+        new Date('2025-06-01T10:00:00'),
+        new Date('2025-12-25T10:00:00'),
+      ]),
+    ).toBe(true);
+  });
+
+  it('compares years in UTC when isUTC is set', () => {
+    jest.setSystemTime(new Date('2025-06-15T12:00:00Z'));
+    expect(
+      rangeNeedsExplicitYear(
+        [new Date('2024-12-31T23:00:00Z'), new Date('2025-01-01T01:00:00Z')],
+        true,
+      ),
+    ).toBe(true);
+  });
+});
+
+describe('formatTimeRangeText', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-15T12:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('omits the year for a past range in the current year', () => {
+    expect(
+      formatTimeRangeText([
+        new Date('2026-03-03T10:00:00'),
+        new Date('2026-03-05T10:00:00'),
+      ]),
+    ).toBe('Mar 3 10:00:00 - Mar 5 10:00:00');
+  });
+
+  it('includes the year when any date is outside the current year', () => {
+    expect(
+      formatTimeRangeText([
+        new Date('2025-12-30T10:00:00'),
+        new Date('2026-02-01T10:00:00'),
+      ]),
+    ).toBe('Dec 30 2025 10:00:00 - Feb 1 2026 10:00:00');
+  });
+
+  it('uses the requested clock', () => {
+    expect(
+      formatTimeRangeText(
+        [new Date('2024-03-03T13:05:09'), new Date('2024-03-05T01:00:00')],
+        { clock: '12h' },
+      ),
+    ).toBe('Mar 3 2024 1:05:09 PM - Mar 5 2024 1:00:00 AM');
+  });
+
+  it.each(['12h', '24h'] as const)(
+    'round-trips past, boundary, current-year and future ranges with a %s clock',
+    clock => {
+      const ranges: [Date, Date][] = [
+        [new Date('2024-03-03T13:05:09'), new Date('2024-03-05T01:00:00')],
+        [new Date('2025-12-30T10:00:00'), new Date('2026-02-01T10:00:00')],
+        [new Date('2026-03-03T10:00:00'), new Date('2026-03-05T10:00:00')],
+        [new Date('2026-08-01T10:00:00'), new Date('2026-09-01T10:00:00')],
+      ];
+      for (const range of ranges) {
+        expect(
+          parseTimeRangeInput(formatTimeRangeText(range, { clock })),
+        ).toEqual(range);
+      }
+    },
+  );
+});
+
+describe('timeRangeInputToSeconds', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2025-01-15T22:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns the relative range length in seconds', () => {
+    expect(timeRangeInputToSeconds('Past 1h', false)).toBe(3600);
+    expect(timeRangeInputToSeconds('Past 15m', false)).toBe(900);
+  });
+
+  it('returns the span of an absolute range', () => {
+    expect(timeRangeInputToSeconds('2024-01-15 to 2024-01-16', false)).toBe(
+      86400,
+    );
+  });
+
+  it('returns null for unparseable input', () => {
+    expect(timeRangeInputToSeconds('', false)).toBeNull();
+    expect(timeRangeInputToSeconds('not a date', false)).toBeNull();
   });
 });

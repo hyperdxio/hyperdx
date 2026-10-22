@@ -177,3 +177,88 @@ describe('clickstack_query_tiles handler — per-tile failure isolation', () => 
     }
   });
 });
+
+describe('clickstack_query_tiles handler — dashboard variables', () => {
+  const variableFilter = {
+    id: 'f1',
+    type: 'QUERY_EXPRESSION',
+    name: 'Service',
+    expression: 'ServiceName',
+    sourceId: 'src-1',
+    whereLanguage: 'sql',
+    isBroadcastEnabled: false,
+    isVariableEnabled: true,
+    variableName: 'service',
+  };
+
+  it('runs every tile with the declared variables emptied by default', async () => {
+    mockConvertToExternalDashboard.mockReturnValue({
+      id: 'dash-1',
+      tiles: [tile('t1', 'Requests')],
+      filters: [variableFilter],
+    });
+    mockRunConfigTile.mockResolvedValue(okResult);
+
+    const handler = buildHandler();
+    await handler({
+      dashboardId: '000000000000000000000000',
+    });
+
+    expect(mockRunConfigTile).toHaveBeenCalledWith(
+      'team-1',
+      expect.objectContaining({ id: 't1' }),
+      expect.any(Date),
+      expect.any(Date),
+      expect.objectContaining({
+        variables: [{ name: 'service', expression: 'ServiceName', values: [] }],
+      }),
+    );
+  });
+
+  it('applies a supplied selection', async () => {
+    mockConvertToExternalDashboard.mockReturnValue({
+      id: 'dash-1',
+      tiles: [tile('t1', 'Requests')],
+      filters: [variableFilter],
+    });
+    mockRunConfigTile.mockResolvedValue(okResult);
+
+    const handler = buildHandler();
+    await handler({
+      dashboardId: '000000000000000000000000',
+      variableValues: [{ name: 'service', values: ['checkout'] }],
+    });
+
+    expect(mockRunConfigTile).toHaveBeenCalledWith(
+      'team-1',
+      expect.anything(),
+      expect.any(Date),
+      expect.any(Date),
+      expect.objectContaining({
+        variables: [
+          { name: 'service', expression: 'ServiceName', values: ['checkout'] },
+        ],
+      }),
+    );
+  });
+
+  it('rejects a variableValues name the dashboard does not declare', async () => {
+    mockConvertToExternalDashboard.mockReturnValue({
+      id: 'dash-1',
+      tiles: [tile('t1', 'Requests')],
+      filters: [variableFilter],
+    });
+
+    const handler = buildHandler();
+    const result = await handler({
+      dashboardId: '000000000000000000000000',
+      variableValues: [{ name: 'tenant', values: ['acme'] }],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('tenant');
+    // A typo must not run the query with the variable still empty and look
+    // like a data problem.
+    expect(mockRunConfigTile).not.toHaveBeenCalled();
+  });
+});

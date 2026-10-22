@@ -73,6 +73,19 @@
         </handlers>
     </prometheus>
 
+    <!-- Prometheus HTTP API (/query, /query_range, ...) on the main HTTP
+         port. database/table come from request query params so one handler
+         serves any TimeSeries table. -->
+    <http_handlers>
+        <rule>
+            <url_prefix>/prometheus/api/v1</url_prefix>
+            <handler>
+                <type>prometheus_api_v1</type>
+            </handler>
+        </rule>
+        <defaults/>
+    </http_handlers>
+
     <!-- Query log. Used only for queries with setting log_queries = 1. -->
     <query_log>
         <database>system</database>

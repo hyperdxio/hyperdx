@@ -10,6 +10,16 @@ import { Group } from '@mantine/core';
 import { IconBook } from '@tabler/icons-react';
 
 import {
+  useLuceneVariableEnglishExpander,
+  useLuceneVariableSuggestions,
+} from '@/components/SQLEditor/variableCompletions';
+import {
+  hasVariableIssues,
+  useVariableValidation,
+  VariableIssueIndicator,
+  variableValidationState,
+} from '@/components/SQLEditor/variableValidation';
+import {
   ILanguageFormatter,
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
@@ -38,28 +48,28 @@ export default function SearchInputV2({
   placeholder = 'Search your events for anything...',
   size = 'sm',
   zIndex,
-  language,
-  onLanguageChange,
   enableHotkey,
   onSubmit,
   additionalSuggestions,
   queryHistoryType,
+  allowMultiline = true,
   dateRange,
   sourceId,
+  enableVariables = false,
   'data-testid': dataTestId,
   ...props
 }: {
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   zIndex?: number;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   enableHotkey?: boolean;
   onSubmit?: () => void;
   additionalSuggestions?: string[];
   queryHistoryType?: string;
+  allowMultiline?: boolean;
   dateRange?: [Date, Date];
   sourceId?: string;
+  enableVariables?: boolean;
   'data-testid'?: string;
 } & UseControllerProps<any> &
   TableConnectionChoice) {
@@ -70,6 +80,22 @@ export default function SearchInputV2({
   const metadata = useMetadataWithSettings();
   const ref = useRef<HTMLTextAreaElement>(null);
   const [parsedEnglishQuery, setParsedEnglishQuery] = useState<string>('');
+
+  // Bare `$name` references only, no macros
+  const variableOptions = useLuceneVariableSuggestions({
+    enabled: enableVariables,
+  });
+  const expandVariablesForEnglish = useLuceneVariableEnglishExpander({
+    enabled: enableVariables,
+  });
+  const variableIssues = useVariableValidation(
+    value != null ? `${value}` : '',
+    {
+      enabled: enableVariables,
+      language: 'lucene',
+    },
+  );
+  const validationState = variableValidationState(variableIssues);
 
   const {
     options: autoCompleteOptions,
@@ -90,14 +116,14 @@ export default function SearchInputV2({
   useEffect(() => {
     if (tableConnection) {
       genEnglishExplanation({
-        query: value,
+        query: expandVariablesForEnglish(value != null ? `${value}` : ''),
         tableConnection,
         metadata,
       }).then(q => {
         setParsedEnglishQuery(q);
       });
     }
-  }, [value, tableConnection, metadata]);
+  }, [value, expandVariablesForEnglish, tableConnection, metadata]);
 
   useHotkeys(
     ['/', 's'],
@@ -121,19 +147,28 @@ export default function SearchInputV2({
       onChange={onChange}
       placeholder={placeholder}
       autocompleteOptions={autoCompleteOptions}
+      variableOptions={variableOptions}
       isLoadingValues={isLoadingValues}
       tokenInfo={tokenInfo}
       size={size}
       zIndex={zIndex}
-      language={language}
-      onLanguageChange={onLanguageChange}
       onSubmit={onSubmit}
       queryHistoryType={queryHistoryType}
+      allowMultiline={allowMultiline}
       data-testid={dataTestId}
+      validationState={validationState}
+      rightAdornment={
+        hasVariableIssues(variableIssues) ? (
+          <VariableIssueIndicator issues={variableIssues} />
+        ) : undefined
+      }
       aboveSuggestions={
         <>
           <div className={styles.searchingHeader}>Searching for:</div>
-          <div className={styles.searchingDescription}>
+          <div
+            className={styles.searchingDescription}
+            data-testid="search-query-description"
+          >
             {parsedEnglishQuery === ''
               ? 'Matching all events, enter a query to search.'
               : parsedEnglishQuery}

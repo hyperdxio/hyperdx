@@ -30,7 +30,10 @@ jest.mock('@/config', () => ({
   },
 }));
 
-import { buildOtelCollectorConfig } from '@/opamp/controllers/opampController';
+import {
+  bearerTokenVariants,
+  buildOtelCollectorConfig,
+} from '@/opamp/controllers/opampController';
 
 const resetConfig = () => {
   configState.IS_ALL_IN_ONE_IMAGE = false;
@@ -44,6 +47,126 @@ const resetConfig = () => {
 describe('opampController', () => {
   beforeEach(() => {
     resetConfig();
+  });
+
+  describe('buildOtelCollectorConfig ClickHouse exporters', () => {
+    it('allows both exporter timeouts to be configured from the collector environment', () => {
+      const cfg = buildOtelCollectorConfig([]);
+
+      expect(cfg.exporters).toMatchObject({
+        clickhouse: {
+          timeout: '${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}',
+        },
+        'clickhouse/rrweb': {
+          timeout: '${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}',
+        },
+      });
+    });
+  });
+
+  describe('buildOtelCollectorConfig prometheusremotewrite exporter', () => {
+    it('takes the scheme and TLS mode from the collector environment, defaulting to plain HTTP', () => {
+      configState.IS_PROMQL_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      // The defaults matter: collector images older than this change don't
+      // export HYPERDX_PROMETHEUS_*, and must keep today's plain-HTTP config.
+      expect(cfg.exporters?.prometheusremotewrite).toMatchObject({
+        endpoint:
+          '${env:HYPERDX_PROMETHEUS_SCHEME:-http}://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        tls: { insecure: '${env:HYPERDX_PROMETHEUS_TLS_INSECURE:-true}' },
+      });
+    });
+  });
+
+  describe('buildOtelCollectorConfig prometheus receiver', () => {
+    it('scrapes ClickHouse in its own job so the scheme follows the endpoint', () => {
+      configState.IS_PROMQL_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      const scrapeConfigs = cfg.receivers.prometheus?.config.scrape_configs;
+      // The collector's own endpoint is always plain HTTP: no scheme here.
+      expect(scrapeConfigs?.[0]).toEqual({
+        job_name: 'otelcol',
+        scrape_interval: '30s',
+        static_configs: [{ targets: ['0.0.0.0:8888'] }],
+      });
+      // The default keeps collector images that predate
+      // HYPERDX_PROMETHEUS_SCHEME on plain HTTP.
+      expect(scrapeConfigs?.[1]).toEqual({
+        job_name: 'clickhouse',
+        scrape_interval: '30s',
+        scheme: '${env:HYPERDX_PROMETHEUS_SCHEME:-http}',
+        static_configs: [
+          { targets: ['${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}'] },
+        ],
+      });
+    });
+  });
+
+  describe('buildOtelCollectorConfig otlp/hyperdx authentication', () => {
+    it('accepts bare and bearer-prefixed authorization values for each API key', () => {
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: true },
+        { apiKey: 'k2', collectorAuthenticationEnforced: true },
+      ]);
+
+      // The extension matches the full header value exactly, so every
+      // accepted form must be listed explicitly (see bearerTokenVariants).
+      expect(cfg.extensions['bearertokenauth/hyperdx']).toEqual({
+        scheme: '',
+        tokens: [
+          'k1',
+          'Bearer k1',
+          'bearer k1',
+          'BEARER k1',
+          'k2',
+          'Bearer k2',
+          'bearer k2',
+          'BEARER k2',
+        ],
+      });
+      expect(cfg.receivers['otlp/hyperdx']?.protocols.grpc.auth).toEqual({
+        authenticator: 'bearertokenauth/hyperdx',
+      });
+      expect(cfg.receivers['otlp/hyperdx']?.protocols.http.auth).toEqual({
+        authenticator: 'bearertokenauth/hyperdx',
+      });
+    });
+
+    it('includes variants for INGESTION_API_KEY in all-in-one mode', () => {
+      configState.IS_ALL_IN_ONE_IMAGE = true;
+      configState.INGESTION_API_KEY = 'ingest-key';
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: true },
+      ]);
+
+      const tokens = cfg.extensions['bearertokenauth/hyperdx'].tokens;
+      expect(tokens).toEqual(
+        expect.arrayContaining([
+          'ingest-key',
+          'Bearer ingest-key',
+          'bearer ingest-key',
+          'BEARER ingest-key',
+        ]),
+      );
+    });
+
+    it('bearerTokenVariants emits the bare token plus the bearer scheme case variants', () => {
+      expect(bearerTokenVariants(['tok'])).toEqual([
+        'tok',
+        'Bearer tok',
+        'bearer tok',
+        'BEARER tok',
+      ]);
+    });
   });
 
   describe('buildOtelCollectorConfig datadog receiver', () => {

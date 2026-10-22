@@ -6,42 +6,14 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { getAlertById } from '@/controllers/alerts';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Alert from '@/models/alert';
 import type { IDashboard } from '@/models/dashboard';
 import type { ISavedSearch } from '@/models/savedSearch';
-import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
-
-function deriveAlertName(alert: {
-  name?: string | null;
-  tileId?: string | null;
-  savedSearch?: ISavedSearch | null;
-  dashboard?: IDashboard | null;
-}): string | null {
-  // Prefer explicit alert name
-  if (alert.name) {
-    return alert.name;
-  }
-
-  // Fall back to saved search name
-  if (alert.savedSearch?.name) {
-    return alert.savedSearch.name;
-  }
-
-  // Fall back to dashboard tile name or dashboard name
-  if (alert.dashboard?.name) {
-    if (alert.tileId) {
-      const tile = alert.dashboard.tiles?.find(t => t.id === alert.tileId);
-      if (tile?.config?.name) {
-        return tile.config.name;
-      }
-    }
-    return alert.dashboard.name;
-  }
-
-  return null;
-}
+import { translateAlertDocumentToExternalAlertWithChartConfig } from '@/routers/external-api/v2/utils/alertChartConfig';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 
 export function registerGetAlert({
   context,
@@ -54,26 +26,28 @@ export function registerGetAlert({
     'clickstack_get_alert',
     {
       title: 'Get Alert(s)',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Without an ID: list all alerts as a high-level summary ' +
-        '(id, name, state, source, interval). Optionally filter by state ' +
+        '(id, name, displayName, tags, state, source, interval). Optionally ' +
+        'filter by state ' +
         '(e.g. state="ALERT" for firing alerts). ' +
-        'With an ID: get full alert detail including configuration and ' +
-        'recent evaluation history.',
+        'With an ID: get full alert detail including configuration, ' +
+        'displayName, tags, and recent evaluation history.',
       inputSchema: z.object({
         id: z
           .string()
           .optional()
           .describe(
-            'Alert ID. Omit to list all alerts, provide to get full detail.',
+            'Alert ID from a previous list call or clickstack_save_alert. ' +
+              'Omit to list all alerts, provide to get full detail.',
           ),
         state: z
           .enum(['ALERT', 'OK', 'DISABLED', 'INSUFFICIENT_DATA'])
           .optional()
           .describe(
-            'Filter list by alert state (only applies when id is omitted). ' +
-              'Use "ALERT" to find currently firing alerts.',
+            'List only alerts currently in this state; ignored when id is ' +
+              'provided. Use ALERT to find alerts that are firing now.',
           ),
       }),
     },
@@ -92,10 +66,15 @@ export function registerGetAlert({
         }>(['savedSearch', 'dashboard']);
 
         const output = alerts.map(alert => {
-          const name = deriveAlertName(alert);
+          const { displayName, tags } = resolveAlertDisplayFields(alert, {
+            savedSearch: alert.savedSearch,
+            dashboard: alert.dashboard,
+          });
           return {
             id: alert._id.toString(),
-            name,
+            name: alert.name,
+            displayName,
+            tags,
             state: alert.state,
             source: alert.source,
             interval: alert.interval,
@@ -118,14 +97,15 @@ export function registerGetAlert({
         return mcpUserError('Alert not found');
       }
 
-      const external = translateAlertDocumentToExternalAlert(alert);
-
-      // Populate refs so deriveAlertName can fall back to the
-      // saved search / dashboard name when the alert has no explicit name.
+      // Populate the refs the display name/tags derive from, so alerts written
+      // before those fields existed still resolve to something meaningful.
       const populated = await alert.populate<{
         savedSearch: ISavedSearch | null;
         dashboard: IDashboard | null;
       }>(['savedSearch', 'dashboard']);
+
+      const external =
+        translateAlertDocumentToExternalAlertWithChartConfig(populated);
 
       const history = await getRecentAlertHistories({
         alertId: new ObjectId(alert._id),
@@ -140,7 +120,6 @@ export function registerGetAlert({
             text: JSON.stringify(
               {
                 ...external,
-                name: deriveAlertName(populated) ?? external.name,
                 history,
                 ...(frontendUrl ? { url: `${frontendUrl}/alerts` } : {}),
               },

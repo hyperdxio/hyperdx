@@ -20,7 +20,9 @@ export type ProgrammaticCheck = {
  */
 export type AdoptionCheck = {
   id: string;
-  weight: number;
+  /** Required (positive) unless `informational: true`; ignored for
+   *  informational checks. */
+  weight?: number;
   /**
    * Any-of list of full metric names/keys (e.g.
    * `process.runtime.jvm.memory.used`). Matched case-insensitively with
@@ -32,6 +34,14 @@ export type AdoptionCheck = {
    * `pool|pod` for "grouped the memory metric by pod/pool").
    */
   alsoPattern?: string;
+  /**
+   * When true, the check is evaluated and reported (per-check usage rate)
+   * but EXCLUDED from the weighted adoption score. Use for metrics whose
+   * facts have cheaper substitutes in other signals — querying them is
+   * thoroughness, not the behavior the score measures, and an efficient
+   * agent that skips them should still read 100%.
+   */
+  informational?: boolean;
 };
 
 type JudgeCriterion = {
@@ -57,6 +67,9 @@ export type ProgrammaticHit = {
   matched: boolean;
   satisfied: boolean;
   negative?: boolean;
+  /** Present (true) on adoption hits whose check is informational —
+   *  reported but excluded from the score. */
+  informational?: boolean;
 };
 
 export type ProgrammaticResult = {

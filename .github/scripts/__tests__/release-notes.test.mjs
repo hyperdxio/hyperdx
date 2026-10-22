@@ -371,17 +371,19 @@ test('a reuse round-trip does not accumulate package lists', () => {
 });
 
 test('the app-side marker regex matches the marker this script emits', () => {
-  // ChangelogModal.tsx strips markers with its own regex literal. Pin the two
-  // together: a marker-format change here must not silently leave the modal
-  // rendering raw HTML comments.
-  const modal = readFileSync(
-    join(REPO_ROOT, 'packages/app/src/components/AppNav/ChangelogModal.tsx'),
+  // The app's changelog parser strips markers with its own regex literal so the
+  // marker never lands in a release summary. Pin the two together: a
+  // marker-format change here must not silently leave that comment on screen.
+  const parser = readFileSync(
+    join(REPO_ROOT, 'packages/app/scripts/parse-whats-new.js'),
     'utf-8',
   );
-  const literal = modal.match(/\.replace\(\s*(\/.+?\/[gimsuy]*)\s*,/)?.[1];
+  const literal = parser.match(
+    /RELEASE_NOTES_MARKER = (\/.+?\/[gimsuy]*)/,
+  )?.[1];
   assert.ok(
     literal,
-    'could not find the marker-stripping regex in ChangelogModal.tsx',
+    'could not find RELEASE_NOTES_MARKER in parse-whats-new.js',
   );
 
   const [, pattern, flags] = literal.match(/^\/(.*)\/([gimsuy]*)$/);
@@ -544,18 +546,36 @@ test('validateBody agrees with the render-time allowlist on parsed-URL forms', (
 test('the render-time host allowlist matches this script’s', () => {
   // Two languages, one policy. Pinned here so a host added to one side cannot
   // silently make the CI gate stricter (a red release) or looser (a phishing
-  // link that only the modal blocks).
-  const modal = readFileSync(
-    join(REPO_ROOT, 'packages/app/src/components/AppNav/ChangelogModal.tsx'),
+  // link that only the drawer blocks).
+  const drawer = readFileSync(
+    join(REPO_ROOT, 'packages/app/src/components/AppNav/WhatsNewDrawer.tsx'),
     'utf-8',
   );
-  const literal = modal.match(
+  const literal = drawer.match(
     /ALLOWED_LINK_HOSTS = new Set\(\[([^\]]*)\]\)/,
   )?.[1];
-  assert.ok(literal, 'could not find ALLOWED_LINK_HOSTS in ChangelogModal.tsx');
+  assert.ok(
+    literal,
+    'could not find ALLOWED_LINK_HOSTS in WhatsNewDrawer.tsx',
+  );
   const appHosts = [...literal.matchAll(/'([^']+)'/g)].map(m => m[1]);
 
   assert.deepEqual(appHosts.sort(), [...ALLOWED_LINK_HOSTS].sort());
+});
+
+test('validateBody accepts a bullet that thanks an outside contributor', () => {
+  // A handle is plain text and the profile link is on an allowed host, so
+  // thanking someone must not redden the publish job.
+  assert.deepEqual(
+    validateBody('- **Fix**: yes (#1, thanks @alice!).\n'),
+    [],
+  );
+  assert.deepEqual(
+    validateBody(
+      '- **Fix**: yes (#1, thanks [@alice](https://github.com/alice)!).\n',
+    ),
+    [],
+  );
 });
 
 test('validateBody rejects an oversized body', () => {

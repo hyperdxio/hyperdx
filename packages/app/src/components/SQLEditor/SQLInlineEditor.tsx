@@ -30,8 +30,9 @@ import CodeMirror, {
   tooltips,
 } from '@uiw/react-codemirror';
 
-import InputLanguageSwitch from '@/components/SearchInput/InputLanguageSwitch';
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
+import { useStableCallback } from '@/hooks/useStableCallback';
 import { useSource } from '@/source';
 import { useQueryHistory } from '@/utils';
 import { clickhouseSql } from '@/utils/codeMirror';
@@ -42,6 +43,12 @@ import {
   createCodeMirrorStyleTheme,
   DEFAULT_CODE_MIRROR_BASIC_SETUP,
 } from './utils';
+import { useSqlVariableCompletions } from './variableCompletions';
+import {
+  useVariableValidation,
+  VariableIssueIndicator,
+  variableValidationState,
+} from './variableValidation';
 
 import styles from './SQLInlineEditor.module.scss';
 
@@ -50,8 +57,6 @@ type SQLInlineEditorProps = {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   onSubmit?: () => void;
   error?: React.ReactNode;
   size?: string;
@@ -69,6 +74,9 @@ type SQLInlineEditorProps = {
   // (intersection) rather than the union — for an expression that must be valid
   // against every connection, e.g. a chart-level Group By over multiple series.
   intersectFields?: boolean;
+  // Whether the dashboard variables in scope apply to this expression: offer
+  // them as completions, and warn about the references that won't work.
+  enableVariables?: boolean;
 };
 
 const MAX_EDITOR_HEIGHT = '150px';
@@ -79,8 +87,6 @@ export default function SQLInlineEditor({
   filterField,
   onChange,
   placeholder,
-  onLanguageChange,
-  language,
   onSubmit,
   error,
   value,
@@ -96,6 +102,7 @@ export default function SQLInlineEditor({
   dateRange,
   sourceId,
   intersectFields,
+  enableVariables = false,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
   const _tableConnections = tableConnection
@@ -153,6 +160,16 @@ export default function SQLInlineEditor({
     };
   }, [queryHistory, onSelectSearchHistory]);
 
+  // Dashboard variables in scope, offered alongside the column identifiers,
+  // and checked for the references that won't expand.
+  const variableCompletions = useSqlVariableCompletions({
+    enabled: enableVariables,
+  });
+  const variableIssues = useVariableValidation(value, {
+    enabled: enableVariables,
+    language: 'sql',
+  });
+
   const [isFocused, setIsFocused] = useState(false);
 
   const ref = useRef<ReactCodeMirrorRef>(null);
@@ -177,6 +194,7 @@ export default function SQLInlineEditor({
         identifiers,
         keywords: KEYWORDS_FOR_WHERE_OR_ORDER_BY,
         includeRegularFunctions: !disableKeywordAutocomplete,
+        additionalCompletions: variableCompletions,
       });
 
       const queryHistoryList = autocompletion({
@@ -194,6 +212,7 @@ export default function SQLInlineEditor({
     [
       filteredFields,
       additionalSuggestions,
+      variableCompletions,
       disableKeywordAutocomplete,
       createHistoryList,
       hasNonEmptyValue,
@@ -231,6 +250,12 @@ export default function SQLInlineEditor({
     if (parentRef == null) {
       return [];
     }
+    // A body-level parent is already outside every scroll container, so the
+    // tooltip should be free to use the whole viewport — CodeMirror's default
+    // space.
+    if (parentRef === parentRef.ownerDocument.body) {
+      return [tooltips({ parent: parentRef })];
+    }
     return [
       tooltips({
         parent: parentRef,
@@ -248,6 +273,18 @@ export default function SQLInlineEditor({
       }),
     ];
   }, [parentRef]);
+
+  // Stable so a new onSubmit identity (every live tail tick) doesn't reconfigure the editor.
+  const submitFromEditor = useStableCallback(() => {
+    if (onSubmit == null) {
+      return false;
+    }
+    if (queryHistoryType && ref?.current?.view) {
+      setQueryHistory(ref?.current?.view.state.doc.toString());
+    }
+    onSubmit();
+    return true;
+  });
 
   const cmExtensions = useMemo(
     () => [
@@ -269,16 +306,7 @@ export default function SQLInlineEditor({
         keymap.of([
           {
             key: 'Enter',
-            run: () => {
-              if (onSubmit == null) {
-                return false;
-              }
-              if (queryHistoryType && ref?.current?.view) {
-                setQueryHistory(ref?.current?.view.state.doc.toString());
-              }
-              onSubmit();
-              return true;
-            },
+            run: submitFromEditor,
           },
           ...(allowMultiline
             ? [
@@ -300,7 +328,7 @@ export default function SQLInlineEditor({
         },
       ]),
     ],
-    [allowMultiline, onSubmit, queryHistoryType, setQueryHistory, tooltipExt],
+    [allowMultiline, submitFromEditor, tooltipExt],
   );
 
   const onClickCodeMirror = useCallback(() => {
@@ -309,25 +337,24 @@ export default function SQLInlineEditor({
     }
   }, []);
 
-  // Only apply expanded styling when multiline is enabled and focused
-  const isExpanded = allowMultiline && isFocused;
-  const baseHeight = size === 'xs' ? 30 : 36;
+  const validationState = variableValidationState(variableIssues, !!error);
+  const baseHeight =
+    size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
       className={styles.wrapper}
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isExpanded ? 'true' : undefined}
+      data-validation-state={validationState}
     >
-      {/* When expanded, Paper is absolute; this keeps the wrapper width stable */}
-      {isExpanded && <div className={styles.placeholder} aria-hidden="true" />}
       <Paper
         shadow="none"
         className={cx(
           styles.paper,
-          error ? styles.error : undefined,
-          isExpanded ? styles.expanded : undefined,
-          allowMultiline && !isExpanded ? styles.collapseFade : undefined,
+          validationState === 'error' ? styles.error : undefined,
+          validationState === 'warning' ? styles.warning : undefined,
+          !allowMultiline ? styles.clamped : undefined,
+          isFocused ? styles.focused : undefined,
         )}
         ps="4px"
       >
@@ -354,8 +381,7 @@ export default function SQLInlineEditor({
           className={cx(
             styles.cmWrapper,
             size === 'xs' ? styles.sizeXs : undefined,
-            !isExpanded ? styles.collapsed : undefined,
-            isExpanded ? 'cm-editor-multiline' : undefined,
+            allowMultiline ? 'cm-editor-multiline' : undefined,
           )}
         >
           <CodeMirror
@@ -377,14 +403,7 @@ export default function SQLInlineEditor({
             onClick={onClickCodeMirror}
           />
         </div>
-        {onLanguageChange != null && language != null && (
-          <div className={styles.languageSwitchWrapper}>
-            <InputLanguageSwitch
-              language={language}
-              onLanguageChange={onLanguageChange}
-            />
-          </div>
-        )}
+        <VariableIssueIndicator issues={variableIssues} />
       </Paper>
     </div>
   );
