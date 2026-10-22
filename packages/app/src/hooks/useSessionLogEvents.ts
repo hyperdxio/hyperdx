@@ -29,7 +29,7 @@ const NO_LOG_EVENTS: SessionLogEvent[] = [];
 
 // Twin of linkedSpans' usePlaceholderConfig, without a source because the log
 // source may not resolve. Never fetched: the query is disabled while it is used.
-const PLACEHOLDER_CONFIG: BuilderChartConfigWithDateRange = {
+export const PLACEHOLDER_CONFIG: BuilderChartConfigWithDateRange = {
   connection: '',
   from: { databaseName: '', tableName: '' },
   select: [{ valueExpression: '1' }],
