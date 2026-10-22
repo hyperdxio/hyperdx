@@ -1,3 +1,4 @@
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isLogSource,
   isTraceSource,
@@ -22,6 +23,23 @@ export function useMaterializedAliasColumnsOption() {
 export function getKnownColumnsList(source: TSource): string | undefined {
   return isLogSource(source) || isTraceSource(source)
     ? source.knownColumnsListExpression?.trim() || undefined
+    : undefined;
+}
+
+// Undefined when the Known Columns List omits it: a Distributed or Merge
+// source can read only those columns, and the number isn't worth failing a
+// query over.
+export function getSelectableSeverityNumberExpression(
+  source: TSource,
+): string | undefined {
+  const expression = isLogSource(source)
+    ? source.severityNumberExpression?.trim()
+    : undefined;
+  if (!expression) return undefined;
+  const knownColumns = getKnownColumnsList(source);
+  return knownColumns == null ||
+    splitAndTrimWithBracket(knownColumns).includes(expression)
+    ? expression
     : undefined;
 }
 

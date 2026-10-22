@@ -20,6 +20,7 @@ export type WithClause = z.infer<typeof WithClauseSchema>;
 export const INTERNAL_ROW_FIELDS = {
   ID: '__hyperdx_id',
   ALIAS_WITH: '__hyperdx_alias_with',
+  SEVERITY_NUMBER: '__hyperdx_severity_number',
 } as const;
 
 export const getRowId = (row: Record<string, any>): string =>
@@ -168,10 +169,13 @@ export default function useRowWhere({
   );
 
   // Memoize the aliasWith array since it only depends on aliasMap
-  const aliasWith = useMemo(
-    () => aliasMapToWithClauses(aliasMap) ?? [],
-    [aliasMap],
-  );
+  const aliasWith = useMemo(() => {
+    // The severity number only colors the level cell, so it stays out of the
+    // row lookup.
+    const { [INTERNAL_ROW_FIELDS.SEVERITY_NUMBER]: _severityNumber, ...rest } =
+      aliasMap ?? {};
+    return aliasMapToWithClauses(rest) ?? [];
+  }, [aliasMap]);
 
   return useCallback(
     (row: Record<string, any>): RowWhereResult => {
@@ -179,6 +183,7 @@ export default function useRowWhere({
       const {
         [INTERNAL_ROW_FIELDS.ID]: _id,
         [INTERNAL_ROW_FIELDS.ALIAS_WITH]: _aliasWith,
+        [INTERNAL_ROW_FIELDS.SEVERITY_NUMBER]: _severityNumber,
         ...dbRow
       } = row;
 

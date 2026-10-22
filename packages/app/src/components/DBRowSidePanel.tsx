@@ -454,6 +454,7 @@ export const DBRowSidePanelInner = ({
       : undefined;
   const severityText: string | undefined =
     normalizedRow?.['__hdx_severity_text'];
+  const severityNumber = normalizedRow?.['__hdx_severity_number'];
 
   // Owns the View Trace nudge's auto-open latch. Kept here (above the loading
   // gate that unmounts the row content on every navigation) so the one-time
@@ -940,7 +941,9 @@ export const DBRowSidePanelInner = ({
       <Box px="sm" pt="sm" pb="xs">
         {controls}
         <Group gap="xs" wrap="wrap">
-          {!sourceIsTrace && severityText && <LogLevel level={severityText} />}
+          {!sourceIsTrace && (
+            <LogLevel level={severityText} severityNumber={severityNumber} />
+          )}
           {timestampDate && !isNaN(timestampDate.getTime()) && (
             <Text size="xs" c="dimmed">
               <FormatTime value={timestampDate} /> ·{' '}

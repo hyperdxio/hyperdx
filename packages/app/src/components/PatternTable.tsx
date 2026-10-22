@@ -80,6 +80,7 @@ export default function PatternTable({
       ((source?.kind === SourceKind.Log || source?.kind === SourceKind.Trace) &&
         source.serviceNameExpression) ||
       '',
+    severityNumberSource: source,
     totalCount,
   });
 
@@ -164,6 +165,7 @@ export default function PatternTable({
             }}
             config={patternQueryConfig}
             showExpandButton={false}
+            severityTextColumn="level"
           />
           {selectedPattern && source && (
             <PatternSidePanel

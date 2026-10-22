@@ -3031,6 +3031,7 @@ function DBSearchPageContent() {
                             selectionResetKey={selectionResetKey}
                             onSelectedRowsChange={onSelectedRowsChange}
                             onResolvedColumnsChange={onResolvedColumnsChange}
+                            colorLevelBySeverityNumber
                           />
                         )}
                     </Box>

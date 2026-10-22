@@ -50,7 +50,7 @@ import {
   TRACE_WATERFALL_FETCH_LIMIT,
   TRACE_WATERFALL_ROW_LIMIT,
 } from '@/components/traceWaterfallLimits';
-import { useColumns } from '@/hooks/useMetadata';
+import { getSelectableSeverityNumberExpression } from '@/hooks/useMaterializedAliasColumnsOption';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import {
   RowHighlightHint,
@@ -96,7 +96,7 @@ export type SpanRow = {
   StatusCode?: string;
   ServiceName?: string;
   SeverityText?: string;
-  SeverityNumber?: number;
+  SeverityNumber?: number | string;
   HyperDXEventType: 'span';
   type?: string;
   SpanAttributes?: Record<string, any>;
@@ -211,7 +211,7 @@ function getConfig(
   traceId: string,
   hiddenRowExpression?: string,
   hiddenRowExpressionLanguage: 'lucene' | 'sql' = 'lucene',
-  selectSeverityNumber = false,
+  severityNumberExpression?: string,
 ) {
   const alias: Record<string, string> = {
     Body: getTableBody(source),
@@ -345,10 +345,10 @@ function getConfig(
               },
             ]
           : []),
-        ...(selectSeverityNumber
+        ...(severityNumberExpression
           ? [
               {
-                valueExpression: 'SeverityNumber',
+                valueExpression: severityNumberExpression,
                 alias: 'SeverityNumber',
               },
             ]
@@ -396,7 +396,7 @@ export function useEventsAroundFocus({
   enabled,
   hiddenRowExpression,
   hiddenRowExpressionLanguage = 'lucene',
-  selectSeverityNumber = false,
+  severityNumberExpression,
 }: {
   tableSource: TTraceSource | TLogSource;
   focusDate: Date;
@@ -406,7 +406,7 @@ export function useEventsAroundFocus({
   /** An expression (in `hiddenRowExpressionLanguage`) that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
   hiddenRowExpression?: string;
   hiddenRowExpressionLanguage?: 'lucene' | 'sql';
-  selectSeverityNumber?: boolean;
+  severityNumberExpression?: string;
 }) {
   const { config, alias, type } = useMemo(
     () =>
@@ -415,14 +415,14 @@ export function useEventsAroundFocus({
         traceId,
         hiddenRowExpression,
         hiddenRowExpressionLanguage,
-        selectSeverityNumber,
+        severityNumberExpression,
       ),
     [
       tableSource,
       traceId,
       hiddenRowExpression,
       hiddenRowExpressionLanguage,
-      selectSeverityNumber,
+      severityNumberExpression,
     ],
   );
 
@@ -481,7 +481,7 @@ export function useEventsAroundFocus({
     return [...trimmedBefore, ...trimmedAfter].map(cd => {
       // Omit SpanAttributes, SpanEvents, __hdx_hidden and SeverityNumber from rowWhere id generation.
       // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
-      // SeverityNumber is only selected when the column exists; leaving it out keeps row ids stable.
+      // SeverityNumber is optional and may be an expression; leaving it out keeps row ids stable.
       const rowWhereResult = getRowWhere(
         omit(cd, [
           'SpanAttributes',
@@ -772,16 +772,11 @@ export function DBTraceWaterfallChartContainer({
     enabled: true,
   });
 
-  const { data: logColumns, isLoading: isLogColumnsLoading } = useColumns(
-    {
-      databaseName: logTableSource?.from.databaseName ?? '',
-      tableName: logTableSource?.from.tableName ?? '',
-      connectionId: logTableSource?.connection ?? '',
-    },
-    { retry: 1 },
-  );
-  const hasSeverityNumber =
-    logColumns?.some(column => column.name === 'SeverityNumber') ?? false;
+  // Sources without Severity Number Expression color logs by their text.
+  const severityNumberExpression =
+    logTableSource != null
+      ? getSelectableSeverityNumberExpression(logTableSource)
+      : undefined;
 
   const {
     rows: logRowsData,
@@ -798,13 +793,11 @@ export function DBTraceWaterfallChartContainer({
     traceId,
     hiddenRowExpression: logWhere ? `NOT (${logWhere})` : undefined,
     hiddenRowExpressionLanguage: logFilterLanguage,
-    // Wait for the columns (a failed lookup runs without SeverityNumber) so the
-    // select doesn't change mid-flight and run the log query twice.
-    enabled: !!logTableSource && !isLogColumnsLoading,
-    selectSeverityNumber: hasSeverityNumber,
+    enabled: !!logTableSource,
+    severityNumberExpression,
   });
 
-  const isFetching = traceIsFetching || logIsFetching || isLogColumnsLoading;
+  const isFetching = traceIsFetching || logIsFetching;
   // Only a fatal trace failure (bad source / connection) blanks the waterfall.
   // A *filter* error on either side is non-fatal: the offending query falls back
   // to unfiltered data and the error is surfaced inline next to its input, so a

@@ -9,6 +9,10 @@ import {
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  collapseSeverityClass,
+  getSeverityClass,
+} from '@hyperdx/common-utils/dist/core/severity';
+import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
   ColorCondition,
@@ -328,6 +332,9 @@ export function formatmmss(milliseconds?: number) {
   return `${minutes}:${seconds < 10 ? '0' : ''}${seconds}`;
 }
 
+// Separate from getSeverityClass because it also infers the level column
+// (possibly a trace StatusCode) and colors chart series. A test pins the
+// shared prefixes.
 export const getLogLevelClass = (lvl: string | undefined) => {
   const level = lvl?.toLowerCase();
   if (level == null) {
@@ -353,25 +360,17 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         : undefined;
 };
 
-/**
- * Error or warn level of a log row, or undefined when it is neither.
- * SeverityNumber is normalized by the SDK, so it wins when set; 0 means
- * unspecified, which falls back to matching SeverityText.
- * https://github.com/open-telemetry/opentelemetry-specification/blob/v1.59.0/specification/logs/data-model.md#field-severitynumber
- */
+/** Error or warn level of a log row, or undefined when it is neither. */
 export function getLogSeverityLevel({
   severityNumber,
   severityText,
 }: {
   severityNumber?: unknown;
-  severityText?: string;
+  severityText?: string | null;
 }): 'error' | 'warn' | undefined {
-  const number = Number(severityNumber);
-  if (number > 0) {
-    return number >= 17 ? 'error' : number >= 13 ? 'warn' : undefined;
-  }
-  const level = getLogLevelClass(severityText);
-  return level === 'error' || level === 'warn' ? level : undefined;
+  return collapseSeverityClass(
+    getSeverityClass({ severityNumber, severityText }),
+  );
 }
 
 /**

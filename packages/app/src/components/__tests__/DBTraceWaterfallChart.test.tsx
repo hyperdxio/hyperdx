@@ -125,14 +125,9 @@ const mockUseRowWhere = useRowWhere as jest.Mock;
 const mockUseColumns = useColumns as jest.Mock;
 const MockTimelineChart = TimelineChart as any;
 
-// Mirrors useColumns, which is disabled, so never loading, without a table.
-const setupColumnsMock = (state: { data?: object[]; isLoading?: boolean }) =>
-  mockUseColumns.mockImplementation(({ tableName }: { tableName: string }) =>
-    tableName ? { isLoading: false, ...state } : { isLoading: false },
-  );
-
-const selectsSeverityNumber = (query: { select: Array<{ alias?: string }> }) =>
-  query.select.some(s => s.alias === 'SeverityNumber');
+const selectedSeverityNumber = (query: {
+  select: Array<{ alias?: string; valueExpression?: string }>;
+}) => query.select.find(s => s.alias === 'SeverityNumber')?.valueExpression;
 
 describe('DBTraceWaterfallChartContainer', () => {
   // Common test data
@@ -218,7 +213,6 @@ describe('DBTraceWaterfallChartContainer', () => {
     mockUseRowWhere.mockReturnValue(() => ({ where: 'row-id', aliasWith: [] }));
     MockTimelineChart.latestProps = {};
     mockUseWaterfallSearchState.mockReturnValue(makeWaterfallSearchState());
-    setupColumnsMock({ data: [] });
   });
 
   // Helper functions
@@ -817,32 +811,35 @@ describe('DBTraceWaterfallChartContainer', () => {
   });
 
   it.each([
-    ['has it', [true], { data: [{ name: 'SeverityNumber', type: 'UInt8' }] }],
-    ['lacks it', [false], { data: [{ name: 'SeverityText', type: 'String' }] }],
-    // A failed lookup still shows logs, just without SeverityNumber.
-    ['failed', [false], {}],
-    // Held until the columns settle so a changed select can't run it twice.
-    ['is loading', [], { isLoading: true }],
+    [undefined, undefined, [undefined]],
+    [
+      "toUInt8(LogAttributes['sev'])",
+      undefined,
+      ["toUInt8(LogAttributes['sev'])"],
+    ],
+    ['SeverityNumber', 'Timestamp, Body', [undefined]],
   ])(
-    'when the log column lookup %s, enabled log queries select SeverityNumber: %p',
-    (_name, expected, columns) => {
-      setupColumnsMock(columns);
+    'with Severity Number Expression %p and known columns %p, enabled log queries select %p without a column lookup',
+    (severityNumberExpression, knownColumnsListExpression, expected) => {
       setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
-      renderComponent();
+      renderComponent({
+        ...mockLogTableSource,
+        severityNumberExpression,
+        knownColumnsListExpression,
+      });
 
       const selects = mockUseOffsetPaginatedQuery.mock.calls
         .filter(
           ([query, opts]) =>
             query?.from?.tableName === 'log_table' && opts?.enabled,
         )
-        .map(([query]) => selectsSeverityNumber(query));
+        .map(([query]) => selectedSeverityNumber(query));
       expect([...new Set(selects)]).toEqual(expected);
+      expect(mockUseColumns).not.toHaveBeenCalled();
     },
   );
 
   it('renders a trace without a log source', async () => {
-    // Without a log table the lookup is disabled, so it must not hold the chart.
-    setupColumnsMock({ isLoading: true });
     setupQueryMocks({ traceData: mockTraceData });
     renderComponent(null);
     await waitForLoading();
@@ -1093,14 +1090,14 @@ describe('useEventsAroundFocus', () => {
     afterData?: any;
     enabled?: boolean;
     tableSource?: TTraceSource | TLogSource;
-    selectSeverityNumber?: boolean;
+    severityNumberExpression?: string;
   }) => {
     const {
       beforeData = { data: [], meta: [] },
       afterData = { data: [], meta: [] },
       enabled = true,
       tableSource = mockTableSource,
-      selectSeverityNumber,
+      severityNumberExpression,
     } = options;
 
     mockUseOffsetPaginatedQuery.mockReset();
@@ -1123,22 +1120,22 @@ describe('useEventsAroundFocus', () => {
         dateRange: mockDateRange,
         traceId: mockTraceId,
         enabled,
-        selectSeverityNumber,
+        severityNumberExpression,
       }),
     );
 
     return result.current;
   };
 
-  it.each([true, false])(
-    'selects SeverityNumber from a log source only with the flag (%p), never in row ids',
-    selectSeverityNumber => {
+  it.each([undefined, "toUInt8(LogAttributes['severity'])"])(
+    'selects SeverityNumber from a log source only when given (%p), never in row ids',
+    severityNumberExpression => {
       const getRowWhere = jest.fn(() => ({ where: 'row-id', aliasWith: [] }));
       mockUseRowWhere.mockReturnValue(getRowWhere);
 
       const result = testEventsAroundFocus({
         tableSource: { ...mockTableSource, kind: SourceKind.Log } as TLogSource,
-        selectSeverityNumber,
+        severityNumberExpression,
         beforeData: {
           data: [{ Body: 'log line', SeverityNumber: 17 }],
           meta: [{ name: 'Body', type: 'String' }],
@@ -1146,7 +1143,7 @@ describe('useEventsAroundFocus', () => {
       });
 
       const [query] = mockUseOffsetPaginatedQuery.mock.calls[0];
-      expect(selectsSeverityNumber(query)).toBe(selectSeverityNumber);
+      expect(selectedSeverityNumber(query)).toBe(severityNumberExpression);
       expect(getRowWhere).toHaveBeenCalledWith({ Body: 'log line' });
       expect(result.rows[0]).toMatchObject({ SeverityNumber: 17 });
     },

@@ -1,4 +1,9 @@
 import {
+  collapseSeverityClass,
+  getSeverityClass,
+  TEXT_PREFIX_RULES,
+} from '@hyperdx/common-utils/dist/core/severity';
+import {
   ChartPaletteTokenSchema,
   ColorCondition,
   NumericUnit,
@@ -20,6 +25,7 @@ import {
   formatNumber,
   getAllMetricTables,
   getColorFromCSSToken,
+  getLogLevelClass,
   getLogSeverityLevel,
   getMetricTableName,
   isColumnInSelect,
@@ -1577,11 +1583,38 @@ describe('getLogSeverityLevel', () => {
     [undefined, 'Warning', 'warn'],
     ['', 'fatal', 'error'],
     [undefined, 'info', undefined],
+    [25, 'warn', 'warn'],
+    [0, 'panic', 'error'],
   ])('maps %p and %p to %p', (severityNumber, severityText, expected) => {
     expect(getLogSeverityLevel({ severityNumber, severityText })).toBe(
       expected,
     );
   });
+});
+
+describe('getLogLevelClass', () => {
+  // Log-only vocabulary that trace StatusCode and chart colors don't take.
+  const LOG_ONLY_PREFIXES = [
+    'panic',
+    'dpanic',
+    'ftl',
+    'severe',
+    'wrn',
+    'inf',
+    'dbg',
+    'trc',
+  ];
+
+  it.each(TEXT_PREFIX_RULES.filter(r => !LOG_ONLY_PREFIXES.includes(r.prefix)))(
+    'agrees with the log severity class on $prefix',
+    ({ prefix }) => {
+      const severityClass = getSeverityClass({ severityText: prefix });
+      expect(getLogLevelClass(prefix)).toBe(
+        collapseSeverityClass(severityClass) ??
+          (severityClass === 'UNKNOWN' ? undefined : 'info'),
+      );
+    },
+  );
 });
 
 describe('getColorFromCSSToken', () => {

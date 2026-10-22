@@ -16,6 +16,7 @@ export function toExportableRow(
   const {
     [INTERNAL_ROW_FIELDS.ID]: _id,
     [INTERNAL_ROW_FIELDS.ALIAS_WITH]: _aliasWith,
+    [INTERNAL_ROW_FIELDS.SEVERITY_NUMBER]: _severityNumber,
     ...rest
   } = row;
 

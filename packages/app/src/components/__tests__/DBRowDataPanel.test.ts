@@ -126,6 +126,32 @@ describe('DBRowDataPanel', () => {
     expect(config.select).not.toContainEqual({ valueExpression: '*' });
   });
 
+  it('selects severityNumberExpression unless the Known Columns List omits it', () => {
+    const selectsSeverityNumber = (overrides: Partial<TLogSource>) => {
+      mockUseQueriedChartConfig.mockClear();
+      renderHook(() =>
+        useRowData({ source: { ...source, ...overrides }, rowId: "id='a'" }),
+      );
+      const [config] = mockUseQueriedChartConfig.mock.calls[0];
+      return config.select.some(
+        (s: { valueExpression: string; alias?: string }) =>
+          s.alias === '__hdx_severity_number' &&
+          s.valueExpression === 'SeverityNumber',
+      );
+    };
+
+    expect(
+      selectsSeverityNumber({ severityNumberExpression: 'SeverityNumber' }),
+    ).toBe(true);
+    expect(selectsSeverityNumber({})).toBe(false);
+    expect(
+      selectsSeverityNumber({
+        severityNumberExpression: 'SeverityNumber',
+        knownColumnsListExpression: 'Timestamp, Body',
+      }),
+    ).toBe(false);
+  });
+
   it('adds no query settings while the viewer option is off', () => {
     renderHook(() => useRowData({ source, rowId: "id='abc123'" }));
 
