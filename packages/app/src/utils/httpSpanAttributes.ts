@@ -133,7 +133,7 @@ export function getUserAgent(attributes: Attributes): string | undefined {
 
 // One decimal above 1 KB, so a body and total of 1536 and 1900 bytes don't
 // both round to "2 KB".
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   return formatNumber(bytes, {
     output: 'byte',
     mantissa: Math.abs(bytes) >= 1024 ? 1 : 0,

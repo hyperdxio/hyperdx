@@ -61,16 +61,35 @@ export function generateOtelSessionSpans(seedRef: number): string {
   ].join(',\n');
 }
 
-/** Browser events the OTel SDK records as log events, after the +500 ms span. */
+// Four dots inside the 12 ms span.
+const RESOURCE_TIMING = {
+  fetch_start: '1000.5',
+  request_start: '1002',
+  response_start: '1009',
+  response_end: '1011.5',
+  duration: '11',
+  transfer_size: '558',
+  next_hop_protocol: 'http/1.1',
+};
+
+/**
+ * OTel SDK log events around the +500 ms span: the click 3 ms before it that
+ * triggers its trace, its request timing, and a console error.
+ */
 export function generateOtelSessionLogEvents(seedRef: number): string {
   const ns = (offsetMs: number) =>
     (seedRef - 5 * 60 * 1000 + offsetMs) * 1_000_000;
   const resource = `{'service.name':'${SERVICE}'}`;
+  const { newSdk, bothKeys } = OTEL_SESSIONS;
   const click = (sessionId: string) =>
-    `('${ns(600)}', '', '', 0, '', 9, '${SERVICE}', '', '', ${resource}, '', '', '', {}, {'session.id':'${sessionId}','browser.tag_name':'BUTTON','browser.css_selector':'#root > main > button.checkout','browser.document.url.full':'${PAGE_URL}','browser.element.attributes.testid':'checkout'}, 'browser.user_action.click')`;
+    `('${ns(497)}', '', '', 0, '', 9, '${SERVICE}', '', '', ${resource}, '', '', '', {}, {'session.id':'${sessionId}','browser.tag_name':'BUTTON','browser.css_selector':'#root > main > button.checkout','browser.document.url.full':'${PAGE_URL}','browser.element.attributes.testid':'checkout'}, 'browser.user_action.click')`;
+  const timing = Object.entries(RESOURCE_TIMING)
+    .map(([key, value]) => `'browser.resource_timing.${key}':'${value}'`)
+    .join(',');
   return [
-    click(OTEL_SESSIONS.newSdk),
-    `('${ns(800)}', '', '', 0, 'error', 17, '${SERVICE}', 'Error: checkout failed', '', ${resource}, '', '', '', {}, {'session.id':'${OTEL_SESSIONS.newSdk}','browser.console.method':'error','browser.document.url.full':'${PAGE_URL}'}, 'browser.console')`,
-    click(OTEL_SESSIONS.bothKeys),
+    click(newSdk),
+    `('${ns(520)}', '${newSdk}-trace', '${newSdk}-span', 0, '', 9, '${SERVICE}', '', '', ${resource}, '', '@opentelemetry/browser-instrumentation/resource-timing', '', {}, {'session.id':'${newSdk}','browser.document.url.full':'${PAGE_URL}','url.full':'${PAGE_URL}api/error',${timing}}, 'browser.resource_timing')`,
+    `('${ns(800)}', '', '', 0, 'error', 17, '${SERVICE}', 'Error: checkout failed', '', ${resource}, '', '', '', {}, {'session.id':'${newSdk}','browser.console.method':'error','browser.document.url.full':'${PAGE_URL}'}, 'browser.console')`,
+    click(bothKeys),
   ].join(',\n');
 }
