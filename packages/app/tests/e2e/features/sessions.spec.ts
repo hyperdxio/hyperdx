@@ -1,4 +1,5 @@
 import { SessionsPage } from '../page-objects/SessionsPage';
+import { OTEL_SESSIONS } from '../seed-otel-sessions';
 import { expect, test } from '../utils/base-test';
 import {
   clearLuceneInput,
@@ -44,6 +45,43 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
       await expect(firstSession).toBeVisible();
       await sessionsPage.openFirstSession();
     });
+  });
+
+  test('lists and opens a session from the OpenTelemetry browser SDK', async ({
+    page,
+  }) => {
+    await page.goto('/search');
+    await sessionsPage.goto();
+    await sessionsPage.selectDataSource();
+    await switchWhereToLucene(sessionsPage.whereLanguageSwitch);
+    await sessionsPage.search(
+      `SpanAttributes.session.id:"${OTEL_SESSIONS.newSdk}"`,
+    );
+
+    const card = page.getByTestId(`session-card-${OTEL_SESSIONS.newSdk}`);
+    await expect(card).toBeVisible();
+    await card.click();
+
+    await expect(sessionsPage.sessionSidePanel).toBeVisible();
+    await expect(
+      sessionsPage.getSessionEventRows().filter({ hasText: '500 GET' }),
+    ).toBeVisible({ timeout: 15000 });
+  });
+
+  test('shows one card for a session that carries both session id keys', async ({
+    page,
+  }) => {
+    await page.goto('/search');
+    await sessionsPage.goto();
+    await sessionsPage.selectDataSource();
+    await switchWhereToLucene(sessionsPage.whereLanguageSwitch);
+    await sessionsPage.search(
+      `SpanAttributes.session.id:"${OTEL_SESSIONS.bothKeys}"`,
+    );
+
+    const card = page.getByTestId(`session-card-${OTEL_SESSIONS.bothKeys}`);
+    await expect(card).toHaveCount(1);
+    await expect(card).toContainText('1 Events');
   });
 
   // Both WHERE inputs on this page query the session source's *trace* source,
