@@ -52,6 +52,7 @@ import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
+import { isBrowserEventRow } from '@/utils/browserEvents';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import {
   getRowLookupWindow,
@@ -1075,6 +1076,13 @@ export const DBRowSidePanelInner = ({
           attributes={highlightedAttributeValues}
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
+          hideEmptyBody={
+            isLogSource(source) &&
+            isBrowserEventRow({
+              eventName: normalizedRow?.[ROW_DATA_ALIASES.EVENT_NAME],
+              attributes: normalizedRow?.[ROW_DATA_ALIASES.EVENT_ATTRIBUTES],
+            })
+          }
           severityText={severityText}
           rowData={normalizedRow}
         />

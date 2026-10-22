@@ -43,6 +43,7 @@ export enum ROW_DATA_ALIASES {
   DURATION_MS = '__hdx_duration_ms',
   SPAN_KIND = '__hdx_span_kind',
   SPAN_LINKS = '__hdx_span_links',
+  EVENT_NAME = '__hdx_event_name',
 }
 
 export function useRowData({
@@ -96,6 +97,18 @@ export function useRowData({
   // "known columns" list (columns known to exist across all target tables) we
   // select that instead of `*` when fetching full row data.
   const knownColumns = getKnownColumnsList(source);
+
+  // A bare column comes back from `*` or the Known Columns List whenever the
+  // table has it, so it is read from the row instead of selected: older OTel
+  // log tables have no EventName column, and selecting it would fail the whole
+  // lookup.
+  const eventNameExpr = isLogSource(source)
+    ? source.eventNameExpression?.trim()
+    : undefined;
+  const eventNameColumn =
+    eventNameExpr && /^[A-Za-z_][A-Za-z0-9_]*$/.test(eventNameExpr)
+      ? eventNameExpr
+      : undefined;
 
   const baseConfig = {
     source: source.id,
@@ -165,6 +178,14 @@ export function useRowData({
             {
               valueExpression: source.eventAttributesExpression,
               alias: ROW_DATA_ALIASES.EVENT_ATTRIBUTES,
+            },
+          ]
+        : []),
+      ...(eventNameExpr && eventNameColumn == null
+        ? [
+            {
+              valueExpression: eventNameExpr,
+              alias: ROW_DATA_ALIASES.EVENT_NAME,
             },
           ]
         : []),
@@ -288,11 +309,15 @@ export function useRowData({
       );
     }
 
+    if (eventNameColumn != null) {
+      normalizedRow[ROW_DATA_ALIASES.EVENT_NAME] = row[eventNameColumn];
+    }
+
     return {
       ...queryResult.data,
       data: [normalizedRow],
     };
-  }, [queryResult.data]);
+  }, [queryResult.data, eventNameColumn]);
 
   return {
     ...queryResult,

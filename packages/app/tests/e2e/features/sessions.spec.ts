@@ -73,6 +73,7 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
   }) => {
     const panel = sessionsPage.sessionSidePanel;
     const rows = sessionsPage.getSessionEventRows();
+    const section = panel.getByTestId('browser-event-section');
 
     await test.step('Highlighted shows the console error but not the click', async () => {
       await page.goto('/search');
@@ -96,9 +97,26 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
       await click.getByText('Clicked button').click();
       await expect(panel.getByTestId('side-panel-tab-overview')).toBeVisible();
       await expect(page.getByTestId('row-side-panel')).toHaveCount(0);
+      // The Log Attributes viewer below repeats these values verbatim.
+      await expect(
+        section.getByText('data-otel-testid', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        section.getByText('#root > main > button.checkout', { exact: true }),
+      ).toBeVisible();
+      await expect(panel.getByText('No body for this event.')).toHaveCount(0);
     });
 
     await test.step('Escape returns to the event list', async () => {
+      await page.keyboard.press('Escape');
+      await expect(rows.first()).toBeVisible();
+    });
+
+    await test.step('A navigation opens as a browser event, not an HTTP request', async () => {
+      const navigation = rows.filter({ hasText: 'Navigated' });
+      await navigation.getByText('Navigated').click();
+      await expect(section.getByText('push', { exact: true })).toBeVisible();
+      await expect(panel.getByText('HTTP Request')).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(rows.first()).toBeVisible();
     });
