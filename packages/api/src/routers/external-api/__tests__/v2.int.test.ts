@@ -37,7 +37,6 @@ describe('external api v2', () => {
       const { agent, team, user } = await getLoggedInAgent(server);
       const { doc, key } = await createOrgApiKey(team._id, user._id, {
         description: 'terraform',
-        scope: 'member',
         expiry: '30d',
       });
       return { agent, team, user, doc, key };

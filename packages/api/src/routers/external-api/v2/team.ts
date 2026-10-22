@@ -11,7 +11,6 @@ import {
   findUsersByTeam,
 } from '@/controllers/user';
 import TeamInvite from '@/models/teamInvite';
-import { requireAdminRequest } from '@/utils/orgApiKeyPolicy';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
@@ -100,12 +99,9 @@ router.get('/members', async (req, res, next) => {
  *         description: Successfully created the invitation
  *       '400':
  *         description: User already exists
- *       '403':
- *         description: The API key does not have admin scope
  */
 router.post(
   '/invitation',
-  requireAdminRequest,
   validateRequest({
     body: z.object({
       email: z.string().email(),
@@ -183,11 +179,8 @@ router.post(
  *     responses:
  *       '200':
  *         description: Successfully retrieved invitations
- *       '403':
- *         description: The API key does not have admin scope
  */
-// Admin-only because each invite URL lets its holder join the team.
-router.get('/invitations', requireAdminRequest, async (req, res, next) => {
+router.get('/invitations', async (req, res, next) => {
   try {
     const teamId = req.user?.team;
     if (!teamId) {
@@ -230,14 +223,11 @@ router.get('/invitations', requireAdminRequest, async (req, res, next) => {
  *     responses:
  *       '200':
  *         description: Successfully deleted the invitation
- *       '403':
- *         description: The API key does not have admin scope
  *       '404':
  *         description: Invitation not found
  */
 router.delete(
   '/invitation/:id',
-  requireAdminRequest,
   validateRequest({ params: z.object({ id: objectIdSchema }) }),
   async (req, res, next) => {
     try {
@@ -281,14 +271,11 @@ router.delete(
  *         description: Successfully removed the member
  *       '400':
  *         description: Cannot remove yourself or the last team member
- *       '403':
- *         description: The API key does not have admin scope
  *       '404':
  *         description: Member not found
  */
 router.delete(
   '/member/:id',
-  requireAdminRequest,
   validateRequest({ params: z.object({ id: objectIdSchema }) }),
   async (req, res, next) => {
     try {

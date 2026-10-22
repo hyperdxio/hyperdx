@@ -432,7 +432,6 @@ describe('team router', () => {
   describe('org API keys', () => {
     const body = {
       description: 'terraform',
-      scope: 'member',
       expiry: '30d',
     } as const;
 
@@ -447,7 +446,6 @@ describe('team router', () => {
       expect(list.body.data[0]).toMatchObject({
         id: created.body.id,
         description: 'terraform',
-        scope: 'member',
         lastUsedAt: null,
         createdBy: { email: user.email },
       });
@@ -457,7 +455,6 @@ describe('team router', () => {
       { ...body, description: '' },
       { ...body, description: 'x'.repeat(101) },
       { ...body, expiry: '7d' },
-      { ...body, scope: 'owner' },
     ])('rejects invalid bodies %#', async invalid => {
       const { agent } = await getLoggedInAgent(server);
       await agent.post('/team/api-keys').send(invalid).expect(400);
@@ -471,11 +468,10 @@ describe('team router', () => {
         .expect(200);
       const updated = await agent
         .patch(`/team/api-keys/${created.id}`)
-        .send({ description: 'ci', scope: 'admin' })
+        .send({ description: 'ci' })
         .expect(200);
       expect(updated.body).toMatchObject({
         description: 'ci',
-        scope: 'member',
       });
     });
 
@@ -503,7 +499,6 @@ describe('team router', () => {
         team: new mongoose.Types.ObjectId(),
         keyHash: 'other',
         description: 'other team',
-        scope: 'admin',
         createdBy: new mongoose.Types.ObjectId(),
         serviceAccount: new mongoose.Types.ObjectId(),
       });

@@ -42,7 +42,6 @@ describe('orgApiKey controller', () => {
   ) =>
     createOrgApiKey(teamId, creator, {
       description: 'terraform',
-      scope: 'member',
       expiry,
     });
 

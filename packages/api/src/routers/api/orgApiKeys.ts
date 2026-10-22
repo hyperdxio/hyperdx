@@ -20,7 +20,6 @@ import {
 } from '@/controllers/orgApiKey';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { getCounter } from '@/utils/instrumentation';
-import { canManageOrgApiKeys } from '@/utils/orgApiKeyPolicy';
 import { objectIdSchema } from '@/utils/zod';
 
 const orgApiKeyOperations = getCounter('hyperdx.org_api_key.operations', {
@@ -30,8 +29,10 @@ const orgApiKeyOperations = getCounter('hyperdx.org_api_key.operations', {
 // Session-only on purpose: no key can create or revoke another key.
 const router = express.Router();
 
+// Session-only, and service accounts can't hold a session; this keeps them out
+// even if that ever changes.
 router.use((req, res, next) => {
-  if (req.user == null || !canManageOrgApiKeys(req.user)) {
+  if (req.user?.team == null || req.user.isServiceAccount) {
     return res.sendStatus(403);
   }
   next();

@@ -40,7 +40,7 @@ export function hashOrgApiKey(key: string) {
 export async function createOrgApiKey(
   teamId: string | ObjectId,
   createdBy: string | ObjectId,
-  { description, scope, expiry }: CreateOrgApiKeyRequest,
+  { description, expiry }: CreateOrgApiKeyRequest,
 ) {
   const key = `${ORG_API_KEY_PREFIX}${crypto.randomBytes(32).toString('base64url')}`;
   // `.invalid` is reserved, so the email can never reach a real inbox.
@@ -55,7 +55,6 @@ export async function createOrgApiKey(
       team: teamId,
       keyHash: hashOrgApiKey(key),
       description,
-      scope,
       expiresAt: expiresAtFor(expiry, Date.now()),
       createdBy,
       serviceAccount: serviceAccount._id,
@@ -151,7 +150,6 @@ export function formatOrgApiKey(
   return {
     id: doc._id.toString(),
     description: doc.description,
-    scope: doc.scope,
     createdAt: doc.createdAt.toISOString(),
     expiresAt: doc.expiresAt?.toISOString() ?? null,
     lastUsedAt: doc.lastUsedAt?.toISOString() ?? null,

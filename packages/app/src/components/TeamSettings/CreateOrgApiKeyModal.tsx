@@ -2,8 +2,6 @@ import { useState } from 'react';
 import {
   type OrgApiKeyExpiry,
   OrgApiKeyExpirySchema,
-  type OrgApiKeyScope,
-  OrgApiKeyScopeSchema,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Button,
@@ -18,11 +16,6 @@ import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
 import { RevealSnippet } from '@/components/RevealSnippet/RevealSnippet';
-
-const SCOPE_OPTIONS = [
-  { value: 'member', label: 'Member' },
-  { value: 'admin', label: 'Admin' },
-];
 
 const EXPIRY_OPTIONS = [
   { value: '30d', label: '30 days' },
@@ -39,7 +32,6 @@ export default function CreateOrgApiKeyModal({
 }) {
   const createKey = api.useCreateOrgApiKey();
   const [description, setDescription] = useState('');
-  const [scope, setScope] = useState<OrgApiKeyScope>('member');
   const [expiry, setExpiry] = useState<OrgApiKeyExpiry>('30d');
   const [createdKey, setCreatedKey] = useState<string | null>(null);
 
@@ -49,7 +41,6 @@ export default function CreateOrgApiKeyModal({
       return;
     }
     setDescription('');
-    setScope('member');
     setExpiry('30d');
     setCreatedKey(null);
     onClose();
@@ -57,7 +48,7 @@ export default function CreateOrgApiKeyModal({
 
   const onCreate = () => {
     createKey.mutate(
-      { description: description.trim(), scope, expiry },
+      { description: description.trim(), expiry },
       {
         onSuccess: data => setCreatedKey(data.key),
         onError: e => {
@@ -100,20 +91,6 @@ export default function CreateOrgApiKeyModal({
             onChange={e => setDescription(e.currentTarget.value)}
             data-autofocus
           />
-          <Stack gap={4}>
-            <Text size="sm" fw={500}>
-              Scope
-            </Text>
-            <SegmentedControl
-              aria-label="Scope"
-              data={SCOPE_OPTIONS}
-              value={scope}
-              onChange={value => setScope(OrgApiKeyScopeSchema.parse(value))}
-            />
-            <Text size="xs" c="dimmed">
-              Member keys can&apos;t manage team members or invitations.
-            </Text>
-          </Stack>
           <Stack gap={4}>
             <Text size="sm" fw={500}>
               Expires

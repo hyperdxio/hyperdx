@@ -4,7 +4,6 @@ import { createOrgApiKey } from '@/controllers/orgApiKey';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Alert from '@/models/alert';
 import { ITeam } from '@/models/team';
-import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
 import { IUser } from '@/models/user';
 
@@ -126,12 +125,11 @@ describe('External API v2 Team', () => {
     });
   });
 
-  describe('org API key scopes', () => {
-    const keyFor = async (scope: 'admin' | 'member') =>
+  describe('org API keys', () => {
+    const createKey = async () =>
       (
         await createOrgApiKey(team._id, user._id, {
-          description: scope,
-          scope,
+          description: 'terraform',
           expiry: 'never',
         })
       ).key;
@@ -142,45 +140,20 @@ describe('External API v2 Team', () => {
     const createMember = () =>
       User.create({ email: 'member@deploysentinel.com', team: team._id });
 
-    it('blocks team administration for member-scoped keys', async () => {
-      const key = await keyFor('member');
-      const invite = await TeamInvite.create({
-        teamId: team._id,
-        email: 'pending@deploysentinel.com',
-        token: 'token',
-      });
-      const member = await createMember();
-
-      for (const req of [
-        // Invite URLs let anyone join the team, so listing them is admin-only.
-        agent.get(`${TEAM_BASE_URL}/invitations`),
-        agent.post(`${TEAM_BASE_URL}/invitation`),
-        agent.delete(`${TEAM_BASE_URL}/invitation/${invite._id}`),
-        agent.delete(`${TEAM_BASE_URL}/member/${member._id}`),
-      ]) {
-        const res = await withKey(key, req)
-          .send({ email: 'new@deploysentinel.com' })
-          .expect(403);
-        expect(res.body.message).toBe('This API key does not have admin scope');
-      }
-    });
-
-    it('lets member-scoped keys list members, none of them current', async () => {
-      const key = await keyFor('member');
+    it('lists members without the key or anyone marked as the caller', async () => {
+      const key = await createKey();
       const res = await withKey(
         key,
         agent.get(`${TEAM_BASE_URL}/members`),
       ).expect(200);
-      expect(res.body.data.length).toBeGreaterThan(0);
-      expect(
-        res.body.data.every(
-          (m: { isCurrentUser: boolean }) => !m.isCurrentUser,
-        ),
-      ).toBe(true);
+      expect(res.body.data.map((m: { email: string }) => m.email)).toEqual([
+        user.email,
+      ]);
+      expect(res.body.data[0].isCurrentUser).toBe(false);
     });
 
-    it('lets admin-scoped keys invite and remove members', async () => {
-      const key = await keyFor('admin');
+    it('can invite and remove members', async () => {
+      const key = await createKey();
       await withKey(key, agent.post(`${TEAM_BASE_URL}/invitation`))
         .send({ email: 'new@deploysentinel.com' })
         .expect(200);
@@ -206,8 +179,8 @@ describe('External API v2 Team', () => {
       expect(stored?.createdBy).toEqual(account?._id);
     });
 
-    it('stops an admin-scoped key removing the last member', async () => {
-      const key = await keyFor('admin');
+    it('stops a key removing the last member', async () => {
+      const key = await createKey();
       const res = await withKey(
         key,
         agent.delete(`${TEAM_BASE_URL}/member/${user._id}`),
@@ -219,8 +192,8 @@ describe('External API v2 Team', () => {
       expect(restored?.accessKey).toBe(user.accessKey);
     });
 
-    it('keeps a member when an admin key removes the last two at once', async () => {
-      const key = await keyFor('admin');
+    it('keeps a member when a key removes the last two at once', async () => {
+      const key = await createKey();
       const member = await createMember();
       const results = await Promise.all(
         [user._id, member._id].map(id =>
@@ -237,7 +210,7 @@ describe('External API v2 Team', () => {
     });
 
     it('returns 404 for a non-member before applying the last-member rule', async () => {
-      const key = await keyFor('admin');
+      const key = await createKey();
       await withKey(
         key,
         agent.delete(`${TEAM_BASE_URL}/member/${new Alert()._id}`),
@@ -245,7 +218,7 @@ describe('External API v2 Team', () => {
     });
 
     it('hides service accounts from members and member removal', async () => {
-      await keyFor('member');
+      await createKey();
       const account = await User.findOne({ isServiceAccount: true });
 
       const list = await authRequest('get', `${TEAM_BASE_URL}/members`).expect(

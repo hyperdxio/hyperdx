@@ -1,8 +1,5 @@
 import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
-import type {
-  Connection,
-  OrgApiKeyScope,
-} from '@hyperdx/common-utils/dist/types';
+import { Connection } from '@hyperdx/common-utils/dist/types';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
@@ -31,9 +28,6 @@ declare global {
     interface User extends UserDocument {}
     interface Request {
       _hdx_connection?: Connection;
-      // Set when the bearer token is an org API key; req.user is its service
-      // account.
-      orgApiKey?: { id: string; description: string; scope: OrgApiKeyScope };
     }
   }
 }
@@ -153,19 +147,13 @@ async function authenticateOrgApiKey(
 
   const { orgApiKey, serviceAccount } = found;
   req.user = serviceAccount;
-  req.orgApiKey = {
-    id: orgApiKey._id.toString(),
-    description: orgApiKey.description,
-    scope: orgApiKey.scope,
-  };
   touchOrgApiKeyLastUsed(orgApiKey);
 
   setBusinessContext({
     teamId: orgApiKey.team.toString(),
     userId: serviceAccount._id.toString(),
     'hyperdx.service_account': true,
-    'hyperdx.org_api_key.id': req.orgApiKey.id,
-    'hyperdx.org_api_key.scope': orgApiKey.scope,
+    'hyperdx.org_api_key.id': orgApiKey._id.toString(),
     ...getStaticFeatureFlags(),
   });
 

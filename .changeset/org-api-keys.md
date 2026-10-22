@@ -4,4 +4,4 @@
 '@hyperdx/common-utils': minor
 ---
 
-feat: Admins can create team-owned API keys with a description, scope and expiry that keep working after their creator leaves.
+feat: Team members can create team-owned API keys with a description and expiry that keep working after their creator leaves.

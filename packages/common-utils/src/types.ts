@@ -3387,9 +3387,6 @@ export type RotateAccessKeyApiResponse = z.infer<
 
 // Team-owned bearer keys for external API v2 and MCP. They outlive the admin
 // who created them; the plaintext `key` is only returned on create.
-export const OrgApiKeyScopeSchema = z.enum(['admin', 'member']);
-export type OrgApiKeyScope = z.infer<typeof OrgApiKeyScopeSchema>;
-
 export const OrgApiKeyExpirySchema = z.enum(['30d', '1y', 'never']);
 export type OrgApiKeyExpiry = z.infer<typeof OrgApiKeyExpirySchema>;
 
@@ -3397,7 +3394,6 @@ const OrgApiKeyDescriptionSchema = z.string().trim().min(1).max(100);
 
 export const CreateOrgApiKeyRequestSchema = z.object({
   description: OrgApiKeyDescriptionSchema,
-  scope: OrgApiKeyScopeSchema,
   expiry: OrgApiKeyExpirySchema,
 });
 export type CreateOrgApiKeyRequest = z.infer<
@@ -3414,7 +3410,6 @@ export type UpdateOrgApiKeyRequest = z.infer<
 export const OrgApiKeyApiResponseSchema = z.object({
   id: z.string(),
   description: z.string(),
-  scope: OrgApiKeyScopeSchema,
   createdAt: z.string(),
   expiresAt: z.string().nullable(),
   lastUsedAt: z.string().nullable(),

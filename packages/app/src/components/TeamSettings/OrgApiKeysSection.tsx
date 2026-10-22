@@ -87,7 +87,6 @@ function OrgApiKeyRow({
           }
         />
       </Table.Td>
-      <Table.Td>{apiKey.scope === 'admin' ? 'Admin' : 'Member'}</Table.Td>
       <Table.Td>
         {apiKey.createdBy
           ? apiKey.createdBy.name || apiKey.createdBy.email
@@ -150,7 +149,6 @@ export default function OrgApiKeysSection() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Description</Table.Th>
-                <Table.Th>Scope</Table.Th>
                 <Table.Th>Created by</Table.Th>
                 <Table.Th>Created</Table.Th>
                 <Table.Th>Last used</Table.Th>

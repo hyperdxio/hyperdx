@@ -195,7 +195,6 @@ describe('External API Alerts', () => {
     it('attributes the alert to the key service account', async () => {
       const { doc, key } = await createOrgApiKey(team._id, user._id, {
         description: 'terraform',
-        scope: 'member',
         expiry: 'never',
       });
       const dashboard = await createTestDashboard();

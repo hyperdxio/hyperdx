@@ -31,7 +31,6 @@ let confirmAccepts = true;
 const key = (overrides = {}) => ({
   id: 'k1',
   description: 'terraform',
-  scope: 'member',
   createdAt: '2026-10-01T00:00:00.000Z',
   expiresAt: '2099-01-01T00:00:00.000Z',
   lastUsedAt: '2026-10-02T00:00:00.000Z',
@@ -89,7 +88,7 @@ describe('OrgApiKeysSection', () => {
     expect(screen.getByText('Expired')).toBeInTheDocument();
   });
 
-  it('creates a member key expiring in 30 days by default and shows it once', async () => {
+  it('creates a key expiring in 30 days by default and shows it once', async () => {
     createMutate.mockImplementation((_vars, options) =>
       options?.onSuccess?.({ ...key(), key: 'hdx_org_secret' }),
     );
@@ -105,7 +104,7 @@ describe('OrgApiKeysSection', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create' }));
 
     expect(createMutate).toHaveBeenCalledWith(
-      { description: 'terraform', scope: 'member', expiry: '30d' },
+      { description: 'terraform', expiry: '30d' },
       expect.anything(),
     );
     expect(
