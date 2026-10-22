@@ -408,11 +408,21 @@ function formatExternalSource(source: SourceDocument) {
  *           description: Expression to extract the severity/log level text.
  *           nullable: true
  *           example: SeverityText
+ *         severityNumberExpression:
+ *           type: string
+ *           description: Expression for the numeric OpenTelemetry SeverityNumber (1-24).
+ *           nullable: true
+ *           example: SeverityNumber
  *         bodyExpression:
  *           type: string
  *           description: Expression to extract the log message body.
  *           nullable: true
  *           example: Body
+ *         eventNameExpression:
+ *           type: string
+ *           description: Expression for the OpenTelemetry log EventName.
+ *           nullable: true
+ *           example: EventName
  *         eventAttributesExpression:
  *           type: string
  *           description: Expression to extract event-level attributes.

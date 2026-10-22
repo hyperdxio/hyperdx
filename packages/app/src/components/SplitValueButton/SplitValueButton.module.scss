@@ -1,0 +1,46 @@
+// The label sits in a filled addon so it reads as the frame's name rather than
+// something to press; only the value side is the button.
+.control {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  flex-shrink: 0;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--mantine-radius-default);
+}
+
+.label {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding-inline: 8px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg-muted);
+  white-space: nowrap;
+}
+
+.target {
+  display: flex;
+  align-items: center;
+  flex: none;
+  gap: 6px;
+  height: 28px;
+  padding-inline: 8px;
+  white-space: nowrap;
+
+  &:hover {
+    background: var(--color-bg-hover);
+  }
+}
+
+// Long expressions truncate rather than pushing the row's other controls off.
+.value {
+  flex: none;
+  overflow: hidden;
+  max-width: 220px;
+  text-overflow: ellipsis;
+}
