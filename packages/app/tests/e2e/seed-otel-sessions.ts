@@ -56,6 +56,21 @@ export function generateOtelSessionSpans(seedRef: number): string {
   const { newSdk, bothKeys } = OTEL_SESSIONS;
   return [
     `('${ns}', '${newSdk}-trace', '${newSdk}-span', '', '', 'GET', 'SPAN_KIND_CLIENT', '${SERVICE}', {'service.name':'${SERVICE}'}, '@opentelemetry/instrumentation-fetch', '', {'session.id':'${newSdk}','browser.document.url.full':'${PAGE_URL}','url.full':'${PAGE_URL}api/error','http.request.method':'GET','http.response.status_code':'500','error.type':'500'}, 12000000, 'Error', '', [], [], [], [], [], [], [])`,
-    `('${ns}', '${bothKeys}-trace', '${bothKeys}-span', '', '', 'documentFetch', 'SPAN_KIND_INTERNAL', '${SERVICE}', {'rum.sessionId':'${bothKeys}','service.name':'${SERVICE}'}, '', '', {'session.id':'${bothKeys}','component':'document-load'}, 3000000, 'Unset', '', [], [], [], [], [], [], [])`,
+    // url.full, which document-load sets, lists the span on the All tab.
+    `('${ns}', '${bothKeys}-trace', '${bothKeys}-span', '', '', 'documentFetch', 'SPAN_KIND_INTERNAL', '${SERVICE}', {'rum.sessionId':'${bothKeys}','service.name':'${SERVICE}'}, '', '', {'session.id':'${bothKeys}','component':'document-load','url.full':'${PAGE_URL}'}, 3000000, 'Unset', '', [], [], [], [], [], [], [])`,
+  ].join(',\n');
+}
+
+/** Browser events the OTel SDK records as log events, after the +500 ms span. */
+export function generateOtelSessionLogEvents(seedRef: number): string {
+  const ns = (offsetMs: number) =>
+    (seedRef - 5 * 60 * 1000 + offsetMs) * 1_000_000;
+  const resource = `{'service.name':'${SERVICE}'}`;
+  const click = (sessionId: string) =>
+    `('${ns(600)}', '', '', 0, '', 9, '${SERVICE}', '', '', ${resource}, '', '', '', {}, {'session.id':'${sessionId}','browser.tag_name':'BUTTON','browser.css_selector':'#root > main > button.checkout','browser.document.url.full':'${PAGE_URL}','browser.element.attributes.testid':'checkout'}, 'browser.user_action.click')`;
+  return [
+    click(OTEL_SESSIONS.newSdk),
+    `('${ns(800)}', '', '', 0, 'error', 17, '${SERVICE}', 'Error: checkout failed', '', ${resource}, '', '', '', {}, {'session.id':'${OTEL_SESSIONS.newSdk}','browser.console.method':'error','browser.document.url.full':'${PAGE_URL}'}, 'browser.console')`,
+    click(OTEL_SESSIONS.bothKeys),
   ].join(',\n');
 }

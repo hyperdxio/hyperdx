@@ -4,10 +4,10 @@ import { isTraceSource, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Loader } from '@mantine/core';
 
 import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
-import { WithClause } from '@/hooks/useRowWhere';
 import SessionSubpanel from '@/SessionSubpanel';
 import { useSource } from '@/source';
 import { SessionIdKey, traceSessionIdColumns } from '@/utils/sessionId';
+import type { SessionEventNavigate } from '@/utils/sessionLogEvents';
 
 import { useEventsData } from './DBTraceWaterfallChart';
 
@@ -124,7 +124,7 @@ export const DBSessionPanel = ({
   dateRange: [Date, Date];
   focusDate: Date;
   serviceName?: string;
-  onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
+  onEventNavigate?: SessionEventNavigate;
 }) => {
   const { data: traceSource } = useSource({
     id: traceSourceId,

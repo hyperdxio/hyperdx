@@ -68,6 +68,68 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
     ).toBeVisible({ timeout: 15000 });
   });
 
+  test('shows browser log events from the OpenTelemetry SDK and opens them', async ({
+    page,
+  }) => {
+    const panel = sessionsPage.sessionSidePanel;
+    const rows = sessionsPage.getSessionEventRows();
+
+    await test.step('Highlighted shows the console error but not the click', async () => {
+      await page.goto('/search');
+      await sessionsPage.goto();
+      await sessionsPage.selectDataSource();
+      await switchWhereToLucene(sessionsPage.whereLanguageSwitch);
+      await sessionsPage.search(
+        `SpanAttributes.session.id:"${OTEL_SESSIONS.newSdk}"`,
+      );
+      await page.getByTestId(`session-card-${OTEL_SESSIONS.newSdk}`).click();
+      await expect(rows.filter({ hasText: 'console.error' })).toBeVisible({
+        timeout: 15000,
+      });
+      await expect(rows.filter({ hasText: 'Clicked button' })).toHaveCount(0);
+    });
+
+    await test.step('All events shows the click, which opens its log row', async () => {
+      await panel.getByText('All Events').click();
+      const click = rows.filter({ hasText: 'Clicked button' });
+      await expect(click).toContainText('testid=checkout');
+      await click.getByText('Clicked button').click();
+      await expect(panel.getByTestId('side-panel-tab-overview')).toBeVisible();
+      await expect(page.getByTestId('row-side-panel')).toHaveCount(0);
+    });
+
+    await test.step('Escape returns to the event list', async () => {
+      await page.keyboard.press('Escape');
+      await expect(rows.first()).toBeVisible();
+    });
+
+    await test.step('A session keyed on rum.sessionId shows no log events', async () => {
+      const logQueries: string[] = [];
+      // query_id marks ClickHouse queries; the app's own telemetry exports
+      // can carry the event name in captured URLs.
+      page.on('request', request => {
+        const body = request.postData() ?? '';
+        if (
+          new URL(request.url()).searchParams.has('query_id') &&
+          body.includes('browser.user_action.click')
+        ) {
+          logQueries.push(body);
+        }
+      });
+      await page.keyboard.press('Escape');
+      await sessionsPage.search(
+        `SpanAttributes.session.id:"${OTEL_SESSIONS.bothKeys}"`,
+      );
+      await page.getByTestId(`session-card-${OTEL_SESSIONS.bothKeys}`).click();
+      await panel.getByText('All Events').click();
+      // A log query would go out with the span query, so by the time the span
+      // row shows it would have been sent.
+      await expect(rows.first()).toBeVisible({ timeout: 15000 });
+      await expect(rows.filter({ hasText: 'Clicked' })).toHaveCount(0);
+      expect(logQueries).toHaveLength(0);
+    });
+  });
+
   test('shows one card for a session that carries both session id keys', async ({
     page,
   }) => {

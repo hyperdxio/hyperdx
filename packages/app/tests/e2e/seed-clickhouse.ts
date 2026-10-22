@@ -30,6 +30,7 @@ import {
   E2E_TRACES_TABLE,
 } from './utils/constants';
 import {
+  generateOtelSessionLogEvents,
   generateOtelSessionReplayRows,
   generateOtelSessionSpans,
 } from './seed-otel-sessions';
@@ -1012,6 +1013,15 @@ export async function seedClickHouse(): Promise<void> {
     ${generateOtelSessionSpans(seedRef)}
   `);
   console.log(`  Inserted ${numDataPoints} session trace data`);
+
+  console.log('  Inserting OTel browser log events...');
+  await client.query(`
+    INSERT INTO ${E2E_CLICKHOUSE_DATABASE}.${E2E_LOGS_TABLE} (
+      Timestamp, TraceId, SpanId, TraceFlags, SeverityText, SeverityNumber,
+      ServiceName, Body, ResourceSchemaUrl, ResourceAttributes, ScopeSchemaUrl,
+      ScopeName, ScopeVersion, ScopeAttributes, LogAttributes, EventName
+    ) VALUES ${generateOtelSessionLogEvents(seedRef)}
+  `);
 
   // Insert session data
   console.log('  Inserting session data...');
