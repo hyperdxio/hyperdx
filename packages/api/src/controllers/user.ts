@@ -1,5 +1,6 @@
 import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
 import { isPersistableUserId as isPersistableUserIdHex } from '@hyperdx/common-utils/dist/types';
+import opentelemetry from '@opentelemetry/api';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -137,11 +138,18 @@ export async function deleteTeamMemberKeepingOne(
   userIdToDelete: string,
   serviceAccountId: ObjectId,
 ): Promise<'deleted' | 'not_found' | 'last_member'> {
-  const deletedUser = await User.findOneAndDelete({
-    team: teamId,
-    _id: userIdToDelete,
-    ...NOT_SERVICE_ACCOUNT,
-  })
+  const countPeople = () =>
+    User.countDocuments({ team: teamId, ...NOT_SERVICE_ACCOUNT });
+  const target = { team: teamId, _id: userIdToDelete, ...NOT_SERVICE_ACCOUNT };
+  if ((await User.exists(target)) == null) {
+    return 'not_found';
+  }
+  // Checked first so the usual case never deletes; the restore below only
+  // covers two removals racing past this check.
+  if ((await countPeople()) <= 1) {
+    return 'last_member';
+  }
+  const deletedUser = await User.findOneAndDelete(target)
     .select('+hash +salt')
     .lean();
   if (deletedUser == null) {
@@ -149,9 +157,7 @@ export async function deleteTeamMemberKeepingOne(
   }
   let isTeamEmpty = true;
   try {
-    isTeamEmpty =
-      (await User.countDocuments({ team: teamId, ...NOT_SERVICE_ACCOUNT })) ===
-      0;
+    isTeamEmpty = (await countPeople()) === 0;
   } finally {
     // Also runs if the count throws, so a failed check can't lose the member.
     if (isTeamEmpty) {
@@ -176,15 +182,40 @@ const memberRestoreFailures = getCounter(
   },
 );
 
+const RESTORE_ATTEMPTS = 3;
+const RESTORE_RETRY_DELAY_MS = 100;
+
+const isDuplicateKey = (err: unknown): err is { keyPattern?: object } =>
+  typeof err === 'object' && err != null && 'code' in err && err.code === 11000;
+
 async function restoreTeamMember(user: IUser) {
-  try {
-    await User.collection.insertOne(user);
-  } catch (err) {
-    memberRestoreFailures.add(1);
-    logger.error(
-      { error: err, userId: user._id.toString(), teamId: user.team.toString() },
-      'Failed to restore team member removed by an org API key',
-    );
-    throw err;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await User.collection.insertOne(user);
+      return;
+    } catch (err) {
+      // A duplicate _id means an earlier attempt already landed.
+      if (isDuplicateKey(err) && err.keyPattern && '_id' in err.keyPattern) {
+        return;
+      }
+      // Any other duplicate (the email was taken meanwhile) can't succeed.
+      if (!isDuplicateKey(err) && attempt < RESTORE_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, RESTORE_RETRY_DELAY_MS * attempt));
+        continue;
+      }
+      memberRestoreFailures.add(1);
+      opentelemetry.trace
+        .getActiveSpan()
+        ?.recordException(err instanceof Error ? err : new Error(String(err)));
+      logger.error(
+        {
+          error: err,
+          userId: user._id.toString(),
+          teamId: user.team.toString(),
+        },
+        'Failed to restore team member removed by an org API key',
+      );
+      throw err;
+    }
   }
 }

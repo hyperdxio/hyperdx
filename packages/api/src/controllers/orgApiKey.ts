@@ -93,6 +93,7 @@ export async function updateOrgApiKeyDescription(
   return doc;
 }
 
+// Keeps the service account so anything it created still shows who made it.
 export function deleteOrgApiKey(teamId: string | ObjectId, id: string) {
   return OrgApiKey.findOneAndDelete({ _id: id, team: teamId });
 }

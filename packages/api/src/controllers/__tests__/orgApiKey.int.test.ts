@@ -10,7 +10,11 @@ import {
   updateOrgApiKeyDescription,
 } from '@/controllers/orgApiKey';
 import { createTeam } from '@/controllers/team';
-import { findUserByAccessKey, findUsersByTeam } from '@/controllers/user';
+import {
+  deleteTeamMemberKeepingOne,
+  findUserByAccessKey,
+  findUsersByTeam,
+} from '@/controllers/user';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
 import OrgApiKey from '@/models/orgApiKey';
 import User from '@/models/user';
@@ -162,6 +166,73 @@ describe('orgApiKey controller', () => {
       await deleteOrgApiKey(team._id, doc._id.toString());
       expect(await findActiveOrgApiKey(key)).toBeNull();
       expect(await User.findById(doc.serviceAccount)).not.toBeNull();
+    });
+  });
+
+  describe('member removal by a service account', () => {
+    const setupTeam = async (people: number) => {
+      const team = await createTeam({ name: 'A' });
+      const { doc } = await create(team._id);
+      const users = await Promise.all(
+        Array.from({ length: people }, (_, i) =>
+          User.create({ email: `p${i}@example.com`, team: team._id }),
+        ),
+      );
+      return { team, serviceAccount: doc.serviceAccount, users };
+    };
+
+    afterEach(() => jest.restoreAllMocks());
+
+    it('refuses the last person without deleting them', async () => {
+      const { team, serviceAccount, users } = await setupTeam(1);
+      const deleteSpy = jest.spyOn(User, 'findOneAndDelete');
+
+      const result = await deleteTeamMemberKeepingOne(
+        team._id,
+        users[0]._id.toString(),
+        serviceAccount,
+      );
+      expect(result).toBe('last_member');
+      expect(deleteSpy).not.toHaveBeenCalled();
+    });
+
+    it('retries putting a member back when the first insert fails', async () => {
+      const { team, serviceAccount, users } = await setupTeam(2);
+      // Simulate a concurrent removal: two people before the delete, none after.
+      // Widened to SpyInstance: the Mongoose overloads type these mocks as never.
+      const count: jest.SpyInstance = jest.spyOn(User, 'countDocuments');
+      count.mockResolvedValueOnce(2).mockResolvedValueOnce(0);
+      const insert: jest.SpyInstance = jest.spyOn(User.collection, 'insertOne');
+      insert.mockRejectedValueOnce(new Error('transient'));
+
+      const result = await deleteTeamMemberKeepingOne(
+        team._id,
+        users[0]._id.toString(),
+        serviceAccount,
+      );
+      expect(result).toBe('last_member');
+      expect(await User.findById(users[0]._id)).not.toBeNull();
+    });
+
+    it('treats a duplicate _id on restore as already restored', async () => {
+      const { team, serviceAccount, users } = await setupTeam(2);
+      const count: jest.SpyInstance = jest.spyOn(User, 'countDocuments');
+      count.mockResolvedValueOnce(2).mockResolvedValueOnce(0);
+      const insert: jest.SpyInstance = jest.spyOn(User.collection, 'insertOne');
+      insert.mockRejectedValueOnce(
+        Object.assign(new Error('E11000'), {
+          code: 11000,
+          keyPattern: { _id: 1 },
+        }),
+      );
+
+      const result = await deleteTeamMemberKeepingOne(
+        team._id,
+        users[0]._id.toString(),
+        serviceAccount,
+      );
+      expect(result).toBe('last_member');
+      expect(insert).toHaveBeenCalledTimes(1);
     });
   });
 });
