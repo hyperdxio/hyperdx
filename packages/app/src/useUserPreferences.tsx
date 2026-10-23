@@ -9,6 +9,7 @@ import {
   DEFAULT_CONTENT_FONT_SIZE,
   isContentFontSize,
 } from '@/config/fonts';
+import { LOCAL_TIME_ZONE, timeZonePreferenceFromIsUTC } from '@/timeZone';
 
 type ColorModePreference = 'light' | 'dark' | 'system';
 
@@ -18,7 +19,11 @@ export type RowClickAction = 'expand' | 'sidePanel';
 export const DEFAULT_ROW_CLICK_ACTION: RowClickAction = 'sidePanel';
 
 export type UserPreferences = {
-  isUTC: boolean;
+  /**
+   * Zone that times are shown and typed in: `LOCAL_TIME_ZONE`, or an IANA
+   * name such as `Etc/UTC`. Read it via `useDisplayTimeZone`.
+   */
+  timeZone: string;
   timeFormat: '12h' | '24h';
   /** Color mode preference (light/dark/system). Separate from brand theme (hyperdx/clickstack). */
   colorMode: ColorModePreference;
@@ -44,7 +49,7 @@ type LegacyUserPreferences = Omit<UserPreferences, 'colorMode'> & {
 
 const STORAGE_KEY = 'hdx-user-preferences';
 const DEFAULT_PREFERENCES: UserPreferences = {
-  isUTC: false,
+  timeZone: LOCAL_TIME_ZONE,
   timeFormat: '12h',
   colorMode: 'system',
   font: 'IBM Plex Mono',
@@ -97,8 +102,44 @@ function isLegacyUserPreferences(obj: unknown): obj is LegacyUserPreferences {
   );
 }
 
+/** Replaces `isUTC`, the switch that predates `timeZone`, with `timeZone`. */
+function withTimeZone<T extends { isUTC?: unknown; timeZone?: unknown }>(
+  prefs: T,
+): Omit<T, 'isUTC' | 'timeZone'> & { timeZone: string } {
+  const { isUTC, timeZone, ...rest } = prefs;
+  return {
+    ...rest,
+    timeZone:
+      typeof timeZone === 'string'
+        ? timeZone
+        : timeZonePreferenceFromIsUTC(isUTC),
+  };
+}
+
+function needsTimeZoneMigration(prefs: {
+  isUTC?: unknown;
+  timeZone?: unknown;
+}): boolean {
+  return 'isUTC' in prefs || typeof prefs.timeZone !== 'string';
+}
+
+// Only writes when the value differs, to avoid a write on every read.
+function saveMigrated(migrated: UserPreferences) {
+  try {
+    if (typeof window !== 'undefined') {
+      const migratedJson = JSON.stringify(migrated);
+      if (localStorage.getItem(STORAGE_KEY) !== migratedJson) {
+        localStorage.setItem(STORAGE_KEY, migratedJson);
+      }
+    }
+  } catch {
+    // Ignore localStorage errors (private browsing, etc.)
+  }
+}
+
 /**
- * Migrates old localStorage data from `theme` to `colorMode`.
+ * Migrates old localStorage data from `theme` to `colorMode`, and from
+ * `isUTC` to `timeZone`.
  * This ensures existing users don't lose their light/dark mode preference.
  *
  * Uses an in-memory cache to avoid repeated localStorage writes on every read.
@@ -131,24 +172,10 @@ export function migrateUserPreferences(
         theme === 'light' || theme === 'dark' ? theme : 'dark';
       const migrated: UserPreferences = {
         ...DEFAULT_PREFERENCES,
-        ...rest,
+        ...withTimeZone(rest),
         colorMode: validTheme,
       };
-
-      // Only write to localStorage if the migrated data differs from what's stored
-      // This prevents unnecessary writes on every render and avoids race conditions
-      try {
-        if (typeof window !== 'undefined') {
-          const migratedJson = JSON.stringify(migrated);
-          // Compare with current stored value to avoid unnecessary write
-          const currentStored = localStorage.getItem(STORAGE_KEY);
-          if (currentStored !== migratedJson) {
-            localStorage.setItem(STORAGE_KEY, migratedJson);
-          }
-        }
-      } catch {
-        // Ignore localStorage errors (private browsing, etc.)
-      }
+      saveMigrated(migrated);
 
       // Cache the result to avoid re-processing on subsequent calls
       migrationCache = {
@@ -161,12 +188,18 @@ export function migrateUserPreferences(
 
     // Already migrated or new format - validate it's a proper UserPreferences
     if (isUserPreferences(parsed)) {
+      const result = needsTimeZoneMigration(parsed)
+        ? withTimeZone(parsed)
+        : parsed;
+      if (result !== parsed) {
+        saveMigrated(result);
+      }
       // Cache the result to avoid re-processing on subsequent calls
       migrationCache = {
         storedValue: stored,
-        result: parsed,
+        result,
       };
-      return parsed;
+      return result;
     }
 
     // Invalid format, return null to use defaults

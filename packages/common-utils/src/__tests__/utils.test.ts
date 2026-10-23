@@ -31,6 +31,7 @@ import {
   splitAndTrimCSV,
   splitAndTrimWithBracket,
   toWallClock,
+  UTC_TIME_ZONE,
 } from '@/core/utils';
 import { isBuilderSavedChartConfig } from '@/guards';
 import {
@@ -60,7 +61,7 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '12h',
-          isUTC: true,
+          timeZone: UTC_TIME_ZONE,
         }),
       ).toEqual('Jan 1 12:00:00 PM');
     });
@@ -70,7 +71,7 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '24h',
-          isUTC: true,
+          timeZone: UTC_TIME_ZONE,
           format: 'withMs',
         }),
       ).toEqual('Jan 1 12:00:00.000');
@@ -81,7 +82,6 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '12h',
-          isUTC: false,
         }),
       ).toEqual('Jan 1 12:00:00 PM');
     });
@@ -91,7 +91,6 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '24h',
-          isUTC: false,
           format: 'withMs',
         }),
       ).toEqual('Jan 1 12:00:00.000');
@@ -102,17 +101,6 @@ describe('utils', () => {
       expect(
         formatDate(date, { clock: '24h', timeZone: 'Asia/Tokyo' }),
       ).toEqual('Jan 1 21:00:00');
-    });
-
-    it('prefers timeZone over isUTC', () => {
-      const date = new Date('2021-01-01T12:00:00Z');
-      expect(
-        formatDate(date, {
-          clock: '24h',
-          isUTC: true,
-          timeZone: 'America/Los_Angeles',
-        }),
-      ).toEqual('Jan 1 04:00:00');
     });
   });
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Badge } from '@clickhouse/click-ui';
+import { UTC_TIME_ZONE } from '@hyperdx/common-utils/dist/core/utils';
 import {
   Autocomplete,
   Divider,
@@ -19,6 +20,7 @@ import {
 } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
+import { LOCAL_TIME_ZONE } from './timeZone';
 import {
   DEFAULT_ROW_CLICK_ACTION,
   RowClickAction,
@@ -114,10 +116,12 @@ export const UserPreferencesModal = ({
           <Switch
             size="md"
             onLabel="UTC"
-            checked={userPreferences.isUTC}
+            checked={userPreferences.timeZone === UTC_TIME_ZONE}
             onChange={e =>
               setUserPreference({
-                isUTC: e.currentTarget.checked,
+                timeZone: e.currentTarget.checked
+                  ? UTC_TIME_ZONE
+                  : LOCAL_TIME_ZONE,
               })
             }
           />
