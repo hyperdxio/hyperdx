@@ -29,8 +29,43 @@ export function timeZonePreferenceFromIsUTC(isUTC: unknown) {
   return isUTC === true ? UTC_TIME_ZONE : LOCAL_TIME_ZONE;
 }
 
+export function getLocalTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+/** IANA zones the browser knows, other than UTC, in alphabetical order. */
+export function getSupportedTimeZones(): string[] {
+  return Intl.supportedValuesOf('timeZone').filter(
+    zone => zone !== 'UTC' && zone !== UTC_TIME_ZONE,
+  );
+}
+
+// Intl labels offsets from GMT ("GMT+9"); we label them from UTC everywhere.
+function gmtToUtc(label: string): string {
+  return label.replace(/^GMT/, 'UTC');
+}
+
+/** Offset of `timeZone` at `date`, e.g. "UTC-07:00". */
+export function getTimeZoneOffsetLabel(
+  timeZone: string,
+  // eslint-disable-next-line no-restricted-syntax
+  date: Date = new Date(),
+): string {
+  const offset =
+    new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'longOffset' })
+      .formatToParts(date)
+      .find(part => part.type === 'timeZoneName')?.value ?? 'GMT';
+  // Zero offsets come back as plain "GMT" in some runtimes.
+  return offset === 'GMT' ? 'UTC+00:00' : gmtToUtc(offset);
+}
+
+/** "America/Los_Angeles" as "America/Los Angeles". */
+export function formatTimeZoneName(timeZone: string): string {
+  return timeZone.replaceAll('_', ' ');
+}
+
 /**
- * Short name of `timeZone` at `date`, e.g. "UTC", "PDT" or "GMT+9". en-US is
+ * Short name of `timeZone` at `date`, e.g. "UTC", "PDT" or "UTC+9". en-US is
  * used because it has abbreviations for the most zones.
  */
 export function getTimeZoneShortName(
@@ -38,9 +73,11 @@ export function getTimeZoneShortName(
   // eslint-disable-next-line no-restricted-syntax
   date: Date = new Date(),
 ): string {
-  return (
-    new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' })
-      .formatToParts(date)
-      .find(part => part.type === 'timeZoneName')?.value ?? timeZone
-  );
+  const name = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'short',
+  })
+    .formatToParts(date)
+    .find(part => part.type === 'timeZoneName')?.value;
+  return name ? gmtToUtc(name) : timeZone;
 }
