@@ -10,6 +10,7 @@ import {
   extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
+  fromWallClock,
   getAlignedDateRange,
   getDistributedTableArgs,
   getFirstOrderingItem,
@@ -29,6 +30,7 @@ import {
   resolvePercentileAggFn,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
+  toWallClock,
 } from '@/core/utils';
 import { isBuilderSavedChartConfig } from '@/guards';
 import {
@@ -94,6 +96,73 @@ describe('utils', () => {
         }),
       ).toEqual('Jan 1 12:00:00.000');
     });
+
+    it('formats in the given time zone', () => {
+      const date = new Date('2021-01-01T12:00:00Z');
+      expect(
+        formatDate(date, { clock: '24h', timeZone: 'Asia/Tokyo' }),
+      ).toEqual('Jan 1 21:00:00');
+    });
+
+    it('prefers timeZone over isUTC', () => {
+      const date = new Date('2021-01-01T12:00:00Z');
+      expect(
+        formatDate(date, {
+          clock: '24h',
+          isUTC: true,
+          timeZone: 'America/Los_Angeles',
+        }),
+      ).toEqual('Jan 1 04:00:00');
+    });
+  });
+
+  describe('toWallClock / fromWallClock', () => {
+    it('reads the clock in the given zone into UTC fields', () => {
+      expect(
+        toWallClock(
+          new Date('2026-10-22T15:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-10-22T08:00:00.000Z');
+    });
+
+    it('uses the offset in effect on each side of a DST change', () => {
+      // Los Angeles leaves daylight time (UTC-7) for standard time (UTC-8) on Nov 1 2026.
+      expect(
+        fromWallClock(
+          new Date('2026-10-31T08:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-10-31T15:00:00.000Z');
+      expect(
+        fromWallClock(
+          new Date('2026-11-02T08:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-11-02T16:00:00.000Z');
+    });
+
+    it('reads the clock correctly in the hours around a DST change', () => {
+      // New York goes from UTC-4 to UTC-5 at 06:00 UTC on Nov 1 2026.
+      const read = (iso: string) =>
+        toWallClock(new Date(iso), 'America/New_York').toISOString();
+      expect(read('2026-11-01T03:30:00Z')).toBe('2026-10-31T23:30:00.000Z');
+      expect(read('2026-11-01T05:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      expect(read('2026-11-01T06:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      // And from UTC-5 to UTC-4 at 07:00 UTC on Mar 8 2026.
+      expect(read('2026-03-08T06:30:00Z')).toBe('2026-03-08T01:30:00.000Z');
+      expect(read('2026-03-08T07:30:00Z')).toBe('2026-03-08T03:30:00.000Z');
+    });
+
+    it.each(['Etc/UTC', 'Asia/Kolkata', 'America/Los_Angeles'])(
+      'round-trips through %s',
+      timeZone => {
+        const date = new Date('2026-03-08T10:30:15.250Z');
+        expect(fromWallClock(toWallClock(date, timeZone), timeZone)).toEqual(
+          date,
+        );
+      },
+    );
   });
 
   describe('splitAndTrimCSV', () => {
