@@ -238,8 +238,8 @@ import {
   useNewTimeQuery,
 } from './timeQuery';
 import { useConfirm } from './useConfirm';
+import { useDisplayTimeZone } from './useDisplayTimeZone';
 import { FormatTime } from './useFormatTime';
-import { useUserPreferences } from './useUserPreferences';
 import { getMetricTableName, useLocalStorage } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
@@ -534,16 +534,14 @@ const Tile = ({
     setHasBeenVisible(true);
   }
 
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   // Date range and granularity state local to the fullscreen view so that
   // changing them does not propagate up to the dashboard.
   const [fullscreenDateRange, setFullscreenDateRange] =
     useState<[Date, Date]>(dateRange);
   const [fullscreenInputValue, setFullscreenInputValue] = useState<string>(() =>
-    dateRangeToString(dateRange, isUTC),
+    dateRangeToString(dateRange, timeZone),
   );
   const [fullscreenGranularity, setFullscreenGranularity] = useState<
     Granularity | 'auto' | undefined
@@ -553,21 +551,21 @@ const Tile = ({
     // Reinitialize to the dashboard's current date range and granularity
     // each time the fullscreen view is opened.
     setFullscreenDateRange(dateRange);
-    setFullscreenInputValue(dateRangeToString(dateRange, isUTC));
+    setFullscreenInputValue(dateRangeToString(dateRange, timeZone));
     setFullscreenGranularity(
       (granularity as Granularity | undefined) ?? 'auto',
     );
     setIsFullscreen(true);
-  }, [dateRange, granularity, isUTC]);
+  }, [dateRange, granularity, timeZone]);
 
   const handleFullscreenSearch = useCallback(
     (value: string) => {
-      const [start, end] = parseTimeRangeInput(value, isUTC);
+      const [start, end] = parseTimeRangeInput(value, timeZone);
       if (start != null && end != null) {
         setFullscreenDateRange([start, end]);
       }
     },
-    [isUTC],
+    [timeZone],
   );
 
   useEffect(() => {
@@ -1880,9 +1878,7 @@ function DBDashboardPage({
   } = dashboardProps;
   const title = usePageTitle(dashboard?.name ? dashboard.name : 'Dashboard');
   const confirm = useConfirm();
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   const router = useRouter();
   const dashboardId = router.query.dashboardId as string | undefined;
@@ -2169,7 +2165,7 @@ function DBDashboardPage({
 
     const currentRelativeDateRange = timeRangeInputToSeconds(
       displayedTimeInputValue,
-      isUTC,
+      timeZone,
     );
 
     setDashboard(
@@ -2202,7 +2198,7 @@ function DBDashboardPage({
     getValues,
     filterValueEntries,
     onSubmit,
-    isUTC,
+    timeZone,
     displayedTimeInputValue,
   ]);
   const handleRemoveSavedQuery = useCallback(() => {
@@ -3542,9 +3538,7 @@ function DBDashboardPageGuarded({
     dashboardId: dashboardId as string | undefined,
     presetConfig,
   });
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   const savedDateRange = dashboardProps.dashboard?.savedDateRange;
   // Keyed on the saved range, not the render: a relative range re-stringifies
@@ -3557,8 +3551,8 @@ function DBDashboardPageGuarded({
         ? parseRelativeTimeQuery(savedDateRange.value * 1000)
         : savedDateRange.value.map(v => new Date(v));
     // TODO: show relative ranges as "Past Xh" via getRelativeInterval
-    return dateRangeToString([start, end], isUTC);
-  }, [savedDateRange, isUTC]);
+    return dateRangeToString([start, end], timeZone);
+  }, [savedDateRange, timeZone]);
 
   if (!dashboardProps || !router.isReady) return <Loader size="lg" />;
 

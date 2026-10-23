@@ -86,6 +86,16 @@ describe('formatAxisTick', () => {
     );
   });
 
+  it('does not abbreviate values between 500 and 999', () => {
+    // Regression: numbro's default lowPrecision rendered 750 as "0.8k" next
+    // to an unabbreviated "250" on the same axis.
+    const format = { output: 'number' as const, mantissa: 1 };
+    expect(
+      [0, 250, 500, 750, 1000].map(v => formatAxisTick(v, format)),
+    ).toEqual(['0', '250', '500', '750', '1k']);
+    expect(formatAxisTick(800, { output: 'number' })).toBe('800');
+  });
+
   it('always renders exactly 0 as a bare integer', () => {
     // 0 needs no decimal rescue - it's already unambiguous - and the search
     // naturally produces this by trimming "0.00"/"0.0 B" down to "0"/"0 B".
@@ -320,7 +330,7 @@ describe('getNiceYAxisTicks', () => {
     const result = getExpandableYAxisTicks(0, 2100, 5, { output: 'number' });
     expect(result.ticks.map(t => result.tickFormatter!(t))).toEqual([
       '0',
-      '0.5k',
+      '500',
       '1k',
       '1.5k',
       '2k',

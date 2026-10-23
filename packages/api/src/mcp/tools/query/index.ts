@@ -4,11 +4,13 @@ import { registerEmergingSignals } from './emergingSignals';
 import { registerEventDeltas } from './eventDeltas';
 import { registerEventPatterns } from './eventPatterns';
 import { registerSearch } from './search';
+import { registerServiceHealth } from './serviceHealth';
 import { registerSql } from './sql';
 import { registerTable } from './table';
 import { registerTimeseries } from './timeseries';
 
 const queryTools: ToolDefinition = (registrar: ToolRegistrar) => {
+  registerServiceHealth(registrar);
   registerTimeseries(registrar);
   registerTable(registrar);
   registerSearch(registrar);
