@@ -577,12 +577,20 @@ export class SearchPage {
   }
 
   private async applyClause(testId: string) {
-    // Blur rather than Escape: Escape also closes the popover, dropping the draft.
-    await dismissSqlAutocomplete(this.page);
+    const popover = this.page.getByTestId(`${testId}-popover`);
+    // Typing swaps the completion plugin, which opens a fresh list over Apply
+    // after a blur. Move focus to the mode control once that list is up.
+    // Escape would close the popover and drop the draft.
+    const tooltip = popover.locator('.cm-tooltip-autocomplete');
+    await tooltip
+      .waitFor({ state: 'visible', timeout: 2000 })
+      .catch(() => undefined);
+    await popover
+      .getByTestId(`${testId}-mode`)
+      .getByText('SQL', { exact: true })
+      .click();
     await this.page.getByTestId(`${testId}-apply`).click();
-    await this.page
-      .getByTestId(`${testId}-popover`)
-      .waitFor({ state: 'hidden' });
+    await popover.waitFor({ state: 'hidden' });
   }
 
   get groupByButton() {
