@@ -13,7 +13,12 @@ import { IconX } from '@tabler/icons-react';
 
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 
-import { ClausePopover } from './ClausePopover';
+import {
+  clauseApplyDisabled,
+  ClausePopover,
+  clauseResetDisabled,
+  storedClause,
+} from './ClausePopover';
 import {
   newSortRow,
   parseSortKeys,
@@ -105,17 +110,9 @@ export function SortPopover({
         setKeys(toRows(parseSortKeys(defaultValue)));
         setSearch('');
       }}
-      resetDisabled={draft.trim() === defaultValue.trim()}
-      applyDisabled={draft.trim() === ''}
-      onApply={() =>
-        onApply(
-          draft.trim() === defaultValue.trim()
-            ? ''
-            : draft === baseline
-              ? value
-              : draft,
-        )
-      }
+      resetDisabled={clauseResetDisabled(draft, defaultValue)}
+      applyDisabled={clauseApplyDisabled(draft)}
+      onApply={() => onApply(storedClause(draft, value, defaultValue))}
       data-testid="search-sort-button"
       renderPick={() => (
         <Stack gap="xs">

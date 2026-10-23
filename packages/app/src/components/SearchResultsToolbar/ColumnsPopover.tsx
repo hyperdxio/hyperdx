@@ -27,7 +27,12 @@ import { fieldListSummary } from '@/components/SplitValueButton/SplitValueButton
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 import { isColumnInSelect, splitClauseList, withMapKeyAlias } from '@/utils';
 
-import { ClausePopover } from './ClausePopover';
+import {
+  clauseApplyDisabled,
+  ClausePopover,
+  clauseResetDisabled,
+  storedClause,
+} from './ClausePopover';
 import { SortableColumn } from './SortableColumn';
 
 const columnId = (item: string, index: number) => `${index}:${item}`;
@@ -122,18 +127,10 @@ export function ColumnsPopover({
         setDraft(defaultValue);
         setSearch('');
       }}
-      resetDisabled={draft.trim() === defaultValue.trim()}
-      applyDisabled={draft.trim() === ''}
+      resetDisabled={clauseResetDisabled(draft, defaultValue)}
+      applyDisabled={clauseApplyDisabled(draft)}
       onApply={() => {
-        const baseline = value || defaultValue;
-        // An empty form value means "use the source default", so resetting
-        // stores "" instead of a copy of that default.
-        const submitted =
-          draft.trim() === defaultValue.trim()
-            ? ''
-            : draft === baseline
-              ? value
-              : draft;
+        const submitted = storedClause(draft, value, defaultValue);
         const next = storedColumns(submitted);
         onApply(
           submitted,

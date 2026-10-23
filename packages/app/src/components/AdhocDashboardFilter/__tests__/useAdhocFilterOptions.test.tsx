@@ -96,6 +96,22 @@ describe('getSqlSourceKeys', () => {
       ),
     ).toEqual(['Day']);
   });
+
+  it('keeps DateTime keys when the caller asks for every type', () => {
+    expect(
+      getSqlSourceKeys(
+        [
+          {
+            path: ['Timestamp'],
+            type: 'DateTime64(9)',
+            jsType: JSDataType.Date,
+          },
+        ],
+        [column('Timestamp', 'DateTime64(9)')],
+        () => true,
+      ),
+    ).toEqual(['Timestamp']);
+  });
 });
 
 describe('getSqlSourceColumnKeys', () => {

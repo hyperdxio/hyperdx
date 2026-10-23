@@ -5,6 +5,29 @@ import { SplitValueButton } from '@/components/SplitValueButton/SplitValueButton
 
 export type ClauseMode = 'pick' | 'sql';
 
+const matchesDefault = (draft: string, defaultValue: string) =>
+  draft.trim() === defaultValue.trim();
+
+/**
+ * What Apply writes. An empty form value means "use the source default", so a
+ * draft that matches the default is stored as "" rather than a copy of it.
+ */
+export function storedClause(
+  draft: string,
+  value: string,
+  defaultValue: string,
+) {
+  return matchesDefault(draft, defaultValue)
+    ? ''
+    : draft === (value || defaultValue)
+      ? value
+      : draft;
+}
+
+export const clauseResetDisabled = matchesDefault;
+
+export const clauseApplyDisabled = (draft: string) => draft.trim() === '';
+
 const MODE_OPTIONS = [
   { label: 'Fields', value: 'pick' },
   { label: 'SQL', value: 'sql' },
