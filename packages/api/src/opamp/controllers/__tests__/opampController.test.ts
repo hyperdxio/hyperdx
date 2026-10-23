@@ -194,6 +194,22 @@ describe('opampController', () => {
         'otlp/hyperdx',
       ]);
     });
+
+    it('keeps the fluentforward receiver when enforcement is on but no API keys exist', () => {
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: '', collectorAuthenticationEnforced: true },
+      ]);
+
+      // Without keys nothing is authenticated (otlp/hyperdx is not attached
+      // either), and fluentforward is the only logs/in receiver: removing it
+      // would leave the pipeline empty, which the collector rejects.
+      expect(cfg.receivers.fluentforward).toEqual({
+        endpoint: '0.0.0.0:24225',
+      });
+      expect(cfg.service.pipelines['logs/in'].receivers).toEqual([
+        'fluentforward',
+      ]);
+    });
   });
 
   describe('buildOtelCollectorConfig datadog receiver', () => {
@@ -271,6 +287,11 @@ describe('opampController', () => {
       expect(cfg.service.extensions).toContain('bearertokenauth/datadog');
       // The otlp/hyperdx auth extension stays intact alongside it.
       expect(cfg.service.extensions).toContain('bearertokenauth/hyperdx');
+      // Only authenticated receivers feed logs/in; fluentforward is gone.
+      expect(cfg.service.pipelines['logs/in'].receivers).toEqual([
+        'otlp/hyperdx',
+        'datadog',
+      ]);
     });
   });
 });
