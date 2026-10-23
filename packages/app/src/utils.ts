@@ -9,6 +9,11 @@ import {
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  replaceBacktickedIdentifiers,
+  restoreReplacements,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
   ColorCondition,
@@ -1322,10 +1327,23 @@ export const withMapKeyAlias = (
 };
 
 /**
+ * Split a SELECT or ORDER BY list. A comma inside a backtick-quoted name is
+ * not a separator. Those names are tokenized first so a later join cannot
+ * insert a space inside one. The shared splitter stays unaware of backticks.
+ */
+export function splitClauseList(input: string): string[] {
+  const { sqlWithReplacements, replacements } =
+    replaceBacktickedIdentifiers(input);
+  return splitAndTrimWithBracket(sqlWithReplacements).map(part =>
+    restoreReplacements(part, replacements.quotedText),
+  );
+}
+
+/**
  * The sort to keep once a SELECT item is removed. Sorting on an aliased column
  * from the table header orders by the alias itself (`"service.name" DESC`),
- * which stops resolving once the item is gone, so that falls back to the
- * default sort.
+ * which stops resolving once the item is gone. Each top-level key that sorts
+ * by that alias is dropped. The default sort is used only when none remain.
  */
 export const orderByAfterRemovingSelectItem = (
   item: string,
@@ -1336,8 +1354,15 @@ export const orderByAfterRemovingSelectItem = (
   if (alias == null) {
     return orderBy;
   }
-  const sortedBy = orderBy.trim().replace(/\s+(ASC|DESC)$/i, '');
-  return sortedBy === `"${alias}"` ? defaultOrderBy : orderBy;
+  const quoted = `"${alias}"`;
+  const keys = splitClauseList(orderBy);
+  const kept = keys.filter(
+    key => key.replace(/\s+(ASC|DESC)$/i, '') !== quoted,
+  );
+  if (kept.length === keys.length) {
+    return orderBy;
+  }
+  return kept.length === 0 ? defaultOrderBy : kept.join(', ');
 };
 
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {
