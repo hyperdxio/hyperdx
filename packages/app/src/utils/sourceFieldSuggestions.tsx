@@ -14,6 +14,7 @@ export type SourceFieldKind =
   | 'serviceVersionExpression'
   | 'severityTextExpression'
   | 'severityNumberExpression'
+  | 'eventNameExpression'
   | 'eventAttributesExpression'
   | 'resourceAttributesExpression'
   | 'traceIdExpression'
@@ -127,6 +128,11 @@ const FIELD_RULES: Record<SourceFieldKind, FieldRule> = {
   severityNumberExpression: {
     canonicalNames: ['SeverityNumber', 'severity_number'],
     typeMatches: isCHIntegerType,
+    recommendStrategy: 'name-only',
+  },
+  eventNameExpression: {
+    canonicalNames: ['EventName', 'event_name'],
+    typeMatches: isStringy,
     recommendStrategy: 'name-only',
   },
   eventAttributesExpression: {
