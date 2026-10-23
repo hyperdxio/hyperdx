@@ -169,6 +169,33 @@ describe('opampController', () => {
     });
   });
 
+  describe('buildOtelCollectorConfig fluentforward receiver', () => {
+    it('keeps the fluentforward receiver when collector authentication is not enforced', () => {
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      expect(cfg.receivers.fluentforward).toEqual({
+        endpoint: '0.0.0.0:24225',
+      });
+      expect(cfg.service.pipelines['logs/in'].receivers).toContain(
+        'fluentforward',
+      );
+    });
+
+    it('removes the fluentforward receiver when collector authentication is enforced', () => {
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: true },
+      ]);
+
+      // The receiver cannot authenticate, so it must not listen at all.
+      expect(cfg.receivers.fluentforward).toBeUndefined();
+      expect(cfg.service.pipelines['logs/in'].receivers).toEqual([
+        'otlp/hyperdx',
+      ]);
+    });
+  });
+
   describe('buildOtelCollectorConfig datadog receiver', () => {
     it('omits the datadog receiver when the flag is off (default)', () => {
       configState.ENABLE_DATADOG_RECEIVER = false;

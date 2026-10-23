@@ -318,7 +318,6 @@ export const buildOtelCollectorConfig = (
           exporters: ['clickhouse'],
         },
         'logs/in': {
-          // TODO: fluentforward needs to be authenticated
           receivers: ['fluentforward'],
           exporters: ['routing/logs'],
         },
@@ -381,6 +380,12 @@ export const buildOtelCollectorConfig = (
         authenticator: 'bearertokenauth/hyperdx',
       };
       otelCollectorConfig.service.extensions = ['bearertokenauth/hyperdx'];
+
+      // fluentforward has no authenticator option, so while it is listening
+      // anyone who can reach :24225 can ingest without an API key.
+      delete otelCollectorConfig.receivers.fluentforward;
+      const logsIn = otelCollectorConfig.service.pipelines['logs/in'];
+      logsIn.receivers = logsIn.receivers.filter(r => r !== 'fluentforward');
     }
   }
 
