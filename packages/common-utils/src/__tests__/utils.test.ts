@@ -142,6 +142,18 @@ describe('utils', () => {
       ).toBe('2026-11-02T16:00:00.000Z');
     });
 
+    it('reads the clock correctly in the hours around a DST change', () => {
+      // New York goes from UTC-4 to UTC-5 at 06:00 UTC on Nov 1 2026.
+      const read = (iso: string) =>
+        toWallClock(new Date(iso), 'America/New_York').toISOString();
+      expect(read('2026-11-01T03:30:00Z')).toBe('2026-10-31T23:30:00.000Z');
+      expect(read('2026-11-01T05:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      expect(read('2026-11-01T06:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      // And from UTC-5 to UTC-4 at 07:00 UTC on Mar 8 2026.
+      expect(read('2026-03-08T06:30:00Z')).toBe('2026-03-08T01:30:00.000Z');
+      expect(read('2026-03-08T07:30:00Z')).toBe('2026-03-08T03:30:00.000Z');
+    });
+
     it.each(['Etc/UTC', 'Asia/Kolkata', 'America/Los_Angeles'])(
       'round-trips through %s',
       timeZone => {

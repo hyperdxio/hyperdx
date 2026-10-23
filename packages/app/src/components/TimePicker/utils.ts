@@ -47,8 +47,10 @@ function parsedWallClock(
   );
 }
 
-// Normalizes and returns a wall-clock date, so the comparisons with "now"
-// below happen in the requested zone.
+// Compares wall-clock dates so the checks against "now" happen in the requested
+// zone, but returns an instant. Instants that are already known (now, or text
+// with an offset) are returned as-is: a clock reading in the hour repeated when
+// clocks go back can't say which occurrence it is.
 function normalizeParsedDate(
   parsed: chrono.ParsedComponents | undefined,
   timeZone: string,
@@ -57,8 +59,11 @@ function normalizeParsedDate(
     return null;
   }
 
-  const now = toWallClock(currentDate(), timeZone);
+  const nowInstant = currentDate();
+  const now = toWallClock(nowInstant, timeZone);
   const parsedDate = parsedWallClock(parsed, timeZone);
+  let isExactNow = true;
+  let isExactParsed = parsed.isCertain('timezoneOffset');
 
   // If all of the time components have been inferred, set the time components of now
   // to match the parsed time components. This ensures that the comparison later on uses
@@ -77,6 +82,7 @@ function normalizeParsedDate(
       parsed.get('second') || 0,
       parsed.get('millisecond') || 0,
     );
+    isExactNow = false;
   }
 
   // Handle future dates:
@@ -87,14 +93,15 @@ function normalizeParsedDate(
     const oneDayFromNow = now.getTime() + ms('1d');
     if (parsedDate.getTime() <= oneDayFromNow) {
       // Slightly in the future: clamp to now
-      return now;
+      return isExactNow ? nowInstant : fromWallClock(now, timeZone);
     } else if (!parsed.isCertain('year')) {
       // Significantly in the future with inferred year: shift year back
       parsedDate.setUTCFullYear(parsedDate.getUTCFullYear() - 1);
+      isExactParsed = false;
     }
   }
 
-  return parsedDate;
+  return isExactParsed ? parsed.date() : fromWallClock(parsedDate, timeZone);
 }
 
 // `timeZone` is an IANA name the text is read in; the local zone if omitted.
@@ -113,18 +120,15 @@ export function parseTimeRangeInput(
       ? parsedTimeResults[0]
       : parsedTimeResults[1];
   const start = normalizeParsedDate(parsedTimeResult.start, zone);
-  const end =
-    normalizeParsedDate(parsedTimeResult.end, zone) ??
-    toWallClock(currentDate(), zone);
-  const toInstant = (d: Date | null) => d && fromWallClock(d, zone);
+  const end = normalizeParsedDate(parsedTimeResult.end, zone) ?? currentDate();
   if (start && end < start) {
     // For date range strings that omit years, the chrono parser will infer the year
     // using the current year. This can cause the start date to be in the future, and
     // returned as the end date instead of the start date. After normalizing the dates,
     // we then need to swap the order to maintain a range from older to newer.
-    return [toInstant(end), toInstant(start)];
+    return [end, start];
   } else {
-    return [toInstant(start), toInstant(end)];
+    return [start, end];
   }
 }
 
@@ -234,8 +238,7 @@ export const dateParser = (input?: string, timeZone?: string) => {
   }
   const zone = resolveTimeZone(timeZone);
   const parsed = chrono.casual.parse(input, chronoReference(zone))[0];
-  const wallClock = normalizeParsedDate(parsed?.start, zone);
-  return wallClock && fromWallClock(wallClock, zone);
+  return normalizeParsedDate(parsed?.start, zone);
 };
 
 // Mantine DateInput values are clock readings like "2026-10-22 13:05:00",

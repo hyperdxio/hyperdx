@@ -354,6 +354,26 @@ describe('time zones', () => {
     ).toEqual(new Date('2026-10-22T10:00:00Z'));
   });
 
+  // New York repeats 01:00-02:00 on Nov 1 2026: first at UTC-4, then at UTC-5.
+  it('keeps both occurrences of the repeated hour apart', () => {
+    jest.setSystemTime(new Date('2026-11-01T12:00:00Z'));
+    const zone = 'America/New_York';
+    expect(parseTimeRangeInput('2026-11-01T01:30:00-04:00', zone)[0]).toEqual(
+      new Date('2026-11-01T05:30:00Z'),
+    );
+    expect(parseTimeRangeInput('2026-11-01T01:30:00-05:00', zone)[0]).toEqual(
+      new Date('2026-11-01T06:30:00Z'),
+    );
+  });
+
+  it('ends a relative range at now during the repeated hour', () => {
+    jest.setSystemTime(new Date('2026-11-01T06:30:00Z'));
+    expect(parseTimeRangeInput('Past 1h', 'America/New_York')).toEqual([
+      new Date('2026-11-01T05:30:00Z'),
+      new Date('2026-11-01T06:30:00Z'),
+    ]);
+  });
+
   it('parses date input text in the given zone', () => {
     expect(dateParser('Oct 22 07:00', 'America/Los_Angeles')).toEqual(
       new Date('2026-10-22T14:00:00Z'),
