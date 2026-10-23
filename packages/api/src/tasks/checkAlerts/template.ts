@@ -3,7 +3,11 @@ import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
-import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  formatDate,
+  objectHash,
+  UTC_TIME_ZONE,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -881,9 +885,9 @@ export const renderAlertTemplate = async ({
   };
 
   const timeRangeMessage = `Time Range (UTC): [${formatDate(view.startTime, {
-    isUTC: true,
+    timeZone: UTC_TIME_ZONE,
   })} - ${formatDate(view.endTime, {
-    isUTC: true,
+    timeZone: UTC_TIME_ZONE,
   })})`;
   let rawTemplateBody;
 

@@ -40,8 +40,9 @@ import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
+import { getTimeZoneShortName } from '@/timeZone';
+import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
-import { useUserPreferences } from '@/useUserPreferences';
 
 import {
   AppNavCloudBanner,
@@ -276,9 +277,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     { close: closeUserPreferences, open: openUserPreferences },
   ] = useDisclosure(false);
 
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
+  const timeZoneShortName = timeZone && getTimeZoneShortName(timeZone);
 
   const [
     showInstallInstructions,
@@ -373,12 +373,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       would be redundant and crowd this already-tight row. */}
                   <InstanceLabel
                     fallback={
-                      isUTC && (
+                      timeZoneShortName && (
                         <Badge
                           size="sm"
-                          text="UTC"
+                          text={timeZoneShortName}
                           state="neutral"
-                          title="Showing time in UTC"
+                          title={`Showing time in ${timeZoneShortName}`}
                         />
                       )
                     }
