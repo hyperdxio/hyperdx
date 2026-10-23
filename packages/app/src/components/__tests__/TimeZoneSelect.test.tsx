@@ -20,11 +20,23 @@ const optionNames = () =>
     .getAllByRole('option', { hidden: true })
     .map(option => option.textContent);
 
+const LOCAL_LABEL = /^Local \(America\/New York\) UTC-[45]$/;
+
+const LOCAL_DEFAULT_LABEL = /^Default \(Local\) UTC-[45]$/;
+
+const inputValue = () =>
+  screen.getByTestId<HTMLInputElement>('time-zone-select').value;
+
 describe('TimeZoneSelect', () => {
-  it('shows the local zone for the local setting', () => {
+  it('shows the local zone and its offset for the local setting', () => {
     renderSelect('local');
+    expect(inputValue()).toMatch(LOCAL_LABEL);
+  });
+
+  it('shows a selected zone with its offset', () => {
+    renderSelect('Asia/Tokyo');
     expect(screen.getByTestId('time-zone-select')).toHaveValue(
-      'Local (America/New York)',
+      'Asia/Tokyo UTC+9',
     );
   });
 
@@ -33,11 +45,9 @@ describe('TimeZoneSelect', () => {
     await userEvent.click(screen.getByTestId('time-zone-select'));
 
     const names = optionNames();
-    expect(names[0]).toMatch(
-      /^Local \(America\/New York\)E[SD]T · UTC-0[45]:00$/,
-    );
-    expect(names[1]).toBe('UTCUTC+00:00');
-    expect(names.slice(2)).toContain('Asia/TokyoUTC+09:00');
+    expect(names[0]).toMatch(/^Local \(America\/New York\)UTC-[45]$/);
+    expect(names[1]).toBe('UTC');
+    expect(names.slice(2)).toContain('Asia/TokyoUTC+9');
     expect(names.filter(name => name?.startsWith('UTC'))).toHaveLength(1);
   });
 
@@ -57,10 +67,38 @@ describe('TimeZoneSelect', () => {
     expect(onChange).toHaveBeenCalledWith('America/Los_Angeles');
   });
 
+  it('finds zones by offset', async () => {
+    renderSelect('local');
+
+    const input = screen.getByTestId('time-zone-select');
+    await userEvent.clear(input);
+    await userEvent.type(input, 'utc+9');
+
+    expect(optionNames()).toContain('Asia/TokyoUTC+9');
+    expect(optionNames()).not.toContain('Europe/BerlinUTC+1');
+  });
+
+  it.each([
+    ['local', LOCAL_DEFAULT_LABEL],
+    ['Asia/Tokyo', /^Default \(Asia\/Tokyo\) UTC\+9$/],
+    ['Etc/UTC', /^Default \(UTC\)$/],
+  ])(
+    'names the default option after %s with its offset',
+    (defaultTimeZone, label) => {
+      renderWithMantine(
+        <TimeZoneSelect
+          data-testid="time-zone-select"
+          value={null}
+          onChange={jest.fn()}
+          defaultTimeZone={defaultTimeZone}
+        />,
+      );
+      expect(inputValue()).toMatch(label);
+    },
+  );
+
   it('shows local for a zone the browser does not recognise', () => {
     renderSelect('Mars/Olympus_Mons');
-    expect(screen.getByTestId('time-zone-select')).toHaveValue(
-      'Local (America/New York)',
-    );
+    expect(inputValue()).toMatch(LOCAL_LABEL);
   });
 });

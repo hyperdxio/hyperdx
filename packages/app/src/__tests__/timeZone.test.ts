@@ -1,8 +1,9 @@
 import {
   formatTimeZoneName,
   getSupportedTimeZones,
-  getTimeZoneOffsetLabel,
+  getTimeZonePreferenceLabel,
   getTimeZoneShortName,
+  isTimeZonePreference,
   isValidTimeZone,
   LOCAL_TIME_ZONE,
   resolveTimeZonePreference,
@@ -24,19 +25,21 @@ describe('resolveTimeZonePreference', () => {
   });
 });
 
-describe('getTimeZoneOffsetLabel', () => {
-  it('uses the offset in effect on the date', () => {
-    expect(
-      getTimeZoneOffsetLabel('America/Los_Angeles', new Date('2026-07-01Z')),
-    ).toBe('UTC-07:00');
-    expect(
-      getTimeZoneOffsetLabel('America/Los_Angeles', new Date('2026-12-01Z')),
-    ).toBe('UTC-08:00');
-    expect(getTimeZoneOffsetLabel('Asia/Kolkata')).toBe('UTC+05:30');
+describe('isTimeZonePreference', () => {
+  it('accepts local and zones the browser knows', () => {
+    expect(isTimeZonePreference(LOCAL_TIME_ZONE)).toBe(true);
+    expect(isTimeZonePreference('Asia/Tokyo')).toBe(true);
+    expect(isTimeZonePreference('Mars/Olympus_Mons')).toBe(false);
   });
+});
 
-  it('labels UTC with a zero offset', () => {
-    expect(getTimeZoneOffsetLabel('Etc/UTC')).toBe('UTC+00:00');
+describe('getTimeZonePreferenceLabel', () => {
+  it('names local, UTC and other zones', () => {
+    expect(getTimeZonePreferenceLabel(LOCAL_TIME_ZONE)).toBe('Local');
+    expect(getTimeZonePreferenceLabel('Etc/UTC')).toBe('UTC');
+    expect(getTimeZonePreferenceLabel('America/Los_Angeles')).toBe(
+      'America/Los Angeles',
+    );
   });
 });
 
@@ -58,16 +61,16 @@ describe('formatTimeZoneName', () => {
 });
 
 describe('getTimeZoneShortName', () => {
-  it('uses the abbreviation in effect on the date', () => {
+  it('uses the offset in effect on the date, not an abbreviation', () => {
     expect(
       getTimeZoneShortName('America/Los_Angeles', new Date('2026-07-01Z')),
-    ).toBe('PDT');
+    ).toBe('UTC-7');
     expect(
       getTimeZoneShortName('America/Los_Angeles', new Date('2026-12-01Z')),
-    ).toBe('PST');
+    ).toBe('UTC-8');
   });
 
-  it('names UTC and labels zones without an abbreviation from UTC', () => {
+  it('names a zero offset UTC and keeps partial-hour offsets', () => {
     expect(getTimeZoneShortName('Etc/UTC')).toBe('UTC');
     expect(getTimeZoneShortName('Asia/Tokyo')).toBe('UTC+9');
     expect(getTimeZoneShortName('Asia/Kolkata')).toBe('UTC+5:30');

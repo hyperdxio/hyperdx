@@ -237,6 +237,10 @@ import {
   useDefaultTimeRange,
   useNewTimeQuery,
 } from './timeQuery';
+import {
+  TimeZoneOverrideProvider,
+  useTimeZoneLinkParam,
+} from './timeZoneOverride';
 import { useConfirm } from './useConfirm';
 import { useDisplayTimeZone } from './useDisplayTimeZone';
 import { FormatTime } from './useFormatTime';
@@ -278,6 +282,7 @@ function HeatmapTile({
   );
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const addTimeZone = useTimeZoneLinkParam();
   const eventDeltasUrl = useMemo(() => {
     // Search page event deltas only supports trace sources and distribution mode
     if (
@@ -294,8 +299,8 @@ function HeatmapTile({
     });
     if (!url) return null;
     const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}mode=delta`;
-  }, [source, mode, queriedConfig, dateRange]);
+    return addTimeZone(`${url}${separator}mode=delta`);
+  }, [source, mode, queriedConfig, dateRange, addTimeZone]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -914,13 +919,15 @@ const Tile = ({
     );
   }, [sqlFilters, queriedConfig, source]);
 
+  const addTimeZone = useTimeZoneLinkParam();
   const replaySearchUrl = useMemo(() => {
-    return buildDashboardReplaySearchUrl({
+    const url = buildDashboardReplaySearchUrl({
       source,
       config: queriedConfig,
       dateRange,
     });
-  }, [dateRange, queriedConfig, source]);
+    return url && addTimeZone(url);
+  }, [dateRange, queriedConfig, source, addTimeZone]);
 
   const hoverToolbar = useMemo(() => {
     if (readOnly) return null;
@@ -1311,13 +1318,15 @@ const Tile = ({
                     variant="default"
                     getRowSearchLink={
                       isBuilderChartConfig(effectiveQueriedConfig)
-                        ? row =>
-                            buildTableRowSearchUrl({
+                        ? row => {
+                            const url = buildTableRowSearchUrl({
                               row,
                               source,
                               config: effectiveQueriedConfig,
                               dateRange: effectiveDateRange,
-                            })
+                            });
+                            return url && addTimeZone(url);
+                          }
                         : undefined
                     }
                     onFilter={onFilter}
@@ -1478,6 +1487,7 @@ const Tile = ({
       );
     },
     [
+      addTimeZone,
       hoverToolbar,
       queriedConfig,
       title,
@@ -3568,9 +3578,19 @@ function DBDashboardPageGuarded({
   );
 }
 
-const DBDashboardPageDynamic = dynamic(async () => DBDashboardPageGuarded, {
-  ssr: false,
-});
+// Outside DBDashboardPageGuarded, which formats the saved range in the zone.
+function DBDashboardPageWithTimeZone(props: { presetConfig?: Dashboard }) {
+  return (
+    <TimeZoneOverrideProvider>
+      <DBDashboardPageGuarded {...props} />
+    </TimeZoneOverrideProvider>
+  );
+}
+
+const DBDashboardPageDynamic = dynamic(
+  async () => DBDashboardPageWithTimeZone,
+  { ssr: false },
+);
 
 // @ts-expect-error for getLayout
 DBDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard');

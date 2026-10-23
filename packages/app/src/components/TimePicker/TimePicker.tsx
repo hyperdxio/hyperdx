@@ -25,9 +25,14 @@ import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
 import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
+import { useTimeZoneOverride } from '@/timeZoneOverride';
 import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { useUserPreferences } from '@/useUserPreferences';
 
+import {
+  TimePickerTimeZoneBadge,
+  TimePickerTimeZoneSelect,
+} from './TimePickerTimeZone';
 import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
 import {
@@ -143,6 +148,8 @@ const TimePickerComponent = ({
     userPreferences: { timeFormat },
   } = useUserPreferences();
   const timeZone = useDisplayTimeZone();
+  // Pages that can override the time zone show it in the picker.
+  const showTimeZone = useTimeZoneOverride() != null;
 
   const [opened, { close, toggle }] = useDisclosure(false);
 
@@ -307,12 +314,17 @@ const TimePickerComponent = ({
                 : 'var(--color-text)',
             },
           }}
+          rightSectionWidth={showTimeZone ? 84 : undefined}
+          rightSectionPointerEvents="none"
           rightSection={
-            opened && (
-              <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
-                d
-              </Text>
-            )
+            <Group gap={6} wrap="nowrap" justify="flex-end" w="100%" pr={8}>
+              {showTimeZone && <TimePickerTimeZoneBadge />}
+              {opened && (
+                <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
+                  d
+                </Text>
+              )}
+            </Group>
           }
           value={value}
           onChange={event => onChange(event.currentTarget.value)}
@@ -555,6 +567,7 @@ const TimePickerComponent = ({
             </Group>
           </Card>
         </Group>
+        <TimePickerTimeZoneSelect comboboxProps={dateComponentPopoverProps} />
       </Popover.Dropdown>
     </Popover>
   );
