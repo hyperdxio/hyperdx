@@ -2330,7 +2330,7 @@ function DBSearchPageContent() {
   // and stay hidden on Event Deltas and Event Patterns.
   const resultsClauseEditors =
     analysisMode === 'results' ? (
-      <Group gap="xs" wrap="nowrap">
+      <Group gap="xs" wrap="wrap">
         <ColumnsPopover
           value={inputSelect ?? ''}
           defaultValue={defaultSearchConfig.select ?? ''}

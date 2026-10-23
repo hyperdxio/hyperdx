@@ -1127,10 +1127,14 @@ export const RawLogTable = memo(
             gap="sm"
             align="center"
             pb="xs"
-            wrap="nowrap"
+            wrap="wrap"
             data-testid="results-table-toolbar"
           >
-            <Group gap="xs" wrap="nowrap" miw={0} style={{ flex: 1 }}>
+            <Group
+              gap="xs"
+              wrap="wrap"
+              style={{ flex: '1 1 auto', maxWidth: '100%' }}
+            >
               {toolbarLeading}
               {controlsAboveTable && rowSelectionMenu}
             </Group>
