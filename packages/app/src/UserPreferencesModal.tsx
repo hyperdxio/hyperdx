@@ -1,6 +1,5 @@
 import * as React from 'react';
 import { Badge } from '@clickhouse/click-ui';
-import { UTC_TIME_ZONE } from '@hyperdx/common-utils/dist/core/utils';
 import {
   Autocomplete,
   Divider,
@@ -8,11 +7,11 @@ import {
   Modal,
   Select,
   Stack,
-  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
 
+import { TimeZoneSelect } from './components/TimeZoneSelect';
 import {
   isContentFontSize,
   OPTIONS_CONTENT_FONT_SIZE,
@@ -20,7 +19,6 @@ import {
 } from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
-import { LOCAL_TIME_ZONE } from './timeZone';
 import {
   DEFAULT_ROW_CLICK_ACTION,
   RowClickAction,
@@ -60,7 +58,7 @@ const SettingContainer = ({
       <div style={{ flex: 1 }}>
         {label}
         {!!description && (
-          <Text size="xs" mt={2}>
+          <Text size="xs" mt={2} c="var(--color-text-muted)">
             {description}
           </Text>
         )}
@@ -112,18 +110,14 @@ export const UserPreferencesModal = ({
             allowDeselect={false}
           />
         </SettingContainer>
-        <SettingContainer label="Use UTC time">
-          <Switch
-            size="md"
-            onLabel="UTC"
-            checked={userPreferences.timeZone === UTC_TIME_ZONE}
-            onChange={e =>
-              setUserPreference({
-                timeZone: e.currentTarget.checked
-                  ? UTC_TIME_ZONE
-                  : LOCAL_TIME_ZONE,
-              })
-            }
+        <SettingContainer
+          label="Time zone"
+          description="Times are displayed and input in this zone."
+        >
+          <TimeZoneSelect
+            data-testid="time-zone-select"
+            value={userPreferences.timeZone}
+            onChange={timeZone => setUserPreference({ timeZone })}
           />
         </SettingContainer>
 
@@ -194,11 +188,11 @@ export const UserPreferencesModal = ({
 
         {/*
           Brand Theme Selector - DEV MODE ONLY
-          
+
           This is intentionally NOT available in production. Brand theme (HyperDX vs ClickStack)
           is deployment-configured via NEXT_PUBLIC_THEME environment variable.
           Each deployment is branded for a specific product; users don't choose this.
-          
+
           This dev-only UI exists for testing theme implementations during development.
         */}
         {isDev && (

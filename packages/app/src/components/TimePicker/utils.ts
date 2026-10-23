@@ -6,13 +6,15 @@ import {
   toWallClock,
 } from '@hyperdx/common-utils/dist/core/utils';
 
+import { getLocalTimeZone } from '@/timeZone';
+
 function currentDate(): Date {
   // eslint-disable-next-line no-restricted-syntax
   return new Date();
 }
 
 function resolveTimeZone(timeZone?: string): string {
-  return timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  return timeZone ?? getLocalTimeZone();
 }
 
 // chrono reads text in one fixed offset. Using the zone's current offset makes
