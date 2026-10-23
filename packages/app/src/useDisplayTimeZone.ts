@@ -1,5 +1,6 @@
-import { UTC_TIME_ZONE } from '@hyperdx/common-utils/dist/core/utils';
+import { useMemo } from 'react';
 
+import { resolveTimeZonePreference } from './timeZone';
 import { useUserPreferences } from './useUserPreferences';
 
 /**
@@ -8,7 +9,7 @@ import { useUserPreferences } from './useUserPreferences';
  */
 export function useDisplayTimeZone(): string | undefined {
   const {
-    userPreferences: { isUTC },
+    userPreferences: { timeZone },
   } = useUserPreferences();
-  return isUTC ? UTC_TIME_ZONE : undefined;
+  return useMemo(() => resolveTimeZonePreference(timeZone), [timeZone]);
 }

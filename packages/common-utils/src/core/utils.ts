@@ -762,29 +762,23 @@ const TIME_TOKENS = {
 
 export const UTC_TIME_ZONE = 'Etc/UTC';
 
-/**
- * Formats `date` in `timeZone` (an IANA name). `isUTC` is shorthand for
- * `timeZone: UTC_TIME_ZONE`; with neither set, the local zone is used.
- */
+/** Formats `date` in `timeZone` (an IANA name), or the local zone if unset. */
 export const formatDate = (
   date: Date,
   {
-    isUTC = false,
     timeZone,
     format = 'normal',
     clock = '12h',
   }: {
-    isUTC?: boolean;
     timeZone?: string;
     format?: 'normal' | 'short' | 'withMs' | 'time' | 'withYear';
     clock?: '12h' | '24h';
   },
 ) => {
   const formatStr = TIME_TOKENS[format][clock];
-  const zone = timeZone ?? (isUTC ? UTC_TIME_ZONE : undefined);
 
-  return zone
-    ? formatInTimeZone(date, zone, formatStr)
+  return timeZone
+    ? formatInTimeZone(date, timeZone, formatStr)
     : fnsFormat(date, formatStr);
 };
 
