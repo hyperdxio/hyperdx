@@ -17,6 +17,10 @@
   <a href="https://trendshift.io/repositories/2030?utm_source=repository-badge&utm_medium=badge&utm_campaign=badge-repository-2030" target="_blank" rel="noopener noreferrer"><img src="https://trendshift.io/api/badge/repositories/2030" alt="hyperdxio%2Fhyperdx | Trendshift" width="250" height="55"/></a>
 </p>
 
+<p align="center">
+  <a href="https://app.railyard.run/deploy?repo=https://github.com/hyperdxio/hyperdx"><img src="https://app.railyard.run/deploy/badge" alt="Deploy to Railyard"></a>
+</p>
+
 [HyperDX](https://hyperdx.io), a core component of
 [ClickStack](https://clickhouse.com/use-cases/observability), helps engineers
 quickly figure out why production is broken by making it easy to search &
