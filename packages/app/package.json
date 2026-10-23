@@ -100,7 +100,7 @@
     "timestamp-nano": "^1.0.1",
     "uplot": "^1.6.31",
     "uplot-react": "^1.2.2",
-    "zod": "3.25"
+    "zod": "4.6"
   },
   "devDependencies": {
     "@chromatic-com/storybook": "^4.1.3",
