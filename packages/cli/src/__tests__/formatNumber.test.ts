@@ -2,7 +2,16 @@ import { describe, expect, it } from '@jest/globals';
 
 import { NumericUnit } from '@hyperdx/common-utils/dist/types';
 
-import { axisTickFormatter } from '@/shared/formatNumber';
+import { axisTickFormatter, formatNumber } from '@/shared/formatNumber';
+
+describe('formatNumber average', () => {
+  it('moves to the next unit when rounding reaches 1000 of the current one', () => {
+    const format = { output: 'number' as const, average: true };
+    expect(formatNumber(750, format)).toBe('750');
+    expect(formatNumber(999700, format)).toBe('1m');
+    expect(formatNumber(999.6e6, format)).toBe('1b');
+  });
+});
 
 // Mirrors packages/app/src/__tests__/HDXMultiSeriesTimeChart.test.ts's
 // formatAxisTick suite - this file is a documented @source port of that
@@ -16,6 +25,16 @@ describe('axisTickFormatter', () => {
   it('falls back to mantissa 0 when the format has none configured', () => {
     const format = axisTickFormatter({ output: 'number' });
     expect(format?.(1234)).toBe('1k');
+  });
+
+  it('does not abbreviate values between 500 and 999', () => {
+    const format = axisTickFormatter({ output: 'number', mantissa: 1 });
+    expect([250, 500, 750, 1000].map(v => format?.(v))).toEqual([
+      '250',
+      '500',
+      '750',
+      '1k',
+    ]);
   });
 
   it('honors an explicit mantissa instead of always rounding to 0', () => {
