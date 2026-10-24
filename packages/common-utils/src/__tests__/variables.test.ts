@@ -1049,6 +1049,14 @@ describe('substituteVariables for promql', () => {
       );
     });
 
+    it('substitutes inside a backtick raw string containing a URL', () => {
+      const input =
+        'rate(http_requests_total{url=~`https://$service/.*`}[5m])';
+      expect(promql(input, [variable('service', ['api'])])).toBe(
+        'rate(http_requests_total{url=~`https://api/.*`}[5m])',
+      );
+    });
+
     it('does not re-expand a selected value that looks like a reference', () => {
       expect(
         promql('$a $b', [variable('a', ['$b']), variable('b', ['literal'])]),
@@ -1210,7 +1218,12 @@ describe('getVariableReferences', () => {
     it.each([
       ['a hash line comment', "# don't\nWHERE a IN ($service)"],
       ['a line comment', "-- don't\nWHERE a IN ($service)"],
+      ['a C++ line comment', "// don't\nWHERE a IN ($service)"],
       ['a block comment', "/* don't */ WHERE a IN ($service)"],
+      [
+        'a nested block comment',
+        "/* /* inner */ don't */ WHERE a IN ($service)",
+      ],
       ['a trailing line comment', "WHERE a IN ($service) -- don't"],
     ])('does not let an apostrophe in %s open a string', (_label, input) => {
       expect(getVariableReferences(input)).toEqual(bareRef(false));
@@ -1224,6 +1237,7 @@ describe('getVariableReferences', () => {
 
     it.each([
       ['--', "SELECT 'a -- b', $service"],
+      ['//', "SELECT 'a // b', $service"],
       ['#', "SELECT 'a # b', $service"],
     ])(
       'does not treat %s inside a string literal as a comment',
@@ -1231,6 +1245,12 @@ describe('getVariableReferences', () => {
         expect(getVariableReferences(input)).toEqual(bareRef(false));
       },
     );
+
+    it('does not treat // inside a backtick identifier as a comment', () => {
+      expect(
+        getVariableReferences('SELECT `service//name`, $service'),
+      ).toEqual(bareRef(false));
+    });
 
     it('treats an unterminated block comment as running to the end', () => {
       expect(getVariableReferences("SELECT 1 /* don't $service")).toEqual([]);
@@ -1424,6 +1444,24 @@ describe('getReferencedVariableNames', () => {
     ]);
   });
 
+  it('finds Lucene references after an unquoted URL', () => {
+    expect(
+      getReferencedVariableNames(
+        'Url:http://example.com AND ServiceName:"$service"',
+        'lucene',
+      ),
+    ).toEqual(['service']);
+  });
+
+  it('finds PromQL references inside backtick raw strings with URLs', () => {
+    expect(
+      getReferencedVariableNames(
+        'rate(http_requests_total{url=~`https://$host/.*`}[5m])',
+        'promql',
+      ),
+    ).toEqual(['host']);
+  });
+
   it('skips SQL comments for SQL but not for markdown', () => {
     const template = '# $service\n$env';
     expect(getReferencedVariableNames(template)).toEqual(['env']);
@@ -1516,6 +1554,18 @@ describe('filterReferencedVariables', () => {
         variables,
       ),
     ).toEqual(variables);
+  });
+
+  it('keeps variables after URLs in Lucene builder expressions', () => {
+    expect(
+      filterReferencedVariables(
+        builderConfig({
+          where: 'Url:http://example.com AND ServiceName:"$service"',
+          whereLanguage: 'lucene',
+        }),
+        variables,
+      ),
+    ).toEqual([SERVICE]);
   });
 
   it('keeps the variables a markdown tile references', () => {
