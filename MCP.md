@@ -45,6 +45,14 @@ claude mcp add --transport http clickstack <your-hyperdx-url>/api/mcp \
   --header "Authorization: Bearer <your-personal-access-key>"
 ```
 
+Or install the [charts plugin](packages/claude-plugin/README.md) instead: it
+connects the same server (asking for your URL and key) and draws query results
+as charts in the terminal instead of JSON:
+
+```
+/plugin install hyperdx-charts --marketplace hyperdxio/hyperdx
+```
+
 ### Codex CLI
 
 The Codex CLI reads the bearer token from an environment variable rather than a

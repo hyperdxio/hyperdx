@@ -1,0 +1,34 @@
+{
+  "name": "hyperdx-charts",
+  "description": "Draws ClickStack MCP query results as terminal charts in Claude Code",
+  "author": {
+    "name": "HyperDX"
+  },
+  "homepage": "https://github.com/hyperdxio/hyperdx/tree/main/packages/claude-plugin",
+  "license": "MIT",
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "hyperdx_url": {
+      "type": "string",
+      "title": "HyperDX URL",
+      "description": "Your HyperDX address, e.g. https://hyperdx.example.com (no trailing slash).",
+      "required": true
+    },
+    "access_key": {
+      "type": "string",
+      "title": "Personal API access key",
+      "description": "From Team Settings > API keys in HyperDX. Kept in secure storage.",
+      "required": true,
+      "sensitive": true
+    }
+  },
+  "mcpServers": {
+    "clickstack": {
+      "type": "http",
+      "url": "${user_config.hyperdx_url}/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${user_config.access_key}"
+      }
+    }
+  }
+}
