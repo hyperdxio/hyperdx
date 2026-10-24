@@ -401,5 +401,6 @@ export const CLI_SUPPORTED_DISPLAY_TYPES: ReadonlySet<DisplayType> = new Set([
   DisplayType.Table,
   DisplayType.Pie,
   DisplayType.Bar,
+  DisplayType.Heatmap,
   DisplayType.Markdown,
 ]);

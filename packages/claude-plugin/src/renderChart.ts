@@ -9,6 +9,7 @@ import { isTrimmed, toTileResult } from './toTileResult';
 
 const TIME_CHART_ROWS = 14;
 const MAX_TABLE_ROWS = 20;
+const HEATMAP_ROWS = 18;
 const TRIMMED_NOTE =
   'The server trimmed this result to fit its size limit; the chart shows only the rows it returned.';
 
@@ -29,9 +30,14 @@ export function renderChart(
   const height =
     displayType === DisplayType.Number
       ? 3
-      : isTimeSeriesDisplayType(displayType)
-        ? TIME_CHART_ROWS
-        : Math.min(result.data.data.length + 2, MAX_TABLE_ROWS);
+      : displayType === DisplayType.Heatmap
+        ? HEATMAP_ROWS
+        : isTimeSeriesDisplayType(displayType)
+          ? TIME_CHART_ROWS
+          : Math.min(
+              (result.status === 'ok' ? result.data.data.length : 0) + 2,
+              MAX_TABLE_ROWS,
+            );
 
   try {
     const lines = ansiLines(

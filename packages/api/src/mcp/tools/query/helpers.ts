@@ -2,6 +2,7 @@ import {
   ClickHouseError,
   type ClickHouseSettings,
 } from '@clickhouse/client-common';
+import { queryDistributionHeatmap } from '@hyperdx/common-utils/dist/core/distributionHeatmap';
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -12,6 +13,7 @@ import {
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderSavedChartConfig,
+  isHeatmapCompatibleSource,
   isPromqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import { UnknownVariableError } from '@hyperdx/common-utils/dist/macroErrors';
@@ -19,6 +21,7 @@ import type {
   ChartConfigWithDateRange,
   ChartVariable,
   MetricTable,
+  Tile,
 } from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
@@ -47,6 +50,12 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
+import {
+  formatHeatmapResult,
+  heatmapNumberFormat,
+  MCP_HEATMAP_TIME_BUCKETS,
+  MCP_HEATMAP_VALUE_BUCKETS,
+} from './heatmapResult';
 import { runEventPatterns } from './runEventPatterns';
 
 // ─── Source body expression helpers ──────────────────────────────────────────
@@ -407,6 +416,14 @@ function toPlainMetricTables(
     : metricTables;
 }
 
+export function savedTileGranularity(
+  tiles: Tile[],
+  tileId: string,
+): string | undefined {
+  const config = tiles.find(t => t.id === tileId)?.config;
+  return config && 'granularity' in config ? config.granularity : undefined;
+}
+
 export async function runConfigTile(
   teamId: string,
   tile: ExternalDashboardTileWithId,
@@ -415,6 +432,8 @@ export async function runConfigTile(
   options?: {
     maxResults?: number;
     granularity?: string;
+    /** The stored tile's granularity, which the external tile format drops. Distribution heatmaps only. */
+    savedGranularity?: string;
     abortSignal?: AbortSignal;
     /** Dashboard variables and their selected values. Omitted when not in a dashboard context. */
     variables?: ChartVariable[];
@@ -595,6 +614,47 @@ export async function runConfigTile(
       dateRange: [startDate, endDate] as [Date, Date],
       variables: options?.variables,
     } satisfies ChartConfigWithDateRange;
+
+    // Distribution heatmaps bucket in two queries (value bounds, then
+    // widthBucket counts) that the generic renderer can't express.
+    if (
+      builderConfig.displayType === DisplayType.Heatmap &&
+      getHeatmapMode(builderConfig) === 'distribution'
+    ) {
+      if (!isHeatmapCompatibleSource(source)) {
+        return mcpUserError(
+          `Distribution heatmaps need a trace source; "${source.name}" is a ${source.kind} source.`,
+        );
+      }
+      const valueExpression = Array.isArray(builderConfig.select)
+        ? (builderConfig.select[0]?.valueExpression ?? '')
+        : '';
+      try {
+        const result = await queryDistributionHeatmap({
+          client: clickhouseClient,
+          metadata: getMetadata(clickhouseClient),
+          config: chartConfig,
+          granularity: options?.granularity ?? options?.savedGranularity,
+          targetTimeBuckets: MCP_HEATMAP_TIME_BUCKETS,
+          nBuckets: MCP_HEATMAP_VALUE_BUCKETS,
+          querySettings: source.querySettings,
+          opts: {
+            clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+            abort_signal: options?.abortSignal,
+          },
+        });
+        return formatHeatmapResult(result, {
+          valueExpression,
+          numberFormat: heatmapNumberFormat(
+            builderConfig,
+            source,
+            valueExpression,
+          ),
+        });
+      } catch (e) {
+        return clickHouseErrorResult(e);
+      }
+    }
 
     // Apply seriesLimit as LIMIT to categorical charts (pie/bar)
     const isCategorical =

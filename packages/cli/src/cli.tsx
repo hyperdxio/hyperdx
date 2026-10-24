@@ -2027,6 +2027,9 @@ Examples:
             ...(result.status === 'ok'
               ? { data: result.data.data, meta: result.data.meta }
               : {}),
+            ...(result.status === 'heatmap'
+              ? { heatmap: result.heatmap ?? null }
+              : {}),
             ...(result.status === 'unsupported'
               ? { message: result.message }
               : {}),

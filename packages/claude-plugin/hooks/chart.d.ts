@@ -10,6 +10,11 @@ export type Segment = {
 };
 
 export function chartedTool(toolName: string): string | undefined;
+export function isChartable(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+): boolean;
 export function renderChart(
   call: ChartCall,
   columns: number,

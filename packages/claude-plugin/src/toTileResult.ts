@@ -1,6 +1,12 @@
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  type HeatmapGrid,
+  type HeatmapResult,
+  HeatmapResultSchema,
+  heatmapRowEdges,
+} from '@hyperdx/common-utils/dist/core/heatmap';
 import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
+import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import type { TileQueryResult } from '@hyperdx/cli/src/shared/tileQuery';
 
@@ -19,6 +25,10 @@ const DISPLAY_TYPES: Record<string, Record<string, DisplayType>> = {
   },
 };
 
+// Tools answering with a `heatmap` grid. A query_tile result for any other
+// tile carries no display type, so it is left alone.
+const HEATMAP_TOOLS = ['clickstack_heatmap', 'clickstack_query_tile'];
+
 type ToolInput = {
   shape?: string;
   select?: unknown[];
@@ -28,12 +38,14 @@ type ToolInput = {
   endTime?: string;
 };
 
-type ChartResult = Extract<TileQueryResult, { status: 'ok' }>;
+type ChartResult = Extract<TileQueryResult, { status: 'ok' | 'heatmap' }>;
 
 /** Matches by MCP tool name suffix, so it works whatever the user named the server. */
 export function chartedTool(toolName: string): string | undefined {
   const suffix = toolName.split('__').pop() ?? '';
-  return suffix in DISPLAY_TYPES ? suffix : undefined;
+  return suffix in DISPLAY_TYPES || HEATMAP_TOOLS.includes(suffix)
+    ? suffix
+    : undefined;
 }
 
 /** MCP output arrives as text blocks holding one JSON document. */
@@ -49,6 +61,15 @@ function parseBody(output: unknown): Record<string, unknown> | undefined {
   } catch {
     return undefined;
   }
+}
+
+/** Whether a call's result can be drawn, so only those are kept for drawing. */
+export function isChartable(
+  toolName: string,
+  input: unknown,
+  output: unknown,
+): boolean {
+  return toTileResult(toolName, input, output, Date.now()) !== undefined;
 }
 
 /** The server trims results over its size limit and says so in `note`. */
@@ -84,6 +105,21 @@ export function toTileResult(
     ? new Date(args.startTime)
     : new Date(end.getTime() - DEFAULT_WINDOW_MS);
 
+  if (HEATMAP_TOOLS.includes(tool)) {
+    const parsed = HeatmapResultSchema.safeParse(parseBody(output)?.heatmap);
+    if (!parsed.success || parsed.data.counts.length === 0) return undefined;
+    const heatmap = parsed.data;
+    return {
+      status: 'heatmap',
+      queriedConfig: {
+        displayType: DisplayType.Heatmap,
+        dateRange: [start, end],
+        numberFormat: heatmap.numberFormat,
+      } as unknown as ChartConfigWithDateRange,
+      grid: toGrid(heatmap),
+    };
+  }
+
   const data = parseResponse(output);
   if (!data || data.data.length === 0) return undefined;
   const shapes = DISPLAY_TYPES[tool]!;
@@ -109,4 +145,22 @@ export function toTileResult(
   } as unknown as ChartConfigWithDateRange;
 
   return { status: 'ok', queriedConfig, data };
+}
+function toGrid({
+  times,
+  valueEdges,
+  counts,
+  scale,
+}: HeatmapResult): HeatmapGrid {
+  const ms = times.map(t => Date.parse(t));
+  return {
+    times: ms,
+    stepMs: ms.length > 1 ? ms[1]! - ms[0]! : 0,
+    yAxis: {
+      type: 'numeric',
+      scale,
+      edges: heatmapRowEdges(valueEdges, scale),
+    },
+    cells: counts.flat(),
+  };
 }
