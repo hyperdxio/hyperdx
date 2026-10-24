@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Button, Flex, Paper, Text } from '@mantine/core';
+import { Box, Button, Flex, Paper, Skeleton, Text } from '@mantine/core';
 import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
@@ -24,12 +24,17 @@ export default function DBRowSidePanelHeader({
   // source has neither body nor implicit column configured), the body
   // paper is suppressed entirely; the highlighted attributes still render.
   bodyConfigured = true,
+  // While the row fetch is in flight there is no body to show yet, but that is
+  // not the same as the event having no body — show a placeholder instead of
+  // the empty state so the copy doesn't flip once the request settles.
+  isLoading = false,
   severityText,
   rowData,
 }: {
   mainContent?: string;
   mainContentHeader?: string;
   bodyConfigured?: boolean;
+  isLoading?: boolean;
   attributes?: HighlightedAttribute[];
   severityText?: string;
   rowData?: Record<string, any>;
@@ -95,6 +100,7 @@ export default function DBRowSidePanelHeader({
             overflowWrap: 'break-word',
           }}
           ref={setHeaderElement}
+          data-testid="side-panel-body"
         >
           <Flex justify="space-between" mb="xs">
             <Text size="xs">{mainContentHeader}</Text>
@@ -126,6 +132,16 @@ export default function DBRowSidePanelHeader({
               {bodyExpanded ? 'Collapse' : 'Expand'}
             </Button>
           )}
+        </Paper>
+      ) : isLoading ? (
+        <Paper p="xs" mt="sm" data-testid="side-panel-body-loading" aria-busy>
+          {mainContentHeader && (
+            <Text size="xs" mb="xs">
+              {mainContentHeader}
+            </Text>
+          )}
+          <Skeleton h={10} w="85%" mb={6} />
+          <Skeleton h={10} w="60%" />
         </Paper>
       ) : (
         <Paper p="xs" mt="sm">
