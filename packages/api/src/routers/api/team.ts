@@ -5,10 +5,12 @@ import type {
   TeamMembersApiResponse,
   TeamTagsApiResponse,
   UpdateClickHouseSettingsApiResponse,
+  UpdateQueryLanguageSettingsApiResponse,
 } from '@hyperdx/common-utils/dist/types';
 import {
   TagResourceTypeSchema,
   TeamClickHouseSettingsUpdateSchema,
+  TeamQueryLanguageSettingsUpdateSchema,
 } from '@hyperdx/common-utils/dist/types';
 import crypto from 'crypto';
 import express from 'express';
@@ -23,6 +25,7 @@ import {
   rotateTeamApiKey,
   setTeamName,
   updateTeamClickhouseSettings,
+  updateTeamQueryLanguageSettings,
 } from '@/controllers/team';
 import {
   deleteTeamMember,
@@ -56,6 +59,8 @@ router.get('/', async (req, res: TeamApiExpRes, next) => {
       'name',
       'createdAt',
       'isMetricsSeriesTableEnabled',
+      'defaultQueryLanguage',
+      'allowedQueryLanguages',
     ] as const;
     const team = await getTeam(teamId, fields);
     if (team == null) {
@@ -128,6 +133,35 @@ router.patch(
       }
 
       const team = await updateTeamClickhouseSettings(teamId, req.body);
+
+      res.json(pick(team, Object.keys(req.body)));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.patch(
+  '/query-language-settings',
+  processRequest({
+    body: TeamQueryLanguageSettingsUpdateSchema,
+  }),
+  async (
+    req,
+    res: express.Response<UpdateQueryLanguageSettingsApiResponse>,
+    next,
+  ) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        throw new Error(`User ${req.user?._id} not associated with a team`);
+      }
+
+      if (Object.keys(req.body).length === 0) {
+        return res.json({});
+      }
+
+      const team = await updateTeamQueryLanguageSettings(teamId, req.body);
 
       res.json(pick(team, Object.keys(req.body)));
     } catch (e) {

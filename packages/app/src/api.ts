@@ -28,8 +28,10 @@ import type {
   TeamClickHouseSettingsUpdate,
   TeamInvitationsApiResponse,
   TeamMembersApiResponse,
+  TeamQueryLanguageSettingsUpdate,
   TeamTagsApiResponse,
   UpdateClickHouseSettingsApiResponse,
+  UpdateQueryLanguageSettingsApiResponse,
   WebhookCreateApiResponse,
   WebhooksApiResponse,
   WebhookTestApiResponse,
@@ -602,6 +604,24 @@ const api = {
           method: 'PATCH',
           json: settings,
         }).json<UpdateClickHouseSettingsApiResponse>(),
+    });
+  },
+  useUpdateQueryLanguageSettings() {
+    const queryClient = useQueryClient();
+    return useMutation<
+      UpdateQueryLanguageSettingsApiResponse,
+      HTTPError,
+      TeamQueryLanguageSettingsUpdate
+    >({
+      mutationFn: async settings =>
+        hdxServer(`team/query-language-settings`, {
+          method: 'PATCH',
+          json: settings,
+        }).json<UpdateQueryLanguageSettingsApiResponse>(),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['team'] });
+        queryClient.invalidateQueries({ queryKey: ['me'] });
+      },
     });
   },
   getTagsQueryKey: (resourceType?: TagResourceType) =>
