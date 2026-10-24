@@ -1,14 +1,19 @@
 import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
 import { isPersistableUserId as isPersistableUserIdHex } from '@hyperdx/common-utils/dist/types';
+import opentelemetry from '@opentelemetry/api';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
 import type { ObjectId } from '@/models';
 import Alert from '@/models/alert';
-import User from '@/models/user';
+import User, { type IUser } from '@/models/user';
+import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
+export const NOT_SERVICE_ACCOUNT = { isServiceAccount: { $ne: true } };
+
 export function findUserByAccessKey(accessKey: string) {
-  return User.findOne({ accessKey });
+  // Service accounts authenticate only through their hashed org API key.
+  return User.findOne({ accessKey, ...NOT_SERVICE_ACCOUNT });
 }
 
 /**
@@ -32,7 +37,7 @@ export function findUserByEmail(email: string) {
 }
 
 export function findUsersByTeam(team: string | ObjectId) {
-  return User.find({ team }).sort({ createdAt: 1 });
+  return User.find({ team, ...NOT_SERVICE_ACCOUNT }).sort({ createdAt: 1 });
 }
 
 // Type-guard wrapper over the shared 24-hex check; rejects the synthetic
@@ -85,7 +90,11 @@ export function recordOnboardingTaskCompletion(
     return;
   }
   void User.updateOne(
-    { _id: userId, 'onboardingData.completedTasks': { $ne: taskId } },
+    {
+      _id: userId,
+      ...NOT_SERVICE_ACCOUNT,
+      'onboardingData.completedTasks': { $ne: taskId },
+    },
     { $addToSet: { 'onboardingData.completedTasks': taskId } },
   ).catch(err => {
     logger.warn(
@@ -100,20 +109,113 @@ export async function deleteTeamMember(
   userIdToDelete: string,
   userIdRequestingDelete: string | ObjectId,
 ) {
-  const [, deletedUser] = await Promise.all([
-    Alert.updateMany(
-      { createdBy: new mongoose.Types.ObjectId(userIdToDelete), team: teamId },
-      {
-        $set: {
-          createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete),
-        },
-      },
-    ),
-    User.findOneAndDelete({
-      team: teamId,
-      _id: userIdToDelete,
-    }),
-  ]);
-
+  // Delete first: reassigning alerts for a user that wasn't deleted (such as a
+  // service account) would steal their attribution.
+  const deletedUser = await User.findOneAndDelete({
+    team: teamId,
+    _id: userIdToDelete,
+    ...NOT_SERVICE_ACCOUNT,
+  });
+  if (deletedUser == null) {
+    return null;
+  }
+  await Alert.updateMany(
+    { createdBy: deletedUser._id, team: teamId },
+    {
+      $set: { createdBy: new mongoose.Types.ObjectId(userIdRequestingDelete) },
+    },
+  );
   return deletedUser;
+}
+
+/**
+ * Member removal by an org API key's service account, which must not leave the
+ * team without a person who can sign in. Mongo here has no transactions, so
+ * delete first and put the member back if a concurrent removal emptied it.
+ */
+export async function deleteTeamMemberKeepingOne(
+  teamId: string | ObjectId,
+  userIdToDelete: string,
+  serviceAccountId: ObjectId,
+): Promise<'deleted' | 'not_found' | 'last_member'> {
+  const countPeople = () =>
+    User.countDocuments({ team: teamId, ...NOT_SERVICE_ACCOUNT });
+  const target = { team: teamId, _id: userIdToDelete, ...NOT_SERVICE_ACCOUNT };
+  if ((await User.exists(target)) == null) {
+    return 'not_found';
+  }
+  // Checked first so the usual case never deletes; the restore below only
+  // covers two removals racing past this check.
+  if ((await countPeople()) <= 1) {
+    return 'last_member';
+  }
+  const deletedUser = await User.findOneAndDelete(target)
+    .select('+hash +salt')
+    .lean();
+  if (deletedUser == null) {
+    return 'not_found';
+  }
+  let isTeamEmpty = true;
+  try {
+    isTeamEmpty = (await countPeople()) === 0;
+  } finally {
+    // Also runs if the count throws, so a failed check can't lose the member.
+    if (isTeamEmpty) {
+      await restoreTeamMember(deletedUser);
+    }
+  }
+  if (isTeamEmpty) {
+    return 'last_member';
+  }
+  await Alert.updateMany(
+    { createdBy: deletedUser._id, team: teamId },
+    { $set: { createdBy: serviceAccountId } },
+  );
+  return 'deleted';
+}
+
+const memberRestoreFailures = getCounter(
+  'hyperdx.team.member_restore_failures',
+  {
+    description:
+      'Members deleted by an org API key that could not be put back.',
+  },
+);
+
+const RESTORE_ATTEMPTS = 3;
+const RESTORE_RETRY_DELAY_MS = 100;
+
+const isDuplicateKey = (err: unknown): err is { keyPattern?: object } =>
+  typeof err === 'object' && err != null && 'code' in err && err.code === 11000;
+
+async function restoreTeamMember(user: IUser) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await User.collection.insertOne(user);
+      return;
+    } catch (err) {
+      // A duplicate _id means an earlier attempt already landed.
+      if (isDuplicateKey(err) && err.keyPattern && '_id' in err.keyPattern) {
+        return;
+      }
+      // Any other duplicate (the email was taken meanwhile) can't succeed.
+      if (!isDuplicateKey(err) && attempt < RESTORE_ATTEMPTS) {
+        await new Promise(r => setTimeout(r, RESTORE_RETRY_DELAY_MS * attempt));
+        continue;
+      }
+      memberRestoreFailures.add(1);
+      opentelemetry.trace
+        .getActiveSpan()
+        ?.recordException(err instanceof Error ? err : new Error(String(err)));
+      logger.error(
+        {
+          error: err,
+          userId: user._id.toString(),
+          teamId: user.team.toString(),
+        },
+        'Failed to restore team member removed by an org API key',
+      );
+      throw err;
+    }
+  }
 }

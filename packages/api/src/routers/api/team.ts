@@ -31,6 +31,7 @@ import {
 } from '@/controllers/user';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import TeamInvite from '@/models/teamInvite';
+import orgApiKeysRouter from '@/routers/api/orgApiKeys';
 import { sendJson } from '@/utils/serialization';
 import { objectIdSchema } from '@/utils/zod';
 
@@ -331,5 +332,7 @@ router.get(
     }
   },
 );
+
+router.use('/api-keys', orgApiKeysRouter);
 
 export default router;

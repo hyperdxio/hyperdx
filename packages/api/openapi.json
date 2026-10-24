@@ -8917,7 +8917,7 @@
             "description": "Successfully removed the member"
           },
           "400": {
-            "description": "Cannot remove yourself from the team"
+            "description": "Cannot remove yourself or the last team member"
           },
           "404": {
             "description": "Member not found"

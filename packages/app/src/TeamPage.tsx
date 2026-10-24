@@ -30,6 +30,7 @@ import ConnectionsSection from './components/TeamSettings/ConnectionsSection';
 import IacMigrationSection from './components/TeamSettings/IacMigrationSection';
 import IntegrationsSection from './components/TeamSettings/IntegrationsSection';
 import McpServerSection from './components/TeamSettings/McpServerSection';
+import OrgApiKeysSection from './components/TeamSettings/OrgApiKeysSection';
 import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesSection';
 import SourcesSection from './components/TeamSettings/SourcesSection';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
@@ -165,6 +166,10 @@ export default function TeamPage() {
         {
           id: 'team-api-agents-api-keys',
           content: () => <ApiKeysSection />,
+        },
+        {
+          id: 'team-api-agents-org-api-keys',
+          content: () => <OrgApiKeysSection />,
         },
         {
           id: 'team-api-agents-mcp-server',

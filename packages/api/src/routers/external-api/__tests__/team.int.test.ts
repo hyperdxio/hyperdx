@@ -1,7 +1,10 @@
 import request, { SuperAgentTest } from 'supertest';
 
+import { createOrgApiKey } from '@/controllers/orgApiKey';
 import { getLoggedInAgent, getServer } from '@/fixtures';
+import Alert from '@/models/alert';
 import { ITeam } from '@/models/team';
+import User from '@/models/user';
 import { IUser } from '@/models/user';
 
 const TEAM_BASE_URL = '/api/v2/team';
@@ -119,6 +122,130 @@ describe('External API v2 Team', () => {
         listRes.body.data.filter((i: { email: string }) => i.email === email)
           .length,
       ).toBe(1);
+    });
+  });
+
+  describe('org API keys', () => {
+    const createKey = async () =>
+      (
+        await createOrgApiKey(team._id, user._id, {
+          description: 'terraform',
+          expiry: 'never',
+        })
+      ).key;
+
+    const withKey = (key: string, req: request.Test) =>
+      req.set('Authorization', `Bearer ${key}`);
+
+    const createMember = () =>
+      User.create({ email: 'member@deploysentinel.com', team: team._id });
+
+    it('lists members without the key or anyone marked as the caller', async () => {
+      const key = await createKey();
+      const res = await withKey(
+        key,
+        agent.get(`${TEAM_BASE_URL}/members`),
+      ).expect(200);
+      expect(res.body.data.map((m: { email: string }) => m.email)).toEqual([
+        user.email,
+      ]);
+      expect(res.body.data[0].isCurrentUser).toBe(false);
+    });
+
+    it('can invite and remove members', async () => {
+      const key = await createKey();
+      await withKey(key, agent.post(`${TEAM_BASE_URL}/invitation`))
+        .send({ email: 'new@deploysentinel.com' })
+        .expect(200);
+
+      const member = await createMember();
+      const alert = await Alert.create({
+        team: team._id,
+        threshold: 1,
+        interval: '5m',
+        thresholdType: 'above',
+        source: 'saved_search',
+        channel: { type: 'webhook', webhookId: 'x' },
+        createdBy: member._id,
+      });
+
+      await withKey(
+        key,
+        agent.delete(`${TEAM_BASE_URL}/member/${member._id}`),
+      ).expect(200);
+      expect(await User.findById(member._id)).toBeNull();
+      const stored = await Alert.findById(alert._id).lean();
+      const account = await User.findOne({ isServiceAccount: true });
+      expect(stored?.createdBy).toEqual(account?._id);
+    });
+
+    it('stops a key removing the last member', async () => {
+      const key = await createKey();
+      const res = await withKey(
+        key,
+        agent.delete(`${TEAM_BASE_URL}/member/${user._id}`),
+      ).expect(400);
+      expect(res.body.message).toBe('Cannot remove the last team member');
+      // The member is deleted then put back, and must keep their credentials.
+      const restored = await User.findById(user._id).select('+hash +salt');
+      expect(restored?.get('hash')).toBeTruthy();
+      expect(restored?.accessKey).toBe(user.accessKey);
+    });
+
+    it('keeps a member when a key removes the last two at once', async () => {
+      const key = await createKey();
+      const member = await createMember();
+      const results = await Promise.all(
+        [user._id, member._id].map(id =>
+          withKey(key, agent.delete(`${TEAM_BASE_URL}/member/${id}`)),
+        ),
+      );
+      expect(results.map(r => r.status).sort()).not.toEqual([200, 200]);
+      expect(
+        await User.countDocuments({
+          team: team._id,
+          isServiceAccount: { $ne: true },
+        }),
+      ).toBeGreaterThan(0);
+    });
+
+    it('returns 404 for a non-member before applying the last-member rule', async () => {
+      const key = await createKey();
+      await withKey(
+        key,
+        agent.delete(`${TEAM_BASE_URL}/member/${new Alert()._id}`),
+      ).expect(404);
+    });
+
+    it('hides service accounts from members and member removal', async () => {
+      await createKey();
+      const account = await User.findOne({ isServiceAccount: true });
+
+      const list = await authRequest('get', `${TEAM_BASE_URL}/members`).expect(
+        200,
+      );
+      expect(list.body.data.map((m: { id: string }) => m.id)).not.toContain(
+        account?._id.toString(),
+      );
+
+      const alert = await Alert.create({
+        team: team._id,
+        threshold: 1,
+        interval: '5m',
+        thresholdType: 'above',
+        source: 'saved_search',
+        channel: { type: 'webhook', webhookId: 'x' },
+        createdBy: account?._id,
+      });
+
+      await authRequest(
+        'delete',
+        `${TEAM_BASE_URL}/member/${account?._id}`,
+      ).expect(404);
+      expect(await User.findById(account?._id)).not.toBeNull();
+      expect((await Alert.findById(alert._id))?.createdBy).toEqual(
+        account?._id,
+      );
     });
   });
 });
