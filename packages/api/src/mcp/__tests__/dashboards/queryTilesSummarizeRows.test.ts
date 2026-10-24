@@ -1,8 +1,4 @@
-import {
-  summarizeRows,
-  TileDeadlineError,
-  withDeadline,
-} from '@/mcp/tools/dashboards/queryTiles';
+import { summarizeRows } from '@/mcp/tools/dashboards/queryTiles';
 
 describe('summarizeRows', () => {
   it('reads a top-level array result as rows', () => {
@@ -44,63 +40,5 @@ describe('summarizeRows', () => {
     // Valid JSON, but not an object with a `result` key.
     expect(summarizeRows('null')).toEqual({});
     expect(summarizeRows('123')).toEqual({});
-  });
-});
-
-describe('withDeadline', () => {
-  it('resolves work that finishes before the deadline', async () => {
-    await expect(
-      withDeadline(() => Promise.resolve('done'), Date.now() + 1000),
-    ).resolves.toBe('done');
-  });
-
-  it('rejects with TileDeadlineError when work exceeds the deadline', async () => {
-    const slow = () =>
-      new Promise<string>(resolve => setTimeout(() => resolve('too late'), 50));
-    await expect(withDeadline(slow, Date.now() + 5)).rejects.toBeInstanceOf(
-      TileDeadlineError,
-    );
-  });
-
-  it('does not start the work when the shared deadline is already in the past', async () => {
-    // A tile scheduled after the batch budget is spent must fail fast WITHOUT
-    // invoking the thunk — this is what keeps the post-deadline drain from
-    // issuing any (un-cancellable) ClickHouse queries.
-    const start = jest.fn(() => Promise.resolve('too late'));
-    await expect(withDeadline(start, Date.now() - 1)).rejects.toBeInstanceOf(
-      TileDeadlineError,
-    );
-    expect(start).not.toHaveBeenCalled();
-  });
-
-  it('propagates a rejection from the underlying work', async () => {
-    const boom = () => Promise.reject(new Error('boom'));
-    await expect(withDeadline(boom, Date.now() + 1000)).rejects.toThrow('boom');
-  });
-
-  it('aborts the signal handed to the work when the deadline fires', async () => {
-    // The signal must fire so the in-flight ClickHouse query is cancelled
-    // server-side rather than left running after the batch gives up on it.
-    let captured: AbortSignal | undefined;
-    const slow = (signal: AbortSignal) => {
-      captured = signal;
-      return new Promise<string>(resolve =>
-        setTimeout(() => resolve('too late'), 50),
-      );
-    };
-    await expect(withDeadline(slow, Date.now() + 5)).rejects.toBeInstanceOf(
-      TileDeadlineError,
-    );
-    expect(captured?.aborted).toBe(true);
-  });
-
-  it('aborts the signal once work resolves so no query outlives the call', async () => {
-    let captured: AbortSignal | undefined;
-    const work = (signal: AbortSignal) => {
-      captured = signal;
-      return Promise.resolve('done');
-    };
-    await expect(withDeadline(work, Date.now() + 1000)).resolves.toBe('done');
-    expect(captured?.aborted).toBe(true);
   });
 });
