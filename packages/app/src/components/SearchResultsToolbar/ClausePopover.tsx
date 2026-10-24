@@ -123,7 +123,17 @@ export function ClausePopover({
             data-testid={`${testId}-mode`}
           />
           {mode === 'pick' ? renderPick(apply) : renderSql(apply)}
-          <Group justify="space-between" gap="xs" wrap="nowrap">
+          <Group
+            justify="space-between"
+            gap="xs"
+            wrap="nowrap"
+            // The SQL completion list overflows the editor and sits on top of
+            // these buttons. Keep the row above that list so Apply stays clickable.
+            style={{
+              position: 'relative',
+              zIndex: 'var(--mantine-z-index-max)',
+            }}
+          >
             <Button
               variant="link"
               size="xs"

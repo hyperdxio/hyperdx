@@ -459,11 +459,53 @@ export class SearchPage {
     return this.whereInput.borderColors();
   }
 
+  get columnsButton() {
+    return this.page.getByTestId('search-columns-button');
+  }
+
+  get sortButton() {
+    return this.page.getByTestId('search-sort-button');
+  }
+
+  /** The SELECT the table runs with; the Columns button carries it as its title. */
+  async getSelectValue(): Promise<string> {
+    return (await this.columnsButton.getAttribute('title')) ?? '';
+  }
+
+  async getOrderByValue(): Promise<string> {
+    return (await this.sortButton.getAttribute('title')) ?? '';
+  }
+
   /**
-   * Get SELECT editor (CodeMirror)
+   * Get SELECT editor (CodeMirror). It lives on the SQL tab of the Columns
+   * popover, so call `openSelectEditor` first.
    */
   getSELECTEditor() {
-    return this.page.locator('.cm-content').first();
+    return this.page.getByTestId('search-select-input').locator('.cm-content');
+  }
+
+  async openSelectEditor() {
+    return this.openClauseSqlTab(
+      'search-columns-button',
+      this.getSELECTEditor(),
+    );
+  }
+
+  async openOrderByEditor() {
+    return this.openClauseSqlTab('search-sort-button', this.getOrderByEditor());
+  }
+
+  private async openClauseSqlTab(testId: string, editor: Locator) {
+    const popover = this.page.getByTestId(`${testId}-popover`);
+    if (!(await popover.isVisible())) {
+      await this.page.getByTestId(testId).click();
+    }
+    await popover
+      .getByTestId(`${testId}-mode`)
+      .getByText('SQL', { exact: true })
+      .click();
+    await editor.waitFor({ state: 'visible' });
+    return editor;
   }
 
   async getSelectBorderColor(): Promise<string> {
@@ -505,33 +547,50 @@ export class SearchPage {
    * Get ORDER BY editor (CodeMirror)
    */
   getOrderByEditor() {
-    return this.page.locator('.cm-content').nth(1);
+    return this.page
+      .getByTestId('search-order-by-input')
+      .locator('.cm-content');
   }
 
   /**
-   * Set custom SELECT columns
+   * Set custom SELECT columns through the Columns popover's SQL tab and apply
+   * it, which also runs the search.
    */
   async setCustomSELECT(selectStatement: string) {
-    const selectEditor = this.getSELECTEditor();
+    const selectEditor = await this.openSelectEditor();
     await selectEditor.click({ clickCount: 3 }); // Select all
     // Insert atomically rather than per-keystroke: under load CodeMirror can
     // drop individual keys from keyboard.type (e.g. "Timestamp" -> "Timstamp"),
     // which then gets faithfully saved and fails later assertions.
     await this.page.keyboard.insertText(selectStatement);
-    // Dismiss the autocomplete popup so it can't linger and overlay the next
-    // control (e.g. the Save Search button).
-    await dismissSqlAutocomplete(this.page);
+    await this.applyClause('search-columns-button');
   }
 
   /**
-   * Set custom ORDER BY clause
+   * Set custom ORDER BY through the Sort popover's SQL tab and apply it.
    */
   async setCustomOrderBy(orderByStatement: string) {
-    const orderByEditor = this.getOrderByEditor();
+    const orderByEditor = await this.openOrderByEditor();
     await orderByEditor.click({ clickCount: 3 }); // Select all
-    await this.page.keyboard.type(orderByStatement);
-    // CLoses Autocomplete Modal if open
-    await this.page.keyboard.press('Escape');
+    await this.page.keyboard.insertText(orderByStatement);
+    await this.applyClause('search-sort-button');
+  }
+
+  private async applyClause(testId: string) {
+    const popover = this.page.getByTestId(`${testId}-popover`);
+    // Typing swaps the completion plugin, which opens a fresh list over Apply
+    // after a blur. Move focus to the mode control once that list is up.
+    // Escape would close the popover and drop the draft.
+    const tooltip = popover.locator('.cm-tooltip-autocomplete');
+    await tooltip
+      .waitFor({ state: 'visible', timeout: 2000 })
+      .catch(() => undefined);
+    await popover
+      .getByTestId(`${testId}-mode`)
+      .getByText('SQL', { exact: true })
+      .click();
+    await this.page.getByTestId(`${testId}-apply`).click();
+    await popover.waitFor({ state: 'hidden' });
   }
 
   get groupByButton() {
