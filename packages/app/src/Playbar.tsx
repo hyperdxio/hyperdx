@@ -5,7 +5,11 @@ import { keepPreviousData } from '@tanstack/react-query';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
-import { SessionRow, sessionRowSchema } from './utils/sessions';
+import {
+  getSessionRowHttp,
+  SessionRow,
+  sessionRowSchema,
+} from './utils/sessions';
 import type { PlaybarMarker } from './PlaybarSlider';
 import { PlaybarSlider } from './PlaybarSlider';
 import { getShortUrl } from './utils';
@@ -71,9 +75,7 @@ export default function Playbar({
 
           const errorMessage = event['error.message'] ?? '';
 
-          const url = event['http.url'] ?? '';
-          const statusCode = Number(event['http.status_code'] ?? '');
-          const method = event['http.method'] ?? '';
+          const { url, statusCode, label } = getSessionRowHttp(event);
           const shortUrl = getShortUrl(url);
 
           const isNavigation =
@@ -96,7 +98,7 @@ export default function Playbar({
             description: isNavigation
               ? `Navigated to ${shortLocationHref}`
               : url.length > 0
-                ? `${statusCode} ${method}${url.length > 0 ? ` ${shortUrl}` : ''}`
+                ? `${label} ${shortUrl}`
                 : errorMessage != null && errorMessage.length > 0
                   ? errorMessage
                   : spanName === 'intercom.onShow'

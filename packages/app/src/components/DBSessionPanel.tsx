@@ -7,8 +7,44 @@ import useFieldExpressionGenerator from '@/hooks/useFieldExpressionGenerator';
 import { WithClause } from '@/hooks/useRowWhere';
 import SessionSubpanel from '@/SessionSubpanel';
 import { useSource } from '@/source';
+import { SessionIdKey, traceSessionIdColumns } from '@/utils/sessionId';
 
 import { useEventsData } from './DBTraceWaterfallChart';
+
+type SessionIdRow = {
+  rumSessionId?: string;
+  otelSessionId?: string;
+  serviceName?: string;
+};
+
+/**
+ * A legacy SDK id anywhere in the trace wins over `session.id` rows, so a trace
+ * that carries one always opens the legacy replay.
+ */
+export function pickSessionIdRow(rows: SessionIdRow[]): {
+  rumSessionId?: string;
+  rumServiceName?: string;
+  sessionIdKey?: SessionIdKey;
+} {
+  const rumRow = rows.find(row => row.rumSessionId);
+  if (rumRow) {
+    return {
+      rumSessionId: rumRow.rumSessionId,
+      rumServiceName: rumRow.serviceName,
+      sessionIdKey: 'rum.sessionId',
+    };
+  }
+
+  const otelRow = rows.find(row => row.otelSessionId);
+  if (otelRow) {
+    return {
+      rumSessionId: otelRow.otelSessionId,
+      rumServiceName: otelRow.serviceName,
+      sessionIdKey: 'session.id',
+    };
+  }
+  return {};
+}
 
 export const useSessionId = ({
   sourceId,
@@ -32,6 +68,7 @@ export const useSessionId = ({
     if (!source || !traceId || !getFieldExpression) {
       return;
     }
+    const { attrs } = traceSessionIdColumns(source);
     return {
       select: [
         {
@@ -47,8 +84,10 @@ export const useSessionId = ({
           alias: 'serviceName',
         },
         {
-          valueExpression: `${source.parentSpanIdExpression}`,
-          alias: 'parentSpanId',
+          // Only browser SDK spans carry the page URL; other `session.id`
+          // spans (AI agent conversations, backends) have no replay.
+          valueExpression: `if(${getFieldExpression(attrs, 'browser.document.url.full')} != '', ${getFieldExpression(attrs, 'session.id')}, '')`,
+          alias: 'otelSessionId',
         },
       ],
       from: source.from,
@@ -67,40 +106,24 @@ export const useSessionId = ({
     enabled: enabled && !!source && !!config,
   });
 
-  const result = useMemo(() => {
-    const rowData = data?.data || [];
-    let row = rowData.find(
-      row => row.parentSpanId === null && row.rumSessionId,
-    );
-    if (!row) {
-      // otherwise just return the first session id
-      row = rowData.find(row => row.rumSessionId);
-    }
-    if (row) {
-      return {
-        rumServiceName: row.serviceName,
-        rumSessionId: row.rumSessionId,
-      };
-    }
-    return { rumServiceName: undefined, rumSessionId: undefined };
-  }, [data]);
-
-  return result;
+  return useMemo(() => pickSessionIdRow(data?.data ?? []), [data]);
 };
 
 export const DBSessionPanel = ({
   traceSourceId,
   rumSessionId,
+  sessionIdKey,
   dateRange,
   focusDate,
   serviceName,
   onEventNavigate,
 }: {
   traceSourceId?: string;
-  rumSessionId: string;
+  rumSessionId?: string;
+  sessionIdKey?: SessionIdKey;
   dateRange: [Date, Date];
   focusDate: Date;
-  serviceName: string;
+  serviceName?: string;
   onEventNavigate?: (rowId: string, aliasWith: WithClause[]) => void;
 }) => {
   const { data: traceSource } = useSource({
@@ -134,7 +157,7 @@ export const DBSessionPanel = ({
           start={dateRange[0]}
           end={dateRange[1]}
           traceSource={traceSource}
-          session={{ serviceName }}
+          session={{ serviceName: serviceName ?? '', sessionIdKey }}
           sessionSource={sessionSource}
           rumSessionId={rumSessionId}
           onEventNavigate={onEventNavigate}

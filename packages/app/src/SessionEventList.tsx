@@ -16,7 +16,11 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
-import { SessionRow, sessionRowSchema } from './utils/sessions';
+import {
+  getSessionRowHttp,
+  SessionRow,
+  sessionRowSchema,
+} from './utils/sessions';
 import { useFormatTime } from './useFormatTime';
 import { formatmmss, getShortUrl } from './utils';
 
@@ -135,9 +139,7 @@ export const SessionEventList = ({
         const startOffset = new Date(timestamp).getTime();
         const endOffset = new Date(startOffset).getTime() + durationInMs;
 
-        const url = event['http.url'] ?? '';
-        const statusCode = Number(event['http.status_code'] ?? '');
-        const method = event['http.method'] ?? '';
+        const { url, method, statusCode, label } = getSessionRowHttp(event);
         const shortUrl = getShortUrl(url);
 
         const isNetworkRequest =
@@ -186,7 +188,7 @@ export const SessionEventList = ({
                 : spanName === 'console.warn'
                   ? 'console.warn'
                   : url.length > 0
-                    ? `${statusCode} ${method}`
+                    ? label
                     : spanName === 'intercom.onShow'
                       ? 'Intercom Chat Opened'
                       : isCustomEvent
