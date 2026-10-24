@@ -154,6 +154,7 @@ jobs:
         run:
           node --test
           .trusted/.github/scripts/code-review/__tests__/review-comments.test.mjs
+          .trusted/.github/scripts/code-review/__tests__/priority.test.mjs
 
       # The reviewer reads the diff from a file: a large diff cannot be embedded in
       # workflow YAML, and subagents/later steps need a stable path.

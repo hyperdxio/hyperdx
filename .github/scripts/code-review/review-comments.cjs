@@ -13,18 +13,29 @@
  * `.cjs` rather than `.js`: this is CommonJS loaded by `require` from github-script, and
  * the extension says so without depending on the absence of `"type": "module"`.
  */
-const crypto = require('crypto');
+const {
+  PRIORITY_ICON,
+  PRIORITIES,
+  severityOf,
+  isSecurityShaped,
+  effectivePriority,
+  applyGrades,
+  regradeInput,
+} = require('./priority.cjs');
+const {
+  fingerprint,
+  seenFingerprints,
+  titleTokens,
+  titleSimilarity,
+  SIMILAR_TITLE,
+  titleFromBody,
+  seenFindings,
+  matchPosted,
+  distinctFindings,
+  MIN_SHARED_TOKENS,
+} = require('./dedup.cjs');
 
 const ICON = { critical: '🔴', major: '🟠', minor: '🔵' };
-
-/**
- * What users see. Severity above is still produced by the reviewer and still drives the
- * policy below, but it is no longer rendered: one comment carrying two grades on two
- * different scales was the thing to avoid. Icons match deep-review.yml's sections
- * (🔴 P0/P1, 🟡 P2, 🔵 P3) so the two bots read the same on one PR.
- */
-const PRIORITY_ICON = { P0: '🔴', P1: '🔴', P2: '🟡', P3: '🔵' };
-const PRIORITIES = ['P0', 'P1', 'P2', 'P3'];
 
 /** GitHub rejects a comment body over this with a 422 on the whole post. */
 const MAX_BODY = 65536;
@@ -82,95 +93,6 @@ const AGENT_NOTICE = [
   `> scope rather than addressing more automated findings. Full rule: [AGENTS.md](${GUIDE_URL}).`,
 ].join('\n');
 
-/** Normalize a severity we may have received from a model to one of the three the reviewer emits. */
-function severityOf(finding) {
-  return ICON[finding.severity] ? finding.severity : 'minor';
-}
-
-/**
- * Security-shaped wording. A finding like this may be graded down, but never collapsed: a
- * grader once filed an unescaped SQL splice as a nit on the grounds that the attacker would
- * need DDL rights (hdx-code-reviewer, PR #1620). Matching wording rather than a field is
- * deliberate here -- this is a floor, so a false positive only keeps a comment visible.
- */
-const SECURITY_SHAPED =
-  /\b(sql[- ]?injection|injection|xss|cross[- ]site|rce|remote code execution|deserializ|ssrf|csrf|path traversal|directory traversal|auth(?:n|z)?\s+bypass|authentication bypass|authorization bypass|privilege escalation|unescaped|unsanitized|sanitiz|secret|credential|api[- ]?key|password|token leak)\b/i;
-
-function isSecurityShaped(finding) {
-  return SECURITY_SHAPED.test(
-    `${finding.title || ''} ${finding.body || ''} ${finding.consequence || ''}`,
-  );
-}
-
-/**
- * Without a grade, nothing is hidden. The grading pass is a separate model call and can
- * fail on its own; when it does, every finding is still posted, ranked the way the
- * reviewer's own severity always ranked it. Failing toward "post it" is the same direction
- * every other fallback in this workflow takes.
- */
-const UNGRADED_PRIORITY = { critical: 'P0', major: 'P1', minor: 'P2' };
-
-/**
- * The one priority this finding is shown and routed with. Order is load-bearing:
- *
- *  1. The grader's priority (or the ungraded fallback above).
- *  2. A grader P3 that names a failure mode is raised to P2. The grading prompt promises
- *     this ("a P3 with hasFailureMode=true is automatically raised"), so it has to hold.
- *  3. POLICY: a P2 that the reviewer itself called `minor` is shown as P3 (collapsed). Two
- *     independent graders both calling it low is the signal; either one alone is not.
- *     Measured on 75 human-voted findings this hides ~35% of comments while keeping every
- *     upvoted major/critical finding inline.
- *  4. FLOORS, last word: anything reachable today, or security-shaped, is never collapsed.
- *
- * Step 2 must come BEFORE step 3. Run after it, the failure-mode clamp re-raises 13 of the
- * 22 minor P2s the policy exists to fold, and the policy stops doing anything.
- */
-function effectivePriority(finding) {
-  const graded = PRIORITIES.includes(finding.priority);
-  let p = graded ? finding.priority : UNGRADED_PRIORITY[severityOf(finding)];
-  if (!graded) return p;
-  if (p === 'P3' && finding.hasFailureMode === true) p = 'P2';
-  if (p === 'P2' && severityOf(finding) === 'minor') p = 'P3';
-  if (p === 'P3' && (finding.reachableToday === true || isSecurityShaped(finding))) p = 'P2';
-  return p;
-}
-
-/**
- * Merge the grading pass's output onto the reviewer's findings by index. A grade for an
- * index that does not exist, or with an unknown priority, is dropped and that finding stays
- * ungraded (posted, per UNGRADED_PRIORITY) rather than guessed at.
- */
-function applyGrades(findings, grades) {
-  const byIndex = new Map();
-  for (const g of grades || []) {
-    if (Number.isInteger(g && g.index) && PRIORITIES.includes(g.priority)) byIndex.set(g.index, g);
-  }
-  return (findings || []).map((f, i) => {
-    const g = byIndex.get(i);
-    if (!g) return f;
-    return {
-      ...f,
-      priority: g.priority,
-      hasFailureMode: g.hasFailureMode === true,
-      reachableToday: g.reachableToday === true,
-      consequence: typeof g.consequence === 'string' ? g.consequence : undefined,
-    };
-  });
-}
-
-/** The findings as the grading pass reads them. Bodies are capped like the harness capped them. */
-function regradeInput(findings) {
-  return [
-    `FINDINGS TO GRADE (${(findings || []).length}) -- return exactly one grade per index:`,
-    '',
-    ...(findings || []).map(
-      (f, i) =>
-        `- index: ${i}\n  file: ${f.file}\n  issue: ${f.title}\n  detail: ${String(f.body || '').slice(0, 1200)}`,
-    ),
-    '',
-  ].join('\n');
-}
-
 /**
  * Map of file -> Set of post-image line numbers that can carry an inline comment.
  *
@@ -218,135 +140,6 @@ function parseCommentableLines(diffText) {
     // A '-' line consumes no post-image line number and no post-image budget.
   }
   return byFile;
-}
-
-/**
- * Stable per-finding id used to avoid reposting across pushes.
- *
- * Keyed on path + normalized title only: bodies get reworded between runs, and keying on
- * them would repost the same finding every push.
- *
- * TITLES ARE NOT STABLE EITHER, which this used to assume. PR #3039 was reviewed four
- * times in 2.3 hours and the same defect was posted three times, as "New `start`/`end`
- * params on the app's `labelValues` client have no caller", "...on the app client have no
- * caller, and the only consumer's query key can't hold them" and "...on
- * `prometheusApi.labelValues` have no caller": three titles, three fingerprints, three
- * threads, all three thumbed down. So the exact fingerprint is now only the fast path, and
- * `matchPosted` below catches a reworded restatement on the same file.
- */
-function fingerprint(finding) {
-  const title = String(finding.title || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-  return crypto
-    .createHash('sha256')
-    .update(`${finding.file}|${title}`)
-    .digest('hex')
-    .slice(0, 16);
-}
-
-// The marker may carry attributes after the fingerprint (`p=P2 sev=minor reach=true`) so a
-// later analysis can tell which input decided a grade. deep-review.yml matches only the
-// `<!-- hdxr:` prefix, so it is unaffected.
-const FINGERPRINT_RE = /<!-- hdxr:([0-9a-f]{16})(?: [^>]*)? -->/;
-
-/** Recover fingerprints we have already posted, from existing bot review comments. */
-function seenFingerprints(existingComments) {
-  const seen = new Set();
-  for (const c of existingComments || []) {
-    const m = FINGERPRINT_RE.exec(c.body || '');
-    if (m) seen.add(m[1]);
-  }
-  return seen;
-}
-
-/**
- * Words that survive rewording carry the claim; these do not. Kept short on purpose: every
- * word removed also raises the similarity of two UNRELATED titles, and a false dedup
- * silently drops a real finding.
- */
-const TITLE_STOPWORDS = new Set(
-  ('a an the is are was were be been its it to of on in into at by for from with and or so but ' +
-    'that this these those now new only every not no has have had can cannot never always when ' +
-    'which while they them their there here per both as if then than does do silently still')
-    .split(' '),
-);
-
-/** Content tokens of a title: identifiers survive, prose connectives do not. */
-function titleTokens(title) {
-  const words =
-    String(title || '')
-      .toLowerCase()
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/[`*_]/g, '')
-      .match(/[a-z0-9_.[\]/]+/g) || [];
-  return new Set(words.filter(w => w.length > 1 && !TITLE_STOPWORDS.has(w)));
-}
-
-/** Jaccard overlap of two token sets. */
-function titleSimilarity(a, b) {
-  if (a.size === 0 || b.size === 0) return 0;
-  let shared = 0;
-  for (const t of a) if (b.has(t)) shared += 1;
-  return shared / (a.size + b.size - shared);
-}
-
-/**
- * Two titles on the SAME FILE at or above this overlap are one finding.
- *
- * Set from all 140 same-PR, same-file pairs of this bot's human-voted findings. Every pair
- * at or above 0.36 is a restatement. At 0.333 restatements and genuinely distinct findings
- * collide: on #3129, "signs every user out on each container restart" and "still signs
- * sessions with the public secret" are two real defects (the second critical) at exactly
- * that score. Lowering the bar to catch one more reword would suppress a critical finding,
- * so 0.4 takes that miss.
- */
-const SIMILAR_TITLE = 0.4;
-
-function firstLineOf(body) {
-  return String(body || '').replace(/^\s+/, '').split('\n')[0] || '';
-}
-
-/** The title out of a posted comment body, in either the old severity or new priority form. */
-function titleFromBody(body) {
-  const first = firstLineOf(body);
-  const m = /^(?:\S+\s+)?\*\*(?:critical|major|minor|P[0-3])\*\*\s*(?:—|--)?\s*(.*)$/.exec(first);
-  return (m ? m[1] : first).trim();
-}
-
-/**
- * Findings already posted, in the shape matchPosted compares: the exact fingerprint plus
- * the file and title tokens a reworded restatement would still share.
- */
-function seenFindings(existingComments) {
-  const posted = [];
-  for (const c of existingComments || []) {
-    const m = FINGERPRINT_RE.exec(c.body || '');
-    if (!m) continue;
-    posted.push({
-      fp: m[1],
-      file: c.path || null,
-      tokens: titleTokens(titleFromBody(c.body)),
-      fromPush: true,
-      counted: false,
-    });
-  }
-  return posted;
-}
-
-/** The posted entry this finding restates, or null. */
-function matchPosted(posted, finding) {
-  const fp = fingerprint(finding);
-  const tokens = titleTokens(finding.title);
-  for (const p of posted) {
-    if (p.fp === fp) return p;
-    // File-scoped: the same words about a different file are a different finding.
-    if (p.file && p.file === finding.file && titleSimilarity(p.tokens, tokens) >= SIMILAR_TITLE) {
-      return p;
-    }
-  }
-  return null;
 }
 
 /** Hidden per-comment marker: the dedup key, plus the inputs that decided the priority. */
@@ -484,16 +277,11 @@ function renderSummary({
 
   lines.push(AGENT_NOTICE, '');
 
-  // The set actually represented in this comment: first occurrence of each fingerprint.
-  // Both the headline total and the per-severity tally run over it, so they agree -- a
-  // tally over every finding would not sum to the distinct total once duplicates collapse.
-  const seenKeys = new Set();
-  const shown = findings.filter(f => {
-    const key = fingerprint(f);
-    if (seenKeys.has(key)) return false;
-    seenKeys.add(key);
-    return true;
-  });
+  // The set actually represented in this comment: first occurrence of each finding,
+  // matched the same way delivery matches (fingerprint OR reworded title). Both the
+  // headline total and the per-priority tally run over it, so they agree -- and a pair of
+  // restatements that delivery collapsed into one comment is counted once here too.
+  const shown = distinctFindings(findings);
   const by = (...ps) => shown.filter(f => ps.includes(effectivePriority(f))).length;
   const nUnanchored = unanchored ? unanchored.length : 0;
   const nCollapsed = collapsed ? collapsed.length : 0;
@@ -590,6 +378,8 @@ module.exports = {
   titleSimilarity,
   titleFromBody,
   SIMILAR_TITLE,
+  MIN_SHARED_TOKENS,
+  distinctFindings,
   PRIORITY_ICON,
   effectivePriority,
   applyGrades,
