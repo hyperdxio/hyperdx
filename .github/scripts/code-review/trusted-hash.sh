@@ -14,7 +14,9 @@ root="${1:?usage: trusted-hash.sh <trusted-root>}"
 # agent_docs/code_style.md is included because it is fed to the reviewer as authoritative
 # conventions: a change to it changes the review, so it must invalidate the gate. The cost
 # is that editing it re-reviews every open PR, which is the correct trade for a rules change.
+# code-review-regrade.md is included for the same reason: it decides what is folded.
 find "$root/.github/prompts/code-review.md" \
+  "$root/.github/prompts/code-review-regrade.md" \
   "$root/.github/scripts/code-review" \
   "$root/.github/workflows/claude-code-review.yml" \
   "$root/agent_docs/code_style.md" \
