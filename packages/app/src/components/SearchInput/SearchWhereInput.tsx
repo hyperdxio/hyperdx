@@ -200,67 +200,74 @@ export default function SearchWhereInput({
           ['--editor-base-height' as string]: `${baseHeight}px`,
         }}
       >
-        <Flex
-          align="flex-start"
-          className={styles.languageSwitch}
-          data-testid="where-language-switch"
-          onMouseDown={e => e.preventDefault()}
-        >
-          <Flex align="center" className={styles.languageSwitchRow}>
-            <InputLanguageSwitch
-              language={language}
-              onLanguageChange={handleLanguageChange}
-            />
-            <Tooltip label="Syntax reference" withArrow position="top">
-              <ActionIcon
-                variant="subtle"
-                size="xs"
-                aria-label="Open syntax reference"
-                onClick={openSyntaxRef}
-                style={{ marginRight: 4 }}
-              >
-                <IconHelp size={14} />
-              </ActionIcon>
-            </Tooltip>
+        {/* An open field overflows this box rather than growing it, so the page
+            below does not jump. Kept as one box — not just the editor — so the
+            language picker grows with the query, like the SQL label. */}
+        <Flex className={styles.bar}>
+          <Flex
+            align="flex-start"
+            className={styles.languageSwitch}
+            data-testid="where-language-switch"
+            onMouseDown={e => e.preventDefault()}
+          >
+            <Flex align="center" className={styles.languageSwitchRow}>
+              <InputLanguageSwitch
+                language={language}
+                onLanguageChange={handleLanguageChange}
+              />
+              <Tooltip label="Syntax reference" withArrow position="top">
+                <ActionIcon
+                  variant="subtle"
+                  size="xs"
+                  aria-label="Open syntax reference"
+                  onClick={openSyntaxRef}
+                  style={{ marginRight: 4 }}
+                >
+                  <IconHelp size={14} />
+                </ActionIcon>
+              </Tooltip>
+            </Flex>
           </Flex>
+          <Box className={styles.inputWrapper}>
+            {isSql ? (
+              <SQLInlineEditorControlled
+                {...tc}
+                control={control}
+                name={name}
+                placeholder={sqlPlaceholder}
+                onSubmit={onSubmit}
+                queryHistoryType={sqlQueryHistoryType}
+                enableHotkey={enableHotkey}
+                allowMultiline={allowMultiline}
+                floatOnOpen={false}
+                size={size}
+                additionalSuggestions={additionalSuggestions}
+                dateRange={dateRange}
+                sourceId={sourceId}
+                parentRef={parentRef}
+                enableVariables={enableVariables}
+              />
+            ) : (
+              <SearchInputV2
+                {...tc}
+                control={control}
+                name={name}
+                onSubmit={onSubmit}
+                placeholder={lucenePlaceholder}
+                queryHistoryType={luceneQueryHistoryType}
+                enableHotkey={enableHotkey}
+                allowMultiline={allowMultiline}
+                floatOnOpen={false}
+                size={size}
+                data-testid={dataTestId}
+                additionalSuggestions={additionalSuggestions}
+                dateRange={dateRange}
+                sourceId={sourceId}
+                enableVariables={enableVariables}
+              />
+            )}
+          </Box>
         </Flex>
-        <Box className={styles.inputWrapper}>
-          {isSql ? (
-            <SQLInlineEditorControlled
-              {...tc}
-              control={control}
-              name={name}
-              placeholder={sqlPlaceholder}
-              onSubmit={onSubmit}
-              queryHistoryType={sqlQueryHistoryType}
-              enableHotkey={enableHotkey}
-              allowMultiline={allowMultiline}
-              size={size}
-              additionalSuggestions={additionalSuggestions}
-              dateRange={dateRange}
-              sourceId={sourceId}
-              parentRef={parentRef}
-              enableVariables={enableVariables}
-            />
-          ) : (
-            <SearchInputV2
-              {...tc}
-              control={control}
-              name={name}
-              onSubmit={onSubmit}
-              placeholder={lucenePlaceholder}
-              queryHistoryType={luceneQueryHistoryType}
-              enableHotkey={enableHotkey}
-              allowMultiline={allowMultiline}
-              size={size}
-              data-testid={dataTestId}
-              additionalSuggestions={additionalSuggestions}
-              dateRange={dateRange}
-              sourceId={sourceId}
-              enableVariables={enableVariables}
-            />
-          )}
-        </Box>
       </Box>
     </>
   );
