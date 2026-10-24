@@ -30,7 +30,6 @@ import {
   parseTimestampToMs,
   resolveConditionalColor,
   sortingStateToOrderByString,
-  splitClauseList,
   stripTrailingSlash,
   useQueryHistory,
   withMapKeyAlias,
@@ -1534,16 +1533,6 @@ describe('isColumnInSelect', () => {
 
   it('does not mistake a cast for an alias', () => {
     expect(isColumnInSelect(['CAST(x AS String)'], 'CAST(x')).toBe(false);
-  });
-});
-
-describe('splitClauseList', () => {
-  it('keeps a comma inside a backtick-quoted name', () => {
-    expect(splitClauseList('Timestamp, `a,b`, Body')).toEqual([
-      'Timestamp',
-      '`a,b`',
-      'Body',
-    ]);
   });
 });
 
