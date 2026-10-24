@@ -20,6 +20,7 @@
       "serviceNameExpression": "ServiceName",
       "severityTextExpression": "SeverityText",
       "eventAttributesExpression": "LogAttributes",
+      "eventNameExpression": "EventName",
       "resourceAttributesExpression": "ResourceAttributes",
       "traceIdExpression": "TraceId",
       "spanIdExpression": "SpanId",

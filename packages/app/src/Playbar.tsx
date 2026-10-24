@@ -5,6 +5,7 @@ import { keepPreviousData } from '@tanstack/react-query';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 
+import { mergeLogMarkers, SessionLogEvent } from './utils/sessionLogEvents';
 import {
   getSessionRowHttp,
   SessionRow,
@@ -21,6 +22,7 @@ export default function Playbar({
   playbackRange,
   focus,
   queriedConfig,
+  logEvents,
 }: {
   playerState: 'playing' | 'paused';
   setPlayerState: (playerState: 'playing' | 'paused') => void;
@@ -28,6 +30,7 @@ export default function Playbar({
   setFocus: (focus: { ts: number; setBy: string }) => void;
   playbackRange: [Date, Date];
   queriedConfig: ChartConfigWithOptDateRange;
+  logEvents: SessionLogEvent[];
 }) {
   // might be outdated? state update or something? that's why the max slider val can be wrong?
   const minTs = playbackRange[0].getTime();
@@ -49,7 +52,7 @@ export default function Playbar({
     [data?.data],
   );
 
-  const markers = useMemo<PlaybarMarker[]>(() => {
+  const spanMarkers = useMemo<PlaybarMarker[]>(() => {
     return uniqBy(
       events
         .map(event => {
@@ -111,6 +114,10 @@ export default function Playbar({
       'percentage',
     );
   }, [events, maxTs, minTs]);
+  const markers = useMemo(
+    () => mergeLogMarkers(spanMarkers, logEvents, minTs, maxTs),
+    [spanMarkers, logEvents, minTs, maxTs],
+  );
 
   return (
     <PlaybarSlider
