@@ -5,8 +5,6 @@ import {
   DENOISE_SAMPLE_SIZE,
   flattenBody,
   minePatterns,
-  TemplateMiner,
-  TemplateMinerConfig,
 } from '@hyperdx/common-utils/dist/drain';
 import type { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
@@ -17,6 +15,8 @@ import { getSource } from '@/controllers/sources';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
 
 import { resolveBodyExpression } from './helpers';
+
+const PATTERN_WILDCARD = '<*>';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -204,9 +204,6 @@ export async function denoiseSearchResults(
   }
 
   // ── Identify noisy patterns (>10% of sampled events) ──
-  // Key by template string rather than cluster ID so we are not coupled to
-  // the auto-incrementing IDs generated inside minePatterns(). The matching
-  // miner below produces its own IDs; comparing template strings is stable.
   const sampledRowCount = sampleRows.length;
   const noisyTemplates = new Set<string>();
   const removedPatterns: DenoiseResult['removedPatterns'] = [];
@@ -226,16 +223,6 @@ export async function denoiseSearchResults(
     return { rows, removedPatterns: [] };
   }
 
-  // ── Build a miner trained on the same sample for row matching ──
-  const drainConfig = new TemplateMinerConfig();
-  const miner = new TemplateMiner(drainConfig);
-  for (const row of sampleRows) {
-    const raw = row.__hdx_pattern_body;
-    const bodyText = flattenBody(raw != null ? String(raw) : '');
-    miner.addLogMessage(bodyText);
-  }
-
-  // ── Match each result row and filter out noisy ones ──
   const bodyColumnKey = findBodyColumnKey(rows[0], bodyColumn);
   if (!bodyColumnKey) {
     return {
@@ -245,13 +232,14 @@ export async function denoiseSearchResults(
     };
   }
 
+  const isNoisy = buildNoisyBodyMatcher(
+    patterns.map(p => p.pattern),
+    noisyTemplates,
+  );
   const filteredRows = rows.filter(row => {
     const bodyValue = row[bodyColumnKey];
     if (bodyValue == null) return true; // Keep rows with no body
-    const bodyText = flattenBody(String(bodyValue));
-    const match = miner.match(bodyText, 'fallback');
-    if (!match) return true; // No pattern match — keep the row
-    return !noisyTemplates.has(match.getTemplate());
+    return !isNoisy(String(bodyValue));
   });
 
   return {
@@ -261,6 +249,54 @@ export async function denoiseSearchResults(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Return a predicate that is true when the most specific template a body
+ * fits (fewest <*>) is noisy. Fitting means same token count, same literal
+ * tokens, any token at each <*>. Taking the most specific fit keeps rows of
+ * a rare `user login` cluster when a broad `<*> <*>` cluster is noisy; ties
+ * go to the noisy template. Re-running Drain's `match` instead can land a
+ * member on a different same-length cluster than the one it was counted in.
+ */
+export function buildNoisyBodyMatcher(
+  templates: string[],
+  noisyTemplates: Set<string>,
+): (body: string) => boolean {
+  const candidates = templates.map(template => {
+    const tokens = tokenize(template);
+    return {
+      tokens,
+      wildcards: tokens.filter(t => t === PATTERN_WILDCARD).length,
+      noisy: noisyTemplates.has(template),
+    };
+  });
+  return body => {
+    const tokens = tokenize(flattenBody(body));
+    let best: (typeof candidates)[number] | undefined;
+    for (const c of candidates) {
+      const fits =
+        c.tokens.length === tokens.length &&
+        c.tokens.every(
+          (tok, i) => tok === PATTERN_WILDCARD || tok === tokens.at(i),
+        );
+      if (!fits) continue;
+      if (
+        best == null ||
+        c.wildcards < best.wildcards ||
+        (c.wildcards === best.wildcards && c.noisy)
+      ) {
+        best = c;
+      }
+    }
+    return best?.noisy ?? false;
+  };
+}
+
+// Drain tokenizes with trim + split(/\s+/).
+function tokenize(text: string): string[] {
+  const trimmed = text.trim();
+  return trimmed === '' ? [] : trimmed.split(/\s+/);
+}
 
 /**
  * Find the key in a result row that corresponds to the body column expression.

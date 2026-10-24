@@ -1451,33 +1451,10 @@ containers[i].tabs[j].id). Read the path to know which input to fix.
 
 == EVENT PATTERN MINING ==
 
-Use clickstack_event_patterns when asked to find common log messages, recurring
-patterns, noisy services, or top event types. This is the right choice whenever
-the question is about "most common logs", "top patterns", "what is generating
-the most log volume", or similar pattern-discovery questions.
-
-It samples random events and clusters them with the Drain algorithm, returning:
-  - pattern templates (with <*> wildcards for variable parts)
-  - estimated counts (scaled from the sample to the full time range)
-  - time-bucketed trends
-  - a whereSnippet for each pattern to drill into matching raw events
-
-Required parameters:
-  - sourceId (call clickstack_list_sources first)
-  - startTime / endTime for the time window
-
-Optional parameters:
-  - where: filter to specific services or severity levels before mining
-  - sampleSize: increase for more accurate patterns (default 10000, max 25000)
-  - bodyExpression: column to mine (auto-detected: Body for logs, SpanName for traces)
-
-Example: find top patterns for production services over the last 4 hours:
-  clickstack_event_patterns({
-    sourceId: "<log-source-id>",
-    startTime: "<4 hours ago ISO>",
-    endTime: "<now ISO>",
-    where: "service.name:prod-*"
-  })
+Use clickstack_event_patterns for pattern-discovery questions: most common
+logs, top patterns, noisy services, what generates the most log volume. Its
+tool description covers parameters, examples, sampling limits, and how to
+drill into a pattern with clickstack_search.
 
 == COMMON MISTAKES ==
 
