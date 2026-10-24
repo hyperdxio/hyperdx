@@ -15,9 +15,15 @@ name: Claude Code Review
 # that cannot be anchored to a diff line (they reference an unchanged file the reviewer
 # opened) fall back into the sticky comment body.
 #
-# Minor-severity findings are folded behind a <details> block rather than dropped:
-# measured on this dataset, minor findings carry 29-57% of all gold matches, so filtering
-# them would cost roughly half the recall. Severity is for ordering, not filtering.
+# PRIORITY. After the review, a separate grading pass (.github/prompts/code-review-regrade.md)
+# assigns each finding P0-P3 and a reachableToday flag. It cannot add, drop or reword a
+# finding -- that is why it is a separate pass rather than part of the reviewer's prompt,
+# where the same rubric cost 10 points of must-fix recall. Users see ONLY the resulting
+# priority. P0-P2 are posted inline; P3 is folded into the sticky comment, never dropped
+# (hiding findings outright costs recall). A P2 the reviewer itself called minor is shown as
+# P3; anything reachable today or security-shaped is never folded. The rule and its
+# ordering live in effectivePriority() in review-comments.cjs. If grading fails, nothing is
+# folded and the review is posted as before.
 
 on:
   pull_request_target:
@@ -462,6 +468,7 @@ jobs:
       #
       # Fails closed: a mismatch means no marker is stamped and the next push re-reviews.
       - name: Verify the trusted tree was not modified
+        id: verify
         if: steps.health.outputs.healthy == 'true'
         env:
           EXPECTED: ${{ steps.diff.outputs.prompt_hash }}
@@ -473,6 +480,85 @@ jobs:
             exit 1
           fi
           echo "trusted tree intact"
+
+      # The grading pass reads the findings from a file for the same reason the reviewer
+      # reads the diff from one: it cannot be embedded in workflow YAML at any size.
+      # Rendered by the TRUSTED helper, after the tree was verified.
+      - name: Prepare priority grading input
+        id: grade-input
+        if:
+          steps.verify.outcome == 'success' && steps.health.outputs.count != '0'
+        run: |
+          node -e '
+            const fs = require("fs");
+            const h = require(process.env.GITHUB_WORKSPACE + "/.trusted/.github/scripts/code-review/review-comments.cjs");
+            const { findings } = JSON.parse(fs.readFileSync(".hdx/findings.json", "utf8"));
+            fs.writeFileSync(".hdx/regrade-input.md", h.regradeInput(findings));
+          '
+          {
+            echo 'text<<CLAUDE_REGRADE_EOF'
+            cat .trusted/.github/prompts/code-review-regrade.md
+            echo
+            echo 'CLAUDE_REGRADE_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      # continue-on-error: a failed grading pass must not cost the review that already
+      # finished. "Apply priority grades" then reports graded=false and every finding is
+      # posted, exactly as before this pass existed.
+      #
+      # Model is PINNED to Sonnet because that is what the grading prompt was measured
+      # with against human votes. Read only: it needs .hdx/regrade-input.md and
+      # .hdx/pr.diff, nothing else. Its output is schema-constrained grades, and only
+      # priority/reachableToday/hasFailureMode from it ever affect what is published.
+      - name: Grade finding priority
+        id: grade
+        if: steps.grade-input.outcome == 'success'
+        continue-on-error: true
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          allowed_bots: dependabot,dependabot[bot],kodiakhq,kodiakhq[bot],github-actions,github-actions[bot],cursor,cursor[bot],claude,claude[bot]
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allowed_non_write_users: '*'
+          prompt: ${{ steps.grade-input.outputs.text }}
+          claude_args: |
+            --model sonnet
+            --setting-sources user
+            --strict-mcp-config
+            --allowedTools "Read"
+            --disallowedTools "Bash,Grep,Glob,WebFetch,WebSearch,Task,Edit,Write,NotebookEdit"
+            --json-schema '{"type":"object","properties":{"grades":{"type":"array","items":{"type":"object","properties":{"index":{"type":"integer","description":"The index given in the input"},"priority":{"type":"string","enum":["P0","P1","P2","P3"]},"trigger":{"type":"string","description":"What the finding establishes, or \"none\""},"consequence":{"type":"string","description":"What is suffered, or \"none\""},"hasFailureMode":{"type":"boolean","description":"Finding establishes BOTH a trigger and a consequence"},"kind":{"type":"string","enum":["defect","premise"]},"reason":{"type":"string","description":"One clause on what decided the grade"},"reachableToday":{"type":"boolean","description":"Is there an input or user action that produces the stated wrong outcome in the code as merged, with no further code change? true = harm exists today."}},"required":["index","priority","trigger","consequence","hasFailureMode","reachableToday"],"additionalProperties":false}}},"required":["grades"],"additionalProperties":false}'
+
+      - name: Apply priority grades
+        id: apply-grades
+        if: steps.grade-input.outcome == 'success'
+        env:
+          GRADES: ${{ steps.grade.outputs.structured_output }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const h = require(process.env.GITHUB_WORKSPACE + "/.trusted/.github/scripts/code-review/review-comments.cjs");
+            const out = (k, v) => fs.appendFileSync(process.env.GITHUB_OUTPUT, `${k}=${v}\n`);
+            let parsed = null;
+            try {
+              parsed = JSON.parse(process.env.GRADES || "");
+              // Same defensive double-unwrap the review health check applies.
+              if (typeof parsed === "string") parsed = JSON.parse(parsed);
+            } catch {}
+            const grades = parsed && Array.isArray(parsed.grades) ? parsed.grades : null;
+            if (!grades) {
+              console.log("::warning::priority grading produced no usable output; posting every finding");
+              out("graded", "false");
+              process.exit(0);
+            }
+            const doc = JSON.parse(fs.readFileSync(".hdx/findings.json", "utf8"));
+            doc.findings = h.applyGrades(doc.findings, grades);
+            fs.writeFileSync(".hdx/findings.json", JSON.stringify(doc));
+            const tally = {};
+            for (const f of doc.findings) { const p = h.effectivePriority(f); tally[p] = (tally[p] || 0) + 1; }
+            console.log(`graded ${grades.length}/${doc.findings.length}; effective ${JSON.stringify(tally)}`);
+            out("graded", "true");
+          '
 
       # Inline comments, deduped across pushes by a hidden per-finding fingerprint.
       # Routing logic lives in .github/scripts/code-review/review-comments.cjs, from the TRUSTED
@@ -539,7 +625,7 @@ jobs:
               );
               return;
             }
-            const { inline, unanchored, skipped, duplicates } =
+            const { inline, unanchored, collapsed, skipped, duplicates } =
               helpers.buildInlineComments({
               findings,
               diffText: fs.readFileSync('.hdx/pr.diff', 'utf8'),
@@ -596,9 +682,10 @@ jobs:
 
             core.setOutput('posted', String(posted));
             core.setOutput('unanchored', JSON.stringify(unanchored));
+            core.setOutput('collapsed', JSON.stringify(collapsed));
             core.setOutput('skipped', String(skipped.length));
             core.setOutput('duplicates', String(duplicates.length));
-            core.info(`${findings.length} findings: ${posted} inline, ${unanchored.length} in summary, ${skipped.length} already posted`);
+            core.info(`${findings.length} findings: ${posted} inline, ${unanchored.length} in summary, ${collapsed.length} folded as P3, ${skipped.length} already posted`);
 
       - name: Render review summary
         id: summary
@@ -627,6 +714,9 @@ jobs:
               // toJSON, not a quoted literal: JSON.stringify does not escape `'`, so an
               // apostrophe in any finding would break the literal and throw here.
               unanchored: JSON.parse(${{ toJSON(steps.inline.outputs.unanchored || '[]') }}),
+              collapsed: JSON.parse(${{ toJSON(steps.inline.outputs.collapsed || '[]') }}),
+              // Skipped (no findings) counts as graded: there was nothing to fold.
+              graded: '${{ steps.apply-grades.outputs.graded }}' !== 'false',
               posted: Number('${{ steps.inline.outputs.posted || 0 }}'),
               skipped: new Array(Number('${{ steps.inline.outputs.skipped || 0 }}')),
               duplicates: new Array(

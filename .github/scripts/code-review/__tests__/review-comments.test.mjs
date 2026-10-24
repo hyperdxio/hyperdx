@@ -251,27 +251,26 @@ test('an unhealthy run stamps NO parseable marker, so the gate fails open', () =
   assert.match(body, /did not complete/);
 });
 
-test('minor findings are folded, not dropped', () => {
-  // Measured on the eval set: minor-severity findings carry 29-57% of everything a human
-  // independently flagged, so filtering them costs about half the recall.
-  const unanchored = [
-    { file: 'src/x.ts', severity: 'minor', title: 'small one', body: 'fix' },
-    { file: 'src/y.ts', severity: 'major', title: 'big one', body: 'fix' },
-  ];
+test('P3 findings are folded, not dropped', () => {
+  // Measured on the eval set: low-graded findings carry a large share of everything a human
+  // independently flagged, so filtering them costs recall. Folding costs none.
+  const small = { file: 'src/x.ts', severity: 'minor', priority: 'P3', title: 'small one', body: 'fix' };
+  const big = { file: 'src/y.ts', severity: 'major', priority: 'P1', title: 'big one', body: 'fix' };
   const body = helpers.renderSummary({
-    findings: unanchored,
-    unanchored,
+    findings: [small, big],
+    unanchored: [big],
+    collapsed: [small],
     posted: 0,
     healthy: true,
     diffHash: HASH,
     promptHash: HASH,
   });
-  assert.match(body, /<details><summary>1 minor<\/summary>/);
+  assert.match(body, /<details><summary>🔵 1 P3 — no action needed before merge<\/summary>/);
   assert.match(body, /small one/, 'folded, but present');
   const detailsAt = body.indexOf('<details>');
   assert.ok(
     body.indexOf('big one') < detailsAt,
-    'non-minor findings render above the fold',
+    'P0-P2 findings render above the fold',
   );
 });
 
@@ -292,7 +291,7 @@ test('a clean diff produces an explicit all-clear', () => {
   );
 });
 
-test('an unrecognized severity degrades to minor rather than throwing', () => {
+test('an unrecognized severity degrades to minor, and an ungraded minor is still posted', () => {
   const f = {
     file: 'src/a.ts',
     line: 11,
@@ -306,7 +305,8 @@ test('an unrecognized severity degrades to minor rather than throwing', () => {
     diffText: DIFF,
     existingComments: [],
   });
-  assert.match(inline[0].comment.body, /\*\*minor\*\*/);
+  // No grade, so nothing may be folded: an ungraded minor is shown as P2, inline.
+  assert.match(inline[0].comment.body, /\*\*P2\*\*/);
 });
 
 test('a deleted file does not leak its hunk onto the previously seen file', () => {
@@ -441,7 +441,7 @@ test('every inline comment carries the advisory footer, with the dedup marker la
   const lines = body.trimEnd().split('\n');
   assert.match(
     lines.at(-1),
-    /^<!-- hdxr:[0-9a-f]{16} -->$/,
+    /^<!-- hdxr:[0-9a-f]{16}(?: [^>]*)? -->$/,
     'marker must be the last line',
   );
   const footerAt = lines.indexOf(helpers.inlineFooter(f));
@@ -802,8 +802,8 @@ test('collapsed duplicates are excluded from the headline count', () => {
   assert.match(body, /1 duplicate\(s\) collapsed/);
 });
 
-test('severity tallies sum to the headline total when duplicates collapse', () => {
-  // A per-severity count over every finding would not add up to the distinct total.
+test('priority tallies sum to the headline total when duplicates collapse', () => {
+  // A per-priority count over every finding would not add up to the distinct total.
   const a = {
     file: 'a.ts',
     line: 1,
@@ -828,14 +828,11 @@ test('severity tallies sum to the headline total when duplicates collapse', () =
     diffHash: HASH,
     promptHash: HASH,
   });
-  const m =
-    /\*\*(\d+)\*\* finding\(s\).*?(\d+) critical.*?(\d+) major.*?(\d+) minor/.exec(
-      body,
-    );
+  const m = /\*\*(\d+)\*\* finding\(s\).*?(\d+) P0\/P1.*?(\d+) P2.*?(\d+) P3/.exec(body);
   assert.ok(m, 'headline not found');
-  const [, total, crit, major, minor] = m.map(Number);
+  const [, total, high, mid, low] = m.map(Number);
   assert.equal(total, 2, 'distinct findings');
-  assert.equal(crit + major + minor, total, 'severities must sum to the total');
+  assert.equal(high + mid + low, total, 'priorities must sum to the total');
 });
 
 test('an over-long summary is truncated but keeps the state marker', () => {
@@ -949,4 +946,229 @@ test('the summary renders the finding body, not just the title', () => {
     'the fix text must reach the reader',
   );
   assert.match(body, /None could be anchored to changed lines/);
+});
+
+// --- Priority: what users see and what gets folded ----------------------------------------
+
+const graded = (over = {}) => ({
+  file: 'src/a.ts',
+  line: 11,
+  title: 't',
+  body: 'b',
+  severity: 'major',
+  priority: 'P2',
+  hasFailureMode: true,
+  reachableToday: false,
+  ...over,
+});
+
+test('an ungraded finding is never folded', () => {
+  // The grading pass can fail on its own. When it does, the review must post as it did
+  // before the pass existed, ranked by the reviewer's own severity.
+  const ungraded = sev => helpers.effectivePriority({ file: 'a', title: 't', body: 'b', severity: sev });
+  assert.equal(ungraded('critical'), 'P0');
+  assert.equal(ungraded('major'), 'P1');
+  assert.equal(ungraded('minor'), 'P2');
+  assert.equal(
+    helpers.effectivePriority({ file: 'a', title: 't', body: 'b', severity: 'minor', priority: 'P9' }),
+    'P2',
+    'an unknown priority is treated as ungraded, not guessed at',
+  );
+});
+
+test('a P2 the reviewer called minor is folded; one it called major is not', () => {
+  assert.equal(helpers.effectivePriority(graded({ severity: 'minor' })), 'P3');
+  assert.equal(helpers.effectivePriority(graded({ severity: 'major' })), 'P2');
+  assert.equal(helpers.effectivePriority(graded({ severity: 'critical', priority: 'P1' })), 'P1');
+});
+
+test('the failure-mode clamp runs BEFORE the minor-P2 policy, or the policy does nothing', () => {
+  // 13 of the 22 minor P2s in the measured sample carried hasFailureMode=true. Applied
+  // last, the clamp re-raises every one of them and nothing the policy targets is folded.
+  assert.equal(
+    helpers.effectivePriority(graded({ severity: 'minor', hasFailureMode: true })),
+    'P3',
+  );
+  // It still does its own job on the grader's P3s.
+  assert.equal(
+    helpers.effectivePriority(graded({ priority: 'P3', severity: 'major', hasFailureMode: true })),
+    'P2',
+  );
+  assert.equal(
+    helpers.effectivePriority(graded({ priority: 'P3', severity: 'major', hasFailureMode: false })),
+    'P3',
+  );
+});
+
+test('reachable-today and security-shaped findings are never folded, whatever came before', () => {
+  assert.equal(
+    helpers.effectivePriority(graded({ severity: 'minor', reachableToday: true })),
+    'P2',
+    'the floor is the last word: it overrides the minor-P2 policy',
+  );
+  assert.equal(
+    helpers.effectivePriority(graded({ priority: 'P3', severity: 'minor', hasFailureMode: false, reachableToday: true })),
+    'P2',
+  );
+  assert.equal(
+    helpers.effectivePriority(
+      graded({ priority: 'P3', severity: 'minor', hasFailureMode: false, title: 'Unescaped table name spliced into the query' }),
+    ),
+    'P2',
+    'a grader once filed an unescaped SQL splice as a nit',
+  );
+});
+
+test('applyGrades merges by index and ignores grades it cannot trust', () => {
+  const findings = [graded({ priority: undefined }), graded({ priority: undefined, title: 'u' })];
+  const out = helpers.applyGrades(findings, [
+    { index: 0, priority: 'P3', hasFailureMode: false, reachableToday: true },
+    { index: 1, priority: 'P7' }, // unknown priority: left ungraded
+    { index: 5, priority: 'P0' }, // no such finding: ignored
+  ]);
+  assert.equal(out.length, 2);
+  assert.equal(out[0].priority, 'P3');
+  assert.equal(out[0].reachableToday, true);
+  assert.equal(out[1].priority, undefined);
+  assert.deepEqual(helpers.applyGrades(findings, null), findings, 'no grades: unchanged');
+});
+
+test('regradeInput numbers every finding so grades map back by index', () => {
+  const text = helpers.regradeInput([graded({ title: 'first' }), graded({ title: 'second' })]);
+  assert.match(text, /FINDINGS TO GRADE \(2\)/);
+  assert.match(text, /- index: 0\n {2}file: src\/a\.ts\n {2}issue: first/);
+  assert.match(text, /- index: 1\n {2}file: src\/a\.ts\n {2}issue: second/);
+});
+
+test('a P3 is folded into the summary even when its line is anchorable', () => {
+  const { inline, collapsed, unanchored } = helpers.buildInlineComments({
+    findings: [graded({ priority: 'P3', hasFailureMode: false }), graded({ title: 'keep me' })],
+    diffText: DIFF,
+    existingComments: [],
+  });
+  assert.equal(inline.length, 1);
+  assert.match(inline[0].comment.body, /^🟡 \*\*P2\*\* — keep me/);
+  assert.equal(collapsed.length, 1);
+  assert.deepEqual(unanchored, []);
+});
+
+test('the inline header shows only the priority, and the marker records what decided it', () => {
+  const body = helpers.commentBody(graded({ severity: 'minor', reachableToday: true }));
+  assert.match(body, /^🟡 \*\*P2\*\* — t\n/);
+  assert.ok(!/\*\*(critical|major|minor)\*\*/.test(body), 'severity must not be rendered');
+  assert.match(body, /<!-- hdxr:[0-9a-f]{16} p=P2 sev=minor reach=true -->$/);
+});
+
+test('comments posted before this change (no marker attributes) still dedup', () => {
+  // Every open PR carries old-format markers and old severity headers.
+  const f = graded({ title: 'already said' });
+  const old = { path: 'src/a.ts', body: `🟠 **major** — already said\n\nfix\n\n<!-- hdxr:${helpers.fingerprint(f)} -->` };
+  const { inline, collapsed, skipped } = helpers.buildInlineComments({
+    findings: [f],
+    diffText: DIFF,
+    existingComments: [old],
+  });
+  assert.deepEqual(inline, []);
+  assert.deepEqual(collapsed, []);
+  assert.equal(skipped.length, 1);
+  assert.equal(helpers.titleFromBody(old.body), 'already said');
+  assert.equal(helpers.titleFromBody('🟡 **P2** — new form'), 'new form');
+});
+
+// --- Reworded restatements (the #3039 regression) -----------------------------------------
+//
+// Real titles, verbatim. Each RESTATED pair is ONE defect the reviewer reworded on a later
+// push; before title similarity each hashed differently, opened its own thread, and the
+// author thumbed the repeats down. Do not replace them with synthetic strings: SIMILAR_TITLE
+// is calibrated against exactly this distribution.
+const RESTATED = [
+  [
+    'Reading only the `tags` map returns an empty list for labels promoted by `tags_to_columns`',
+    'Reading only the `tags` map silently returns `[]` for labels promoted by `tags_to_columns`',
+  ], // 0.700
+  [
+    "New `start`/`end` params on the app's `labelValues` client have no caller",
+    'New `start`/`end` params on `prometheusApi.labelValues` have no caller',
+  ], // 0.429
+];
+
+// THE FLOOR, and why the threshold is not lower: two distinct real defects on one file in
+// PR #3129, both upvoted, the second critical, at 0.333 -- the same score as a reword on
+// #3039 that is therefore NOT caught. Catching it would suppress a critical. We take the miss.
+const DISTINCT = [
+  'All-in-one auth image now signs every user out on each container restart',
+  'The all-in-one auth image still signs sessions with the public secret `hyperdx is cool`',
+];
+
+const postedComment = (title, file = 'src/a.ts') => ({
+  path: file,
+  body: helpers.commentBody({ file, line: 11, severity: 'minor', title, body: 'fix' }),
+});
+
+test('a reworded restatement of a posted finding is not posted again', () => {
+  for (const [first, reworded] of RESTATED) {
+    const { inline, unanchored, skipped } = helpers.buildInlineComments({
+      // On #3039 the reword also arrived at a different severity.
+      findings: [{ file: 'src/a.ts', line: 11, severity: 'major', title: reworded, body: 'fix' }],
+      diffText: DIFF,
+      existingComments: [postedComment(first)],
+    });
+    assert.deepEqual(inline, [], `posted again: ${reworded}`);
+    assert.deepEqual(unanchored, []);
+    assert.equal(skipped.length, 1, `not counted as unchanged: ${reworded}`);
+  }
+});
+
+test('two distinct findings on one file are not collapsed', () => {
+  const [a, b] = DISTINCT;
+  const { inline } = helpers.buildInlineComments({
+    findings: [{ file: 'src/a.ts', line: 11, severity: 'critical', title: b, body: 'fix' }],
+    diffText: DIFF,
+    existingComments: [postedComment(a)],
+  });
+  assert.equal(inline.length, 1, 'threshold too low: this suppresses a critical finding');
+});
+
+test('similar titles on different files stay separate findings', () => {
+  const [first, reworded] = RESTATED[0];
+  const { inline } = helpers.buildInlineComments({
+    // src/b.ts is a new file in DIFF, so line 1 is commentable.
+    findings: [{ file: 'src/b.ts', line: 1, severity: 'major', title: reworded, body: 'fix' }],
+    diffText: DIFF,
+    existingComments: [postedComment(first)],
+  });
+  assert.equal(inline.length, 1, 'same words about another file are another finding');
+});
+
+// --- Workflow wiring ----------------------------------------------------------------------
+
+test('the workflow grades, applies, and hands folded findings to the summary', () => {
+  const wf = readFileSync(WORKFLOW, 'utf8');
+  const step = name => {
+    const at = wf.indexOf(`- name: ${name}`);
+    assert.ok(at >= 0, `missing step: ${name}`);
+    const next = wf.indexOf('\n      - ', at + 1);
+    return wf.slice(at, next < 0 ? undefined : next);
+  };
+  const grade = step('Grade finding priority');
+  assert.match(grade, /continue-on-error: true/, 'a failed grade must not cost the review');
+  assert.match(grade, /--model sonnet/, 'pinned to the model the prompt was measured with');
+  assert.match(grade, /--allowedTools "Read"\n/);
+  assert.match(grade, /"reachableToday"/);
+  assert.ok(
+    wf.indexOf('- name: Verify the trusted tree was not modified') <
+      wf.indexOf('- name: Prepare priority grading input'),
+    'the trusted helper must be verified before the grading steps require it',
+  );
+  const summary = step('Render review summary');
+  assert.match(summary, /collapsed: JSON\.parse/);
+  assert.match(summary, /graded: /);
+});
+
+test('the gate hash covers the grading prompt', () => {
+  const sh = readFileSync(
+    fileURLToPath(new URL('../trusted-hash.sh', import.meta.url)),
+    'utf8',
+  );
+  assert.match(sh, /prompts\/code-review-regrade\.md/, 'editing it must re-review open PRs');
 });
