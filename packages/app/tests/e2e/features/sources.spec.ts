@@ -343,7 +343,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
       'should show series Table field when isMetricsSeriesTableEnabled is on',
       { tag: ['@full-stack'] },
       async () => {
-        setTeamFlag('isMetricsSeriesTableEnabled', true);
+        await setTeamFlag('isMetricsSeriesTableEnabled', true);
         try {
           await searchPage.goto();
           await searchPage.sourceActionsMenu.click();
@@ -360,7 +360,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
 
           await searchPage.page.keyboard.press('Escape');
         } finally {
-          setTeamFlag('isMetricsSeriesTableEnabled', false);
+          await setTeamFlag('isMetricsSeriesTableEnabled', false);
         }
       },
     );
@@ -369,7 +369,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
       'should warn when the configured series table does not match the series table schema',
       { tag: ['@full-stack'] },
       async ({ page }) => {
-        setTeamFlag('isMetricsSeriesTableEnabled', true);
+        await setTeamFlag('isMetricsSeriesTableEnabled', true);
 
         const API_URL = getApiUrl();
         const metricSources = await getSources(page, 'metric');
@@ -417,7 +417,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
           ).toBeVisible({ timeout: 20000 });
         } finally {
           await page.request.delete(`${API_URL}/sources/${createdSourceId}`);
-          setTeamFlag('isMetricsSeriesTableEnabled', false);
+          await setTeamFlag('isMetricsSeriesTableEnabled', false);
         }
       },
     );
