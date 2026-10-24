@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.hyperdx_sessions
   INDEX idx_log_attr_value mapValues(LogAttributes) TYPE bloom_filter(0.01) GRANULARITY 1,
   INDEX idx_lower_body lower(Body) TYPE tokenbf_v1(32768, 3, 0) GRANULARITY 8
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(TimestampTime)
 PRIMARY KEY (ServiceName, TimestampTime)
 ORDER BY (ServiceName, TimestampTime, Timestamp)
