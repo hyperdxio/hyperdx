@@ -40,22 +40,35 @@ test('a P2 the reviewer called minor is folded; one it called major is not', () 
   assert.equal(helpers.effectivePriority(graded({ severity: 'critical', priority: 'P1' })), 'P1');
 });
 
-test('the failure-mode clamp runs BEFORE the minor-P2 policy, or the policy does nothing', () => {
-  // 13 of the 22 minor P2s in the measured sample carried hasFailureMode=true. Applied
-  // last, the clamp re-raises every one of them and nothing the policy targets is folded.
-  assert.equal(
-    helpers.effectivePriority(graded({ severity: 'minor', hasFailureMode: true })),
-    'P3',
-  );
-  // It still does its own job on the grader's P3s.
-  assert.equal(
-    helpers.effectivePriority(graded({ priority: 'P3', severity: 'major', hasFailureMode: true })),
-    'P2',
-  );
-  assert.equal(
-    helpers.effectivePriority(graded({ priority: 'P3', severity: 'major', hasFailureMode: false })),
-    'P3',
-  );
+test('neither grader alone can fold a finding', () => {
+  // The grader alone: a P3 on something the reviewer called major/critical stays visible,
+  // whatever hasFailureMode says. One model call must not hide a critical.
+  for (const severity of ['major', 'critical']) {
+    for (const hasFailureMode of [true, false]) {
+      assert.equal(helpers.effectivePriority(graded({ priority: 'P3', severity, hasFailureMode })), 'P2');
+    }
+  }
+  // The reviewer alone: a minor it graded P1 is posted as P1.
+  assert.equal(helpers.effectivePriority(graded({ priority: 'P1', severity: 'minor' })), 'P1');
+  // Both low: folded, and hasFailureMode does not rescue it.
+  for (const hasFailureMode of [true, false]) {
+    assert.equal(helpers.effectivePriority(graded({ priority: 'P3', severity: 'minor', hasFailureMode })), 'P3');
+  }
+});
+
+test('security wording matches its word forms, not just the bare stem', () => {
+  // The floor once ended in \b, so these never matched and could be folded.
+  for (const title of [
+    'Unsafe deserialization of the request body',
+    'Input is never sanitized before use',
+    'Secrets are logged on startup',
+    'Passwords are compared in non-constant time',
+    'API keys are echoed into the error message',
+    'Credentials leak into the query string',
+  ]) {
+    assert.ok(helpers.isSecurityShaped({ title, body: '' }), title);
+    assert.equal(helpers.effectivePriority(graded({ priority: 'P2', severity: 'minor', title })), 'P2', title);
+  }
 });
 
 test('reachable-today and security-shaped findings are never folded, whatever came before', () => {

@@ -29,9 +29,11 @@ function severityOf(finding) {
  * grader once filed an unescaped SQL splice as a nit on the grounds that the attacker would
  * need DDL rights (hdx-code-reviewer, PR #1620). Matching wording rather than a field is
  * deliberate here -- this is a floor, so a false positive only keeps a comment visible.
+ * Ends in `\w*`, not `\b`: the stems must also match "deserialization", "sanitize",
+ * "secrets", "passwords", "API keys".
  */
 const SECURITY_SHAPED =
-  /\b(sql[- ]?injection|injection|xss|cross[- ]site|rce|remote code execution|deserializ|ssrf|csrf|path traversal|directory traversal|auth(?:n|z)?\s+bypass|authentication bypass|authorization bypass|privilege escalation|unescaped|unsanitized|sanitiz|secret|credential|api[- ]?key|password|token leak)\b/i;
+  /\b(sql[- ]?injection|injection|xss|cross[- ]site|rce|remote code execution|deserializ|ssrf|csrf|path traversal|directory traversal|auth(?:n|z)?\s+bypass|authentication bypass|authorization bypass|privilege escalation|unescaped|unsanitized|sanitiz|secret|credential|api[- ]?key|password|token leak)\w*/i;
 
 function isSecurityShaped(finding) {
   return SECURITY_SHAPED.test(
@@ -48,28 +50,38 @@ function isSecurityShaped(finding) {
 const UNGRADED_PRIORITY = { critical: 'P0', major: 'P1', minor: 'P2' };
 
 /**
- * The one priority this finding is shown and routed with. Order is load-bearing:
+ * Folded out of the inline threads only when BOTH graders call it low, and nothing says it
+ * matters today:
  *
- *  1. The grader's priority (or the ungraded fallback above).
- *  2. A grader P3 that names a failure mode is raised to P2. The grading prompt promises
- *     this ("a P3 with hasFailureMode=true is automatically raised"), so it has to hold.
- *  3. POLICY: a P2 that the reviewer itself called `minor` is shown as P3 (collapsed). Two
- *     independent graders both calling it low is the signal; either one alone is not.
- *     Measured on 75 human-voted findings this hides ~35% of comments while keeping every
- *     upvoted major/critical finding inline.
- *  4. FLOORS, last word: anything reachable today, or security-shaped, is never collapsed.
+ *  - the reviewer itself labelled it `minor`, AND
+ *  - the grading pass put it at P2 or P3, AND
+ *  - the grader does not say the harm is reachable in the merged code, AND
+ *  - it does not read as security-related.
  *
- * Step 2 must come BEFORE step 3. Run after it, the failure-mode clamp re-raises 13 of the
- * 22 minor P2s the policy exists to fold, and the policy stops doing anything.
+ * Neither grader alone can fold anything. A grader P3 on a finding the reviewer called
+ * major/critical is shown as P2: one model call must not hide a critical. The reachable
+ * floor is what kept 3 of the 10 caught must-fix gold items visible (each was
+ * reviewer-`minor`, grader-P2). Measured: hides ~35% of comments on 75 human-voted
+ * findings and 29 of 122 on the gold set, folding no must-fix item.
+ *
+ * hasFailureMode is recorded but not consulted. The grading prompt promises that a P3
+ * naming a failure mode is raised to P2; that is subsumed here, since any graded P3 that
+ * is not folded is shown as P2 anyway.
  */
+function shouldFold(finding) {
+  return (
+    (finding.priority === 'P2' || finding.priority === 'P3') &&
+    severityOf(finding) === 'minor' &&
+    finding.reachableToday !== true &&
+    !isSecurityShaped(finding)
+  );
+}
+
+/** The one priority this finding is shown and routed with. */
 function effectivePriority(finding) {
-  const graded = PRIORITIES.includes(finding.priority);
-  let p = graded ? finding.priority : UNGRADED_PRIORITY[severityOf(finding)];
-  if (!graded) return p;
-  if (p === 'P3' && finding.hasFailureMode === true) p = 'P2';
-  if (p === 'P2' && severityOf(finding) === 'minor') p = 'P3';
-  if (p === 'P3' && (finding.reachableToday === true || isSecurityShaped(finding))) p = 'P2';
-  return p;
+  if (!PRIORITIES.includes(finding.priority)) return UNGRADED_PRIORITY[severityOf(finding)];
+  if (shouldFold(finding)) return 'P3';
+  return finding.priority === 'P3' ? 'P2' : finding.priority;
 }
 
 /**
@@ -111,8 +123,10 @@ function regradeInput(findings) {
 module.exports = {
   PRIORITY_ICON,
   PRIORITIES,
+  SEVERITIES,
   severityOf,
   isSecurityShaped,
+  shouldFold,
   effectivePriority,
   applyGrades,
   regradeInput,

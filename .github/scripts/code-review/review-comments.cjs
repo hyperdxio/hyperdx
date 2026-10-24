@@ -16,6 +16,7 @@
 const {
   PRIORITY_ICON,
   PRIORITIES,
+  SEVERITIES,
   severityOf,
   isSecurityShaped,
   effectivePriority,
@@ -31,11 +32,10 @@ const {
   titleFromBody,
   seenFindings,
   matchPosted,
+  similarTitles,
   distinctFindings,
   MIN_SHARED_TOKENS,
 } = require('./dedup.cjs');
-
-const ICON = { critical: '🔴', major: '🟠', minor: '🔵' };
 
 /** GitHub rejects a comment body over this with a 422 on the whole post. */
 const MAX_BODY = 65536;
@@ -200,6 +200,16 @@ function buildInlineComments({ findings, diffText, existingComments }) {
       const bucket = match.fromPush && !match.counted ? skipped : duplicates;
       match.counted = true;
       bucket.push({ ...finding, severity: severityOf(finding) });
+      // Remember this wording too, so a later restatement of IT is also a duplicate. Without
+      // this, F1 restating an old comment is skipped but F2 restating F1 is posted, while
+      // the summary (distinctFindings) drops F2 -- delivery and headline disagree.
+      posted.push({
+        fp: fingerprint(finding),
+        file: finding.file,
+        tokens: titleTokens(finding.title),
+        fromPush: false,
+        counted: true,
+      });
       continue;
     }
     posted.push({
@@ -365,7 +375,7 @@ function capBody(body, marker) {
 }
 
 module.exports = {
-  ICON,
+  SEVERITIES,
   GUIDE_URL,
   inlineFooter,
   AGENT_NOTICE,
@@ -379,6 +389,7 @@ module.exports = {
   titleFromBody,
   SIMILAR_TITLE,
   MIN_SHARED_TOKENS,
+  similarTitles,
   distinctFindings,
   PRIORITY_ICON,
   effectivePriority,

@@ -754,7 +754,7 @@ test('the reviewer schema and the renderer agree on the severity enum', () => {
   const props = schema.properties.findings.items;
   assert.deepEqual(
     props.properties.severity.enum.slice().sort(),
-    Object.keys(helpers.ICON).slice().sort(),
+    [...helpers.SEVERITIES].sort(),
     'severity enum drifted from the icons the renderer knows',
   );
   for (const required of props.required) {
@@ -962,7 +962,7 @@ const graded = (over = {}) => ({
 
 test('a P3 is folded into the summary even when its line is anchorable', () => {
   const { inline, collapsed, unanchored } = helpers.buildInlineComments({
-    findings: [graded({ priority: 'P3', hasFailureMode: false }), graded({ title: 'keep me' })],
+    findings: [graded({ priority: 'P3', severity: 'minor' }), graded({ title: 'keep me' })],
     diffText: DIFF,
     existingComments: [],
   });
@@ -1115,4 +1115,21 @@ test('the summary counts a reworded pair once, as delivery does', () => {
     findings: [a, b], unanchored: [], duplicates, posted: 1, healthy: true, diffHash: HASH, promptHash: HASH,
   });
   assert.match(body, /\*\*1\*\* finding\(s\)/, 'headline counted both restatements');
+});
+
+test('a restatement of a skipped restatement is a duplicate, matching the summary', () => {
+  // F1 restates an existing comment (skipped); F2 restates F1 but shares too few words with
+  // the original. Delivery and distinctFindings must agree that F2 is not new.
+  const old = postedComment('Reading only the `tags` map returns an empty list for labels promoted by `tags_to_columns`');
+  const f1 = { file: 'src/a.ts', line: 11, severity: 'minor', body: 'x',
+    title: 'Reading only the `tags` map silently returns `[]` for labels promoted by `tags_to_columns`' };
+  const f2 = { ...f1, title: 'Only the `tags` map is read, so `tags_to_columns` labels silently come back as `[]`' };
+  const t = helpers.titleTokens;
+  assert.ok(helpers.similarTitles(t(f1.title), t(f2.title)), 'fixture: F2 must restate F1');
+  assert.ok(!helpers.similarTitles(t(helpers.titleFromBody(old.body)), t(f2.title)), 'fixture: F2 must not match the original');
+  const { inline, skipped, duplicates } = helpers.buildInlineComments({ findings: [f1, f2], diffText: DIFF, existingComments: [old] });
+  assert.deepEqual(inline, []);
+  assert.equal(skipped.length, 1);
+  assert.equal(duplicates.length, 1);
+  assert.equal(helpers.distinctFindings([f1, f2]).length, 1);
 });
