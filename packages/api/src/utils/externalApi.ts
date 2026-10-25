@@ -331,6 +331,7 @@ export type ExternalAlert = {
   tags: string[];
   message?: string | null;
   note?: string | null;
+  titleEmoji?: boolean | null;
   threshold: number;
   thresholdMax?: number;
   interval: AlertInterval;
@@ -502,6 +503,7 @@ export function translateAlertDocumentToExternalAlert(
     ...resolveAlertDisplayFields(alertObj, { dashboard, savedSearch }),
     message: alertObj.message,
     note: alertObj.note ?? null,
+    titleEmoji: alertObj.titleEmoji ?? null,
     threshold: alertObj.threshold,
     thresholdMax: alertObj.thresholdMax,
     interval: alertObj.interval,

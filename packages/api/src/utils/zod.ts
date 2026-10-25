@@ -1220,6 +1220,7 @@ const alertBaseSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  titleEmoji: z.boolean().nullish(),
   displayName: alertDisplayNameSchema,
   tags: alertTagsSchema,
   numConsecutiveWindows: z.number().int().min(1).nullish(),

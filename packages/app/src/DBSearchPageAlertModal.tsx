@@ -90,6 +90,8 @@ const SavedSearchAlertFormSchema = z
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
+    // No control in the UI; declared so a save echoes the stored value.
+    titleEmoji: z.boolean().nullish(),
   })
   .passthrough()
   .superRefine(validateAlertScheduleOffsetMinutes)

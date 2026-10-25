@@ -322,6 +322,11 @@ function toInternalAlertInput(body: ExternalAlertInput): InternalAlertInput {
  *           minLength: 1
  *           maxLength: 4096
  *           example: "Threshold raised from 50 to 100 on 2026-01-15. See [runbook](https://wiki.example.com/runbook)."
+ *         titleEmoji:
+ *           type: boolean
+ *           nullable: true
+ *           description: Set to false to omit the state emoji prefix from notification titles. Unset, null or true keeps the default prefix.
+ *           example: false
  *         numConsecutiveWindows:
  *           type: integer
  *           minimum: 1

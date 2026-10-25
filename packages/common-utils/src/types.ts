@@ -1116,6 +1116,7 @@ export const AlertBaseObjectSchema = z.object({
   name: z.string().min(1).max(512).nullish(),
   message: z.string().min(1).max(4096).nullish(),
   note: alertNoteSchema,
+  titleEmoji: z.boolean().nullish(),
   displayName: alertDisplayNameSchema,
   tags: alertTagsSchema,
   silenced: z
@@ -3065,6 +3066,7 @@ export const AlertsPageItemSchema = z.object({
   tags: z.array(z.string()),
   message: z.string().nullish(),
   note: alertNoteSchema,
+  titleEmoji: z.boolean().nullish(),
   createdAt: z.string(),
   updatedAt: z.string(),
   history: z.array(AlertHistorySchema),

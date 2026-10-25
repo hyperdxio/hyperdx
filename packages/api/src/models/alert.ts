@@ -99,6 +99,9 @@ export interface IAlert {
   // Freeform note (supports markdown)
   note?: string | null;
 
+  // false drops the state emoji prefix from the notification title
+  titleEmoji?: boolean | null;
+
   // User-facing name shown in the alerts list and notification titles (when not overridden by name template).
   // Unset means "derive from the referenced saved search / dashboard tile".
   displayName?: string | null;
@@ -213,6 +216,10 @@ const AlertSchema = new Schema<IAlert>(
     },
     note: {
       type: String,
+      required: false,
+    },
+    titleEmoji: {
+      type: Boolean,
       required: false,
     },
     displayName: {

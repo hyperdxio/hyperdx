@@ -77,6 +77,8 @@ const EditAlertFormSchema = z
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
+    // No control in the UI; declared so a save echoes the stored value.
+    titleEmoji: z.boolean().nullish(),
   })
   .passthrough()
   .superRefine(validateAlertChannelSelection)
@@ -115,6 +117,7 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
     tags: alert.tags,
     // Persisted null -> undefined for the NumberInput.
     numConsecutiveWindows: alert.numConsecutiveWindows ?? undefined,
+    titleEmoji: alert.titleEmoji,
   };
 
   if (alert.source === AlertSource.TILE) {
