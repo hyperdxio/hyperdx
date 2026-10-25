@@ -13,6 +13,49 @@ import type {
 import * as slack from '@/utils/slack';
 import { validateWebhookUrl } from '@/utils/validators';
 
+const MAX_SLACK_SECTION_LENGTH = 3000;
+
+export const getFallbackHdxLink = (hdxLink: string): string => {
+  try {
+    const url = new URL(hdxLink);
+    return `${url.origin}/alerts`;
+  } catch {
+    return hdxLink;
+  }
+};
+
+export const formatSlackSectionText = (
+  hdxLink: string,
+  title: string,
+  body: string,
+  maxLength = MAX_SLACK_SECTION_LENGTH,
+): string => {
+  let link = hdxLink;
+  let text = `*<${link} | ${title}>*\n${body}`;
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  // If text exceeds limit, try falling back to the shorter /alerts link
+  const fallbackLink = getFallbackHdxLink(hdxLink);
+  if (fallbackLink !== link) {
+    text = `*<${fallbackLink} | ${title}>*\n${body}`;
+    if (text.length <= maxLength) {
+      return text;
+    }
+    link = fallbackLink;
+  }
+
+  // If still exceeding limit, truncate body with an ellipsis
+  const header = `*<${link} | ${title}>*\n`;
+  const availableBodyLen = maxLength - header.length - 3;
+  if (availableBodyLen > 0) {
+    return `${header}${body.slice(0, availableBodyLen)}...`;
+  }
+
+  return `*<${link} | ${title}>*`.slice(0, maxLength);
+};
+
 export const handleSendSlackWebhook = async (
   channel: WebhookChannel,
   message: Message,
@@ -29,7 +72,11 @@ export const handleSendSlackWebhook = async (
           type: 'section',
           text: {
             type: 'mrkdwn',
-            text: `*<${message.hdxLink} | ${message.title}>*\n${message.body}`,
+            text: formatSlackSectionText(
+              message.hdxLink,
+              message.title,
+              message.body,
+            ),
           },
         },
       ],
