@@ -1287,7 +1287,6 @@ export const processAlert = async (
       string,
       { value: number; attributes: Record<string, string>; startTime: Date }
     >();
-    // ponytail: a group that vanished from the data resolves without its values.
     const groupAttributes = new Map<string, Record<string, string>>();
 
     // Helper to get or create history for a group
@@ -1474,7 +1473,16 @@ export const processAlert = async (
           group: groupKey,
           totalCount: lastValue?.count || 0,
           startTime: lastValue?.startTime || nowInMinsRoundDown,
-          attributes: groupAttributes.get(groupKey),
+          // A group with no rows left has no current values; use the ones
+          // recorded when it last reported. The aggregation yields null for
+          // rows that never stored any, which would skip the `{}` default.
+          attributes:
+            groupAttributes.get(groupKey) ??
+            (previousHistory?.groupValues
+              ? Object.fromEntries(
+                  previousHistory.groupValues.map(v => [v.key, v.value]),
+                )
+              : undefined),
         });
       }
     };
@@ -1651,6 +1659,11 @@ export const processAlert = async (
 
       for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
         const history = getOrCreateHistory(groupKey);
+        if (Object.keys(evaluation.attributes).length > 0) {
+          history.groupValues = Object.entries(evaluation.attributes).map(
+            ([key, value]) => ({ key, value }),
+          );
+        }
 
         if (evaluation.exceeds) {
           history.counts += 1;
@@ -1822,6 +1835,7 @@ export interface AggregatedAlertHistory {
   state: AlertState;
   group?: string;
   fired?: boolean;
+  groupValues?: { key: string; value: string }[];
 }
 
 /**
@@ -1883,6 +1897,7 @@ export const getPreviousAlertHistories = async (
               createdAt: { $first: '$createdAt' },
               state: { $first: '$state' },
               fired: { $first: '$fired' },
+              groupValues: { $first: '$groupValues' },
             },
           },
           {
@@ -1892,6 +1907,7 @@ export const getPreviousAlertHistories = async (
               state: 1,
               group: '$_id.group',
               fired: 1,
+              groupValues: 1,
             },
           },
         ]);
