@@ -8,6 +8,8 @@ import {
   deleteAlert,
   getAlertsWithDisplayRefs,
   getAlertWithDisplayRefs,
+  silenceAlert,
+  unsilenceAlert,
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
@@ -939,6 +941,180 @@ router.delete(
         return res.status(404).json({ message: 'Alert not found' });
       }
       res.json({});
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /api/v2/alerts/{id}/silenced:
+ *   post:
+ *     summary: Silence Alert
+ *     description: Silences an alert until the given time. Notifications are suppressed while the alert is silenced.
+ *     operationId: silenceAlert
+ *     tags: [Alerts]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Alert ID
+ *         example: "65f5e4a3b9e77c001a123456"
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - mutedUntil
+ *             properties:
+ *               mutedUntil:
+ *                 type: string
+ *                 format: date-time
+ *                 description: ISO 8601 timestamp, in the future, until which the alert is silenced.
+ *                 example: "2026-01-01T00:00:00.000Z"
+ *     responses:
+ *       '200':
+ *         description: Successfully silenced alert
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AlertResponseEnvelope'
+ *       '400':
+ *         description: Invalid request, such as a mutedUntil in the past
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '404':
+ *         description: Alert not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post(
+  '/:id/silenced',
+  processRequest({
+    body: z.object({
+      mutedUntil: z
+        .string()
+        .datetime({ offset: true })
+        .refine(val => new Date(val) > new Date(), {
+          message: 'mutedUntil must be in the future',
+        }),
+    }),
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      const userId = req.user?._id;
+      if (teamId == null || userId == null) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const alert = await silenceAlert(
+        req.params.id,
+        teamId,
+        userId,
+        new Date(req.body.mutedUntil),
+      );
+      if (alert == null) {
+        return res.status(404).json({ message: 'Alert not found' });
+      }
+
+      res.json({
+        data: translateAlertDocumentToExternalAlertWithChartConfig(alert),
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+/**
+ * @openapi
+ * /api/v2/alerts/{id}/silenced:
+ *   delete:
+ *     summary: Unsilence Alert
+ *     description: Clears the silence on an alert so notifications resume
+ *     operationId: unsilenceAlert
+ *     tags: [Alerts]
+ *     parameters:
+ *       - name: id
+ *         in: path
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Alert ID
+ *         example: "65f5e4a3b9e77c001a123456"
+ *     responses:
+ *       '200':
+ *         description: Successfully unsilenced alert
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AlertResponseEnvelope'
+ *       '401':
+ *         description: Unauthorized
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '403':
+ *         description: Forbidden
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       '404':
+ *         description: Alert not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.delete(
+  '/:id/silenced',
+  validateRequest({
+    params: z.object({
+      id: objectIdSchema,
+    }),
+  }),
+  async (req, res, next) => {
+    try {
+      const teamId = req.user?.team;
+      if (teamId == null) {
+        return res.status(403).json({ message: 'Forbidden' });
+      }
+
+      const alert = await unsilenceAlert(req.params.id, teamId);
+      if (alert == null) {
+        return res.status(404).json({ message: 'Alert not found' });
+      }
+
+      res.json({
+        data: translateAlertDocumentToExternalAlertWithChartConfig(alert),
+      });
     } catch (e) {
       next(e);
     }

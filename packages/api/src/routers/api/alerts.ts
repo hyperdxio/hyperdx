@@ -23,6 +23,8 @@ import {
   deleteAlert,
   getAlertById,
   getAlertEnhanced,
+  silenceAlert,
+  unsilenceAlert,
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
@@ -416,16 +418,15 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const alert = await getAlertById(req.params.id, teamId);
+      const alert = await silenceAlert(
+        req.params.id,
+        teamId,
+        req.user._id,
+        new Date(req.body.mutedUntil),
+      );
       if (!alert) {
         return res.status(404).json({ error: 'Alert not found' });
       }
-      alert.silenced = {
-        by: req.user._id,
-        at: new Date(),
-        until: new Date(req.body.mutedUntil),
-      };
-      await alert.save();
 
       res.sendStatus(200);
     } catch (e) {
@@ -448,12 +449,10 @@ router.delete(
         return res.sendStatus(403);
       }
 
-      const alert = await getAlertById(req.params.id, teamId);
+      const alert = await unsilenceAlert(req.params.id, teamId);
       if (!alert) {
         return res.status(404).json({ error: 'Alert not found' });
       }
-      alert.silenced = undefined;
-      await alert.save();
 
       res.sendStatus(200);
     } catch (e) {

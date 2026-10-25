@@ -392,6 +392,34 @@ export const getAlertById = async (
   });
 };
 
+export const silenceAlert = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId | string,
+  userId: ObjectId,
+  until: Date,
+) => {
+  const alert = await getAlertById(alertId, teamId);
+  if (!alert) {
+    return null;
+  }
+  alert.silenced = { by: userId, at: new Date(), until };
+  await alert.save();
+  return alert;
+};
+
+export const unsilenceAlert = async (
+  alertId: ObjectId | string,
+  teamId: ObjectId | string,
+) => {
+  const alert = await getAlertById(alertId, teamId);
+  if (!alert) {
+    return null;
+  }
+  alert.silenced = undefined;
+  await alert.save();
+  return alert;
+};
+
 export const getTeamDashboardAlertsByDashboardAndTile = async (
   teamId: ObjectId,
 ) => {
