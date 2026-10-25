@@ -532,6 +532,7 @@ const fireChannelEvent = async ({
       thresholdMax: alert.thresholdMax,
       thresholdType: alert.thresholdType,
       tileId: alert.tileId,
+      titleEmoji: alert.titleEmoji,
       // Inline alerts: the persisted config, used to build the explorer link
       // and the default notification title.
       chartConfig: alert.chartConfig,

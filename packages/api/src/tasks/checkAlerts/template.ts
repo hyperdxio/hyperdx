@@ -367,8 +367,9 @@ export const buildAlertMessageTemplateTitle = ({
     dashboard,
   });
 
-  const emoji =
-    alert.titleEmoji === false ? '' : isAlertResolved(state) ? '✅ ' : '🚨 ';
+  // Add emoji prefix based on alert state, unless the alert opts out
+  const stateEmoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
+  const emoji = alert.titleEmoji === false ? '' : stateEmoji;
 
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {

@@ -2477,6 +2477,90 @@ describe('checkAlerts', () => {
       );
     });
 
+    it('SAVED_SEARCH alert - titleEmoji false drops the emoji from fired and resolved titles', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          titleEmoji: false,
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:20:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        1,
+        'https://hooks.slack.com/services/123',
+        expect.objectContaining({
+          text: 'Alert for "My Search" - 2 lines found',
+        }),
+      );
+      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
+        2,
+        'https://hooks.slack.com/services/123',
+        expect.objectContaining({
+          text: expect.not.stringMatching(/🚨|✅/),
+        }),
+      );
+    });
+
     // The scheduled alert task and the app search page both go through
     // `buildSearchChartConfig`, which prepends the Log source's
     // `tableFilterExpression` (when set) as a SQL filter. This regression
