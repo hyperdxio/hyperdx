@@ -1,4 +1,8 @@
-import { runWithTimeout } from '@/mcp/utils/timeout';
+import {
+  DeadlineExceededError,
+  runWithTimeout,
+  withDeadline,
+} from '@/mcp/utils/timeout';
 
 const never = () => new Promise<never>(() => {});
 
@@ -115,5 +119,63 @@ describe('runWithTimeout', () => {
     ).rejects.toThrow('boom');
     expect(captured?.aborted).toBe(true);
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+describe('withDeadline', () => {
+  it('resolves work that finishes before the deadline', async () => {
+    await expect(
+      withDeadline(() => Promise.resolve('done'), Date.now() + 1000),
+    ).resolves.toBe('done');
+  });
+
+  it('rejects with DeadlineExceededError when work exceeds the deadline', async () => {
+    const slow = () =>
+      new Promise<string>(resolve => setTimeout(() => resolve('too late'), 50));
+    await expect(withDeadline(slow, Date.now() + 5)).rejects.toBeInstanceOf(
+      DeadlineExceededError,
+    );
+  });
+
+  it('does not start the work when the shared deadline is already in the past', async () => {
+    // Work scheduled after the batch budget is spent must fail fast WITHOUT
+    // invoking the thunk — this is what keeps the post-deadline drain from
+    // issuing any (un-cancellable) ClickHouse queries.
+    const start = jest.fn(() => Promise.resolve('too late'));
+    await expect(withDeadline(start, Date.now() - 1)).rejects.toBeInstanceOf(
+      DeadlineExceededError,
+    );
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it('propagates a rejection from the underlying work', async () => {
+    const boom = () => Promise.reject(new Error('boom'));
+    await expect(withDeadline(boom, Date.now() + 1000)).rejects.toThrow('boom');
+  });
+
+  it('aborts the signal handed to the work when the deadline fires', async () => {
+    // The signal must fire so the in-flight ClickHouse query is cancelled
+    // server-side rather than left running after the batch gives up on it.
+    let captured: AbortSignal | undefined;
+    const slow = (signal: AbortSignal) => {
+      captured = signal;
+      return new Promise<string>(resolve =>
+        setTimeout(() => resolve('too late'), 50),
+      );
+    };
+    await expect(withDeadline(slow, Date.now() + 5)).rejects.toBeInstanceOf(
+      DeadlineExceededError,
+    );
+    expect(captured?.aborted).toBe(true);
+  });
+
+  it('aborts the signal once work resolves so no query outlives the call', async () => {
+    let captured: AbortSignal | undefined;
+    const work = (signal: AbortSignal) => {
+      captured = signal;
+      return Promise.resolve('done');
+    };
+    await expect(withDeadline(work, Date.now() + 1000)).resolves.toBe('done');
+    expect(captured?.aborted).toBe(true);
   });
 });

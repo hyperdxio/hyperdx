@@ -985,6 +985,11 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
 
   IMPORTANT: Always include a LIMIT clause in table / number / pie / bar SQL queries.
 
+  BATCHING WITH clickstack_sql: to run several independent queries at once, pass
+  queries: [{ id, sql, sourceId?, connectionId? }, ...] (max 10) instead of sql. They run
+  in parallel over one shared time range, and each result reports status ok, error, or
+  timeout. Re-run a timed-out query on its own.
+
 == PER-TILE TYPE CONSTRAINTS ==
 
   number       Exactly 1 select item. No groupBy.

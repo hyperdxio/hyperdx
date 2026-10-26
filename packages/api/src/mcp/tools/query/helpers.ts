@@ -296,8 +296,11 @@ function isEmptyResult(result: unknown): boolean {
   return false;
 }
 
-function formatQueryResult(result: unknown) {
-  const { data: trimmedResult, isTrimmed } = trimToolResponse(result);
+function formatQueryResult(result: unknown, maxResponseChars?: number) {
+  const { data: trimmedResult, isTrimmed } = trimToolResponse(
+    result,
+    maxResponseChars,
+  );
   const empty = isEmptyResult(result);
   return {
     content: [
@@ -418,6 +421,10 @@ export async function runConfigTile(
     abortSignal?: AbortSignal;
     /** Dashboard variables and their selected values. Omitted when not in a dashboard context. */
     variables?: ChartVariable[];
+    /** Serialized size the result is trimmed to. Defaults to trimToolResponse's limit. */
+    maxResponseChars?: number;
+    /** Source lookup for raw SQL tiles, so a batch can share one per-call cache. */
+    lookupSource?: (sourceId: string) => ReturnType<typeof getSource>;
   },
 ) {
   if (!isConfigTile(tile)) {
@@ -615,7 +622,7 @@ export async function runConfigTile(
           abort_signal: options?.abortSignal,
         },
       });
-      return formatQueryResult(result);
+      return formatQueryResult(result, options?.maxResponseChars);
     } catch (e) {
       return clickHouseErrorResult(e);
     }
@@ -634,7 +641,9 @@ export async function runConfigTile(
     metricTables?: MetricTable;
   } = {};
   if (savedConfig.source) {
-    const source = await getSource(teamId, savedConfig.source);
+    const source = await (options?.lookupSource
+      ? options.lookupSource(savedConfig.source)
+      : getSource(teamId, savedConfig.source));
     if (source) {
       sourceFields = {
         from: source.from,
@@ -690,7 +699,7 @@ export async function runConfigTile(
         abort_signal: options?.abortSignal,
       },
     });
-    return formatQueryResult(result);
+    return formatQueryResult(result, options?.maxResponseChars);
   } catch (e) {
     return clickHouseErrorResult(e, { rawSql: true });
   }

@@ -1,15 +1,20 @@
-import { hasMacro } from '@hyperdx/common-utils/dist/macros';
-import { hasVariableMacro } from '@hyperdx/common-utils/dist/variables';
+import { trace } from '@opentelemetry/api';
 import { z } from 'zod';
 
-import { getSource } from '@/controllers/sources';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
 import { BUILDER_TOOLS_LIST, SQL_FALLBACK_CRITERIA } from './builderCatalog';
-import { buildTile, parseTimeRange, runConfigTile } from './helpers';
+import { parseTimeRange, runConfigTile } from './helpers';
+import { createSourceLookup, prepareSqlQuery } from './prepareSql';
 import { endTimeSchema, startTimeSchema } from './schemas';
+import {
+  MAX_SQL_BATCH_QUERIES,
+  runSqlBatch,
+  SQL_BATCH_DEADLINE_MS,
+  sqlBatchQuerySchema,
+} from './sqlBatch';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -30,8 +35,9 @@ const sqlSchema = z.object({
     ),
   sql: z
     .string()
+    .optional()
     .describe(
-      'Raw ClickHouse SQL query. Always include a LIMIT clause to avoid excessive data.\n\n' +
+      'Raw ClickHouse SQL query. Use this or queries, not both. Always include a LIMIT clause to avoid excessive data.\n\n' +
         'TIME FILTERING (preferred path):\n' +
         '  $__timeFilter(column)    — column >= <start> AND column <= <end> (DateTime precision)\n' +
         '  $__timeFilter_ms(column) — same with DateTime64 millisecond precision\n' +
@@ -66,9 +72,22 @@ const sqlSchema = z.object({
         'AND <timestampColumn> < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) ' +
         'GROUP BY ServiceName ORDER BY n DESC LIMIT 20',
     ),
+  queries: z
+    .array(sqlBatchQuerySchema)
+    .min(1)
+    .max(MAX_SQL_BATCH_QUERIES)
+    .optional()
+    .describe(
+      `Up to ${MAX_SQL_BATCH_QUERIES} independent queries to run in parallel instead of sql. ` +
+        'They share startTime/endTime and default to the top-level connectionId and sourceId.',
+    ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
 });
+
+const SQL_OR_QUERIES_ERROR =
+  'Pass exactly one of sql (a single query) or queries (several independent ' +
+  'queries run in parallel).';
 
 // ─── Tool registration ───────────────────────────────────────────────────────
 
@@ -96,7 +115,12 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         'too when querying a source, so $__sourceTable resolves to its table. ' +
         'Call clickstack_describe_source to discover column names before writing SQL.\n\n' +
         'Results are always returned as table rows — for time-series semantics, ' +
-        'include a time column and ORDER BY it in your SQL.',
+        'include a time column and ORDER BY it in your SQL.\n\n' +
+        'To run several independent queries at once (e.g. comparing sources, or several ' +
+        'breakdowns for one investigation), pass queries instead of sql. They run in ' +
+        `parallel under a shared ${SQL_BATCH_DEADLINE_MS / 1000}s budget, and each result ` +
+        'reports its own status (ok, error, or timeout), so one failing query does not ' +
+        'fail the others.',
       inputSchema: sqlSchema,
     },
     async input => {
@@ -106,57 +130,46 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
       }
       const { startDate, endDate } = timeRange;
 
-      // $__filter / $__conditionalAll read the variables a dashboard's filters
-      // declare, and this tool has no dashboard behind it.
-      if (hasVariableMacro(input.sql)) {
-        return mcpUserError(
-          'The $__filter and $__conditionalAll macros only resolve for a tile ' +
-            'on a dashboard, because they read the dashboard variables its ' +
-            'filters declare. This tool has no dashboard, so they would be ' +
-            'sent to ClickHouse as literal text. Inline the condition here, ' +
-            'or save the query as a dashboard tile and validate it with ' +
-            'clickstack_query_tile.',
-        );
+      const { sql, queries } = input;
+      if (queries !== undefined) {
+        if (sql !== undefined) {
+          return mcpUserError(SQL_OR_QUERIES_ERROR);
+        }
+        trace.getActiveSpan()?.setAttribute('mcp.sql.mode', 'batch');
+        return runSqlBatch({
+          teamId: teamId.toString(),
+          queries,
+          defaults: {
+            connectionId: input.connectionId,
+            sourceId: input.sourceId,
+          },
+          startDate,
+          endDate,
+        });
       }
 
-      if (input.sourceId) {
-        const source = await getSource(teamId.toString(), input.sourceId);
-        if (!source) {
-          return mcpUserError(
-            `Source not found: ${input.sourceId}. Call clickstack_list_sources to discover available source IDs.`,
-          );
-        }
-        // $__sourceTable expands to the source's table, so a mismatch would run
-        // the query against a table on another server.
-        const sourceConnectionId = source.connection.toString();
-        if (sourceConnectionId !== input.connectionId) {
-          return mcpUserError(
-            `connectionId "${input.connectionId}" does not match the connection of source ` +
-              `"${input.sourceId}" ("${sourceConnectionId}"). Use the source's own ` +
-              'connection or drop sourceId from the call.',
-          );
-        }
-      } else if (hasMacro(input.sql, 'sourceTable')) {
-        return mcpUserError(
-          '$__sourceTable needs a sourceId to know which table to expand to. ' +
-            'Pass the sourceId of a source from clickstack_list_sources, or write ' +
-            "the source's `table` in place of the macro.",
-        );
+      if (sql === undefined) {
+        return mcpUserError(SQL_OR_QUERIES_ERROR);
+      }
+      trace.getActiveSpan()?.setAttribute('mcp.sql.mode', 'single');
+      const prepared = await prepareSqlQuery(
+        {
+          sql,
+          connectionId: input.connectionId,
+          sourceId: input.sourceId,
+        },
+        createSourceLookup(teamId.toString()),
+      );
+      if ('error' in prepared) {
+        return prepared.error;
       }
 
-      // Raw SQL only uses displayType to pick which query params to bind, and
-      // only time-series types bind the interval params this tool advertises
-      // ({intervalSeconds}, $__interval_s, $__timeInterval). Rows come back
-      // the same either way, and ClickHouse ignores params a query never uses.
-      const tile = buildTile('MCP SQL', 24, 6, {
-        configType: 'sql' as const,
-        displayType: 'line' as const,
-        connectionId: input.connectionId,
-        sourceId: input.sourceId,
-        sqlTemplate: input.sql,
-      });
-
-      return runConfigTile(teamId.toString(), tile, startDate, endDate);
+      return runConfigTile(
+        teamId.toString(),
+        prepared.tile,
+        startDate,
+        endDate,
+      );
     },
   );
 }
