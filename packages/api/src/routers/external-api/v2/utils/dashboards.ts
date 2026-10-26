@@ -307,6 +307,7 @@ const convertPromqlConfigToExternal = (
     case DisplayType.Search:
     case DisplayType.Markdown:
     case DisplayType.EventPatterns:
+    case DisplayType.Treemap:
       // The editor never saves these for PromQL. Emitting a line chart keeps
       // the tile a PromQL tile on a GET -> PUT round-trip.
       logger.error(
