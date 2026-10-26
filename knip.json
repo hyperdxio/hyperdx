@@ -7,12 +7,13 @@
     "packages/app": {
       "entry": ["pages/**/*.{ts,tsx}", "scripts/*.js", "tests/e2e/**/*.ts"],
       "project": ["src/**/*.{ts,tsx}", "pages/**/*.{ts,tsx}"],
-      "ignore": [".storybook/public/**"],
+      "ignore": [".storybook/public/**", "src/chdb.ts"],
       "ignoreDependencies": [
         "eslint-config-next",
         "@chromatic-com/storybook",
         "@storybook/addon-themes",
-        "react-is"
+        "react-is",
+        "chdb-wasm"
       ]
     },
     "packages/api": {

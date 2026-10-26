@@ -1823,10 +1823,11 @@ export class DashboardPage {
   }
 
   getChartTypeTab(type: SeriesType) {
+    const chartTypeInput = this.page.getByTestId('chart-type-input');
     if (type === 'time') {
-      return this.page.getByRole('tab', { name: /time series/i });
+      return chartTypeInput.getByRole('radio', { name: /time series/i });
     }
-    return this.page.getByRole('tab', { name: new RegExp(type, 'i') });
+    return chartTypeInput.getByRole('radio', { name: new RegExp(type, 'i') });
   }
 
   /**
@@ -1900,7 +1901,7 @@ export class DashboardPage {
       }
 
       const chartTypeTab = this.getChartTypeTab(seriesData.type);
-      await expect(chartTypeTab).toHaveAttribute('aria-selected', 'true');
+      await expect(chartTypeTab).toHaveAttribute('aria-checked', 'true');
 
       // Verify source selector for charts with sources
       if (seriesData.sourceId && expectedSourceName) {

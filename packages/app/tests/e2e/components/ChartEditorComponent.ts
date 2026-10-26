@@ -71,18 +71,18 @@ export class ChartEditorComponent {
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    // Line, StackedBar, and StackedLine share the "Time Series" tab, and
-    // EventPatterns' tab is labelled just "Patterns"; the rest match their tab
+    // Line, StackedBar, and StackedLine share the "Time series" option, and
+    // EventPatterns' option is labelled just "Patterns"; the rest match their
     // label by name (case-insensitive substring).
-    const tabName =
+    const optionName =
       name === DisplayType.Line ||
       name === DisplayType.StackedBar ||
       name === DisplayType.StackedLine
-        ? 'Time Series'
+        ? 'Time series'
         : name === DisplayType.EventPatterns
           ? 'Patterns'
           : name;
-    await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
+    await this.chartTypeInput.getByRole('radio', { name: optionName }).click();
   }
 
   /** Pick the heatmap's mode in its segmented control. */
@@ -983,7 +983,9 @@ export class ChartEditorComponent {
     // Wait for data sources to load before interacting
     await this.waitForDataToLoad();
 
-    const tableButton = this.page.getByRole('tab', { name: 'Table' });
+    const tableButton = this.chartTypeInput.getByRole('radio', {
+      name: 'Table',
+    });
     await tableButton.click();
 
     await this.setChartName(chartName);

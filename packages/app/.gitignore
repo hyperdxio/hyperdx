@@ -10,6 +10,9 @@ public/__ENV.js
 # Generated from CHANGELOG.md at build time (see next.config.mjs)
 public/whats-new.json
 
+# Copied from node_modules/chdb-wasm at build time (see next.config.mjs)
+public/chdb-wasm/
+
 # Leftover from before whats-new.json: earlier builds copied the whole changelog
 # into public/. Kept ignored so the stale artefact in existing checkouts doesn't
 # show up as untracked (and get committed by accident). Removable once everyone

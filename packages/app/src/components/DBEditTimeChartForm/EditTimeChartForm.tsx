@@ -15,7 +15,6 @@ import { isReducibleRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
-  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   displayTypeRequiresSource,
@@ -34,27 +33,9 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
-import {
-  Box,
-  Flex,
-  SegmentedControl,
-  Tabs,
-  Text,
-  Textarea,
-} from '@mantine/core';
+import { Box, Flex, SegmentedControl, Text, Textarea } from '@mantine/core';
 import { useDebouncedValue, useDisclosure, usePrevious } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import {
-  IconBracketsContain,
-  IconChartBar,
-  IconChartLine,
-  IconChartPie,
-  IconGrid3x3,
-  IconList,
-  IconMarkdown,
-  IconNumbers,
-  IconTable,
-} from '@tabler/icons-react';
 
 import { getPreviousDateRange } from '@/ChartUtils';
 import { AlertPanelLayout } from '@/components/AlertPanel';
@@ -105,6 +86,7 @@ import { ChartActionBar, DashboardFiltersToggleProps } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
 import { ChartSaveActions } from './ChartSaveActions';
+import { ChartTypeSelector } from './ChartTypeSelector';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
 import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
@@ -1206,78 +1188,7 @@ export default function EditTimeChartForm({
             control={control}
             name="displayType"
             render={({ field: { onChange, value } }) => (
-              <Tabs
-                // Stacked variants are picked from the preview's display
-                // switcher and live under the Time Series tab.
-                value={
-                  isTimeSeriesDisplayType(value) ? DisplayType.Line : value
-                }
-                onChange={v => {
-                  if (v === DisplayType.Line && isTimeSeriesDisplayType(value))
-                    return;
-                  onChange(v);
-                }}
-                radius={'xs'}
-                mb="md"
-                data-testid="chart-type-input"
-              >
-                <Tabs.List>
-                  <Tabs.Tab
-                    value={DisplayType.Line}
-                    leftSection={<IconChartLine size={16} />}
-                  >
-                    Time Series
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.Table}
-                    leftSection={<IconTable size={16} />}
-                  >
-                    Table
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.Number}
-                    leftSection={<IconNumbers size={16} />}
-                  >
-                    Number
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.Bar}
-                    leftSection={<IconChartBar size={16} />}
-                  >
-                    Bar
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.Pie}
-                    leftSection={<IconChartPie size={16} />}
-                  >
-                    Pie
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.Search}
-                    leftSection={<IconList size={16} />}
-                  >
-                    Search
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.Heatmap}
-                    leftSection={<IconGrid3x3 size={16} />}
-                  >
-                    Heatmap
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.EventPatterns}
-                    leftSection={<IconBracketsContain size={16} />}
-                  >
-                    Patterns
-                  </Tabs.Tab>
-                  <Tabs.Tab
-                    value={DisplayType.Markdown}
-                    leftSection={<IconMarkdown size={16} />}
-                  >
-                    Markdown
-                  </Tabs.Tab>
-                </Tabs.List>
-              </Tabs>
+              <ChartTypeSelector value={value} onChange={onChange} />
             )}
           />
           {activeTab === 'markdown' ? (

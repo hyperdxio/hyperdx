@@ -1,0 +1,167 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(200px, 240px);
+  gap: 8px;
+
+  @media (width <= 900px) {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background-color: var(--color-bg-body);
+  color: var(--color-text-muted);
+  transition:
+    border-color 100ms ease,
+    box-shadow 100ms ease;
+
+  &:hover {
+    border-color: var(--color-border-emphasis);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-outline-focus);
+    outline-offset: 1px;
+  }
+
+  // Inset shadow thickens the border without shifting the tile's content.
+  &[data-checked] {
+    border-color: var(--color-text);
+    box-shadow: inset 0 0 0 0.5px var(--color-text);
+    color: var(--color-text);
+    font-weight: 600;
+  }
+}
+
+.preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 64px;
+  padding: 6px;
+  overflow: hidden;
+  border-radius: 4px;
+  background-color: var(--color-bg-muted);
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 13px;
+}
+
+.compactList {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 4px;
+  align-content: center;
+  padding-left: 12px;
+  border-left: 1px solid var(--color-border);
+
+  @media (width <= 900px) {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(4, max-content);
+    padding-left: 0;
+    border-left: none;
+  }
+}
+
+.compactItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+
+  &:hover {
+    background-color: var(--color-bg-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--color-outline-focus);
+    outline-offset: 1px;
+  }
+
+  &[data-checked] {
+    background-color: var(--color-bg-highlighted);
+    color: var(--color-text);
+    font-weight: 600;
+  }
+}
+
+.timeSeries {
+  width: 100%;
+  height: 100%;
+
+  polyline {
+    fill: none;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+  }
+}
+
+.miniTable {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  font-family: var(--mantine-font-family-monospace);
+  font-size: 9px;
+}
+
+.miniTableRow {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.number {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+}
+
+.bars {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 48px;
+}
+
+.bar {
+  width: 10px;
+  border-radius: 2px 2px 0 0;
+  background-color: var(--color-chart-blue);
+}
+
+.pie {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: conic-gradient(
+    var(--color-chart-blue) 0deg 104.5deg,
+    var(--color-chart-cyan) 104.5deg 185.1deg,
+    var(--color-chart-orange) 185.1deg 249.5deg,
+    var(--color-chart-pink) 249.5deg 297deg,
+    var(--color-chart-purple) 297deg 332.9deg,
+    var(--color-chart-gray) 332.9deg 360deg
+  );
+  mask: radial-gradient(circle, transparent 12px, #000 12.5px);
+}

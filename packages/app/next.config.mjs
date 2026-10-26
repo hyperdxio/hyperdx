@@ -1,5 +1,13 @@
 import { configureRuntimeEnv } from 'next-runtime-env/build/configure.js';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'fs';
+import { createRequire } from 'module';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
@@ -62,6 +70,49 @@ try {
   }
   console.warn(
     'Could not regenerate public/whats-new.json; using the existing file:',
+    err.message,
+  );
+}
+
+// Copy chdb-wasm's browser assets into public/chdb-wasm (loaded by src/chdb.ts).
+// chdb-wasm fetches these by URL at runtime instead of going through the
+// bundler, and Next serves nothing from node_modules. Only the single-threaded
+// bundle is copied: the app isn't cross-origin isolated, so the threaded one
+// can't run. Unchanged files are skipped because chdb.wasm is ~160 MB.
+const CHDB_ASSETS = [
+  'worker.js',
+  'bindings.js',
+  'status.js',
+  'st/chdb.mjs',
+  'st/chdb.wasm',
+];
+const chdbPublicDir = join(__dirname, 'public', 'chdb-wasm');
+try {
+  const chdbDist = dirname(createRequire(import.meta.url).resolve('chdb-wasm'));
+  for (const file of CHDB_ASSETS) {
+    const src = join(chdbDist, file);
+    const dest = join(chdbPublicDir, file);
+    const srcStat = statSync(src);
+    if (existsSync(dest)) {
+      const destStat = statSync(dest);
+      if (
+        destStat.size === srcStat.size &&
+        destStat.mtimeMs >= srcStat.mtimeMs
+      ) {
+        continue;
+      }
+    }
+    mkdirSync(dirname(dest), { recursive: true });
+    copyFileSync(src, dest);
+  }
+} catch (err) {
+  // Same invariant as whats-new.json: `next start` may re-evaluate this config
+  // without node_modules, which is fine only if a build already copied them.
+  if (!existsSync(chdbPublicDir)) {
+    throw new Error(`Failed to copy chdb-wasm assets: ${err.message}`);
+  }
+  console.warn(
+    'Could not refresh public/chdb-wasm; using the existing files:',
     err.message,
   );
 }
