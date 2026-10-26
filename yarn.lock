@@ -4858,6 +4858,7 @@ __metadata:
     "@types/sqlstring": "npm:^2.3.2"
     "@uiw/react-codemirror": "npm:^4.23.3"
     "@xyflow/react": "npm:^12.9.0"
+    chdb-wasm: "npm:^0.4.0"
     chrono-node: "npm:^2.7.8"
     classnames: "npm:^2.3.1"
     crypto-js: "npm:^4.2.0"
@@ -14467,6 +14468,13 @@ __metadata:
   version: 2.2.0
   resolution: "chardet@npm:2.2.0"
   checksum: 10c0/8d43a1dd3ce535aa070d04139fae62f879b4388394eb1d857364ce416675a1f0f63974fba8208e9cd11b49e1a6da3e65ea6393d0fc654a8c4217c0d74c16b1b4
+  languageName: node
+  linkType: hard
+
+"chdb-wasm@npm:^0.4.0":
+  version: 0.4.0
+  resolution: "chdb-wasm@npm:0.4.0"
+  checksum: 10c0/8e9e480501c8690aafbf2ae9b7410e27b962956f86d9be383c118d522fa04a249fce84848526ad93bcb05dbbe439a8f60d84b81d2fefc151ff546fe725bfacbf
   languageName: node
   linkType: hard
 

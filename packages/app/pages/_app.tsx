@@ -3,6 +3,7 @@ import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
 import { env } from 'next-runtime-env';
+import { AsyncChdb, selectBundle } from 'chdb-wasm';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
 import HyperDX from '@hyperdx/browser';
@@ -63,6 +64,16 @@ const queryClient = new QueryClient({
     onError: console.error,
   }),
 });
+
+const bundle = selectBundle({ baseUrl: '/node_modules/chdb-wasm/dist' });
+if (!bundle.supported) throw new Error(bundle.reasons.join('; '));
+
+const db = await AsyncChdb.create({
+  moduleUrl: bundle.moduleUrl,
+  wasmUrl: bundle.wasmUrl,
+  onProgress: (loaded, total) => console.warn(`${loaded}/${total}`),
+});
+localStorage.setItem('db', String(db));
 
 export type NextPageWithLayout<P = object, IP = P> = NextPage<P, IP> & {
   getLayout?: (page: React.ReactElement) => React.ReactNode;
