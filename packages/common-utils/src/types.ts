@@ -1797,6 +1797,10 @@ const SharedChartSettingsSchema = z.object({
   // tile's query result before rendering it; `$res` is the value, as in
   // `$res * 2`. Client-side only, so it is not part of the ClickHouse query.
   transformSql: z.string().optional(),
+  // A condition the app applies in the browser (chdb) after the transform:
+  // only rows where it holds are drawn. `$res` is the value and `$name` the
+  // series name, as in `$name != 'frontend'`. Client-side only, like above.
+  filterSql: z.string().optional(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:

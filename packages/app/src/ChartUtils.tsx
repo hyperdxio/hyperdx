@@ -268,8 +268,12 @@ export function convertToTimeChartConfig(
 export function convertToSharedTimeChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
-  // Runs over the result in the browser, so it isn't part of the query
-  const { transformSql: _transformSql, ...queryConfig } = config;
+  // These run over the result in the browser, so aren't part of the query
+  const {
+    transformSql: _transformSql,
+    filterSql: _filterSql,
+    ...queryConfig
+  } = config;
   if (!isBuilderChartConfig(queryConfig)) {
     return convertToTimeChartConfig(queryConfig);
   }

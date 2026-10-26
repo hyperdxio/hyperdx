@@ -248,6 +248,35 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
     });
   });
 
+  test('should filter series out of the query result in the browser', async ({
+    page,
+  }) => {
+    // Matches the table and its chart type thumbnail, which both filter
+    const serviceRows = (name: string) =>
+      page.getByRole('row').filter({ hasText: name });
+
+    await test.step('Run a table grouped by ServiceName', async () => {
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Table);
+      await chartExplorerPage.chartEditor.setGroupBy('ServiceName');
+      await chartExplorerPage.chartEditor.runQuery(false);
+      await expect(serviceRows('CartService').first()).toBeVisible({
+        timeout: 30000,
+      });
+    });
+
+    await test.step('Filtering by series name hides that service only', async () => {
+      await chartExplorerPage.chartEditor.setFilterSql(
+        "$name != 'CartService'",
+      );
+      await chartExplorerPage.chartEditor.runQuery(false);
+      await expect(serviceRows('CartService')).toHaveCount(0, {
+        timeout: 30000,
+      });
+      await expect(serviceRows('accounting').first()).toBeVisible();
+    });
+  });
+
   test('should switch display types without querying ClickHouse again', async ({
     page,
   }) => {
@@ -270,14 +299,15 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
         .poll(() => chartQueries.some(sql => sql.includes('__hdx_time_bucket')))
         .toBe(true);
       // A chunked query sends its windows one after another; wait for the last
+      let sent = -1;
       await expect
         .poll(
-          async () => {
-            const sent = chartQueries.length;
-            await page.waitForTimeout(1000);
-            return chartQueries.length === sent;
+          () => {
+            const settled = chartQueries.length === sent;
+            sent = chartQueries.length;
+            return settled;
           },
-          { timeout: 20000 },
+          { intervals: [1000], timeout: 20000 },
         )
         .toBe(true);
       chartQueries.length = 0;

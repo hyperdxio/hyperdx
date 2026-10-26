@@ -291,13 +291,19 @@ export class ChartEditorComponent {
     await dismissSqlAutocomplete(this.page);
   }
 
-  /** Replace the SQL the chart runs over its query result in the browser. */
+  /** Replace the calculation the chart applies to each value in the browser. */
   async setTransformSql(sql: string) {
+    await this.replaceResultSql('transform-sql-input', sql);
+  }
+
+  /** Replace the condition the chart filters its result by in the browser. */
+  async setFilterSql(sql: string) {
+    await this.replaceResultSql('filter-sql-input', sql);
+  }
+
+  private async replaceResultSql(testId: string, sql: string) {
     await dismissSqlAutocomplete(this.page);
-    await this.page
-      .getByTestId('transform-sql-input')
-      .locator('.cm-content')
-      .click();
+    await this.page.getByTestId(testId).locator('.cm-content').click();
     await this.page.keyboard.press('ControlOrMeta+A');
     await this.page.keyboard.press('Delete');
     await this.page.keyboard.type(sql);

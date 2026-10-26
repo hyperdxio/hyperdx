@@ -94,7 +94,7 @@ export default function DBNumberChart({
     enabled: enabled && !local.active,
   });
   const { data, isLoading, isError, error, isPlaceholderData } =
-    useResultTransform(local.active ? local : remote, config.transformSql);
+    useResultTransform(local.active ? local : remote, config);
 
   // The value is the first numeric value in the first row of the result
   const valueColumn = data?.meta

@@ -20,6 +20,7 @@ import {
   useLocalChartQuery,
   useTimeChartQuery,
 } from '@/hooks/useLocalChartQuery';
+import { useResultTransform } from '@/hooks/useResultTransform';
 import { useSource } from '@/source';
 import { ChartQueryResult } from '@/types';
 import { formatNumber, getColorProps } from '@/utils';
@@ -49,7 +50,7 @@ function useLocalPreview(
   config: ChartConfigWithDateRange,
   kind: LocalChartKind,
 ): ChartQueryResult | undefined {
-  const { active, data } = useLocalChartQuery(config, {
+  const local = useLocalChartQuery(config, {
     kind,
     // As the charts themselves pass it, so a preview shares their transform
     orderBy:
@@ -58,7 +59,8 @@ function useLocalPreview(
         : undefined,
     cacheOnly: true,
   });
-  return active ? data : undefined;
+  const { data } = useResultTransform(local, config);
+  return local.active ? data : undefined;
 }
 
 function useCategoricalPreview(config: ChartConfigWithDateRange) {
@@ -89,7 +91,8 @@ export function TimeSeriesPreview({ config, fallback }: ChartTypePreviewProps) {
   );
   const { dateRange, granularity, fillNulls } =
     useTimeChartSettings(timeConfig);
-  const { data } = useTimeChartQuery(timeConfig, { enabled: false });
+  const timeSeries = useTimeChartQuery(timeConfig, { enabled: false });
+  const { data } = useResultTransform(timeSeries, config);
 
   const chart = useMemo(() => {
     if (!data?.isComplete) return undefined;

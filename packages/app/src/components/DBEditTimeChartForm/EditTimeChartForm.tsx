@@ -74,7 +74,10 @@ import {
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_PROMQL_ENABLED } from '@/config';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
-import { TRANSFORM_VALUE_PLACEHOLDER } from '@/hooks/useResultTransform';
+import {
+  SERIES_NAME_PLACEHOLDER,
+  VALUE_PLACEHOLDER,
+} from '@/hooks/useResultTransform';
 import {
   getDurationMsExpression,
   getFirstSeriesNumberFormat,
@@ -1287,8 +1290,20 @@ export default function EditTimeChartForm({
                 control={control}
                 name="transformSql"
                 label="Transform"
-                placeholder={`Calculation for each value (ex. ${TRANSFORM_VALUE_PLACEHOLDER} * 2)`}
-                tooltipText={`Optional. Your browser applies this to every value in the result before drawing it; ${TRANSFORM_VALUE_PLACEHOLDER} is the value.`}
+                placeholder={`Calculation for each value (ex. ${VALUE_PLACEHOLDER} * 2)`}
+                tooltipText={`Optional. Your browser applies this to every value in the result before drawing it; ${VALUE_PLACEHOLDER} is the value.`}
+                onSubmit={onSubmit}
+              />
+            </Box>
+          )}
+          {TABS_WITH_TRANSFORM.has(activeTab) && (
+            <Box mt="sm" data-testid="filter-sql-input">
+              <SQLInlineEditorControlled
+                control={control}
+                name="filterSql"
+                label="Filter"
+                placeholder={`Condition for what to show (ex. ${SERIES_NAME_PLACEHOLDER} != 'frontend' AND ${VALUE_PLACEHOLDER} > 10)`}
+                tooltipText={`Optional. Your browser drops rows where this is false. ${SERIES_NAME_PLACEHOLDER} is the series name and ${VALUE_PLACEHOLDER} the value; match(${SERIES_NAME_PLACEHOLDER}, 'regex') and dashboard variables work too.`}
                 onSubmit={onSubmit}
               />
             </Box>

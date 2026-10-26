@@ -278,6 +278,7 @@ export function convertFormStateToSavedChartConfig(
         'alternateRowBackground',
         'seriesLimit',
         'transformSql',
+        'filterSql',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: formPromqlExpressions(form),
@@ -310,6 +311,7 @@ export function convertFormStateToSavedChartConfig(
         // SharedChartSettingsSchema.seriesLimit.
         'seriesLimit',
         'transformSql',
+        'filterSql',
         'alert',
         'onClick',
       ]),
@@ -385,6 +387,7 @@ export function convertFormStateToChartConfig(
         'alternateRowBackground',
         'seriesLimit',
         'transformSql',
+        'filterSql',
       ]),
       promqlExpression: formPromqlExpressions(form),
       connection: source?.connection ?? form.connection ?? '',
@@ -416,6 +419,7 @@ export function convertFormStateToChartConfig(
         // above and SharedChartSettingsSchema.seriesLimit).
         'seriesLimit',
         'transformSql',
+        'filterSql',
         'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',

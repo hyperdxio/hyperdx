@@ -147,7 +147,7 @@ export default function DBTableChart({
     keepPreviousData: true,
   });
   const { data, isLoading, isError, error, isPlaceholderData } =
-    useResultTransform(local.active ? local : remote, config.transformSql);
+    useResultTransform(local.active ? local : remote, config);
   const hasNextPage = !local.active && remote.hasNextPage;
   const { observerRef: fetchMoreRef } = useIntersectionObserver(
     remote.fetchNextPage,

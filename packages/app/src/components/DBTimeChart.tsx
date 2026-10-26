@@ -557,7 +557,7 @@ function DBTimeChartComponent({
     enableParallelQueries,
   });
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
-    useResultTransform(timeChartQuery, config.transformSql);
+    useResultTransform(timeChartQuery, config);
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
     const previousPeriodDateRange =
@@ -594,7 +594,7 @@ function DBTimeChartComponent({
     enableQueryChunking: true,
   });
   const { data: previousPeriodData, isLoading: isPreviousPeriodLoading } =
-    useResultTransform(previousPeriodQuery, config.transformSql);
+    useResultTransform(previousPeriodQuery, config);
 
   const isLoadingOrPlaceholder =
     isLoading ||

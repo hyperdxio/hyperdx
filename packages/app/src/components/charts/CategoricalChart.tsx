@@ -92,7 +92,7 @@ export function useCategoricalChart({
     enabled: enabled && !local.active,
   });
   const { data, isLoading, isError, error, isPlaceholderData } =
-    useResultTransform(local.active ? local : remote, config.transformSql);
+    useResultTransform(local.active ? local : remote, config);
 
   const toolbarItems = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
