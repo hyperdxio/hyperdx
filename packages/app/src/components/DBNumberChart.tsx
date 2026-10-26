@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
 import {
   filterColumnMetaByType,
@@ -18,8 +19,12 @@ import { Flex, Text } from '@mantine/core';
 import {
   buildMVDateRangeIndicator,
   convertToNumberChartConfig,
+  convertToReducedPromqlChartConfig,
 } from '@/ChartUtils';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import {
@@ -221,13 +226,21 @@ export default function DBNumberChart({
   showMVOptimizationIndicator?: boolean;
   errorVariant?: ChartErrorStateVariant;
 }) {
-  const queriedConfig = useMemo(
-    () =>
-      isBuilderChartConfig(config)
-        ? convertToNumberChartConfig(config)
-        : config,
-    [config],
-  );
+  const { data: source } = useSource({
+    id: config.source,
+  });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+
+  const queriedConfig = useMemo(() => {
+    if (isBuilderChartConfig(config)) return convertToNumberChartConfig(config);
+    if (isPromqlChartConfig(config)) {
+      return convertToReducedPromqlChartConfig({
+        ...config,
+        minGranularitySeconds,
+      });
+    }
+    return config;
+  }, [config, minGranularitySeconds]);
 
   const builderQueriedConfig = isBuilderChartConfig(queriedConfig)
     ? queriedConfig
@@ -235,14 +248,12 @@ export default function DBNumberChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error } = useQueriedChartConfig(
-    queriedConfig,
-    {
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useQueriedChartConfig(queriedConfig, {
       placeholderData: (prev: any) => prev,
       queryKeyPrefix,
       enabled,
-    },
-  );
+    });
 
   // The value is the first numeric value in the first row of the result
   const valueColumn = data?.meta
@@ -255,13 +266,16 @@ export default function DBNumberChart({
         )
       : error;
 
-  const promqlRows = isPromqlChartConfig(queriedConfig)
-    ? (data?.data ?? [])
-    : [];
-  const promqlValueCount = promqlRows.length;
-  const promqlSeriesCount = new Set(
-    promqlRows.map((row: Record<string, unknown>) => row.series_name),
-  ).size;
+  // The reducer leaves one row per series.
+  const promqlSeriesCount = isPromqlChartConfig(queriedConfig)
+    ? (data?.data?.length ?? 0)
+    : 0;
+
+  // Several series leave the value ambiguous (see the warning) and the tile
+  // shows whichever came first, so a trend behind it would mislead. Whether
+  // the config can be bucketed at all is the sparkline's own call.
+  const showSparkline =
+    config.backgroundChart != null && promqlSeriesCount <= 1;
 
   const resolvedNumberFormat = useSingleSeriesNumberFormat(queriedConfig);
 
@@ -269,10 +283,6 @@ export default function DBNumberChart({
     ? data?.data?.[0]?.[valueColumn.name]
     : (Object.values(data?.data?.[0] ?? {})?.[0] ?? Number.NaN);
   const formattedValue = formatNumber(value as number, resolvedNumberFormat);
-
-  const { data: source } = useSource({
-    id: config.source,
-  });
 
   // Resolve the display color in three layers:
   //   1. Conditional color rules evaluated against the raw value
@@ -323,14 +333,12 @@ export default function DBNumberChart({
       allToolbarItems.push(...toolbarPrefix);
     }
 
-    if (promqlValueCount > 1 || promqlSeriesCount > 1) {
+    if (promqlSeriesCount > 1) {
       allToolbarItems.push(
         <MultipleValuesIndicator
           key="db-number-chart-multiple-values"
-          valueCount={promqlValueCount}
           seriesCount={promqlSeriesCount}
           multipleSeriesHint="Aggregate the expression, for example with sum() or sum by (...), to return a single series."
-          multipleValuesHint="Wrap any range selectors in a function to return an instant vector, for example rate(metric[5m]) rather than metric[5m]."
         />,
       );
     }
@@ -368,7 +376,6 @@ export default function DBNumberChart({
     mvOptimizationData,
     queriedConfig,
     builderQueriedConfig,
-    promqlValueCount,
     promqlSeriesCount,
   ]);
 
@@ -383,15 +390,25 @@ export default function DBNumberChart({
       ) : resultError ? (
         <ChartErrorState error={resultError} variant={errorVariant} />
       ) : data?.data.length === 0 ? (
-        <div className="d-flex h-100 w-100 align-items-center justify-content-center text-muted">
+        <div
+          className={cx(
+            'd-flex h-100 w-100 align-items-center justify-content-center text-muted',
+            { 'effect-pulse': isPlaceholderData },
+          )}
+        >
           No data found within time range.
         </div>
       ) : (
-        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-          {config.backgroundChart && (
+        <div
+          className={isLoading || isPlaceholderData ? 'effect-pulse' : ''}
+          style={{ position: 'relative', width: '100%', height: '100%' }}
+        >
+          {showSparkline && config.backgroundChart && (
             <NumberTileBackgroundChart
               config={config}
               backgroundChart={config.backgroundChart}
+              queryKeyPrefix={queryKeyPrefix}
+              enabled={enabled}
             />
           )}
           <div style={{ position: 'relative', zIndex: 1, height: '100%' }}>

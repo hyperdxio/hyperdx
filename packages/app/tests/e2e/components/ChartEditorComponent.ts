@@ -13,6 +13,7 @@ import {
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
 import { addTagViaPicker, removeTagViaPicker } from '../utils/tags';
 
+import { HeatmapComponent } from './HeatmapComponent';
 import { WebhookAlertModalComponent } from './WebhookAlertModalComponent';
 import { WhereInputComponent } from './WhereInputComponent';
 
@@ -28,6 +29,7 @@ export class ChartEditorComponent {
   private readonly aggFnSelect: Locator;
   private readonly addAlertButton: Locator;
   private readonly removeAlertButton: Locator;
+  private readonly confirmConfirmButton: Locator;
   private readonly webhookSelector: Locator;
   private readonly runQueryButton: Locator;
   private readonly saveButton: Locator;
@@ -41,6 +43,7 @@ export class ChartEditorComponent {
     this.aggFnSelect = page.getByTestId('agg-fn-select');
     this.addAlertButton = page.getByTestId('alert-button');
     this.removeAlertButton = page.getByTestId('remove-alert-button');
+    this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
     this.webhookSelector = page.getByTestId('select-webhook');
     this.addNewWebhookButton = page.getByTestId('add-new-webhook-button');
     this.webhookAlertModal = new WebhookAlertModalComponent(page);
@@ -55,20 +58,74 @@ export class ChartEditorComponent {
     await this.chartNameInput.fill(name);
   }
 
+  /** Replace a Search tile's SELECT list, the first editor in its form. */
+  async setSearchSelect(select: string) {
+    await replaceEditorText(
+      this.page,
+      this.tileEditor.locator('.cm-editor .cm-content').first(),
+      select,
+    );
+  }
+
   /**
    * Set chart type
    */
   async setChartType(name: DisplayType) {
-    // Line and StackedBar share the "Time Series" tab, and EventPatterns' tab
-    // is labelled just "Patterns"; the rest match their tab label by name
-    // (case-insensitive substring).
+    // Line, StackedBar, and StackedLine share the "Time Series" tab, and
+    // EventPatterns' tab is labelled just "Patterns"; the rest match their tab
+    // label by name (case-insensitive substring).
     const tabName =
-      name === DisplayType.Line || name === DisplayType.StackedBar
+      name === DisplayType.Line ||
+      name === DisplayType.StackedBar ||
+      name === DisplayType.StackedLine
         ? 'Time Series'
         : name === DisplayType.EventPatterns
           ? 'Patterns'
           : name;
     await this.chartTypeInput.getByRole('tab', { name: tabName }).click();
+  }
+
+  /** Pick the heatmap's mode in its segmented control. */
+  async setHeatmapMode(mode: 'Distribution' | 'Series' | 'Histogram') {
+    await this.editorForm()
+      .getByTestId('heatmap-mode-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${mode}$`) })
+      .click();
+  }
+
+  /** The editor's own granularity picker, not the dashboard header's. */
+  get granularityPicker(): Locator {
+    return this.editorForm().getByTestId('granularity-picker');
+  }
+
+  async setGranularity(label: string) {
+    await this.granularityPicker.click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+  }
+
+  /** The distribution heatmap's "Value" (y axis) SQL input. */
+  get heatmapValueInput(): Locator {
+    return this.editorForm()
+      .getByTestId('heatmap-value-input')
+      .locator('.cm-content');
+  }
+
+  /** The heatmap the editor previews. */
+  get previewHeatmap(): HeatmapComponent {
+    return new HeatmapComponent(this.page, this.editorForm());
+  }
+
+  /** The error the preview shows in place of the chart. */
+  get previewError(): Locator {
+    return this.editorForm().getByTestId('chart-error-state');
+  }
+
+  /** A heatmap mode's (visually hidden) radio, for checking the selection. */
+  heatmapModeOption(mode: 'Distribution' | 'Series' | 'Histogram'): Locator {
+    return this.editorForm()
+      .getByTestId('heatmap-mode-control')
+      .getByRole('radio', { name: mode, exact: true });
   }
 
   /**
@@ -149,6 +206,24 @@ export class ChartEditorComponent {
   async setSqlWhere(expression: string, scope: 'chart' | 'series' = 'chart') {
     await this.setWhereLanguage('SQL', scope);
     await this.whereInput(scope).fillSql(expression);
+    await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
+   * Type a multi-line SQL WHERE clause, one line per entry. Lines are split
+   * with Shift+Enter, since a bare Enter in the editor submits the query.
+   */
+  async setMultilineSqlWhere(
+    lines: string[],
+    scope: 'chart' | 'series' = 'chart',
+  ) {
+    const [first = '', ...rest] = lines;
+    await this.setWhereLanguage('SQL', scope);
+    await this.whereInput(scope).fillSql(first);
+    for (const line of rest) {
+      await this.page.keyboard.press('Shift+Enter');
+      await this.page.keyboard.type(line);
+    }
     await dismissSqlAutocomplete(this.page);
   }
 
@@ -252,17 +327,16 @@ export class ChartEditorComponent {
    * Select a data source
    */
   async selectSource(sourceName: string) {
+    // The editor pre-selects a source, and clicking the option that is already
+    // selected deselects it. Leave an existing match alone.
+    if ((await this.sourceSelector.inputValue()) === sourceName) {
+      return;
+    }
     await this.sourceSelector.click();
     // Use getByRole for more reliable selection. exact: true avoids matching
     // sources whose names are prefixes of others (e.g. "E2E Traces MV" vs
     // "E2E Traces MV AutoPopulate").
-    const sourceOption = this.page.getByRole('option', {
-      name: sourceName,
-      exact: true,
-    });
-    if ((await sourceOption.getAttribute('data-combobox-active')) != 'true') {
-      await sourceOption.click({ timeout: 5000 });
-    }
+    await this.sourceOption(sourceName).click({ timeout: 5000 });
   }
 
   /**
@@ -327,8 +401,21 @@ export class ChartEditorComponent {
     });
   }
 
+  /**
+   * Opens the alert panel. A tile's existing alert opens its panel on request
+   * rather than with the editor; a no-op when the panel is already open.
+   */
+  async openAlertPanel() {
+    const panel = this.page.getByTestId('alert-panel');
+    if (await panel.isVisible()) return;
+    await this.addAlertButton.click();
+    await panel.waitFor({ state: 'visible' });
+  }
+
   async clickRemoveAlert() {
+    await this.openAlertPanel();
     await this.removeAlertButton.click();
+    await this.confirmConfirmButton.click();
     this.removeAlertButton.waitFor({
       state: 'hidden',
       timeout: 2000,
@@ -359,6 +446,27 @@ export class ChartEditorComponent {
     }
   }
 
+  /** Open the Data Source dropdown. */
+  async openSourcePicker() {
+    await this.sourceSelector.click();
+    await expect(this.page.getByRole('option').first()).toBeVisible();
+  }
+
+  /**
+   * Close the Data Source dropdown by moving focus to the chart name input.
+   * Escape would bubble to the tile-editor modal and close that instead, and
+   * clicking the select again leaves the searchable dropdown open.
+   */
+  async closeSourcePicker() {
+    await this.chartNameInput.click();
+    await expect(this.page.getByRole('option')).toHaveCount(0);
+  }
+
+  /** An option in the open Data Source dropdown. */
+  sourceOption(sourceName: string): Locator {
+    return this.page.getByRole('option', { name: sourceName, exact: true });
+  }
+
   /**
    * Switch the chart editor from Builder to SQL mode.
    */
@@ -383,20 +491,6 @@ export class ChartEditorComponent {
       .filter({ hasText: /^PromQL$/ });
     await label.waitFor({ state: 'visible', timeout: 5000 });
     await label.click();
-  }
-
-  /**
-   * Select the PromQL editor's data source.
-   *
-   * Located by role rather than by the `source-selector` test id: that id is on
-   * the builder's source select (ChartEditorControls), and PromQL mode renders
-   * its own `SourceSelectControlled` which doesn't carry it.
-   */
-  async selectPromqlSource(sourceName: string) {
-    await this.page.getByRole('combobox', { name: 'Data Source' }).click();
-    await this.page
-      .getByRole('option', { name: sourceName, exact: true })
-      .click();
   }
 
   /**
@@ -538,7 +632,8 @@ export class ChartEditorComponent {
     if ((await control.getAttribute('aria-expanded')) !== 'true') {
       await control.click();
     }
-    await this.generatedSqlContent().waitFor({
+    // Distribution heatmaps render two previews (bounds, then buckets).
+    await this.generatedSqlContent().first().waitFor({
       state: 'visible',
       timeout: 10000,
     });
@@ -620,6 +715,12 @@ export class ChartEditorComponent {
   async getGeneratedSqlText(): Promise<string> {
     const text = await this.generatedSqlContent().innerText();
     return text.replace(/\s+/g, ' ').trim();
+  }
+
+  /** Every generated SQL preview, whitespace-collapsed and joined. */
+  async getAllGeneratedSqlText(): Promise<string> {
+    const texts = await this.generatedSqlContent().allInnerTexts();
+    return texts.join(' ').replace(/\s+/g, ' ').trim();
   }
 
   /**
@@ -903,6 +1004,7 @@ export class ChartEditorComponent {
    * message only exists as a tooltip, so this hovers the badge to read it.
    */
   async getAlertWarning(): Promise<string> {
+    await this.openAlertPanel();
     const badge = this.alertWarningBadge();
     if ((await badge.count()) === 0) return '';
     await badge.hover();
@@ -915,6 +1017,7 @@ export class ChartEditorComponent {
    * Scoped to [data-testid="alert-details"].
    */
   async selectTileAlertThresholdType(value: string) {
+    await this.openAlertPanel();
     await this.page
       .getByTestId('alert-details')
       .locator('select')
@@ -928,6 +1031,7 @@ export class ChartEditorComponent {
    * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
    */
   async setTileAlertThreshold(value: number) {
+    await this.openAlertPanel();
     const input = this.page
       .getByTestId('alert-details')
       .locator('input[inputmode="decimal"]')
@@ -943,6 +1047,7 @@ export class ChartEditorComponent {
    * so getByRole('spinbutton') does not match. We use the inputmode attribute instead.
    */
   async setTileAlertThresholdMax(value: number) {
+    await this.openAlertPanel();
     const input = this.page
       .getByTestId('alert-details')
       .locator('input[inputmode="decimal"]')
@@ -953,6 +1058,7 @@ export class ChartEditorComponent {
 
   /** Set the alert's own display name in the tile alert editor. */
   async setTileAlertDisplayName(name: string) {
+    await this.openAlertPanel();
     await this.page
       .getByTestId('alert-details')
       .getByTestId('alert-display-name-input')
@@ -966,10 +1072,12 @@ export class ChartEditorComponent {
   }
 
   async addTileAlertTag(tag: string) {
+    await this.openAlertPanel();
     await addTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
   async removeTileAlertTag(tag: string) {
+    await this.openAlertPanel();
     await removeTagViaPicker(this.page, this.tileAlertTagsButton, tag);
   }
 
@@ -977,6 +1085,7 @@ export class ChartEditorComponent {
    * Set the note field in the tile alert editor.
    */
   async setTileAlertNote(note: string) {
+    await this.openAlertPanel();
     const noteInput = this.page.getByTestId('alert-note-input');
     await noteInput.fill(note);
   }
@@ -1127,14 +1236,62 @@ export class ChartEditorComponent {
 
   /**
    * Set the "Series Limit" value in the Display Settings drawer. On pie/bar
-   * builder charts this caps the number of slices/bars displayed. Opens the
-   * drawer, fills the input, then applies and closes.
+   * builder charts this caps the number of slices/bars displayed; on time
+   * charts it caps the number of series. Opens the drawer, fills the input,
+   * then applies and closes.
    */
   async setSeriesLimit(limit: number) {
     await this.openDisplaySettings();
     const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
     await drawer.getByLabel('Series Limit').fill(String(limit));
     await this.applyDisplaySettings();
+  }
+
+  /**
+   * Set a heatmap's "Y axis scale" in the Display Settings drawer. Opens the
+   * drawer, picks the scale, then applies and closes.
+   */
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.openDisplaySettings();
+    await this.page
+      .getByTestId('heatmap-scale-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${scale}$`) })
+      .click();
+    await this.applyDisplaySettings();
+  }
+
+  /** A "Y axis scale" option's (visually hidden) radio in the open drawer. */
+  heatmapScaleOption(scale: 'Log' | 'Linear'): Locator {
+    return this.page
+      .getByTestId('heatmap-scale-control')
+      .getByRole('radio', { name: scale, exact: true });
+  }
+
+  /**
+   * Set "Line interpolation" in the Display Settings drawer (line and stacked
+   * line charts). Opens the drawer, picks the mode, then applies and closes.
+   */
+  async setLineInterpolation(mode: 'Smooth' | 'Linear' | 'Step') {
+    await this.openDisplaySettings();
+    await this.page
+      .getByTestId('line-interpolation-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${mode}$`) })
+      .click();
+    await this.applyDisplaySettings();
+  }
+
+  /** Switch line / stacked bar / stacked line from the preview's toolbar. */
+  async setPreviewDisplayType(type: 'line' | 'stacked_bar' | 'stacked_line') {
+    await this.editorForm().getByTestId(`display-switcher-${type}`).click();
+  }
+
+  /** A "Line interpolation" option's (visually hidden) radio in the open drawer. */
+  lineInterpolationOption(mode: 'Smooth' | 'Linear' | 'Step'): Locator {
+    return this.page
+      .getByTestId('line-interpolation-control')
+      .getByRole('radio', { name: mode, exact: true });
   }
 
   /**
@@ -1151,7 +1308,7 @@ export class ChartEditorComponent {
   /**
    * Choose how a PromQL expression is evaluated, from the toggle under the
    * expression editor. `reducer` is the visible label (e.g. "Max"), and only
-   * applies to a range query.
+   * applies to display types that reduce each series to one value.
    */
   async setPromqlQueryType(
     queryType: 'Instant' | 'Range',
@@ -1164,13 +1321,26 @@ export class ChartEditorComponent {
     await group.getByText(queryType, { exact: true }).click();
 
     if (reducer) {
-      await this.page
-        .getByRole('combobox', { name: 'PromQL range reducer' })
-        .click();
+      await this.page.getByRole('combobox', { name: 'PromQL reducer' }).click();
       await this.page
         .getByRole('option', { name: reducer, exact: true })
         .click();
     }
+  }
+
+  /**
+   * Set the "Background chart" type in the Display Settings drawer (number
+   * tiles only). Opens the drawer, picks the type, then applies and closes.
+   */
+  async setBackgroundChart(type: 'None' | 'Line' | 'Area') {
+    await this.openDisplaySettings();
+    const drawer = this.page.getByRole('dialog', { name: 'Display Settings' });
+    // Mantine repeats the aria-label on the options listbox, so match the role.
+    await drawer
+      .getByRole('combobox', { name: 'Number tile background chart type' })
+      .click();
+    await drawer.getByRole('option', { name: type, exact: true }).click();
+    await this.applyDisplaySettings();
   }
 
   /**

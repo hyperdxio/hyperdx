@@ -11,10 +11,10 @@ import {
   getAIMetadata,
   getAIModel,
   getChartConfigFromResolvedConfig,
-  llmTelemetry,
 } from '@/controllers/ai';
 import { getSource } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { llmTelemetry } from '@/utils/aiTelemetry';
 import { Api404Error, Api500Error } from '@/utils/errors';
 import { withOperationMetrics } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
@@ -56,7 +56,7 @@ Generate a visualization or search that matches their request. The chart should 
 
 Here are some guidelines:
 - Use appropriate display types: 'line' for time series, 'table' for tabular data
-- Use appropriate aggregate functions depending on user's request: 'count', 'sum', 'avg', 'min', 'max', 'count_distinct'
+- Use appropriate aggregate functions depending on user's request: 'count', 'sum', 'avg', 'min', 'max', 'count_distinct', and 'p50', 'p90', 'p95', 'p99' for percentiles
 - If the user is requesting for a specific set of data (ex. "frontend service", filter the condition by the appropriate property based on the below properties ex. \`ServiceName = 'frontend'\`)
 - Pick an appropriate time range based on the user's request if one can be inferred from the request.
 
@@ -106,11 +106,7 @@ ${JSON.stringify(allFieldsWithKeys.slice(0, 200).map(f => ({ field: f.key, type:
               output: Output.object({
                 schema: AssistantLineTableConfigSchema,
               }),
-              // teamId/userId flatten to ai.telemetry.metadata.* span
-              // attributes for attribution on the LLM dashboard. Callers
-              // with a conversation-scoped id should also pass sessionId so
-              // their calls group into a session (see llmTelemetry).
-              experimental_telemetry: llmTelemetry({
+              ...llmTelemetry({
                 teamId: teamId.toString(),
                 userId: userId.toString(),
               }),

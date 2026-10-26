@@ -21,6 +21,7 @@ a HyperDX alert without parsing the human-readable message body.
 | `{{thresholdMax}}` | number | Upper bound of a `between`/`outside` condition. Always unset for every other comparator, even if the alert was once a range, so guard it (see below). |
 | `{{value}}` | number | The value that triggered or resolved the alert. |
 | `{{groupKey}}` | string | The breaching group, for a grouped alert. |
+| `{{var}}` | object | The breaching group's values by group-by column or SQL alias. Use one value at a time, e.g. `{{var.customer_id}}`, or `{{var.[service.name]}}` for a name with dots. Empty when not grouped, and on the resolve of a group that has no rows left. |
 | `{{sourceQuery}}` | string | The condition behind the alert — search expression or SQL (see below). |
 | `{{teamId}}` | string | Team the alert belongs to. |
 | `{{note}}` | string | The alert's freeform note — commonly a runbook link. |
@@ -67,6 +68,14 @@ number that may be absent. Compare against `undefined` rather than using
 Keep a newline or space between `{{/unless}}` and a closing `}` — Handlebars
 reads `}}}` as a triple-stache and fails to compile the template.
 
+The template is Handlebars, not JSON: it only has to be JSON once rendered.
+Write string arguments inside `{{ … }}` with plain or single quotes —
+`{{#if (eq state "ALERT")}}` or `{{#if (eq state 'ALERT')}}` — never JSON-escaped
+as `\"ALERT\"`, which Handlebars cannot parse. The webhook form shows where a
+body fails to compile. The API rejects a body that doesn't compile, or that
+calls a helper other than `eq` and the Handlebars built-ins, when a webhook is
+created, updated, or tested.
+
 The **Send test** button on the webhook form fills every variable with a sample
 value, so a template that uses them can be checked before an alert fires. The
 sample is a `between` alert, so `{{thresholdMax}}` is populated there — a test
@@ -93,13 +102,13 @@ instead if every group of a grouped alert should collapse into one incident.
 
 Routing by severity and deduping on the alert rather than the firing:
 
-```json
+```
 {
   "alert_id": "{{alertId}}",
   "dedup_key": "{{alertId}}-{{groupKey}}",
   "status": "{{status}}",
   "summary": "{{title}}",
-  "urgency": "{{#if (eq alertType \"dashboard_chart\")}}low{{else}}high{{/if}}",
+  "urgency": "{{#if (eq alertType 'dashboard_chart')}}low{{else}}high{{/if}}",
   "value": {{value}},
   "threshold": {{threshold}},
   "window": { "start": "{{startTimeISO}}", "end": "{{endTimeISO}}" },

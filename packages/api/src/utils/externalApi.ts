@@ -1,4 +1,7 @@
+import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  isAdhocFilter,
+  isAdhocFilterValue,
   isFilterBroadcastEnabled,
   isFilterRequired,
   isFilterVariableEnabled,
@@ -50,7 +53,19 @@ const pickIfTruthy = <T, K extends keyof T>(obj: T, keys: K[]): Partial<T> => {
 export function translateExternalChartToTileConfig(
   chart: SeriesTile,
 ): DashboardDocument['tiles'][number] {
-  const { id, name, x, y, w, h, series, asRatio, containerId, tabId } = chart;
+  const {
+    id,
+    name,
+    description,
+    x,
+    y,
+    w,
+    h,
+    series,
+    asRatio,
+    containerId,
+    tabId,
+  } = chart;
 
   if (series.length === 0) {
     throw new Error('Chart must have at least one series');
@@ -74,9 +89,9 @@ export function translateExternalChartToTileConfig(
   switch (firstSeries.type) {
     case 'time': {
       displayType =
-        firstSeries.displayType === 'stacked_bar'
-          ? DisplayType.StackedBar
-          : DisplayType.Line;
+        (firstSeries.displayType &&
+          TIME_SERIES_DISPLAY_TYPE_BY_NAME[firstSeries.displayType]) ??
+        DisplayType.Line;
 
       // Convert time series to select array
       select = series.map(s => {
@@ -205,6 +220,7 @@ export function translateExternalChartToTileConfig(
       ['groupBy', 'orderBy', 'markdown', 'seriesReturnType', 'numberFormat'],
     ),
     name,
+    ...(description ? { description } : {}),
     source: sourceId,
     displayType,
     select,
@@ -224,8 +240,32 @@ export function translateExternalChartToTileConfig(
   };
 }
 
+/** Filter types the external API and MCP don't expose yet. */
+type InternalOnlyDashboardFilter = Extract<DashboardFilter, { type: 'ADHOC' }>;
+export type ExternalCompatibleDashboardFilter = Exclude<
+  DashboardFilter,
+  InternalOnlyDashboardFilter
+>;
+
+/** The filters the external API and MCP may read. */
+export function getExternalCompatibleFilters(
+  filters: DashboardFilter[] | undefined,
+): ExternalCompatibleDashboardFilter[] {
+  return (filters ?? []).filter(
+    (filter): filter is ExternalCompatibleDashboardFilter =>
+      !isAdhocFilter(filter),
+  );
+}
+
+/** Saved filter values the external API and MCP may read. */
+export function getExternalCompatibleFilterValues(
+  values: IDashboard['savedFilterValues'],
+): NonNullable<IDashboard['savedFilterValues']> {
+  return (values ?? []).filter(value => !isAdhocFilterValue(value));
+}
+
 export function translateFilterToExternalFilter(
-  filter: DashboardFilter,
+  filter: ExternalCompatibleDashboardFilter,
 ): ExternalDashboardFilterWithId {
   // Omitted from responses unless the filter is required, so a GET response
   // can be PUT back verbatim.

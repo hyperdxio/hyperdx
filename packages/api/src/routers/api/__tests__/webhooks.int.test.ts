@@ -620,6 +620,127 @@ describe('webhooks router', () => {
     });
   });
 
+  describe('Body template validation', () => {
+    const GENERIC_WEBHOOK = {
+      name: 'Generic Webhook',
+      service: WebhookService.Generic,
+      url: 'https://example.com/webhook',
+    };
+    // Valid JSON, but `\"` inside {{ }} is not valid Handlebars.
+    const ESCAPED_QUOTES_BODY =
+      '{"status": "{{#if (eq state \\"ALERT\\")}}firing{{else}}resolved{{/if}}"}';
+    // Not JSON as written, but compiles.
+    const CONDITIONAL_BODY =
+      '{"status": "{{#if (eq state "ALERT")}}firing{{else}}resolved{{/if}}"}';
+
+    it('POST / - rejects a body that does not compile', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({ ...GENERIC_WEBHOOK, body: ESCAPED_QUOTES_BODY })
+        .expect(400);
+
+      expect(response.body.message).toMatch(
+        /^Invalid webhook body template \(line 1, column 29\): Parse error/,
+      );
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
+    it('POST / - rejects an incident.io body that does not compile', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/webhooks')
+        .send({
+          ...GENERIC_WEBHOOK,
+          service: WebhookService.IncidentIO,
+          body: '{"text": "{{#if title}}"}',
+        })
+        .expect(400);
+
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
+    it('POST / - rejects a call to a helper delivery does not register', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/webhooks')
+        .send({
+          ...GENERIC_WEBHOOK,
+          body: '{"s": "{{#if (equals state "ALERT")}}x{{/if}}"}',
+        })
+        .expect(400);
+
+      expect(response.body.message).toBe(
+        'Invalid webhook body template (line 1, column 15): Unknown helper "equals"',
+      );
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
+    it('POST / - accepts a template that compiles but is not JSON as written', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/webhooks')
+        .send({ ...GENERIC_WEBHOOK, body: CONDITIONAL_BODY })
+        .expect(200);
+
+      expect((await Webhook.findOne({}))?.body).toBe(CONDITIONAL_BODY);
+    });
+
+    it('PUT /:id - rejects a body that does not compile', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const webhook = await Webhook.create({
+        ...GENERIC_WEBHOOK,
+        body: CONDITIONAL_BODY,
+        team: team._id,
+      });
+
+      const response = await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({ ...GENERIC_WEBHOOK, body: ESCAPED_QUOTES_BODY })
+        .expect(400);
+
+      expect(response.body.message).toContain('Invalid webhook body template');
+      expect((await Webhook.findById(webhook._id))?.body).toBe(
+        CONDITIONAL_BODY,
+      );
+    });
+
+    it('PUT /:id - accepts a body that compiles', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const webhook = await Webhook.create({
+        ...GENERIC_WEBHOOK,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({ ...GENERIC_WEBHOOK, body: CONDITIONAL_BODY })
+        .expect(200);
+
+      expect((await Webhook.findById(webhook._id))?.body).toBe(
+        CONDITIONAL_BODY,
+      );
+    });
+
+    it('POST /test - rejects a broken body without sending', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const spy = jest.spyOn(transports, 'handleSendGenericWebhook');
+
+      const response = await agent
+        .post('/webhooks/test')
+        .send({ ...GENERIC_WEBHOOK, body: ESCAPED_QUOTES_BODY })
+        .expect(400);
+
+      expect(response.body.message).toContain('Invalid webhook body template');
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+  });
+
   describe('PUT /:id - update webhook', () => {
     it('updates an existing webhook', async () => {
       const { agent, team } = await getLoggedInAgent(server);
@@ -1262,6 +1383,7 @@ describe('webhooks router', () => {
         thresholdMax: 10,
         value: 7,
         groupKey: 'test-group',
+        groupValues: { group: 'test-group' },
         sourceQuery: 'SeverityText: "error"',
         note: 'Test webhook — no runbook',
         teamId: expect.any(String),

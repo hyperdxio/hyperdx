@@ -48,15 +48,12 @@ export default function PromqlQueryTypeControls({
     name: `promqlExpressions.${index}.reducer`,
   });
   const queryTypeValue = queryType.value ?? DEFAULT_PROMQL_QUERY_TYPE;
-  const isRange = queryTypeValue === 'range';
-  const showReducer = isRange && isReducerSupported;
   const reducerValue = reducer.value ?? DEFAULT_PROMQL_REDUCER;
   const reducerLabel = REDUCER_OPTIONS.find(
     o => o.value === reducerValue,
   )?.label;
-  const summary = isRange
-    ? `Settings: Range${showReducer ? ` / ${reducerLabel}` : ''}`
-    : 'Settings: Instant';
+  const queryTypeLabel = queryTypeValue === 'range' ? 'Range' : 'Instant';
+  const summary = `Settings: ${queryTypeLabel}${isReducerSupported ? ` / ${reducerLabel}` : ''}`;
 
   return (
     <>
@@ -75,7 +72,7 @@ export default function PromqlQueryTypeControls({
             }}
             data-testid={`promql-query-type-input-${index}`}
           />
-          {showReducer && (
+          {isReducerSupported && (
             <>
               <Text size="xxs" c="dimmed">
                 Reduced to
@@ -87,7 +84,7 @@ export default function PromqlQueryTypeControls({
                 value={reducerValue}
                 allowDeselect={false}
                 comboboxProps={{ withinPortal: false }}
-                aria-label="PromQL range reducer"
+                aria-label="PromQL reducer"
                 onChange={next => {
                   if (next == null) return;
                   reducer.onChange(next);

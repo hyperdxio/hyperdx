@@ -1,5 +1,309 @@
 # @hyperdx/api
 
+## 2.42.0
+
+### Minor Changes
+
+- 9c2c7031: feat: Support PromQL dashboard tiles in the external API
+
+  `/api/v2/dashboards` now returns PromQL tiles and accepts them on create and update, as `configType: "promql"` with a `sourceId` and a list of `expressions`. Previously PromQL tiles were left out of responses, so saving a dashboard back through the API deleted them. MCP dashboard tools still hide PromQL tiles until they support editing them.
+
+- eb72cfa1: feat(mcp): add `clickstack_service_health`, a one-call per-service health report for a trace source (throughput, error rate, p50/p95/p99, top error groups), compared with yesterday and ranked worst first
+- 95aef70f: Add an optional `eventNameExpression` to log sources, pointing at the
+  OpenTelemetry log EventName. Source auto-detection sets it when an OTel log
+  table has a string `EventName` column. The field is stored and editable only:
+  nothing reads it yet. HDX-5787
+- bc47e485: Add an optional `severityNumberExpression` to log sources, pointing at the
+  numeric OpenTelemetry SeverityNumber (1-24). Source auto-detection sets it when
+  an OTel log table has an integer `SeverityNumber` column. The field is stored
+  and editable only: log levels still come from the severity text.
+- cfa865bd: feat: expose group-by values to webhook body templates as `{{var.<column>}}`, and keep them on resolve notifications
+
+### Patch Changes
+
+- 9891a791: feat: Add ad hoc dashboard filter schemas and types
+- 27cccf7a: fix: Reject creating or updating PromQL sources through the external API when PromQL is not enabled
+
+  `POST` and `PUT /api/v2/sources` now return a 400 for `kind: "promql"` unless `ENABLE_PROMQL` is set, since PromQL sources cannot be queried without it.
+
+- 8d064df4: fix: Reject external API PromQL tiles that reference a non-PromQL source, and keep PromQL tiles when an MCP agent updates a dashboard
+
+  `/api/v2/dashboards` now returns a 400 when a PromQL tile's `sourceId` is not a PromQL source. MCP `clickstack_save_dashboard` updates no longer delete the PromQL tiles that MCP hides from agents.
+
+- 0000fa4b: feat: Add a line interpolation display setting (smooth, linear, step)
+- ee9f84b2: feat(mcp): record the response size of each MCP tool call
+- 24d324c2: fix(mcp): store whereLanguage as lucene when clickstack_save_saved_search creates a search without one, so its alerts no longer parse a Lucene filter as SQL
+- 748315d7: feat(mcp): advertise a title, description, website URL, and SVG icon in the MCP server's initialize response
+- cdfae457: fix(mcp): `clickstack_sql` now binds the bucket-size parameters its description
+  advertises. `{intervalSeconds:Int64}`, `{intervalMilliseconds:Int64}`,
+  `$__interval_s`, `$__timeInterval` and `$__timeInterval_ms` used to fail with
+  "Substitution intervalSeconds is not set", including the tool's own time-series
+  example.
+- b00d4100: feat(mcp): `clickstack_sql` accepts an optional `sourceId`, so `$__sourceTable`
+  expands to that source's table. Unknown sources, other teams' sources, and a
+  source on a different connection than `connectionId` are rejected, as is
+  `$__sourceTable` without a `sourceId`.
+- a06b17fb: fix(mcp): stop `clickstack_sql` callers from guessing table and timestamp column
+  names. `clickstack_list_sources` now returns each source's database-qualified
+  `table` (and `database` for metric sources), the `sql` examples use `<table>`
+  and `<timestampColumn>` placeholders instead of `otel_logs` and `TimestampTime`,
+  and unknown-table errors from `clickstack_sql` point at `clickstack_list_sources`.
+- e494a46d: feat(mcp): declare readOnlyHint, destructiveHint, idempotentHint, and openWorldHint on every MCP tool
+- 03f9fd5a: fix(mcp): describe every MCP tool input, drop descriptions that restate schema constraints, and keep tool descriptions under Claude Code's 2 KB limit
+- 5cabc115: feat: Support distribution heatmaps calculated from promql data
+- a4b63953: fix: render percentile aggregations (`p50`, `p90`, `p95`, `p99`) as `quantile`
+  at the matching level. A chart config with `aggFn: 'p95'` rendered as the
+  nonexistent ClickHouse function `p95If`. The AI assistant now returns
+  percentiles with a level instead of a bare `quantile` (median), and v1 metric
+  chart conversion keeps the percentile level.
+- ca8e3fda: fix: support https for the PromQL remote-write endpoint and ClickHouse scraping
+
+  `CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT` now accepts an `http://` or `https://` URL as well as a bare `host:port`. With `https://`, the collector's `prometheusremotewrite` exporter sends metrics over TLS and verifies the server certificate against the system CAs. Previously the exporter always used plain HTTP, so an HTTPS-only endpoint could not receive metrics. This applies to both standalone and OpAMP-managed collectors.
+
+  A bare `host:port` keeps plain HTTP, so existing setups are unchanged. The value must not include a path (`/write` is still appended automatically); the collector now exits at startup with a clear error if it does, or if the scheme is anything other than `http` or `https`.
+
+  The OpAMP-managed collector scraped the endpoint over plain HTTP regardless of its scheme. ClickHouse is now scraped in its own `clickhouse` job (previously the `otelcol` job) using the endpoint's scheme, with TLS verification on. The collector's own metrics endpoint stays on plain HTTP. A bare `host:port` or `http://` endpoint behaves as before. Scraped ClickHouse metrics now carry `job="clickhouse"` instead of `job="otelcol"`.
+
+- c94d12c3: fix: Resolve PromQL queries through the source instead of a caller-supplied connection and table
+
+  The `/api/v1/prometheus/*` routes now take `sourceId` instead of `connectionId`, and read the connection and TimeSeries table from that PromQL source. Caller-supplied `database`/`table` params are ignored for ClickHouse and no longer forwarded to external Prometheus endpoints. Saved PromQL chart configs now require `source` and no longer persist `connection`, so provisioned dashboards with PromQL tiles must set `source`.
+
+- be5304dd: Forward the bytes consumed by the ClickHouse proxy's body parsers without
+  changing JSON values, form fields or text encodings. Keep request framing in
+  sync with inflated bytes and preserve unparsed multipart streams.
+- af6e7f6b: Add a description field to the tile editor. The description is now stored on the
+  tile's chart config next to its name, and is kept for series tiles in the
+  external Dashboards API.
+- 02080f20: Add an optional tile description, accepted by the external Dashboards API and
+  shown as an info tooltip next to the tile name.
+- ce6654dd: refactor: Store the time display setting as a time zone instead of a UTC switch, converting existing settings, and remove the `isUTC` option from `formatDate`
+- 28168ae6: fix: Floor the time filter start to the precision of a coarse timestamp column (DateTime, DateTime64 below ms) when a finer column also filters the range, so a sub-second start no longer drops the rest of that tick; make the external API v2 search `maxResults` cap configurable via `EXTERNAL_API_SEARCH_MAX_RESULTS` (defaults to 2000, the previous hardcoded value)
+- ecddea2a: fix: reject generic and incident.io webhook body templates that don't compile,
+  or that call a helper delivery doesn't register (e.g. a typo for `eq`), with a
+  400 on create, update, and test (internal API, External API v2, and MCP
+  `clickstack_save_webhook`). Add `POST /api/v2/webhooks/validate` to check a
+  webhook config without saving it, e.g. at Terraform plan time.
+- Updated dependencies [92058236]
+- Updated dependencies [3e9185d1]
+- Updated dependencies [180a1f1d]
+- Updated dependencies [a682ce13]
+- Updated dependencies [9891a791]
+- Updated dependencies [43b09a7d]
+- Updated dependencies [0000fa4b]
+- Updated dependencies [eb72cfa1]
+- Updated dependencies [03f9fd5a]
+- Updated dependencies [5cabc115]
+- Updated dependencies [a4b63953]
+- Updated dependencies [3bedfab3]
+- Updated dependencies [c94d12c3]
+- Updated dependencies [95aef70f]
+- Updated dependencies [bc47e485]
+- Updated dependencies [85675fc8]
+- Updated dependencies [af6e7f6b]
+- Updated dependencies [02080f20]
+- Updated dependencies [dab6eb89]
+- Updated dependencies [ce6654dd]
+- Updated dependencies [28168ae6]
+- Updated dependencies [807cd9a5]
+- Updated dependencies [cfa865bd]
+  - @hyperdx/common-utils@0.32.0
+
+## 2.41.0
+
+### Minor Changes
+
+- 76d33d73: The API no longer falls back to the public session secret `hyperdx is cool 👋`.
+  If `EXPRESS_SESSION_SECRET` is unset, the API generates a random secret and
+  reports it once at startup when authentication is enabled. Authenticated
+  deployments that explicitly set the old public value also get a random secret
+  and the same warning; the public value remains available only in the no-auth
+  local demo. Set it to a random string (`openssl rand -hex 32`) in any deployment
+  with authentication enabled — without it, restarting the API signs every user
+  out, and replicas do not share sessions.
+- d8b1cdfa: feat: Attribute PromQL queries to the dashboard, tile or search that issued them, through both the `prometheusQuery`/`prometheusQueryRange` table functions and ClickHouse's Prometheus HTTP API
+- ab703243: feat: attribute ClickHouse queries to the dashboard, tile, search or alert that
+  issued them
+
+  A row in `system.query_log` previously couldn't be attributed to the part of
+  HyperDX that produced it. Now every query HyperDX runs has a small JSON
+  `log_comment`, plus a `query_id` starting with `hdx-`.
+
+  Attribute load after the fact:
+
+  ```sql
+  SELECT
+      JSONExtractString(log_comment, 'surface') AS surface,
+      JSONExtractString(log_comment, 'dashboard') AS dashboard,
+      JSONExtractString(log_comment, 'tile') AS tile,
+      count(),
+      sum(read_rows)
+  FROM system.query_log
+  WHERE type = 'QueryFinish' AND log_comment != '' AND query_id like 'hdx-%'
+  GROUP BY ALL
+  ORDER BY sum(read_rows) DESC
+  ```
+
+  Or spot a query while it is still running, in `system.processes`, where the
+  `query_id` names the surface with no JSON parsing needed.
+
+  The payload records which part of the product asked (a dashboard, a search, an
+  alert, an MCP tool, the chart explorer, session replay, field lookups, and so
+  on), the dashboard and tile or saved search id, the source id, and on the server
+  the trace id of the request. Field lookups and autocomplete are labelled too, so
+  they can be told apart from a user's chart queries.
+
+  The exception is queries that skip settings processing: the `system.settings`,
+  server version and Cloud-detection probes, and the onboarding connection check.
+  They get a `query_id` but an empty `log_comment`.
+
+- 68082b67: feat: add stacked line (stacked area) time-series display type
+
+### Patch Changes
+
+- 14003f08: feat: upgrade the AI SDK to v7 and trace AI calls with GenAI semantic conventions
+
+  AI assistant calls now emit OpenTelemetry spans that follow the GenAI semantic conventions (`invoke_agent` / `chat` / `execute_tool` spans with `gen_ai.*` attributes) instead of the legacy `ai.*` span shape. Team and user attribution moves from `ai.telemetry.metadata.*` to `hyperdx.team.id` and `user.id` (plus `gen_ai.conversation.id` when a session is known). Saved searches, alerts or dashboards keyed on the old `ai.*` span names or attributes need updating.
+
+- 07c93656: fix: cast FixedString columns before implicit hasToken search
+
+  A bare search term against a FixedString column such as OTel TraceId compiled to
+  hasToken(lower(TraceId), ...), which ClickHouse rejects. Those haystacks are now
+  CAST to String first.
+
+- 6873416d: feat: Add a series mode to builder heatmaps
+- 0b855534: fix: fall back to the Map key scan when the text index read fails
+
+  `getMapKeys` returned an empty list whenever its `mergeTreeTextIndex` query
+  failed, so the rollup and bounded `mapKeys` scan paths never ran. ClickHouse
+  refuses `mergeTreeTextIndex` with `ACCESS_DENIED` on any table with a row
+  policy, which left search autocomplete with no Map keys on those tables. A
+  failed text index read now falls through to the next strategy. After a row
+  policy denial it skips the key rollup table, which the policy doesn't cover,
+  and reads keys only from the policy-filtered source table.
+
+- c2e21cf5: fix(mcp): return partial `clickstack_describe_source` results on timeout
+
+  The describe deadline is raised from 10s to 30s to match the other MCP query
+  tools. When it is hit, the tool now returns the schema and samples gathered so
+  far, flagged `partial` with `skippedStages`, instead of failing outright. It
+  only returns a timeout error if the column schema never loaded.
+
+- cf5b831f: perf(mcp): speed up `clickstack_list_metrics` and give the metric discovery
+  tools a 30s budget
+
+  `clickstack_list_metrics` now scans metric names only (about 9x fewer bytes read
+  per kind), fetches unit and description just for the returned page, and scans
+  kinds in parallel. When the time budget runs out it returns the kinds that
+  finished, reports the rest in `partialFailure`, and returns a `nextCursor` that
+  resumes at the timed-out kind instead of failing the whole call. It also no
+  longer drops later kinds when one kind exactly fills a page.
+  `clickstack_list_metrics` and `clickstack_describe_metric` now allow 30s instead
+  of 10s, matching the other MCP query tools.
+
+- 7aeb6215: refactor(mcp): share wall-clock timeout handling across MCP tools via
+  `runWithTimeout`, and source the 30s ClickHouse query cap from one constant.
+- 6ea5f52c: feat: only provision a default PromQL source when PromQL is enabled
+
+  `DEFAULT_SOURCES` entries of kind `promql` are now skipped unless
+  `ENABLE_PROMQL=true`, so a single sources list can include a PromQL source
+  without creating it on deployments that have PromQL turned off.
+
+- ff5befa8: Support "Minimum auto granularity" on PromQL sources. It floors the step of charts on auto granularity, as it does for metric sources, and `$__rate_interval` now uses it as the source's scrape interval (still 15s when unset) instead of always assuming 15s. A granularity picked on a tile is never changed.
+- 1be9de8f: feat: Add a promql variable format that escapes based on single/multi-select
+- 837c6837: feat: Support series mode heatmap in API and MCP
+- 0d2425d5: feat: Allow configuring dashboard filters as single-select
+- 1ce8b88e: fix: rank Map keys by frequency when a text index serves key discovery
+
+  The two `mergeTreeTextIndex` paths in `getMapKeys` grouped keys and applied
+  `LIMIT maxKeys` with no `ORDER BY`, so on a column with more keys than the
+  limit the filter sidebar showed an arbitrary subset. They now order by
+  `sum(cardinality) DESC, key`, which keeps the most frequent keys, as the key
+  rollup path already does with `sum(count) DESC`.
+
+- e88cf3d5: fix(mcp): time-limit the `clickstack_trace_top_time_consuming_operations` tool.
+  Its queries now use the MCP request timeout and `max_execution_time` ceiling,
+  which a source's `querySettings` can no longer override. A timeout returns
+  guidance to shorten the window or narrow `parentFilter` instead of an "invalid
+  SQL" hint, and the client-side `Timeout error.` now gets the timeout hint in
+  every MCP tool. Sources with a multi-column `timestampValueExpression`
+  (including a leading Date column such as `EventDate, EventTime`) now return
+  correct breakdowns.
+- Updated dependencies [07c93656]
+- Updated dependencies [6873416d]
+- Updated dependencies [0b855534]
+- Updated dependencies [0846f3b2]
+- Updated dependencies [e61461be]
+- Updated dependencies [ff5befa8]
+- Updated dependencies [d8b1cdfa]
+- Updated dependencies [1be9de8f]
+- Updated dependencies [ab703243]
+- Updated dependencies [0d2425d5]
+- Updated dependencies [68082b67]
+- Updated dependencies [1ce8b88e]
+  - @hyperdx/common-utils@0.31.0
+
+## 2.40.0
+
+### Minor Changes
+
+- d91e66b8: Make the external API v2 rate limit (`/api/v2/*`) configurable via `EXTERNAL_API_RATE_LIMIT_MAX`. Defaults to 100 requests/minute, matching the previous hardcoded value.
+
+### Patch Changes
+
+- 1e355ac4: fix: don't scan the whole table to discover Map keys
+
+  `getMapKeys` only applied a time predicate when the caller passed both a date
+  range and a timestamp expression; otherwise the raw `sampledKeys` scan ran with
+  no `WHERE` and touched every part of the table. It now defaults a missing date
+  range to the last 24 hours and skips the raw scan entirely when there is no
+  timestamp expression to filter on. The chart, alert and dashboard-filter
+  editors pass the source and date range they already have so Map keys keep
+  autocompleting there.
+
+- 793fe19e: feat: Substitute dashboard variables in markdown tiles
+- ec4f5087: fix: allow grouping gauge and sum metric charts by materialized and alias columns
+
+  Grouping or selecting a MATERIALIZED or ALIAS column on a gauge or sum metric chart failed with `Unknown expression identifier`, because the intermediate query didn't carry those columns through.
+
+- 08d9a908: feat: Plot several PromQL expressions on one chart
+- 19182e7e: fix: only split a query at a standalone SETTINGS keyword
+
+  `extractSettingsClauseFromEnd` cut the query at the first "settings" anywhere in
+  it, including inside a string or an identifier. A multi-series metric chart with
+  a metric such as `app.settings.reloads` produced SQL with an unterminated
+  string, and a SQL filter on a column such as `AppSettings` was rewritten to
+  reference `App`. The keyword now has to stand alone outside quotes.
+
+- d9e2c58b: Add a per-source floor for auto granularity. A metric source can now set "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so that auto-inferred time buckets never go below it — useful when the underlying metric is reported on a fixed interval (e.g. a 60s scrape), since a short selected date range can otherwise auto-infer a smaller bucket than that interval and render a sparse/steppy series (alternating real-sample/empty buckets). Mirrors Grafana's per-datasource "Min interval" setting. Unset (the default) preserves the existing unfloored behavior, and an explicit (non-auto) granularity chosen on a tile is never affected.
+- a5e7841c: fix(mcp): time-bound the trace waterfall span/log fetches so they prune
+  partitions instead of scanning the full retention window. The
+  `clickstack_trace_waterfall` tool now threads the search window into its span
+  and correlated-log queries, adds a `max_execution_time` ceiling, and probes a
+  trace's `[min, max]` span extent so an explicit `traceId` older than the
+  default window — or a trace that ran longer than an hour — still resolves in
+  full. The probe also runs for auto-picked traces, so a picked trace whose root
+  predates the window is no longer truncated into a partial tree. The fetch window
+  is width-clamped to the recent tail so a reused or sentinel `traceId` (e.g. an
+  all-zero id from an uninstrumented emitter) can't widen the scan back toward the
+  retention edge or stitch unrelated occurrences into one tree. Empty-result hints
+  now name the recoverable action (pass an explicit `startTime`) instead of the
+  misleading "widen the window", and a probe that fails is surfaced rather than
+  silently swallowed. ClickHouse query timeouts are also reclassified from `user`
+  to `server` errors.
+- Updated dependencies [1e355ac4]
+- Updated dependencies [793fe19e]
+- Updated dependencies [ec4f5087]
+- Updated dependencies [8a9fcd2f]
+- Updated dependencies [08d9a908]
+- Updated dependencies [a8a72c11]
+- Updated dependencies [8cfb2672]
+- Updated dependencies [4570d5ee]
+- Updated dependencies [78ed5921]
+- Updated dependencies [23423c13]
+- Updated dependencies [19182e7e]
+- Updated dependencies [d9e2c58b]
+  - @hyperdx/common-utils@0.30.0
+
 ## 2.39.1
 
 ## 2.39.0

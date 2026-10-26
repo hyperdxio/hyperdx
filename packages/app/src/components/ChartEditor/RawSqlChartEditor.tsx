@@ -12,6 +12,7 @@ import {
 import {
   ChartVariable,
   RawSqlChartConfig,
+  SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
@@ -30,9 +31,10 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconBell, IconHelpCircle } from '@tabler/icons-react';
+import { IconHelpCircle } from '@tabler/icons-react';
 
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { AlertPanelButton } from '@/components/DBEditTimeChartForm/AlertPanelButton';
 import { OnClickFormButton } from '@/components/DBEditTimeChartForm/OnClickForm/OnClickFormButton';
 import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
 import SourceSchemaPreview, {
@@ -114,6 +116,7 @@ export function resolveConnectionSourceSync({
 export default function RawSqlChartEditor({
   control,
   setValue,
+  allowedSourceKinds,
   onOpenDisplaySettings,
   onSubmit,
   isDashboardForm,
@@ -127,6 +130,7 @@ export default function RawSqlChartEditor({
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
+  allowedSourceKinds: SourceKind[];
   onOpenDisplaySettings: () => void;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
@@ -255,6 +259,12 @@ export default function RawSqlChartEditor({
       ? 'The threshold will be evaluated against the last numeric column in the first query result'
       : 'The threshold will be evaluated against the last numeric column in each query result';
 
+  const showAlertButton =
+    alert != null ||
+    (displayTypeSupportsRawSqlAlerts(displayType) &&
+      alertsEnabled &&
+      !IS_LOCAL_MODE);
+
   return (
     <Stack gap="xs">
       <Group align="center" gap={0} justify="space-between">
@@ -283,6 +293,8 @@ export default function RawSqlChartEditor({
           <SourceSelectControlled
             control={control}
             name="source"
+            data-testid="source-selector"
+            allowedSourceKinds={allowedSourceKinds}
             connectionId={connection}
             size="xs"
             clearable
@@ -298,27 +310,19 @@ export default function RawSqlChartEditor({
           />
         </Group>
         <Group gap="xs">
-          {displayTypeSupportsRawSqlAlerts(displayType) &&
-            alertsEnabled &&
-            !alert &&
-            !IS_LOCAL_MODE && (
-              <Button
-                variant="subtle"
-                data-testid="alert-button"
-                size="sm"
-                color={'gray'}
-                onClick={() =>
-                  setValue('alert', {
-                    ...DEFAULT_TILE_ALERT,
-                    ...(chartName && { displayName: chartName }),
-                  })
-                }
-              >
-                <IconBell size={14} className="me-2" />
-                Add Alert
-              </Button>
-            )}
-
+          {showAlertButton && (
+            <AlertPanelButton
+              hasAlert={alert != null}
+              error={alertErrorMessage}
+              warning={alertWarningMessage}
+              onAddAlert={() =>
+                setValue('alert', {
+                  ...DEFAULT_TILE_ALERT,
+                  ...(chartName && { displayName: chartName }),
+                })
+              }
+            />
+          )}
           <Group>
             {displayType === DisplayType.Table && (
               <OnClickFormButton

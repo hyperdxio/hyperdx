@@ -289,6 +289,7 @@ describe('dashboard tile exportability', () => {
   it.each([
     DisplayType.Line,
     DisplayType.StackedBar,
+    DisplayType.StackedLine,
     DisplayType.Table,
     DisplayType.Number,
     DisplayType.Pie,

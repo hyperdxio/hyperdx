@@ -1,11 +1,4 @@
-import {
-  ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
@@ -53,7 +46,16 @@ import {
   TimelineMinimap,
   type TimelineViewportController,
 } from '@/components/TimelineChart';
+import {
+  TRACE_WATERFALL_FETCH_LIMIT,
+  TRACE_WATERFALL_ROW_LIMIT,
+} from '@/components/traceWaterfallLimits';
+import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import {
+  RowHighlightHint,
+  useRowHighlightHint,
+} from '@/hooks/useRowHighlightHint';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -66,16 +68,20 @@ import { useFormatTime } from '@/useFormatTime';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   COLORS,
+  formatDurationMs,
   getChartColorError,
   getChartColorSuccess,
   getChartColorSuccessHighlight,
   getChartColorWarning,
+  getLogSeverityLevel,
   parseTimestampToMs,
 } from '@/utils';
 import {
   getHighlightedAttributesFromData,
   getSelectExpressionsForHighlightedAttributes,
 } from '@/utils/highlightedAttributes';
+import { getHttpUrl } from '@/utils/httpUrl';
+import { isRpcSpan } from '@/utils/rpcSpanAttributes';
 
 import { DBHighlightedAttributesList } from './DBHighlightedAttributesList';
 
@@ -90,6 +96,7 @@ export type SpanRow = {
   StatusCode?: string;
   ServiceName?: string;
   SeverityText?: string;
+  SeverityNumber?: number;
   HyperDXEventType: 'span';
   type?: string;
   SpanAttributes?: Record<string, any>;
@@ -105,8 +112,8 @@ type TimestampedRow = {
   Timestamp: string;
 };
 
-// Bar background color. Correlated log rows are always green (success), error
-// spans are always red, and every other span takes its per-service color.
+// Bar background color. Error spans and logs are red, other correlated log rows
+// are green (success), and every other span takes its per-service color.
 function barColor(condition: {
   isHighlighted: boolean;
   isError?: boolean;
@@ -115,7 +122,7 @@ function barColor(condition: {
 }) {
   const { isHighlighted, isError, type, serviceColor } = condition;
 
-  if (type === SourceKind.Log) {
+  if (type === SourceKind.Log && !isError) {
     return isHighlighted
       ? getChartColorSuccessHighlight()
       : getChartColorSuccess();
@@ -136,8 +143,22 @@ function barColor(condition: {
   return isHighlighted ? '#A9AFB7' : '#6A7077';
 }
 
+// Shared by the error count and the row icons so the two can't disagree.
+// OTel spans have no severity; they report errors through StatusCode.
+function getRowSeverity(
+  row: Pick<SpanRow, 'type' | 'StatusCode' | 'SeverityNumber' | 'SeverityText'>,
+): 'error' | 'warn' | undefined {
+  if (row.type === SourceKind.Log) {
+    return getLogSeverityLevel({
+      severityNumber: row.SeverityNumber,
+      severityText: row.SeverityText,
+    });
+  }
+  return row.StatusCode === 'Error' ? 'error' : undefined;
+}
+
 // Per-service span palette: the full categorical palette minus the two hues we
-// reserve for semantics — green (correlated log rows) and red (error spans) —
+// reserve for semantics — green (correlated log rows) and red (errors) —
 // so a service color is never confused with a log or an error. Index-aligned
 // with CATEGORICAL_PALETTE_TOKENS, so filtering by token survives reordering.
 const SERVICE_COLORS = COLORS.filter(
@@ -145,6 +166,35 @@ const SERVICE_COLORS = COLORS.filter(
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-green' &&
     CATEGORICAL_PALETTE_TOKENS[i] !== 'chart-red',
 );
+
+// Stable empty fallback. `data ?? []` would allocate a new array every render
+// and invalidate every memo downstream of the waterfall rows.
+const EMPTY_ROWS: Record<string, any>[] = [];
+
+export function TraceTotalDurationStat({
+  totalDurationMs,
+  isTruncated,
+}: {
+  totalDurationMs: number;
+  isTruncated: boolean;
+}) {
+  return (
+    <Tooltip
+      label={
+        isTruncated
+          ? `This duration is a lower bound because some spans may not have been loaded. The trace may extend past the loaded time window, or contain more than ${TRACE_WATERFALL_ROW_LIMIT.toLocaleString()} spans.`
+          : 'Wall-clock duration from the earliest fetched span start to the latest span end. Independent of the applied filters.'
+      }
+      position="bottom"
+    >
+      <span data-testid="trace-total-stats">
+        {' '}
+        &middot; Total duration: {formatDurationMs(totalDurationMs)}
+        {isTruncated ? '+' : ''}
+      </span>
+    </Tooltip>
+  );
+}
 
 function getTableBody(tableModel: TSource) {
   if (tableModel?.kind === SourceKind.Trace) {
@@ -161,6 +211,7 @@ function getConfig(
   traceId: string,
   hiddenRowExpression?: string,
   hiddenRowExpressionLanguage: 'lucene' | 'sql' = 'lucene',
+  selectSeverityNumber = false,
 ) {
   const alias: Record<string, string> = {
     Body: getTableBody(source),
@@ -294,6 +345,14 @@ function getConfig(
               },
             ]
           : []),
+        ...(selectSeverityNumber
+          ? [
+              {
+                valueExpression: 'SeverityNumber',
+                alias: 'SeverityNumber',
+              },
+            ]
+          : []),
       ],
     );
   }
@@ -302,7 +361,7 @@ function getConfig(
     from: source.from,
     timestampValueExpression: source.timestampValueExpression,
     where: `${alias.TraceId} = ${SqlString.escape(traceId)}`,
-    limit: { limit: 50000 },
+    limit: { limit: TRACE_WATERFALL_FETCH_LIMIT },
     connection: source.connection,
   };
   return { config, alias, type: source.kind };
@@ -337,6 +396,7 @@ export function useEventsAroundFocus({
   enabled,
   hiddenRowExpression,
   hiddenRowExpressionLanguage = 'lucene',
+  selectSeverityNumber = false,
 }: {
   tableSource: TTraceSource | TLogSource;
   focusDate: Date;
@@ -346,6 +406,7 @@ export function useEventsAroundFocus({
   /** An expression (in `hiddenRowExpressionLanguage`) that identifies rows to be hidden. Hidden rows will be returned with a `__hdx_hidden: true` column. */
   hiddenRowExpression?: string;
   hiddenRowExpressionLanguage?: 'lucene' | 'sql';
+  selectSeverityNumber?: boolean;
 }) {
   const { config, alias, type } = useMemo(
     () =>
@@ -354,8 +415,15 @@ export function useEventsAroundFocus({
         traceId,
         hiddenRowExpression,
         hiddenRowExpressionLanguage,
+        selectSeverityNumber,
       ),
-    [tableSource, traceId, hiddenRowExpression, hiddenRowExpressionLanguage],
+    [
+      tableSource,
+      traceId,
+      hiddenRowExpression,
+      hiddenRowExpressionLanguage,
+      selectSeverityNumber,
+    ],
   );
 
   const {
@@ -383,28 +451,56 @@ export function useEventsAroundFocus({
   const isFetching = isBeforeSpanFetching || isAfterSpanFetching;
   const meta = beforeSpanData?.meta ?? afterSpanData?.meta;
   const error = beforeSpanError || afterSpanError;
+  // LIMIT+1 is a sentinel: a complete window of exactly TRACE_WATERFALL_ROW_LIMIT
+  // rows must not show as a lower bound. Drop the extra row so the chart still
+  // renders at most the cap. Trim inside this memo so a parent re-render does
+  // not allocate fresh arrays and rebuild the span tree.
+  const beforeData = beforeSpanData?.data;
+  const afterData = afterSpanData?.data;
+  const { isTruncated, trimmedBefore, trimmedAfter } = useMemo(() => {
+    const beforeRows = beforeData ?? EMPTY_ROWS;
+    const afterRows = afterData ?? EMPTY_ROWS;
+    const beforeTruncated = beforeRows.length > TRACE_WATERFALL_ROW_LIMIT;
+    const afterTruncated = afterRows.length > TRACE_WATERFALL_ROW_LIMIT;
+    return {
+      isTruncated: beforeTruncated || afterTruncated,
+      trimmedBefore: beforeTruncated
+        ? beforeRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+        : beforeRows,
+      trimmedAfter: afterTruncated
+        ? afterRows.slice(0, TRACE_WATERFALL_ROW_LIMIT)
+        : afterRows,
+    };
+  }, [beforeData, afterData]);
 
   const getRowWhere = useRowWhere({ meta, aliasMap: alias });
   const rows = useMemo(() => {
     // Sometimes meta has not loaded yet
     // DO NOT REMOVE, useRowWhere will error if no meta
     if (!meta || meta.length === 0) return [];
-    return [
-      ...(beforeSpanData?.data ?? []),
-      ...(afterSpanData?.data ?? []),
-    ].map(cd => {
-      // Omit SpanAttributes, SpanEvents and __hdx_hidden from rowWhere id generation.
+    return [...trimmedBefore, ...trimmedAfter].map(cd => {
+      // Omit SpanAttributes, SpanEvents, __hdx_hidden and SeverityNumber from rowWhere id generation.
       // SpanAttributes and SpanEvents can be large objects, and __hdx_hidden may be a lucene expression.
+      // SeverityNumber is only selected when the column exists; leaving it out keeps row ids stable.
       const rowWhereResult = getRowWhere(
-        omit(cd, ['SpanAttributes', 'SpanEvents', '__hdx_hidden']),
+        omit(cd, [
+          'SpanAttributes',
+          'SpanEvents',
+          '__hdx_hidden',
+          'SeverityNumber',
+        ]),
       );
 
       return {
         // Keep all fields available for display
         ...cd,
-        // Added for typing
+        // Named fields are repeated for typing. Spreading Record<string, any>
+        // drops the index signature once explicit keys are set, so Duration
+        // would otherwise be missing from the row type.
         Timestamp: cd?.Timestamp,
         SpanId: cd?.SpanId,
+        ParentSpanId: cd?.ParentSpanId,
+        Duration: cd?.Duration,
         __hdx_hidden: cd?.__hdx_hidden,
         type,
         id: rowWhereResult.where,
@@ -414,13 +510,14 @@ export function useEventsAroundFocus({
         aliasWith: [],
       };
     });
-  }, [afterSpanData, beforeSpanData, meta, getRowWhere, type]);
+  }, [trimmedAfter, trimmedBefore, meta, getRowWhere, type]);
 
   return {
     rows,
     meta,
     isFetching,
     error,
+    isTruncated,
   };
 }
 
@@ -445,6 +542,7 @@ function useFilteredEventsAroundFocus(
       isFetching: filtered.isFetching || fallback.isFetching,
       filterError: fallback.error ? undefined : filtered.error,
       fatalError: fallback.error,
+      isTruncated: fallback.isTruncated,
     };
   }
 
@@ -454,6 +552,7 @@ function useFilteredEventsAroundFocus(
     isFetching: filtered.isFetching,
     filterError: undefined,
     fatalError: filtered.error,
+    isTruncated: filtered.isTruncated,
   };
 }
 
@@ -584,11 +683,7 @@ export function DBTraceWaterfallChartContainer({
     aliasWith: WithClause[];
   }) => void;
   highlightedRowWhere?: string | null;
-  initialRowHighlightHint?: {
-    timestamp: string;
-    spanId: string;
-    body: string;
-  };
+  initialRowHighlightHint?: RowHighlightHint;
   emptyState?: ReactNode;
   /** Extra controls rendered in the waterfall controls bar (e.g. the correlated logs source selector). */
   controlsExtra?: ReactNode;
@@ -666,6 +761,7 @@ export function DBTraceWaterfallChartContainer({
     meta: traceRowsMeta,
     filterError: traceFilterError,
     fatalError: traceError,
+    isTruncated: traceIsTruncated,
   } = useFilteredEventsAroundFocus({
     tableSource: traceTableSource,
     focusDate,
@@ -675,6 +771,18 @@ export function DBTraceWaterfallChartContainer({
     hiddenRowExpressionLanguage: traceFilterLanguage,
     enabled: true,
   });
+
+  const { data: logColumns, isLoading: isLogColumnsLoading } = useColumns(
+    {
+      databaseName: logTableSource?.from.databaseName ?? '',
+      tableName: logTableSource?.from.tableName ?? '',
+      connectionId: logTableSource?.connection ?? '',
+    },
+    { retry: 1 },
+  );
+  const hasSeverityNumber =
+    logColumns?.some(column => column.name === 'SeverityNumber') ?? false;
+
   const {
     rows: logRowsData,
     isFetching: logIsFetching,
@@ -690,10 +798,13 @@ export function DBTraceWaterfallChartContainer({
     traceId,
     hiddenRowExpression: logWhere ? `NOT (${logWhere})` : undefined,
     hiddenRowExpressionLanguage: logFilterLanguage,
-    enabled: logTableSource ? true : false, // disable fire query if logSource is not exist
+    // Wait for the columns (a failed lookup runs without SeverityNumber) so the
+    // select doesn't change mid-flight and run the log query twice.
+    enabled: !!logTableSource && !isLogColumnsLoading,
+    selectSeverityNumber: hasSeverityNumber,
   });
 
-  const isFetching = traceIsFetching || logIsFetching;
+  const isFetching = traceIsFetching || logIsFetching || isLogColumnsLoading;
   // Only a fatal trace failure (bad source / connection) blanks the waterfall.
   // A *filter* error on either side is non-fatal: the offending query falls back
   // to unfiltered data and the error is surfaced inline next to its input, so a
@@ -722,6 +833,70 @@ export function DBTraceWaterfallChartContainer({
 
     return nextRows;
   }, [traceRowsData, logRowsData]);
+
+  const validSpanIDs = useMemo(() => {
+    return new Set(
+      traceRowsData // only spans in traces can define valid span ids
+        ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
+        .map(row => row.SpanId) ?? [],
+    );
+  }, [traceRowsData]);
+
+  const traceExtent = useMemo(() => {
+    if (traceRowsData.length === 0) return null;
+
+    const windowEndMs = dateRange[1].getTime();
+
+    let minStartMs = Number.POSITIVE_INFINITY;
+    let maxEndMs = Number.NEGATIVE_INFINITY;
+
+    let isStartClipped = false;
+    let isEndClipped = false;
+
+    let isAnySpanValid = false;
+    for (const row of traceRowsData) {
+      // timestamp-nano accepts a non-date as a finite instant, which would
+      // stretch the envelope. Skip those before parsing.
+      if (
+        typeof row.Timestamp !== 'string' ||
+        Number.isNaN(Date.parse(row.Timestamp))
+      ) {
+        continue;
+      }
+
+      let startMs: number;
+      try {
+        startMs = parseTimestampToMs(row.Timestamp);
+      } catch {
+        continue;
+      }
+      if (!Number.isFinite(startMs)) continue;
+
+      const durationSec = Number(row.Duration);
+      const endMs =
+        startMs + (Number.isFinite(durationSec) ? durationSec : 0) * 1000;
+      if (startMs < minStartMs) {
+        minStartMs = startMs;
+
+        // The start is clipped if the earliest span has a parent that was not fetched
+        const parentId =
+          typeof row.ParentSpanId === 'string' ? row.ParentSpanId : '';
+        isStartClipped = parentId.length > 0 && !validSpanIDs.has(parentId);
+      }
+
+      if (endMs > maxEndMs) maxEndMs = endMs;
+      if (endMs >= windowEndMs) isEndClipped = true;
+      isAnySpanValid = true;
+    }
+    if (!isAnySpanValid) return null;
+
+    return {
+      /** Wall-clock duration across every fetched span (min start to max end) */
+      totalDurationMs: maxEndMs - minStartMs,
+      /** Whether the trace start or end is clipped by the time range */
+      isWindowClipped: isStartClipped || isEndClipped,
+    };
+  }, [traceRowsData, validSpanIDs, dateRange]);
 
   // Map each distinct span service to a stable color. Sorting the names first
   // keeps a service's color stable across renders regardless of row ordering.
@@ -785,53 +960,13 @@ export function DBTraceWaterfallChartContainer({
     logRowsMeta,
   ]);
 
-  // Auto-select the originating span once when the panel opens — but only if
-  // nothing is already selected. Two cases must NOT trigger a (re-)select:
-  //   - the user explicitly cleared the selection (closing the span detail), and
-  //   - a selection was restored from the URL on load (deep link / reload).
-  // We mark the hint applied as soon as a selection exists or we apply it
-  // ourselves, so it never fires twice for the same hint; it re-fires only when
-  // the hint genuinely changes (different originating span / trace).
-  const appliedHighlightHintRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    appliedHighlightHintRef.current = null;
-  }, [traceId]);
-
-  useEffect(() => {
-    if (!initialRowHighlightHint || !onClick) {
-      return;
-    }
-
-    const hintKey = `${initialRowHighlightHint.timestamp}|${initialRowHighlightHint.spanId}|${initialRowHighlightHint.body}`;
-    if (appliedHighlightHintRef.current === hintKey) {
-      return;
-    }
-
-    // A selection already exists (restored from the URL, or user-chosen). Honor
-    // it and record the hint so we never override it — now or later.
-    if (highlightedRowWhere != null) {
-      appliedHighlightHintRef.current = hintKey;
-      return;
-    }
-
-    const initialRowHighlightIndex = rows.findIndex(row => {
-      return (
-        row.Timestamp === initialRowHighlightHint.timestamp &&
-        row.SpanId === initialRowHighlightHint.spanId &&
-        row.Body === initialRowHighlightHint.body
-      );
-    });
-
-    if (initialRowHighlightIndex !== -1) {
-      appliedHighlightHintRef.current = hintKey;
-      onClick({
-        id: rows[initialRowHighlightIndex].id,
-        type: rows[initialRowHighlightIndex].type ?? '',
-        aliasWith: rows[initialRowHighlightIndex].aliasWith,
-      });
-    }
-  }, [initialRowHighlightHint, rows, onClick, highlightedRowWhere]);
+  useRowHighlightHint({
+    traceId,
+    initialRowHighlightHint,
+    highlightedRowWhere,
+    rows,
+    onClick,
+  });
 
   // 3 Edge-cases
   // 1. No spans, just logs (ex. sampling)
@@ -845,13 +980,6 @@ export function DBTraceWaterfallChartContainer({
     children: SpanRow[];
     aliasWith: WithClause[];
   };
-  const validSpanIDs = useMemo(() => {
-    return new Set(
-      traceRowsData // only spans in traces can define valid span ids
-        ?.filter(row => _.isString(row.SpanId) && row.SpanId.length > 0)
-        .map(row => row.SpanId) ?? [],
-    );
-  }, [traceRowsData]);
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [showSpanEvents, setShowSpanEvents] = useState(true);
@@ -865,8 +993,9 @@ export function DBTraceWaterfallChartContainer({
 
     for (const result of rows ?? []) {
       const { type, SpanId, ParentSpanId } = result;
-      // ignore everything without spanId
-      if (!SpanId) continue;
+      // A span without an id can't be placed; a log without one still belongs
+      // to the trace.
+      if (!SpanId && type !== SourceKind.Log) continue;
 
       // log have duplicate span id, tag it with -log
       const nodeSpanId = type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
@@ -898,10 +1027,10 @@ export function DBTraceWaterfallChartContainer({
         nodesMap.set(result.id, curNode);
       }
 
-      // root if: is trace event, and (has no parent or parent id is not valid)
+      // Root when the parent isn't a span in this trace, including a log whose
+      // span was never exported (e.g. the process crashed before ending it).
       const isRootNode =
-        type === SourceKind.Trace &&
-        (!nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId));
+        !nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId);
 
       if (isRootNode) {
         rootNodes.push(curNode);
@@ -1010,9 +1139,7 @@ export function DBTraceWaterfallChartContainer({
     node => node.type === SourceKind.Log,
   ).length;
   const errorCount = visibleNodes.filter(
-    node =>
-      node.StatusCode === 'Error' ||
-      node.SeverityText?.toLowerCase() === 'error',
+    node => getRowSeverity(node) === 'error',
   ).length;
 
   const countParts: string[] = [];
@@ -1061,37 +1188,40 @@ export function DBTraceWaterfallChartContainer({
           );
         }
 
-        // Extract HTTP-related logic
-        const eventAttributes = result.SpanAttributes || {};
-        const hasHttpAttributes =
-          eventAttributes['http.url'] || eventAttributes['http.method'];
-        const httpUrl = eventAttributes['http.url'];
-
-        const displayText =
-          hasHttpAttributes && httpUrl ? `${body} ${httpUrl}` : body;
+        const spanAttributes = result.SpanAttributes ?? {};
+        const httpUrl = isRpcSpan(spanAttributes)
+          ? undefined
+          : getHttpUrl(spanAttributes);
+        const displayText = httpUrl ? `${body} ${httpUrl}` : body;
 
         // Process span events into markers (only if showSpanEvents is enabled)
         const markers =
           showSpanEvents && result.SpanEvents
-            ? result.SpanEvents.map(spanEvent => ({
-                timestamp: parseTimestampToMs(spanEvent.Timestamp) - minOffset,
-                name: spanEvent.Name,
-                attributes: spanEvent.Attributes || {},
-              }))
+            ? result.SpanEvents.map(spanEvent => {
+                const epochMs = parseTimestampToMs(spanEvent.Timestamp);
+                return {
+                  timestamp: epochMs - minOffset,
+                  epochMs,
+                  name: spanEvent.Name,
+                  attributes: spanEvent.Attributes || {},
+                };
+              })
             : [];
 
         // Extract status logic
         // TODO: Legacy schemas will have STATUS_CODE_ERROR
         // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
-        const isError =
-          result.StatusCode == 'Error' || result.SeverityText === 'error';
+        const severity = getRowSeverity(result);
+        const isError = severity === 'error';
         const status = result.StatusCode || result.SeverityText;
-        const isWarn = result.SeverityText === 'warn';
+        const isWarn = severity === 'warn';
         const isHighlighted = highlightedRowWhere === id;
 
         const barBackgroundColor =
           type === SourceKind.Log
-            ? getChartColorSuccess()
+            ? isError
+              ? getChartColorError()
+              : getChartColorSuccess()
             : serviceName
               ? (serviceColorMap.get(serviceName) ?? '#6A7077')
               : '#6A7077';
@@ -1199,7 +1329,7 @@ export function DBTraceWaterfallChartContainer({
                     size="xxs"
                     truncate="end"
                     span
-                    title={`${serviceName}${hasHttpAttributes && httpUrl ? ` ${displayText}` : ''}`}
+                    title={`${serviceName}${httpUrl ? ` ${displayText}` : ''}`}
                     role="button"
                   >
                     {serviceName && <>{serviceName} </>}
@@ -1410,6 +1540,12 @@ export function DBTraceWaterfallChartContainer({
             <span className={errorCount ? 'text-danger' : ''}>
               {errorCountString}
             </span>
+            {traceExtent != null && (
+              <TraceTotalDurationStat
+                totalDurationMs={traceExtent.totalDurationMs}
+                isTruncated={traceIsTruncated || traceExtent.isWindowClipped}
+              />
+            )}
           </Text>
           <Group gap="xs" align="center">
             <Text size="xs" c="dimmed">

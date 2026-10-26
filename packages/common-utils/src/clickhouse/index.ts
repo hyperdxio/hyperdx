@@ -11,6 +11,7 @@ import type {
 import type { ClickHouseClient as WebClickHouseClient } from '@clickhouse/client-web';
 import * as SQLParser from 'node-sql-parser';
 
+import { stripTypeWrappers } from '@/core/eventDeltas';
 import {
   getMetadata,
   Metadata,
@@ -32,6 +33,13 @@ import {
 import { isBuilderChartConfig } from '@/guards';
 import { ChartConfigWithOptDateRange, QuerySettings } from '@/types';
 
+import {
+  buildLogComment,
+  buildQueryId,
+  mergeQueryAttribution,
+  QueryAttribution,
+} from './attribution';
+
 // export @clickhouse/client-common types
 export type {
   BaseResultSet,
@@ -41,6 +49,19 @@ export type {
   ResponseJSON,
   Row,
 };
+
+// Re-exported so callers get these from the same place as the client.
+export {
+  buildLogComment,
+  buildQueryId,
+  mergeQueryAttribution,
+  parseLogComment,
+  QUERY_ATTRIBUTION_HEADER,
+  QUERY_ATTRIBUTION_VERSION,
+  QUERY_SURFACES,
+  type QueryAttribution,
+  type QuerySurface,
+} from './attribution';
 
 export enum JSDataType {
   Array = 'array',
@@ -124,6 +145,27 @@ export const convertCHDataTypeToJSType = (
   return null;
 };
 
+/**
+ * True when the ClickHouse type is FixedString, including Nullable and
+ * LowCardinality wrappers.
+ *
+ * convertCHDataTypeToJSType maps FixedString to JSDataType.String, which is
+ * right for search semantics (ILIKE, equality). hasToken rejects a FixedString
+ * haystack, so that fallback has to CAST the column to String. hasAllTokens
+ * accepts FixedString and must keep the original column so a text index matches.
+ */
+export const isCHFixedStringType = (dataType: string): boolean => {
+  return stripTypeWrappers(dataType).startsWith('FixedString');
+};
+
+/**
+ * True when the ClickHouse type is a signed or unsigned integer, including
+ * Nullable and LowCardinality wrappers. JSDataType.Number also covers Float.
+ */
+export const isCHIntegerType = (dataType: string): boolean => {
+  return /^U?Int(8|16|32|64|128|256)$/.test(stripTypeWrappers(dataType));
+};
+
 export const isJSDataTypeJSONStringifiable = (
   dataType: JSDataType | null | undefined,
 ) => {
@@ -135,6 +177,21 @@ export const isJSDataTypeJSONStringifiable = (
     dataType === JSDataType.Dynamic
   );
 };
+
+/** Types that hold structure rather than a filterable value. */
+const NON_SCALAR_JS_DATA_TYPES = [
+  JSDataType.Map,
+  JSDataType.JSON,
+  JSDataType.Array,
+  JSDataType.Tuple,
+];
+
+/**
+ * Unlike !isJSDataTypeJSONStringifiable, Dynamic (JSON subfields) and
+ * unrecognized (null) types count as scalar.
+ */
+export const isJSDataTypeScalar = (dataType: JSDataType | null) =>
+  dataType == null || !NON_SCALAR_JS_DATA_TYPES.includes(dataType);
 
 export const extractInnerCHArrayJSType = (
   dataType: string,
@@ -202,7 +259,6 @@ export const chSql = (
       // if (typeof value === 'string') {
       //   console.error('Unsafe string detected', value, 'in', strings, values);
       // }
-
       return (
         str +
         (value == null
@@ -335,6 +391,18 @@ export function isMissingColumnError(error: unknown): boolean {
   );
 }
 
+/** ClickHouse ACCESS_DENIED (497), e.g. a row policy blocking mergeTreeTextIndex. */
+export function isAccessDeniedError(error: unknown): boolean {
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (cause != null && typeof cause === 'object') {
+    const type = 'type' in cause ? cause.type : undefined;
+    const code = 'code' in cause ? cause.code : undefined;
+    if (type === 'ACCESS_DENIED' || String(code) === '497') return true;
+  }
+  const msg = error instanceof Error ? error.message : String(error ?? '');
+  return /ACCESS_DENIED|Code: 497\b|row policy is applied/i.test(msg);
+}
+
 /**
  * Returns columns referenced in given expression, where the expression is a comma-separated list of SQL expressions
  * E.g. "id, toStartOfInterval(timestamp, toIntervalDay(3)), user_id, json.a.b".
@@ -424,6 +492,8 @@ export interface QueryInputs<Format extends DataFormat> {
   connectionId?: string;
   queryId?: string;
   shouldSkipApplySettings?: boolean;
+  /** Tags just this query. Added on top of the client's default. */
+  attribution?: QueryAttribution;
 }
 
 export type ClickhouseClientOptions = {
@@ -437,6 +507,8 @@ export type ClickhouseClientOptions = {
   requestTimeout?: number;
   /** Logger for per-query SQL debug output. When omitted, query logging is silent. */
   customLogger?: Logger;
+  /** Tags every query this client issues. */
+  attribution?: QueryAttribution;
 };
 
 export abstract class BaseClickhouseClient {
@@ -454,6 +526,7 @@ export abstract class BaseClickhouseClient {
   protected maxRowReadOnly: boolean;
   protected requestTimeout: number = 3600000;
   protected readonly customLogger?: Logger;
+  protected readonly attribution?: QueryAttribution;
 
   constructor({
     host,
@@ -463,6 +536,7 @@ export abstract class BaseClickhouseClient {
     application,
     requestTimeout,
     customLogger,
+    attribution,
   }: ClickhouseClientOptions) {
     this.host = host!;
     this.username = username;
@@ -471,6 +545,7 @@ export abstract class BaseClickhouseClient {
     this.maxRowReadOnly = false;
     this.application = application;
     this.customLogger = customLogger;
+    this.attribution = attribution;
     if (requestTimeout != null && requestTimeout >= 0) {
       this.requestTimeout = requestTimeout;
     }
@@ -598,9 +673,39 @@ export abstract class BaseClickhouseClient {
     };
   }
 
-  async query<Format extends DataFormat>(
+  /**
+   * Done here, not in each subclass, so the browser, node and CLI clients all
+   * get it, along with every query `Metadata` makes. A caller's own
+   * `log_comment` or `queryId` is left alone.
+   */
+  protected applyAttribution<Format extends DataFormat>(
     props: QueryInputs<Format>,
+  ): QueryInputs<Format> {
+    const attribution = mergeQueryAttribution(
+      this.attribution,
+      props.attribution,
+    );
+
+    const logComment = buildLogComment(attribution);
+    const clickhouse_settings =
+      logComment && props.clickhouse_settings?.log_comment === undefined
+        ? { ...props.clickhouse_settings, log_comment: logComment }
+        : props.clickhouse_settings;
+
+    return {
+      ...props,
+      clickhouse_settings,
+      queryId: props.queryId ?? buildQueryId(attribution),
+    };
+  }
+
+  async query<Format extends DataFormat>(
+    inputs: QueryInputs<Format>,
   ): Promise<BaseResultSet<ReadableStream, Format>> {
+    // Once, outside the loop, so a retry keeps the same query_id. Safe
+    // because the only thing we retry is a rejected setting, which means
+    // nothing is still running under that id.
+    const props = this.applyAttribution(inputs);
     let attempts = 0;
     // retry query if fails
     while (attempts < 2) {
@@ -680,6 +785,7 @@ export abstract class BaseClickhouseClient {
       abort_signal: opts?.abort_signal,
       connectionId: config.connection,
       clickhouse_settings: opts?.clickhouse_settings,
+      attribution: { source: config.source },
     });
     return resp.json<any>();
   }
@@ -717,6 +823,9 @@ export abstract class BaseClickhouseClient {
         abort_signal: opts?.abort_signal,
         connectionId: config.connection,
         clickhouse_settings: opts?.clickhouse_settings,
+        // No label: it would overwrite the one naming who asked, and an
+        // EXPLAIN is recognisable from the query text anyway.
+        attribution: { source: config.source },
       });
 
       const jsonResult = await result.json<{ rows: string | number }>();
@@ -936,6 +1045,41 @@ function extractOuterSelectProjection(sql: string): string | null {
   return null;
 }
 
+/**
+ * Renders `chSql` and swaps the constructs node-sql-parser rejects (the
+ * SETTINGS clause, backtick-quoted identifiers, JSON paths) for parseable
+ * tokens. `restore` puts the originals back into text sliced from `sql`.
+ */
+function prepareChSqlForParser(chSql: ChSql) {
+  const sql = parameterizedQueryToSql(chSql);
+
+  // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
+  const [sqlWithoutSettingsClause] = extractSettingsClauseFromEnd(sql);
+
+  // Replace backtick-quoted identifiers with placeholder tokens so that a
+  // quoted alias doesn't fail the parse
+  const {
+    sqlWithReplacements: sqlWithoutBackticks,
+    replacements: identifierReplacements,
+  } = replaceBacktickedIdentifiers(sqlWithoutSettingsClause);
+
+  // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
+  const { sqlWithReplacements, replacements: jsonReplacements } =
+    replaceJsonExpressions(sqlWithoutBackticks);
+
+  return {
+    sql: sqlWithReplacements,
+    jsonReplacements,
+    identifierReplacements,
+    // JSON first: its stored text can hold identifier tokens.
+    restore: (expression: string) =>
+      restoreReplacements(
+        restoreReplacements(expression, jsonReplacements),
+        identifierReplacements.quotedText,
+      ),
+  };
+}
+
 export function chSqlToAliasMap(
   chSql: ChSql | undefined,
 ): Record<string, string> {
@@ -944,41 +1088,28 @@ export function chSqlToAliasMap(
   }
 
   try {
-    const sql = parameterizedQueryToSql(chSql);
-
-    // Remove the SETTINGS clause because `SQLParser` doesn't understand it.
-    const [sqlWithoutSettingsClause] = extractSettingsClauseFromEnd(sql);
-
-    // Replace backtick-quoted identifiers with placeholder tokens so that a
-    // quoted alias doesn't fail the parse
-    const {
-      sqlWithReplacements: sqlWithoutBackticks,
-      replacements: identifierReplacementsToExpressions,
-    } = replaceBacktickedIdentifiers(sqlWithoutSettingsClause);
-
-    // Replace JSON expressions with replacement tokens so that node-sql-parser can parse the SQL
-    const { sqlWithReplacements, replacements: jsonReplacementsToExpressions } =
-      replaceJsonExpressions(sqlWithoutBackticks);
+    const { sql, jsonReplacements, identifierReplacements } =
+      prepareChSqlForParser(chSql);
 
     try {
       return selectColumnsToAliasMap(
-        sqlWithReplacements,
-        jsonReplacementsToExpressions,
-        identifierReplacementsToExpressions,
+        sql,
+        jsonReplacements,
+        identifierReplacements,
       );
     } catch (fullParseError) {
       // node-sql-parser's Postgresql dialect rejects some ClickHouse-specific
       // SQL (e.g. `CAST(x AS UInt32)` in a sampling CTE, or parameterized
       // identifiers). The alias map only needs the outer SELECT projection, so
       // retry with `SELECT <projection> FROM <table>` before giving up.
-      const projection = extractOuterSelectProjection(sqlWithReplacements);
+      const projection = extractOuterSelectProjection(sql);
       if (projection == null) {
         throw fullParseError;
       }
       return selectColumnsToAliasMap(
         `SELECT ${projection} FROM ${ALIAS_FALLBACK_TABLE}`,
-        jsonReplacementsToExpressions,
-        identifierReplacementsToExpressions,
+        jsonReplacements,
+        identifierReplacements,
       );
     }
   } catch (e) {
@@ -991,6 +1122,119 @@ export function chSqlToAliasMap(
   }
 
   return {};
+}
+
+const isNumberLiteral = (
+  expr: unknown,
+): expr is { type: 'number'; value: number } =>
+  typeof expr === 'object' &&
+  expr != null &&
+  'type' in expr &&
+  expr.type === 'number' &&
+  'value' in expr &&
+  typeof expr.value === 'number';
+
+/** An item of a query's outer SELECT list, in projection order. */
+export type SelectColumn = {
+  /** The item's expression, without its alias. */
+  expression: string;
+  /** Whether the outer GROUP BY lists the item (by expression, alias, or position). */
+  isGroupBy: boolean;
+};
+
+/**
+ * The outer SELECT list of `chSql`, in order, so the i-th item lines up with
+ * the i-th result column even where ClickHouse renames an unaliased
+ * expression's column. Undefined when the query doesn't parse, has no GROUP BY
+ * (or `GROUP BY ALL`, which doesn't parse), or selects `*`.
+ */
+export function chSqlToSelectColumns(
+  chSql: ChSql | undefined,
+): SelectColumn[] | undefined {
+  if (chSql == null || !chSql.sql) return undefined;
+
+  try {
+    const { sql, restore, identifierReplacements } =
+      prepareChSqlForParser(chSql);
+    const parser = new SQLParser.Parser();
+    const options = {
+      database: 'Postgresql',
+      parseOptions: { includeLocations: true },
+    };
+    const ast = parser.astify(sql, options);
+    if (Array.isArray(ast) || ast.type !== 'select') return undefined;
+
+    const columns = ast.columns;
+    const groupBy = ast.groupby?.columns;
+    if (!Array.isArray(columns) || !groupBy?.length) return undefined;
+
+    // Each backtick-quoted occurrence gets its own token, so identifiers
+    // compare by the name the token stands for.
+    const bareName = (name: string) =>
+      identifierReplacements.names.get(name) ?? name;
+    // Unquoted, so `"svc"` matches `svc`; printing would keep the quotes.
+    const columnRefName = (
+      expr: SQLParser.ExpressionValue,
+    ): string | undefined => {
+      if (expr.type !== 'column_ref' || !('column' in expr) || expr.table) {
+        return undefined;
+      }
+      const name =
+        typeof expr.column === 'string' ? expr.column : expr.column.expr.value;
+      return typeof name === 'string' ? bareName(name) : undefined;
+    };
+    // Case-, whitespace- and outer-parentheses-insensitive, so `lower(x)`
+    // matches `(LOWER( x ))`.
+    const normalize = (expr: SQLParser.ExpressionValue) =>
+      restore(parser.exprToSQL({ ...expr, parentheses: false }, options))
+        .replace(/\s+/g, '')
+        .toLowerCase();
+    const groupByNames = new Set<string>();
+    const groupByPositions = new Set<number>();
+    const groupByExpressions = new Set<string>();
+    for (const item of groupBy) {
+      // The parser's types omit the number literal of `GROUP BY 1`.
+      const literal: unknown = item;
+      if (isNumberLiteral(literal)) {
+        groupByPositions.add(literal.value - 1);
+      } else {
+        const name = columnRefName(item);
+        if (name != null) groupByNames.add(name);
+        groupByExpressions.add(normalize(item));
+      }
+    }
+
+    const selectColumns: SelectColumn[] = [];
+    for (const [index, column] of columns.entries()) {
+      const { expr } = column;
+      if (
+        expr.type === 'column_ref' &&
+        parser.exprToSQL(expr, options) === '*'
+      ) {
+        return undefined;
+      }
+      // Column references carry no location, so they are printed instead.
+      // The location of a binary expression can take in trailing whitespace.
+      const text =
+        expr.loc != null
+          ? sql.slice(expr.loc.start.offset, expr.loc.end.offset).trim()
+          : parser.exprToSQL(expr, options);
+      const alias =
+        typeof column.as === 'string' ? column.as : column.as?.value;
+      const name = columnRefName(expr);
+      selectColumns.push({
+        expression: restore(text),
+        isGroupBy:
+          groupByPositions.has(index) ||
+          (alias != null && groupByNames.has(bareName(alias))) ||
+          (name != null && groupByNames.has(name)) ||
+          groupByExpressions.has(normalize(expr)),
+      });
+    }
+    return selectColumns;
+  } catch {
+    return undefined;
+  }
 }
 
 export type ColumnMetaType = { name: string; type: string };

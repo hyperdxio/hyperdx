@@ -9,7 +9,7 @@ import { mcpUserError } from '@/mcp/utils/errors';
 const WHERE_DESCRIPTION =
   'Row filter.\n\n' +
   'FIRST: pick a language (whereLanguage):\n' +
-  '  Lucene (default): Column:value          e.g. level:error\n' +
+  '  Lucene:           Column:value          e.g. level:error\n' +
   '  Lucene map attrs: Column.key:value      e.g. SpanAttributes.http.method:GET\n' +
   "  SQL:              Column = 'value'       e.g. StatusCode = 500\n" +
   "  SQL map attrs:    SpanAttributes['key'] = 'value'\n\n" +
@@ -23,17 +23,16 @@ const WHERE_DESCRIPTION =
   "  For exact match, use SQL: SpanKind = 'Server'";
 
 const WHERE_LANGUAGE_DESCRIPTION =
-  'Query language for the "where" filter. Default: lucene.\n' +
-  'IMPORTANT: the syntax in "where" MUST match "whereLanguage".\n' +
-  '  Lucene (default): Column:value, Column.mapKey:value, Column:>100\n' +
-  "  SQL:              Column = 'value', SpanAttributes['key'] = 'value'\n\n" +
+  'Language of the "where" filter. The syntax in "where" MUST match this setting.\n' +
+  '  Lucene: Column:value, Column.mapKey:value, Column:>100\n' +
+  "  SQL:    Column = 'value', SpanAttributes['key'] = 'value'\n\n" +
   'Lucene supports comparisons (>= > < <=), wildcards (field:val*), ranges ([1 TO 5]), ' +
   'and map attributes via dot notation. Use "sql" for IN(...) lists, complex expressions, or function calls.\n' +
   'IMPORTANT: Lucene field:value is a SUBSTRING match (ilike), not exact equality. ' +
   'field:val* is prefix-within-substring, not a true prefix match. ' +
   "For exact matching or reliable wildcards, use SQL: WHERE field = 'value' or WHERE field LIKE 'val%'.\n\n" +
   'Common mistake: writing Column:value (Lucene) but setting whereLanguage to "sql". ' +
-  'If your filter uses colon syntax, leave whereLanguage as "lucene" (the default).';
+  'If your filter uses colon syntax, use "lucene".';
 
 // ─── Shared Zod schemas ──────────────────────────────────────────────────────
 
@@ -61,7 +60,7 @@ export const MCP_AGG_FN_OPTIONS = [
 const mcpAggFnSchema = z
   .enum(MCP_AGG_FN_OPTIONS)
   .describe(
-    'Aggregation function:\n' +
+    'How rows are aggregated into this series:\n' +
       '  count – count matching rows (no valueExpression needed)\n' +
       '  sum / avg / min / max – aggregate a numeric column (valueExpression required)\n' +
       '  count_distinct – unique value count (valueExpression required)\n' +
@@ -278,29 +277,27 @@ export const mcpSelectItemSchema = z.object({
     .default('lucene')
     .describe(
       'Query language for the per-item conditional filter. ' +
-        'Use "sql" when comparing to literal timestamps or arbitrary attribute expressions. ' +
-        'Default: lucene',
+        'Use "sql" when comparing to literal timestamps or arbitrary attribute expressions.',
     ),
   alias: z
     .string()
     .optional()
     .describe(
-      'Display label for this series — used in chart legends, table column headers, CSV exports, and onClick templates. ' +
-        'Always set a short, human-readable alias (e.g. "Requests", "P95 Latency", "Error Rate"). ' +
-        'Without an alias the UI shows the raw ClickHouse expression (e.g. count(), quantile(0.95)(Duration)) which is hard to read.',
+      'Display label for this series, used in chart legends, table column headers, CSV exports, and onClick templates. ' +
+        'Always set a short, readable label (e.g. "Requests", "P95 Latency", "Error Rate"); ' +
+        'without one the UI shows the raw expression, e.g. quantile(0.95)(Duration).',
     ),
   level: mcpQuantileLevelSchema
     .optional()
     .describe(
-      'Percentile level. Required when aggFn is "quantile" on a histogram or exponential histogram metric, ' +
-        'optional otherwise. ' +
-        'Allowed values: 0.5, 0.9, 0.95, 0.99',
+      'Percentile for aggFn:"quantile" (0.95 = p95). Only valid with quantile; ' +
+        'required when using quantile on a histogram or exponential histogram metric.',
     ),
   metricType: mcpMetricTypeSchema
     .optional()
     .describe(
-      'METRIC SOURCES ONLY. OTel metric kind: gauge, sum, histogram, or exponential histogram. ' +
-        'Required (with metricName) when sourceId is a metric source. ' +
+      'METRIC SOURCES ONLY. OTel metric kind of metricName. ' +
+        'Set together with metricName on every item when sourceId is a metric source. ' +
         'Discover via clickstack_describe_source (sample) or clickstack_describe_metric.',
     ),
   metricName: z
@@ -308,7 +305,7 @@ export const mcpSelectItemSchema = z.object({
     .optional()
     .describe(
       'METRIC SOURCES ONLY. OTel metric name (e.g. "system.cpu.utilization", ' +
-        '"http.server.request.duration"). Required when metricType is set. ' +
+        '"http.server.request.duration"). Set together with metricType. ' +
         'Discover via clickstack_list_metrics or clickstack_describe_source.',
     ),
   isDelta: z
@@ -317,7 +314,7 @@ export const mcpSelectItemSchema = z.object({
     .describe(
       'METRIC SOURCES ONLY (gauge metrics). When true, computes the Prometheus-style ' +
         'delta over each bucket: (argMax(Value) - argMin(Value)) * bucketSecs / timeDiff. ' +
-        'Use for cumulative gauges where you want to chart growth per bucket. Default false.',
+        'Use for cumulative gauges where you want to chart growth per bucket.',
     ),
 });
 // NOTE: cross-field validation (metric rules + level + valueExpression) is
@@ -400,7 +397,7 @@ export const endTimeSchema = z
 export const sourceIdSchema = z
   .string()
   .describe(
-    'Source ID (required). Call clickstack_list_sources to find available sources.',
+    'Source to query. Call clickstack_list_sources to find source IDs.',
   );
 
 export const whereSchema = z
@@ -419,12 +416,10 @@ export const groupBySchema = z
   .string()
   .optional()
   .describe(
-    'Column(s) or ClickHouse expression(s) to group/split by. ' +
-      'Accepts a SINGLE entry or MULTIPLE entries as a comma-delimited list — ' +
-      'multi-column groupBy expresses multi-dimensional breakdowns in one ' +
-      'query (e.g. "ServiceName, SpanName, StatusMessage") instead of running ' +
-      'one query per dimension. For "table" displayType, the result has one row ' +
-      'per distinct combination of group values. ' +
+    'Column(s) or ClickHouse expression(s) to group/split by, as one entry or a ' +
+      'comma-delimited list. Multiple entries give a multi-dimensional breakdown ' +
+      'in one query (e.g. "ServiceName, SpanName, StatusMessage") instead of one ' +
+      'query per dimension; a table gets one row per distinct combination. ' +
       'Top-level columns use PascalCase ("SpanName", "StatusCode"). ' +
       "Map attributes: SpanAttributes['key'], ResourceAttributes['key'].\n\n" +
       'Arbitrary ClickHouse expressions are also allowed in groupBy — useful when ' +

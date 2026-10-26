@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
@@ -23,14 +24,22 @@ export function registerQueryTile({
     'clickstack_query_tile',
     {
       title: 'Query a Dashboard Tile',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Execute the query for a specific tile on an existing dashboard. ' +
         'Useful for validating that a tile returns data or for spot-checking results ' +
         'without rebuilding the query from scratch. ' +
+        'Returns JSON with `result` (the query output rows), plus `note` when the ' +
+        'result was trimmed for size, `hints` when no data matched, and `warnings` ' +
+        'for missing raw SQL macros or dashboard-variable reference problems. Event-pattern tiles ' +
+        'return pattern-mining output like clickstack_event_patterns; markdown tiles ' +
+        'return a plain "no query" message. Query failures come back as tool errors. ' +
         'Use clickstack_get_dashboard with an ID to find tile IDs.',
       inputSchema: z.object({
-        dashboardId: objectIdSchema.describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe(
+          'Dashboard ID, from clickstack_get_dashboard (no id lists dashboards) ' +
+            'or clickstack_search_dashboards.',
+        ),
         tileId: z
           .string()
           .describe(
@@ -66,7 +75,9 @@ export function registerQueryTile({
         return mcpUserError('Dashboard not found');
       }
 
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromqlTiles: true,
+      });
       const tile = externalDashboard.tiles.find(t => t.id === tileId);
       if (!tile) {
         return mcpUserError(

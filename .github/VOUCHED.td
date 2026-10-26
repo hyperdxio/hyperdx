@@ -25,11 +25,15 @@
 # copilot is listed because vouch only auto-exempts logins ending in "[bot]".
 # GitHub's Copilot coding agent has the login "Copilot", so without an entry
 # its PRs would be closed.
+28hus
 adityapimpalkar
 alex-fedotyev
 alok87
+archat-hash
 arj22
 aryainguz
+bahltushar
+bilalatique
 brandon-pereira
 colehpage
 copilot
@@ -37,11 +41,13 @@ dhable
 dkong16
 elizabetdev
 ernestii
+eugeneo17
 fallintoplace
 fleon
 gingerwizard
 gyancr7
 harshul1484
+hercynium FIPS fix for #3390
 jaggederest
 jeyrathnam
 jordan-simonovski
@@ -49,6 +55,7 @@ juliojimenez
 jwhitaker-gridcog
 karl-power
 knudtty
+krishs01
 kyle-mally-ch
 leticiawebb
 lyhuang
@@ -69,6 +76,7 @@ rip21
 sanjams2
 shuvamk
 spencertorres
+squaredg
 teeohhem
 tommyzli
 tsushanth

@@ -1,6 +1,7 @@
 import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -41,12 +42,10 @@ const timeseriesSchema = z.object({
         'Example: [{ aggFn: "count" }, { aggFn: "avg", valueExpression: "Duration" }]',
     ),
   shape: z
-    .enum(['line', 'stacked_bar'])
+    .enum(['line', 'stacked_bar', 'stacked_line'])
     .optional()
     .default('line')
-    .describe(
-      'Chart shape. "line" for line chart (default), "stacked_bar" for stacked bar chart.',
-    ),
+    .describe('Chart type. "stacked_line" is a stacked area chart.'),
   where: whereSchema.describe(
     'Row filter applied to ALL select items. ' +
       'Scopes the entire query — use to restrict by service, severity, etc. ' +
@@ -79,7 +78,7 @@ export function registerTimeseries({ context, registerTool }: ToolRegistrar) {
     'clickstack_timeseries',
     {
       title: 'Time-Series Chart',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Plot metrics over time as a line or stacked bar chart. ' +
         'Use this when you need to visualize trends, compare time-series, ' +

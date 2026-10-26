@@ -1,10 +1,68 @@
 // Utility functions for parsing and grouping map-like field names
 
 import SqlString from 'sqlstring';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  type Field,
+  parseKeyPath,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
+import type { Facet } from '@/hooks/useMetadata';
 import { mergePath } from '@/utils';
+
+/** A filter key and its values, as the sidebar lists it. */
+export type FacetEntry = {
+  key: string;
+  value: (string | boolean)[];
+  /** The key's values are still being fetched. */
+  isLoading?: boolean;
+};
+
+/**
+ * Lists the requested keys in request order, each with its values once they
+ * arrive. While `isFetching`, a key still waiting on its values gets an empty
+ * placeholder and is reported in `pendingKeys`, so every filter can be listed
+ * before any values land. The fixed order keeps each filter in place as
+ * values arrive, in whatever order the queries finish.
+ */
+export function listRequestedFacets({
+  requestedKeys,
+  arrived,
+  isFetching,
+  toUiKey,
+}: {
+  /** SQL key expressions, as sent to the values query. */
+  requestedKeys: string[];
+  arrived: Facet[] | undefined;
+  isFetching: boolean;
+  toUiKey: (sqlKey: string) => string;
+}): { facets: Facet[] | undefined; pendingKeys: Set<string> } {
+  const pendingKeys = new Set<string>();
+  if (!arrived && !isFetching) return { facets: undefined, pendingKeys };
+
+  const arrivedByKey = new Map(arrived?.map(facet => [facet.key, facet]));
+  const listed = new Set<string>();
+  const facets: Facet[] = [];
+  for (const sqlKey of requestedKeys) {
+    if (listed.has(sqlKey)) continue;
+    listed.add(sqlKey);
+    const facet = arrivedByKey.get(sqlKey);
+    if (facet) {
+      facets.push({ ...facet, key: toUiKey(sqlKey) });
+    } else if (isFetching) {
+      pendingKeys.add(toUiKey(sqlKey));
+      facets.push({ key: toUiKey(sqlKey), value: [] });
+    }
+  }
+  // Results the request didn't name verbatim: a re-quoted identifier, or a
+  // previous request's keys still on screen while the next one loads.
+  for (const facet of arrived ?? []) {
+    if (!listed.has(facet.key)) {
+      facets.push({ ...facet, key: toUiKey(facet.key) });
+    }
+  }
+  return { facets, pendingKeys };
+}
 
 // Clean ClickHouse expressions to extract clean property paths
 export function cleanClickHouseExpression(key: string): string {
@@ -16,6 +74,18 @@ export function cleanClickHouseExpression(key: string): string {
   cleanKey = cleanKey.replace(/`([^`]+)`/g, '$1');
 
   return cleanKey;
+}
+
+const isLowCardinality = (type: string) => type.includes('LowCardinality');
+
+// Low-cardinality fields first: they make the most useful facets and groupings.
+export function sortLowCardinalityFirst<T extends Pick<Field, 'type'>>(
+  fields: T[],
+): T[] {
+  return [...fields].sort(
+    (a, b) =>
+      Number(isLowCardinality(b.type)) - Number(isLowCardinality(a.type)),
+  );
 }
 
 // Parse map-like field names and extract the base name and property path
@@ -62,22 +132,16 @@ function isBracketFormMapKey(key: string): boolean {
 // `LogAttributes['time']` refer to the same logical field and must collapse
 // into a single child. When merging, we keep the bracket-form key so
 // `child.key` remains a valid ClickHouse expression for "Load more" SQL.
-export function groupFacetsByBaseName(
-  facets: { key: string; value: (string | boolean)[] }[],
-) {
+export function groupFacetsByBaseName(facets: FacetEntry[]) {
   const grouped: Map<
     string,
     {
       key: string;
       value: (string | boolean)[];
-      children: {
-        key: string;
-        value: (string | boolean)[];
-        propertyPath: string;
-      }[];
+      children: (FacetEntry & { propertyPath: string })[];
     }
   > = new Map();
-  const nonGrouped: { key: string; value: (string | boolean)[] }[] = [];
+  const nonGrouped: FacetEntry[] = [];
 
   for (const facet of facets) {
     const parsed = parseMapFieldName(facet.key);
@@ -102,6 +166,9 @@ export function groupFacetsByBaseName(
           }
         }
         existing.value = mergedValues;
+        if (facet.isLoading) {
+          existing.isLoading = true;
+        }
         if (
           isBracketFormMapKey(facet.key) &&
           !isBracketFormMapKey(existing.key)
@@ -120,6 +187,31 @@ export function groupFacetsByBaseName(
   }
 
   return { grouped: Array.from(grouped.values()), nonGrouped };
+}
+
+const naturalCompare = new Intl.Collator(undefined, { numeric: true }).compare;
+
+// Sorts the keys inside each nested group A–Z, keeping groups in the order they
+// first appear. Other facets keep their order and move ahead of the nested
+// ones, which is harmless because grouped and non-grouped facets render
+// separately.
+export function sortNestedFacetKeys(facets: { key: string }[]) {
+  const groupOrder = new Map<string, number>();
+  for (const { key } of facets) {
+    const baseName = parseMapFieldName(key)?.baseName;
+    if (baseName != null && !groupOrder.has(baseName)) {
+      groupOrder.set(baseName, groupOrder.size);
+    }
+  }
+  facets.sort((a, b) => {
+    const nestedA = parseMapFieldName(a.key);
+    const nestedB = parseMapFieldName(b.key);
+    if (!nestedA || !nestedB) return Number(!!nestedA) - Number(!!nestedB);
+    return (
+      groupOrder.get(nestedA.baseName)! - groupOrder.get(nestedB.baseName)! ||
+      naturalCompare(nestedA.propertyPath, nestedB.propertyPath)
+    );
+  });
 }
 
 // Look up a filterState entry by either bracket-form or dot-form map sub-key.

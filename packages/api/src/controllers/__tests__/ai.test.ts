@@ -48,7 +48,10 @@ function setConfig(overrides: Record<string, string | undefined>) {
   Object.assign(mockConfig, overrides);
 }
 
-import { getAIModel, llmTelemetry } from '@/controllers/ai';
+import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+
+import { getAIModel, getChartConfigFromResolvedConfig } from '@/controllers/ai';
+import type { ISource } from '@/models/source';
 
 beforeEach(() => {
   setConfig({});
@@ -253,20 +256,43 @@ describe('openai provider', () => {
   });
 });
 
-describe('llmTelemetry', () => {
-  it('enables telemetry and passes through string metadata', () => {
-    expect(
-      llmTelemetry({ sessionId: 'notebook-1', teamId: 't1', userId: 'u1' }),
-    ).toEqual({
-      isEnabled: true,
-      metadata: { sessionId: 'notebook-1', teamId: 't1', userId: 'u1' },
-    });
-  });
+describe('getChartConfigFromResolvedConfig', () => {
+  // @ts-expect-error mock source only has the fields getChartConfigFromResolvedConfig reads
+  const source: ISource = {
+    id: 'source-id',
+    kind: SourceKind.Trace,
+    connection: 'connection-id',
+    from: { databaseName: 'default', tableName: 'otel_traces' },
+    timestampValueExpression: 'Timestamp',
+  };
 
-  it('drops nullish metadata values', () => {
-    expect(llmTelemetry({ sessionId: undefined, teamId: 't1' })).toEqual({
-      isEnabled: true,
-      metadata: { teamId: 't1' },
-    });
+  it('maps percentile aggregations to quantile with a level', () => {
+    const result = getChartConfigFromResolvedConfig(
+      {
+        displayType: DisplayType.Table,
+        select: [
+          { aggregationFunction: 'max', property: 'Duration' },
+          {
+            aggregationFunction: 'p95',
+            property: 'Duration',
+            condition: "ServiceName = 'api'",
+          },
+        ],
+        groupBy: 'SpanName',
+        timeRange: 'Past 1h',
+      },
+      source,
+    );
+
+    expect(result.select).toEqual([
+      { aggFn: 'max', valueExpression: 'Duration' },
+      {
+        aggFn: 'quantile',
+        level: 0.95,
+        valueExpression: 'Duration',
+        aggCondition: "ServiceName = 'api'",
+        aggConditionLanguage: 'sql',
+      },
+    ]);
   });
 });

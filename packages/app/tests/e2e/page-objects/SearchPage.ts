@@ -5,6 +5,7 @@
 import { expect, Locator, Page } from '@playwright/test';
 
 import { FilterComponent } from '../components/FilterComponent';
+import { HeatmapComponent } from '../components/HeatmapComponent';
 import { InfrastructurePanelComponent } from '../components/InfrastructurePanelComponent';
 import { PatternSidePanelComponent } from '../components/PatternSidePanelComponent';
 import { SavedSearchModalComponent } from '../components/SavedSearchModalComponent';
@@ -14,7 +15,11 @@ import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import { WhereInputComponent } from '../components/WhereInputComponent';
 import { DEFAULT_TRACES_SOURCE_NAME } from '../utils/constants';
-import { borderedBox, dismissSqlAutocomplete } from '../utils/locators';
+import {
+  borderedBox,
+  dismissSqlAutocomplete,
+  replaceEditorText,
+} from '../utils/locators';
 import type { MultilineField } from '../utils/multiline-input';
 
 type SaveSearchModalProps = {
@@ -28,9 +33,10 @@ export class SearchPage {
   readonly patternSidePanel: PatternSidePanelComponent;
   readonly infrastructure: InfrastructurePanelComponent;
   readonly filters: FilterComponent;
+  readonly heatmap: HeatmapComponent;
   readonly whereInput: WhereInputComponent;
   readonly savedSearchModal: SavedSearchModalComponent;
-  readonly savedSearchNameTitle: Locator;
+  readonly savedSearchNameInput: Locator;
   readonly alertModal: SearchPageAlertModalComponent;
   readonly defaultTimeout: number = 3000;
   private readonly alertsButtonLocator: Locator;
@@ -56,12 +62,11 @@ export class SearchPage {
     this.patternSidePanel = new PatternSidePanelComponent(page);
     this.infrastructure = new InfrastructurePanelComponent(page);
     this.filters = new FilterComponent(page);
+    this.heatmap = new HeatmapComponent(page);
     this.savedSearchModal = new SavedSearchModalComponent(page);
     this.alertModal = new SearchPageAlertModalComponent(page);
     this.alertsButtonLocator = page.getByTestId('alerts-button');
-    this.savedSearchNameTitle = page.locator(
-      '[data-testid="saved-search-name"]',
-    );
+    this.savedSearchNameInput = page.getByTestId('saved-search-name');
 
     // Define page-specific locators
     this.searchForm = page.getByTestId('search-form');
@@ -103,6 +108,11 @@ export class SearchPage {
   }
 
   async selectSource(sourceName: string) {
+    // Clicking the option that is already selected deselects it. Leave an
+    // existing match alone.
+    if ((await this.sourceSelector.inputValue()) === sourceName) {
+      return;
+    }
     await this.sourceSelector.click();
     await this.page
       .getByRole('option', { name: sourceName, exact: true })
@@ -112,6 +122,56 @@ export class SearchPage {
   /** The "Event Patterns" analysis-mode tab in the filters sidebar. */
   get eventPatternsTab() {
     return this.page.getByRole('tab', { name: 'Event Patterns' });
+  }
+
+  /** The "Event Deltas" analysis-mode tab, shown only for trace sources. */
+  get eventDeltasTab() {
+    return this.page.getByRole('tab', { name: 'Event Deltas' });
+  }
+
+  async switchToEventDeltas() {
+    await this.eventDeltasTab.click();
+    await expect(this.page).toHaveURL(/[?&]mode=delta/);
+  }
+
+  get chartErrorState() {
+    return this.page.getByTestId('chart-error-state');
+  }
+
+  /** DBDeltaChart legend entries shown only while a selection is compared. */
+  get deltaSelectionLegend() {
+    return this.page.getByText('Selection', { exact: true });
+  }
+
+  get deltaBackgroundLegend() {
+    return this.page.getByText('Background', { exact: true });
+  }
+
+  /** DBDeltaChart hint shown while there is no selection to compare. */
+  get deltaNoSelectionHint() {
+    return this.page.getByText(
+      'Select an area on the chart above to enable comparisons',
+    );
+  }
+
+  get heatmapSettingsDrawer() {
+    return this.page.getByRole('dialog', { name: 'Display Settings' });
+  }
+
+  async openHeatmapSettings() {
+    await this.page.getByTestId('heatmap-settings-button').click();
+    await expect(this.heatmapSettingsDrawer).toBeVisible();
+  }
+
+  async setHeatmapScale(scale: 'Log' | 'Linear') {
+    await this.heatmapSettingsDrawer.getByText(scale, { exact: true }).click();
+  }
+
+  async applyHeatmapSettings() {
+    await this.heatmapSettingsDrawer
+      .getByRole('button', { name: 'Apply' })
+      .click();
+    await expect(this.heatmapSettingsDrawer).toBeHidden();
   }
 
   /**
@@ -472,6 +532,81 @@ export class SearchPage {
     await this.page.keyboard.type(orderByStatement);
     // CLoses Autocomplete Modal if open
     await this.page.keyboard.press('Escape');
+  }
+
+  get groupByButton() {
+    return this.page.getByTestId('search-group-by-button');
+  }
+
+  get groupByDropdown() {
+    return this.page.getByTestId('search-group-by-dropdown');
+  }
+
+  async openGroupBy() {
+    await this.groupByButton.click();
+    await expect(this.groupByDropdown).toBeVisible();
+  }
+
+  /** Replace the histogram group by with `fields`, picked from the key list. */
+  async setGroupByFields(fields: string[]) {
+    await this.openGroupBy();
+    await this.groupByDropdown.getByRole('button', { name: 'Clear' }).click();
+    for (const field of fields) {
+      await this.groupByDropdown
+        .getByTestId('search-group-by-search')
+        .fill(field);
+      await this.groupByDropdown
+        .getByRole('checkbox', { name: field, exact: true })
+        .check();
+    }
+    await this.applyGroupBy();
+  }
+
+  async openGroupBySqlTab() {
+    await this.groupByDropdown.getByText('SQL', { exact: true }).click();
+  }
+
+  /** Replace the histogram group by with a SQL expression list. */
+  async setGroupBySql(sql: string) {
+    await this.openGroupBy();
+    await this.openGroupBySqlTab();
+    await replaceEditorText(
+      this.page,
+      this.groupByDropdown.locator('.cm-content'),
+      sql,
+    );
+    await dismissSqlAutocomplete(this.page);
+    await this.applyGroupBy();
+  }
+
+  private async applyGroupBy() {
+    await this.groupByDropdown.getByRole('button', { name: 'Apply' }).click();
+    await expect(this.groupByDropdown).toBeHidden();
+  }
+
+  getDroppedGroupByToast(fields: string) {
+    return this.page.getByText(
+      `Group by ${fields} didn't apply to this source`,
+      { exact: false },
+    );
+  }
+
+  getHistogramLegend() {
+    return this.getHistogram().locator('.recharts-legend-wrapper');
+  }
+
+  /** Pin the histogram tooltip and focus its first series. */
+  async focusFirstHistogramSeries() {
+    const focusButton = this.page
+      .locator('[data-testid^="chart-focus-series-"]')
+      .first();
+    // Recharts only pins on a click that lands on a bucket, so the click
+    // itself is part of what gets retried.
+    await expect(async () => {
+      await this.getHistogram().click();
+      await expect(focusButton).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
+    await focusButton.click();
   }
 
   /**

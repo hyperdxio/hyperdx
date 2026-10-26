@@ -17,9 +17,12 @@ describe('SpanLinkedFromSubpanel', () => {
     const { container } = renderWithMantine(
       <SpanLinkedFromSubpanel links={[]} />,
     );
-    // The Mantine provider injects <style> nodes; the component itself must
-    // contribute no elements.
-    expect(container.querySelector('div')).toBeNull();
+    // The providers add <style> nodes and an empty toast viewport region;
+    // the component itself must contribute no elements.
+    const stray = Array.from(container.querySelectorAll('div')).filter(
+      el => !el.closest('[role="region"]'),
+    );
+    expect(stray).toHaveLength(0);
     expect(screen.queryByTestId('linked-from-row')).not.toBeInTheDocument();
   });
 

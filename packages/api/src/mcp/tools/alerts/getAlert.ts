@@ -6,6 +6,7 @@ import { z } from 'zod';
 import * as config from '@/config';
 import { getRecentAlertHistories } from '@/controllers/alertHistory';
 import { getAlertById } from '@/controllers/alerts';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError, validateObjectId } from '@/mcp/utils/errors';
 import Alert from '@/models/alert';
@@ -25,7 +26,7 @@ export function registerGetAlert({
     'clickstack_get_alert',
     {
       title: 'Get Alert(s)',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Without an ID: list all alerts as a high-level summary ' +
         '(id, name, displayName, tags, state, source, interval). Optionally ' +
@@ -38,14 +39,15 @@ export function registerGetAlert({
           .string()
           .optional()
           .describe(
-            'Alert ID. Omit to list all alerts, provide to get full detail.',
+            'Alert ID from a previous list call or clickstack_save_alert. ' +
+              'Omit to list all alerts, provide to get full detail.',
           ),
         state: z
           .enum(['ALERT', 'OK', 'DISABLED', 'INSUFFICIENT_DATA'])
           .optional()
           .describe(
-            'Filter list by alert state (only applies when id is omitted). ' +
-              'Use "ALERT" to find currently firing alerts.',
+            'List only alerts currently in this state; ignored when id is ' +
+              'provided. Use ALERT to find alerts that are firing now.',
           ),
       }),
     },

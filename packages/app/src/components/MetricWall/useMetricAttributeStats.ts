@@ -12,6 +12,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 
 import { getClickhouseClient } from '@/clickhouse';
+import { useMetadataQueryAttribution } from '@/queryAttribution';
 import { getMetricTableName } from '@/utils';
 import { QUERYABLE_KINDS } from '@/utils/metricKinds';
 
@@ -36,8 +37,9 @@ async function runQuery<T>(
   source: TMetricSource,
   sql: ChSql,
   signal: AbortSignal,
+  attribution: ReturnType<typeof useMetadataQueryAttribution>,
 ): Promise<T[]> {
-  const result = (await getClickhouseClient()
+  const result = (await getClickhouseClient({ attribution })
     .query<'JSON'>({
       query: sql.sql,
       query_params: sql.params,
@@ -70,6 +72,7 @@ export function useAttributeValueCounts({
   dateRange: [Date, Date];
 }) {
   const range = recentWindow(dateRange);
+  const attribution = useMetadataQueryAttribution();
   return useQuery({
     queryKey: [
       'metric-wall-attribute-values',
@@ -97,6 +100,7 @@ export function useAttributeValueCounts({
                 LIMIT ${{ Int32: MAX_VALUES }}
               `,
               signal,
+              attribution,
             ),
           ];
         }),
@@ -136,6 +140,7 @@ export function useSplitCardinality({
 }) {
   const range = recentWindow(dateRange);
   const table = getMetricTableName(source, metricType);
+  const attribution = useMetadataQueryAttribution();
   return useQuery({
     queryKey: [
       'metric-wall-split-cardinality',
@@ -161,6 +166,7 @@ export function useSplitCardinality({
           LIMIT ${{ Int32: MAX_SPLIT_KEYS }}
         `,
         signal,
+        attribution,
       );
       return rows
         .map(row => ({ key: row.key, values: Number(row.n) }))

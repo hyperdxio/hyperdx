@@ -6,6 +6,7 @@ import {
   timeFilterExpr,
 } from '@/core/renderChartConfig';
 import { convertToCategoricalChartConfig } from '@/core/utils';
+import { adhocConditionsToFilters } from '@/filters';
 import {
   BuilderChartConfig,
   ChartConfigWithOptDateRange,
@@ -1723,6 +1724,35 @@ describe('renderChartConfig', () => {
     });
   });
 
+  it('applies ad hoc filter conditions for every operator to a builder query', async () => {
+    const sql = parameterizedQueryToSql(
+      await renderChartConfig(
+        {
+          connection: 'test-connection',
+          from: { databaseName: 'default', tableName: 'otel_logs' },
+          select: [{ aggFn: 'count', valueExpression: '' }],
+          where: '',
+          whereLanguage: 'sql',
+          filters: adhocConditionsToFilters([
+            { key: 'ServiceName', operator: '=', value: 'api' },
+            { key: 'ServiceName', operator: '!=', value: 'web' },
+            { key: "LogAttributes['path']", operator: '=~', value: '^/api' },
+            { key: "LogAttributes['path']", operator: '!~', value: 'health' },
+            { key: 'Body', operator: 'LIKE', value: '%error%' },
+            { key: 'Body', operator: 'NOT LIKE', value: "%it's%" },
+          ]),
+          timestampValueExpression: 'Timestamp',
+          dateRange: [new Date('2025-01-01'), new Date('2025-01-02')],
+        },
+        mockMetadata,
+        querySettings,
+      ),
+    );
+    expect(sql).toContain(
+      "((toString(ServiceName) = 'api') AND (toString(ServiceName) != 'web') AND (match(toString(LogAttributes['path']), '^/api')) AND (NOT match(toString(LogAttributes['path']), 'health')) AND (toString(Body) LIKE '%error%') AND (toString(Body) NOT LIKE '%it''s%'))",
+    );
+  });
+
   describe('SQL filter KV items direct_read optimization', () => {
     const stubKvItemsMetadata = () => {
       mockMetadata.getColumns = jest.fn().mockResolvedValue([
@@ -2717,7 +2747,9 @@ describe('renderChartConfig', () => {
       mockMetadata.getColumn.mockImplementation(async ({ column }) =>
         column === 'date'
           ? ({ type: 'Date' } as ColumnMeta)
-          : ({ type: 'DateTime' } as ColumnMeta),
+          : column === 'TimestampTime'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : ({ type: 'DateTime64(3)' } as ColumnMeta),
       );
     });
 
@@ -2824,6 +2856,187 @@ describe('renderChartConfig', () => {
       expect(actualSql).toBe(
         `(date >= toDate(fromUnixTimestamp64Milli(${dateRange[0].getTime()})) AND date <= toDate(fromUnixTimestamp64Milli(${dateRange[1].getTime()})))`,
       );
+    });
+
+    it.each([
+      ['inclusive', true],
+      ['exclusive', false],
+    ])(
+      'floors a sub-second %s start on a DateTime column and keeps it inclusive',
+      async (_, dateRangeStartInclusive) => {
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00.500Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'TimestampTime, Timestamp',
+          dateRangeEndInclusive: false,
+          dateRangeStartInclusive,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        const precise = dateRangeStartInclusive ? '>=' : '>';
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(TimestampTime >= fromUnixTimestamp64Milli(${new Date('2026-10-13T22:03:21Z').getTime()}) AND TimestampTime < fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp ${precise} fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp < fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
+
+    it.each([
+      ['inclusive', true, '>='],
+      ['exclusive', false, '>'],
+    ])(
+      'leaves a %s start unfloored on a DateTime-only source so adjacent windows do not overlap',
+      async (_, dateRangeStartInclusive, op) => {
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'TimestampTime',
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(TimestampTime ${op} fromUnixTimestamp64Milli(${start.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
+
+    it.each([
+      ['DateTime', 'toDateTime($__fromTime_ms)'],
+      ['DateTime64(1)', 'toDateTime64($__fromTime_ms, 1)'],
+    ])(
+      'floors the start macro on a %s column in a raw SQL template',
+      async (type, expectedStart) => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'coarse'
+            ? ({ type } as ColumnMeta)
+            : ({ type: 'DateTime64(9)' } as ColumnMeta),
+        );
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'coarse, Timestamp',
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive: true,
+          dateRange: [
+            new Date('2026-10-13T22:03:21.827Z'),
+            new Date('2026-10-13T22:05:00Z'),
+          ],
+          isRenderingRawSqlTemplate: true,
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(coarse >= ${expectedStart} AND coarse <= $__toTime_ms)AND(Timestamp >= $__fromTime_ms AND Timestamp <= $__toTime_ms)`,
+        );
+      },
+    );
+
+    it.each([
+      ['DateTime', '22:03:21.000'],
+      ["DateTime('UTC')", '22:03:21.000'],
+      ['Nullable(DateTime)', '22:03:21.000'],
+      ['DateTime64(0)', '22:03:21.000'],
+      ["DateTime64(0, 'UTC')", '22:03:21.000'],
+      ['DateTime64(1)', '22:03:21.800'],
+      ['DateTime64(2)', '22:03:21.820'],
+      ['DateTime64(3)', '22:03:21.827'],
+    ])(
+      'floors the start bound of a %s column to %s when a finer column exists',
+      async (type, flooredStart) => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'coarse'
+            ? ({ type } as ColumnMeta)
+            : ({ type: 'DateTime64(9)' } as ColumnMeta),
+        );
+        const start = new Date('2026-10-13T22:03:21.827Z');
+        const end = new Date('2026-10-13T22:05:00Z');
+
+        const actual = await timeFilterExpr({
+          timestampValueExpression: 'coarse, Timestamp',
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive: true,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+        });
+
+        expect(parameterizedQueryToSql(actual)).toBe(
+          `(coarse >= fromUnixTimestamp64Milli(${new Date(`2026-10-13T${flooredStart}Z`).getTime()}) AND coarse <= fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp >= fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      },
+    );
+
+    describe('sub-second start flooring edge cases', () => {
+      const start = new Date('2026-10-13T22:03:21.827Z');
+      const flooredStart = new Date('2026-10-13T22:03:21Z');
+      const end = new Date('2026-10-13T22:05:00Z');
+
+      const render = (
+        timestampValueExpression: string,
+        includedDataInterval?: string,
+      ) =>
+        timeFilterExpr({
+          timestampValueExpression,
+          dateRangeEndInclusive: true,
+          dateRangeStartInclusive: false,
+          dateRange: [start, end],
+          connectionId: 'test-connection',
+          databaseName: 'default',
+          tableName: 'target_table',
+          metadata: mockMetadata,
+          includedDataInterval,
+        }).then(parameterizedQueryToSql);
+
+      it('does not floor when the finer column type cannot be resolved', async () => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'TimestampTime'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : undefined,
+        );
+
+        expect(await render('TimestampTime, Timestamp')).toBe(
+          `(TimestampTime > fromUnixTimestamp64Milli(${start.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp > fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      });
+
+      it('does not treat a toStartOf column as the finer column', async () => {
+        expect(await render('toStartOfMinute(Timestamp), TimestampTime')).toBe(
+          `(toStartOfMinute(Timestamp) >= toStartOfMinute(fromUnixTimestamp64Milli(${start.getTime()})) AND toStartOfMinute(Timestamp) <= toStartOfMinute(fromUnixTimestamp64Milli(${end.getTime()})))AND(TimestampTime > fromUnixTimestamp64Milli(${start.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      });
+
+      it('floors the start inside the includedDataInterval expansion', async () => {
+        expect(await render('TimestampTime, Timestamp', '1 minute')).toBe(
+          `(TimestampTime >= toStartOfInterval(fromUnixTimestamp64Milli(${flooredStart.getTime()}), INTERVAL 1 minute) - INTERVAL 1 minute AND TimestampTime <= toStartOfInterval(fromUnixTimestamp64Milli(${end.getTime()}), INTERVAL 1 minute) + INTERVAL 1 minute)AND(Timestamp > toStartOfInterval(fromUnixTimestamp64Milli(${start.getTime()}), INTERVAL 1 minute) - INTERVAL 1 minute AND Timestamp <= toStartOfInterval(fromUnixTimestamp64Milli(${end.getTime()}), INTERVAL 1 minute) + INTERVAL 1 minute)`,
+        );
+      });
+
+      it('treats a Nullable(DateTime64(9)) column as the finer column', async () => {
+        mockMetadata.getColumn.mockImplementation(async ({ column }) =>
+          column === 'TimestampTime'
+            ? ({ type: 'DateTime' } as ColumnMeta)
+            : ({ type: 'Nullable(DateTime64(9))' } as ColumnMeta),
+        );
+
+        expect(await render('TimestampTime, Timestamp')).toBe(
+          `(TimestampTime >= fromUnixTimestamp64Milli(${flooredStart.getTime()}) AND TimestampTime <= fromUnixTimestamp64Milli(${end.getTime()}))AND(Timestamp > fromUnixTimestamp64Milli(${start.getTime()}) AND Timestamp <= fromUnixTimestamp64Milli(${end.getTime()}))`,
+        );
+      });
     });
 
     it.each(['Date32', 'Nullable(Date)', 'LowCardinality(Date)'])(
@@ -3407,6 +3620,35 @@ describe('renderChartConfig', () => {
       );
     });
 
+    it('renders ad hoc filter conditions for every operator in $__filters', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(new Map());
+      const result = await renderChartConfig(
+        {
+          configType: 'sql',
+          sqlTemplate: 'SELECT * FROM logs WHERE $__filters',
+          connection: 'conn-1',
+          dateRange: [start, end],
+          source: 'source-1',
+          from: { databaseName: 'default', tableName: 'logs' },
+          filters: adhocConditionsToFilters([
+            { key: 'ServiceName', operator: '=', value: 'api' },
+            { key: 'ServiceName', operator: '!=', value: 'web' },
+            { key: "LogAttributes['path']", operator: '=~', value: '^/api' },
+            { key: "LogAttributes['path']", operator: '!~', value: 'health' },
+            { key: 'Body', operator: 'LIKE', value: '%error%' },
+            { key: 'Body', operator: 'NOT LIKE', value: "%it's%" },
+          ]),
+        },
+        mockMetadata,
+        undefined,
+      );
+      expect(result.sql).toBe(
+        "SELECT * FROM logs WHERE ((toString(ServiceName) = 'api') AND (toString(ServiceName) != 'web') AND (match(toString(LogAttributes['path']), '^/api')) AND (NOT match(toString(LogAttributes['path']), 'health')) AND (toString(Body) LIKE '%error%') AND (toString(Body) NOT LIKE '%it''s%'))",
+      );
+    });
+
     it('renders sql filters raw when source has no tableName (metric source)', async () => {
       const result = await renderChartConfig(
         {
@@ -3535,6 +3777,66 @@ describe('renderChartConfig', () => {
     // via hasToken(lower(<col>), lower(<term>)) instead of LIKE.
     expect(sql).toContain("hasToken(lower(Body), lower('errored'))");
     expect(sql).toContain("hasToken(lower(Body), lower('denied'))");
+  });
+
+  describe('percentile shorthand aggFn', () => {
+    const baseTraceConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: {
+        databaseName: 'default',
+        tableName: 'otel_traces',
+      },
+      select: [],
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'Timestamp',
+      dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+    };
+
+    it('renders p95 as quantile at level 0.95', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseTraceConfig,
+        select: [
+          {
+            aggFn: 'p95',
+            valueExpression: 'Duration',
+            aggCondition: "ServiceName = 'api'",
+            aggConditionLanguage: 'sql',
+          },
+        ],
+      };
+
+      const actual = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+      expect(actual).toContain(
+        'quantileIf(0.95)(toFloat64OrDefault(toString(Duration))',
+      );
+      expect(actual).not.toContain('p95');
+    });
+
+    it('renders p99 as sample-weighted quantile at level 0.99', async () => {
+      const config: ChartConfigWithOptDateRange = {
+        ...baseTraceConfig,
+        sampleWeightExpression: 'SampleRate',
+        select: [
+          {
+            aggFn: 'p99',
+            valueExpression: 'Duration',
+            aggCondition: '',
+          },
+        ],
+      };
+
+      const actual = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, querySettings),
+      );
+      expect(actual).toContain(
+        'quantileTDigestWeighted(0.99)(toFloat64OrDefault(toString(Duration))',
+      );
+      expect(actual).not.toContain('p99');
+    });
   });
 
   describe('sample-weighted aggregations', () => {
@@ -3913,6 +4215,7 @@ describe('renderChartConfig', () => {
         configType: 'promql' as const,
         promqlExpression: 'rate(http_requests_total[5m])',
         connection: 'test-connection',
+        source: 'promql-source',
         displayType: DisplayType.Line,
         dateRange: [
           new Date('2025-01-01T00:00:00Z'),
@@ -4378,6 +4681,24 @@ describe('renderChartConfig', () => {
         '* EXCEPT (`__hdx_value`, `__hdx_series_idx`) FROM',
       );
       expect(sql).toContain('GROUP BY ALL ORDER BY `__hdx_time_bucket`');
+    });
+
+    it('keeps a metric name containing "settings" intact in its branch', async () => {
+      const generatedSql = await renderChartConfig(
+        {
+          ...baseMultiSeriesConfig,
+          select: [
+            gaugeSelect('app.settings.reloads'),
+            gaugeSelect('metric.beta'),
+          ],
+        },
+        mockMetadata,
+        querySettings,
+      );
+      const sql = parameterizedQueryToSql(generatedSql);
+
+      expect(sql).toContain("MetricName = 'app.settings.reloads'");
+      expect(sql.match(/SETTINGS/g)).toHaveLength(1);
     });
 
     it('renders a metric ratio as a SQL-side division', async () => {

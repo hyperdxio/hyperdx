@@ -8,11 +8,11 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_CONTAINERS,
-  DASHBOARD_STATIC_FILTER_MAX_OPTIONS,
   DASHBOARD_VARIABLE_NAME_MAX_LENGTH,
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardContainerSchema,
   DashboardFilterType,
+  LineInterpolationSchema,
   MetricsDataType,
   NumberTileColorConditionSchema,
   SearchConditionTrimmedLanguageSchema,
@@ -25,12 +25,7 @@ import {
   mcpQuantileLevelSchema,
 } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
-import {
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
-  objectIdSchema,
-  tagsSchema,
-} from '@/utils/zod';
+import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -66,16 +61,19 @@ const rejectTileWhereMessage =
   'item\'s `where` instead (that is the tile\'s visible "Where" box); use a ' +
   'dashboard-level filter to scope the whole dashboard.';
 
-const rejectedTileWhereField = z
-  .never({ invalid_type_error: rejectTileWhereMessage })
-  .optional()
-  .describe(
-    "Not supported on this tile type. Filter via each select item's `where`.",
-  );
-
 const rejectedTileWhereFields = {
-  where: rejectedTileWhereField,
-  whereLanguage: rejectedTileWhereField,
+  where: z
+    .never({ invalid_type_error: rejectTileWhereMessage })
+    .optional()
+    .describe(
+      "Not supported on this tile type; any value is rejected. Put the filter on each select item's `where` instead.",
+    ),
+  whereLanguage: z
+    .never({ invalid_type_error: rejectTileWhereMessage })
+    .optional()
+    .describe(
+      'Not supported on this tile type; any value is rejected. Set `whereLanguage` on each select item instead.',
+    ),
 };
 
 // A variable reference expands in either language; only the two variable
@@ -105,42 +103,54 @@ const timeChartSeriesLimitDescription =
   'Maximum number of series to fetch (the "Series Limit" display setting). ' +
   'Keeps the top-N groups by aggregated value over the queried range and ' +
   'drops the rest. Requires `groupBy`; ignored on a chart without one. ' +
-  'Three-state: omit to apply the default render cap, 0 for unlimited, or a ' +
-  'positive N to keep the top N.';
+  'Omit to apply the default render cap; 0 means unlimited.';
+
+const timeChartFillNullsDescription =
+  'Fill time buckets that have no data with zero (the "Fill Missing ' +
+  'Intervals with Zero" display setting). false leaves gaps instead.';
+
+const timeChartAlignDateRangeDescription =
+  'The "Show Complete Intervals" display setting. When omitted or true, the ' +
+  'dashboard widens the queried range to whole granularity buckets so the ' +
+  'first and last buckets are complete; false queries the exact selected range.';
+
+const whereLanguageDescription = (owner: 'tile' | 'item') =>
+  `Query language of this ${owner}'s \`where\`. Use sql for the $__filter / ` +
+  '$__conditionalAll variable macros.';
+
+const tileWhereLanguageDescription = whereLanguageDescription('tile');
+
+const asRatioDescription =
+  'Return select[0] divided by select[1] as a single ratio series instead of ' +
+  'the two operands. Requires exactly two select items; cannot be combined ' +
+  'with formulas.';
 
 const seriesLimitSchema = z.number().int().nonnegative().optional();
 
 const numberTileColorDescription =
-  'Static color for the displayed number, as a palette token such as ' +
-  '"chart-blue", "chart-green", or "chart-success" (see the enum for the ' +
-  'full set). Applied unless a colorRules entry matches the value.';
+  'Static palette color for the displayed number. Applied unless a ' +
+  'colorRules entry matches the value.';
 
 const numberTileColorRulesDescription =
   'Conditional colors for the number, evaluated in array order with the ' +
   'last matching rule winning; falls back to color (then the default text ' +
-  'color) when none match. Up to 10 rules. Each rule is ' +
-  '{ operator, value, color, label? }: operator gt | gte | lt | lte with a ' +
-  'number value, between with a [min, max] value, or eq | neq with a number ' +
-  'or string value. color is a palette token. Example: ' +
+  'color) when none match. Rules compare the raw query value, before ' +
+  'numberFormat is applied (a 0.5 shown as 50% matches value 0.5). Example: ' +
   '[{ operator: "gte", value: 500, color: "chart-error", label: "Critical" }].';
 
 const rawSqlNumberTileColorDescription =
-  'Static color for the displayed number, as a palette token such as ' +
-  '"chart-blue" or "chart-success". Valid only when displayType is ' +
-  '"number", ignored otherwise. Applied unless a colorRules entry matches ' +
-  'the value.';
+  `${numberTileColorDescription} Valid only when displayType is ` +
+  '"number", ignored otherwise.';
 
 const rawSqlNumberTileColorRulesDescription =
   `${numberTileColorRulesDescription} Valid only when displayType is ` +
   '"number", ignored otherwise.';
 
 const numberTileBackgroundChartDescription =
-  'Optional background trend sparkline drawn behind the number, derived ' +
+  'Background trend sparkline drawn behind the number, derived ' +
   'from a time-bucketed version of the same query (useful for SLO / ' +
   'error-budget tiles where the trend over the window matters). ' +
-  '{ type, color? }: type is "line" or "area"; color is an optional ' +
-  'palette token override (the sparkline inherits the tile color when ' +
-  'unset). Builder number tiles only; raw SQL number tiles have no time ' +
+  'Builder number tiles only; raw SQL number tiles have no time ' +
   'dimension to bucket. Example: { type: "area", color: "chart-blue" }.';
 
 const mcpNumberFormatSchema = z.object({
@@ -156,26 +166,26 @@ const mcpNumberFormatSchema = z.object({
       'throughput',
     ])
     .describe(
-      'Format category. "duration" auto-formats elapsed times as e.g. "1.2s" (use factor for input unit). ' +
+      'How to render the value. "duration" auto-formats elapsed times as e.g. "1.2s" (use factor for input unit). ' +
         '"time" formats clock-style durations. "byte" formats as KB/MB/GB. ' +
         '"data_rate" formats as bytes/sec. "throughput" formats as count/sec. ' +
-        '"currency" prepends a symbol. "percent" appends %, and divides the value by 100 (0.5 becomes 50%).',
+        '"currency" prepends a symbol. "percent" multiplies the value by 100 and appends % (0.5 becomes 50%).',
     ),
   mantissa: z
     .number()
     .int()
     .optional()
     .describe(
-      'Decimal places (0–10). Not used for "time" or "duration" output.',
+      'Number of decimal places, 0 to 10. Not used for "time" or "duration" output.',
     ),
   thousandSeparated: z
     .boolean()
     .optional()
-    .describe('Separate thousands (e.g. 1,234,567)'),
+    .describe('Insert thousands separators, e.g. 1,234,567.'),
   average: z
     .boolean()
     .optional()
-    .describe('Abbreviate large numbers (e.g. 1.2m)'),
+    .describe('Abbreviate large numbers, e.g. 1.2m.'),
   decimalBytes: z
     .boolean()
     .optional()
@@ -247,8 +257,9 @@ const mcpTileSelectItemSchema = z
           'Lucene syntax by default. Example: "level:error"\n\n' +
           variableMacroDescription,
       ),
-    whereLanguage:
-      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
+    whereLanguage: SearchConditionTrimmedLanguageSchema.optional()
+      .default('lucene')
+      .describe(whereLanguageDescription('item')),
     alias: z
       .string()
       .optional()
@@ -286,7 +297,7 @@ const mcpTileSelectItemSchema = z
       .optional()
       .describe(
         'METRIC SOURCES ONLY (gauge metrics). When true, computes the Prometheus-style ' +
-          'delta over each bucket. Default false.',
+          'delta over each bucket instead of the raw gauge value.',
       ),
     // The REST v2 dialect's spelling of the same flag. Accepted so a select
     // item read back from the external API (or clickstack_get_alert /
@@ -391,7 +402,7 @@ const mcpShowOperandSeriesSchema = z
   .describe(
     'Only meaningful with `formulas`: when false, only the formula series ' +
       'are returned and the raw operand series (the select items) are hidden. ' +
-      'Defaults to true (operands shown alongside the formula).',
+      'When omitted, operands are shown alongside the formula.',
   );
 
 // ─── OnClick (link-out) schemas for table tiles ──────────────────────────────
@@ -399,7 +410,9 @@ const mcpOnClickFilterTemplateSchema = z
   .object({
     kind: z
       .literal('expressionTemplate')
-      .describe('Literal "expressionTemplate"; only kind supported today.'),
+      .describe(
+        'Filter kind: an expression matched against a value rendered from the clicked row.',
+      ),
     expression: z
       .string()
       .min(1)
@@ -430,14 +443,16 @@ const mcpOnClickTargetSchema = z
   .discriminatedUnion('mode', [
     z
       .object({
-        mode: z.literal('id'),
+        mode: z
+          .literal('id')
+          .describe('Resolve the destination from a fixed ID.'),
         id: z
           .string()
           .min(1)
           .describe(
             'Concrete source ID (for type=search) or dashboard ID (for type=dashboard). ' +
               'Get source IDs from clickstack_list_sources; get dashboard IDs from ' +
-              'clickstack_get_dashboard (no id arg returns the list). ' +
+              'clickstack_get_dashboard (no id arg returns the list) or clickstack_search_dashboards. ' +
               'For type=search the source kind must be "log" or "trace"; the /search ' +
               'page does not render metric/session sources.',
           ),
@@ -445,7 +460,11 @@ const mcpOnClickTargetSchema = z
       .describe('Link to a specific source or dashboard by its concrete ID.'),
     z
       .object({
-        mode: z.literal('template'),
+        mode: z
+          .literal('template')
+          .describe(
+            'Resolve the destination by name, rendered from the clicked row.',
+          ),
         template: z
           .string()
           .min(1)
@@ -464,7 +483,7 @@ const mcpOnClickTargetSchema = z
   ])
   .describe(
     'Destination resolver. mode="id" pins a specific source/dashboard; ' +
-      'mode="template" picks one at click time from a row column.' +
+      'mode="template" picks one at click time from a row column. ' +
       "Linking by ID is preferred, but using a template is valid when the destination dashboard depends on the clicked row's content",
   );
 
@@ -479,23 +498,22 @@ const mcpOnClickSearchSchema = z
       .max(10000)
       .optional()
       .describe(
-        'Optional Handlebars-style WHERE template rendered against the clicked row ' +
+        'Handlebars-style WHERE template rendered against the clicked row ' +
           "and placed in the destination's `where` query param. " +
           'Example: "ServiceName = \'{{service.name}}\'" pulls service.name from the row. ' +
           'Use Lucene or SQL syntax matching `whereLanguage`. Prefer `filters` (below) ' +
           'for simple equality; filters merge nicely on the destination.',
       ),
     whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
-      'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
-        'Optional, but set it explicitly so the destination knows how to parse rendered ' +
-        'whereTemplate / filter values.',
+      'Query language of `whereTemplate` and `filters`. Set it explicitly so the ' +
+        'destination knows how to parse the rendered values.',
     ),
     filters: z
       .array(mcpOnClickFilterTemplateSchema)
       .max(50)
       .optional()
       .describe(
-        'Optional list of templated equality filters. Each filter becomes an ' +
+        'Templated equality filters. Each filter becomes an ' +
           "`expression IN ('rendered-value')` clause on the destination; filters that " +
           'share an expression are merged into one IN clause.',
       ),
@@ -516,21 +534,20 @@ const mcpOnClickDashboardSchema = z
       .max(10000)
       .optional()
       .describe(
-        'Optional Handlebars-style WHERE template applied to the destination ' +
+        'Handlebars-style WHERE template rendered against the clicked row and applied to the destination ' +
           "dashboard's global filter. Useful when the target dashboard exposes a single " +
           'global scope rather than per-tile filters.',
       ),
     whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
-      'Filter language for `whereTemplate` and `filters` ("lucene" or "sql"). ' +
-        'Optional, but set it explicitly so the destination knows how to parse rendered ' +
-        'whereTemplate / filter values.',
+      'Query language of `whereTemplate` and `filters`. Set it explicitly so the ' +
+        'destination knows how to parse the rendered values.',
     ),
     filters: z
       .array(mcpOnClickFilterTemplateSchema)
       .max(50)
       .optional()
       .describe(
-        'Optional list of templated equality filters. The destination dashboard ' +
+        'Templated equality filters. The destination dashboard ' +
           'auto-populates its filter list with these (matched by expression), so prefer ' +
           'this over whereTemplate when the target dashboard already declares the same ' +
           'filter expressions. ' +
@@ -599,6 +616,37 @@ const mcpOnClickSchema = z
       '"https://grafana.example.com/d/abc?var-service={{ServiceName}}" }',
   );
 
+const mcpTimeChartDisplayFields = {
+  fillNulls: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(timeChartFillNullsDescription),
+  alignDateRangeToGranularity: z
+    .boolean()
+    .optional()
+    .describe(timeChartAlignDateRangeDescription),
+  asRatio: z.boolean().optional().describe(asRatioDescription),
+  numberFormat: mcpNumberFormatSchema
+    .optional()
+    .describe(tileLevelNumberFormatDescription),
+};
+
+const mcpRowListSourceFields = {
+  sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+  where: z
+    .string()
+    .optional()
+    .default('')
+    .describe(
+      'Row filter, in the language set by whereLanguage (Lucene by default). Example: "level:error"\n\n' +
+        variableMacroDescription,
+    ),
+  whereLanguage: SearchConditionTrimmedLanguageSchema.optional()
+    .default('lucene')
+    .describe(tileWhereLanguageDescription),
+};
+
 const mcpTileLayoutSchema = z.object({
   name: z.string().min(1).describe('Tile title shown on the dashboard'),
   x: z
@@ -607,13 +655,13 @@ const mcpTileLayoutSchema = z.object({
     .max(23)
     .optional()
     .default(0)
-    .describe('Horizontal grid position (0–23). Default 0'),
+    .describe("Grid column of the tile's left edge, counted from the left."),
   y: z
     .number()
     .min(0)
     .optional()
     .default(0)
-    .describe('Vertical grid position. Default 0'),
+    .describe("Grid row of the tile's top edge, counted from the top."),
   w: z
     .number()
     .min(1)
@@ -621,7 +669,7 @@ const mcpTileLayoutSchema = z.object({
     .optional()
     .default(12)
     .describe(
-      'Width in grid columns (1-24; a full row is 24). Default 12. ' +
+      'Width in grid columns; a full row is 24. ' +
         'Match the width to the displayType: number 6-8 (three or four KPIs per row), ' +
         'line / stacked_bar / pie 8-12, heatmap 12, table / search 12-24 (often the full row). ' +
         'A markdown note is usually full-width (24).',
@@ -632,7 +680,7 @@ const mcpTileLayoutSchema = z.object({
     .optional()
     .default(4)
     .describe(
-      'Height in grid rows. Default 4. ' +
+      'Height in grid rows. ' +
         'Match the height to the displayType so content is not clipped: number 3-4, ' +
         'line / stacked_bar / pie 4-6, heatmap 5-6, table / search 6-10 (taller when more rows are expected), ' +
         'markdown 2-3 for a short note (h: 1 clips the text).',
@@ -641,7 +689,11 @@ const mcpTileLayoutSchema = z.object({
     .string()
     .max(36)
     .optional()
-    .describe('Tile ID (auto-generated if omitted)'),
+    .describe(
+      'Tile ID, generated when omitted. When updating a dashboard, keep each ' +
+        "existing tile's ID from clickstack_get_dashboard: a tile whose ID " +
+        'disappears is treated as removed and its alerts are deleted.',
+    ),
   containerId: z
     .string()
     .min(1)
@@ -665,239 +717,280 @@ const mcpTileLayoutSchema = z.object({
 });
 
 export const mcpLineTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    ...rejectedTileWhereFields,
-    displayType: z.literal('line').describe('Line chart over time'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    select: z
-      .array(mcpTileSelectItemSchema)
-      .min(1)
-      .max(20)
-      .describe('Metrics to plot (one series per item)'),
-    groupBy: z
-      .string()
-      .optional()
-      .describe(
-        'Column to split/group by. ' +
-          'Top-level columns use PascalCase (e.g. "SpanName", "StatusCode"). ' +
-          "Span attributes: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
-          "Resource attributes: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z.literal('line').describe('Line chart over time'),
+      sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+      select: z
+        .array(mcpTileSelectItemSchema)
+        .min(1)
+        .max(20)
+        .describe('Metrics to plot (one series per item)'),
+      groupBy: z
+        .string()
+        .optional()
+        .describe(
+          'Column to split/group by. ' +
+            'Top-level columns use PascalCase (e.g. "SpanName", "StatusCode"). ' +
+            "Span attributes: SpanAttributes['key'] (e.g. SpanAttributes['http.method']). " +
+            "Resource attributes: ResourceAttributes['key'] (e.g. ResourceAttributes['service.name']).",
+        ),
+      ...mcpTimeChartDisplayFields,
+      compareToPreviousPeriod: z
+        .boolean()
+        .optional()
+        .describe('Overlay the previous period as a dashed comparison series.'),
+      fitYAxisToData: z
+        .boolean()
+        .optional()
+        .describe(
+          'Scale the y-axis to the data range instead of starting at zero.',
+        ),
+      seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+      formulas: mcpTileFormulasSchema,
+      showOperandSeries: mcpShowOperandSeriesSchema,
+      lineInterpolation: LineInterpolationSchema.optional().describe(
+        'How points are connected: "smooth" (default), "linear", or "step".',
       ),
-    fillNulls: z.boolean().optional().default(true),
-    alignDateRangeToGranularity: z.boolean().optional(),
-    asRatio: z
-      .boolean()
-      .optional()
-      .describe(
-        'Plot as ratio of two metrics (requires exactly 2 select items)',
-      ),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    compareToPreviousPeriod: z
-      .boolean()
-      .optional()
-      .describe('Overlay the previous period as a dashed comparison series.'),
-    fitYAxisToData: z
-      .boolean()
-      .optional()
-      .describe(
-        'Scale the y-axis to the data range instead of starting at zero.',
-      ),
-    seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
-    formulas: mcpTileFormulasSchema,
-    showOperandSeries: mcpShowOperandSeriesSchema,
-  }),
+    })
+    .describe('Line chart query and display settings.'),
 });
 
+const mcpStackedTimeChartConfigFields = {
+  sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+  select: z
+    .array(mcpTileSelectItemSchema)
+    .min(1)
+    .max(20)
+    .describe('Metrics to plot (one series per item; series are stacked).'),
+  groupBy: z
+    .string()
+    .optional()
+    .describe(
+      'Column to split/group by; each group value becomes a stacked series. ' +
+        'Top-level columns use PascalCase (e.g. "SpanName"). ' +
+        "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+    ),
+  ...mcpTimeChartDisplayFields,
+  seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
+  formulas: mcpTileFormulasSchema,
+  showOperandSeries: mcpShowOperandSeriesSchema,
+};
+
 export const mcpBarTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    ...rejectedTileWhereFields,
-    displayType: z
-      .literal('stacked_bar')
-      .describe('Stacked bar chart over time'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    select: z.array(mcpTileSelectItemSchema).min(1).max(20),
-    groupBy: z.string().optional(),
-    fillNulls: z.boolean().optional().default(true),
-    alignDateRangeToGranularity: z.boolean().optional(),
-    asRatio: z.boolean().optional(),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    seriesLimit: seriesLimitSchema.describe(timeChartSeriesLimitDescription),
-    formulas: mcpTileFormulasSchema,
-    showOperandSeries: mcpShowOperandSeriesSchema,
-  }),
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z
+        .literal('stacked_bar')
+        .describe('Stacked bar chart over time'),
+      ...mcpStackedTimeChartConfigFields,
+    })
+    .describe('Stacked bar chart query and display settings.'),
+});
+
+export const mcpStackedLineTileSchema = mcpTileLayoutSchema.extend({
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z
+        .literal('stacked_line')
+        .describe('Stacked line (area) chart over time'),
+      ...mcpStackedTimeChartConfigFields,
+      lineInterpolation: LineInterpolationSchema.optional().describe(
+        'How points are connected: "linear" (default), "smooth", or "step".',
+      ),
+    })
+    .describe('Stacked line chart query and display settings.'),
 });
 
 const mcpTableTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    ...rejectedTileWhereFields,
-    displayType: z.literal('table').describe('Tabular aggregated data'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    select: z.array(mcpTileSelectItemSchema).min(1).max(20),
-    groupBy: z
-      .string()
-      .optional()
-      .describe(
-        'Group rows by this column. Use PascalCase for top-level columns (e.g. "SpanName"). ' +
-          "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
-      ),
-    having: z
-      .string()
-      .max(10000)
-      .optional()
-      .describe(
-        'Post-aggregation SQL HAVING expression. Example: "Count > 100" to drop ' +
-          'groups with few rows, or "StatusMessage != \'\'" to drop empty-message rows ' +
-          'from a groupBy: "StatusMessage" table. Mirrors the same field on the REST ' +
-          'table chart config in `externalDashboardTableChartConfigSchema`.\n\n' +
-          sqlOnlyVariableMacroDescription,
-      ),
-    orderBy: z
-      .string()
-      .optional()
-      .describe(
-        'Sort results by this column. ' +
-          'When ordering by an alias that contains spaces or special characters, ' +
-          `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
-      ),
-    asRatio: z.boolean().optional(),
-    groupByColumnsOnLeft: z
-      .boolean()
-      .optional()
-      .describe(
-        'Render Group By columns on the left side of the table, before the series columns. ' +
-          'Default false (Group By columns on the right).',
-      ),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    onClick: mcpOnClickSchema.optional(),
-    formulas: mcpTileFormulasSchema,
-    showOperandSeries: mcpShowOperandSeriesSchema,
-  }),
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z.literal('table').describe('Tabular aggregated data'),
+      sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+      select: z
+        .array(mcpTileSelectItemSchema)
+        .min(1)
+        .max(20)
+        .describe('Aggregations to compute (one column per item).'),
+      groupBy: z
+        .string()
+        .optional()
+        .describe(
+          'Group rows by this column. Use PascalCase for top-level columns (e.g. "SpanName"). ' +
+            "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+        ),
+      having: z
+        .string()
+        .max(10000)
+        .optional()
+        .describe(
+          'Post-aggregation SQL HAVING expression. Example: "Count > 100" to drop ' +
+            'groups with few rows, or "StatusMessage != \'\'" to drop empty-message rows ' +
+            'from a groupBy: "StatusMessage" table.\n\n' +
+            sqlOnlyVariableMacroDescription,
+        ),
+      orderBy: z
+        .string()
+        .optional()
+        .describe(
+          'Sort results by this column. ' +
+            'When ordering by an alias that contains spaces or special characters, ' +
+            `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+        ),
+      asRatio: z.boolean().optional().describe(asRatioDescription),
+      groupByColumnsOnLeft: z
+        .boolean()
+        .optional()
+        .describe(
+          'Render Group By columns on the left side of the table, before the series columns. ' +
+            'When omitted or false, they render on the right.',
+        ),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(tileLevelNumberFormatDescription),
+      onClick: mcpOnClickSchema.optional(),
+      formulas: mcpTileFormulasSchema,
+      showOperandSeries: mcpShowOperandSeriesSchema,
+    })
+    .describe('Table query and display settings.'),
 });
 
 export const mcpNumberTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    ...rejectedTileWhereFields,
-    displayType: z.literal('number').describe('Single aggregate scalar value'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    select: z
-      .array(mcpTileSelectItemSchema)
-      .min(1)
-      .max(20)
-      .describe(
-        'Exactly one metric to display — unless `formulas` is set, in which ' +
-          'case the select items are the formula operands and the (single) ' +
-          'formula value is displayed instead.',
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z
+        .literal('number')
+        .describe('Single aggregate scalar value'),
+      sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+      select: z
+        .array(mcpTileSelectItemSchema)
+        .min(1)
+        .max(20)
+        .describe(
+          'Exactly one metric to display — unless `formulas` is set, in which ' +
+            'case the select items are the formula operands and the (single) ' +
+            'formula value is displayed instead.',
+        ),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(tileLevelNumberFormatDescription),
+      formulas: z
+        .array(mcpFormulaSchema)
+        .max(1)
+        .optional()
+        .describe(
+          `${tileFormulasDescription} Number tiles support a single formula ` +
+            'and always display the formula value (operand series are hidden).',
+        ),
+      color: ChartPaletteTokenSchema.optional().describe(
+        numberTileColorDescription,
       ),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    formulas: z
-      .array(mcpFormulaSchema)
-      .max(1)
-      .optional()
-      .describe(
-        `${tileFormulasDescription} Number tiles support a single formula ` +
-          'and always display the formula value (operand series are hidden).',
+      colorRules: z
+        .array(NumberTileColorConditionSchema)
+        .max(10)
+        .optional()
+        .describe(numberTileColorRulesDescription),
+      backgroundChart: BackgroundChartSchema.optional().describe(
+        numberTileBackgroundChartDescription,
       ),
-    color: ChartPaletteTokenSchema.optional().describe(
-      numberTileColorDescription,
-    ),
-    colorRules: z
-      .array(NumberTileColorConditionSchema)
-      .max(10)
-      .optional()
-      .describe(numberTileColorRulesDescription),
-    backgroundChart: BackgroundChartSchema.optional().describe(
-      numberTileBackgroundChartDescription,
-    ),
-  }),
+    })
+    .describe('Number tile query and display settings.'),
 });
 
 const mcpPieTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    ...rejectedTileWhereFields,
-    displayType: z.literal('pie').describe('Pie chart'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    select: z.array(mcpTileSelectItemSchema).length(1),
-    groupBy: z
-      .string()
-      .optional()
-      .describe(
-        'Column that defines pie slices. Use PascalCase for top-level columns. ' +
-          "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
-      ),
-    orderBy: z
-      .string()
-      .optional()
-      .describe(
-        'Optional custom SQL ORDER BY expression. Overrides the default ' +
-          'value-descending ordering and, combined with `limit`, controls which ' +
-          'slices are kept. When ordering by an alias that contains spaces or ' +
-          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
-      ),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    limit: z
-      .number()
-      .int()
-      .nonnegative()
-      .optional()
-      .describe(
-        'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
-          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
-          'keeps the first N in that order. Omit or set 0 to fetch all groups.',
-      ),
-  }),
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z.literal('pie').describe('Pie chart'),
+      sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+      select: z
+        .array(mcpTileSelectItemSchema)
+        .length(1)
+        .describe('The aggregation that sizes each slice.'),
+      groupBy: z
+        .string()
+        .optional()
+        .describe(
+          'Column that defines pie slices. Use PascalCase for top-level columns. ' +
+            "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+        ),
+      orderBy: z
+        .string()
+        .optional()
+        .describe(
+          'Optional custom SQL ORDER BY expression. Overrides the default ' +
+            'value-descending ordering and, combined with `limit`, controls which ' +
+            'slices are kept. When ordering by an alias that contains spaces or ' +
+            `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+        ),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(tileLevelNumberFormatDescription),
+      limit: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe(
+          'Maximum number of slices (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+            'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+            'keeps the first N in that order. Omit or set 0 to fetch all groups.',
+        ),
+    })
+    .describe('Pie chart query and display settings.'),
 });
 
 // Categorical bar charts ('bar') behave exactly like pie charts: one
 // aggregated select item, optional groupBy, no time bucketing. Distinct
 // from 'stacked_bar', which is a time series.
 const mcpCategoricalBarTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    ...rejectedTileWhereFields,
-    displayType: z
-      .literal('bar')
-      .describe('Bar chart — one bar per group value (not a time series)'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    select: z.array(mcpTileSelectItemSchema).length(1),
-    groupBy: z
-      .string()
-      .optional()
-      .describe(
-        'Column(s) that define the bars. Use PascalCase for top-level columns. ' +
-          "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
-      ),
-    orderBy: z
-      .string()
-      .optional()
-      .describe(
-        'Optional custom SQL ORDER BY expression. Overrides the default ' +
-          'value-descending ordering and, combined with `limit`, controls which ' +
-          'bars are kept. When ordering by an alias that contains spaces or ' +
-          `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
-      ),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    limit: z
-      .number()
-      .int()
-      .nonnegative()
-      .optional()
-      .describe(
-        'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
-          'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
-          'keeps the first N in that order. Omit or set 0 to fetch all groups.',
-      ),
-  }),
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z
+        .literal('bar')
+        .describe('Bar chart — one bar per group value (not a time series)'),
+      sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
+      select: z
+        .array(mcpTileSelectItemSchema)
+        .length(1)
+        .describe('The aggregation that sets each bar height.'),
+      groupBy: z
+        .string()
+        .optional()
+        .describe(
+          'Column(s) that define the bars. Use PascalCase for top-level columns. ' +
+            "For attributes: SpanAttributes['key'] or ResourceAttributes['key'].",
+        ),
+      orderBy: z
+        .string()
+        .optional()
+        .describe(
+          'Optional custom SQL ORDER BY expression. Overrides the default ' +
+            'value-descending ordering and, combined with `limit`, controls which ' +
+            'bars are kept. When ordering by an alias that contains spaces or ' +
+            `special characters, wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+        ),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(tileLevelNumberFormatDescription),
+      limit: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe(
+          'Maximum number of bars (SQL LIMIT). Without a custom `orderBy`, keeps ' +
+            'the top-N groups by the aggregated value, descending; with an `orderBy` ' +
+            'keeps the first N in that order. Omit or set 0 to fetch all groups.',
+        ),
+    })
+    .describe('Bar chart query and display settings.'),
 });
 
 // Heatmap tiles use a dedicated select-item shape: heatmap aggregation is
@@ -912,145 +1005,199 @@ const mcpHeatmapSelectItemSchema = z.object({
     .string()
     .min(1)
     .describe(
-      'Numeric column or expression to bucket. Required and must be non-empty. ' +
+      'Numeric column or expression to bucket. ' +
         'Use "Duration" for trace latency heatmaps, or any other numeric column.',
     ),
   countExpression: z
     .string()
     .optional()
     .describe(
-      'Custom count expression (e.g. "count()"). Optional; defaults are applied by the renderer.',
+      'Custom count expression (e.g. "count()"). The renderer applies a default when omitted.',
     ),
   heatmapScaleType: z
     .enum(['log', 'linear'])
     .optional()
-    .describe('Color scale: "log" or "linear"'),
+    .describe('Scale of the y axis (the bucketed value).'),
 });
 
-// Heatmap tiles are builder-only and currently restricted to Trace sources
-// (see HEATMAP_ALLOWED_SOURCE_KINDS in `packages/common-utils/src/guards.ts`).
+// Distribution heatmap tiles are builder-only and restricted to Trace sources
+// (see HEATMAP_DISTRIBUTION_SOURCE_KINDS in `packages/common-utils/src/guards.ts`).
 // The save path runs `getHeatmapTilesWithIncompatibleSources` after schema
 // validation to enforce that, mirroring the REST handler.
 const mcpHeatmapTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    displayType: z
-      .literal('heatmap')
-      .describe('Heatmap chart, requires a Trace source'),
-    sourceId: z
-      .string()
-      .describe(
-        'Source ID. Must be a Trace source today; use clickstack_list_sources and ' +
-          'pick one whose kind is "trace".',
-      ),
-    select: z
-      .array(mcpHeatmapSelectItemSchema)
-      .length(1)
-      .describe('Exactly one heatmap series'),
-    where: z
-      .string()
-      .optional()
-      .default('')
-      .describe(
-        'Row-level filter applied before bucketing. Example: "level:error"\n\n' +
-          variableMacroDescription,
-      ),
-    whereLanguage:
-      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(
-        'Display formatting for bucket values. Example: { output: "duration", factor: 0.000000001 } ' +
-          'to format nanosecond durations as human-readable time.',
-      ),
-  }),
+  config: z
+    .object({
+      displayType: z
+        .literal('heatmap')
+        .describe(
+          'Heatmap chart. Without `heatmapMode` it is a distribution heatmap, ' +
+            'which buckets a numeric value on the y-axis and requires a Trace source',
+        ),
+      heatmapMode: z
+        .literal('distribution')
+        .optional()
+        .describe(
+          'Distribution mode; may be omitted. For a series heatmap use heatmapMode "series" instead.',
+        ),
+      sourceId: z
+        .string()
+        .describe(
+          'Source ID. Must be a Trace source today; use clickstack_list_sources and ' +
+            'pick one whose kind is "trace".',
+        ),
+      select: z
+        .array(mcpHeatmapSelectItemSchema)
+        .length(1)
+        .describe('The value to bucket.'),
+      where: z
+        .string()
+        .optional()
+        .default('')
+        .describe(
+          'Row-level filter applied before bucketing. Example: "level:error"\n\n' +
+            variableMacroDescription,
+        ),
+      whereLanguage: SearchConditionTrimmedLanguageSchema.optional()
+        .default('lucene')
+        .describe(tileWhereLanguageDescription),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(
+          'Display formatting for bucket values. Example: { output: "duration", factor: 0.000000001 } ' +
+            'to format nanosecond durations as human-readable time.',
+        ),
+    })
+    .describe('Distribution heatmap query and display settings.'),
+});
+
+const mcpHeatmapSeriesTileSchema = mcpTileLayoutSchema.extend({
+  config: z
+    .object({
+      ...rejectedTileWhereFields,
+      displayType: z
+        .literal('heatmap')
+        .describe(
+          'Series heatmap: one row per groupBy value, each cell colored by the ' +
+            'aggregated value over time',
+        ),
+      heatmapMode: z
+        .literal('series')
+        .describe(
+          'Selects the series heatmap: one row per groupBy value over time.',
+        ),
+      sourceId: z
+        .string()
+        .describe(
+          'Source ID of a Trace, Log, or Metric source - call clickstack_list_sources',
+        ),
+      select: z
+        .array(mcpTileSelectItemSchema)
+        .length(1)
+        .describe(
+          'Defines the aggregate value displayed for each heatmap series.',
+        ),
+      groupBy: z
+        .string()
+        .optional()
+        .describe(
+          'SQL GROUP BY expression defining the series shown in the heatmap.',
+        ),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(tileLevelNumberFormatDescription),
+    })
+    .describe('Series heatmap query and display settings.'),
 });
 
 const mcpSearchTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    displayType: z.literal('search').describe('Log/event search results list'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    where: z
-      .string()
-      .optional()
-      .default('')
-      .describe(
-        'Filter in Lucene syntax. Example: "level:error"\n\n' +
-          variableMacroDescription,
-      ),
-    whereLanguage:
-      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
-    select: z
-      .string()
-      .optional()
-      .default('')
-      .describe(
-        'Columns to display (empty = defaults). Example: "body,service.name,duration"',
-      ),
-  }),
+  config: z
+    .object({
+      displayType: z
+        .literal('search')
+        .describe('Log/event search results list'),
+      ...mcpRowListSourceFields,
+      select: z
+        .string()
+        .optional()
+        .default('')
+        .describe(
+          'Columns to display (empty = defaults). Example: "body,service.name,duration"',
+        ),
+    })
+    .describe('Search results list query settings.'),
 });
 
 const mcpEventPatternsTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    displayType: z
-      .literal('event_patterns')
-      .describe('Event pattern mining tile'),
-    sourceId: z.string().describe('Source ID – call clickstack_list_sources'),
-    where: z
-      .string()
-      .optional()
-      .default('')
-      .describe(
-        'Filter in Lucene syntax. Example: "level:error"\n\n' +
-          variableMacroDescription,
-      ),
-    whereLanguage:
-      SearchConditionTrimmedLanguageSchema.optional().default('lucene'),
-    select: z
-      .string()
-      .optional()
-      .default('')
-      .describe(
-        'Pattern expression — column or expression to mine patterns from. ' +
-          'Leave empty to use the source default (Body for logs, SpanName for traces). ' +
-          'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
-      ),
-  }),
+  config: z
+    .object({
+      displayType: z
+        .literal('event_patterns')
+        .describe('Event pattern mining tile'),
+      ...mcpRowListSourceFields,
+      select: z
+        .string()
+        .optional()
+        .default('')
+        .describe(
+          'Pattern expression — column or expression to mine patterns from. ' +
+            'Leave empty to use the source default (Body for logs, SpanName for traces). ' +
+            'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
+        ),
+    })
+    .describe('Event pattern mining query settings.'),
 });
 
 const mcpMarkdownTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    displayType: z.literal('markdown').describe('Free-form Markdown text tile'),
-    markdown: z.string().optional().default(''),
-  }),
+  config: z
+    .object({
+      displayType: z
+        .literal('markdown')
+        .describe('Free-form Markdown text tile'),
+      markdown: z
+        .string()
+        .optional()
+        .default('')
+        .describe('Markdown text rendered in the tile.'),
+    })
+    .describe('Markdown tile content.'),
 });
 
 export const mcpSqlTileSchema = mcpTileLayoutSchema.extend({
-  config: z.object({
-    configType: z
-      .literal('sql')
-      .describe(
-        'Must be "sql" for raw SQL tiles. ' +
-          'ADVANCED: Only use raw SQL tiles when the builder tile types cannot express the query you need.',
-      ),
-    displayType: z
-      .enum(['line', 'stacked_bar', 'table', 'number', 'pie', 'bar'])
-      .describe('How to render the SQL results'),
-    connectionId: z
-      .string()
-      .describe(
-        'Connection ID (not sourceId) – call clickstack_list_sources to find available connections',
-      ),
-    sourceId: z
-      .string()
-      .optional()
-      .describe(
-        'Source ID for the table this query reads from (call clickstack_list_sources). ' +
-          'ALWAYS set this for raw SQL tiles UNLESS the query reads from multiple tables ' +
-          '(e.g. JOINs or sub-queries spanning several sources), in which case omit it. ' +
-          'sourceId is REQUIRED by two macros: $__filters and $__sourceTable. ' +
-          'The sourceId must belong to the same connection as connectionId.',
-      ),
-    sqlTemplate: z.string().describe(`
+  config: z
+    .object({
+      configType: z
+        .literal('sql')
+        .describe(
+          'Marks this as a raw SQL tile. ' +
+            'ADVANCED: Only use raw SQL tiles when the builder tile types cannot express the query you need.',
+        ),
+      displayType: z
+        .enum([
+          'line',
+          'stacked_bar',
+          'stacked_line',
+          'table',
+          'number',
+          'pie',
+          'bar',
+        ])
+        .describe('How to render the SQL results'),
+      connectionId: z
+        .string()
+        .describe(
+          'Connection ID (not sourceId) – call clickstack_list_sources to find available connections',
+        ),
+      sourceId: z
+        .string()
+        .optional()
+        .describe(
+          'Source ID for the table this query reads from (call clickstack_list_sources). ' +
+            'ALWAYS set this for raw SQL tiles UNLESS the query reads from multiple tables ' +
+            '(e.g. JOINs or sub-queries spanning several sources), in which case omit it. ' +
+            'sourceId is REQUIRED by two macros: $__filters and $__sourceTable. ' +
+            'The sourceId must belong to the same connection as connectionId.',
+        ),
+      sqlTemplate: z.string().describe(`
 Raw ClickHouse SQL query. SQL guidelines:
 
 1. ALWAYS include a LIMIT clause to avoid excessive data.
@@ -1078,44 +1225,62 @@ WHERE $__timeFilter(TimestampTime)
   AND $__filters
 GROUP BY ServiceName, ts
 `),
-    fillNulls: z.boolean().optional(),
-    alignDateRangeToGranularity: z.boolean().optional(),
-    numberFormat: mcpNumberFormatSchema
-      .optional()
-      .describe(tileLevelNumberFormatDescription),
-    compareToPreviousPeriod: z
-      .boolean()
-      .optional()
-      .describe(
-        'Overlay the previous period as a dashed comparison series. ' +
-          'Valid only when displayType is "line", ignored otherwise.',
+      fillNulls: z
+        .boolean()
+        .optional()
+        .describe(
+          `${timeChartFillNullsDescription} Time-series display types only.`,
+        ),
+      alignDateRangeToGranularity: z
+        .boolean()
+        .optional()
+        .describe(
+          `${timeChartAlignDateRangeDescription} Time-series display types only.`,
+        ),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(tileLevelNumberFormatDescription),
+      compareToPreviousPeriod: z
+        .boolean()
+        .optional()
+        .describe(
+          'Overlay the previous period as a dashed comparison series. ' +
+            'Valid only when displayType is "line", ignored otherwise.',
+        ),
+      fitYAxisToData: z
+        .boolean()
+        .optional()
+        .describe(
+          'Scale the y-axis to the data range instead of starting at zero. ' +
+            'Valid only when displayType is "line", ignored otherwise.',
+        ),
+      color: ChartPaletteTokenSchema.optional().describe(
+        rawSqlNumberTileColorDescription,
       ),
-    fitYAxisToData: z
-      .boolean()
-      .optional()
-      .describe(
-        'Scale the y-axis to the data range instead of starting at zero. ' +
-          'Valid only when displayType is "line", ignored otherwise.',
+      colorRules: z
+        .array(NumberTileColorConditionSchema)
+        .max(10)
+        .optional()
+        .describe(rawSqlNumberTileColorRulesDescription),
+      onClick: mcpOnClickSchema.optional(),
+      lineInterpolation: LineInterpolationSchema.optional().describe(
+        'How points are connected: "smooth", "linear", or "step". Defaults to ' +
+          '"smooth" for "line" and "linear" for "stacked_line". ' +
+          'Valid only when displayType is "line" or "stacked_line", ignored otherwise.',
       ),
-    color: ChartPaletteTokenSchema.optional().describe(
-      rawSqlNumberTileColorDescription,
-    ),
-    colorRules: z
-      .array(NumberTileColorConditionSchema)
-      .max(10)
-      .optional()
-      .describe(rawSqlNumberTileColorRulesDescription),
-    onClick: mcpOnClickSchema.optional(),
-  }),
+    })
+    .describe('Raw SQL tile query and display settings.'),
 });
 
 const mcpTileSchema = z.union([
   mcpLineTileSchema,
   mcpBarTileSchema,
+  mcpStackedLineTileSchema,
   mcpTableTileSchema,
   mcpNumberTileSchema,
   mcpPieTileSchema,
   mcpCategoricalBarTileSchema,
+  mcpHeatmapSeriesTileSchema,
   mcpHeatmapTileSchema,
   mcpSearchTileSchema,
   mcpEventPatternsTileSchema,
@@ -1132,12 +1297,52 @@ const mcpPatchTileLayoutSchema = z.object({
     .min(1)
     .optional()
     .describe('Tile title. Omit to keep the existing title.'),
-  x: z.number().min(0).max(23).optional(),
-  y: z.number().min(0).optional(),
-  w: z.number().min(1).max(24).optional(),
-  h: z.number().min(1).optional(),
-  containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
-  tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+  x: z
+    .number()
+    .min(0)
+    .max(23)
+    .optional()
+    .describe(
+      "Grid column of the tile's left edge. Omit to keep the existing position.",
+    ),
+  y: z
+    .number()
+    .min(0)
+    .optional()
+    .describe(
+      "Grid row of the tile's top edge. Omit to keep the existing position.",
+    ),
+  w: z
+    .number()
+    .min(1)
+    .max(24)
+    .optional()
+    .describe(
+      'Width in grid columns; a full row is 24. Omit to keep the existing width.',
+    ),
+  h: z
+    .number()
+    .min(1)
+    .optional()
+    .describe('Height in grid rows. Omit to keep the existing height.'),
+  containerId: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .optional()
+    .describe(
+      "Container to place the tile in; must be the id of one of the dashboard's " +
+        'containers. Omit to keep the tile in its current container.',
+    ),
+  tabId: z
+    .string()
+    .min(1)
+    .max(DASHBOARD_CONTAINER_ID_MAX)
+    .optional()
+    .describe(
+      "Tab to place the tile in; must be a tab id on the tile's container. " +
+        'Omit to keep the current tab.',
+    ),
 });
 
 // Build the patch tile union by extending the default-free layout with
@@ -1146,6 +1351,9 @@ const mcpPatchTileLayoutSchema = z.object({
 const mcpPatchTileSchema = z.union([
   mcpPatchTileLayoutSchema.extend({ config: mcpLineTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({ config: mcpBarTileSchema.shape.config }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpStackedLineTileSchema.shape.config,
+  }),
   mcpPatchTileLayoutSchema.extend({ config: mcpTableTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpNumberTileSchema.shape.config,
@@ -1153,6 +1361,9 @@ const mcpPatchTileSchema = z.union([
   mcpPatchTileLayoutSchema.extend({ config: mcpPieTileSchema.shape.config }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpCategoricalBarTileSchema.shape.config,
+  }),
+  mcpPatchTileLayoutSchema.extend({
+    config: mcpHeatmapSeriesTileSchema.shape.config,
   }),
   mcpPatchTileLayoutSchema.extend({
     config: mcpHeatmapTileSchema.shape.config,
@@ -1193,9 +1404,7 @@ export const mcpTilesParam = z
 
 const VARIABLE_NAME_DESCRIPTION =
   "Token that tiles reference this filter's selected value by, eg. $variableName. " +
-  'Must start with a letter and may contain only letters, numbers, and ' +
-  `underscores, up to ${DASHBOARD_VARIABLE_NAME_MAX_LENGTH} characters. ` +
-  'A default is determined based on the display name. ' +
+  'A default is derived from the display name when omitted. ' +
   "Must be unique across the dashboard's variable-enabled filters.";
 
 const variableNameSchema = z
@@ -1237,8 +1446,8 @@ const mcpDashboardFilterBaseShape = {
         '"missing required filters" message instead. By default, tiles that ' +
         'reference this filter by its variable or receive a broadcasted value ' +
         'from this filter will be blocked. isGlobalRequirement widens the block ' +
-        'to all tiles.Only 0 and 1 are accepted; omit the field (or pass 0) for ' +
-        'the normal optional behavior, which is usually what you want.',
+        'to all tiles. Omit the field (or pass 0) for the normal optional ' +
+        'behavior, which is usually what you want.',
     ),
   isGlobalRequirement: z
     .boolean()
@@ -1246,6 +1455,19 @@ const mcpDashboardFilterBaseShape = {
     .describe(
       'Widens a REQUIRED filter (minSelections: 1) to block EVERY tile on the dashboard, ' +
         'not just the ones that read it. Ignored unless minSelections is 1.',
+    ),
+  maxSelections: z
+    .number()
+    .int()
+    .min(1)
+    .max(1)
+    .optional()
+    .describe(
+      'Set to 1 to make this filter SINGLE-SELECT: the user can pick at most one ' +
+        'value. In PromQL, a single-select variable expands to its raw value by ' +
+        'default (for exact matchers such as {job="$job"}), while a multi-select ' +
+        'one expands to an escaped regex (for {job=~"$job"}). Omit for the normal ' +
+        'multi-select behavior.',
     ),
 };
 
@@ -1296,14 +1518,14 @@ const mcpQueryExpressionFilterSchema = z
           'collapses its dropdown to the values already picked.',
       ),
     whereLanguage: SearchConditionTrimmedLanguageSchema.describe(
-      'Filter language for `where` ("lucene" or "sql"). Optional, but set it explicitly.',
+      'Query language of `where`. Set it explicitly.',
     ),
     appliesToSourceIds: z
       .array(objectIdSchema)
       .optional()
       .describe(
-        'Optional list of source IDs that this filter is applied to. ' +
-          'Omit (or pass `undefined`) to apply the filter to ALL tiles regardless of source ' +
+        'Source IDs (from clickstack_list_sources) that this filter is applied to. ' +
+          'Omit to apply the filter to ALL tiles regardless of source ' +
           '— this is the recommended default. ' +
           'A non-empty array restricts the filter to only tiles whose source ID is in the list; ' +
           'tiles on other sources are not affected by the dropdown value at all. ' +
@@ -1357,8 +1579,7 @@ const mcpStaticListFilterSchema = z
         'Filter type discriminator for a filter whose dropdown offers a fixed hand-authored list; no source query.',
       ),
     options: StaticListDashboardFilterSchema.shape.options.describe(
-      'The values the dropdown offers, in display order. ' +
-        `1-${DASHBOARD_STATIC_FILTER_MAX_OPTIONS} unique, non-empty strings.`,
+      'The values the dropdown offers, in display order, without duplicates.',
     ),
   })
   .describe(
@@ -1447,15 +1668,17 @@ export const mcpFiltersParam = z
   );
 
 export const mcpPatchDashboardSchema = z.object({
-  dashboardId: objectIdSchema.describe('Dashboard ID.'),
+  dashboardId: objectIdSchema.describe(
+    'ID of the dashboard to patch, from clickstack_get_dashboard (no id lists ' +
+      'dashboards) or clickstack_search_dashboards.',
+  ),
   name: z
     .string()
     .min(1)
     .optional()
     .describe('New dashboard name. Omit to keep the current name.'),
   tags: tagsSchema.describe(
-    `New tags array (replaces all existing tags). Omit to keep the current tags. ` +
-      `Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+    'New tag list; replaces all existing tags. Omit to keep the current tags.',
   ),
   tileId: z
     .string()
@@ -1469,7 +1692,8 @@ export const mcpPatchDashboardSchema = z.object({
     .describe(
       'The full replacement tile definition. Replaces the tile matched by tileId. ' +
         'Layout fields (x, y, w, h), name, and containerId/tabId default to the ' +
-        "existing tile's values when omitted, so you only need to specify what changed.",
+        "existing tile's values when omitted. `config` is not merged: send the " +
+        'complete config, since omitted config fields are not carried over.',
     ),
 });
 
@@ -1479,12 +1703,14 @@ export const mcpSearchDashboardsSchema = z.object({
     .max(200)
     .optional()
     .describe(
-      'Search term to match against dashboard names (case-insensitive substring match).',
+      'Text matched against dashboard names as a case-insensitive substring.',
     ),
   tags: z
     .array(z.string().min(1))
     .optional()
-    .describe('Filter to dashboards that have ALL of these tags.'),
+    .describe(
+      'Return only dashboards that carry every one of these tags (exact match).',
+    ),
 });
 
 export const mcpContainersParam = z
@@ -1500,10 +1726,6 @@ export const mcpContainersParam = z
       '- A tile.containerId must reference a container id in this array.\n' +
       '- A tile.tabId must reference a tab id on the same container.\n' +
       '- tile.tabId requires tile.containerId.\n\n' +
-      'Container shape: { id, title, collapsed, collapsible?, bordered?, tabs? }. ' +
-      '`collapsed` is required. `collapsible` and `bordered` are optional and ' +
-      'persisted absent when omitted; the renderer treats absence as true. ' +
-      'Two or more tabs render as a tab bar; zero or one tab renders as a plain group header.\n\n' +
       'Example:\n' +
       '[\n' +
       '  { "id": "service-health", "title": "Service Health", "collapsed": false,\n' +

@@ -1,9 +1,9 @@
 import React from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
+import { Badge } from '@clickhouse/click-ui';
 import {
   Avatar,
-  Badge,
   Button,
   Group,
   Menu,
@@ -345,7 +345,6 @@ export const AppNavLink = ({
   onToggle,
   isBeta,
   badgeLabel,
-  badgeColor,
   isActive,
 }: {
   className?: string;
@@ -356,7 +355,6 @@ export const AppNavLink = ({
   onToggle?: () => void;
   isBeta?: boolean;
   badgeLabel?: string;
-  badgeColor?: string;
   isActive?: boolean;
 }) => {
   const { pathname, isCollapsed } = React.use(AppNavContext);
@@ -392,14 +390,11 @@ export const AppNavLink = ({
       </span>
       {!isCollapsed && (isBeta || badgeLabel) && (
         <Badge
-          size="xs"
-          color={badgeLabel ? (badgeColor ?? 'orange') : 'blue'}
-          variant="light"
-          tt="none"
+          size="sm"
+          text={badgeLabel ?? 'Beta'}
+          state="info"
           className={styles.navItemBadge}
-        >
-          {badgeLabel ?? 'Beta'}
-        </Badge>
+        />
       )}
       {!isCollapsed && onToggle && (
         <Tooltip

@@ -1,4 +1,8 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import type {
+  AdhocConditionAction,
+  AdhocConditionEntry,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   Alert,
   AlertsPageItem as _AlertsPageItem,
@@ -19,7 +23,18 @@ export type ChartQueryResult = Pick<
   'data' | 'meta' | 'rows'
 > & {
   isComplete: boolean;
+  /** PromQL time series only: each series' labels, by series name. */
+  promqlSeriesLabels?: Record<string, Record<string, string>>;
 };
+
+/**
+ * Applies a value clicked in a dashboard tile to the ad hoc filters that
+ * broadcast to the tile. A chart series passes one entry per group-by value.
+ */
+export type TileFilterHandler = (
+  entries: AdhocConditionEntry[],
+  action: AdhocConditionAction,
+) => void;
 
 export type AlertsPageItem = _AlertsPageItem;
 
@@ -118,7 +133,7 @@ export type TimeChartSeries = {
   groupBy: string[];
   numberFormat?: NumberFormat;
   color?: string;
-  displayType?: 'stacked_bar' | 'line';
+  displayType?: 'stacked_bar' | 'stacked_line' | 'line';
   implicitColumn?: string;
   whereSql?: string;
   groupBySql?: string;

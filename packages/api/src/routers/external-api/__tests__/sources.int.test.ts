@@ -1,3 +1,7 @@
+import {
+  mapGranularityToExternalFormat,
+  mapGranularityToInternalFormat,
+} from '@hyperdx/common-utils/dist/externalSource';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import request, { SuperAgentTest } from 'supertest';
@@ -20,10 +24,6 @@ import {
 } from '@/models/source';
 import { ITeam } from '@/models/team';
 import { IUser } from '@/models/user';
-import {
-  mapGranularityToExternalFormat,
-  mapGranularityToInternalFormat,
-} from '@/routers/external-api/v2/sources';
 
 describe('External API v2 Sources', () => {
   const server = getServer();

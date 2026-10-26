@@ -3,7 +3,11 @@ import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
-import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  formatDate,
+  objectHash,
+  UTC_TIME_ZONE,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -617,6 +621,7 @@ export const renderAlertTemplate = async ({
   teamWebhooksById,
   dispatcher = inlineNotificationDispatcher,
   sampleLines,
+  groupValues,
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
@@ -634,6 +639,8 @@ export const renderAlertTemplate = async ({
    * per group; without one they are fetched here.
    */
   sampleLines?: () => Promise<string>;
+  // Flat, unlike view.attributes, so a dotted column name stays one key.
+  groupValues?: Record<string, string>;
 }): Promise<RenderedAlert> => {
   // Internal mutable view with __hdx_query_results__ populated on the
   // saved-search path. Untrusted values must flow through the view so
@@ -752,6 +759,7 @@ export const renderAlertTemplate = async ({
           : undefined,
         value,
         groupKey: group ?? '',
+        groupValues: groupValues ?? {},
         sourceQuery: truncateString(
           describeSourceQuery(alert, savedSearch, dashboard),
           MAX_SOURCE_QUERY_LENGTH,
@@ -877,9 +885,9 @@ export const renderAlertTemplate = async ({
   };
 
   const timeRangeMessage = `Time Range (UTC): [${formatDate(view.startTime, {
-    isUTC: true,
+    timeZone: UTC_TIME_ZONE,
   })} - ${formatDate(view.endTime, {
-    isUTC: true,
+    timeZone: UTC_TIME_ZONE,
   })})`;
   let rawTemplateBody;
 

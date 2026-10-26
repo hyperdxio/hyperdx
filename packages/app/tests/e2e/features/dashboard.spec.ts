@@ -124,6 +124,44 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test('persists a stacked line display type across a reload', async () => {
+    const uniqueDashboardName = `Stacked Line Dashboard ${Date.now()}`;
+
+    await test.step('Create a dashboard with a time-series tile', async () => {
+      await expect(dashboardPage.createButton).toBeVisible();
+      await dashboardPage.createNewDashboard();
+      await dashboardPage.editDashboardName(uniqueDashboardName);
+
+      await dashboardPage.addTile();
+      await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+      await dashboardPage.chartEditor.createBasicChart('Stacked line tile');
+
+      await expect(dashboardPage.getTiles()).toHaveCount(1, { timeout: 10000 });
+      await expect(dashboardPage.getChartContainers()).toHaveCount(1, {
+        timeout: 10000,
+      });
+    });
+
+    await test.step('Switch the tile to stacked line via the switcher', async () => {
+      await expect(
+        dashboardPage.getTileDisplaySwitcherOption('line'),
+      ).toHaveAttribute('data-active', 'true');
+
+      await dashboardPage.getTileDisplaySwitcherOption('stacked_line').click();
+      await expect(
+        dashboardPage.getTileDisplaySwitcherOption('stacked_line'),
+      ).toHaveAttribute('data-active', 'true');
+    });
+
+    await test.step('Reload and confirm the stacked line shape persisted', async () => {
+      await dashboardPage.page.reload();
+      await expect(dashboardPage.getChartContainers().first()).toBeVisible();
+      await expect(
+        dashboardPage.getTileDisplaySwitcherOption('stacked_line'),
+      ).toHaveAttribute('data-active', 'true');
+    });
+  });
+
   test('Comprehensive dashboard workflow - create, add tiles, configure, and test', async () => {
     test.setTimeout(60000);
 
@@ -296,6 +334,17 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     });
   });
 
+  test('should warn when closing tile editor after changing only the chart type', async () => {
+    await dashboardPage.openNewTileEditor();
+    await dashboardPage.chartEditor.waitForDataToLoad();
+    await dashboardPage.chartEditor.setPreviewDisplayType('stacked_bar');
+
+    await dashboardPage.page.keyboard.press('Escape');
+    await expect(dashboardPage.unsavedChangesConfirmModal).toBeAttached({
+      timeout: 5000,
+    });
+  });
+
   test('should warn when closing tile editor with unsaved display settings changes', async () => {
     await dashboardPage.openNewTileEditor();
 
@@ -353,7 +402,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await dashboardPage.chartEditor.setChartName(tileName);
 
       await expect(dashboardPage.chartEditor.alertButton).toHaveText(
-        'Add Alert',
+        'Add alert',
       );
       await dashboardPage.chartEditor.clickAddAlert();
       await dashboardPage.chartEditor.addNewWebhookButton.click();
@@ -419,6 +468,9 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       // Hover over first tile to reveal edit button
       await dashboardPage.editTile(0);
 
+      await expect(dashboardPage.chartEditor.alertButton).toHaveText(
+        'Edit alert',
+      );
       await dashboardPage.chartEditor.clickRemoveAlert();
 
       await dashboardPage.saveTile();
@@ -1381,6 +1433,85 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
     },
   );
 
+  test(
+    'replay search keeps a multi-line SQL where after the search page rewrites the URL',
+    { tag: '@full-stack' },
+    async () => {
+      const chartName = `E2E Multiline Replay Tile ${Date.now()}`;
+      // The line break must be the only whitespace between the two tokens: the
+      // browser strips raw newlines from URLs but keeps spaces, so an indented
+      // second line would survive the bug as valid SQL.
+      const whereLines = ["ServiceName != '' AND", "SeverityText != ''"];
+      const multilineWhere = whereLines.join('\n');
+
+      await test.step('Save a builder tile with a multi-line SQL where', async () => {
+        await dashboardPage.createNewDashboard();
+        await dashboardPage.addTile();
+        await expect(dashboardPage.chartEditor.nameInput).toBeVisible();
+        await dashboardPage.chartEditor.waitForDataToLoad();
+        await dashboardPage.chartEditor.setChartType(DisplayType.Line);
+        await dashboardPage.chartEditor.setChartName(chartName);
+        await dashboardPage.chartEditor.selectSource(DEFAULT_LOGS_SOURCE_NAME);
+        await dashboardPage.chartEditor.setMultilineSqlWhere(whereLines);
+        await dashboardPage.chartEditor.runQuery();
+        await dashboardPage.saveTile();
+      });
+
+      const tile = dashboardPage.getTiles().filter({ hasText: chartName });
+      const replayButton = tile.locator(
+        '[data-testid^="tile-replay-search-button-"]',
+      );
+
+      await test.step('The replay link carries the where with its line break', async () => {
+        await tile.hover();
+        await expect(replayButton).toBeVisible();
+        const href = String(await replayButton.getAttribute('href'));
+        const where = String(
+          new URL(href, 'http://localhost').searchParams.get('where'),
+        );
+        expect(decodeURIComponent(where)).toBe(multilineWhere);
+      });
+
+      await test.step('Changing the time range on the search page keeps the line break', async () => {
+        const popupPromise = dashboardPage.page.waitForEvent('popup');
+        await replayButton.click();
+        const searchTab = await popupPromise;
+        const searchPage = new SearchPage(searchTab);
+        const readWhere = () =>
+          decodeURIComponent(
+            new URL(searchTab.url()).searchParams.get('where') ?? '',
+          );
+
+        await expect(searchTab).toHaveURL(/\/search\?/, { timeout: 15000 });
+        await expect(searchPage.table.firstRow).toBeVisible({
+          timeout: 30000,
+        });
+        const landedFrom = new URL(searchTab.url()).searchParams.get('from');
+
+        // A nuqs write that doesn't touch `where` rebuilds the whole query
+        // string from the decoded params. A single-encoded `where` comes back
+        // with a raw newline that the browser strips, joining the lines.
+        await searchPage.timePicker.selectRelativeTime('Last 1 days');
+        await expect
+          .poll(() => new URL(searchTab.url()).searchParams.get('from'), {
+            timeout: 10000,
+          })
+          .not.toBe(landedFrom);
+
+        expect(readWhere()).toBe(multilineWhere);
+        await expect(
+          searchPage.whereInput.sqlEditor.locator('.cm-line'),
+        ).toHaveCount(2);
+        await expect(searchPage.table.firstRow).toBeVisible({
+          timeout: 30000,
+        });
+        await expect(searchPage.chartErrorState).toHaveCount(0);
+
+        await searchTab.close();
+      });
+    },
+  );
+
   test.describe('Raw SQL Dashboard Tiles', () => {
     const LINE_SQL = `SELECT toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} SECOND) AS ts, count() AS count FROM default.e2e_otel_logs WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64}) AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64}) GROUP BY ts ORDER BY ts ASC`;
 
@@ -2248,7 +2379,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
           const href = (await link.getAttribute('href')) ?? '';
           const params = new URL(href, 'http://localhost').searchParams;
-          expect(params.get('where')).toBe("(ServiceName IN ('accounting'))");
+          // The search page reads `where` with nuqs (double-encoded), so decode
+          // the extra layer before asserting on the expanded predicate.
+          expect(decodeURIComponent(params.get('where') ?? '')).toBe(
+            "(ServiceName IN ('accounting'))",
+          );
           expect(decodeURIComponent(href)).not.toContain('$svc');
         });
 
@@ -2263,9 +2398,11 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
           const searchPage = new SearchPage(searchTab);
 
           await expect(searchTab).toHaveURL(/\/search\?/, { timeout: 15000 });
-          expect(new URL(searchTab.url()).searchParams.get('where')).toBe(
-            "(ServiceName IN ('accounting'))",
-          );
+          expect(
+            decodeURIComponent(
+              new URL(searchTab.url()).searchParams.get('where') ?? '',
+            ),
+          ).toBe("(ServiceName IN ('accounting'))");
 
           await expect(searchPage.table.firstRow).toBeVisible({
             timeout: 30000,
@@ -3333,7 +3470,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Wait for THIS dashboard's data to land before asserting absence —
         // otherwise the assertion races an unrendered page and passes for the
         // wrong reason.
-        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        await expect(dashboardPage.dashboardName).toHaveValue(uniqueName);
         // Terraform and ProvisionDashboardsTask would both claim ownership of
         // this dashboard, so the popover must not appear.
         await expect(terraformButton).toBeHidden();
@@ -3376,7 +3513,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
             `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
             "  { $set: { tiles: [{ id: 'promql-1', x: 0, y: 0, w: 4, h: 2,",
             "      config: { configType: 'promql', promqlExpression: 'up',",
-            "                connection: 'c1', displayType: 'line' } }] } }",
+            "                connection: 'c1', source: 's1', displayType: 'line' } }] } }",
             ')));',
           ].join('\n'),
         );
@@ -3386,7 +3523,7 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
 
       await test.step('Verify it is withheld after reload', async () => {
         await dashboardPage.gotoDashboard(dashboardId);
-        await expect(dashboardPage.dashboardName).toHaveText(uniqueName);
+        await expect(dashboardPage.dashboardName).toHaveValue(uniqueName);
         // Importing this dashboard would delete the PromQL tile on the next
         // apply, because the provider reads it back through external API v2.
         await expect(terraformButton).toBeHidden();

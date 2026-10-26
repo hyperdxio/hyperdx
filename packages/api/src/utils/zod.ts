@@ -11,8 +11,10 @@ import {
   ChartPaletteTokenSchema,
   DASHBOARD_CONTAINER_ID_MAX,
   DASHBOARD_MAX_TILES,
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
+  HeatmapScaleTypeSchema,
+  LineInterpolationSchema,
+  MAX_LEGEND_TEMPLATE_LENGTH,
+  MAX_PROMQL_EXPRESSIONS,
   MetricFormulaSchema,
   MetricsDataType,
   NumberFormatSchema,
@@ -20,12 +22,17 @@ import {
   OnClickDashboardSchema,
   OnClickExternalSchema,
   OnClickSearchSchema,
+  PromqlHeatmapModeSchema,
   PromqlLabelDashboardFilterSchema,
+  PromqlQueryTypeSchema,
+  PromqlReducerSchema,
   QueryExpressionDashboardFilterSchema,
   scheduleStartAtSchema,
   SearchConditionLanguageSchema as whereLanguageSchema,
+  SQLIntervalSchema,
   StaticListDashboardFilterSchema,
   tagsSchema,
+  TILE_DESCRIPTION_MAX_LENGTH,
   validateAlertChannelSelection,
   validateAlertScheduleOffsetMinutes,
   validateAlertThresholdMax,
@@ -77,7 +84,11 @@ const timeChartSeriesSchema = z.object({
   metricDataType: z.optional(z.nativeEnum(MetricsDataType)),
   metricName: z.string().optional(),
   displayType: z
-    .union([z.literal('stacked_bar'), z.literal('line')])
+    .union([
+      z.literal('stacked_bar'),
+      z.literal('stacked_line'),
+      z.literal('line'),
+    ])
     .optional(),
 });
 
@@ -156,7 +167,7 @@ const chartSeriesSchema = z.discriminatedUnion('type', [
 
 // Re-exported from common-utils so existing `@/utils/zod` importers keep working
 // while the canonical definition lives in the shared package.
-export { MAX_TAG_LENGTH, MAX_TAGS, tagsSchema };
+export { tagsSchema };
 
 const externalQueryExpressionFilterShape =
   QueryExpressionDashboardFilterSchema.omit({ source: true }).extend({
@@ -351,6 +362,7 @@ const externalDashboardLineChartConfigSchema =
     displayType: z.literal('line'),
     compareToPreviousPeriod: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    lineInterpolation: LineInterpolationSchema.optional(),
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     seriesLimit: z.number().int().nonnegative().optional(),
@@ -363,6 +375,7 @@ const externalDashboardLineRawSqlChartConfigSchema =
     fillNulls: z.boolean().optional(),
     alignDateRangeToGranularity: z.boolean().optional(),
     fitYAxisToData: z.boolean().optional(),
+    lineInterpolation: LineInterpolationSchema.optional(),
     // Three-state, matching the internal SharedChartSettingsSchema.seriesLimit:
     // omitted = default render cap, 0 = unlimited, positive N = top-N by peak.
     // Raw SQL Line tiles carry the client-side render cap too, so it must
@@ -388,6 +401,18 @@ const externalDashboardBarRawSqlChartConfigSchema =
     // Raw SQL StackedBar tiles carry the client-side render cap too, so it must
     // round-trip through the external API (GET→PUT) instead of being wiped.
     seriesLimit: z.number().int().nonnegative().optional(),
+  });
+
+const externalDashboardStackedLineChartConfigSchema =
+  externalDashboardBarChartConfigSchema.extend({
+    displayType: z.literal('stacked_line'),
+    lineInterpolation: LineInterpolationSchema.optional(),
+  });
+
+const externalDashboardStackedLineRawSqlChartConfigSchema =
+  externalDashboardBarRawSqlChartConfigSchema.extend({
+    displayType: z.literal('stacked_line'),
+    lineInterpolation: LineInterpolationSchema.optional(),
   });
 
 const externalDashboardTableChartConfigSchema = z.object({
@@ -512,13 +537,14 @@ export type ExternalDashboardHeatmapSelectItem = z.infer<
   typeof externalDashboardHeatmapSelectItemSchema
 >;
 
-// Heatmap exposes the row-level filter at the chart-config level (matching
-// the editor: HeatmapSeriesEditor renders a single SearchWhereInput bound
-// to the top-level `where` / `whereLanguage`). There is no groupBy in the
-// heatmap UI (HeatmapSeriesEditor doesn't render one), so it is omitted
-// from the schema.
+// Distribution-mode heatmap. It exposes the row-level filter at the
+// chart-config level (matching the editor: HeatmapSeriesEditor renders a
+// single SearchWhereInput bound to the top-level `where` / `whereLanguage`).
+// Distribution heatmaps have no groupBy, so it is omitted from the schema.
+// `heatmapMode` is optional: an absent mode is 'distribution'.
 const externalDashboardHeatmapChartConfigSchema = z.object({
   displayType: z.literal('heatmap'),
+  heatmapMode: z.literal('distribution').optional(),
   sourceId: objectIdSchema,
   select: z.array(externalDashboardHeatmapSelectItemSchema).length(1),
   where: z.string().max(10000).optional().default(''),
@@ -527,6 +553,15 @@ const externalDashboardHeatmapChartConfigSchema = z.object({
   // in this file (e.g. `externalDashboardSearchChartConfigSchema`) drop
   // the redundant outer `.optional()`.
   whereLanguage: whereLanguageSchema,
+  numberFormat: NumberFormatSchema.optional(),
+});
+
+const externalDashboardHeatmapSeriesChartConfigSchema = z.object({
+  displayType: z.literal('heatmap'),
+  heatmapMode: z.literal('series'),
+  sourceId: objectIdSchema,
+  select: z.array(externalDashboardSelectItemSchema).length(1),
+  groupBy: z.string().max(10000).optional(),
   numberFormat: NumberFormatSchema.optional(),
 });
 
@@ -567,6 +602,7 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
   [
     externalDashboardLineChartConfigSchema,
     externalDashboardBarChartConfigSchema,
+    externalDashboardStackedLineChartConfigSchema,
     externalDashboardTableChartConfigSchema,
     externalDashboardNumberChartConfigSchema,
     externalDashboardPieChartConfigSchema,
@@ -578,15 +614,32 @@ const externalDashboardBuilderTileConfigSchema = z.discriminatedUnion(
   ],
 );
 
-type ExternalDashboardBuilderTileConfig = z.infer<
-  typeof externalDashboardBuilderTileConfigSchema
->;
+export type ExternalDashboardBuilderTileConfig =
+  | z.infer<typeof externalDashboardBuilderTileConfigSchema>
+  | z.infer<typeof externalDashboardHeatmapSeriesChartConfigSchema>;
+
+/**
+ * Both heatmap modes share `displayType: 'heatmap'`, which a discriminated
+ * union cannot hold twice, so series-mode heatmaps are routed to their own
+ * schema. Any other `heatmapMode` falls through to the distribution schema
+ * and fails its literal.
+ */
+const getExternalBuilderTileConfigSchema = (data: unknown) =>
+  data !== null &&
+  typeof data === 'object' &&
+  'displayType' in data &&
+  data.displayType === 'heatmap' &&
+  'heatmapMode' in data &&
+  data.heatmapMode === 'series'
+    ? externalDashboardHeatmapSeriesChartConfigSchema
+    : externalDashboardBuilderTileConfigSchema;
 
 const externalDashboardRawSqlTileConfigSchema = z.discriminatedUnion(
   'displayType',
   [
     externalDashboardLineRawSqlChartConfigSchema,
     externalDashboardBarRawSqlChartConfigSchema,
+    externalDashboardStackedLineRawSqlChartConfigSchema,
     externalDashboardTableRawSqlChartConfigSchema,
     externalDashboardNumberRawSqlChartConfigSchema,
     externalDashboardPieRawSqlChartConfigSchema,
@@ -596,6 +649,118 @@ const externalDashboardRawSqlTileConfigSchema = z.discriminatedUnion(
 
 export type ExternalDashboardRawSqlTileConfig = z.infer<
   typeof externalDashboardRawSqlTileConfigSchema
+>;
+
+// PromQL tiles mirror `PromqlSavedChartConfig` (common-utils types.ts) and,
+// per display type, the fields the chart editor saves for a PromQL tile
+// (`convertFormStateToSavedChartConfig`). `connection` is not exposed: it is
+// read from the source at query time.
+const externalPromqlRangeExpressionSchema = z.object({
+  expression: z.string().max(10000),
+  alias: z.string().max(10000).optional(),
+});
+
+// Table, number, pie and bar tiles can evaluate an expression at a single
+// instant (`displayTypeSupportsInstantQuery`); other display types drop
+// `queryType` like the editor does.
+const externalPromqlInstantExpressionSchema =
+  externalPromqlRangeExpressionSchema.extend({
+    queryType: PromqlQueryTypeSchema.optional(),
+  });
+
+// Number, pie and bar tiles reduce a range query to one value per series
+// (`displayTypeSupportsReducer`).
+const externalPromqlReducibleExpressionSchema =
+  externalPromqlInstantExpressionSchema.extend({
+    reducer: PromqlReducerSchema.optional(),
+  });
+
+const externalPromqlExpressionListSchema = <T extends z.ZodTypeAny>(item: T) =>
+  z.array(item).min(1).max(MAX_PROMQL_EXPRESSIONS);
+
+const externalPromqlLegendTemplateSchema = z
+  .string()
+  .max(MAX_LEGEND_TEMPLATE_LENGTH)
+  .optional();
+
+const externalPromqlChartConfigBaseSchema = z.object({
+  configType: z.literal('promql'),
+  sourceId: objectIdSchema,
+  // Sets the Prometheus step and `$__interval` of range queries.
+  granularity: z.union([SQLIntervalSchema, z.literal('auto')]).optional(),
+  numberFormat: NumberFormatSchema.optional(),
+});
+
+const externalPromqlStackedChartConfigSchema =
+  externalPromqlChartConfigBaseSchema.extend({
+    displayType: z.literal('stacked_bar'),
+    expressions: externalPromqlExpressionListSchema(
+      externalPromqlRangeExpressionSchema,
+    ),
+    legendTemplate: externalPromqlLegendTemplateSchema,
+    fillNulls: z.boolean().optional(),
+    alignDateRangeToGranularity: z.boolean().optional(),
+    seriesLimit: z.number().int().nonnegative().optional(),
+  });
+
+const externalPromqlCategoricalChartConfigSchema =
+  externalPromqlChartConfigBaseSchema.extend({
+    displayType: z.literal('pie'),
+    expressions: externalPromqlExpressionListSchema(
+      externalPromqlReducibleExpressionSchema,
+    ),
+    legendTemplate: externalPromqlLegendTemplateSchema,
+    // Three-state: omitted = default cap, 0 = unlimited, positive N = top-N.
+    limit: z.number().int().nonnegative().optional(),
+  });
+
+const externalDashboardPromqlTileConfigSchema = z.discriminatedUnion(
+  'displayType',
+  [
+    externalPromqlStackedChartConfigSchema.extend({
+      displayType: z.literal('line'),
+      compareToPreviousPeriod: z.boolean().optional(),
+      lineInterpolation: LineInterpolationSchema.optional(),
+    }),
+    externalPromqlStackedChartConfigSchema,
+    externalPromqlStackedChartConfigSchema.extend({
+      displayType: z.literal('stacked_line'),
+      lineInterpolation: LineInterpolationSchema.optional(),
+    }),
+    externalPromqlChartConfigBaseSchema.extend({
+      displayType: z.literal('table'),
+      expressions: externalPromqlExpressionListSchema(
+        externalPromqlInstantExpressionSchema,
+      ),
+    }),
+    externalPromqlChartConfigBaseSchema.extend({
+      displayType: z.literal('number'),
+      expressions: externalPromqlExpressionListSchema(
+        externalPromqlReducibleExpressionSchema,
+      ),
+      color: ChartPaletteTokenSchema.optional(),
+      colorRules: z.array(NumberTileColorConditionSchema).max(10).optional(),
+      backgroundChart: BackgroundChartSchema.optional(),
+    }),
+    externalPromqlCategoricalChartConfigSchema,
+    externalPromqlCategoricalChartConfigSchema.extend({
+      displayType: z.literal('bar'),
+    }),
+    externalPromqlChartConfigBaseSchema.extend({
+      displayType: z.literal('heatmap'),
+      expressions: externalPromqlExpressionListSchema(
+        externalPromqlRangeExpressionSchema,
+      ),
+      // An absent mode is 'distribution'.
+      heatmapMode: PromqlHeatmapModeSchema.optional(),
+      heatmapScaleType: HeatmapScaleTypeSchema.optional(),
+      legendTemplate: externalPromqlLegendTemplateSchema,
+    }),
+  ],
+);
+
+export type ExternalDashboardPromqlTileConfig = z.infer<
+  typeof externalDashboardPromqlTileConfigSchema
 >;
 
 /**
@@ -609,27 +774,36 @@ const isRawSqlRoutedConfig = (data: unknown): boolean =>
   'configType' in data &&
   data.configType === 'sql';
 
+// Dashboard tiles only: inline alert configs have no PromQL variant.
+const isPromqlRoutedConfig = (data: unknown): boolean =>
+  data !== null &&
+  typeof data === 'object' &&
+  'configType' in data &&
+  data.configType === 'promql';
+
 /**
  * Rejects a `configType` the routing predicate does not recognize. Without
- * this, an unknown value (e.g. `configType: 'promql'`) routes to the builder
- * union, which strips the unrecognized keys and parses a body that asked for
- * something else — so the caller's PromQL config would silently persist as a
- * builder config. Returns true when an issue was raised (caller stops).
+ * this, an unknown value (e.g. `configType: 'promql'` on an alert config)
+ * routes to the builder union, which strips the unrecognized keys and parses a
+ * body that asked for something else — so the caller's config would silently
+ * persist as a builder config. Returns true when an issue was raised (caller
+ * stops).
  */
 const addUnsupportedConfigTypeIssue = (
   data: unknown,
   ctx: z.RefinementCtx,
+  supportedConfigTypes: readonly string[],
 ): boolean => {
   if (
     data !== null &&
     typeof data === 'object' &&
     'configType' in data &&
-    data.configType !== 'sql'
+    !supportedConfigTypes.some(type => type === data.configType)
   ) {
+    const supported = supportedConfigTypes.map(type => `"${type}"`).join(', ');
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message:
-        'configType must be "sql" or omitted (builder configs carry no configType)',
+      message: `configType must be ${supported} or omitted (builder configs carry no configType)`,
       path: ['configType'],
     });
     return true;
@@ -695,25 +869,33 @@ const addConfigTypeRoutedIssues = (
 
 const externalDashboardTileConfigSchema = z
   .custom<
-    ExternalDashboardRawSqlTileConfig | ExternalDashboardBuilderTileConfig
+    | ExternalDashboardRawSqlTileConfig
+    | ExternalDashboardBuilderTileConfig
+    | ExternalDashboardPromqlTileConfig
   >()
   .superRefine((data, ctx) => {
-    if (addUnsupportedConfigTypeIssue(data, ctx)) {
+    if (addUnsupportedConfigTypeIssue(data, ctx, ['sql', 'promql'])) {
       return;
     }
 
     // Route to the correct sub-schema based on configType so Zod's
     // discriminatedUnion can produce targeted field-level errors rather
     // than a generic union failure.
-    const schema = isRawSqlRoutedConfig(data)
-      ? externalDashboardRawSqlTileConfigSchema
-      : externalDashboardBuilderTileConfigSchema;
+    const schema = isPromqlRoutedConfig(data)
+      ? externalDashboardPromqlTileConfigSchema
+      : isRawSqlRoutedConfig(data)
+        ? externalDashboardRawSqlTileConfigSchema
+        : getExternalBuilderTileConfigSchema(data);
 
     const result = schema.safeParse(data);
     if (!result.success) {
       for (const issue of result.error.issues) {
         ctx.addIssue(issue);
       }
+      return;
+    }
+
+    if (isPromqlRoutedConfig(data)) {
       return;
     }
 
@@ -724,11 +906,12 @@ const externalDashboardTileConfigSchema = z
   })
   .transform(data => {
     // Re-parse through the appropriate sub-schema to strip unknown fields.
-    // Safe to call .parse() here — superRefine already validated the data,
-    // so this is guaranteed to succeed.
+    if (isPromqlRoutedConfig(data)) {
+      return externalDashboardPromqlTileConfigSchema.parse(data);
+    }
     return isRawSqlRoutedConfig(data)
       ? externalDashboardRawSqlTileConfigSchema.parse(data)
-      : externalDashboardBuilderTileConfigSchema.parse(data);
+      : getExternalBuilderTileConfigSchema(data).parse(data);
   });
 
 export type ExternalDashboardTileConfig = z.infer<
@@ -766,6 +949,7 @@ export const externalDashboardTileSchema = z
     // valid container id from the editor always fits.
     containerId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
     tabId: z.string().min(1).max(DASHBOARD_CONTAINER_ID_MAX).optional(),
+    description: z.string().max(TILE_DESCRIPTION_MAX_LENGTH).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.series && data.config) {
@@ -918,6 +1102,11 @@ export const externalAlertBuilderChartConfigSchema = z.discriminatedUnion(
       where: z.string().max(10000).optional(),
       whereLanguage: whereLanguageSchema,
     }),
+    externalDashboardStackedLineChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: z.string().max(10000).optional(),
+      whereLanguage: whereLanguageSchema,
+    }),
     externalDashboardNumberChartConfigSchema.extend({
       name: alertChartConfigNameSchema,
       where: z.string().max(10000).optional(),
@@ -935,6 +1124,11 @@ export const externalAlertRawSqlChartConfigSchema = z.discriminatedUnion(
       whereLanguage: rejectedAlertRawSqlWhereField,
     }),
     externalDashboardBarRawSqlChartConfigSchema.extend({
+      name: alertChartConfigNameSchema,
+      where: rejectedAlertRawSqlWhereField,
+      whereLanguage: rejectedAlertRawSqlWhereField,
+    }),
+    externalDashboardStackedLineRawSqlChartConfigSchema.extend({
       name: alertChartConfigNameSchema,
       where: rejectedAlertRawSqlWhereField,
       whereLanguage: rejectedAlertRawSqlWhereField,
@@ -959,7 +1153,7 @@ export type ExternalAlertChartConfig =
 export const externalAlertChartConfigSchema = z
   .custom<ExternalAlertChartConfig>()
   .superRefine((data, ctx) => {
-    if (addUnsupportedConfigTypeIssue(data, ctx)) {
+    if (addUnsupportedConfigTypeIssue(data, ctx, ['sql'])) {
       return;
     }
 

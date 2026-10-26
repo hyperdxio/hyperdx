@@ -1,5 +1,8 @@
+import { DEFAULT_PROMQL_REDUCER } from '@hyperdx/common-utils/dist/core/promql';
 import {
   BuilderChartConfigWithDateRange,
+  DisplayType,
+  PromqlReducer,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
@@ -7,8 +10,12 @@ import {
 import {
   ChartKeyJoiner,
   convertToNumberChartConfig,
+  convertToPromqlSparklineChartConfig,
+  convertToPromqlTableChartConfig,
+  convertToReducedPromqlChartConfig,
   convertToTableChartConfig,
   convertToTimeChartConfig,
+  convertV1ChartConfigToV2,
   findNearestSeriesKey,
   formatResponseForCategoricalChart,
   formatResponseForTimeChart,
@@ -20,6 +27,7 @@ import {
   resolveRenderedSeriesCap,
 } from '@/defaults';
 import { COLORS } from '@/utils';
+import { stripClientSideConfigFields } from '@/utils/chartConfig';
 
 // Anchor info/error to concrete hexes rather than `getChartColorInfo()` /
 // `getChartColorError()` so a regression that breaks the helpers can't
@@ -147,6 +155,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: [],
           isDashed: false,
         },
       ]);
@@ -238,6 +247,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -247,6 +257,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · checkout (previous)',
           displayName: 'max · checkout',
           valueColumnName: 'max',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -258,6 +269,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['shipping'],
           isDashed: false,
         },
         {
@@ -267,6 +279,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
           valueColumnName: 'max',
+          groupValues: ['shipping'],
           isDashed: false,
         },
       ]);
@@ -328,6 +341,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'info (previous)',
           displayName: 'info',
           valueColumnName: 'count()',
+          groupValues: ['info'],
           isDashed: false,
         },
         {
@@ -337,6 +351,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'debug (previous)',
           displayName: 'debug',
           valueColumnName: 'count()',
+          groupValues: ['debug'],
           isDashed: false,
         },
         {
@@ -346,6 +361,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'error (previous)',
           displayName: 'error',
           valueColumnName: 'count()',
+          groupValues: ['error'],
           isDashed: false,
         },
       ]);
@@ -436,6 +452,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · checkout (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · checkout',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -445,6 +462,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · checkout (previous)',
           displayName: 'max · checkout',
           valueColumnName: 'max',
+          groupValues: ['checkout'],
           isDashed: false,
         },
         {
@@ -456,6 +474,7 @@ describe('ChartUtils', () => {
             'AVG(toFloat64OrDefault(toString(Duration))) · shipping (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) · shipping',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: ['shipping'],
           isDashed: false,
         },
         {
@@ -465,6 +484,7 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'max · shipping (previous)',
           displayName: 'max · shipping',
           valueColumnName: 'max',
+          groupValues: ['shipping'],
           isDashed: false,
         },
       ]);
@@ -664,9 +684,39 @@ describe('ChartUtils', () => {
           previousPeriodKey: 'foo · {"key":"val"} · [1,2,3] (previous)',
           displayName: 'foo · {"key":"val"} · [1,2,3]',
           valueColumnName: 'count()',
+          groupValues: ['foo', { key: 'val' }, [1, 2, 3]],
           isDashed: false,
         },
       ]);
+    });
+
+    it('keeps raw group values, including nulls and values containing the key joiner', () => {
+      const path = `GET${ChartKeyJoiner}/api`;
+      const actual = formatResponseForTimeChart({
+        currentPeriodResponse: {
+          data: [
+            {
+              'count()': 5,
+              severity: null,
+              span_name: path,
+              __hdx_time_bucket: '2025-11-26T11:12:00Z',
+            },
+          ],
+          meta: [
+            { name: 'count()', type: 'UInt64' },
+            { name: 'severity', type: 'Nullable(String)' },
+            { name: 'span_name', type: 'String' },
+            { name: '__hdx_time_bucket', type: 'DateTime' },
+          ],
+        },
+        dateRange: [new Date(), new Date()],
+        granularity: '1 minute',
+        generateEmptyBuckets: false,
+      });
+
+      expect(actual.lineData).toHaveLength(1);
+      expect(actual.lineData[0].dataKey).toBe(`${ChartKeyJoiner}${path}`);
+      expect(actual.lineData[0].groupValues).toEqual([null, path]);
     });
 
     it('should plot previous period data when provided, shifted to align with current period', () => {
@@ -754,6 +804,7 @@ describe('ChartUtils', () => {
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration)))',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration)))',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: [],
           isDashed: false,
         },
         {
@@ -764,6 +815,7 @@ describe('ChartUtils', () => {
           dataKey: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           displayName: 'AVG(toFloat64OrDefault(toString(Duration))) (previous)',
           valueColumnName: 'AVG(toFloat64OrDefault(toString(Duration)))',
+          groupValues: [],
           isDashed: true,
         },
       ]);
@@ -1279,6 +1331,191 @@ describe('ChartUtils', () => {
     });
   });
 
+  describe('convertToPromqlTableChartConfig', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Table,
+      connection: 'conn',
+      source: 'source-promql',
+      promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
+      dateRange: [
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-26T01:00:14.076Z'),
+      ] as [Date, Date],
+    };
+
+    it('aligns a range query to its granularity, keeping every expression', () => {
+      const result = convertToPromqlTableChartConfig(promqlConfig);
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(result.granularity).toBe('1 minute');
+      expect(result.promqlExpression).toEqual(promqlConfig.promqlExpression);
+    });
+
+    it('leaves the date range unaligned for an instant query', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+      });
+
+      expect(result.dateRange).toEqual(promqlConfig.dateRange);
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToPromqlTableChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
+  });
+
+  describe('convertToReducedPromqlChartConfig and convertToPromqlSparklineChartConfig', () => {
+    const promqlConfig = {
+      configType: 'promql' as const,
+      displayType: DisplayType.Number,
+      connection: 'conn',
+      source: 'source-promql',
+      promqlExpression: [
+        { expression: 'up', queryType: 'range' as const },
+        { expression: 'down', queryType: 'range' as const },
+      ],
+      dateRange: [
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-26T01:00:14.076Z'),
+      ] as [Date, Date],
+    };
+
+    // Prometheus answers at `start + k * step`, so an unaligned start or an
+    // unresolved step puts the samples between the buckets the sparkline plots
+    // on -- which the empty-bucket filler then fills with zeros.
+    it('aligns the date range and resolves the granularity', () => {
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:01:00Z'),
+      ]);
+      expect(result.granularity).toBe('1 minute');
+    });
+
+    it('leaves the date range unaligned for an instant query', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+        dateRange: [
+          new Date('2025-11-26T00:00:14.076Z'),
+          new Date('2025-11-27T00:00:14.076Z'),
+        ],
+      });
+
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:14.076Z'),
+        new Date('2025-11-27T00:00:14.076Z'),
+      ]);
+      expect(result.granularity).toBe('30 minute');
+    });
+
+    it("floors an auto granularity at the source's minimum", () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('5 minute');
+      expect(result.dateRange).toEqual([
+        new Date('2025-11-26T00:00:00Z'),
+        new Date('2025-11-26T01:05:00Z'),
+      ]);
+    });
+
+    it('never floors a granularity the tile picked', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        granularity: '15 second',
+        minGranularitySeconds: 300,
+      });
+
+      expect(result.granularity).toBe('15 second');
+    });
+
+    it('names the reducer, defaulting it, and queries one expression', () => {
+      const result = convertToReducedPromqlChartConfig(promqlConfig);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          promqlExpression: [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: DEFAULT_PROMQL_REDUCER,
+            },
+          ],
+        }),
+      );
+    });
+
+    it('keeps a chosen reducer', () => {
+      const result = convertToReducedPromqlChartConfig({
+        ...promqlConfig,
+        promqlExpression: [
+          {
+            expression: 'up',
+            queryType: 'range' as const,
+            reducer: PromqlReducer.Max,
+          },
+        ],
+      });
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          promqlExpression: [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+        }),
+      );
+    });
+
+    // Without a reducer named, the hook leaves the buckets alone -- which is
+    // how the sparkline reads the same response as the value.
+    it('names no reducer for the sparkline, otherwise matching the value', () => {
+      const value = convertToReducedPromqlChartConfig(promqlConfig);
+      const sparkline = convertToPromqlSparklineChartConfig(promqlConfig);
+
+      expect(sparkline).toEqual({
+        ...value,
+        promqlExpression: [
+          { expression: 'up', queryType: 'range', reducer: undefined },
+        ],
+      });
+      expect(stripClientSideConfigFields(sparkline)).toEqual(
+        stripClientSideConfigFields(value),
+      );
+    });
+  });
+
   describe('convertToTableChartConfig', () => {
     it('should remove granularity from the config', () => {
       const config = {
@@ -1535,6 +1772,47 @@ describe('ChartUtils', () => {
         { label: 'svc', value: 5, color: 'color-0-svc' },
       ]);
     });
+
+    describe('maxGroups', () => {
+      const manyGroups = (count: number) => ({
+        data: Array.from({ length: count }, (_, i) => ({
+          value: i,
+          series_name: `s${i}`,
+        })),
+        meta: [
+          { name: 'value', type: 'Float64' },
+          { name: 'series_name', type: 'String' },
+        ],
+      });
+
+      it('keeps the largest maxGroups groups', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(5),
+          getColor,
+          true,
+          2,
+        );
+        expect(result.map(e => e.label)).toEqual(['s4', 's3']);
+      });
+
+      it('caps at 500 groups by default', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+        );
+        expect(result).toHaveLength(500);
+      });
+
+      it('cannot raise the 500-group cap', () => {
+        const result = formatResponseForCategoricalChart(
+          manyGroups(600),
+          getColor,
+          true,
+          1000,
+        );
+        expect(result).toHaveLength(500);
+      });
+    });
   });
 
   describe('findNearestSeriesKey', () => {
@@ -1605,6 +1883,7 @@ describe('getSeriesColorForGroup', () => {
     previousPeriodKey: `${currentPeriodKey} (previous)`,
     displayName: currentPeriodKey,
     valueColumnName: 'count()',
+    groupValues: [],
     color,
     isDashed,
   });
@@ -1643,5 +1922,58 @@ describe('getSeriesColorForGroup', () => {
     const lineData = [line('api', '#dashed', true), line('api', '#solid')];
 
     expect(getSeriesColorForGroup(lineData, 'api')).toBe('#solid');
+  });
+});
+
+describe('convertV1ChartConfigToV2', () => {
+  const metricSource = {
+    id: 'metric-source',
+    kind: SourceKind.Metric,
+    connection: 'connection-id',
+    from: { databaseName: 'default', tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    resourceAttributesExpression: 'ResourceAttributes',
+    metricTables: {
+      gauge: 'otel_metrics_gauge',
+      histogram: 'otel_metrics_histogram',
+      sum: 'otel_metrics_sum',
+    },
+  } as unknown as Parameters<typeof convertV1ChartConfigToV2>[1]['metric'];
+
+  const convertMetricSeries = (aggFn: 'p95' | 'p99_rate' | 'avg') =>
+    convertV1ChartConfigToV2(
+      {
+        series: [
+          {
+            type: 'time',
+            table: 'metrics',
+            aggFn,
+            field: 'http.server.duration - Gauge',
+            where: '',
+            groupBy: [],
+          },
+        ],
+        dateRange: [new Date('2025-02-12'), new Date('2025-02-14')],
+        seriesReturnType: 'column',
+      },
+      { metric: metricSource },
+    ).select;
+
+  it('converts a percentile to quantile with its level', () => {
+    expect(convertMetricSeries('p95')).toEqual([
+      expect.objectContaining({ aggFn: 'quantile', level: 0.95 }),
+    ]);
+  });
+
+  it('converts a percentile rate to quantile with its level', () => {
+    expect(convertMetricSeries('p99_rate')).toEqual([
+      expect.objectContaining({ aggFn: 'quantile', level: 0.99 }),
+    ]);
+  });
+
+  it('sets no level for other aggregations', () => {
+    const [select] = convertMetricSeries('avg');
+    expect(select).toEqual(expect.objectContaining({ aggFn: 'avg' }));
+    expect(select).not.toHaveProperty('level');
   });
 });

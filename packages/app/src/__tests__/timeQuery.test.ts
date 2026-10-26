@@ -1,6 +1,58 @@
 import { renderHook } from '@testing-library/react';
 
-import { useDefaultTimeRange } from '@/timeQuery';
+import { parseTimeRangeInput } from '@/components/TimePicker/utils';
+import { dateRangeToString, useDefaultTimeRange } from '@/timeQuery';
+
+describe('dateRangeToString', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-06-15T12:00:00'));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('omits the year for a past range in the current year', () => {
+    expect(
+      dateRangeToString(
+        [new Date('2026-03-03T10:00:00'), new Date('2026-03-05T10:00:00')],
+        undefined,
+      ),
+    ).toBe('Mar 3 10:00:00 - Mar 5 10:00:00');
+  });
+
+  it('includes the year for ranges outside the current year', () => {
+    expect(
+      dateRangeToString(
+        [new Date('2024-03-03T10:00:00'), new Date('2024-03-05T10:00:00')],
+        undefined,
+      ),
+    ).toBe('Mar 3 2024 10:00:00 - Mar 5 2024 10:00:00');
+  });
+
+  it('formats in the given time zone', () => {
+    expect(
+      dateRangeToString(
+        [new Date('2024-12-31T23:00:00Z'), new Date('2025-01-01T01:00:00Z')],
+        'Etc/UTC',
+      ),
+    ).toBe('Dec 31 2024 23:00:00 - Jan 1 2025 01:00:00');
+  });
+
+  it.each([
+    [new Date('2024-03-03T10:00:00'), new Date('2024-03-05T10:00:00')],
+    [new Date('2025-12-30T10:00:00'), new Date('2026-02-01T10:00:00')],
+    [new Date('2026-03-03T10:00:00'), new Date('2026-03-05T10:00:00')],
+    [new Date('2026-08-01T10:00:00'), new Date('2026-09-01T10:00:00')],
+  ])('round-trips %s - %s through parseTimeRangeInput', (start, end) => {
+    const [parsedStart, parsedEnd] = parseTimeRangeInput(
+      dateRangeToString([start, end], undefined),
+    );
+    expect(parsedStart).toEqual(start);
+    expect(parsedEnd).toEqual(end);
+  });
+});
 
 describe('useDefaultTimeRange', () => {
   beforeEach(() => {

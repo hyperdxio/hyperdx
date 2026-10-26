@@ -2,10 +2,44 @@ import {
   ClickHouseQueryError,
   convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
+  isAccessDeniedError,
+  isJSDataTypeScalar,
   isMissingColumnError,
   JSDataType,
 } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
+
+describe('isAccessDeniedError', () => {
+  const withCause = (cause: object) =>
+    Object.assign(new ClickHouseQueryError('query failed', 'SELECT 1'), {
+      cause,
+    });
+
+  it('detects ACCESS_DENIED from the client error type', () => {
+    expect(isAccessDeniedError(withCause({ type: 'ACCESS_DENIED' }))).toBe(
+      true,
+    );
+  });
+
+  it('detects ACCESS_DENIED from the numeric code', () => {
+    expect(isAccessDeniedError(withCause({ code: '497' }))).toBe(true);
+  });
+
+  it.each([
+    'Code: 497. DB::Exception: Not enough privileges. (ACCESS_DENIED)',
+    'Cannot read from `mergeTreeTextIndex` because a row policy is applied on table default.otel_logs',
+  ])('detects ACCESS_DENIED from the message: %s', msg => {
+    expect(isAccessDeniedError(new Error(msg))).toBe(true);
+  });
+
+  it('returns false for other errors', () => {
+    expect(
+      isAccessDeniedError(withCause({ type: 'BAD_ARGUMENTS', code: '36' })),
+    ).toBe(false);
+    expect(isAccessDeniedError(new Error('Code: 4970. Timeout'))).toBe(false);
+    expect(isAccessDeniedError(undefined)).toBe(false);
+  });
+});
 
 describe('isMissingColumnError', () => {
   it.each([
@@ -146,6 +180,28 @@ describe('convertCHDataTypeToJSType', () => {
       convertCHDataTypeToJSType('Variant(String, Array(Int64))'),
     ).toBeNull();
     expect(convertCHDataTypeToJSType('Variant()')).toBeNull();
+  });
+});
+
+describe('isJSDataTypeScalar', () => {
+  it.each([
+    JSDataType.String,
+    JSDataType.Number,
+    JSDataType.Bool,
+    JSDataType.Date,
+    JSDataType.Dynamic,
+    null,
+  ])('treats %s as scalar', dataType => {
+    expect(isJSDataTypeScalar(dataType)).toBe(true);
+  });
+
+  it.each([
+    JSDataType.Map,
+    JSDataType.JSON,
+    JSDataType.Array,
+    JSDataType.Tuple,
+  ])('treats %s as non-scalar', dataType => {
+    expect(isJSDataTypeScalar(dataType)).toBe(false);
   });
 });
 

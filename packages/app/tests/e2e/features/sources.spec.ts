@@ -24,7 +24,9 @@ const LOG_FIELDS = [
   'Service Name Expression',
   'Service Version Expression',
   'Log Level Expression',
+  'Severity Number Expression',
   'Body Expression',
+  'Event Name Expression',
   'Log Attributes Expression',
   'Resource Attributes Expression',
   'Displayed Timestamp Column',
@@ -80,12 +82,12 @@ const editableSourcesData = [
   {
     name: DEFAULT_LOGS_SOURCE_NAME,
     fields: LOG_FIELDS,
-    radioButtonName: 'Log',
+    radioButtonName: 'Logs',
   },
   {
     name: DEFAULT_TRACES_SOURCE_NAME,
     fields: TRACE_FIELDS,
-    radioButtonName: 'Trace',
+    radioButtonName: 'Traces',
   },
 ];
 
@@ -94,12 +96,12 @@ const allSourcesData = [
   {
     name: DEFAULT_METRICS_SOURCE_NAME,
     fields: METRIC_FIELDS,
-    radioButtonName: 'OTEL Metrics',
+    radioButtonName: 'OTel metrics',
   },
   {
     name: DEFAULT_SESSIONS_SOURCE_NAME,
     fields: SESSION_FIELDS,
-    radioButtonName: 'Session',
+    radioButtonName: 'Sessions',
   },
 ];
 
@@ -348,7 +350,7 @@ test.describe('Sources Functionality', { tag: ['@sources'] }, () => {
           await searchPage.createNewSourceItem.click();
 
           await searchPage.page
-            .getByLabel('OTEL Metrics', { exact: true })
+            .getByLabel('OTel metrics', { exact: true })
             .click();
           await searchPage.sourceModalShowOptionalFields();
 

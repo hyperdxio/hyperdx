@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import {
   buildImportFile,
   collectImportableResources,
@@ -9,7 +10,6 @@ import {
 } from '@hyperdx/common-utils/dist/iac';
 import {
   Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -231,9 +231,7 @@ export default function IacMigrationSection({
     <Box id="iac_migration" data-testid="iac-migration-section">
       <Group gap="xs">
         <Text size="md">Export to Terraform</Text>
-        <Badge variant="light" fw="normal" size="xs">
-          Experimental
-        </Badge>
+        <Badge size="sm" text="Experimental" state="info" />
       </Group>
       <Divider my="md" />
       <Card>

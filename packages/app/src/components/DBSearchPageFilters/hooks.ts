@@ -16,9 +16,11 @@ import {
 
 import {
   Facet,
+  SINGLE_KEY_VALUES_LIMIT,
   useAllFields,
   useColumns,
   useDateTimeColumns,
+  useFilterKeysFetchLimit,
   useGetKeyValues,
   useJsonColumns,
   useMapColumns,
@@ -28,12 +30,13 @@ import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
-import { toQuotedClickHouseKeyExpression } from './utils';
+import {
+  listRequestedFacets,
+  sortLowCardinalityFirst,
+  toQuotedClickHouseKeyExpression,
+} from './utils';
 
 const INITIAL_LOAD_LIMIT = 20;
-
-/* The maximum number of values per filter to load when "Load More" is clicked */
-const LOAD_MORE_LOAD_LIMIT = 10000;
 
 /**
  * Decide which table key-value discovery reads from.
@@ -121,16 +124,7 @@ function useFacets({
       return [];
     }
 
-    const strings = allFields
-      .sort((a, b) => {
-        // First show low cardinality fields
-        const isLowCardinality = (type: string) =>
-          type.includes('LowCardinality');
-        return (
-          (isLowCardinality(b.type) ? 1 : 0) -
-          (isLowCardinality(a.type) ? 1 : 0)
-        );
-      })
+    const strings = sortLowCardinalityFirst(allFields)
       .filter(
         field => field.jsType && ['string'].includes(field.jsType),
         // todo: add number type with sliders :D
@@ -191,7 +185,12 @@ function useFacets({
     [chartConfig, dateRange, mode],
   );
 
-  const { data: rawFacets, ...rest } = useGetKeyValues(
+  const {
+    data: rawFacets,
+    error: keyValuesError,
+    isLoading: isKeyValuesLoading,
+    isFetching,
+  } = useGetKeyValues(
     {
       chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
@@ -201,14 +200,16 @@ function useFacets({
     { enabled: enabled && !disableValues },
   );
 
-  // Map the (escaped) result keys back to the original UI keys.
-  const facets = useMemo<Facet[] | undefined>(
+  const maxKeys = useFilterKeysFetchLimit();
+  const { facets, pendingKeys } = useMemo(
     () =>
-      rawFacets?.map(f => ({
-        ...f,
-        key: sqlKeyToUiKey.get(f.key) ?? f.key,
-      })),
-    [rawFacets, sqlKeyToUiKey],
+      listRequestedFacets({
+        requestedKeys: escapedKeysToFetch.slice(0, maxKeys),
+        arrived: rawFacets,
+        isFetching,
+        toUiKey: sqlKey => sqlKeyToUiKey.get(sqlKey) ?? sqlKey,
+      }),
+    [escapedKeysToFetch, maxKeys, rawFacets, isFetching, sqlKeyToUiKey],
   );
 
   const metadata = useMetadataWithSettings();
@@ -230,7 +231,7 @@ function useFacets({
               ),
             },
             keys: [sqlKey],
-            limit: LOAD_MORE_LOAD_LIMIT,
+            limit: SINGLE_KEY_VALUES_LIMIT,
             disableRowLimit: true,
             source,
           });
@@ -255,7 +256,7 @@ function useFacets({
           connectionId: tableConnection.connectionId,
           metadataMVs: tableConnection.metadataMVs,
           keyExpressions: [sqlKey],
-          maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+          maxValuesPerKey: SINGLE_KEY_VALUES_LIMIT,
           dateRange,
           timestampValueExpression:
             source?.timestampValueExpression ??
@@ -288,10 +289,15 @@ function useFacets({
   );
 
   return {
-    ...rest,
-    error: allFieldsError ?? rest.error,
-    data: { keys: allFields, keyValues: facets },
-    isLoading: isAllFieldsLoading || rest.isLoading,
+    error: allFieldsError ?? keyValuesError,
+    data: {
+      keys: allFields,
+      keyValues: facets,
+      /** Listed keys whose values haven't arrived yet; their facets are empty. */
+      pendingKeys,
+    },
+    isLoading: isAllFieldsLoading || isKeyValuesLoading,
+    isFetching,
     loadMoreFacetsForKey,
   };
 }
@@ -422,7 +428,7 @@ export function useFetchFacets({
 
   return {
     ...facetsQuery,
-    data: { keys: facetsQuery.data.keys, keyValues: facets },
+    data: { ...facetsQuery.data, keyValues: facets },
     loadMoreFacetsForKey,
     areExtraFacetsLoading,
     loadMoreLoadingKeys,

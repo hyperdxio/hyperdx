@@ -2039,6 +2039,269 @@ describe('CustomSchemaSQLSerializerV2 - text indices', () => {
   });
 });
 
+describe('CustomSchemaSQLSerializerV2 - FixedString implicit search', () => {
+  const metadata = getMetadata(
+    new ClickhouseClient({ host: 'http://localhost:8123' }),
+  );
+  metadata.getSkipIndices = jest.fn().mockResolvedValue([]);
+  metadata.getSetting = jest.fn().mockResolvedValue(undefined);
+  metadata.getColumns = jest.fn().mockResolvedValue([]);
+  metadata.getMaterializedColumnsLookupTable = jest
+    .fn()
+    .mockResolvedValue(new Map());
+  metadata.getColumn = jest.fn().mockImplementation(async ({ column }) => {
+    if (column === 'TraceId') {
+      return { name: 'TraceId', type: 'FixedString(32)' };
+    }
+    if (column === 'NullableTraceId') {
+      return {
+        name: 'NullableTraceId',
+        type: 'Nullable(FixedString(32))',
+      };
+    }
+    if (column === 'Body') {
+      return { name: 'Body', type: 'String' };
+    }
+    if (column === 'LcTraceId') {
+      return {
+        name: 'LcTraceId',
+        type: 'LowCardinality(FixedString(32))',
+      };
+    }
+    return undefined;
+  });
+
+  const databaseName = 'default';
+  const tableName = 'otel_traces';
+  const connectionId = 'test';
+
+  it('casts a FixedString implicit column before hasToken', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'TraceId',
+    });
+    const sql = await new SearchQueryBuilder(
+      '917b9785d3414031a4790e263753e43b',
+      serializer,
+    ).build();
+    expect(sql).toBe(
+      "((hasToken(lower(CAST(TraceId AS String)), lower('917b9785d3414031a4790e263753e43b'))))",
+    );
+  });
+
+  it('casts a double-quoted FixedString identifier', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: '"TraceId"',
+    });
+    const sql = await new SearchQueryBuilder('abc', serializer).build();
+    expect(sql).toBe(
+      '((hasToken(lower(CAST("TraceId" AS String)), lower(\'abc\'))))',
+    );
+  });
+
+  it('casts a quoted FixedString identifier without dropping the quotes', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: '`TraceId`',
+    });
+    const sql = await new SearchQueryBuilder('abc', serializer).build();
+    expect(sql).toBe(
+      "((hasToken(lower(CAST(`TraceId` AS String)), lower('abc'))))",
+    );
+  });
+
+  it('casts Nullable(FixedString) implicit columns', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'NullableTraceId',
+    });
+    const sql = await new SearchQueryBuilder('abc', serializer).build();
+    expect(sql).toBe(
+      "((hasToken(lower(CAST(NullableTraceId AS String)), lower('abc'))))",
+    );
+  });
+
+  it('casts a FixedString bodyExpression when implicitColumnExpression is unset', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      bodyExpression: 'TraceId',
+    });
+    const sql = await new SearchQueryBuilder('abc', serializer).build();
+    expect(sql).toBe(
+      "((hasToken(lower(CAST(TraceId AS String)), lower('abc'))))",
+    );
+  });
+
+  it('leaves String implicit columns on hasToken(lower(column))', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+    const sql = await new SearchQueryBuilder('foo', serializer).build();
+    expect(sql).toBe("((hasToken(lower(Body), lower('foo'))))");
+  });
+
+  it('does not cast a multi-column implicit expression', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body, TraceId',
+    });
+    const sql = await new SearchQueryBuilder('foo', serializer).build();
+    expect(sql).toBe(
+      "((hasToken(lower(concatWithSeparator(';',Body,TraceId)), lower('foo'))))",
+    );
+  });
+
+  it('keeps an explicit FixedString field search on ILIKE', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'Body',
+    });
+    const sql = await new SearchQueryBuilder(
+      'TraceId:917b9785d3414031a4790e263753e43b',
+      serializer,
+    ).build();
+    expect(sql).toBe("((TraceId ILIKE '%917b9785d3414031a4790e263753e43b%'))");
+    expect(sql).not.toContain('hasToken');
+  });
+
+  it('casts each hasToken of a multi-token term and leaves LIKE on the raw column', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'TraceId',
+    });
+    const sql = await new SearchQueryBuilder('"foo bar"', serializer).build();
+    expect(sql).toBe(
+      "((hasToken(lower(CAST(TraceId AS String)), lower('foo')) AND hasToken(lower(CAST(TraceId AS String)), lower('bar')) AND (lower(TraceId) LIKE lower('%foo bar%'))))",
+    );
+  });
+
+  it('keeps the raw column when text-index search is forced on', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'TraceId',
+      useTextIndexForImplicitColumn: UseTextIndex.Enabled,
+    });
+    const sql = await new SearchQueryBuilder('foo', serializer).build();
+    expect(sql).toBe("((hasAllTokens(TraceId, 'foo')))");
+  });
+
+  it('keeps a FixedString text index on the raw column', async () => {
+    const getSkipIndices = metadata.getSkipIndices;
+    const getSetting = metadata.getSetting;
+    metadata.getSkipIndices = jest.fn().mockResolvedValue([
+      {
+        name: 'idx_trace_text',
+        type: 'text',
+        typeFull: 'text(tokenizer=splitByNonAlpha)',
+        expression: 'TraceId',
+        granularity: '1',
+      },
+    ]);
+    metadata.getSetting = jest
+      .fn()
+      .mockImplementation(async ({ settingName }) => {
+        if (settingName === 'enable_full_text_index') {
+          return '1';
+        }
+        return undefined;
+      });
+    try {
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'TraceId',
+      });
+      const sql = await new SearchQueryBuilder('foo', serializer).build();
+      expect(sql).toBe("((hasAllTokens(TraceId, 'foo')))");
+    } finally {
+      metadata.getSkipIndices = getSkipIndices;
+      metadata.getSetting = getSetting;
+    }
+  });
+
+  it('casts a LowCardinality(FixedString) implicit column before hasToken', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'LcTraceId',
+    });
+    const sql = await new SearchQueryBuilder('abc', serializer).build();
+    expect(sql).toBe(
+      "((hasToken(lower(CAST(LcTraceId AS String)), lower('abc'))))",
+    );
+  });
+
+  it('casts inside a negated implicit FixedString search', async () => {
+    const serializer = new CustomSchemaSQLSerializerV2({
+      metadata,
+      databaseName,
+      tableName,
+      connectionId,
+      implicitColumnExpression: 'TraceId',
+    });
+    const sql = await new SearchQueryBuilder('-abc', serializer).build();
+    expect(sql).toBe(
+      "((NOT hasToken(lower(CAST(TraceId AS String)), lower('abc'))))",
+    );
+  });
+
+  it('falls back to uncast hasToken when the column lookup fails', async () => {
+    const getColumn = metadata.getColumn;
+    metadata.getColumn = jest
+      .fn()
+      .mockRejectedValue(new Error('describe failed'));
+    try {
+      const serializer = new CustomSchemaSQLSerializerV2({
+        metadata,
+        databaseName,
+        tableName,
+        connectionId,
+        implicitColumnExpression: 'TraceId',
+      });
+      const sql = await new SearchQueryBuilder('abc', serializer).build();
+      expect(sql).toBe("((hasToken(lower(TraceId), lower('abc'))))");
+    } finally {
+      metadata.getColumn = getColumn;
+    }
+  });
+});
+
 describe('CustomSchemaSQLSerializerV2 - indexCoversColumn', () => {
   const metadata = getMetadata(
     new ClickhouseClient({ host: 'http://localhost:8123' }),

@@ -12,6 +12,7 @@ import {
   convertGranularityToSeconds,
   getAlignedDateRange,
 } from '@hyperdx/common-utils/dist/core/utils';
+import type { AdhocConditionEntry } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
@@ -23,7 +24,11 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
-import { IconChartBar, IconChartLine } from '@tabler/icons-react';
+import {
+  IconChartAreaLine,
+  IconChartBar,
+  IconChartLine,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -33,12 +38,16 @@ import {
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
+  type LineData,
   shouldFillNullsWithZero,
   tryExpandConfigVariables,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
-import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
+import {
+  ChartSeriesTooltip,
+  type ChartSeriesTooltipProps,
+} from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
 import {
   MAX_LOADABLE_TIME_CHART_SERIES,
@@ -50,8 +59,9 @@ import {
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useResultColumnFilterKeys } from '@/hooks/useResultColumnFilterKeys';
 import { useChartNumberFormats, useSource } from '@/source';
-import type { NumberFormat } from '@/types';
+import type { NumberFormat, TileFilterHandler } from '@/types';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -61,6 +71,9 @@ import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
 import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+const PROMQL_REDUCE_CARDINALITY_HINT =
+  'Narrow the label matchers, aggregate with sum by (...), or set a series limit to reduce the number of series.';
 
 /** A single group column / value pair decoded from a chart series key. */
 export type SeriesGroupFilter = { column: string; value: string };
@@ -136,6 +149,47 @@ export function decodeSeriesGroupFilters({
   return groupFilters;
 }
 
+/**
+ * The ad hoc filter entries that select one chart series: its PromQL labels,
+ * or a key per group-by column. Undefined when some group column has no key
+ * or can't be filtered on, since filtering on the rest would match more than
+ * the series.
+ */
+export function getSeriesFilterEntries({
+  line,
+  groupColumns,
+  filterKeyByColumn,
+  promqlSeriesLabels,
+}: {
+  line: Pick<LineData, 'groupValues'> | undefined;
+  groupColumns: string[];
+  filterKeyByColumn: ReadonlyMap<string, string>;
+  promqlSeriesLabels?: Record<string, Record<string, string>>;
+}): AdhocConditionEntry[] | undefined {
+  if (!line || groupColumns.length === 0) return undefined;
+  if (promqlSeriesLabels) {
+    // PromQL series are grouped by their name alone.
+    const labels = promqlSeriesLabels[String(line.groupValues[0])];
+    // An ad hoc filter reaches every PromQL query, so a `__name__` condition
+    // would empty those on other metrics.
+    return labels
+      ? Object.entries(labels)
+          .filter(([key]) => key !== '__name__')
+          .map(([key, value]) => ({ key, value }))
+      : undefined;
+  }
+  const entries: AdhocConditionEntry[] = [];
+  for (const [index, column] of groupColumns.entries()) {
+    const key = filterKeyByColumn.get(column);
+    const value = line.groupValues[index];
+    // NULL doesn't match `= ''`, and Map / Array / Tuple / JSON values are
+    // JSON in the series key, which their `toString()` wouldn't match.
+    if (!key || value == null || typeof value === 'object') return undefined;
+    entries.push({ key, value: String(value) });
+  }
+  return entries;
+}
+
 // The interactive PINNED tooltip, rendered over the chart in a body-portaled
 // Mantine Popover anchored at the clicked point. Hover uses the recharts tooltip
 // in MemoChart instead; this is only for the click-locked state.
@@ -144,6 +198,8 @@ function ChartTooltipOverlay({
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  getSeriesFilters,
+  onFilterSeries,
   onShowAllSeries,
   fallbackNumberFormat,
   numberFormatByKey,
@@ -151,7 +207,7 @@ function ChartTooltipOverlay({
   hiddenSeriesCount,
   onLoadAllSeries,
   expanded,
-}: {
+}: Pick<ChartSeriesTooltipProps, 'getSeriesFilters' | 'onFilterSeries'> & {
   payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
@@ -282,6 +338,8 @@ function ChartTooltipOverlay({
             buildSearchUrl={buildSearchUrl}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
+            getSeriesFilters={getSeriesFilters}
+            onFilterSeries={onFilterSeries}
             onShowAllSeries={onShowAllSeries}
             hiddenSeriesCount={hiddenSeriesCount}
             onLoadAllSeries={onLoadAllSeries}
@@ -304,6 +362,8 @@ type DBTimeChartComponentProps = {
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   queryKeyPrefix?: string;
   referenceLines?: React.ReactNode;
+  /** Raw numeric value(s) backing referenceLines, for Y-axis domain sizing. */
+  referenceLineValues?: number[];
   /** Event markers (e.g. alert firing/recovery) drawn as dashed lines with labels. */
   annotations?: ChartAnnotation[];
   setDisplayType?: (type: DisplayType) => void;
@@ -327,6 +387,11 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /**
+   * When set, the pinned tooltip offers filter / exclude actions per series,
+   * with the series' group-by expressions (or PromQL labels) and values.
+   */
+  onFilter?: TileFilterHandler;
 };
 
 function DBTimeChartComponent({
@@ -339,6 +404,7 @@ function DBTimeChartComponent({
   onTimeRangeSelect,
   queryKeyPrefix,
   referenceLines,
+  referenceLineValues,
   annotations,
   setDisplayType,
   showDisplaySwitcher = true,
@@ -352,6 +418,7 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  onFilter,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -636,12 +703,20 @@ function DBTimeChartComponent({
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
 
   const displayType = useMemo(() => {
-    if (setDisplayType) {
+    // Stacking would sum the current and previous periods together.
+    if (config.compareToPreviousPeriod) {
+      return DisplayType.Line;
+    } else if (setDisplayType) {
       return displayTypeProp;
     } else {
       return displayTypeLocal;
     }
-  }, [displayTypeLocal, displayTypeProp, setDisplayType]);
+  }, [
+    config.compareToPreviousPeriod,
+    displayTypeLocal,
+    displayTypeProp,
+    setDisplayType,
+  ]);
 
   const handleSetDisplayType = useCallback(
     (type: DisplayType) => {
@@ -653,12 +728,6 @@ function DBTimeChartComponent({
     },
     [setDisplayType],
   );
-
-  useEffect(() => {
-    if (config.compareToPreviousPeriod) {
-      setDisplayTypeLocal(DisplayType.Line);
-    }
-  }, [config.compareToPreviousPeriod]);
 
   const [activeClickPayload, setActiveClickPayload] = useState<
     ActiveClickPayload | undefined
@@ -874,6 +943,27 @@ function DBTimeChartComponent({
     [onFocusSeries, groupColumns, isSingleValueColumn, handleToggleSeries],
   );
 
+  const promqlSeriesLabels = data?.promqlSeriesLabels;
+  const filterKeyByColumn = useResultColumnFilterKeys({
+    config: queriedConfig,
+    meta: data?.meta,
+    enabled: !!onFilter && !promqlSeriesLabels,
+  });
+  const lineDataByKey = useMemo(
+    () => new Map(lineData.map(line => [line.dataKey, line])),
+    [lineData],
+  );
+  const getSeriesFilters = useCallback(
+    (dataKey: string | undefined) =>
+      getSeriesFilterEntries({
+        line: dataKey != null ? lineDataByKey.get(dataKey) : undefined,
+        groupColumns,
+        filterKeyByColumn,
+        promqlSeriesLabels,
+      }),
+    [lineDataByKey, groupColumns, filterKeyByColumn, promqlSeriesLabels],
+  );
+
   const toolbarItemsMemo = useMemo(() => {
     const allToolbarItems = [];
 
@@ -924,15 +1014,23 @@ function DBTimeChartComponent({
           options={[
             {
               value: DisplayType.Line,
-              label: 'Display as Line Chart',
+              label: 'Display as line chart',
               icon: <IconChartLine />,
             },
             {
               value: DisplayType.StackedBar,
               label: config.compareToPreviousPeriod
-                ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                : 'Display as Bar Chart',
+                ? 'Stacked bar chart unavailable when comparing to previous period'
+                : 'Display as stacked bar chart',
               icon: <IconChartBar />,
+              disabled: config.compareToPreviousPeriod,
+            },
+            {
+              value: DisplayType.StackedLine,
+              label: config.compareToPreviousPeriod
+                ? 'Stacked line chart unavailable when comparing to previous period'
+                : 'Display as stacked line chart',
+              icon: <IconChartAreaLine />,
               disabled: config.compareToPreviousPeriod,
             },
           ]}
@@ -950,6 +1048,11 @@ function DBTimeChartComponent({
           // raise the cap (loadAllHandler is undefined otherwise), so the
           // notice never advertises a no-op click.
           onLoadAll={loadAllHandler}
+          reduceCardinalityHint={
+            isPromqlChartConfig(config)
+              ? PROMQL_REDUCE_CARDINALITY_HINT
+              : undefined
+          }
         />,
       );
     }
@@ -1008,6 +1111,8 @@ function DBTimeChartComponent({
             // re-register its window listener on every re-render.
             onDismiss={dismissPinned}
             onFocusSeries={handleFocusSeries}
+            getSeriesFilters={getSeriesFilters}
+            onFilterSeries={onFilter}
             onShowAllSeries={
               selectedSeriesSet.size > 0 ? handleClearSelectedSeries : undefined
             }
@@ -1035,6 +1140,7 @@ function DBTimeChartComponent({
             tooltipNumberFormatsByKey={formatByColumn}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
+            referenceLineValues={referenceLineValues}
             annotations={annotations}
             setIsClickActive={setPinnedPayload}
             refreshClickActive={refreshPinnedPayload}
@@ -1047,6 +1153,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            lineInterpolation={queriedConfig.lineInterpolation}
           />
         </>
       )}

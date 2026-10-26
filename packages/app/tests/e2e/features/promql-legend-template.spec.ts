@@ -29,7 +29,7 @@ test.describe(
         await expect(editor.nameInput).toBeVisible();
         await editor.waitForDataToLoad();
         await editor.switchToPromqlMode();
-        await editor.selectPromqlSource(PROMQL_SOURCE_NAME);
+        await editor.selectSource(PROMQL_SOURCE_NAME);
         await editor.setChartName('PromQL legend tile');
         // Two known series: the full metric has one per seeded service, and
         // the legend only shows a subset when there are many.

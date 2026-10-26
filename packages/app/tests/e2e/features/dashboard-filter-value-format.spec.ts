@@ -13,25 +13,10 @@
  * Every test is `@full-stack`: the variables flag is only set on the full-stack
  * webServer (see playwright.config.ts).
  */
-import type { Page } from '@playwright/test';
-
 import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
 import { DEFAULT_LOGS_SOURCE_NAME } from '../utils/constants';
-import { expectFiltersParam, type FilterEntry } from '../utils/filters-param';
-
-/** Navigate to a dashboard with a hand-written `filters=` param. */
-const gotoWithFilters = async (
-  page: Page,
-  dashboardId: string,
-  entries: FilterEntry[],
-) => {
-  await page.goto(
-    `/dashboards/${dashboardId}?filters=${encodeURIComponent(
-      JSON.stringify(entries),
-    )}`,
-  );
-};
+import { expectFiltersParam, gotoWithFilters } from '../utils/filters-param';
 
 /** Assert exactly `values` are selected in `filterName`'s multi-select. */
 const expectSelected = async (

@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query';
 import { getClickhouseClient } from '@/clickhouse';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMetricCatalog } from '@/hooks/useMetricCatalog';
+import { useMetadataQueryAttribution } from '@/queryAttribution';
 import { QUERYABLE_KINDS } from '@/utils/metricKinds';
 
 import { classifyMetric, MetricClassification } from './classifyMetric';
@@ -65,6 +66,7 @@ function useMetricWallStats({
   dateRange: [Date, Date];
 }) {
   const metadata = useMetadataWithSettings();
+  const attribution = useMetadataQueryAttribution();
   const databaseName = source.from.databaseName;
   const connectionId = source.connection;
   const timestampExpression = source.timestampValueExpression || 'TimeUnix';
@@ -91,7 +93,7 @@ function useMetricWallStats({
       end.getTime(),
     ],
     queryFn: async ({ signal }) => {
-      const client = getClickhouseClient();
+      const client = getClickhouseClient({ attribution });
       const stats = new Map<string, MetricStats>();
       await Promise.allSettled(
         tables.map(async ({ kind, tableName }) => {

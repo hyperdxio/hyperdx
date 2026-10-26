@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
-import { Grid, Group, Pill, Stack, Table, Text, Tooltip } from '@mantine/core';
+import { Grid, Group, Stack, Table, Text, Tooltip } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 
 import { FormatTime } from '@/useFormatTime';
@@ -51,16 +52,18 @@ export default function MVConfigSummary({
             </Tooltip>
           </Group>
 
-          <Pill>{config.minGranularity}</Pill>
+          <Badge size="sm" text={config.minGranularity} state="neutral" />
         </Grid.Col>
         {config.minDate && (
           <Grid.Col span={1}>
             <Text size="sm" fw={500} mb="xs">
               Minimum Date
             </Text>
-            <Pill>
-              <FormatTime value={config.minDate} format="withYear" />
-            </Pill>
+            <Badge
+              size="sm"
+              text={<FormatTime value={config.minDate} format="withYear" />}
+              state="neutral"
+            />
           </Grid.Col>
         )}
       </Grid>
@@ -71,7 +74,7 @@ export default function MVConfigSummary({
         </Text>
         <Group gap="xs">
           {dimensionColumnsSplit.map(col => (
-            <Pill key={col}>{col}</Pill>
+            <Badge key={col} size="sm" text={col} state="neutral" />
           ))}
         </Group>
       </div>
@@ -94,7 +97,12 @@ export default function MVConfigSummary({
                 <Table.Td>
                   <Group gap="xs">
                     {aggFns.map(aggFn => (
-                      <Pill key={aggFn}>{aggFn}</Pill>
+                      <Badge
+                        key={aggFn}
+                        size="sm"
+                        text={aggFn}
+                        state="neutral"
+                      />
                     ))}
                   </Group>
                 </Table.Td>

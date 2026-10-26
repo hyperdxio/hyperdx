@@ -1,5 +1,170 @@
 # @hyperdx/common-utils
 
+## 0.32.0
+
+### Minor Changes
+
+- 95aef70f: Add an optional `eventNameExpression` to log sources, pointing at the
+  OpenTelemetry log EventName. Source auto-detection sets it when an OTel log
+  table has a string `EventName` column. The field is stored and editable only:
+  nothing reads it yet. HDX-5787
+- bc47e485: Add an optional `severityNumberExpression` to log sources, pointing at the
+  numeric OpenTelemetry SeverityNumber (1-24). Source auto-detection sets it when
+  an OTel log table has an integer `SeverityNumber` column. The field is stored
+  and editable only: log levels still come from the severity text.
+- cfa865bd: feat: expose group-by values to webhook body templates as `{{var.<column>}}`, and keep them on resolve notifications
+
+### Patch Changes
+
+- 92058236: feat: Broadcast adhoc dashboard filter conditions
+- 3e9185d1: feat: Filter search tile cells into adhoc dashboard filters
+- 180a1f1d: feat: Filter table tile group-by cells into adhoc dashboard filters
+- a682ce13: feat: Render adhoc dashboard filter inputs
+- 9891a791: feat: Add ad hoc dashboard filter schemas and types
+- 43b09a7d: feat: Add UI for configuring adhoc dashboard filters
+- 0000fa4b: feat: Add a line interpolation display setting (smooth, linear, step)
+- eb72cfa1: feat(mcp): add `clickstack_service_health`, a one-call per-service health report for a trace source (throughput, error rate, p50/p95/p99, top error groups), compared with yesterday and ranked worst first
+- 03f9fd5a: fix(mcp): describe every MCP tool input, drop descriptions that restate schema constraints, and keep tool descriptions under Claude Code's 2 KB limit
+- 5cabc115: feat: Support distribution heatmaps calculated from promql data
+- a4b63953: fix: render percentile aggregations (`p50`, `p90`, `p95`, `p99`) as `quantile`
+  at the matching level. A chart config with `aggFn: 'p95'` rendered as the
+  nonexistent ClickHouse function `p95If`. The AI assistant now returns
+  percentiles with a level instead of a bare `quantile` (median), and v1 metric
+  chart conversion keeps the percentile level.
+- 3bedfab3: feat: Support histogram heatmaps from PromQL bucket metrics
+- c94d12c3: fix: Resolve PromQL queries through the source instead of a caller-supplied connection and table
+
+  The `/api/v1/prometheus/*` routes now take `sourceId` instead of `connectionId`, and read the connection and TimeSeries table from that PromQL source. Caller-supplied `database`/`table` params are ignored for ClickHouse and no longer forwarded to external Prometheus endpoints. Saved PromQL chart configs now require `source` and no longer persist `connection`, so provisioned dashboards with PromQL tiles must set `source`.
+
+- 85675fc8: perf: stream filter values into the UI as each query finishes instead of
+  waiting for all of them
+- af6e7f6b: Add a description field to the tile editor. The description is now stored on the
+  tile's chart config next to its name, and is kept for series tiles in the
+  external Dashboards API.
+- 02080f20: Add an optional tile description, accepted by the external Dashboards API and
+  shown as an info tooltip next to the tile name.
+- dab6eb89: fix: Read and show time picker ranges in the display time zone, so applying a range with "Use UTC time" on no longer shifts it for users west of UTC
+- ce6654dd: refactor: Store the time display setting as a time zone instead of a UTC switch, converting existing settings, and remove the `isUTC` option from `formatDate`
+- 28168ae6: fix: Floor the time filter start to the precision of a coarse timestamp column (DateTime, DateTime64 below ms) when a finer column also filters the range, so a sub-second start no longer drops the rest of that tick; make the external API v2 search `maxResults` cap configurable via `EXTERNAL_API_SEARCH_MAX_RESULTS` (defaults to 2000, the previous hardcoded value)
+- 807cd9a5: fix: the webhook form now compiles the body template as you edit it and shows
+  the Handlebars error with its line and column. A broken template used to give
+  no feedback until an alert failed to deliver.
+
+## 0.31.0
+
+### Minor Changes
+
+- 6873416d: feat: Add a series mode to builder heatmaps
+- ff5befa8: Support "Minimum auto granularity" on PromQL sources. It floors the step of charts on auto granularity, as it does for metric sources, and `$__rate_interval` now uses it as the source's scrape interval (still 15s when unset) instead of always assuming 15s. A granularity picked on a tile is never changed.
+- d8b1cdfa: feat: Attribute PromQL queries to the dashboard, tile or search that issued them, through both the `prometheusQuery`/`prometheusQueryRange` table functions and ClickHouse's Prometheus HTTP API
+- ab703243: feat: attribute ClickHouse queries to the dashboard, tile, search or alert that
+  issued them
+
+  A row in `system.query_log` previously couldn't be attributed to the part of
+  HyperDX that produced it. Now every query HyperDX runs has a small JSON
+  `log_comment`, plus a `query_id` starting with `hdx-`.
+
+  Attribute load after the fact:
+
+  ```sql
+  SELECT
+      JSONExtractString(log_comment, 'surface') AS surface,
+      JSONExtractString(log_comment, 'dashboard') AS dashboard,
+      JSONExtractString(log_comment, 'tile') AS tile,
+      count(),
+      sum(read_rows)
+  FROM system.query_log
+  WHERE type = 'QueryFinish' AND log_comment != '' AND query_id like 'hdx-%'
+  GROUP BY ALL
+  ORDER BY sum(read_rows) DESC
+  ```
+
+  Or spot a query while it is still running, in `system.processes`, where the
+  `query_id` names the surface with no JSON parsing needed.
+
+  The payload records which part of the product asked (a dashboard, a search, an
+  alert, an MCP tool, the chart explorer, session replay, field lookups, and so
+  on), the dashboard and tile or saved search id, the source id, and on the server
+  the trace id of the request. Field lookups and autocomplete are labelled too, so
+  they can be told apart from a user's chart queries.
+
+  The exception is queries that skip settings processing: the `system.settings`,
+  server version and Cloud-detection probes, and the onboarding connection check.
+  They get a `query_id` but an empty `log_comment`.
+
+- 68082b67: feat: add stacked line (stacked area) time-series display type
+
+### Patch Changes
+
+- 07c93656: fix: cast FixedString columns before implicit hasToken search
+
+  A bare search term against a FixedString column such as OTel TraceId compiled to
+  hasToken(lower(TraceId), ...), which ClickHouse rejects. Those haystacks are now
+  CAST to String first.
+
+- 0b855534: fix: fall back to the Map key scan when the text index read fails
+
+  `getMapKeys` returned an empty list whenever its `mergeTreeTextIndex` query
+  failed, so the rollup and bounded `mapKeys` scan paths never ran. ClickHouse
+  refuses `mergeTreeTextIndex` with `ACCESS_DENIED` on any table with a row
+  policy, which left search autocomplete with no Map keys on those tables. A
+  failed text index read now falls through to the next strategy. After a row
+  policy denial it skips the key rollup table, which the policy doesn't cover,
+  and reads keys only from the policy-filtered source table.
+
+- 0846f3b2: Include the requested Map-key limit in metadata cache keys so MCP discovery and AI field discovery cannot reuse each other's differently limited results.
+- e61461be: feat: auto-detect a PromQL source during onboarding
+
+  When PromQL is enabled (`NEXT_PUBLIC_ENABLE_PROMQL=true`), onboarding source auto-detection now also creates a PromQL source for a ClickHouse TimeSeries engine table. It prefers `prometheus.metrics` (the table the ClickHouse Prometheus docs suggest), then a table named `metrics_ts`, and otherwise picks the only TimeSeries table on the connection. A service with only a TimeSeries table is no longer sent to manual source setup.
+
+- 1be9de8f: feat: Add a promql variable format that escapes based on single/multi-select
+- 0d2425d5: feat: Allow configuring dashboard filters as single-select
+- 1ce8b88e: fix: rank Map keys by frequency when a text index serves key discovery
+
+  The two `mergeTreeTextIndex` paths in `getMapKeys` grouped keys and applied
+  `LIMIT maxKeys` with no `ORDER BY`, so on a column with more keys than the
+  limit the filter sidebar showed an arbitrary subset. They now order by
+  `sum(cardinality) DESC, key`, which keeps the most frequent keys, as the key
+  rollup path already does with `sum(count) DESC`.
+
+## 0.30.0
+
+### Minor Changes
+
+- 8a9fcd2f: feat: Support macros in PromQL charts
+- 08d9a908: feat: Plot several PromQL expressions on one chart
+- d9e2c58b: Add a per-source floor for auto granularity. A metric source can now set "Minimum auto granularity" (Team Settings → Sources → your Metrics source) so that auto-inferred time buckets never go below it — useful when the underlying metric is reported on a fixed interval (e.g. a 60s scrape), since a short selected date range can otherwise auto-infer a smaller bucket than that interval and render a sparse/steppy series (alternating real-sample/empty buckets). Mirrors Grafana's per-datasource "Min interval" setting. Unset (the default) preserves the existing unfloored behavior, and an explicit (non-auto) granularity chosen on a tile is never affected.
+
+### Patch Changes
+
+- 1e355ac4: fix: don't scan the whole table to discover Map keys
+
+  `getMapKeys` only applied a time predicate when the caller passed both a date
+  range and a timestamp expression; otherwise the raw `sampledKeys` scan ran with
+  no `WHERE` and touched every part of the table. It now defaults a missing date
+  range to the last 24 hours and skips the raw scan entirely when there is no
+  timestamp expression to filter on. The chart, alert and dashboard-filter
+  editors pass the source and date range they already have so Map keys keep
+  autocompleting there.
+
+- 793fe19e: feat: Substitute dashboard variables in markdown tiles
+- ec4f5087: fix: allow grouping gauge and sum metric charts by materialized and alias columns
+
+  Grouping or selecting a MATERIALIZED or ALIAS column on a gauge or sum metric chart failed with `Unknown expression identifier`, because the intermediate query didn't carry those columns through.
+
+- a8a72c11: fix: Support instant queries and reductions on PromQL number tiles
+- 8cfb2672: feat: Support background sparklines on PromQL range number tiles
+- 4570d5ee: feat: Support pie and bar tiles on PromQL sources
+- 78ed5921: feat: Support table tiles on PromQL sources
+- 23423c13: fix: Show distribution only labels a value "<1%" when the sample shows it is rare, not when it has no matching rows, and shows 100% when the field's filter allows only that value
+- 19182e7e: fix: only split a query at a standalone SETTINGS keyword
+
+  `extractSettingsClauseFromEnd` cut the query at the first "settings" anywhere in
+  it, including inside a string or an identifier. A multi-series metric chart with
+  a metric such as `app.settings.reloads` produced SQL with an unterminated
+  string, and a SQL filter on a column such as `AppSettings` was rewritten to
+  reference `App`. The keyword now has to stand alone outside quotes.
+
 ## 0.29.0
 
 ### Minor Changes
