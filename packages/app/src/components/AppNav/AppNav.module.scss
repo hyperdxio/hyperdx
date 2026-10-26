@@ -60,6 +60,14 @@ $transition-slow: 0.2s ease;
     position: fixed;
   }
 
+  // Open over the page on a compact viewport, where the nav is a rail.
+  &Overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    box-shadow: var(--shadow-drawer-left);
+  }
+
   &Collapsed {
     .navLinks {
       padding-inline: 0;

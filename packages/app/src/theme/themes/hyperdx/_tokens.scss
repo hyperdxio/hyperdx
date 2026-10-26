@@ -146,6 +146,9 @@
   /* Shadows */
   --shadow-drawer: -4px 0 24px rgb(0 0 0 / 25%);
 
+  /* Cast to the right, for a drawer on the left edge such as the open nav. */
+  --shadow-drawer-left: 4px 0 24px rgb(0 0 0 / 25%);
+
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body) !important;
   --mantine-color-text: var(--color-text);
@@ -285,6 +288,9 @@
 
   /* Shadows */
   --shadow-drawer: -4px 0 24px rgb(0 0 0 / 4%);
+
+  /* Cast to the right, for a drawer on the left edge such as the open nav. */
+  --shadow-drawer-left: 4px 0 24px rgb(0 0 0 / 4%);
 
   /* Mantine Overrides */
   --mantine-color-body: var(--color-bg-body);
