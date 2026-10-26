@@ -18,9 +18,10 @@ import {
   getServer,
   seedExponentialHistogramMetric,
 } from '@/fixtures';
+import * as patternDrilldown from '@/mcp/tools/query/patternDrilldown';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
-import { Source, type SourceDocument } from '@/models/source';
+import { LogSource, Source, type SourceDocument } from '@/models/source';
 import Team from '@/models/team';
 
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
@@ -685,6 +686,399 @@ describe('MCP Query Tools', () => {
           p.trend.some((t: any) => t.count > 0),
         );
         expect(hasNonZeroTrend).toBe(true);
+      });
+    });
+
+    describe('drill-down, extraction and sampling', () => {
+      const now = new Date();
+      const base = new Date(now.getTime() - 5 * 60 * 1000);
+      const window = {
+        startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+        endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+      };
+
+      const tricky = [
+        ...['k1', 'k2', 'k3'].map(
+          k =>
+            String.raw`Lookup "${k}" in C:\data\idx it's (a|b)*[c]+ $1 ^x {n} .?`,
+        ),
+        ...['a1', 'b2'].map(id => `Zahlung für ${id} fehlgeschlagen ✓ 日本`),
+        // Drain splits on these; RE2's \s alone would not.
+        ...['1', '2'].map(n => `\uFEFFReset ${n}\u00A0done`),
+        ...['1\u202F234', '5\u202F678'].map(n => `Paid ${n} EUR`),
+      ];
+
+      beforeEach(async () => {
+        let t = 0;
+        const at = () => new Date(base.getTime() + t++ * 1000);
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+        for (const n of [10, 20, 30, 40, 50, 60]) {
+          logs.push({
+            Body: `Sending ${n} rows`,
+            ServiceName: 'svc-a',
+            SeverityText: 'INFO',
+            Timestamp: at(),
+          });
+        }
+        for (const n of [1, 2, 3]) {
+          logs.push({
+            Body: `Sending ${n} more rows`,
+            ServiceName: 'svc-a',
+            SeverityText: 'INFO',
+            Timestamp: at(),
+          });
+        }
+        for (const n of [70, 80, 90, 100]) {
+          logs.push({
+            Body: `Sending ${n} rows`,
+            ServiceName: 'svc-b',
+            SeverityText: 'INFO',
+            Timestamp: at(),
+          });
+        }
+        for (const body of tricky) {
+          logs.push({
+            Body: body,
+            ServiceName: 'tricky',
+            SeverityText: 'WARN',
+            Timestamp: at(),
+          });
+        }
+        for (const s of [5, 15, 30]) {
+          logs.push({
+            Body: 'request failed',
+            ServiceName: 'attrs',
+            SeverityText: 'ERROR',
+            Timestamp: at(),
+            LogAttributes: { 'exception.message': `Timeout after ${s} s` },
+          });
+        }
+        logs.push({
+          Body: 'request failed',
+          ServiceName: 'attrs',
+          SeverityText: 'ERROR',
+          Timestamp: at(),
+        });
+        for (const id of [123, 456, 789]) {
+          logs.push({
+            Body: JSON.stringify({
+              level: 'error',
+              message: `Payment ${id} declined by issuer`,
+            }),
+            ServiceName: 'json',
+            SeverityText: 'ERROR',
+            Timestamp: at(),
+          });
+        }
+        for (const body of [
+          JSON.stringify({ message: 5 }),
+          JSON.stringify({ message: null }),
+          JSON.stringify({ message: { nested: 'x' } }),
+          JSON.stringify({ other: 'x' }),
+          JSON.stringify({ message: '' }),
+          'not json at all',
+        ]) {
+          logs.push({
+            Body: body,
+            ServiceName: 'json',
+            SeverityText: 'ERROR',
+            Timestamp: at(),
+          });
+        }
+        await bulkInsertLogs(logs);
+      });
+
+      type MinedPattern = {
+        pattern: string;
+        sampleCount: number;
+        estimatedCount: number;
+        whereSnippet: string;
+        whereLanguage: string;
+        drilldownUnavailable?: string;
+        samples: string[];
+        trend?: { time: string; count: number }[];
+      };
+      type MinedOutput = {
+        summary: {
+          totalCount: number;
+          sampledCount: number;
+          sampleCoverage: number;
+          sampleMultiplier: number;
+          bodyColumn: string;
+          timeRange: { start: string; end: string };
+          trend?: {
+            requestedBuckets: number;
+            bucketCount: number;
+            bucketInterval: string;
+            firstBucketStart: string;
+            lastBucketEnd: string;
+          };
+          drilldown: {
+            tool: string;
+            sourceId: string;
+            startTime: string;
+            endTime: string;
+            includesFilters: boolean;
+            warning?: string;
+          };
+        };
+        patterns: MinedPattern[];
+      };
+
+      const mine = async (
+        args: Record<string, unknown>,
+      ): Promise<MinedOutput> => {
+        const result = await callTool(client, 'clickstack_event_patterns', {
+          sourceId: logSource._id.toString(),
+          ...window,
+          ...args,
+        });
+        expect(result.isError).toBeFalsy();
+        return JSON.parse(getFirstText(result));
+      };
+
+      const drill = async (output: MinedOutput, pattern: MinedPattern) => {
+        expect(pattern.whereLanguage).toBe('sql');
+        expect(pattern.whereSnippet).not.toBe('');
+        const { drilldown } = output.summary;
+        expect(drilldown.tool).toBe('clickstack_search');
+        const result = await callTool(client, 'clickstack_search', {
+          sourceId: drilldown.sourceId,
+          startTime: drilldown.startTime,
+          endTime: drilldown.endTime,
+          where: pattern.whereSnippet,
+          whereLanguage: pattern.whereLanguage,
+          columns: 'Body, ServiceName',
+          maxResults: 200,
+        });
+        expect(result.isError).toBeFalsy();
+        const parsed: {
+          result: { data: { Body: string; ServiceName: string }[] };
+        } = JSON.parse(getFirstText(result));
+        return parsed.result.data;
+      };
+
+      const findPattern = (output: MinedOutput, template: string) => {
+        const p = output.patterns.find(x => x.pattern === template);
+        if (!p) throw new Error(`pattern not found: ${template}`);
+        return p;
+      };
+
+      it('drills into a template with a mid-message variable and keeps a Lucene filter', async () => {
+        const output = await mine({ where: 'ServiceName:svc-a' });
+        expect(output.summary.drilldown.sourceId).toBe(
+          logSource._id.toString(),
+        );
+
+        const rows = await drill(
+          output,
+          findPattern(output, 'Sending <*> rows'),
+        );
+        expect(rows).toHaveLength(6);
+        for (const r of rows) {
+          expect(r.Body).toMatch(/^Sending \d+ rows$/);
+          expect(r.ServiceName).toBe('svc-a');
+        }
+
+        const more = await drill(
+          output,
+          findPattern(output, 'Sending <*> more rows'),
+        );
+        expect(more).toHaveLength(3);
+        for (const r of more) expect(r.Body).toMatch(/^Sending \d more rows$/);
+      });
+
+      it('keeps a SQL filter in the drill-down', async () => {
+        const output = await mine({
+          where: "ServiceName = 'svc-b'",
+          whereLanguage: 'sql',
+        });
+        const rows = await drill(
+          output,
+          findPattern(output, 'Sending <*> rows'),
+        );
+        expect(rows).toHaveLength(4);
+        for (const r of rows) expect(r.ServiceName).toBe('svc-b');
+      });
+
+      it('builds predicates that parse and match messages with quotes, backslashes, regex characters and Unicode', async () => {
+        const output = await mine({ where: 'ServiceName:tricky' });
+        expect(output.summary.totalCount).toBe(tricky.length);
+        expect(output.patterns.length).toBeGreaterThan(0);
+
+        let drilled = 0;
+        for (const p of output.patterns) {
+          const rows = await drill(output, p);
+          // The sample covers every row and the fixture shapes do not overlap,
+          // so the drill-down must return exactly the cluster's members.
+          expect(rows).toHaveLength(p.sampleCount);
+          for (const r of rows) expect(tricky).toContain(r.Body);
+          drilled += rows.length;
+        }
+        expect(drilled).toBe(tricky.length);
+      });
+
+      it('mines a map attribute and drills into it with SQL, not Lucene bracket syntax', async () => {
+        const output = await mine({
+          bodyExpression: "LogAttributes['exception.message']",
+          where: "LogAttributes['exception.message'] != ''",
+          whereLanguage: 'sql',
+        });
+        expect(output.summary.totalCount).toBe(3);
+        const p = findPattern(output, 'Timeout after <*> s');
+        expect(p.whereSnippet).toContain(
+          "match(LogAttributes['exception.message'],",
+        );
+        expect(p.whereSnippet).not.toContain("']:");
+
+        const rows = await drill(output, p);
+        expect(rows).toHaveLength(3);
+        for (const r of rows) expect(r.ServiceName).toBe('attrs');
+      });
+
+      it('mines a field inside JSON bodies with JSONExtractString and drills with the same expression', async () => {
+        const expr = "JSONExtractString(Body, 'message')";
+        const output = await mine({
+          bodyExpression: expr,
+          where: `ServiceName = 'json' AND ${expr} != ''`,
+          whereLanguage: 'sql',
+        });
+        expect(output.summary.bodyColumn).toBe(expr);
+        // Non-JSON bodies and missing / null / empty values extract to '' and
+        // are filtered out. How numbers and objects extract varies by
+        // ClickHouse version, so only the payment strings are asserted.
+        expect(output.summary.totalCount).toBeGreaterThanOrEqual(3);
+        const allSamples = output.patterns.flatMap(x => x.samples);
+        expect(allSamples).not.toContain('');
+
+        const p = findPattern(output, 'Payment <*> declined by issuer');
+        expect(p.sampleCount).toBe(3);
+        expect(p.whereSnippet).toContain(`match(${expr},`);
+        const rows = await drill(output, p);
+        expect(rows).toHaveLength(3);
+        for (const r of rows) {
+          expect(JSON.parse(r.Body).message).toMatch(/^Payment \d+ declined/);
+        }
+      });
+
+      it('rejects function calls in bodyExpression other than JSONExtractString over a column', async () => {
+        for (const bodyExpression of [
+          'lower(Body)',
+          "JSONExtractString(lower(Body), 'message')",
+          "JSONExtractString(Body, 'message') OR (1=1",
+        ]) {
+          const result = await callTool(client, 'clickstack_event_patterns', {
+            sourceId: logSource._id.toString(),
+            bodyExpression,
+            ...window,
+          });
+          expect(result.isError).toBe(true);
+          expect(getFirstText(result)).toContain('bodyExpression');
+        }
+      });
+
+      it('applies the source table filter to mining and to the drill-down', async () => {
+        // The field lives on the Log discriminator; Source.updateOne drops it.
+        await LogSource.updateOne(
+          { _id: logSource._id },
+          { $set: { tableFilterExpression: "ServiceName != 'svc-b'" } },
+        );
+        const output = await mine({});
+        const p = findPattern(output, 'Sending <*> rows');
+        expect(p.sampleCount).toBe(6);
+        expect(p.whereSnippet).toContain("ServiceName != 'svc-b'");
+        const rows = await drill(output, p);
+        expect(rows).toHaveLength(6);
+        for (const r of rows) expect(r.ServiceName).toBe('svc-a');
+        expect(output.summary.drilldown.includesFilters).toBe(true);
+        expect(output.summary.drilldown.warning).toBeUndefined();
+      });
+
+      it('keeps the table filter and warns when the where filter cannot be rendered as SQL', async () => {
+        await LogSource.updateOne(
+          { _id: logSource._id },
+          { $set: { tableFilterExpression: "ServiceName != 'svc-b'" } },
+        );
+        const spy = jest
+          .spyOn(patternDrilldown, 'userWhereAsSql')
+          .mockRejectedValueOnce(new Error('cannot render'));
+        try {
+          const output = await mine({ where: 'SeverityText:INFO' });
+          expect(output.summary.drilldown.includesFilters).toBe(false);
+          expect(output.summary.drilldown.warning).toContain('table filter');
+          const p = findPattern(output, 'Sending <*> rows');
+          expect(p.whereSnippet).toContain("ServiceName != 'svc-b'");
+          const rows = await drill(output, p);
+          expect(rows).toHaveLength(6);
+          for (const r of rows) expect(r.ServiceName).toBe('svc-a');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
+      it('marks templates too long for a predicate as drilldownUnavailable', async () => {
+        await bulkInsertLogs([
+          {
+            Body: 'x'.repeat(4001),
+            ServiceName: 'long',
+            SeverityText: 'INFO',
+            Timestamp: base,
+          },
+        ]);
+        const output = await mine({ where: 'ServiceName:long' });
+        expect(output.patterns).toHaveLength(1);
+        const [p] = output.patterns;
+        expect(p.whereSnippet).toBe('');
+        expect(p.drilldownUnavailable).toContain('longer than 4000');
+      });
+
+      it('separates sampled counts from estimates', async () => {
+        const output = await mine({
+          where: 'ServiceName:svc-a',
+          sampleSize: 3,
+        });
+        const { summary } = output;
+        expect(summary.totalCount).toBe(9);
+        expect(summary.sampledCount).toBe(3);
+        expect(summary.sampleCoverage).toBeCloseTo(3 / 9, 3);
+        expect(summary.sampleMultiplier).toBe(3);
+        const sampledTotal = output.patterns.reduce(
+          (n, p) => n + p.sampleCount,
+          0,
+        );
+        expect(sampledTotal).toBe(3);
+        for (const p of output.patterns) {
+          expect(p.estimatedCount).toBe(p.sampleCount * 3);
+        }
+      });
+
+      it('reports the effective trend buckets, and omits trends when trendBuckets is 0', async () => {
+        const withTrend = await mine({
+          where: 'ServiceName:svc-a',
+          trendBuckets: 24,
+        });
+        const { trend } = withTrend.summary;
+        if (!trend) throw new Error('summary.trend missing');
+        expect(trend.requestedBuckets).toBe(24);
+        expect(trend.bucketCount).toBeLessThanOrEqual(24);
+        expect(typeof trend.bucketInterval).toBe('string');
+        expect(new Date(trend.firstBucketStart).getTime()).toBeLessThanOrEqual(
+          new Date(withTrend.summary.timeRange.start).getTime(),
+        );
+        expect(new Date(trend.lastBucketEnd).getTime()).toBeGreaterThanOrEqual(
+          new Date(withTrend.summary.timeRange.end).getTime(),
+        );
+        for (const p of withTrend.patterns) {
+          expect(p.trend).toHaveLength(trend.bucketCount);
+        }
+
+        const noTrend = await mine({
+          where: 'ServiceName:svc-a',
+          trendBuckets: 0,
+        });
+        expect(noTrend.summary.trend).toBeUndefined();
+        for (const p of noTrend.patterns) expect(p.trend).toBeUndefined();
+        expect(noTrend.patterns.length).toBeGreaterThan(0);
       });
     });
   });

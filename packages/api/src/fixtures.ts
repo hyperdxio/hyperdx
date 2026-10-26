@@ -434,6 +434,7 @@ export const bulkInsertLogs = async (
     ServiceName: string;
     SeverityText: string;
     Timestamp: Date;
+    LogAttributes?: Record<string, string>;
   }[],
 ) => {
   if (!config.IS_CI) {

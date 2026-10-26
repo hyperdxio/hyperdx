@@ -891,6 +891,30 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
       };
     };
 
+    // clickstack_search has no variable context, so each snippet must carry
+    // the expanded selection and return only the selected service's rows.
+    const expectDrilldownServices = async (text: string, service: string) => {
+      const { patterns } = JSON.parse(text);
+      expect(patterns.length).toBeGreaterThan(0);
+      for (const p of patterns) {
+        expect(p.whereSnippet).not.toContain('$__filter');
+        expect(p.whereSnippet).not.toContain('$service');
+        const search = await callTool(ctx.client!, 'clickstack_search', {
+          sourceId: logSourceId,
+          startTime,
+          endTime,
+          where: p.whereSnippet,
+          whereLanguage: 'sql',
+          columns: 'ServiceName',
+        });
+        expect(search.isError).toBeFalsy();
+        const rows: { ServiceName: string }[] = JSON.parse(getFirstText(search))
+          .result.data;
+        expect(rows.length).toBeGreaterThan(0);
+        for (const r of rows) expect(r.ServiceName).toBe(service);
+      }
+    };
+
     it('expands $__filter to a no-op on an event_patterns tile with nothing selected', async () => {
       const dashboard = await saveDashboard([eventPatternsTile()]);
 
@@ -931,6 +955,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
       expect(sampledCount).toBe(2);
       expect(bodies.some(b => b.includes('checkout'))).toBe(true);
       expect(bodies.some(b => b.includes('payments'))).toBe(false);
+      await expectDrilldownServices(getFirstText(result), 'checkout');
     });
 
     it('expands a Lucene variable reference on an event_patterns tile', async () => {
@@ -953,6 +978,7 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
       expect(totalCount).toBe(1);
       expect(bodies.some(b => b.includes('checkout'))).toBe(false);
       expect(bodies.some(b => b.includes('payments'))).toBe(true);
+      await expectDrilldownServices(getFirstText(result), 'payments');
     });
 
     it('reports an event_patterns macro naming a variable the dashboard does not declare', async () => {
