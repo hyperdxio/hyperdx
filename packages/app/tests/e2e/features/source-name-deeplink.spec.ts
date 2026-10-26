@@ -11,6 +11,7 @@ import {
   DEFAULT_TRACES_SOURCE_NAME,
   K8S_LOGS_NO_METRICS_SOURCE_NAME,
 } from '../utils/constants';
+import { OUTSIDE_CHART_TYPE_PICKER } from '../utils/locators';
 
 /**
  * `?source=` accepts a source name as well as a source ID so links can be
@@ -495,7 +496,9 @@ test.describe('Source name deeplinks', { tag: ['@full-stack'] }, () => {
     );
     // A resolved source means the query can be built and the chart drawn.
     await expect(
-      page.locator('.recharts-responsive-container').first(),
+      page
+        .locator(`.recharts-responsive-container${OUTSIDE_CHART_TYPE_PICKER}`)
+        .first(),
     ).toBeVisible({ timeout: 20000 });
   });
 

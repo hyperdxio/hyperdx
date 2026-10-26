@@ -3,6 +3,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { ChartExplorerPage } from '../page-objects/ChartExplorerPage';
 import { expect, test } from '../utils/base-test';
 import { DEFAULT_LOGS_SOURCE_NAME, E2E_LOGS_TABLE } from '../utils/constants';
+import { OUTSIDE_CHART_TYPE_PICKER } from '../utils/locators';
 
 test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
   let chartExplorerPage: ChartExplorerPage;
@@ -251,21 +252,25 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
     });
 
     await test.step('The chart type previews draw that result', async () => {
-      const option = (name: string) =>
-        page.getByTestId('chart-type-input').getByRole('radio', { name });
+      const preview = (type: DisplayType) =>
+        page.getByTestId(`chart-type-preview-${type}`);
+      // The tile's own group-by column, not the sample table's
+      await expect(preview(DisplayType.Table)).toContainText('ServiceName', {
+        timeout: 30000,
+      });
       await expect(
-        option('Pie').locator('[style*="conic-gradient"]'),
-      ).toBeVisible({ timeout: 30000 });
-      // Not the static illustrations shown before anything is queried
-      await expect(option('Number')).not.toContainText('1.42M');
-      await expect(option('Table')).not.toContainText('412K');
+        preview(DisplayType.Pie).locator('.recharts-pie-sector').first(),
+      ).toBeVisible();
+      await expect(preview(DisplayType.Number)).not.toContainText('1.42M');
     });
 
     await test.step('Table, number, pie and bar charts render from that result', async () => {
       await chartExplorerPage.chartEditor.setChartType(DisplayType.Table);
       // The first local chart waits for chdb to load
       await expect(
-        page.getByRole('columnheader', { name: 'ServiceName', exact: true }),
+        page
+          .locator(`table${OUTSIDE_CHART_TYPE_PICKER}`)
+          .getByRole('columnheader', { name: 'ServiceName', exact: true }),
       ).toBeVisible({ timeout: 30000 });
 
       await chartExplorerPage.chartEditor.setChartType(DisplayType.Number);

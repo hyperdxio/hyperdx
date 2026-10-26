@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react';
+import type { ComponentType } from 'react';
 import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
@@ -26,6 +26,13 @@ import {
   TablePreview,
   TimeSeriesPreview,
 } from './ChartTypePreviews';
+import {
+  SampleBar,
+  SampleNumber,
+  SamplePie,
+  SampleTable,
+  SampleTimeSeries,
+} from './ChartTypeThumbnails';
 
 import classes from './ChartTypeSelector.module.scss';
 
@@ -36,77 +43,43 @@ type ChartTypeOption = {
 };
 
 const PREVIEW_OPTIONS: (ChartTypeOption & {
-  preview: ReactNode;
+  Sample: ComponentType;
   LivePreview: ComponentType<ChartTypePreviewProps>;
 })[] = [
   {
     value: DisplayType.Line,
     label: 'Time series',
     Icon: IconChartLine,
+    Sample: SampleTimeSeries,
     LivePreview: TimeSeriesPreview,
-    preview: (
-      <svg
-        className={classes.timeSeries}
-        viewBox="0 0 100 40"
-        preserveAspectRatio="none"
-      >
-        <polyline
-          points="0,30 12,24 24,27 36,16 48,20 60,10 72,14 84,6 100,9"
-          stroke="var(--color-chart-blue)"
-        />
-        <polyline
-          points="0,36 12,33 24,34 36,28 48,31 60,25 72,27 84,22 100,24"
-          stroke="var(--color-chart-cyan)"
-        />
-      </svg>
-    ),
   },
   {
     value: DisplayType.Table,
     label: 'Table',
     Icon: IconTable,
+    Sample: SampleTable,
     LivePreview: TablePreview,
-    preview: (
-      <div className={classes.miniTable}>
-        {[
-          ['frontend', '412K'],
-          ['checkout', '318K'],
-          ['cart', '254K'],
-        ].map(([name, count]) => (
-          <div key={name} className={classes.miniTableRow}>
-            <span>{name}</span>
-            <span>{count}</span>
-          </div>
-        ))}
-      </div>
-    ),
   },
   {
     value: DisplayType.Number,
     label: 'Number',
     Icon: IconNumbers,
+    Sample: SampleNumber,
     LivePreview: NumberPreview,
-    preview: <div className={classes.number}>1.42M</div>,
   },
   {
     value: DisplayType.Bar,
     label: 'Bar',
     Icon: IconChartBar,
+    Sample: SampleBar,
     LivePreview: BarPreview,
-    preview: (
-      <div className={classes.bars}>
-        {[48, 37, 30, 22, 17, 12].map(height => (
-          <div key={height} className={classes.bar} style={{ height }} />
-        ))}
-      </div>
-    ),
   },
   {
     value: DisplayType.Pie,
     label: 'Pie',
     Icon: IconChartPie,
+    Sample: SamplePie,
     LivePreview: PiePreview,
-    preview: <div className={classes.pie} />,
   },
 ];
 
@@ -146,25 +119,31 @@ export function ChartTypeSelector({
     >
       <div className={classes.grid}>
         {PREVIEW_OPTIONS.map(
-          ({ value: optionValue, label, Icon, preview, LivePreview }) => (
-            <Radio.Card
-              key={optionValue}
-              value={optionValue}
-              withBorder={false}
-              className={classes.tile}
-            >
-              <div className={classes.preview} aria-hidden>
+          ({ value: optionValue, label, Icon, Sample, LivePreview }) => (
+            // The preview sits beside the radio, not inside it, because the
+            // real charts render buttons and buttons can't nest. The radio's
+            // ::after covers the tile so all of it stays clickable.
+            <div key={optionValue} className={classes.tile}>
+              <div
+                className={classes.preview}
+                data-testid={`chart-type-preview-${optionValue}`}
+                inert
+              >
                 {config ? (
-                  <LivePreview config={config} fallback={preview} />
+                  <LivePreview config={config} fallback={<Sample />} />
                 ) : (
-                  preview
+                  <Sample />
                 )}
               </div>
-              <div className={classes.label}>
+              <Radio.Card
+                value={optionValue}
+                withBorder={false}
+                className={classes.label}
+              >
                 <Icon size={15} />
                 {label}
-              </div>
-            </Radio.Card>
+              </Radio.Card>
+            </div>
           ),
         )}
         <div className={classes.compactList}>

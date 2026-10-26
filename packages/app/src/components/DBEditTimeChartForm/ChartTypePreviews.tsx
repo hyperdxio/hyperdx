@@ -1,4 +1,8 @@
 import { type ReactNode, useMemo } from 'react';
+import {
+  filterColumnMetaByType,
+  JSDataType,
+} from '@hyperdx/common-utils/dist/clickhouse';
 import { hasNonEmptyOrderBy } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
@@ -10,7 +14,6 @@ import {
   shouldFillNullsWithZero,
   useTimeChartSettings,
 } from '@/ChartUtils';
-import { sparklinePointsFromGraphResults } from '@/components/NumberTileBackgroundChart';
 import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import {
   type LocalChartKind,
@@ -19,9 +22,16 @@ import {
 } from '@/hooks/useLocalChartQuery';
 import { useSource } from '@/source';
 import { ChartQueryResult } from '@/types';
-import { getColorProps } from '@/utils';
+import { formatNumber, getColorProps } from '@/utils';
 
-import classes from './ChartTypeSelector.module.scss';
+import {
+  BarThumbnail,
+  COMPACT_NUMBER,
+  NumberThumbnail,
+  PieThumbnail,
+  TableThumbnail,
+  TimeSeriesThumbnail,
+} from './ChartTypeThumbnails';
 
 // The previews draw the tile's own result once the time chart query behind it
 // is cached, re-aggregated in chdb. They never query ClickHouse, and show the
@@ -34,16 +44,6 @@ export type ChartTypePreviewProps = {
 const MAX_LINES = 3;
 const MAX_BARS = 8;
 const MAX_TABLE_ROWS = 3;
-
-const compactNumber = new Intl.NumberFormat('en-US', {
-  notation: 'compact',
-  maximumFractionDigits: 2,
-});
-
-function formatValue(value: unknown) {
-  const number = Number(value);
-  return Number.isFinite(number) ? compactNumber.format(number) : '';
-}
 
 function useLocalPreview(
   config: ChartConfigWithDateRange,
@@ -61,23 +61,20 @@ function useLocalPreview(
   return active ? data : undefined;
 }
 
-function useCategoricalPreview(
-  config: ChartConfigWithDateRange,
-  kind: LocalChartKind,
-) {
-  const data = useLocalPreview(config, kind);
+function useCategoricalPreview(config: ChartConfigWithDateRange) {
+  const data = useLocalPreview(config, 'categorical');
   return useMemo(() => {
     if (!data) return [];
     try {
-      // A table keeps its own row order, as do charts with an ORDER BY
-      const keepOrder =
-        kind === 'table' ||
-        (isBuilderChartConfig(config) && hasNonEmptyOrderBy(config.orderBy));
-      return formatResponseForCategoricalChart(data, getColorProps, !keepOrder);
+      return formatResponseForCategoricalChart(
+        data,
+        getColorProps,
+        !(isBuilderChartConfig(config) && hasNonEmptyOrderBy(config.orderBy)),
+      );
     } catch {
       return [];
     }
-  }, [data, kind, config]);
+  }, [data, config]);
 }
 
 export function TimeSeriesPreview({ config, fallback }: ChartTypePreviewProps) {
@@ -94,8 +91,8 @@ export function TimeSeriesPreview({ config, fallback }: ChartTypePreviewProps) {
     useTimeChartSettings(timeConfig);
   const { data } = useTimeChartQuery(timeConfig, { enabled: false });
 
-  const lines = useMemo(() => {
-    if (!data?.isComplete) return [];
+  const chart = useMemo(() => {
+    if (!data?.isComplete) return undefined;
     try {
       const { graphResults, timestampColumn, lineData } =
         formatResponseForTimeChart({
@@ -104,116 +101,76 @@ export function TimeSeriesPreview({ config, fallback }: ChartTypePreviewProps) {
           granularity,
           generateEmptyBuckets: shouldFillNullsWithZero(fillNulls),
           source,
+          maxSeries: MAX_LINES,
         });
-      return lineData.slice(0, MAX_LINES).map(line => ({
-        key: line.dataKey,
-        color: line.color,
-        points: sparklinePointsFromGraphResults(
-          graphResults,
-          timestampColumn?.name,
-          line.dataKey,
-        ),
-      }));
+      if (graphResults.length < 2) return undefined;
+      return {
+        graphResults,
+        lineData: lineData.slice(0, MAX_LINES),
+        timestampKey: timestampColumn?.name,
+      };
     } catch {
-      return [];
+      return undefined;
     }
   }, [data, dateRange, granularity, fillNulls, source]);
 
-  const all = lines.flatMap(line => line.points);
-  if (all.length < 2) return fallback;
-
-  const minX = Math.min(...all.map(p => p.x));
-  const spanX = Math.max(...all.map(p => p.x)) - minX || 1;
-  const minY = Math.min(0, ...all.map(p => p.y));
-  const spanY = Math.max(...all.map(p => p.y)) - minY || 1;
+  if (!chart) return fallback;
 
   return (
-    <svg
-      className={classes.timeSeries}
-      viewBox="0 0 100 40"
-      preserveAspectRatio="none"
-    >
-      {lines.map(line => (
-        <polyline
-          key={line.key}
-          points={line.points
-            .map(
-              p =>
-                `${((p.x - minX) / spanX) * 100},${38 - ((p.y - minY) / spanY) * 36}`,
-            )
-            .join(' ')}
-          stroke={line.color}
-        />
-      ))}
-    </svg>
+    <TimeSeriesThumbnail
+      {...chart}
+      dateRange={dateRange}
+      granularity={granularity}
+    />
   );
 }
 
 export function TablePreview({ config, fallback }: ChartTypePreviewProps) {
-  const rows = useCategoricalPreview(config, 'table').slice(0, MAX_TABLE_ROWS);
-  if (rows.length === 0) return fallback;
+  const data = useLocalPreview(config, 'table');
+  const table = useMemo(() => {
+    const rows = data?.data.slice(0, MAX_TABLE_ROWS) ?? [];
+    if (!data?.meta || rows.length === 0) return undefined;
+    const numeric = new Set(
+      filterColumnMetaByType(data.meta, [JSDataType.Number])?.map(c => c.name),
+    );
+    const columns = data.meta.map(({ name }) => ({
+      id: name,
+      dataKey: name,
+      displayName: name,
+      numberFormat: numeric.has(name) ? COMPACT_NUMBER : undefined,
+    }));
+    return { rows, columns };
+  }, [data]);
 
-  return (
-    <div className={classes.miniTable}>
-      {rows.map(({ label, value }) => (
-        <div key={label} className={classes.miniTableRow}>
-          <span className={classes.miniTableLabel}>{label}</span>
-          <span>{formatValue(value)}</span>
-        </div>
-      ))}
-    </div>
-  );
+  if (!table) return fallback;
+
+  return <TableThumbnail rows={table.rows} columns={table.columns} />;
 }
 
 export function NumberPreview({ config, fallback }: ChartTypePreviewProps) {
   const data = useLocalPreview(config, 'number');
   const column = data?.meta?.[0]?.name;
-  const value = column != null ? formatValue(data?.data[0]?.[column]) : '';
-  if (!value) return fallback;
+  const value = column != null ? Number(data?.data[0]?.[column]) : Number.NaN;
+  if (!Number.isFinite(value)) return fallback;
 
-  return <div className={classes.number}>{value}</div>;
+  return <NumberThumbnail value={formatNumber(value, COMPACT_NUMBER)} />;
 }
 
 export function BarPreview({ config, fallback }: ChartTypePreviewProps) {
-  const bars = useCategoricalPreview(config, 'categorical').slice(0, MAX_BARS);
-  const max = Math.max(...bars.map(bar => bar.value));
-  if (bars.length === 0 || !(max > 0)) return fallback;
+  const categories = useCategoricalPreview(config);
+  const bars = useMemo(() => categories.slice(0, MAX_BARS), [categories]);
+  if (!bars.some(bar => bar.value > 0)) return fallback;
 
-  return (
-    <div className={classes.bars}>
-      {bars.map(bar => (
-        <div
-          key={bar.label}
-          className={classes.bar}
-          style={{
-            height: Math.max((bar.value / max) * 48, 2),
-            backgroundColor: bar.color,
-          }}
-        />
-      ))}
-    </div>
-  );
+  return <BarThumbnail data={bars} />;
 }
 
 export function PiePreview({ config, fallback }: ChartTypePreviewProps) {
-  const slices = useCategoricalPreview(config, 'categorical').filter(
-    slice => slice.value > 0,
+  const categories = useCategoricalPreview(config);
+  const slices = useMemo(
+    () => categories.filter(slice => slice.value > 0),
+    [categories],
   );
-  const total = slices.reduce((sum, slice) => sum + slice.value, 0);
-  if (!(total > 0)) return fallback;
+  if (slices.length === 0) return fallback;
 
-  const stops: string[] = [];
-  let start = 0;
-  for (const slice of slices) {
-    const end = start + (slice.value / total) * 360;
-    stops.push(`${slice.color} ${start}deg ${end}deg`);
-    start = end;
-  }
-
-  return (
-    <div
-      className={classes.pie}
-      style={{ background: `conic-gradient(${stops.join(', ')})` }}
-    />
-  );
+  return <PieThumbnail data={slices} />;
 }

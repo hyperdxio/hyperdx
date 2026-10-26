@@ -8,6 +8,7 @@ import { expect, Locator, Page } from '@playwright/test';
 import {
   dismissSqlAutocomplete,
   getSqlEditor,
+  OUTSIDE_CHART_TYPE_PICKER,
   replaceEditorText,
 } from '../utils/locators';
 import { switchWhereToLucene } from '../utils/lucene-autocomplete';
@@ -440,7 +441,7 @@ export class ChartEditorComponent {
     if (waitForRecharts) {
       // need to wait for the recharts graph to render
       await this.page
-        .locator('.recharts-responsive-container')
+        .locator(`.recharts-responsive-container${OUTSIDE_CHART_TYPE_PICKER}`)
         .first()
         .waitFor({ state: 'visible', timeout: 10000 });
     }
@@ -700,7 +701,7 @@ export class ChartEditorComponent {
   tileEditorPreviewChart(): Locator {
     return this.page
       .getByTestId('tile-editor-form')
-      .locator('.recharts-responsive-container');
+      .locator(`.recharts-responsive-container${OUTSIDE_CHART_TYPE_PICKER}`);
   }
 
   /** CodeMirror content of the rendered "Generated SQL" preview. */
@@ -1482,7 +1483,9 @@ export class ChartEditorComponent {
    */
   async getPreviewTableHeaders(): Promise<string[]> {
     const modalBody = this.page.locator('.mantine-Modal-body');
-    const table = modalBody.locator('table').first();
+    const table = modalBody
+      .locator(`table${OUTSIDE_CHART_TYPE_PICKER}`)
+      .first();
     await table.waitFor({ state: 'visible', timeout: 15000 });
     const headers = await table.locator('thead tr th').allTextContents();
     return headers.map(h => h.trim());
@@ -1497,7 +1500,9 @@ export class ChartEditorComponent {
    */
   async getPreviewTableCellTexts(columnIndex: number): Promise<string[]> {
     const modalBody = this.page.locator('.mantine-Modal-body');
-    const table = modalBody.locator('table').first();
+    const table = modalBody
+      .locator(`table${OUTSIDE_CHART_TYPE_PICKER}`)
+      .first();
     await table.waitFor({ state: 'visible', timeout: 15000 });
     await table
       .locator('tbody tr[data-index]')

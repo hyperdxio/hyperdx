@@ -1330,6 +1330,7 @@ export const MemoChart = memo(function MemoChart({
   dateRangeEndInclusive = true,
   fitYAxisToData = false,
   lineInterpolation,
+  hideAxes = false,
 }: {
   graphResults: any[];
   setIsClickActive: (v: ActiveClickPayload | undefined) => void;
@@ -1376,6 +1377,8 @@ export const MemoChart = memo(function MemoChart({
   fitYAxisToData?: boolean;
   /** Unset follows the display type's default (see getLineCurveType). */
   lineInterpolation?: LineInterpolation;
+  /** Draws only the series, for thumbnail-sized previews. */
+  hideAxes?: boolean;
 }) {
   const _id = useId();
   const id = _id.replace(/:/g, '');
@@ -2095,6 +2098,7 @@ export const MemoChart = memo(function MemoChart({
             <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
           )}
           <XAxis
+            hide={hideAxes}
             dataKey={timestampKey ?? 'ts_bucket'}
             domain={xAxisDomain}
             interval="preserveStartEnd"
@@ -2108,6 +2112,7 @@ export const MemoChart = memo(function MemoChart({
             }}
           />
           <YAxis
+            hide={hideAxes}
             width={yAxisWidth}
             minTickGap={25}
             tickFormatter={yAxisTickFormatter}

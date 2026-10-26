@@ -20,6 +20,14 @@ export const replaceEditorText = async (
   await page.keyboard.type(text);
 };
 
+/**
+ * Append to a CSS selector to skip the chart type picker, whose option tiles
+ * render thumbnail charts with the same markup (recharts containers, tables)
+ * as the real chart preview.
+ */
+export const OUTSIDE_CHART_TYPE_PICKER =
+  ':not([data-testid="chart-type-input"] *)';
+
 export const getSqlEditor = (page: Page, placeholder?: string) => {
   const locator = placeholder
     ? `div.cm-editor:has-text("${placeholder}")`
