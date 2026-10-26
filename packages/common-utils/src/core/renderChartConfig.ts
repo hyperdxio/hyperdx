@@ -2338,25 +2338,35 @@ async function translateMetricChartConfig(
       // these expressions go inside tuple(...) in the ranking CTE and the
       // outer IN predicate, where an `AS "alias"` suffix is a syntax error
       // (mirrors the strip in renderSeriesLimitCte).
-      const groupByForRank = await renderSelectList(
-        typeof chartConfig.groupBy === 'string'
-          ? chartConfig.groupBy
-          : chartConfig.groupBy!.map(col => ({ ...col, alias: undefined })),
-        {
-          ...chartConfig,
-          from: { databaseName: '', tableName: 'Bucketed' },
-          with: sumWith,
-        } as BuilderChartConfigWithOptDateRangeEx,
-        metadata,
-        { mergeRatio: false },
-      );
-      const groupBySql = concatChSql(',', groupByForRank);
+      // One ChSql per group-by column (groupBy may be an array or a
+      // comma-separated string). splitAndTrimWithBracket respects []/()/quotes
+      // so it won't split inside Map['a,b']; the per-column null filter below
+      // needs them separated.
+      let groupByCols: ChSql[];
+      if (typeof chartConfig.groupBy === 'string') {
+        groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
+          col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
+        );
+      } else {
+        const rendered = await renderSelectList(
+          chartConfig.groupBy!.map(col => ({ ...col, alias: undefined })),
+          {
+            ...chartConfig,
+            from: { databaseName: '', tableName: 'Bucketed' },
+            with: sumWith,
+          } as BuilderChartConfigWithOptDateRangeEx,
+          metadata,
+          { mergeRatio: false },
+        );
+        groupByCols = Array.isArray(rendered) ? rendered : [rendered];
+      }
+      const groupBySql = concatChSql(',', groupByCols);
 
       // Exclude rows where any groupBy column is NULL/empty so they don't
       // collapse into a single dominating '-' series.
       const groupByEmptyFilter = concatChSql(
         ' AND ',
-        (Array.isArray(groupByForRank) ? groupByForRank : [groupByForRank]).map(
+        groupByCols.map(
           g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
         ),
       );
