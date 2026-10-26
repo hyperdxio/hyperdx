@@ -1,6 +1,9 @@
 import type { ComponentType, ReactNode } from 'react';
 import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  DisplayType,
+} from '@hyperdx/common-utils/dist/types';
 import { Radio } from '@mantine/core';
 import {
   IconBracketsContain,
@@ -15,6 +18,15 @@ import {
   IconTable,
 } from '@tabler/icons-react';
 
+import {
+  BarPreview,
+  type ChartTypePreviewProps,
+  NumberPreview,
+  PiePreview,
+  TablePreview,
+  TimeSeriesPreview,
+} from './ChartTypePreviews';
+
 import classes from './ChartTypeSelector.module.scss';
 
 type ChartTypeOption = {
@@ -23,11 +35,15 @@ type ChartTypeOption = {
   Icon: ComponentType<IconProps>;
 };
 
-const PREVIEW_OPTIONS: (ChartTypeOption & { preview: ReactNode })[] = [
+const PREVIEW_OPTIONS: (ChartTypeOption & {
+  preview: ReactNode;
+  LivePreview: ComponentType<ChartTypePreviewProps>;
+})[] = [
   {
     value: DisplayType.Line,
     label: 'Time series',
     Icon: IconChartLine,
+    LivePreview: TimeSeriesPreview,
     preview: (
       <svg
         className={classes.timeSeries}
@@ -49,6 +65,7 @@ const PREVIEW_OPTIONS: (ChartTypeOption & { preview: ReactNode })[] = [
     value: DisplayType.Table,
     label: 'Table',
     Icon: IconTable,
+    LivePreview: TablePreview,
     preview: (
       <div className={classes.miniTable}>
         {[
@@ -68,12 +85,14 @@ const PREVIEW_OPTIONS: (ChartTypeOption & { preview: ReactNode })[] = [
     value: DisplayType.Number,
     label: 'Number',
     Icon: IconNumbers,
+    LivePreview: NumberPreview,
     preview: <div className={classes.number}>1.42M</div>,
   },
   {
     value: DisplayType.Bar,
     label: 'Bar',
     Icon: IconChartBar,
+    LivePreview: BarPreview,
     preview: (
       <div className={classes.bars}>
         {[48, 37, 30, 22, 17, 12].map(height => (
@@ -86,6 +105,7 @@ const PREVIEW_OPTIONS: (ChartTypeOption & { preview: ReactNode })[] = [
     value: DisplayType.Pie,
     label: 'Pie',
     Icon: IconChartPie,
+    LivePreview: PiePreview,
     preview: <div className={classes.pie} />,
   },
 ];
@@ -104,9 +124,12 @@ const COMPACT_OPTIONS: ChartTypeOption[] = [
 export function ChartTypeSelector({
   value,
   onChange,
+  config,
 }: {
   value: DisplayType | undefined;
   onChange: (value: DisplayType) => void;
+  /** The queried tile, drawn in each preview once its result is cached. */
+  config?: ChartConfigWithDateRange;
 }) {
   return (
     <Radio.Group
@@ -122,22 +145,28 @@ export function ChartTypeSelector({
       data-testid="chart-type-input"
     >
       <div className={classes.grid}>
-        {PREVIEW_OPTIONS.map(({ value: optionValue, label, Icon, preview }) => (
-          <Radio.Card
-            key={optionValue}
-            value={optionValue}
-            withBorder={false}
-            className={classes.tile}
-          >
-            <div className={classes.preview} aria-hidden>
-              {preview}
-            </div>
-            <div className={classes.label}>
-              <Icon size={15} />
-              {label}
-            </div>
-          </Radio.Card>
-        ))}
+        {PREVIEW_OPTIONS.map(
+          ({ value: optionValue, label, Icon, preview, LivePreview }) => (
+            <Radio.Card
+              key={optionValue}
+              value={optionValue}
+              withBorder={false}
+              className={classes.tile}
+            >
+              <div className={classes.preview} aria-hidden>
+                {config ? (
+                  <LivePreview config={config} fallback={preview} />
+                ) : (
+                  preview
+                )}
+              </div>
+              <div className={classes.label}>
+                <Icon size={15} />
+                {label}
+              </div>
+            </Radio.Card>
+          ),
+        )}
         <div className={classes.compactList}>
           {COMPACT_OPTIONS.map(({ value: optionValue, label, Icon }) => (
             <Radio.Card

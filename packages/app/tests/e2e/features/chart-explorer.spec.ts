@@ -250,6 +250,17 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
       chartQueries.length = 0;
     });
 
+    await test.step('The chart type previews draw that result', async () => {
+      const option = (name: string) =>
+        page.getByTestId('chart-type-input').getByRole('radio', { name });
+      await expect(
+        option('Pie').locator('[style*="conic-gradient"]'),
+      ).toBeVisible({ timeout: 30000 });
+      // Not the static illustrations shown before anything is queried
+      await expect(option('Number')).not.toContainText('1.42M');
+      await expect(option('Table')).not.toContainText('412K');
+    });
+
     await test.step('Table, number, pie and bar charts render from that result', async () => {
       await chartExplorerPage.chartEditor.setChartType(DisplayType.Table);
       // The first local chart waits for chdb to load

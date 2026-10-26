@@ -227,6 +227,8 @@ type LocalChartQueryOptions = {
   limit?: number;
   queryKeyPrefix?: string;
   enabled?: boolean;
+  /** Only use a time chart result that is already cached; never query for it. */
+  cacheOnly?: boolean;
 };
 
 type LocalChartQueryResult = {
@@ -247,6 +249,7 @@ function useLocalChartQueryInBrowser(
     limit,
     queryKeyPrefix,
     enabled = true,
+    cacheOnly = false,
   }: LocalChartQueryOptions,
 ): LocalChartQueryResult {
   const { data: source } = useSource({ id: config.source });
@@ -266,9 +269,10 @@ function useLocalChartQueryInBrowser(
   });
   const canRunLocally = transform != null && !chdb.isError;
 
+  // A disabled query still reads whatever the cache holds for its key
   const timeSeries = useTimeChartQuery(transform?.timeConfig ?? config, {
     queryKeyPrefix,
-    enabled: enabled && canRunLocally,
+    enabled: enabled && canRunLocally && !cacheOnly,
   });
 
   const result = useQuery<ChartQueryResult>({

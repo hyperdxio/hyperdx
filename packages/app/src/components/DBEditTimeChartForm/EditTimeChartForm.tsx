@@ -1188,7 +1188,11 @@ export default function EditTimeChartForm({
             control={control}
             name="displayType"
             render={({ field: { onChange, value } }) => (
-              <ChartTypeSelector value={value} onChange={onChange} />
+              <ChartTypeSelector
+                value={value}
+                onChange={onChange}
+                config={previewConfig}
+              />
             )}
           />
           {activeTab === 'markdown' ? (
