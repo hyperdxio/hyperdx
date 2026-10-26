@@ -1,0 +1,37 @@
+.root {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-height: 88px;
+  overflow-y: auto;
+}
+
+.group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.groupChrome {
+  padding: 1px 4px;
+  border: 1px solid var(--color-border-muted);
+  border-radius: var(--mantine-radius-default);
+  background-color: color-mix(in srgb, var(--color-bg-muted) 50%, transparent);
+}
+
+.paren,
+.join {
+  flex-shrink: 0;
+  color: var(--color-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 18px;
+  user-select: none;
+}
+
+.join {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}

@@ -6,7 +6,7 @@
  * now passes a source id; the dashboard-wide WHERE spans every tile and has
  * none, so it still leans on the connection. Both are covered here because
  * this exercises the real query path end to end, which the unit tests can't:
- * they mock out the very `useAllFields` call that was never running.
+ * they mock out the very `useMultipleAllFields` call that was never running.
  *
  * The other inputs the same fix touched are covered where they live: the
  * services dashboard, sessions, the trace waterfall's span/log filters and the

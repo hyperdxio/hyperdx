@@ -7,14 +7,20 @@ export function GranularityPicker({
   value,
   onChange,
   disabled,
+  label,
+  size,
 }: {
   value: Granularity | 'auto' | undefined;
   onChange: (granularity: Granularity | 'auto' | undefined) => void;
   disabled?: boolean;
+  label?: string;
+  size?: 'xs' | 'sm';
 }) {
   return (
     <Select
       disabled={disabled}
+      label={label}
+      size={size}
       data-testid="granularity-picker"
       data={[
         {

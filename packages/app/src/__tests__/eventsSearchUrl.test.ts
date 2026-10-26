@@ -2,11 +2,17 @@ import {
   BuilderChartConfigWithDateRange,
   ChartVariable,
   DisplayType,
+  MetricsDataType,
   SourceKind,
   TLogSource,
+  TMetricSource,
+  TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { buildEventsSearchUrl, buildTableRowSearchUrl } from '@/ChartUtils';
+import {
+  buildEventsSearchUrl,
+  buildTableRowSearchUrl,
+} from '@/components/Explore/owned/ChartUtils';
 
 const dateRange: [Date, Date] = [
   new Date('2026-01-01T00:00:00.000Z'),
@@ -201,6 +207,160 @@ describe('buildEventsSearchUrl variable expansion', () => {
         }),
       ).get('where'),
     ).toBe('$__filter(ServiceName, $nope)');
+  });
+});
+
+describe('buildEventsSearchUrl metric drill-down', () => {
+  const metricTables = {
+    gauge: 'otel_metrics_gauge',
+    histogram: 'otel_metrics_histogram',
+    sum: 'otel_metrics_sum',
+    summary: 'otel_metrics_summary',
+    'exponential histogram': 'otel_metrics_exponential_histogram',
+  };
+
+  const metricSource = {
+    id: 'metrics',
+    name: 'Metrics',
+    kind: SourceKind.Metric,
+    connection: 'clickhouse',
+    from: { databaseName: 'default', tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    metricTables,
+    resourceAttributesExpression: 'ResourceAttributes',
+    logSourceId: 'logs',
+  } as unknown as TMetricSource;
+
+  const metricConfig = {
+    ...builderConfig,
+    from: { databaseName: 'default', tableName: 'otel_metrics_gauge' },
+    metricTables,
+    where: "MetricName = 'k8s.pod.cpu'",
+    whereLanguage: 'sql' as const,
+    select: [
+      {
+        aggFn: 'avg' as const,
+        aggCondition: '',
+        aggConditionLanguage: 'sql' as const,
+        valueExpression: 'Value',
+        metricName: 'k8s.pod.cpu',
+        metricType: MetricsDataType.Gauge,
+      },
+    ],
+    timestampValueExpression: 'TimeUnix',
+  } satisfies BuilderChartConfigWithDateRange;
+
+  const logSourceWithAttributes = {
+    ...logSource,
+    resourceAttributesExpression: 'ResourceAttributes',
+  } satisfies TLogSource;
+
+  const drillDown = (targetSource?: TLogSource) =>
+    searchParams(
+      buildEventsSearchUrl({
+        source: metricSource,
+        config: metricConfig,
+        dateRange,
+        groupFilters: [
+          {
+            column: "ResourceAttributes['k8s.pod.name']",
+            value: 'payment-7d9f4',
+          },
+        ],
+        targetSource,
+      }),
+    );
+
+  it('lands on the correlated log source, carrying the clicked series', () => {
+    const params = drillDown(logSourceWithAttributes);
+
+    expect(params.get('source')).toBe('logs');
+    expect(JSON.parse(params.get('filters') ?? '')).toEqual([
+      {
+        type: 'sql',
+        condition: "ResourceAttributes['k8s.pod.name'] IN ('payment-7d9f4')",
+      },
+    ]);
+  });
+
+  it("drops the metric's own where clause, which means nothing on log rows", () => {
+    expect(drillDown(logSourceWithAttributes).get('where')).toBe('');
+  });
+
+  it('keeps the clicked bucket as the time range', () => {
+    const params = drillDown(logSourceWithAttributes);
+
+    expect(params.get('from')).toBe(dateRange[0].getTime().toString());
+    expect(params.get('to')).toBe(dateRange[1].getTime().toString());
+  });
+
+  it('returns no pivot when the target source is unknown', () => {
+    expect(
+      buildEventsSearchUrl({
+        source: metricSource,
+        config: metricConfig,
+        dateRange,
+      }),
+    ).toBeNull();
+  });
+
+  it('can target a correlated trace source', () => {
+    const traceSource = {
+      ...logSourceWithAttributes,
+      id: 'traces',
+      name: 'Traces',
+      kind: SourceKind.Trace,
+      durationExpression: 'Duration',
+      durationPrecision: 3,
+      traceIdExpression: 'TraceId',
+      spanIdExpression: 'SpanId',
+      parentSpanIdExpression: 'ParentSpanId',
+      spanNameExpression: 'SpanName',
+      spanKindExpression: 'SpanKind',
+    } satisfies TTraceSource;
+
+    const params = searchParams(
+      buildEventsSearchUrl({
+        source: metricSource,
+        config: metricConfig,
+        dateRange,
+        groupFilters: [
+          {
+            column: "ResourceAttributes['k8s.pod.name']",
+            value: 'payment-7d9f4',
+          },
+        ],
+        targetSource: traceSource,
+        basePath: '/explore',
+      }),
+    );
+
+    expect(params.get('source')).toBe('traces');
+    expect(JSON.parse(params.get('filters') ?? '')).toEqual([
+      {
+        type: 'sql',
+        condition: "ResourceAttributes['k8s.pod.name'] IN ('payment-7d9f4')",
+      },
+    ]);
+  });
+
+  it('stays on Explore when asked, in SQL rather than Lucene', () => {
+    const url = buildEventsSearchUrl({
+      source: metricSource,
+      config: metricConfig,
+      dateRange,
+      groupFilters: [
+        {
+          column: "ResourceAttributes['k8s.pod.name']",
+          value: 'payment-7d9f4',
+        },
+      ],
+      targetSource: logSourceWithAttributes,
+      basePath: '/explore',
+    });
+
+    expect(url?.startsWith('/explore?')).toBe(true);
+    expect(searchParams(url).get('whereLanguage')).toBe('sql');
   });
 });
 

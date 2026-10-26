@@ -1,0 +1,1491 @@
+// Explore-owned copy. The shared module stays as it is on main, so this prototype does not conflict with it.
+import { useMemo } from 'react';
+import { add, differenceInSeconds } from 'date-fns';
+import SqlString from 'sqlstring';
+import { z } from 'zod';
+import {
+  ColumnMetaType,
+  filterColumnMetaByType,
+  inferTimestampColumn,
+  JSDataType,
+  ResponseJSON,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
+import {
+  convertDateRangeToGranularityString,
+  convertGranularityToSeconds,
+  convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+  getAlignedDateRange,
+  Granularity,
+  hasPositiveSeriesLimit,
+} from '@hyperdx/common-utils/dist/core/utils';
+import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  AggregateFunction as AggFnV2,
+  BuilderChartConfigWithDateRange,
+  BuilderSavedChartConfig,
+  ChartConfigWithDateRange,
+  ChartConfigWithOptDateRange,
+  DisplayType,
+  Filter,
+  isSearchableSource,
+  MetricsDataType as MetricsDataTypeV2,
+  SourceKind,
+  SQLInterval,
+  TMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import { substituteChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
+
+import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
+import {
+  DEFAULT_SERIES_LIMIT,
+  MAX_RENDERED_TIME_CHART_SERIES,
+} from '@/defaults';
+import { MVOptimizationExplanationResult } from '@/hooks/useMVOptimizationExplanation';
+import { getMetricNameSql } from '@/otelSemanticConventions';
+import { AggFn, TableChartSeries, TimeChartSeries } from '@/types';
+import { NumberFormat } from '@/types';
+import { getColorProps, getLogLevelColorOrder, logLevelColor } from '@/utils';
+import { translateMetricGroupFilters } from '@/utils/metricPivot';
+
+type SortOrder = 'asc' | 'desc';
+
+export const AGG_FNS = [
+  { value: 'count' as const, label: 'Count of Events', isAttributable: false },
+  { value: 'sum' as const, label: 'Sum', isAttributable: false },
+  { value: 'p99' as const, label: '99th Percentile' },
+  { value: 'p95' as const, label: '95th Percentile' },
+  { value: 'p90' as const, label: '90th Percentile' },
+  { value: 'p50' as const, label: 'Median' },
+  { value: 'avg' as const, label: 'Average' },
+  { value: 'max' as const, label: 'Maximum' },
+  { value: 'min' as const, label: 'Minimum' },
+  {
+    value: 'count_distinct' as const,
+    label: 'Count Distinct',
+    isAttributable: false,
+  },
+  { value: 'any' as const, label: 'Any' },
+  { value: 'increase' as const, label: 'Increase', isAttributable: false },
+  { value: 'none' as const, label: 'Custom' },
+];
+
+export const DEFAULT_CHART_CONFIG: Omit<
+  BuilderSavedChartConfig,
+  'source' | 'connection'
+> = {
+  name: '',
+  select: [
+    {
+      aggFn: 'count',
+      aggCondition: '',
+      aggConditionLanguage: 'lucene',
+      valueExpression: '',
+    },
+  ],
+  where: '',
+  whereLanguage: 'lucene',
+  displayType: DisplayType.Line,
+  granularity: 'auto',
+  alignDateRangeToGranularity: true,
+};
+
+function getTimeChartGranularity(
+  granularity: string | undefined,
+  dateRange: [Date, Date],
+  minGranularitySeconds?: number,
+) {
+  return granularity === 'auto' || granularity == null
+    ? convertDateRangeToGranularityString(dateRange, 80, minGranularitySeconds)
+    : granularity;
+}
+
+function getTimeChartDateRange(
+  dateRange: [Date, Date],
+  alignDateRangeToGranularity: boolean | undefined,
+  granularity: string,
+) {
+  return alignDateRangeToGranularity === false
+    ? dateRange
+    : getAlignedDateRange(dateRange, granularity);
+}
+
+export const MAX_TIME_CHART_SERIES = DEFAULT_SERIES_LIMIT;
+
+export function convertToTimeChartConfig(
+  config: ChartConfigWithDateRange,
+): ChartConfigWithDateRange {
+  // Builder group-by charts emit the __hdx_series_limit CTE only for a positive
+  // seriesLimit. null/undefined (default) and 0 (explicitly unlimited) both
+  // skip the CTE and fetch every series; the client-side render cap in
+  // formatResponseForTimeChart then applies the default/opt-out behavior
+  // (mirrors resolveRenderedSeriesCap on the SQL side).
+  const seriesLimit =
+    isBuilderChartConfig(config) && hasPositiveSeriesLimit(config.seriesLimit)
+      ? config.seriesLimit
+      : undefined;
+
+  const granularity = getTimeChartGranularity(
+    config.granularity,
+    config.dateRange,
+    config.minGranularitySeconds,
+  );
+
+  const dateRange = getTimeChartDateRange(
+    config.dateRange,
+    config.alignDateRangeToGranularity,
+    granularity,
+  );
+
+  // When the range is bucket-aligned, the end is the start of the next bucket,
+  // so end-exclusive is required to avoid double-counting boundary events.
+  // When alignment is off the end is the user's exact selection, so fall back
+  // to the caller's setting, if there is one.
+  const isAligned = config.alignDateRangeToGranularity !== false;
+  const dateRangeEndInclusive = isAligned
+    ? false
+    : (config.dateRangeEndInclusive ?? false);
+
+  return isBuilderChartConfig(config)
+    ? {
+        ...config,
+        dateRange,
+        dateRangeEndInclusive,
+        granularity,
+        limit: { limit: 100000 },
+        // Overwrite (not conditionally spread) so a cleared `null` from the
+        // source config is normalized to undefined rather than carried over.
+        seriesLimit,
+      }
+    : {
+        ...config,
+        dateRangeEndInclusive,
+        dateRange,
+        granularity,
+      };
+}
+
+export function useTimeChartSettings(
+  config: Pick<
+    ChartConfigWithDateRange,
+    | 'displayType'
+    | 'dateRange'
+    | 'fillNulls'
+    | 'granularity'
+    | 'alignDateRangeToGranularity'
+    | 'minGranularitySeconds'
+  >,
+) {
+  return useMemo(() => {
+    const granularity = getTimeChartGranularity(
+      config.granularity,
+      config.dateRange,
+      config.minGranularitySeconds,
+    );
+
+    const dateRange = getTimeChartDateRange(
+      config.dateRange,
+      config.alignDateRangeToGranularity,
+      granularity,
+    );
+
+    return {
+      displayType: config.displayType,
+      fillNulls: config.fillNulls,
+      dateRange,
+      granularity,
+    };
+  }, [config]);
+}
+
+export const ChartKeyJoiner = SERIES_KEY_JOINER;
+const PreviousPeriodSuffix = ' (previous)';
+
+/**
+ * Finds the color of the series a group value belongs to — e.g. the color of
+ * the `checkout-service` line on a chart grouped by service name.
+ *
+ * Series keys are the group values joined by `ChartKeyJoiner`, prefixed by the
+ * value column name when the chart has more than one, so the group value is
+ * matched against the key's components rather than the whole key. Previous
+ * period series are skipped; they mirror a current period series' color.
+ *
+ * Used to tint chart annotations (release markers) to match the series they
+ * describe, so a marker for one service can't be read as another's.
+ */
+export function getSeriesColorForGroup(
+  lineData: LineData[],
+  group: string,
+): string | undefined {
+  for (const line of lineData) {
+    if (line.isDashed) {
+      continue;
+    }
+    if (line.currentPeriodKey.split(ChartKeyJoiner).includes(group)) {
+      return line.color;
+    }
+  }
+  return undefined;
+}
+
+// Note: roundToNearestMinutes is broken in date-fns currently
+// additionally it doesn't support seconds or > 30min
+// so we need to write our own :(
+// see: https://github.com/date-fns/date-fns/pull/3267/files
+export function toStartOfInterval(date: Date, granularity: SQLInterval): Date {
+  const [num, unit] = granularity.split(' ');
+  const numInt = Number.parseInt(num);
+  const roundFn = Math.floor;
+
+  switch (unit) {
+    case 'second':
+      return new Date(
+        Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          date.getUTCHours(),
+          date.getUTCMinutes(),
+          roundFn(date.getUTCSeconds() / numInt) * numInt,
+        ),
+      );
+    case 'minute':
+      return new Date(
+        Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          date.getUTCHours(),
+          roundFn(date.getUTCMinutes() / numInt) * numInt,
+        ),
+      );
+    case 'hour':
+      return new Date(
+        Date.UTC(
+          date.getUTCFullYear(),
+          date.getUTCMonth(),
+          date.getUTCDate(),
+          roundFn(date.getUTCHours() / numInt) * numInt,
+        ),
+      );
+    case 'day': {
+      // Clickhouse uses the # of days since unix epoch to round dates
+      // see: https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/DateLUTImpl.h#L1059
+      const daysSinceEpoch = date.getTime() / 1000 / 60 / 60 / 24;
+      const daysSinceEpochRounded = roundFn(daysSinceEpoch / numInt) * numInt;
+
+      return new Date(daysSinceEpochRounded * 1000 * 60 * 60 * 24);
+    }
+    default:
+      return date;
+  }
+}
+
+export function timeBucketByGranularity(
+  start: Date,
+  end: Date,
+  granularity: SQLInterval,
+): Date[] {
+  const buckets: Date[] = [];
+
+  let current = toStartOfInterval(start, granularity);
+  const granularitySeconds = convertGranularityToSeconds(granularity);
+  while (current < end) {
+    buckets.push(current);
+    current = add(current, {
+      seconds: granularitySeconds,
+    });
+  }
+
+  return buckets;
+}
+
+export const isAggregateFunction = (value: string) => {
+  const fns = [
+    // Basic aggregates
+    'count',
+    'countIf',
+    'countDistinct',
+    'sum',
+    'sumIf',
+    'avg',
+    'avgIf',
+    'min',
+    'max',
+    'any',
+    'anyLast',
+    'groupArray',
+    'groupArrayInsertAt',
+    'groupArrayMovingAvg',
+    'groupArraySample',
+    'groupUniqArray',
+    'groupUniqArrayIf',
+    'groupArrayIntersect',
+    'groupArrayIntersectIf',
+    'groupArrayReduce',
+    'groupBitmap',
+    'groupBitmapIf',
+    'groupBitmapOr',
+    'groupBitmapXor',
+
+    // Quantiles
+    'quantile',
+    'quantileIf',
+    'quantileExact',
+    'quantileExactWeighted',
+    'quantileTiming',
+    'quantileTimingWeighted',
+    'quantileTDigest',
+    'quantileTDigestWeighted',
+    'quantileBFloat16',
+    'quantileBFloat16Weighted',
+    'quantiles',
+    'median',
+    'medianExact',
+    'medianTDigest',
+    'medianBFloat16',
+
+    // Statistical functions
+    'stddevPop',
+    'stddevPopIf',
+    'stddevSamp',
+    'stddevSampIf',
+    'varPop',
+    'varPopIf',
+    'varSamp',
+    'varSampIf',
+    'covarPop',
+    'covarSamp',
+    'corr',
+
+    // Combinators
+    'uniq',
+    'uniqExact',
+    'uniqCombined',
+    'uniqCombined64',
+    'uniqHLL12',
+    'uniqTheta',
+
+    // Bit operations
+    'groupBitAnd',
+    'groupBitOr',
+    'groupBitXor',
+
+    // Map and tuple
+    'groupArrayMap',
+    'groupArrayTuple',
+    'groupArraySorted',
+    'topK',
+    'topKIf',
+    'topKWeighted',
+
+    // Aggregate combinators
+    'argMin',
+    'argMax',
+    'minMap',
+    'maxMap',
+
+    // Specialized aggregates
+    'runningDifference',
+    'retention',
+    'sequenceCount',
+    'sequenceMatch',
+    'histogram',
+    'simpleLinearRegression',
+    'stochasticLinearRegression',
+    'categoricalInformationValue',
+    'sumMap',
+    'sumMapFiltered',
+    'sumWithOverflow',
+    'entropy',
+    'skewPop',
+    'skewSamp',
+    'kurtPop',
+    'kurtSamp',
+  ];
+
+  // Make case-insensitive since ClickHouse function names are case-insensitive
+  const lowerValue = value.toLowerCase();
+  return fns.some(fn => lowerValue.includes(fn.toLowerCase() + '('));
+};
+
+export const INTEGER_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number',
+  mantissa: 0,
+  thousandSeparated: true,
+};
+
+export const MS_NUMBER_FORMAT: NumberFormat = {
+  factor: 1,
+  output: 'number',
+  mantissa: 2,
+  thousandSeparated: true,
+  unit: 'ms',
+};
+
+export const ERROR_RATE_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 0,
+};
+
+export const K8S_CPU_PERCENTAGE_NUMBER_FORMAT: NumberFormat = {
+  output: 'number',
+  mantissa: 2,
+};
+
+export const K8S_FILESYSTEM_NUMBER_FORMAT: NumberFormat = {
+  output: 'byte',
+};
+
+export const K8S_MEM_NUMBER_FORMAT: NumberFormat = {
+  output: 'byte',
+};
+
+export const GPU_UTILIZATION_NUMBER_FORMAT: NumberFormat = {
+  output: 'percent',
+  mantissa: 1,
+};
+
+function inferValueColumns(
+  meta: Array<{ name: string; type: string }>,
+  excluded: Set<string>,
+) {
+  return filterColumnMetaByType(meta, [JSDataType.Number])?.filter(
+    c => !excluded.has(c.name),
+  );
+}
+
+function inferGroupColumns(meta: Array<{ name: string; type: string }>) {
+  return filterColumnMetaByType(meta, [
+    JSDataType.String,
+    JSDataType.Map,
+    JSDataType.Array,
+  ]);
+}
+
+const DEFAULT_MAX_CATEGORICAL_GROUPS = 500;
+
+export function formatResponseForCategoricalChart(
+  data: ResponseJSON<Record<string, unknown>>,
+  getColor: (index: number, label: string) => string,
+  applyDefaultOrder: boolean = true,
+): Array<{ label: string; value: number; color: string }> {
+  if (data.meta == null) {
+    throw new Error('No meta data found in response');
+  }
+
+  if (data.data.length === 0) return [];
+
+  const valueColumns = inferValueColumns(data.meta, new Set()) ?? [];
+  if (valueColumns.length === 0) {
+    throw new Error(
+      `No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: ${JSON.stringify(data.meta)}`,
+    );
+  }
+  const valueColumn = valueColumns[0].name;
+
+  const groupByColumns = inferGroupColumns(data.meta);
+
+  const labelsAndValues = data.data
+    .map(row => {
+      const label = groupByColumns?.length
+        ? groupByColumns.map(({ name }) => row[name]).join(' - ')
+        : valueColumn;
+      const rawValue = row[valueColumn];
+      const value =
+        typeof rawValue === 'number'
+          ? rawValue
+          : Number.parseFloat(`${rawValue}`);
+      return { label, value };
+    })
+    .filter(entry => !isNaN(entry.value) && isFinite(entry.value));
+
+  if (applyDefaultOrder) {
+    // Sort in descending order so the largest entry is always first and gets the first color in the palette
+    labelsAndValues.sort((a, b) => b.value - a.value);
+  }
+
+  return labelsAndValues
+    .slice(0, DEFAULT_MAX_CATEGORICAL_GROUPS)
+    .map((entry, index) => ({
+      ...entry,
+      color: getColor(index, entry.label),
+    }));
+}
+
+export function getPreviousDateRange(currentRange: [Date, Date]): [Date, Date] {
+  const [start, end] = currentRange;
+  const offsetSeconds = differenceInSeconds(end, start);
+  return [
+    new Date(start.getTime() - offsetSeconds * 1000),
+    new Date(end.getTime() - offsetSeconds * 1000),
+  ];
+}
+
+/**
+ * Find the series whose active-point pixel Y is closest to the cursor.
+ *
+ * `seriesYByKey` maps each series' dataKey to the pixel Y of its
+ * active point (captured from the chart's active dots), and `pointerY`
+ * is the cursor's pixel Y. Both live in the same chart pixel space, so
+ * the nearest series is the one with the smallest vertical distance.
+ * Returns that series' dataKey, or `undefined` when the pointer is
+ * farther than `maxDistancePx` from every line (so nothing is
+ * highlighted in empty space). Candidates not present in the map are
+ * skipped, and ties resolve to the first candidate in `candidateKeys`.
+ */
+export function findNearestSeriesKey(
+  seriesYByKey: Map<string, number> | undefined,
+  candidateKeys: string[],
+  pointerY: number | undefined,
+  maxDistancePx: number,
+): string | undefined {
+  if (seriesYByKey == null || pointerY == null) {
+    return undefined;
+  }
+
+  let nearestKey: string | undefined;
+  let nearestDistance = Infinity;
+  for (const key of candidateKeys) {
+    const seriesY = seriesYByKey.get(key);
+    if (seriesY == null) {
+      continue;
+    }
+    const distance = Math.abs(seriesY - pointerY);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestKey = key;
+    }
+  }
+
+  if (nearestKey == null || nearestDistance > maxDistancePx) {
+    return undefined;
+  }
+  return nearestKey;
+}
+
+export interface LineData {
+  dataKey: string;
+  currentPeriodKey: string;
+  previousPeriodKey: string;
+  displayName: string;
+  /** The original result column name this series' values were pulled from. */
+  valueColumnName: string;
+  /** The series' raw group-by values, in group column order. */
+  groupValues: unknown[];
+  color: string;
+  isDashed?: boolean;
+}
+
+interface LineDataWithOptionalColor extends Omit<LineData, 'color'> {
+  color?: string;
+}
+
+function setLineColors(
+  sortedLineData: LineDataWithOptionalColor[],
+): LineData[] {
+  // Ensure that the current and previous period lines are the same color
+  const lineColorByCurrentPeriodKey = new Map<string, string>();
+
+  let colorIndex = 0;
+  return sortedLineData.map(line => {
+    const currentPeriodKey = line.currentPeriodKey;
+    if (lineColorByCurrentPeriodKey.has(currentPeriodKey)) {
+      line.color = lineColorByCurrentPeriodKey.get(currentPeriodKey);
+    } else if (!line.color) {
+      line.color = getColorProps(
+        colorIndex++,
+        line.displayName ?? line.dataKey,
+      );
+      lineColorByCurrentPeriodKey.set(currentPeriodKey, line.color);
+    } else {
+      lineColorByCurrentPeriodKey.set(currentPeriodKey, line.color);
+    }
+
+    return line as LineData;
+  });
+}
+
+function firstGroupColumnIsLogLevel(
+  source: TSource | undefined,
+  groupColumns: ColumnMetaType[],
+) {
+  if (!source || groupColumns.length !== 1) return false;
+  if (source.kind === SourceKind.Log) {
+    return groupColumns[0].name === source.severityTextExpression;
+  }
+  if (source.kind === SourceKind.Trace) {
+    return groupColumns[0].name === source.statusCodeExpression;
+  }
+  return false;
+}
+
+function addResponseToFormattedData({
+  response,
+  lineDataMap,
+  tsBucketMap,
+  source,
+  previousPeriodOffsetSeconds,
+  isPreviousPeriod,
+  hiddenSeries = [],
+}: {
+  tsBucketMap: Map<number, Record<string, any>>;
+  lineDataMap: { [keyName: string]: LineDataWithOptionalColor };
+  response: ResponseJSON<Record<string, any>>;
+  source?: TSource;
+  isPreviousPeriod: boolean;
+  previousPeriodOffsetSeconds: number;
+  hiddenSeries?: string[];
+}) {
+  const { meta, data } = response;
+  if (meta == null) {
+    throw new Error('No metadata found in response');
+  }
+
+  const timestampColumn = inferTimestampColumn(meta);
+  if (timestampColumn == null) {
+    throw new Error(
+      `No timestamp column found in result column metadata: ${JSON.stringify(meta)}`,
+    );
+  }
+
+  const valueColumns = inferValueColumns(meta, new Set(hiddenSeries)) ?? [];
+  const groupColumns = inferGroupColumns(meta) ?? [];
+  const isSingleValueColumn = valueColumns.length === 1;
+  const hasGroupColumns = groupColumns.length > 0;
+
+  // Hoist per-row-loop invariants: this runs once per row × value column,
+  // hundreds of thousands of times on a high-cardinality group-by.
+  const groupColumnNames = groupColumns.map(g => g.name);
+  const valueColumnNames = valueColumns.map(v => v.name);
+  // Single value column + group-by simplifies the key to just the group.
+  const omitValueColumnInKey = isSingleValueColumn && hasGroupColumns;
+  const applyLogLevelColor = firstGroupColumnIsLogLevel(source, groupColumns);
+  const timestampColumnName = timestampColumn.name;
+  const offsetSeconds = isPreviousPeriod ? previousPeriodOffsetSeconds : 0;
+
+  // A time chart has very few distinct bucket timestamps (one per granularity
+  // step) but potentially hundreds of thousands of rows, so `new Date(...)`
+  // parsing per row dominated the transform. Cache the parsed epoch-second
+  // bucket per raw timestamp value — same input always yields the same result,
+  // so this is behavior-preserving regardless of the value's format.
+  const tsSecondsByRaw = new Map<unknown, number>();
+
+  for (const row of data) {
+    const rawTs = row[timestampColumnName];
+    let ts = tsSecondsByRaw.get(rawTs);
+    if (ts === undefined) {
+      ts = Math.round(new Date(rawTs).getTime() / 1000 + offsetSeconds);
+      tsSecondsByRaw.set(rawTs, ts);
+    }
+
+    let tsBucket = tsBucketMap.get(ts);
+    if (tsBucket == null) {
+      tsBucket = { [timestampColumnName]: ts };
+      tsBucketMap.set(ts, tsBucket);
+    }
+
+    // Group key parts, built once per row and shared across value columns.
+    // Array.join renders null/undefined as '' (matches the prior behavior).
+    const groupKeyParts = groupColumnNames.map(name => {
+      const v = row[name];
+      return typeof v === 'object' && v !== null ? JSON.stringify(v) : v;
+    });
+    const groupKeyPart = groupKeyParts.join(ChartKeyJoiner);
+
+    for (const valueColumnName of valueColumnNames) {
+      const currentPeriodKey = omitValueColumnInKey
+        ? groupKeyPart
+        : hasGroupColumns
+          ? [valueColumnName, ...groupKeyParts].join(ChartKeyJoiner)
+          : valueColumnName;
+      const keyName = isPreviousPeriod
+        ? `${currentPeriodKey}${PreviousPeriodSuffix}`
+        : currentPeriodKey;
+
+      // UInt64 are returned as strings, we'll convert to number
+      // and accept a bit of floating point error
+      const rawValue = row[valueColumnName];
+      const value =
+        typeof rawValue === 'number' ? rawValue : Number.parseFloat(rawValue);
+
+      // Mutate the existing bucket object to avoid repeated large object copies
+      tsBucket[keyName] = value;
+
+      // Build the LineData entry once per key (not once per row): the object
+      // churn was the dominant cost on high-cardinality group-bys. Only the
+      // log-level color is row-dependent, so refresh just that on later rows.
+      const existing = lineDataMap[keyName];
+      if (existing == null) {
+        lineDataMap[keyName] = {
+          dataKey: keyName,
+          currentPeriodKey,
+          previousPeriodKey: `${currentPeriodKey}${PreviousPeriodSuffix}`,
+          displayName: keyName,
+          valueColumnName,
+          groupValues: groupColumnNames.map(name => row[name]),
+          color: applyLogLevelColor
+            ? logLevelColor(row[groupColumnNames[0]])
+            : undefined,
+          isDashed: isPreviousPeriod,
+        };
+      } else if (applyLogLevelColor) {
+        existing.color = logLevelColor(row[groupColumnNames[0]]);
+      }
+    }
+  }
+}
+
+// Input: { ts, value1, value2, groupBy1, groupBy2 },
+// Output: { ts, [value1Name, groupBy1, groupBy2]: value1, [...]: value2 }
+export function formatResponseForTimeChart({
+  currentPeriodResponse,
+  previousPeriodResponse,
+  dateRange,
+  granularity,
+  generateEmptyBuckets = true,
+  source,
+  hiddenSeries = [],
+  previousPeriodOffsetSeconds = 0,
+  maxSeries = MAX_RENDERED_TIME_CHART_SERIES,
+}: {
+  dateRange: [Date, Date];
+  granularity?: SQLInterval;
+  currentPeriodResponse: ResponseJSON<Record<string, any>>;
+  previousPeriodResponse?: ResponseJSON<Record<string, any>>;
+  generateEmptyBuckets?: boolean;
+  source?: TSource;
+  hiddenSeries?: string[];
+  previousPeriodOffsetSeconds?: number;
+  /**
+   * Render cap for the number of series. Defaults to
+   * MAX_RENDERED_TIME_CHART_SERIES; pass Number.POSITIVE_INFINITY to render
+   * every series (the "load all" escape hatch behind the hidden-series notice).
+   */
+  maxSeries?: number;
+}) {
+  const meta = currentPeriodResponse.meta;
+
+  if (meta == null) {
+    throw new Error('No meta data found in response');
+  }
+
+  const timestampColumn = inferTimestampColumn(meta);
+  const valueColumns = inferValueColumns(meta, new Set(hiddenSeries)) ?? [];
+  const groupColumns = inferGroupColumns(meta) ?? [];
+  const isSingleValueColumn = valueColumns.length === 1;
+
+  if (timestampColumn == null) {
+    throw new Error(
+      `No timestamp column found in result column metadata. Make sure a Date/DateTime column exists in the result set.\n\nResult column metadata: ${JSON.stringify(meta)}`,
+    );
+  }
+
+  if (valueColumns.length === 0) {
+    throw new Error(
+      `No value columns found in result column metadata. Make sure a numeric column exists in the result set.\n\nResult column metadata: ${JSON.stringify(meta)}`,
+    );
+  }
+
+  // Timestamp -> { tsCol, line1, line2, ...}
+  const tsBucketMap: Map<number, Record<string, any>> = new Map();
+  const lineDataMap: {
+    [keyName: string]: LineDataWithOptionalColor;
+  } = {};
+
+  addResponseToFormattedData({
+    response: currentPeriodResponse,
+    lineDataMap,
+    tsBucketMap,
+    source,
+    isPreviousPeriod: false,
+    previousPeriodOffsetSeconds,
+    hiddenSeries,
+  });
+
+  if (previousPeriodResponse != null) {
+    addResponseToFormattedData({
+      response: previousPeriodResponse,
+      lineDataMap,
+      tsBucketMap,
+      source,
+      isPreviousPeriod: true,
+      previousPeriodOffsetSeconds,
+      hiddenSeries,
+    });
+  }
+
+  const logLevelColorOrder = getLogLevelColorOrder();
+  let sortedLineData = Object.values(lineDataMap).sort((a, b) => {
+    return (
+      logLevelColorOrder.findIndex(color => color === a.color) -
+      logLevelColorOrder.findIndex(color => color === b.color)
+    );
+  });
+
+  // Cap materialized series to protect browser memory: high-cardinality
+  // group-bys (esp. raw SQL, which has no server-side limit) can return tens of
+  // thousands of series while only a handful are drawn. Keep the top `maxSeries`
+  // by peak value; drop and count the rest. The cap counts LOGICAL series
+  // (grouped by `currentPeriodKey`) so a comparison chart's current/previous
+  // pair is kept or dropped together, not orphaned by a flat entry-list slice.
+  let hiddenSeriesCount = 0;
+
+  // The cap operates on the group-by GROUP, not on each rendered series. A
+  // single group can yield several series that must be kept or dropped together:
+  //   - the current + previous-period pair in comparison mode (same
+  //     currentPeriodKey, distinguished by isDashed), and
+  //   - one series per value column when a chart plots multiple aggregations
+  //     (e.g. avg + max), which the key builder prefixes with valueColumnName.
+  // Ranking each of those independently would let, say, a large-magnitude `max`
+  // column evict every `avg` series, or a previous-only line evict a current
+  // one. Derive a group identity by stripping the leading value-column segment
+  // from currentPeriodKey so all series of a group share one rankable key.
+  const groupKeyByDataKey = new Map<string, string>();
+  const logicalSeriesKeys: string[] = [];
+  const seenLogicalKeys = new Set<string>();
+  // Groups that have a current-period (non-dashed) entry. In comparison mode the
+  // current and previous periods are separate queries whose kept sets can
+  // differ. Current-period groups get priority when the cap trips (see the
+  // selection below), so a previous-only group can't evict a current-period
+  // series — but previous-only groups still count toward the total cap.
+  const currentPeriodGroupKeys = new Set<string>();
+  // The value-column prefix is only added to currentPeriodKey when a chart has
+  // BOTH multiple value columns AND group columns (see addResponseToFormattedData:
+  // omitValueColumnInKey). In every other shape the key has no such prefix, so
+  // stripping a leading `<valueColumnName> · ` would wrongly collapse a group
+  // whose own value merely starts with that text. Only strip when the builder
+  // actually added the prefix.
+  const keyHasValueColumnPrefix =
+    valueColumns.length > 1 && groupColumns.length > 0;
+  const groupKeyOf = (line: LineDataWithOptionalColor): string => {
+    if (!keyHasValueColumnPrefix) {
+      return line.currentPeriodKey;
+    }
+    const prefix = `${line.valueColumnName}${ChartKeyJoiner}`;
+    return line.currentPeriodKey.startsWith(prefix)
+      ? line.currentPeriodKey.slice(prefix.length)
+      : line.currentPeriodKey;
+  };
+  for (const line of sortedLineData) {
+    const groupKey = groupKeyOf(line);
+    groupKeyByDataKey.set(line.dataKey, groupKey);
+    if (!seenLogicalKeys.has(groupKey)) {
+      seenLogicalKeys.add(groupKey);
+      logicalSeriesKeys.push(groupKey);
+    }
+    if (!line.isDashed) {
+      currentPeriodGroupKeys.add(groupKey);
+    }
+  }
+
+  // The cap bounds the TOTAL number of logical groups materialized, so a
+  // comparison chart whose current and previous result sets are disjoint can't
+  // exceed maxSeries by keeping every previous-only group on top of the
+  // current-period top-N. Current-period groups still take priority: they're
+  // ranked and slotted first, then any remaining slots go to previous-only
+  // groups (also by peak). This keeps a current-period series from being
+  // evicted by a higher-peak previous-only one while still honoring the cap.
+  if (logicalSeriesKeys.length > maxSeries) {
+    hiddenSeriesCount = logicalSeriesKeys.length - maxSeries;
+
+    // Peak absolute value per logical group. Iterate only each bucket's
+    // populated cells so sparse results cost O(populated cells), not
+    // O(buckets * series).
+    const peakByGroup = new Map<string, number>();
+    for (const tsBucket of tsBucketMap.values()) {
+      for (const [key, raw] of Object.entries(tsBucket)) {
+        if (typeof raw !== 'number' || !Number.isFinite(raw)) {
+          continue;
+        }
+        const groupKey = groupKeyByDataKey.get(key);
+        if (groupKey == null) {
+          continue;
+        }
+        const mag = Math.abs(raw);
+        const prev = peakByGroup.get(groupKey);
+        if (prev == null || mag > prev) {
+          peakByGroup.set(groupKey, mag);
+        }
+      }
+    }
+
+    // Rank by peak desc; index tiebreak preserves log-level color ordering.
+    const byPeakThenIndex = (
+      a: { groupKey: string; index: number },
+      b: { groupKey: string; index: number },
+    ) => {
+      const diff =
+        (peakByGroup.get(b.groupKey) ?? 0) - (peakByGroup.get(a.groupKey) ?? 0);
+      return diff !== 0 ? diff : a.index - b.index;
+    };
+    const currentRanked = logicalSeriesKeys
+      .map((groupKey, index) => ({ groupKey, index }))
+      .filter(({ groupKey }) => currentPeriodGroupKeys.has(groupKey))
+      .sort(byPeakThenIndex);
+    const previousOnlyRanked = logicalSeriesKeys
+      .map((groupKey, index) => ({ groupKey, index }))
+      .filter(({ groupKey }) => !currentPeriodGroupKeys.has(groupKey))
+      .sort(byPeakThenIndex);
+
+    // Current-period groups fill slots first; previous-only groups take any
+    // remainder. Slice the concatenation to the cap so the total is bounded.
+    const keptGroups = new Set(
+      [...currentRanked, ...previousOnlyRanked]
+        .slice(0, maxSeries)
+        .map(({ groupKey }) => groupKey),
+    );
+
+    // Keep every entry of a surviving group: its current + previous-period
+    // pair AND every value column, since keptGroups holds group identities.
+    const keptKeys = new Set(
+      sortedLineData
+        .filter(line => keptGroups.has(groupKeyOf(line)))
+        .map(line => line.dataKey),
+    );
+
+    sortedLineData = sortedLineData.filter(line =>
+      keptGroups.has(groupKeyOf(line)),
+    );
+
+    // Prune dropped keys from every bucket so graphResults stays small.
+    for (const tsBucket of tsBucketMap.values()) {
+      for (const key of Object.keys(tsBucket)) {
+        if (key !== timestampColumn.name && !keptKeys.has(key)) {
+          delete tsBucket[key];
+        }
+      }
+    }
+  }
+
+  if (generateEmptyBuckets && granularity != null) {
+    const generatedTsBuckets = timeBucketByGranularity(
+      dateRange[0],
+      dateRange[1],
+      granularity,
+    );
+
+    generatedTsBuckets.forEach(date => {
+      const ts = date.getTime() / 1000;
+      const tsBucket = tsBucketMap.get(ts);
+
+      if (tsBucket == null) {
+        const tsBucket: Record<string, any> = {
+          [timestampColumn.name]: ts,
+        };
+
+        for (const line of sortedLineData) {
+          tsBucket[line.dataKey] = 0;
+        }
+
+        tsBucketMap.set(ts, tsBucket);
+      } else {
+        for (const line of sortedLineData) {
+          if (tsBucket[line.dataKey] == null) {
+            tsBucket[line.dataKey] = 0;
+          }
+        }
+        tsBucketMap.set(ts, tsBucket);
+      }
+    });
+  }
+
+  // Sort results again by timestamp
+  const graphResults: {
+    [key: string]: number | undefined;
+  }[] = Array.from(tsBucketMap.values()).sort(
+    (a, b) => a[timestampColumn.name] - b[timestampColumn.name],
+  );
+
+  const sortedLineDataWithColors = setLineColors(sortedLineData);
+
+  // Count of LOGICAL groups actually rendered, in the same unit as
+  // hiddenSeriesCount — so a comparison chart (current + previous entries per
+  // group) or a multi-value-column chart (one entry per value column per group)
+  // isn't multiply counted in the hidden-series notice.
+  const renderedSeriesCount = new Set(
+    sortedLineDataWithColors.map(line => groupKeyOf(line)),
+  ).size;
+
+  return {
+    graphResults,
+    timestampColumn,
+    lineData: sortedLineDataWithColors,
+    groupColumns: groupColumns.map(g => g.name),
+    valueColumns: valueColumns.map(v => v.name),
+    isSingleValueColumn,
+    hiddenSeriesCount,
+    renderedSeriesCount,
+  };
+}
+
+// Define a mapping from app AggFn to common-utils AggregateFunction
+const mapV1AggFnToV2 = (aggFn?: AggFn): AggFnV2 | undefined => {
+  if (aggFn == null) {
+    return aggFn;
+  }
+  // Map rate-based aggregations to their base aggregation
+  if (aggFn.endsWith('_rate')) {
+    return mapV1AggFnToV2(aggFn.replace('_rate', '') as AggFn);
+  }
+
+  // Map percentiles to quantile
+  if (
+    aggFn === 'p50' ||
+    aggFn === 'p90' ||
+    aggFn === 'p95' ||
+    aggFn === 'p99'
+  ) {
+    return 'quantile';
+  }
+
+  // Map per-time-unit counts to count
+  if (
+    aggFn === 'count_per_sec' ||
+    aggFn === 'count_per_min' ||
+    aggFn === 'count_per_hour'
+  ) {
+    return 'count';
+  }
+
+  // For standard aggregations that exist in both, return as is
+  if (
+    [
+      'avg',
+      'count',
+      'count_distinct',
+      'last_value',
+      'max',
+      'min',
+      'sum',
+    ].includes(aggFn)
+  ) {
+    return aggFn as AggFnV2;
+  }
+
+  throw new Error(`Unsupported aggregation function in v2: ${aggFn}`);
+};
+
+const convertV1GroupByToV2 = (
+  metricSource: TMetricSource,
+  groupBy: string[],
+): string => {
+  return groupBy
+    .map(g => {
+      if (g.startsWith('k8s')) {
+        return `${metricSource.resourceAttributesExpression}['${g}']`;
+      }
+      return g;
+    })
+    .join(',');
+};
+
+export const convertV1ChartConfigToV2 = (
+  chartConfig: {
+    // only support time or table series
+    series: (TimeChartSeries | TableChartSeries)[];
+    granularity?: Granularity;
+    dateRange: [Date, Date];
+    seriesReturnType: 'ratio' | 'column';
+    displayType?: 'stacked_bar' | 'line';
+    name?: string;
+    fillNulls?: number | false;
+    sortOrder?: SortOrder;
+  },
+  source: {
+    log?: TSource;
+    metric?: TMetricSource;
+    trace?: TSource;
+  },
+): BuilderChartConfigWithDateRange => {
+  const {
+    series,
+    granularity,
+    dateRange,
+    displayType = 'line',
+    fillNulls,
+  } = chartConfig;
+
+  if (series.length < 1) {
+    throw new Error('series is required');
+  }
+
+  const firstSeries = series[0];
+  const convertedDisplayType =
+    displayType === 'stacked_bar' ? DisplayType.StackedBar : DisplayType.Line;
+
+  if (firstSeries.table === 'logs') {
+    // TODO: this might not work properly since logs + traces are mixed in v1
+    throw new Error('IMPLEMENT ME (logs)');
+  } else if (firstSeries.table === 'metrics') {
+    if (source.metric == null) {
+      throw new Error('source.metric is required for metrics');
+    }
+    return {
+      select: series.map(s => {
+        const field = s.field ?? '';
+        const [metricName, rawMetricDataType] = field
+          .split(' - ')
+          .map(s => s.trim());
+
+        // Check if this metric name needs version-based SQL transformation
+        const metricNameSql = getMetricNameSql(metricName);
+
+        const metricDataType = z
+          .nativeEnum(MetricsDataTypeV2)
+          .parse(rawMetricDataType?.toLowerCase());
+        return {
+          aggFn: mapV1AggFnToV2(s.aggFn),
+          metricType: metricDataType,
+          valueExpression: field,
+          metricName,
+          metricNameSql,
+          aggConditionLanguage: 'lucene',
+          aggCondition: s.where,
+        };
+      }),
+      from: source.metric?.from,
+      numberFormat: firstSeries.numberFormat,
+      groupBy: convertV1GroupByToV2(source.metric, firstSeries.groupBy),
+      dateRange,
+      connection: source.metric?.connection,
+      metricTables: source.metric?.metricTables,
+      timestampValueExpression: source.metric?.timestampValueExpression,
+      granularity,
+      where: '',
+      fillNulls,
+      displayType: convertedDisplayType,
+    };
+  }
+  throw new Error(`unsupported table in v2: ${firstSeries.table}`);
+};
+
+/**
+ * Expand a builder config's variable references, falling back to the config as
+ * written when one of them can't be expanded (a malformed reference, or a macro
+ * naming a variable the dashboard doesn't declare).
+ *
+ * Idempotent: the result carries `variables: undefined`, so expanding again at
+ * an inner layer is a no-op.
+ */
+export function tryExpandConfigVariables<
+  T extends Parameters<typeof substituteChartConfigVariables>[0],
+>(config: T): T {
+  try {
+    return substituteChartConfigVariables(config);
+  } catch {
+    return config;
+  }
+}
+
+/**
+ * Build search URL for viewing events based on group-by values
+ * Used by both chart clicks and table row clicks
+ */
+export function buildEventsSearchUrl({
+  source,
+  config: rawConfig,
+  dateRange,
+  groupFilters,
+  valueRangeFilter,
+  targetSource,
+  basePath = '/search',
+}: {
+  source: TSource;
+  config: BuilderChartConfigWithDateRange;
+  dateRange: [Date, Date];
+  groupFilters?: Array<{ column: string; value: any }>;
+  valueRangeFilter?: { expression: string; value: number; threshold?: number };
+  /**
+   * Where a metric chart's drill-down lands: the source named by the metric
+   * source's `logSourceId`. Supplying it lets the clicked series carry over as
+   * a filter; without it the drill-down can only narrow by time.
+   */
+  targetSource?: TSource;
+  /**
+   * Destination page. Both read the same params, so drilling down from Explore
+   * can stay on Explore instead of handing the reader to the Search page.
+   */
+  basePath?: '/search' | '/explore';
+}): string | null {
+  if (!source?.id) {
+    return null;
+  }
+
+  // The destination page has no variable machinery, so every expression must be
+  // final SQL/Lucene before it goes in the URL.
+  const config = tryExpandConfigVariables({
+    ...rawConfig,
+    whereLanguage: rawConfig.whereLanguage || 'lucene',
+  });
+
+  const isMetricChart = isMetricChartConfig(config);
+
+  let where = config.where;
+  let whereLanguage = config.whereLanguage || 'lucene';
+  if (
+    where.length === 0 &&
+    Array.isArray(config.select) &&
+    config.select.length === 1
+  ) {
+    where = config.select[0].aggCondition ?? '';
+    whereLanguage = config.select[0].aggConditionLanguage ?? 'lucene';
+  }
+
+  const additionalFilters: Filter[] = [];
+
+  // Add group-by column filters
+  if (groupFilters && groupFilters.length > 0) {
+    groupFilters.forEach(({ column, value }) => {
+      if (column && value != null) {
+        // Can't use SQLString.escape here because the search endpoint relies on exist match for UI
+        const condition = `${column} IN (${SqlString.escape(value)})`;
+        additionalFilters.push({ type: 'sql', condition });
+      }
+    });
+  }
+
+  // Add Y-axis value range filter (±threshold) for charts
+  if (valueRangeFilter) {
+    const { expression, value, threshold = 0.05 } = valueRangeFilter;
+    const hasAggregateFunction = isAggregateFunction(expression);
+
+    if (!hasAggregateFunction) {
+      const lowerBound = value * (1 - threshold);
+      const upperBound = value * (1 + threshold);
+      // Can't use SQLString.escape here because the search endpoint relies on exist match for UI
+      const condition = `${expression} BETWEEN ${SqlString.escape(lowerBound)} AND ${SqlString.escape(upperBound)}`;
+
+      additionalFilters.push({
+        type: 'sql',
+        condition,
+      });
+    }
+  }
+
+  // Get the time range
+  const from = dateRange[0].getTime();
+  const to = dateRange[1].getTime();
+
+  const params: Record<string, string> = {
+    source: source?.id ?? '',
+    where: where,
+    whereLanguage: whereLanguage,
+    filters: JSON.stringify([...(config.filters ?? []), ...additionalFilters]),
+    isLive: 'false',
+    from: from.toString(),
+    to: to.toString(),
+  };
+
+  // A metric chart's WHERE and filters are written against metric tables, so
+  // they mean nothing on the destination and are dropped. The clicked series is
+  // the exception: it names an entity, and re-addressed against the target's
+  // own attribute expression it is the whole point of the drill-down.
+  if (isMetricChart) {
+    if (!targetSource?.id) {
+      return null;
+    }
+    const { filters: pivotFilters } = translateMetricGroupFilters({
+      groupFilters,
+      metricSource: source,
+      targetSource,
+    });
+
+    params.where = '';
+    // Explore's query bar is SQL-only; handing it `lucene` would switch the
+    // language out from under the reader on arrival.
+    params.whereLanguage = basePath === '/explore' ? 'sql' : 'lucene';
+    params.filters = JSON.stringify(
+      pivotFilters.map(({ column, value }) => ({
+        type: 'sql' as const,
+        condition: `${column} IN (${SqlString.escape(value)})`,
+      })),
+    );
+    params.source = targetSource.id;
+  }
+
+  // Include the select parameter if provided to preserve custom columns
+  // eventTableSelect is used for charts that override select (like histograms with count)
+  // to preserve the original table's select expression
+  if (config.eventTableSelect) {
+    params.select = config.eventTableSelect;
+  }
+
+  return `${basePath}?${new URLSearchParams(params).toString()}`;
+}
+
+export function buildDashboardReplaySearchUrl({
+  source,
+  config,
+  dateRange,
+}: {
+  source: TSource | null | undefined;
+  config: ChartConfigWithDateRange | null | undefined;
+  dateRange: [Date, Date];
+}): string | null {
+  if (!config || !source || !isBuilderChartConfig(config)) {
+    return null;
+  }
+
+  if (config.metricTables != null || !isSearchableSource(source)) {
+    return null;
+  }
+
+  if (Array.isArray(config.select)) {
+    const hasPerSeriesCondition = config.select.some(
+      select =>
+        select.aggCondition != null && select.aggCondition.trim().length > 0,
+    );
+    const canPromoteSingleSeriesCondition =
+      config.select.length === 1 && config.where.length === 0;
+
+    // buildEventsSearchUrl can promote one per-series condition into the
+    // event query, but cannot faithfully replay multiple conditions or
+    // combine a series condition with a global where clause.
+    if (hasPerSeriesCondition && !canPromoteSingleSeriesCondition) {
+      return null;
+    }
+  }
+
+  return buildEventsSearchUrl({
+    source,
+    config,
+    dateRange,
+  });
+}
+
+/**
+ * Extract group column names from chart config's groupBy field
+ * Handles both string format ("col1, col2") and array format ([{ valueExpression: "col1" }, ...])
+ */
+function extractGroupColumns(
+  groupBy: BuilderChartConfigWithDateRange['groupBy'],
+): string[] {
+  if (!groupBy) return [];
+
+  if (typeof groupBy === 'string') {
+    // String GROUP BY: "col1, col2"
+    return groupBy.split(',').map(v => v.trim());
+  }
+
+  // Array GROUP BY: [{ valueExpression: "col1" }, ...] or ["col1", ...]
+  return groupBy.map(g => (typeof g === 'string' ? g : g.valueExpression));
+}
+
+/**
+ * Build search URL from a table row click
+ * Extracts group filters and value range filter from the row data
+ */
+export function buildTableRowSearchUrl({
+  row,
+  source,
+  config: rawConfig,
+  dateRange,
+}: {
+  row: Record<string, any>;
+  source: TSource | undefined;
+  config: BuilderChartConfigWithDateRange;
+  dateRange: [Date, Date];
+}): string | null {
+  if (!source?.id) {
+    return null;
+  }
+
+  // The row keys are result-set column names, so they're already expanded — the
+  // group-by expressions have to be expanded here to match them.
+  const config = tryExpandConfigVariables(rawConfig);
+
+  // Extract group-by column names and build filters from row values
+  const groupFilters: Array<{ column: string; value: any }> = [];
+  const groupColumns = extractGroupColumns(config.groupBy);
+
+  groupColumns.forEach(col => {
+    if (row[col] != null) {
+      groupFilters.push({ column: col, value: row[col] });
+    }
+  });
+
+  // Build value range filter from the first select column
+  let valueRangeFilter: { expression: string; value: number } | undefined;
+
+  const firstSelect = config.select?.[0];
+  if (firstSelect) {
+    const aggFn =
+      typeof firstSelect === 'string' ? undefined : firstSelect.aggFn;
+    const isAttributable =
+      AGG_FNS.find(fn => fn.value === aggFn)?.isAttributable !== false;
+
+    if (isAttributable) {
+      const valueExpression =
+        typeof firstSelect === 'string'
+          ? firstSelect
+          : firstSelect.valueExpression;
+
+      // Extract group column names to exclude them from value columns
+      const groupColumnSet = new Set(extractGroupColumns(config.groupBy));
+
+      // Find the first value column (non-group column)
+      const valueColumn = Object.keys(row).find(
+        key => !groupColumnSet.has(key),
+      );
+
+      const rowValue = valueColumn ? row[valueColumn] : undefined;
+
+      if (rowValue != null && typeof rowValue === 'number') {
+        valueRangeFilter = {
+          expression: valueExpression,
+          value: rowValue,
+        };
+      }
+    }
+  }
+
+  return buildEventsSearchUrl({
+    source,
+    config,
+    dateRange,
+    groupFilters,
+    valueRangeFilter,
+  });
+}
+
+export {
+  convertToCategoricalChartConfig,
+  convertToNumberChartConfig,
+  convertToTableChartConfig,
+};
+
+export function buildMVDateRangeIndicator({
+  mvOptimizationData,
+  originalDateRange,
+}: {
+  mvOptimizationData?: MVOptimizationExplanationResult;
+  originalDateRange: [Date, Date];
+}) {
+  const mvDateRange = mvOptimizationData?.optimizedConfig?.dateRange;
+  if (!mvDateRange) return null;
+
+  const mvGranularity = mvOptimizationData?.explanations.find(e => e.success)
+    ?.mvConfig.minGranularity;
+
+  return (
+    <DateRangeIndicator
+      key="date-range-indicator"
+      originalDateRange={originalDateRange}
+      effectiveDateRange={mvDateRange}
+      mvGranularity={mvGranularity}
+    />
+  );
+}
+
+export function shouldFillNullsWithZero(
+  fillNulls: ChartConfigWithOptDateRange['fillNulls'],
+): boolean {
+  // To match legacy behavior, fill nulls with 0 unless explicitly disabled
+  return fillNulls !== false;
+}

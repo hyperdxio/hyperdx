@@ -1,5 +1,6 @@
 import {
   BuilderSavedChartConfig,
+  Filter,
   PromqlSavedChartConfig,
   PromqlSeries,
   RawSqlSavedChartConfig,
@@ -13,6 +14,18 @@ export type SavedChartConfigWithSelectArray = Omit<
 > & {
   select: NonNullable<Exclude<BuilderSavedChartConfig['select'], string>>;
 };
+
+/**
+ * A series, plus the clauses the Explore query editor has promoted out of its
+ * `aggCondition` into filter pills. The two are ANDed back together by
+ * `seriesAggCondition` when the chart config is built, so `filters` never
+ * reaches the renderer or a saved dashboard — which is why it can live here
+ * rather than in the shared chart schema.
+ */
+export type ChartEditorSeries =
+  SavedChartConfigWithSelectArray['select'][number] & {
+    filters?: Filter[];
+  };
 
 /**
  * A type that flattens the SavedChartConfig union so that the form can include
@@ -39,7 +52,7 @@ export type ChartEditorFormState = Partial<
       id?: string;
       createdBy?: AlertWithCreatedBy['createdBy'];
     };
-    series: SavedChartConfigWithSelectArray['select'];
+    series: ChartEditorSeries[];
     promqlExpressions?: PromqlSeries[];
     configType?: 'sql' | 'builder' | 'promql';
   };

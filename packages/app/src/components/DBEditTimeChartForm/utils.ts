@@ -59,11 +59,11 @@ import {
 } from '@/components/DBHeatmapChart/heatmapQueries';
 import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import { getFirstTimestampValueExpression } from '@/source';
-import { getMetricTableName } from '@/utils';
 import {
   extendDateRangeToInterval,
   intervalToGranularity,
 } from '@/utils/alerts';
+import { metricTableConnections } from '@/utils/metricTableConnections';
 
 export const isQueryReady = (
   queriedConfig: ChartConfigWithDateRange | undefined,
@@ -135,6 +135,8 @@ export function displayTypeToActiveTab(displayType: DisplayType): string {
       return 'pie';
     case DisplayType.Bar:
       return 'bar';
+    case DisplayType.Treemap:
+      return 'treemap';
     case DisplayType.Number:
       return 'number';
     case DisplayType.Heatmap:
@@ -161,6 +163,7 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'number',
   'pie',
   'bar',
+  'treemap',
   'heatmap',
 ]);
 
@@ -476,7 +479,11 @@ export function buildChartConfigForExplanations({
     return convertToNumberChartConfig(builderConfig);
   } else if (activeTab === 'table') {
     return convertToTableChartConfig(builderConfig);
-  } else if (activeTab === 'pie' || activeTab === 'bar') {
+  } else if (
+    activeTab === 'pie' ||
+    activeTab === 'bar' ||
+    activeTab === 'treemap'
+  ) {
     return convertToCategoricalChartConfig(builderConfig);
   } else if (activeTab === 'heatmap') {
     return builderConfig;
@@ -509,26 +516,7 @@ export function buildGroupByConnectionProps({
   series: { metricType?: string; metricName?: string }[] | undefined;
   tableConnection: TableConnection;
 }): TableConnectionChoice & { intersectFields?: boolean } {
-  if (tableSource?.kind !== SourceKind.Metric || !Array.isArray(series)) {
-    return { tableConnection };
-  }
-
-  const seen = new Set<string>();
-  const connections: TableConnection[] = [];
-  for (const s of series) {
-    if (!s?.metricType || !s?.metricName) continue;
-    const metricTable = getMetricTableName(tableSource, s.metricType);
-    if (!metricTable) continue;
-    const key = `${metricTable}::${s.metricName}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    connections.push({
-      databaseName: tableSource.from.databaseName,
-      tableName: metricTable,
-      connectionId: tableSource.connection,
-      metricName: s.metricName,
-    });
-  }
+  const connections = metricTableConnections(tableSource, series);
 
   return connections.length > 0
     ? { tableConnections: connections, intersectFields: true }

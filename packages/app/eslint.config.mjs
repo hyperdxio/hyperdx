@@ -27,43 +27,43 @@ const UI_SYNTAX_RESTRICTIONS = [
     selector:
       'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="light"]',
     message:
-      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+      'Use variant="primary", "secondary", "danger", "warning", "link", or "subtle" for Button. See agent_docs/code_style.md',
   },
   {
     selector:
       'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="filled"]',
     message:
-      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+      'Use variant="primary", "secondary", "danger", "warning", "link", or "subtle" for Button. See agent_docs/code_style.md',
   },
   {
     selector:
       'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="outline"]',
     message:
-      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+      'Use variant="primary", "secondary", "danger", "warning", "link", or "subtle" for Button. See agent_docs/code_style.md',
   },
   {
     selector:
       'JSXElement[openingElement.name.name="Button"] JSXAttribute[name.name="variant"][value.value="default"]',
     message:
-      'Use variant="primary", "secondary", or "danger" for Button. See agent_docs/code_style.md',
+      'Use variant="primary", "secondary", "danger", "warning", "link", or "subtle" for Button. See agent_docs/code_style.md',
   },
   {
     selector:
       'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="light"]',
     message:
-      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+      'Use variant="primary", "secondary", "danger", "warning", "link", or "subtle" for ActionIcon. See agent_docs/code_style.md',
   },
   {
     selector:
       'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="filled"]',
     message:
-      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+      'Use variant="primary", "secondary", "danger", "warning", "link", or "subtle" for ActionIcon. See agent_docs/code_style.md',
   },
   {
     selector:
       'JSXElement[openingElement.name.name="ActionIcon"] JSXAttribute[name.name="variant"][value.value="outline"]',
     message:
-      'Use variant="primary", "secondary", or "danger" for ActionIcon. See agent_docs/code_style.md',
+      'Use variant="primary", "secondary", "danger", "warning", "link", or "subtle" for ActionIcon. See agent_docs/code_style.md',
   },
 ];
 

@@ -111,6 +111,30 @@ describe('renderBuilderConfigAsSqlTemplate', () => {
     expect(sql).not.toContain('HYPERDX_PARAM_');
   });
 
+  it('renders plain, unaggregated columns with their sort for a row list', async () => {
+    const sql = await renderBuilderConfigAsSqlTemplate(
+      {
+        ...baseLineConfig,
+        displayType: DisplayType.Table,
+        granularity: undefined,
+        groupBy: undefined,
+        select: [
+          { aggCondition: '', valueExpression: 'timestamp' },
+          { aggCondition: '', valueExpression: 'ServiceName as service' },
+        ],
+        orderBy: 'timestamp DESC',
+      },
+      mockMetadata,
+    );
+
+    expect(sql).not.toBeNull();
+    expect(sql).toMatch(/SELECT\s+timestamp,\s+ServiceName AS `service`/);
+    expect(sql).not.toContain('count()');
+    expect(sql).not.toMatch(/GROUP BY/);
+    expect(sql).toMatch(/ORDER BY\s+timestamp DESC/);
+    expect(sql).toMatch(/LIMIT\s+200/);
+  });
+
   it('strips granularity for a table chart even when the form carries one', async () => {
     const sql = await renderBuilderConfigAsSqlTemplate(
       { ...baseLineConfig, displayType: DisplayType.Table },

@@ -1,0 +1,267 @@
+// Explore-owned copy. The shared module stays as it is on main, so this prototype does not conflict with it.
+import { useCallback, useState } from 'react';
+import { useQueryState } from 'nuqs';
+import {
+  ClickHouseQueryError,
+  ColumnMetaType,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  BuilderChartConfigWithDateRange,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
+import { SortingState } from '@tanstack/react-table';
+
+import { ChartErrorStateVariant } from '@/components/charts/ChartErrorState';
+import { DBRowSidePanelErrorState } from '@/components/DBRowSidePanelErrorState';
+import { RowWhereResult, WithClause } from '@/hooks/useRowWhere';
+import { useSource } from '@/source';
+import TabBar from '@/TabBar';
+import { useLocalStorage } from '@/utils';
+import { parseAsStringEncoded } from '@/utils/queryParsers';
+
+import { RowDataPanel, useRowData } from './DBRowDataPanel';
+import { RowOverviewPanel } from './DBRowOverviewPanel';
+import DBRowSidePanel, {
+  ExploreRowSidePanelProvider,
+  RowSidePanelContextProps,
+} from './DBRowSidePanel';
+import {
+  DBRawSqlRowTable,
+  DBRowTableVariant,
+  DBSqlRowTable,
+  RawSqlRowTableConfig,
+} from './DBRowTable';
+
+interface Props {
+  sourceId: string;
+  config: BuilderChartConfigWithDateRange;
+  onError?: (error: Error | ClickHouseQueryError) => void;
+  onScroll?: (scrollTop: number) => void;
+  onSidebarOpen?: (rowId: string) => void;
+  onExpandedRowsChange?: (hasExpandedRows: boolean) => void;
+  onPropertyAddClick?: (keyPath: string, value: string) => void;
+  context?: RowSidePanelContextProps;
+  enabled?: boolean;
+  isLive?: boolean;
+  queryKeyPrefix?: string;
+  denoiseResults?: boolean;
+  collapseAllRows?: boolean;
+  onSortingChange?: (v: SortingState | null) => void;
+  initialSortBy?: SortingState;
+  variant?: DBRowTableVariant;
+  enableSmallFirstWindow?: boolean;
+  tableId?: string;
+  errorVariant?: ChartErrorStateVariant;
+  enableRowSelection?: boolean;
+  selectionResetKey?: string;
+  onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
+  onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
+  // it. Enabled by default; pass `false` to opt out.
+  closeOnClickOutside?: boolean;
+  keepOpenSelector?: string;
+  rememberWidth?: boolean;
+  tableBarRightSection?: React.ReactNode;
+  /** Show the rows of this hand-written statement instead of `config`'s. */
+  rawSqlConfig?: RawSqlRowTableConfig;
+}
+
+// Clicking the results table (selecting/switching rows, scrolling) keeps the
+// row side panel open by default; callers can widen this via `keepOpenSelector`.
+const DEFAULT_KEEP_OPEN_SELECTOR = '[data-testid="search-results-table"]';
+
+export default function DBSqlRowTableWithSideBar({
+  sourceId,
+  config,
+  onError,
+  onScroll,
+  context,
+  onExpandedRowsChange,
+  denoiseResults,
+  collapseAllRows,
+  isLive,
+  enabled,
+  onSidebarOpen,
+  onSortingChange,
+  initialSortBy,
+  variant,
+  enableSmallFirstWindow,
+  tableId,
+  errorVariant,
+  enableRowSelection,
+  selectionResetKey,
+  onSelectedRowsChange,
+  onResolvedColumnsChange,
+  closeOnClickOutside = true,
+  keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
+  rememberWidth = false,
+  tableBarRightSection,
+  rawSqlConfig,
+}: Props) {
+  const { data: sourceData } = useSource({ id: sourceId });
+  const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
+  const [rowSource, setRowSource] = useQueryState('rowSource');
+  const [aliasWith, setAliasWith] = useState<WithClause[]>([]);
+
+  const onOpenSidebar = useCallback(
+    (rowWhere: RowWhereResult) => {
+      setRowId(rowWhere.where);
+      setAliasWith(rowWhere.aliasWith);
+      setRowSource(sourceId);
+      onSidebarOpen?.(rowWhere.where);
+    },
+    [setRowId, setAliasWith, setRowSource, sourceId, onSidebarOpen],
+  );
+
+  const onCloseSidebar = useCallback(() => {
+    setRowId(null);
+    setRowSource(null);
+  }, [setRowId, setRowSource]);
+  const renderRowDetails = useCallback(
+    (r: { id: string; aliasWith?: WithClause[]; [key: string]: unknown }) => {
+      if (!sourceData) {
+        return <div className="p-3 text-muted">Loading...</div>;
+      }
+      return (
+        <RowOverviewPanelWrapper
+          source={sourceData}
+          rowId={r.id}
+          aliasWith={r.aliasWith}
+        />
+      );
+    },
+    [sourceData],
+  );
+
+  return (
+    <ExploreRowSidePanelProvider value={context ?? {}}>
+      {sourceData && (rowSource === sourceId || !rowSource) && (
+        <DBRowSidePanel
+          source={sourceData}
+          rowId={rowId ?? undefined}
+          aliasWith={aliasWith}
+          onClose={onCloseSidebar}
+          closeOnClickOutside={closeOnClickOutside}
+          keepOpenSelector={keepOpenSelector}
+          rememberWidth={rememberWidth}
+        />
+      )}
+      {rawSqlConfig ? (
+        <DBRawSqlRowTable
+          config={rawSqlConfig}
+          sourceId={sourceId}
+          onRowDetailsClick={onOpenSidebar}
+          highlightedLineId={rowId ?? undefined}
+          enabled={enabled}
+          queryKeyPrefix={'dbRawSqlRowTable'}
+          renderRowDetails={renderRowDetails}
+          onScroll={onScroll}
+          onError={onError}
+          tableId={tableId}
+          errorVariant={errorVariant}
+          tableBarRightSection={tableBarRightSection}
+        />
+      ) : (
+        <DBSqlRowTable
+          config={config}
+          sourceId={sourceId}
+          onRowDetailsClick={onOpenSidebar}
+          highlightedLineId={rowId ?? undefined}
+          enabled={enabled}
+          isLive={isLive ?? true}
+          queryKeyPrefix={'dbSqlRowTable'}
+          onSortingChange={onSortingChange}
+          denoiseResults={denoiseResults}
+          initialSortBy={initialSortBy}
+          renderRowDetails={renderRowDetails}
+          onScroll={onScroll}
+          onError={onError}
+          onExpandedRowsChange={onExpandedRowsChange}
+          collapseAllRows={collapseAllRows}
+          variant={variant}
+          enableSmallFirstWindow={enableSmallFirstWindow}
+          tableId={tableId}
+          errorVariant={errorVariant}
+          enableRowSelection={enableRowSelection}
+          selectionResetKey={selectionResetKey}
+          onSelectedRowsChange={onSelectedRowsChange}
+          onResolvedColumnsChange={onResolvedColumnsChange}
+          tableBarRightSection={tableBarRightSection}
+        />
+      )}
+    </ExploreRowSidePanelProvider>
+  );
+}
+
+enum InlineTab {
+  Overview = 'overview',
+  ColumnValues = 'columnValues',
+}
+
+function RowOverviewPanelWrapper({
+  source,
+  rowId,
+  aliasWith,
+}: {
+  source: TSource;
+  rowId: string;
+  aliasWith?: WithClause[];
+}) {
+  // Use localStorage to persist the selected tab
+  const [activeTab, setActiveTab] = useLocalStorage<InlineTab>(
+    'hdx-expanded-row-default-tab',
+    InlineTab.ColumnValues,
+  );
+
+  // Surface the same error state the row side panel shows (e.g. `SELECT *`
+  // failures on Distributed/Merge tables) rather than silently rendering an
+  // empty expanded row. Both tabs load the same row data, so a failure here
+  // affects the whole expanded row.
+  const { isError, error } = useRowData({ source, rowId, aliasWith });
+
+  if (isError && error) {
+    return (
+      <div className="position-relative">
+        <div className="px-3 py-3">
+          <DBRowSidePanelErrorState error={error} source={source} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="position-relative">
+      <div className="px-3 pt-2 position-relative">
+        <TabBar
+          className="fs-8"
+          items={[
+            {
+              text: 'Overview',
+              value: InlineTab.Overview,
+            },
+            {
+              text: 'Column Values',
+              value: InlineTab.ColumnValues,
+            },
+          ]}
+          activeItem={activeTab}
+          onClick={setActiveTab}
+        />
+      </div>
+      <div>
+        {activeTab === InlineTab.Overview && (
+          <div className="inline-overview-panel">
+            <RowOverviewPanel
+              source={source}
+              rowId={rowId}
+              aliasWith={aliasWith}
+            />
+          </div>
+        )}
+        {activeTab === InlineTab.ColumnValues && (
+          <RowDataPanel source={source} rowId={rowId} aliasWith={aliasWith} />
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,29 @@
+.row {
+  border-radius: 4px;
+
+  &:hover {
+    background: var(--color-bg-sidenav-link-active);
+  }
+}
+
+.rowLink {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+  color: var(--color-text);
+  text-decoration: none;
+
+  &:focus-visible {
+    outline: none;
+    background: var(--color-bg-sidenav-link-active);
+  }
+
+  &[data-active] {
+    color: var(--color-text-sidenav-link-active);
+    background: var(--color-bg-sidenav-link-active);
+  }
+}

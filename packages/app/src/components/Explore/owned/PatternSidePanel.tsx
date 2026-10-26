@@ -1,0 +1,209 @@
+// Explore-owned copy. The shared module stays as it is on main, so this prototype does not conflict with it.
+import * as React from 'react';
+import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import { TSource } from '@hyperdx/common-utils/dist/types';
+import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
+import { IconList } from '@tabler/icons-react';
+
+import { IsolatedChartSyncProvider } from '@/chartSync';
+// Easter egg: April Fools 2026 — see aiSummarize/ for details.
+import AISummarizePatternButton from '@/components/AISummarizePatternButton';
+import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
+import { PatternTemplate } from '@/components/Patterns/PatternTemplate';
+import {
+  LEVEL_COLUMN_ALIAS,
+  Pattern,
+  PATTERN_COLUMN_ALIAS,
+  SERVICE_NAME_COLUMN_ALIAS,
+  TIMESTAMP_COLUMN_ALIAS,
+} from '@/hooks/usePatterns';
+import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
+import { getFirstTimestampValueExpression } from '@/source';
+import { useZIndex, ZIndexContext } from '@/zIndex';
+
+import DBRowSidePanel from './DBRowSidePanel';
+import { RawLogTable } from './DBRowTable';
+
+import styles from '@styles/LogSidePanel.module.scss';
+
+export default function PatternSidePanel({
+  isOpen,
+  onClose,
+  pattern,
+  bodyValueExpression,
+  source,
+  onViewMatchingEvents,
+  highlightPattern = false,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  pattern: Pattern;
+  bodyValueExpression: string;
+  source: TSource;
+  onViewMatchingEvents?: () => void;
+  highlightPattern?: boolean;
+}) {
+  const contextZIndex = useZIndex();
+  const drawerZIndex = contextZIndex + 100;
+
+  const [selectedRowWhere, setSelectedRowWhere] =
+    React.useState<RowWhereResult | null>(null);
+
+  const columnTypeMap = React.useMemo(
+    () =>
+      new Map<string, { _type: JSDataType | null }>([
+        [TIMESTAMP_COLUMN_ALIAS, { _type: JSDataType.Date }],
+        [PATTERN_COLUMN_ALIAS, { _type: JSDataType.String }],
+        [LEVEL_COLUMN_ALIAS, { _type: JSDataType.String }],
+        [SERVICE_NAME_COLUMN_ALIAS, { _type: JSDataType.String }],
+      ]),
+    [],
+  );
+
+  const columnNameMap = React.useMemo(
+    () => ({
+      [TIMESTAMP_COLUMN_ALIAS]: 'Timestamp',
+      [SERVICE_NAME_COLUMN_ALIAS]: 'Service',
+      [LEVEL_COLUMN_ALIAS]: 'Level',
+      [PATTERN_COLUMN_ALIAS]: 'Body',
+    }),
+    [],
+  );
+
+  const displayedColumns = React.useMemo(() => {
+    return [
+      TIMESTAMP_COLUMN_ALIAS,
+      SERVICE_NAME_COLUMN_ALIAS,
+      LEVEL_COLUMN_ALIAS,
+      PATTERN_COLUMN_ALIAS,
+    ];
+  }, []);
+
+  const getRowWhere = useRowWhere({
+    meta: [
+      { name: 'body', type: 'String' },
+      { name: 'ts', type: 'DateTime64(9)' },
+    ],
+    aliasMap: {
+      body: bodyValueExpression,
+      ts: getFirstTimestampValueExpression(source.timestampValueExpression),
+    },
+  });
+
+  const handleRowClick = React.useCallback(
+    (row: Record<string, any>) => {
+      const rowWhereResult = getRowWhere({
+        body: row[PATTERN_COLUMN_ALIAS],
+        ts: row[TIMESTAMP_COLUMN_ALIAS],
+      });
+      setSelectedRowWhere(rowWhereResult);
+    },
+    [getRowWhere],
+  );
+
+  const INITIAL_LIMIT = 100;
+  const [showAll, setShowAll] = React.useState(false);
+
+  React.useEffect(() => {
+    setShowAll(false);
+  }, [pattern]);
+
+  const displayedSamples = React.useMemo(() => {
+    if (showAll || pattern.samples.length <= INITIAL_LIMIT) {
+      return pattern.samples;
+    }
+    return pattern.samples.slice(0, INITIAL_LIMIT);
+  }, [pattern.samples, showAll]);
+
+  const handleCloseRowSidePanel = React.useCallback(() => {
+    setSelectedRowWhere(null);
+  }, []);
+
+  return (
+    <Drawer
+      opened={isOpen}
+      onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
+      position="right"
+      size="70vw"
+      withCloseButton={false}
+      zIndex={drawerZIndex}
+      styles={{
+        body: {
+          padding: 0,
+        },
+      }}
+    >
+      <ZIndexContext value={drawerZIndex}>
+        <IsolatedChartSyncProvider>
+          <div className={styles.panel} data-testid="pattern-side-panel">
+            <DrawerHeader
+              header="Pattern"
+              onClose={selectedRowWhere ? handleCloseRowSidePanel : onClose}
+            />
+            <DrawerBody>
+              <Stack>
+                <Card p="md">
+                  <Text size="sm">
+                    {highlightPattern ? (
+                      <PatternTemplate text={pattern.pattern} />
+                    ) : (
+                      pattern.pattern
+                    )}
+                  </Text>
+                  {onViewMatchingEvents != null && (
+                    <Button
+                      variant="primary"
+                      size="xs"
+                      mt="sm"
+                      leftSection={<IconList size={14} />}
+                      onClick={onViewMatchingEvents}
+                      data-testid="view-matching-events"
+                    >
+                      View matching events
+                    </Button>
+                  )}
+                  <AISummarizePatternButton pattern={pattern} />
+                </Card>
+                <Card p="md">
+                  <Card.Section p="md" py="xs">
+                    ~{pattern.count?.toLocaleString()} Sample Events
+                  </Card.Section>
+                  <RawLogTable
+                    rows={displayedSamples}
+                    generateRowId={row => ({ where: row.id, aliasWith: [] })}
+                    displayedColumns={displayedColumns}
+                    columnTypeMap={columnTypeMap}
+                    columnNameMap={columnNameMap}
+                    onRowDetailsClick={handleRowClick}
+                    wrapLines={false}
+                    showExpandButton={false}
+                    isLive={false}
+                  />
+                  {!showAll && pattern.samples.length > INITIAL_LIMIT && (
+                    <Button
+                      variant="subtle"
+                      fullWidth
+                      size="xs"
+                      mt="xs"
+                      onClick={() => setShowAll(true)}
+                    >
+                      Show all {pattern.samples.length.toLocaleString()} samples
+                    </Button>
+                  )}
+                </Card>
+              </Stack>
+            </DrawerBody>
+            {selectedRowWhere && (
+              <DBRowSidePanel
+                source={source}
+                rowId={selectedRowWhere.where}
+                aliasWith={selectedRowWhere.aliasWith}
+                onClose={handleCloseRowSidePanel}
+              />
+            )}
+          </div>
+        </IsolatedChartSyncProvider>
+      </ZIndexContext>
+    </Drawer>
+  );
+}

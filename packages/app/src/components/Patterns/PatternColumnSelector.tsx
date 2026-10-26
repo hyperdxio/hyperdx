@@ -4,17 +4,6 @@ import { Box } from '@mantine/core';
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
 import { useSource } from '@/source';
 
-export function buildPatternColumnExpression({
-  patternColumn,
-  fallback,
-}: {
-  patternColumn: string | null | undefined;
-  fallback: string;
-}): string {
-  if (!patternColumn) return fallback;
-  return `toString(${patternColumn})`;
-}
-
 export function PatternColumnSelector({
   sourceId,
   value,

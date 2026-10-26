@@ -13,10 +13,8 @@ import { useSearchTotalCount } from '@/components/SearchTotalCountChart';
 import { Pattern, useGroupedPatterns } from '@/hooks/usePatterns';
 import { getLevelExpression } from '@/source';
 
-import {
-  buildPatternColumnExpression,
-  PatternColumnSelector,
-} from './Patterns/PatternColumnSelector';
+import { buildPatternColumnExpression } from './Patterns/patternColumn';
+import { PatternColumnSelector } from './Patterns/PatternColumnSelector';
 import PatternSidePanel from './PatternSidePanel';
 
 const emptyMap = new Map();

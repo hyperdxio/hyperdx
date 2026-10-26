@@ -168,6 +168,7 @@ export const isRawSqlDisplayType = (
   | DisplayType.StackedLine
   | DisplayType.Pie
   | DisplayType.Bar
+  | DisplayType.Treemap
   | DisplayType.Number =>
   displayType === DisplayType.Table ||
   displayType === DisplayType.Line ||
@@ -175,6 +176,7 @@ export const isRawSqlDisplayType = (
   displayType === DisplayType.StackedLine ||
   displayType === DisplayType.Pie ||
   displayType === DisplayType.Bar ||
+  displayType === DisplayType.Treemap ||
   displayType === DisplayType.Number;
 
 /**

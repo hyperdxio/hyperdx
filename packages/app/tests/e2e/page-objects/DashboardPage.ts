@@ -57,7 +57,8 @@ type SeriesType =
   | 'pie'
   | 'event_patterns'
   | 'bar'
-  | 'heatmap';
+  | 'heatmap'
+  | 'treemap';
 
 /**
  * Series data structure for chart verification

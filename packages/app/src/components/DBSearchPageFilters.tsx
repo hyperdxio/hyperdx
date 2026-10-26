@@ -11,7 +11,10 @@ import {
   TableMetadata,
   tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import { FilterState } from '@hyperdx/common-utils/dist/filters';
+import {
+  type FilterRange,
+  FilterState,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   BuilderChartConfigWithDateRange,
   SourceKind,
@@ -402,7 +405,7 @@ const FilterRangeDisplay = ({
 type SelectedValues = {
   included: Set<string | boolean>;
   excluded: Set<string | boolean>;
-  range?: { min: number; max: number };
+  range?: FilterRange;
 };
 
 export type FilterGroupProps = {
@@ -1073,10 +1076,15 @@ export const FilterGroup = ({
               content: 'p-0 pt-2',
             }}
           >
-            {hasRange && selectedValues.range ? (
+            {hasRange &&
+            selectedValues.range?.min != null &&
+            selectedValues.range.max != null ? (
               <FilterRangeDisplay
                 name={name}
-                range={selectedValues.range}
+                range={{
+                  min: selectedValues.range.min,
+                  max: selectedValues.range.max,
+                }}
                 onClearClick={onClearClick}
                 onRangeChange={onRangeChange}
               />

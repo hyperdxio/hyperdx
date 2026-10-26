@@ -43,6 +43,7 @@ export enum DisplayType {
   Heatmap = 'heatmap',
   Markdown = 'markdown',
   EventPatterns = 'event_patterns',
+  Treemap = 'treemap',
 }
 
 export type KeyValue<Key = string, Value = string> = { key: Key; value: Value };

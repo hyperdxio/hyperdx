@@ -34,6 +34,7 @@ export default function PromqlChartEditor({
   allowedSourceKinds,
   onSubmit,
   onOpenDisplaySettings,
+  hideDisplaySettings = false,
   heatmapMode,
   onHeatmapModeChange,
 }: {
@@ -42,6 +43,7 @@ export default function PromqlChartEditor({
   allowedSourceKinds: SourceKind[];
   onSubmit: (suppressErrorNotification?: boolean) => void;
   onOpenDisplaySettings: () => void;
+  hideDisplaySettings?: boolean;
   heatmapMode: PromqlHeatmapMode;
   onHeatmapModeChange: (mode: PromqlHeatmapMode) => void;
 }) {
@@ -156,14 +158,16 @@ export default function PromqlChartEditor({
             </Button>
           )}
         </Group>
-        <Button
-          onClick={onOpenDisplaySettings}
-          size="compact-sm"
-          variant="secondary"
-          data-testid="display-settings-button"
-        >
-          Display Settings
-        </Button>
+        {!hideDisplaySettings && (
+          <Button
+            onClick={onOpenDisplaySettings}
+            size="compact-sm"
+            variant="secondary"
+            data-testid="display-settings-button"
+          >
+            Display Settings
+          </Button>
+        )}
       </Flex>
     </>
   );

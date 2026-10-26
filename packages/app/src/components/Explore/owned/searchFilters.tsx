@@ -1,0 +1,722 @@
+// Explore-owned copy. The shared module stays as it is on main, so this prototype does not conflict with it.
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import produce from 'immer';
+import {
+  type FilterState,
+  filtersToQuery,
+  parseQuery,
+} from '@hyperdx/common-utils/dist/filters';
+import type { Filter } from '@hyperdx/common-utils/dist/types';
+
+import {
+  cleanClickHouseExpression,
+  toQuotedClickHouseKeyExpression,
+} from '@/components/DBSearchPageFilters/utils';
+import { usePinnedFiltersApi, useUpdatePinnedFilters } from '@/pinnedFilters';
+import { useLocalStorage } from '@/utils';
+
+export const IS_ROOT_SPAN_COLUMN_NAME = 'isRootSpan';
+
+// Filter keys live in two forms.
+// 1. In-memory `FilterState`: use the clean/unquoted forms of each key. This is what
+// the UI renders, what test ids are built from, and what every key comparison expects.
+// 2. The persisted `Filter[]`: Uses the quoted/bracketed ClickHouse form so it emits
+// valid SQL verbatim. Persisted in URL params, local storage, and MongoDB for saved searches.
+
+// Convert the clean FilterState keys to valid SQL (quoted/bracket) keys.
+export const escapeFilterStateKeys = (
+  filters: FilterState,
+  knownColumns: Set<string>,
+): FilterState => {
+  const escaped: FilterState = {};
+  for (const [key, value] of Object.entries(filters)) {
+    escaped[toQuotedClickHouseKeyExpression(key, knownColumns)] = value;
+  }
+  return escaped;
+};
+
+// Convert valid SQL/persisted keys to clean FilterState keys.
+const unescapeFilterStateKeys = (filters: FilterState): FilterState => {
+  const cleaned: FilterState = {};
+  for (const [key, value] of Object.entries(filters)) {
+    cleaned[cleanClickHouseExpression(key)] = value;
+  }
+  return cleaned;
+};
+
+export const areFiltersEqual = (a: FilterState, b: FilterState) => {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+
+  if (aKeys.length !== bKeys.length) {
+    return false;
+  }
+
+  for (const key of aKeys) {
+    if (!b[key]) return false;
+
+    // Check included values
+    if (a[key].included.size !== b[key].included.size) return false;
+    for (const value of a[key].included) {
+      if (!b[key].included.has(value)) return false;
+    }
+
+    // Check excluded values
+    if (a[key].excluded.size !== b[key].excluded.size) return false;
+    for (const value of a[key].excluded) {
+      if (!b[key].excluded.has(value)) return false;
+    }
+
+    // Check range
+    if (a[key].range?.min !== b[key].range?.min) return false;
+    if (a[key].range?.max !== b[key].range?.max) return false;
+    if ((a[key].range?.minOp ?? '>=') !== (b[key].range?.minOp ?? '>=')) {
+      return false;
+    }
+    if ((a[key].range?.maxOp ?? '<=') !== (b[key].range?.maxOp ?? '<=')) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+// parseQuery (and its helpers) now live in common-utils as the inverse of
+// filtersToQuery; re-export so existing `@/searchFilters` importers keep working.
+export { parseQuery };
+
+export const useSearchPageFilterState = ({
+  searchQuery = [],
+  onFilterChange,
+  dateTimeColumns,
+  knownColumns,
+}: {
+  searchQuery?: Filter[];
+  onFilterChange: (filters: Filter[]) => void;
+  dateTimeColumns?: ReadonlyMap<string, string>;
+  /**
+   * Top-level column names on the table, used to quote
+   * column names that contain special characters
+   * (eg. service-name --> `service-name`).
+   **/
+  knownColumns: Set<string>;
+}) => {
+  // Access knownColumns through a ref so the returned mutators (which depend on
+  // updateFilterQuery) keep stable identities across knownColumns reference
+  // changes. The known columns are only used by the mutators, which are called
+  // on user input, not render, so avoid re-render by using a stable ref.
+  const knownColumnsRef = useRef<Set<string>>(knownColumns);
+  useEffect(() => {
+    knownColumnsRef.current = knownColumns;
+  }, [knownColumns]);
+
+  // Persisted filters carry canonical (escaped) keys; convert back to the clean
+  // keys the sidebar/comparisons use as they enter in-memory FilterState.
+  const parsedQuery = useMemo(() => {
+    try {
+      return {
+        filters: unescapeFilterStateKeys(parseQuery(searchQuery).filters),
+      };
+    } catch (e) {
+      console.error(e);
+      return { filters: {} };
+    }
+  }, [searchQuery]);
+
+  const [filters, setFilters] = useState<FilterState>({});
+
+  useEffect(() => {
+    if (!areFiltersEqual(filters, parsedQuery.filters)) {
+      setFilters(parsedQuery.filters);
+    }
+    // only react to changes in parsed query
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parsedQuery.filters]);
+
+  const updateFilterQuery = useCallback(
+    (newFilters: FilterState) => {
+      // Escape filter keys here prior to saving so the URL / saved
+      // search holds valid-SQL keys while FilterState stays clean.
+      const escapedFilters = escapeFilterStateKeys(
+        newFilters,
+        knownColumnsRef.current,
+      );
+      onFilterChange(filtersToQuery(escapedFilters, { dateTimeColumns }));
+    },
+    [onFilterChange, dateTimeColumns],
+  );
+
+  const setFilterValue = useCallback(
+    (
+      property: string,
+      value: string | boolean,
+      action?: 'only' | 'exclude' | 'include',
+    ) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
+          }
+
+          if (action === 'only') {
+            draft[property] = {
+              included: new Set([value]),
+              excluded: new Set(),
+            };
+            return;
+          }
+
+          if (action === 'exclude') {
+            // Remove from included if it was there
+            draft[property].included.delete(value);
+            // Toggle in excluded
+            if (draft[property].excluded.has(value)) {
+              draft[property].excluded.delete(value);
+            } else {
+              draft[property].excluded.add(value);
+            }
+            return;
+          }
+
+          // Regular toggle (include)
+          draft[property].excluded.delete(value);
+          if (draft[property].included.has(value)) {
+            draft[property].included.delete(value);
+          } else {
+            draft[property].included.add(value);
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  // Apply several "only" filters atomically: each listed property is set to
+  // exactly its given value in a single state update, emitting onFilterChange
+  // (and therefore a re-query) once rather than once per property. Use this
+  // instead of looping setFilterValue(..., 'only') when scoping to multiple
+  // columns at once (e.g. focusing a multi-group chart series).
+  const setOnlyFilters = useCallback(
+    (entries: { property: string; value: string | boolean }[]) => {
+      if (entries.length === 0) {
+        return;
+      }
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          for (const { property, value } of entries) {
+            draft[property] = {
+              included: new Set([value]),
+              excluded: new Set(),
+            };
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  // Set a property's included values to exactly `values` (an OR-set) in one
+  // update. Unlike setFilterValue(..., 'only') which takes a single value, this
+  // scopes a column to multiple values at once (e.g. a "severity: error" pill
+  // that maps to both ERROR and FATAL). Passing an empty array clears the
+  // filter entirely.
+  const setIncludedValues = useCallback(
+    (property: string, values: (string | boolean)[]) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (values.length === 0) {
+            delete draft[property];
+          } else {
+            draft[property] = {
+              included: new Set(values),
+              excluded: new Set(),
+            };
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  const mergeFilterValues = useCallback(
+    (incoming: FilterState) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          for (const [field, sel] of Object.entries(incoming)) {
+            if (!draft[field]) {
+              draft[field] = { included: new Set(), excluded: new Set() };
+            }
+            for (const value of sel.included) {
+              draft[field].excluded.delete(value);
+              draft[field].included.add(value);
+            }
+            for (const value of sel.excluded) {
+              draft[field].included.delete(value);
+              draft[field].excluded.add(value);
+            }
+            if (sel.range != null) {
+              draft[field].range = sel.range;
+            }
+          }
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  const setFilterRange = useCallback(
+    (property: string, range: { min: number; max: number }) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
+          }
+          draft[property].range = range;
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  const clearFilter = useCallback(
+    (property: string) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          delete draft[property];
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  // Swap one value for another within the same set (included or excluded),
+  // preserving polarity, in a single state update. Two setFilterValue calls
+  // would emit onFilterChange twice (one query run each); this emits once.
+  const replaceFilterValue = useCallback(
+    (
+      property: string,
+      oldValue: string | boolean,
+      newValue: string | boolean,
+      action: 'include' | 'exclude',
+    ) => {
+      setFilters(prevFilters => {
+        const newFilters = produce(prevFilters, draft => {
+          if (!draft[property]) {
+            draft[property] = { included: new Set(), excluded: new Set() };
+          }
+          const set =
+            action === 'exclude'
+              ? draft[property].excluded
+              : draft[property].included;
+          set.delete(oldValue);
+          set.add(newValue);
+        });
+        updateFilterQuery(newFilters);
+        return newFilters;
+      });
+    },
+    [updateFilterQuery],
+  );
+
+  const clearAllFilters = useCallback(() => {
+    setFilters(() => ({}));
+    updateFilterQuery({});
+  }, [updateFilterQuery]);
+
+  // Keep only filters whose root column appears in `allowedColumnNames`.
+  // Returns the keys of the filters that were dropped so callers can surface
+  // a notice when filter state was thrown away (e.g. on source change).
+  const retainFiltersByColumns = useCallback(
+    (allowedColumnNames: Set<string>): string[] => {
+      const dropped: string[] = [];
+      const kept: FilterState = {};
+      for (const [key, value] of Object.entries(filters)) {
+        // Filter keys are dot-normalized, top-level columns are stored as-is,
+        // nested JSON/Map keys as `Root.nested.path`. An exact match handles
+        // the rare case of a column with dots in its name.
+        const dotIdx = key.indexOf('.');
+        const rootColumn = dotIdx > 0 ? key.slice(0, dotIdx) : key;
+        if (allowedColumnNames.has(key) || allowedColumnNames.has(rootColumn)) {
+          kept[key] = value;
+        } else {
+          dropped.push(key);
+        }
+      }
+      if (dropped.length > 0) {
+        setFilters(kept);
+        updateFilterQuery(kept);
+      }
+      return dropped;
+    },
+    [filters, updateFilterQuery],
+  );
+
+  return {
+    filters,
+    setFilters,
+    setFilterValue,
+    setOnlyFilters,
+    setIncludedValues,
+    mergeFilterValues,
+    replaceFilterValue,
+    setFilterRange,
+    clearFilter,
+    clearAllFilters,
+    retainFiltersByColumns,
+  };
+};
+
+type PinnedFilters = {
+  [key: string]: (string | boolean)[];
+};
+
+export type FilterStateHook = ReturnType<typeof useSearchPageFilterState>;
+
+/**
+ * Merge team-level and personal pinned filter data into a single view.
+ * Fields and filter values are unioned (deduplicated).
+ */
+export function mergePinnedData(
+  team: { fields: string[]; filters: PinnedFilters } | null,
+  personal: { fields: string[]; filters: PinnedFilters } | null,
+): { fields: string[]; filters: PinnedFilters } {
+  const teamFields = team?.fields ?? [];
+  const personalFields = personal?.fields ?? [];
+  const fields = [...new Set([...teamFields, ...personalFields])];
+
+  const teamFilters = team?.filters ?? {};
+  const personalFilters = personal?.filters ?? {};
+  const allKeys = new Set([
+    ...Object.keys(teamFilters),
+    ...Object.keys(personalFilters),
+  ]);
+
+  const filters: PinnedFilters = {};
+  for (const key of allKeys) {
+    const teamVals = teamFilters[key] ?? [];
+    const personalVals = personalFilters[key] ?? [];
+    const merged = [...teamVals];
+    for (const v of personalVals) {
+      if (!merged.some(existing => existing === v)) {
+        merged.push(v);
+      }
+    }
+    filters[key] = merged;
+  }
+
+  return { fields, filters };
+}
+
+/**
+ * Toggle a value in a PinnedFilters map. Returns a new map with the value
+ * added or removed under the given property key.
+ */
+function toggleValueInFilters(
+  filters: PinnedFilters,
+  property: string,
+  value: string | boolean,
+): PinnedFilters {
+  const updated = { ...filters };
+  if (!updated[property]) {
+    updated[property] = [];
+  }
+  const idx = updated[property].findIndex((v: string | boolean) => v === value);
+  if (idx >= 0) {
+    updated[property] = updated[property].filter(
+      (_: string | boolean, i: number) => i !== idx,
+    );
+    if (updated[property].length === 0) {
+      delete updated[property];
+    }
+  } else {
+    updated[property] = [...updated[property], value];
+  }
+  return updated;
+}
+
+/**
+ * Hook for personal pinned filters stored in localStorage.
+ * This is the original storage mechanism, per-user, per-browser.
+ */
+function usePersonalPinnedFilters(sourceId: string | null) {
+  const [_pinnedFilters, _setPinnedFilters] = useLocalStorage<{
+    [sourceId: string]: PinnedFilters;
+  }>('hdx-pinned-search-filters', {});
+
+  const [_pinnedFields, _setPinnedFields] = useLocalStorage<{
+    [sourceId: string]: string[];
+  }>('hdx-pinned-fields', {});
+
+  const filters = useMemo<PinnedFilters>(
+    () =>
+      !sourceId || !_pinnedFilters[sourceId] ? {} : _pinnedFilters[sourceId],
+    [_pinnedFilters, sourceId],
+  );
+
+  const fields = useMemo<string[]>(
+    () =>
+      !sourceId || !_pinnedFields[sourceId] ? [] : _pinnedFields[sourceId],
+    [_pinnedFields, sourceId],
+  );
+
+  const setFilters = useCallback(
+    (val: PinnedFilters | ((pf: PinnedFilters) => PinnedFilters)) => {
+      if (!sourceId) return;
+      _setPinnedFilters(prev => {
+        const updated = { ...prev };
+        updated[sourceId] =
+          val instanceof Function ? val(prev[sourceId] ?? {}) : val;
+        return updated;
+      });
+    },
+    [sourceId, _setPinnedFilters],
+  );
+
+  const setFields = useCallback(
+    (val: string[] | ((pf: string[]) => string[])) => {
+      if (!sourceId) return;
+      _setPinnedFields(prev => {
+        const updated = { ...prev };
+        updated[sourceId] =
+          val instanceof Function ? val(prev[sourceId] ?? []) : val;
+        return updated;
+      });
+    },
+    [sourceId, _setPinnedFields],
+  );
+
+  return { filters, fields, setFilters, setFields };
+}
+
+export function usePinnedFilters(sourceId: string | null) {
+  // Personal pins: localStorage (per-user, per-browser)
+  const personal = usePersonalPinnedFilters(sourceId);
+
+  // Team/shared pins: MongoDB via API (shared across team)
+  const { data: teamApiData } = usePinnedFiltersApi(sourceId);
+  const updateTeamMutation = useUpdatePinnedFilters();
+
+  // Optimistic state keyed by sourceId so it is automatically ignored when
+  // the source changes, no useEffect needed to clear stale state.
+  const [optimisticTeam, setOptimisticTeam] = useState<{
+    sourceId: string;
+    fields: string[];
+    filters: PinnedFilters;
+  } | null>(null);
+
+  const effectiveTeam = useMemo(
+    () =>
+      optimisticTeam?.sourceId === sourceId
+        ? { fields: optimisticTeam.fields, filters: optimisticTeam.filters }
+        : {
+            fields: teamApiData?.team?.fields ?? [],
+            filters: teamApiData?.team?.filters ?? {},
+          },
+    [optimisticTeam, sourceId, teamApiData],
+  );
+
+  // Merge team + personal into a unified view for read operations
+  const { fields: pinnedFields, filters: pinnedFilters } = useMemo(
+    () =>
+      mergePinnedData(effectiveTeam, {
+        fields: personal.fields,
+        filters: personal.filters,
+      }),
+    [effectiveTeam, personal.fields, personal.filters],
+  );
+
+  // Debounce for team API writes, cancelled on unmount to prevent stale writes.
+  const pendingTeamUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+
+  useEffect(() => {
+    return () => {
+      if (pendingTeamUpdateRef.current) {
+        clearTimeout(pendingTeamUpdateRef.current);
+        pendingTeamUpdateRef.current = null;
+      }
+    };
+  }, []);
+
+  const flushTeamUpdate = useCallback(
+    (newFields: string[], newFilters: PinnedFilters) => {
+      if (!sourceId) return;
+
+      setOptimisticTeam({ sourceId, fields: newFields, filters: newFilters });
+
+      if (pendingTeamUpdateRef.current) {
+        clearTimeout(pendingTeamUpdateRef.current);
+      }
+      pendingTeamUpdateRef.current = setTimeout(() => {
+        updateTeamMutation.mutate(
+          {
+            source: sourceId,
+            fields: newFields,
+            filters: newFilters,
+          },
+          {
+            onSettled: () => setOptimisticTeam(null),
+          },
+        );
+        pendingTeamUpdateRef.current = null;
+      }, 300);
+    },
+    [sourceId, updateTeamMutation],
+  );
+
+  // Personal pin: value-level pin (localStorage, instant)
+  const toggleFilterPin = useCallback(
+    (property: string, value: string | boolean) => {
+      personal.setFilters(prev => toggleValueInFilters(prev, property, value));
+      // When pinning a value, also pin the field if not already pinned
+      personal.setFields(prev =>
+        prev.includes(property) ? prev : [...prev, property],
+      );
+    },
+    [personal],
+  );
+
+  // Personal pin: field-level pin (localStorage, instant)
+  const toggleFieldPin = useCallback(
+    (field: string) => {
+      personal.setFields(prev => {
+        const idx = prev.indexOf(field);
+        return idx >= 0 ? prev.filter((_, i) => i !== idx) : [...prev, field];
+      });
+    },
+    [personal],
+  );
+
+  // Personal-only checks (not merged), so team pins don't show as personal
+  const isFilterPinned = useCallback(
+    (property: string, value: string | boolean): boolean => {
+      return (
+        personal.filters[property] != null &&
+        personal.filters[property].some((v: string | boolean) => v === value)
+      );
+    },
+    [personal.filters],
+  );
+
+  const isFieldPinned = useCallback(
+    (field: string): boolean => {
+      return personal.fields.includes(field);
+    },
+    [personal.fields],
+  );
+
+  // Merged view for getPinnedFields (used for sorting and always-fetch logic)
+  const getPinnedFields = useCallback((): string[] => {
+    return pinnedFields;
+  }, [pinnedFields]);
+
+  // Team pin: field-level (MongoDB via API, debounced)
+  const toggleSharedFieldPin = useCallback(
+    (field: string) => {
+      const currentFields = [...effectiveTeam.fields];
+      const currentFilters = { ...effectiveTeam.filters };
+      const fieldIndex = currentFields.indexOf(field);
+
+      if (fieldIndex >= 0) {
+        // Removing field from shared, also clean up its filter values
+        const newFields = currentFields.filter((_, i) => i !== fieldIndex);
+        delete currentFilters[field];
+        flushTeamUpdate(newFields, currentFilters);
+      } else {
+        // Adding field to shared
+        flushTeamUpdate([...currentFields, field], currentFilters);
+      }
+    },
+    [effectiveTeam, flushTeamUpdate],
+  );
+
+  const isSharedFieldPinned = useCallback(
+    (field: string): boolean => {
+      // A field is shared if it's in the fields list OR has shared filter values
+      return (
+        effectiveTeam.fields.includes(field) ||
+        (effectiveTeam.filters[field] != null &&
+          effectiveTeam.filters[field].length > 0)
+      );
+    },
+    [effectiveTeam],
+  );
+
+  // Team pin: value-level (MongoDB via API, debounced)
+  const toggleSharedFilterPin = useCallback(
+    (property: string, value: string | boolean) => {
+      const newFilters = toggleValueInFilters(
+        effectiveTeam.filters,
+        property,
+        value,
+      );
+      // When sharing a value, also add the field to shared fields
+      const newFields = effectiveTeam.fields.includes(property)
+        ? effectiveTeam.fields
+        : [...effectiveTeam.fields, property];
+
+      flushTeamUpdate(newFields, newFilters);
+    },
+    [effectiveTeam, flushTeamUpdate],
+  );
+
+  const isSharedFilterPinned = useCallback(
+    (property: string, value: string | boolean): boolean => {
+      const vals = effectiveTeam.filters[property];
+      return vals != null && vals.some(v => v === value);
+    },
+    [effectiveTeam],
+  );
+
+  const resetPersonalPins = useCallback(() => {
+    personal.setFields(() => []);
+    personal.setFilters(() => ({}));
+  }, [personal]);
+
+  const resetSharedFilters = useCallback(() => {
+    flushTeamUpdate([], {});
+  }, [flushTeamUpdate]);
+
+  const hasPersonalPins = useMemo(
+    () =>
+      personal.fields.length > 0 || Object.keys(personal.filters).length > 0,
+    [personal.fields, personal.filters],
+  );
+
+  const hasSharedPins = useMemo(
+    () =>
+      effectiveTeam.fields.length > 0 ||
+      Object.keys(effectiveTeam.filters).length > 0,
+    [effectiveTeam],
+  );
+
+  return {
+    toggleFilterPin,
+    toggleFieldPin,
+    isFilterPinned,
+    isFieldPinned,
+    getPinnedFields,
+    pinnedFilters,
+    toggleSharedFieldPin,
+    isSharedFieldPinned,
+    toggleSharedFilterPin,
+    isSharedFilterPinned,
+    resetPersonalPins,
+    resetSharedFilters,
+    hasPersonalPins,
+    hasSharedPins,
+  };
+}

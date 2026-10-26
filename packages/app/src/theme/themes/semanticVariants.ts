@@ -20,7 +20,7 @@ export const SEMANTIC_TEXT_COLORS: Record<string, string> = {
  * tokens so the control reads as a soft, accessible tint rather than a solid
  * fill, with the semantic text token as the foreground.
  *
- * Only `danger` is exposed as a control variant; `warning`/`success` remain
+ * `danger` and `warning` are exposed as control variants; `success` remains
  * available for `Text` and `Alert` but not as buttons.
  */
 export const SEMANTIC_CONTROL_COLORS: Record<
@@ -31,6 +31,11 @@ export const SEMANTIC_CONTROL_COLORS: Record<
     bg: 'var(--color-bg-danger-subtle)',
     hover: 'var(--color-bg-danger-subtle-hover)',
     color: 'var(--color-text-danger)',
+  },
+  warning: {
+    bg: 'var(--color-bg-warning-subtle)',
+    hover: 'var(--color-bg-warning-subtle-hover)',
+    color: 'var(--color-text-warning)',
   },
 };
 

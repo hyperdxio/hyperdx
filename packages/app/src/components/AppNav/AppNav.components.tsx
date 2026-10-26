@@ -344,6 +344,7 @@ export const AppNavLink = ({
   isExpanded,
   onToggle,
   isBeta,
+  badgeLabel,
   isActive,
 }: {
   className?: string;
@@ -353,6 +354,7 @@ export const AppNavLink = ({
   isExpanded?: boolean;
   onToggle?: () => void;
   isBeta?: boolean;
+  badgeLabel?: string;
   isActive?: boolean;
 }) => {
   const { pathname, isCollapsed } = React.use(AppNavContext);
@@ -386,10 +388,10 @@ export const AppNavLink = ({
         <span className={styles.navItemIcon}>{icon}</span>
         {!isCollapsed && <span>{label}</span>}
       </span>
-      {!isCollapsed && isBeta && (
+      {!isCollapsed && (isBeta || badgeLabel) && (
         <Badge
           size="sm"
-          text="Beta"
+          text={badgeLabel ?? 'Beta'}
           state="info"
           className={styles.navItemBadge}
         />

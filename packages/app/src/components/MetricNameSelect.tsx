@@ -190,8 +190,8 @@ export function MetricNameSelect({
       }
       // Reported in the description rather than the `error` slot, which belongs
       // to form validation for this field. Kept below the input: it appears
-      // mid-session, and above the input it pushes the field down out of
-      // alignment with the browse-metrics button beside it.
+      // mid-session, and above the input it pushes the whole field down, out of
+      // alignment with the rest of the series row.
       inputWrapperOrder={['label', 'input', 'description', 'error']}
       // Keyed off `activeSearch`, not the debounced value: the latter trails by
       // 300ms, so every transition landed a beat after the list it describes —

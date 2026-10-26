@@ -115,6 +115,7 @@ export function AggFnSelectControlled({
   defaultValue,
   hideCustom,
   metricType,
+  onValueChange,
   ...props
 }: {
   defaultValue: string;
@@ -122,6 +123,8 @@ export function AggFnSelectControlled({
   quantileLevelName: string;
   hideCustom?: boolean;
   metricType?: MetricsDataType;
+  /** Fires after the form fields are updated (Explore commits URL state). */
+  onValueChange?: () => void;
 } & Omit<UseControllerProps<any>, 'name'>) {
   const {
     field: { onChange: onAggFnChange, value: aggFnValue },
@@ -145,8 +148,9 @@ export function AggFnSelectControlled({
       } else {
         onAggFnChange(value.aggFn);
       }
+      onValueChange?.();
     },
-    [onAggFnChange, onQuantileLevelChange],
+    [onAggFnChange, onQuantileLevelChange, onValueChange],
   );
 
   const value = useMemo(() => {

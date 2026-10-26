@@ -126,6 +126,7 @@ export default function RawSqlChartEditor({
   isAlertRequired,
   dashboardId,
   variables,
+  hideDisplaySettings = false,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
@@ -141,6 +142,7 @@ export default function RawSqlChartEditor({
   isAlertRequired?: boolean;
   dashboardId?: string;
   variables?: ChartVariable[];
+  hideDisplaySettings?: boolean;
 }) {
   const { size, startResize } = useResizable(20, 'bottom');
 
@@ -329,13 +331,15 @@ export default function RawSqlChartEditor({
                 onSubmit={onSubmit}
               />
             )}
-            <Button
-              onClick={onOpenDisplaySettings}
-              size="compact-sm"
-              variant="secondary"
-            >
-              Display Settings
-            </Button>
+            {!hideDisplaySettings && (
+              <Button
+                onClick={onOpenDisplaySettings}
+                size="compact-sm"
+                variant="secondary"
+              >
+                Display Settings
+              </Button>
+            )}
           </Group>
         </Group>
       </Group>
