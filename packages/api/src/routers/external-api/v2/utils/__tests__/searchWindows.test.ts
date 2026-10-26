@@ -37,7 +37,7 @@ async function resolveSearchWindows(
   for (
     let w: typeof first.window | null = first.window;
     w != null;
-    w = nextSearchWindow(w, range, first.direction)
+    w = nextSearchWindow(w, range, first.direction, first.cut?.bucketMs)
   ) {
     windows.push({
       startTime: new Date(w.startTime),
@@ -51,7 +51,12 @@ async function resolveSearchWindows(
 
 // Reference windows: build every window, floor the boundaries between
 // them to the second, drop empties. Stepping must reproduce it exactly.
-function referenceWindows(start: Date, end: Date, direction: 'ASC' | 'DESC') {
+function referenceWindows(
+  start: Date,
+  end: Date,
+  direction: 'ASC' | 'DESC',
+  alignMs = 1000,
+) {
   const windows =
     direction === 'ASC'
       ? generateTimeWindowsAscending(start, end)
@@ -60,7 +65,7 @@ function referenceWindows(start: Date, end: Date, direction: 'ASC' | 'DESC') {
   const snap = (t: Date) =>
     t.getTime() === start.getTime() || t.getTime() === end.getTime()
       ? t.getTime()
-      : Math.max(Math.floor(t.getTime() / 1000) * 1000, start.getTime());
+      : Math.max(Math.floor(t.getTime() / alignMs) * alignMs, start.getTime());
   return windows
     .map(w => [snap(w.startTime), snap(w.endTime)])
     .filter(([a, b]) => a < b)
@@ -225,9 +230,25 @@ describe('search window stepping', () => {
     },
   );
 
-  it.each(['DESC', 'ASC'] as const)(
-    'steps through exactly the reference windows (%s)',
-    async direction => {
+  it.each([
+    ['DESC', 'Timestamp', 'Timestamp', 1000],
+    ['ASC', 'Timestamp', 'Timestamp', 1000],
+    [
+      'DESC',
+      'toStartOfMinute(Timestamp), Timestamp',
+      'toStartOfMinute(Timestamp)',
+      60_000,
+    ],
+    [
+      'ASC',
+      'toStartOfMinute(Timestamp), Timestamp',
+      'toStartOfMinute(Timestamp)',
+      60_000,
+    ],
+  ] as const)(
+    'steps through exactly the reference windows (%s, %s)',
+    async (direction, timestampValueExpression, sortKey, alignMs) => {
+      const walkSource = { timestampValueExpression };
       // Deterministic pseudo-random ranges: 0 to 30 days, millisecond precision.
       let seed = 42;
       const rand = () =>
@@ -238,16 +259,16 @@ describe('search window stepping', () => {
       let cumulative = 0;
       for (const size of [...DEFAULT_TIME_WINDOWS_SECONDS, 86_400, 86_400]) {
         cumulative += size * 1000;
-        for (const delta of [-1300, -300, 0, 300, 1300]) {
+        for (const delta of [-61_300, -1300, -300, 0, 300, 1300, 61_300]) {
           const end = new Date(edgeStart.getTime() + cumulative + delta);
           const walked = await resolveSearchWindows(
-            source,
-            `Timestamp ${direction}`,
+            walkSource,
+            `${sortKey} ${direction}`,
             edgeStart,
             end,
           );
           expect(walked.map(w => [w.startTime, w.endTime])).toEqual(
-            referenceWindows(edgeStart, end, direction),
+            referenceWindows(edgeStart, end, direction, alignMs),
           );
         }
       }
@@ -259,13 +280,13 @@ describe('search window stepping', () => {
           start.getTime() + Math.floor(rand() * 30 * 86_400_000),
         );
         const walked = await resolveSearchWindows(
-          source,
-          `Timestamp ${direction}`,
+          walkSource,
+          `${sortKey} ${direction}`,
           start,
           end,
         );
         expect(walked.map(w => [w.startTime, w.endTime])).toEqual(
-          referenceWindows(start, end, direction),
+          referenceWindows(start, end, direction, alignMs),
         );
       }
     },
@@ -318,20 +339,47 @@ describe('search window stepping', () => {
         },
       );
       expect(first.windowed).toBe(true);
-      expect(first.cutPart).toBe(cutPart);
+      expect(first.cut).toEqual({ expression: cutPart, bucketMs: 1000 });
     },
   );
 
   it.each([
+    ['toStartOfSecond(Timestamp)', 1000],
+    ['toStartOfMinute(Timestamp)', 60_000],
+    ['toStartOfFiveMinutes(Timestamp)', 300_000],
+    ['toStartOfFiveMinute(Timestamp)', 300_000],
+    ['toStartOfFifteenMinutes(Timestamp)', 900_000],
+  ])(
+    'cuts on a rounded leading key %s in %ims buckets',
+    async (key, bucketMs) => {
+      const first = await resolveFirstSearchWindow(
+        { timestampValueExpression: `${key}, Timestamp` },
+        `${key} DESC, Body`,
+        START,
+        END,
+        { columnType: async () => 'DateTime64(9)' },
+      );
+      expect(first.windowed).toBe(true);
+      expect(first.cut).toEqual({ expression: key, bucketMs });
+    },
+  );
+
+  it.each([
+    // Ten-minute buckets don't align to UTC in +x:45 time zones.
     [
-      'toStartOfMinute(Timestamp), Timestamp',
-      'toStartOfMinute(Timestamp) DESC, Body',
+      'toStartOfTenMinutes(Timestamp), Timestamp',
+      'toStartOfTenMinutes(Timestamp) DESC, Body',
+    ],
+    [
+      'toStartOfHour(Timestamp), Timestamp',
+      'toStartOfHour(Timestamp) DESC, Body',
     ],
     ['EventDate, EventTime', 'EventDate DESC, Body'],
+    // Without an exact part, rounded bounds are inclusive on both ends.
+    ['toStartOfMinute(Timestamp)', 'toStartOfMinute(Timestamp) DESC, Body'],
   ])(
-    'uses one window for %s ordered by a rounded key (%s)',
+    'uses one window for %s ordered by %s',
     async (timestampValueExpression, orderBy) => {
-      // A window boundary inside one rounded key would break the requested order.
       const first = await resolveFirstSearchWindow(
         { timestampValueExpression },
         orderBy,
@@ -343,7 +391,7 @@ describe('search window stepping', () => {
         },
       );
       expect(first.windowed).toBe(false);
-      expect(first.cutPart).toBeNull();
+      expect(first.cut).toBeNull();
     },
   );
 

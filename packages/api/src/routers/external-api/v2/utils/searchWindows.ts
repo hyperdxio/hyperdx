@@ -3,6 +3,7 @@ import {
   getFirstOrderingItem,
   isFirstOrderByAscending,
   isRoundedTimestampPart,
+  parseToStartOfFunction,
   removeTrailingDirection,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -42,6 +43,41 @@ async function isExactTimestampPart(
 export type SearchDirection = 'ASC' | 'DESC';
 type Range = { start: Date; end: Date };
 
+/** The leading sort key windows are cut on, and the length of its buckets. */
+export type SearchCut = { expression: string; bucketMs: number };
+
+// Rounded leading keys whose buckets divide 15 minutes. Every current UTC
+// offset is a multiple of 15 minutes, so these buckets align to UTC in any
+// time zone and windows can be floored to the bucket length.
+const ROUNDED_KEY_BUCKET_MS: Record<string, number> = {
+  toStartOfSecond: 1000,
+  toStartOfMinute: 60_000,
+  toStartOfFiveMinute: 300_000,
+  toStartOfFiveMinutes: 300_000,
+  toStartOfFifteenMinutes: 900_000,
+};
+
+async function resolveCut(
+  leading: string,
+  timestampValueExpression: string,
+  columnType: (column: string) => Promise<string | undefined>,
+): Promise<SearchCut | null> {
+  if (await isExactTimestampPart(leading, columnType)) {
+    return { expression: leading, bucketMs: 1000 };
+  }
+  const bucketMs =
+    ROUNDED_KEY_BUCKET_MS[parseToStartOfFunction(leading)?.function ?? ''];
+  if (bucketMs == null) return null;
+  // Rounded bounds are inclusive on both ends; an exact part's strict bound
+  // is what keeps windows half-open.
+  for (const part of splitAndTrimWithBracket(timestampValueExpression)) {
+    if (await isExactTimestampPart(part, columnType)) {
+      return { expression: leading, bucketMs };
+    }
+  }
+  return null;
+}
+
 export async function resolveFirstSearchWindow(
   source: { timestampValueExpression?: string },
   orderBy: string,
@@ -57,8 +93,7 @@ export async function resolveFirstSearchWindow(
 ): Promise<{
   window: CursorWindow;
   windowed: boolean;
-  /** The exact timestamp part leading the sort; windows are cut on it. */
-  cutPart: string | null;
+  cut: SearchCut | null;
   direction: SearchDirection;
 }> {
   const direction = isFirstOrderByAscending(orderBy) ? 'ASC' : 'DESC';
@@ -71,17 +106,18 @@ export async function resolveFirstSearchWindow(
     orderBy,
     source.timestampValueExpression,
   );
-  // Windows need an exact leading key: a boundary inside one rounded key
-  // (a minute, a day) would split rows the sort keeps together.
-  const cutPart =
-    !forceSingleWindow &&
-    startDate < endDate &&
-    leading != null &&
-    (await isExactTimestampPart(leading, columnType))
-      ? leading
+  // Window boundaries are floored to the leading key's bucket, so one bucket's
+  // rows, which the sort keeps together, never span two windows.
+  const cut =
+    !forceSingleWindow && startDate < endDate && leading != null
+      ? await resolveCut(
+          leading,
+          source.timestampValueExpression ?? '',
+          columnType,
+        )
       : null;
-  if (cutPart == null) {
-    return { window: wholeRange, windowed: false, cutPart, direction };
+  if (cut == null) {
+    return { window: wholeRange, windowed: false, cut, direction };
   }
 
   // Step from an empty window at the edge the walk starts from.
@@ -90,8 +126,9 @@ export async function resolveFirstSearchWindow(
     { ordinal: -1, startTime: edge, endTime: edge },
     { start: startDate, end: endDate },
     direction,
+    cut.bucketMs,
   );
-  return { window: first ?? wholeRange, windowed: true, cutPart, direction };
+  return { window: first ?? wholeRange, windowed: true, cut, direction };
 }
 
 const WINDOW_SIZES_MS = DEFAULT_TIME_WINDOWS_SECONDS.map(sec => sec * 1000);
@@ -105,11 +142,12 @@ function cumulativeWindowMs(count: number): number {
   );
 }
 
-// Boundaries between windows are floored to the second, so a second-precision
-// column such as TimestampTime doesn't drop rows at a boundary. The caller's
-// bounds stay exact; a window that flooring empties is skipped.
-const floorToSecond = (ms: number, startMs: number) =>
-  Math.max(Math.floor(ms / 1000) * 1000, startMs);
+// Boundaries between windows are floored to the bucket (a second for an exact
+// key), so a second-precision column such as TimestampTime doesn't drop rows
+// at a boundary. The caller's bounds stay exact; a window that flooring
+// empties is skipped.
+const floorToBucket = (ms: number, startMs: number, bucketMs: number) =>
+  Math.max(Math.floor(ms / bucketMs) * bucketMs, startMs);
 
 /**
  * The window after `current`, or null when the walk has reached the range
@@ -121,6 +159,7 @@ export function nextSearchWindow(
   current: CursorWindow,
   range: Range,
   direction: SearchDirection,
+  bucketMs = 1000,
 ): CursorWindow | null {
   const startMs = range.start.getTime();
   const endMs = range.end.getTime();
@@ -133,12 +172,12 @@ export function nextSearchWindow(
       if (ws <= startMs) return null;
       we = ws;
       const raw = endMs - cumulativeWindowMs(ordinal + 1);
-      ws = raw <= startMs ? startMs : floorToSecond(raw, startMs);
+      ws = raw <= startMs ? startMs : floorToBucket(raw, startMs, bucketMs);
     } else {
       if (we >= endMs) return null;
       ws = we;
       const raw = startMs + cumulativeWindowMs(ordinal + 1);
-      we = raw >= endMs ? endMs : floorToSecond(raw, startMs);
+      we = raw >= endMs ? endMs : floorToBucket(raw, startMs, bucketMs);
     }
     if (ws < we) {
       return {
@@ -168,23 +207,25 @@ export function windowBounds(
 }
 
 /**
- * Shrinks a window to the rows not yet returned, cut at the last row's whole
- * second, so the next page's offset only skips that second's returned rows.
- * The far edge is untouched, so nextSearchWindow is unaffected.
+ * Shrinks a window to the rows not yet returned, cut at the last row's bucket,
+ * so the next page's offset only skips that bucket's returned rows. The far
+ * edge is untouched, so nextSearchWindow is unaffected.
  */
-export function cutWindowAtSecond({
+export function cutWindowAtBucket({
   window,
   direction,
   offset,
   pageLength,
-  lastSecondMs,
+  lastBucketMs,
+  bucketMs,
   trailingRunLength,
 }: {
   window: CursorWindow;
   direction: SearchDirection;
   offset: number;
   pageLength: number;
-  lastSecondMs: number;
+  lastBucketMs: number;
+  bucketMs: number;
   trailingRunLength: number;
 }): { window: CursorWindow; offset: number } {
   const startMs = Date.parse(window.startTime);
@@ -193,11 +234,13 @@ export function cutWindowAtSecond({
     direction === 'DESC'
       ? {
           ...window,
-          endTime: new Date(Math.min(lastSecondMs + 1000, endMs)).toISOString(),
+          endTime: new Date(
+            Math.min(lastBucketMs + bucketMs, endMs),
+          ).toISOString(),
         }
       : {
           ...window,
-          startTime: new Date(Math.max(lastSecondMs, startMs)).toISOString(),
+          startTime: new Date(Math.max(lastBucketMs, startMs)).toISOString(),
         };
   // An unchanged window means the whole page was that one second.
   const unchanged =

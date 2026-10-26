@@ -984,6 +984,76 @@ describe('External API v2 Search', () => {
     },
   );
 
+  it('pages a minute-rounded sort in order with minute-aligned windows and cuts', async () => {
+    const minuteSource = await Source.create({
+      kind: SourceKind.Log,
+      team: logSource.team,
+      from: logSource.from,
+      defaultTableSelectExpression: 'Timestamp, SeverityText, Body',
+      timestampValueExpression: 'toStartOfMinute(Timestamp), Timestamp',
+      connection: logSource.connection,
+      name: 'Logs (minute key)',
+    });
+    // 20 rows a minute for 30 minutes, so the walk crosses the first window's
+    // boundary; Body order is unrelated to time within each minute.
+    const base = DEFAULT_END_TIME - 30 * 60 * 1000;
+    await bulkInsertLogs(
+      Array.from({ length: 600 }, (_, i) => ({
+        ServiceName: 'cursor-minute-test',
+        Timestamp: new Date(base + i * 3000),
+        SeverityText: 'INFO',
+        Body: `row-${String((i * 37) % 600).padStart(3, '0')}`,
+      })),
+    );
+
+    const rows: { minute: number; body: string }[] = [];
+    const cursors: {
+      ws: string;
+      we: string;
+      o: number;
+      s: string;
+      e: string;
+    }[] = [];
+    let cursor: string | null | undefined;
+    for (let pages = 0; pages < 100; pages++) {
+      const res = await search({
+        ...cursorBody(),
+        sourceId: minuteSource.id.toString(),
+        where: 'ServiceName:"cursor-minute-test"',
+        orderBy: 'toStartOfMinute(Timestamp) DESC, Body ASC',
+        maxResults: 50,
+        cursor: cursor ?? 'start',
+      }).expect(200);
+      for (const r of res.body.data) {
+        const minute = Math.floor(Date.parse(r.Timestamp) / 60_000);
+        rows.push({ minute, body: r.Body });
+      }
+      cursor = res.body.nextCursor;
+      if (cursor == null) break;
+      cursors.push(
+        JSON.parse(Buffer.from(cursor.split('.')[0], 'base64url').toString()),
+      );
+    }
+
+    expect(cursor).toBeNull();
+    expect(new Set(rows.map(r => r.body)).size).toBe(600);
+    rows.slice(1).forEach((r, i) => {
+      const prev = rows.at(i);
+      expect(prev).toBeDefined();
+      if (prev && r.minute === prev.minute)
+        expect(r.body > prev.body).toBe(true);
+      else if (prev) expect(r.minute < prev.minute).toBe(true);
+    });
+    for (const c of cursors) {
+      expect(c.o).toBeLessThanOrEqual(20);
+      for (const bound of [c.ws, c.we]) {
+        if (bound !== c.s && bound !== c.e) {
+          expect(Date.parse(bound) % 60_000).toBe(0);
+        }
+      }
+    }
+  });
+
   it('rejects a select that uses the reserved cursor column name', async () => {
     await search({
       ...cursorBody(),

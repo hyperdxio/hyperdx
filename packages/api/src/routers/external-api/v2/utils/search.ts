@@ -30,7 +30,7 @@ import {
   type SearchWalk,
 } from './searchCursor';
 import {
-  cutWindowAtSecond,
+  cutWindowAtBucket,
   nextSearchWindow,
   resolveFirstSearchWindow,
   windowBounds,
@@ -225,12 +225,12 @@ export async function runSearchConfig({
   const range = { start: walkStart, end: walkEnd };
   const window = cursorState?.window ?? first.window;
   const effectiveOffset = cursorState ? cursorState.offset : offset;
-  const cutColumn = cursorState ? first.cutPart : null;
+  const cut = cursorState ? first.cut : null;
   // A walk that can't cut its windows pages with plain offsets, so it keeps
   // the `offset` field's cap. Erroring, rather than ending the walk, keeps a
   // truncated result from looking complete.
   const requestedLimit =
-    cursorState && !cutColumn
+    cursorState && !cut
       ? Math.min(maxResults, MAX_SINGLE_WINDOW_OFFSET - effectiveOffset)
       : maxResults;
   // A cursor walk reads one extra row to learn whether the window continues,
@@ -255,8 +255,8 @@ export async function runSearchConfig({
   const searchBase = buildSearchChartConfig(source, {
     where: typeof config.where === 'string' ? config.where : '',
     whereLanguage: config.whereLanguage ?? 'lucene',
-    select: cutColumn
-      ? `${baseSelect || '*'}, toUnixTimestamp64Milli(toDateTime64(${cutColumn}, 3)) AS ${CURSOR_TS_COLUMN}`
+    select: cut
+      ? `${baseSelect || '*'}, toUnixTimestamp64Milli(toDateTime64(${cut.expression}, 3)) AS ${CURSOR_TS_COLUMN}`
       : (config.select ?? null),
     displayType: DisplayType.Search,
     orderBy: effectiveOrderBy,
@@ -295,16 +295,16 @@ export async function runSearchConfig({
     (rows.length > pageLimit ||
       (queryLimit === pageLimit && rows.length === pageLimit));
   const page = cursorState ? rows.slice(0, pageLimit) : rows;
-  const split = cutColumn
+  const split = cut
     ? page.map(({ [CURSOR_TS_COLUMN]: ms, ...row }) => {
-        const second = Math.floor(Number(ms) / 1000) * 1000;
-        if (!Number.isFinite(second)) {
+        const bucket = Math.floor(Number(ms) / cut.bucketMs) * cut.bucketMs;
+        if (!Number.isFinite(bucket)) {
           throw new Error(`Search result is missing ${CURSOR_TS_COLUMN}`);
         }
-        return { second, row };
+        return { bucket, row };
       })
     : null;
-  const seconds = split?.map(r => r.second) ?? [];
+  const buckets = split?.map(r => r.bucket) ?? [];
   const data = split?.map(r => r.row) ?? page;
 
   // Only a cursor walk gets a next cursor; offset-only callers are unchanged.
@@ -314,19 +314,20 @@ export async function runSearchConfig({
       startTime: cursorState.startTime,
       endTime: cursorState.endTime,
     };
-    if (hasMoreInWindow && cutColumn) {
-      const lastSecond = seconds[seconds.length - 1];
+    if (hasMoreInWindow && cut) {
+      const lastBucket = buckets[buckets.length - 1];
       let trailingRunLength = 0;
-      while (seconds[seconds.length - 1 - trailingRunLength] === lastSecond) {
+      while (buckets[buckets.length - 1 - trailingRunLength] === lastBucket) {
         trailingRunLength++;
       }
       nextCursorState = {
-        ...cutWindowAtSecond({
+        ...cutWindowAtBucket({
           window,
           direction: first.direction,
           offset: effectiveOffset,
           pageLength: data.length,
-          lastSecondMs: lastSecond,
+          lastBucketMs: lastBucket,
+          bucketMs: cut.bucketMs,
           trailingRunLength,
         }),
         ...pinned,
@@ -338,7 +339,12 @@ export async function runSearchConfig({
         ...pinned,
       };
     } else {
-      const nextWindow = nextSearchWindow(window, range, first.direction);
+      const nextWindow = nextSearchWindow(
+        window,
+        range,
+        first.direction,
+        first.cut?.bucketMs,
+      );
       if (nextWindow) {
         nextCursorState = { window: nextWindow, offset: 0, ...pinned };
       }
