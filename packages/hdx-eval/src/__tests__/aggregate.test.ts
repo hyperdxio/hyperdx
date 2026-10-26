@@ -97,6 +97,8 @@ function pair(args: {
       samples: [],
     },
     combinedScore: 0.4 * args.programmaticScore + 0.6 * args.judgeScore,
+    stepsToOrigin: null,
+    negativeMatches: 0,
     gradedAt: '',
     judgeModel: 'claude-opus-4-7',
   };
@@ -556,5 +558,48 @@ describe('buildAggregate', () => {
     expect(sc.cells['clickhouse'].adoption).toBeUndefined();
     // The delta object should not carry an adoptionScore key at all.
     expect('adoptionScore' in sc.deltas['hyperdx']).toBe(false);
+  });
+});
+
+describe('buildAggregate stepsToOrigin and negativeMatches', () => {
+  const mk = (i: number, steps: number | null, neg: number) => {
+    const p = pair({
+      scenario: 's',
+      mcp: 'hyperdx',
+      i,
+      programmaticScore: 1,
+      judgeScore: 1,
+      toolCalls: 1,
+      outputTokens: 1,
+      durationMs: 1,
+    });
+    p.grade.stepsToOrigin = steps;
+    p.grade.negativeMatches = neg;
+    return p;
+  };
+  const cell = (pairs: GradedRunPair[]) =>
+    buildAggregate({ batchDir: '/b', pairs }).scenarios[0].cells['hyperdx'];
+
+  it('averages steps over non-null records and negatives over all', () => {
+    const c = cell([mk(0, 2, 1), mk(1, null, 0), mk(2, 4, 2)]);
+    expect(c.stepsToOrigin).toEqual({ mean: 3, found: 2, n: 3 });
+    expect(c.negativeMatches.mean).toBe(1);
+  });
+
+  it('gives null steps when no record has a value', () => {
+    expect(cell([mk(0, null, 0)]).stepsToOrigin).toEqual({
+      mean: null,
+      found: 0,
+      n: 1,
+    });
+  });
+
+  it('treats old grades without the fields as null and 0', () => {
+    const old = mk(0, null, 0);
+    delete (old.grade as Partial<GradeRecord>).stepsToOrigin;
+    delete (old.grade as Partial<GradeRecord>).negativeMatches;
+    const c = cell([old]);
+    expect(c.stepsToOrigin.mean).toBeNull();
+    expect(c.negativeMatches.mean).toBe(0);
   });
 });

@@ -1,0 +1,124 @@
+{
+  "scenario": "erp-order-sync",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "orders",
+    "summary": "Fourteen minutes before the anchor tenant globex (enterprise) switched on an ERP integration, globex-erp-connector/1.0, that pages through all of its orders with GET /orders at limit=5000: about 1.6 more requests a second through web-bff, a little more than doubling GET /orders. Each page is SELECT * FROM orders WHERE tenant_id = $1 ORDER BY created_at DESC LIMIT 5000 OFFSET $2 on orders-db, and the scans load orders-db so heavily (CPU around 90 percent) that every query on it slows: over three minutes orders' pg.select and pg.insert spans went from about 6 ms to about 125 ms. The connector's own pages wait longest and about one in five times out at web-bff's 500 ms timeout. checkout calls orders.create inside the BFFs' 500 ms budget, so the slower inserts push about one checkout in four past the BFF timeout, and those 504s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. orders logs WARN lines for each 5000-row page and slow query lines naming the LIMIT 5000 OFFSET scan. orders returns no errors of its own, its version did not change and nothing shipped. The smtp.example.com deferrals email-worker logs (421 too many concurrent connections), which began before the connector started, are unrelated: email is sent after the order is placed and never fails a request.",
+    "contributingFactors": [
+      "globex's ERP connector paging through its orders 5,000 rows at a time",
+      "the LIMIT 5000 OFFSET scans loading orders-db so every query on it slows",
+      "checkout's order insert sitting inside the BFFs' 500 ms budget"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["orders/traffic", "orders/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\borders\\b"],
+      [
+        "names_connector",
+        3,
+        "globex-erp-connector|erp (connector|integration|sync)|\\bglobex\\b"
+      ],
+      [
+        "names_page_size",
+        3,
+        "limit=?\\s?5,?000|5,?000[- ]rows?|page size|OFFSET"
+      ],
+      [
+        "names_db_load",
+        2,
+        "orders-db[^.\\n]{0,80}?(load|cpu|slow|scan)|(scan|quer(y|ies))[^.\\n]{0,60}?orders-db"
+      ],
+      [
+        "names_checkout_timeout",
+        1,
+        "checkout[^.\\n]{0,120}?(time[sd]? ?out|\\b504\\b)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_smtp_deferrals",
+        2,
+        "(email-worker|smtp\\.example\\.com|\\b421\\b|deferr\\w*)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(email-worker|smtp\\.example\\.com|\\b421\\b|deferr\\w*)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "email-worker|smtp\\.example\\.com|\\b421\\b|deferr\\w*"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_smtp_deferrals",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(email-worker|smtp\\.example\\.com|\\b421\\b|deferr\\w*)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(email-worker|smtp\\.example\\.com|\\b421\\b|deferr\\w*)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_orders_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(orders (deploy|release|code change|bug|roll[- ]?out))",
+        true
+      ],
+      [
+        "false_blame_checkout",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(checkout (deploy|release|code change|bug|config))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name globex's new ERP connector paging GET /orders 5,000 rows at a time as the trigger, with the scans loading orders-db so checkout's order inserts slow past the BFF timeout and the failures reach edge-gateway? 5 = the connector, the page size, the shared orders-db slowdown and the victim chain. Saying only that orders-db is slow, or blaming a deploy or email-worker, scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in orders' pg spans slowing from the connector's first request, the extra globex GET /orders volume, the 5000-row WARN lines and slow query lines, and the checkout timeouts? Cap at 3 unless it explains why checkouts fail when it is globex's reads that grew."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming email-worker's SMTP deferrals, a deploy, checkout code or edge-gateway, and avoid calling it a general traffic surge?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "orders": ["traffic_flood", "slow_datastore", "failing_segment"]
+  },
+  "cause": [
+    "globex-erp-connector|erp connector|erp integration",
+    "\\bglobex\\b",
+    "LIMIT 5000|limit=5000"
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "scenario": "reco-model-swap",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "recommendation",
+    "summary": "Fourteen minutes before the anchor the ML platform team published a new ranking model, reco-two-tower-v19 (ML-1043), and recommendation hot-loaded it from the model registry, one pod every forty five seconds, with no release and no version change. The new model is 2.1 GiB against 0.6 GiB for reco-two-tower-v18, and for requests without precomputed recommendations (cache.hit false, about 30 percent) inference on a loaded pod now takes about 640 ms, so recommendation's own spans slowed sharply while reco-db stays flat and recommendation returns no errors. web-bff and mobile-bff call reco.for_user with a 500 ms timeout and treat it as optional, so the timeout does not fail the page, but the 500 ms wait alone pushes their /home handling past edge-gateway's own 500 ms timeout on the BFFs. About a third of GET /home requests now fail with 504 timeout after 500ms calling web-bff or mobile-bff, and the 504s propagate to edge-gateway, where the alert fires; every other route is healthy. The BFFs' degraded render warnings, saying /home was served without personalised rows, are a symptom of the timeouts, and the BFFs, catalog and auth did not change.",
+    "contributingFactors": [
+      "reco-two-tower-v19 hot-loaded by recommendation with no release, raising inference time past 500 ms for requests without precomputed recommendations",
+      "the BFFs' 500 ms timeout on the optional recommendation call matching edge-gateway's 500 ms timeout on the BFFs, so an optional call can still fail the page"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["recommendation/saturation", "recommendation/log_signal"],
+  "rubric": {
+    "programmatic": [
+      [
+        "names_origin_service",
+        2,
+        "\\brecommendation\\b|\\breco\\b|reco\\.for_user"
+      ],
+      [
+        "names_model",
+        3,
+        "reco-two-tower-v19|two-tower|ml-1043|(new|larger|bigger) (ranking )?model|model (swap|reload|registry|change)|hot-?load"
+      ],
+      [
+        "names_inference_latency",
+        2,
+        "inference|recommendation[^.\\n]{0,60}?(slow|latency|own (spans|time))|640 ?ms"
+      ],
+      [
+        "names_optional_timeout",
+        3,
+        "optional|500 ?ms (wait|timeout)[^.\\n]{0,80}?gateway|(wait|timeout)[^.\\n]{0,80}?past[^.\\n]{0,40}?gateway"
+      ],
+      ["names_cache_miss", 1, "cache[. ]hit|precomputed|cache miss"],
+      [
+        "notes_store_flat",
+        1,
+        "reco-db[^.\\n]{0,40}?(flat|healthy|unchanged|normal|fast)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      ["names_home_route", 1, "/home"],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_bff",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(web-bff|mobile-bff|\\bbffs?\\b|catalog|auth)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(reco-db|slow (database|db|quer(y|ies)))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name recommendation hot-loading the larger reco-two-tower-v19 model (ML-1043) as the origin, with inference on cache misses slowing past the BFFs' 500 ms timeout, and explain that although the call is optional the wait takes /home past edge-gateway's timeout on the BFFs? 5 = the model swap, the slow inference, the optional call whose timeout still fails the page and the victim chain. Blaming the BFFs, catalog or reco-db scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in recommendation's server spans slowing while reco-db stays flat and recommendation returns no errors, the reco.for_user client timeouts on the BFFs, the GET /home 504s at edge-gateway, and the model registry load logs lining up pod by pod? Cap at 3 unless it explains why an optional call fails the page."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming web-bff, mobile-bff, catalog, auth, reco-db or a deploy, and treat the degraded render warnings as a symptom?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "recommendation": ["config_change", "upstream_change", "own_saturation"]
+  },
+  "cause": [
+    "reco-two-tower-v19|two-tower",
+    "ML-1043",
+    "model registry|model\\.reload|ml-platform"
+  ]
+}

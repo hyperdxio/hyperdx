@@ -1,0 +1,130 @@
+{
+  "scenario": "client-release",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "mobile-bff",
+    "summary": "Version 7.2.0 of the iOS app began a phased release seventy minutes before the anchor, at 1 percent of iOS users and stepping up to 50 percent seven minutes before the anchor. 7.2.0 sends a list of weak ETags in If-None-Match on product requests, and mobile-bff's product handler cannot parse it (TypeError: Cannot read properties of undefined (reading 'replace') in parseIfNoneMatch), so it returns 500 before calling anything downstream. Only GET /product/{id} through mobile-bff from iOS clients fails; web-bff, Android and every other route are unaffected, and catalog, pricing and review, which the product route calls, show no errors because the failing requests never reach them. The error count grows in steps with the release percentage, so it stayed under the alert threshold for most of an hour and crossed it only after the 25 percent step. The 500s propagate one hop to edge-gateway, where the alert fires. No server-side deploy happened. The android 5.9.0 release thirty minutes before the anchor is a red herring: Android requests stay error-free. The steady mobile-bff warning about unsupported api-version headers predates the incident at the same rate and is not the cause.",
+    "contributingFactors": [
+      "iOS app 7.2.0 sending a multi-value If-None-Match header on product requests",
+      "mobile-bff's ETag parsing throwing on a header shape the HTTP spec allows, instead of ignoring it",
+      "phased app release growing the error rate slowly, so it crossed the alert threshold long after the release began"
+    ]
+  },
+  "dispatch": {
+    "attach": ["mobile-bff"]
+  },
+  "factors": ["mobile-bff/segment", "mobile-bff/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 3, "mobile-bff"],
+      [
+        "names_client_release",
+        3,
+        "7\\.2\\.0|(ios|iphone)[^.\\n]{0,30}?(app|client)[^.\\n]{0,30}?(release|version|update)"
+      ],
+      [
+        "names_ios_scope",
+        2,
+        "\\bios\\b[^.\\n]{0,60}?(only|client|users|app)|only[^.\\n]{0,40}?\\bios\\b"
+      ],
+      ["names_route", 2, "/product|product (route|endpoint|page|requests?)"],
+      [
+        "names_header_parse",
+        2,
+        "etag|if-none-match|parseifnonematch|typeerror"
+      ],
+      [
+        "notes_phased_growth",
+        2,
+        "phased|(1|5|10|25|50) ?(%|percent)[^.\\n]{0,40}?(users|rollout|release)|adoption|grew with"
+      ],
+      [
+        "notes_downstream_healthy",
+        1,
+        "(catalog|pricing|review)[^.\\n]{0,60}?(healthy|no errors|unaffected|never reach|clean)|before calling (anything|downstream)|never reach"
+      ],
+      [
+        "rules_out_android_release",
+        2,
+        "(android|5\\.9\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(android|5\\.9\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "android|5\\.9\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_android_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(android|5\\.9\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(android|5\\.9\\.0)(?:[^.;\\n]|\\.\\d){0,40}?(release|app|version|5\\.9\\.0)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(android|5\\.9\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_api_version",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?api[- ]version",
+        true
+      ],
+      [
+        "false_blame_callee",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(catalog|pricing|review|elasticsearch)",
+        true
+      ],
+      [
+        "false_blame_server_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(mobile-bff|server[- ]side|backend) (deploy|roll[- ]?out|release)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the iOS app 7.2.0 release sending an If-None-Match header that mobile-bff's product handler cannot parse, failing GET /product/{id} for iOS users, with edge-gateway alerting one hop away? 5 = client release, the header or parse failure in mobile-bff, and the scope. Blaming the android release, a backend deploy or catalog scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in errors confined to mobile-bff, iOS and the product route, the TypeError logs, downstream services seeing no failing calls, and the error count stepping with the phased release? Cap at 3 unless it explains why the alert fired about an hour after the release began."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss android 5.9.0 with evidence, treat the steady api-version warning as background, and avoid claiming a server-side deploy?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "mobile-bff": ["failing_segment", "none_of_these"] },
+  "cause": [
+    "ios app 7\\.2\\.0",
+    "client\\.platform=ios",
+    "ShopApp/7\\.2\\.0",
+    "If-None-Match|parseIfNoneMatch"
+  ]
+}

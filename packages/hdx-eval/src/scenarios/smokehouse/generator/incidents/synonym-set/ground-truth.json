@@ -1,0 +1,105 @@
+{
+  "scenario": "synonym-set",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "search",
+    "summary": "Thirteen minutes before the anchor the relevance team published synonym set catalog-synonyms v58 (upload SRCH-611) through search, 14,212 rules where v57 had 2,904, and Elasticsearch reloaded the search analyzers on catalog-index in place, with no reindex. Many of the new multi-way rules chain common words, so queries such as \"gift set\" or \"black dress\" expand into thousands of clauses. search's es.search calls on catalog-index slowed from a p95 of about 70 ms to about 500 ms, and about 6 percent of searches now fail outright with 500 search_phase_execution_exception: too_many_clauses: maxClauseCount is set to 4096. With the slower queries a further share of search.query calls outlast the BFFs' 500 ms timeout, so about one GET /search request in seven fails with 500 or 504. search's slow search warnings give the clause counts each query rewrote to after synonym expansion. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Every other route is healthy, catalog and pricing behind search are healthy, and search's code did not change. pricing 1.4.4, rolled out from nineteen minutes before the anchor, is unrelated: pricing stays error-free and its latency did not move.",
+    "contributingFactors": [
+      "the catalog-synonyms v58 synonym set (SRCH-611) chaining common words, reloaded into the live search analyzer",
+      "Elasticsearch's 4096 clause limit rejecting the largest expanded queries",
+      "the BFFs' 500 ms timeout on search"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["search/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bsearch\\b"],
+      ["names_synonyms", 3, "synonym|catalog-synonyms|SRCH-611|relevance team"],
+      [
+        "names_clause_expansion",
+        2,
+        "too_many_clauses|maxClauseCount|max_clause_count|clauses"
+      ],
+      [
+        "names_es_slow",
+        2,
+        "(es\\.search|elasticsearch|catalog-index)[^.\\n]{0,80}?(slow|p95|latency|\\d+ ms)"
+      ],
+      [
+        "notes_code_unchanged",
+        1,
+        "code did not change|no (deploy|release|version change) on search|search's (code|version)[^.\\n]{0,30}?(unchanged|did not change)"
+      ],
+      [
+        "rules_out_pricing_release",
+        2,
+        "(pricing[^.;\\n]{0,20}?(1\\.4\\.4|deploy|roll[- ]?out|release)|1\\.4\\.4)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(pricing[^.;\\n]{0,20}?(1\\.4\\.4|deploy|roll[- ]?out|release)|1\\.4\\.4)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "pricing[^.;\\n]{0,20}?(1\\.4\\.4|deploy|roll[- ]?out|release)|1\\.4\\.4"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_pricing_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(pricing[^.;\\n]{0,20}?(1\\.4\\.4|deploy|roll[- ]?out|release)|1\\.4\\.4)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(pricing[^.;\\n]{0,20}?(1\\.4\\.4|deploy|roll[- ]?out|release)|1\\.4\\.4)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_search_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(search (deploy|release|code change|roll[- ]?out|bug)|traffic (surge|spike))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the catalog-synonyms v58 synonym set (SRCH-611), reloaded into the live search analyzer, as the origin, with expanded queries slowing es.search on catalog-index and hitting the 4096 clause limit so GET /search fails and the failures reach edge-gateway? 5 = the synonym set, the clause expansion, the slow store calls and the victim chain. Saying only that Elasticsearch is slow scores at most 2; blaming pricing 1.4.4 scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in search's es.search spans slowing at the moment of the publish line, the too_many_clauses errors on search spans and ERROR logs, and the slow search warnings giving clause counts after synonym expansion? Cap at 3 unless it ties the slowdown to the publish time."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming pricing 1.4.4, catalog, a traffic surge or a search code change, and avoid calling other routes affected?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "search": ["slow_datastore", "config_change"]
+  },
+  "cause": ["catalog-synonyms", "synonym", "SRCH-611", "relevance-team"]
+}

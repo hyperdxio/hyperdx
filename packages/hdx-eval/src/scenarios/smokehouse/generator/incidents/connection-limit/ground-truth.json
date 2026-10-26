@@ -1,0 +1,117 @@
+{
+  "scenario": "connection-limit",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "cart",
+    "summary": "Nine minutes before the anchor the data-platform team lowered max_client_conn on cart-db-pooler, the pgbouncer in front of cart-db, from 200 to 40 (change DBA-2291). Six cart pods hold pools of 10 connections each, 60 in all, so the pooler now refuses a share of cart's connection attempts with no more connections allowed (max_client_conn). Pods run with 3 to 5 of their 10 connections open: requests wait for a free connection, so cart's own span time rises from about 20 ms to about 100 ms, and about 15 percent of cart requests fail within milliseconds with 503. The cart-db queries that do run are as fast as before. cart is required on GET /cart and POST /checkout, so the 503s become 502s that propagate through checkout and web-bff and mobile-bff to edge-gateway, where the alert fires. Nothing shipped and no version changed. The flash-sale-wonka push campaign is a red herring: it started three minutes later and added about a third more GET /cart traffic from tenant wonka for ten minutes, but the errors began before it at the moment the pooler reloaded, every tenant fails at the same rate, and the extra volume is small next to the connection shortfall.",
+    "contributingFactors": [
+      "cart-db-pooler max_client_conn lowered below the connections cart's pods hold",
+      "cart pods waiting on a partly empty pool, raising latency on every request"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "cart", "checkout"]
+  },
+  "factors": ["cart/saturation", "cart/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcart\\b(?!-db)"],
+      [
+        "names_conn_limit",
+        3,
+        "max_client_conn|connection (limit|cap)|no more connections|too many (clients|connections)|connections? (attempts )?refused"
+      ],
+      [
+        "names_pooler_change",
+        3,
+        "pgbouncer|pooler|dba-2291|data-platform|(limit|max_client_conn)[^.\\n]{0,40}?(lower|reduc|cut|200|\\b40\\b)"
+      ],
+      [
+        "names_shortfall",
+        1,
+        "\\b60\\b|six (cart )?pods|6 pods|10 (connections )?(per|each|a) pod|pools of 10|of (their )?10"
+      ],
+      [
+        "rules_out_campaign",
+        2,
+        "(wonka|campaign|flash[- ]sale)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(wonka|campaign|flash[- ]sale)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "wonka|campaign|flash"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_campaign",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(wonka|campaign|flash[- ]sale)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(wonka|campaign|flash[- ]sale)(?:[^.;\\n]|\\.\\d){0,40}?(traffic|surge|push|campaign|sale|load|volume)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(wonka|campaign|flash[- ]sale)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((cart|checkout|customer|user) (traffic|volume)|traffic (surge|spike)|load test)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the lowered max_client_conn on cart-db's pgbouncer, now below the connections cart's pods need, as the origin, with refused connections and pool waits failing cart and the failures reaching edge-gateway? 5 = the pooler change, the shortfall, the refused connections and the victim chain. Blaming the wonka campaign or a traffic surge scores at most 1; saying only 'cart-db is slow' scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the max_client_conn errors, the pool logs showing refused connections, the change record at onset, and cart-db query spans staying fast? Cap at 3 unless it shows the errors started with the pooler change rather than with the campaign."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss the campaign with evidence (errors began first, every tenant affected alike, small volume), avoid claiming a deploy or a slow cart-db, and avoid blaming edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "cart": ["exhausted_pool", "config_change"] },
+  "cause": [
+    "max_client_conn",
+    "DBA-2291",
+    "cart-db-pooler",
+    "right-size poolers"
+  ]
+}

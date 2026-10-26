@@ -1,0 +1,106 @@
+{
+  "scenario": "redis-reshard",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "cart",
+    "summary": "Fifteen minutes before the anchor the platform team (PLAT-6120) started an online resharding of the ElastiCache replication group carts, the Redis cluster cart keeps carts in, from 3 to 4 shards, moving 4,096 of the 16,384 hash slots to the new shard carts-0004-001 at 10.0.12.44 over about thirty minutes. cart's Redis cluster client runs with maxRedirections 0, so it never follows a MOVED redirect: every read of a key whose slot has already moved fails at once, and cart answers 500 Too many Cluster redirections. Last error: ReplyError: MOVED to 10.0.12.44:6379. The share of failing reads grows as slots move, to about 12 percent of cart.get calls by the anchor, and would reach about a quarter when the reshard finishes. cart's Redis and Postgres latency did not move and cart's version did not change; the reshard's start and progress lines on cart-2 are the only record of the change. GET /cart and POST /checkout fail in step with cart, and the failures propagate through checkout, web-bff and mobile-bff to edge-gateway, where the alert fires; routes that do not read a cart are healthy. catalog 1.8.3, rolled out from twenty three minutes before the anchor, is unrelated: catalog is not on the cart path and stays error-free.",
+    "contributingFactors": [
+      "the PLAT-6120 online resharding of the carts Redis cluster moving hash slots to carts-0004-001",
+      "cart's Redis cluster client configured with maxRedirections 0, so it never follows MOVED",
+      "checkout and the BFFs treating cart reads as required"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["cart/log_signal", "cart/infra"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcart\\b"],
+      [
+        "names_reshard",
+        3,
+        "reshard|PLAT-6120|carts-0004|(3|three) (->|to) (4|four) shards|slot migration|hash slots? (mov|migrat)"
+      ],
+      ["names_moved", 3, "\\bMOVED\\b|redirect"],
+      [
+        "names_client_config",
+        2,
+        "maxRedirections|redirects? (disabled|turned off|off|not followed)|never follows|does not follow|doesn't follow"
+      ],
+      ["names_growing_share", 1, "grow|rising|increas|more (slots|keys)"],
+      [
+        "notes_store_flat",
+        1,
+        "(redis|postgres|cart-db|store|latency)[^.\\n]{0,40}?(did not move|unchanged|flat|healthy|normal)"
+      ],
+      [
+        "rules_out_catalog_release",
+        2,
+        "(catalog[^.;\\n]{0,20}?(1\\.8\\.3|deploy|roll[- ]?out|release)|1\\.8\\.3)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(catalog[^.;\\n]{0,20}?(1\\.8\\.3|deploy|roll[- ]?out|release)|1\\.8\\.3)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "catalog[^.;\\n]{0,20}?(1\\.8\\.3|deploy|roll[- ]?out|release)|1\\.8\\.3"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_catalog_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(catalog[^.;\\n]{0,20}?(1\\.8\\.3|deploy|roll[- ]?out|release)|1\\.8\\.3)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(catalog[^.;\\n]{0,20}?(1\\.8\\.3|deploy|roll[- ]?out|release)|1\\.8\\.3)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_slow_redis",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((slow|overloaded|saturated) (redis|cache)|redis (latency|slowdown|overload))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the PLAT-6120 online resharding of the carts Redis cluster as the trigger, with cart's client not following MOVED redirects so reads of moved slots fail, and the failures reaching edge-gateway through checkout and the BFFs? 5 = the reshard, the redirects not followed, the growing share and the victim chain. Blaming catalog 1.8.3, a slow Redis or a cart code change scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in cart's MOVED errors on spans and ERROR logs, the reshard start and progress lines on cart-2 lining up with the first failures, and cart's store latency and version staying flat? Cap at 3 unless it ties the growing error share to slots moving."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming catalog 1.8.3, Redis latency, checkout, the BFFs or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "cart": ["upstream_change", "none_of_these"]
+  },
+  "cause": ["PLAT-6120", "reshard", "carts-0004", "3 -> 4 shards"]
+}

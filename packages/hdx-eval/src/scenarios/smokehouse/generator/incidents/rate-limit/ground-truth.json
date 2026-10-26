@@ -1,0 +1,123 @@
+{
+  "scenario": "rate-limit",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "payment",
+    "summary": "At ten minutes before the anchor a refund-sweep batch job started inside payment (18,400 refunds queued, concurrency 40) against payments.example.com using the same provider API key as live card charges. The provider enforces a per-key limit of 100 requests per second, so the batch used up the quota and about 45 percent of live payment.charge calls are now rejected with 429 Too Many Requests (x-ratelimit-remaining 0). payment turns each 429 into a 503 after roughly 140 ms, with no retry or backoff; payment's own store latency and version are unchanged. checkout does not treat payment as optional, so those charges fail POST /checkout with 502s that propagate through web-bff and mobile-bff to edge-gateway, where the alert fires; every other route is healthy. The batch logs its progress and a rising count of provider 429s on payment-4. fraud's model swap from risk-v37 to risk-v38, two minutes before the batch started, is a red herring: fraud scores stay fast and error-free and fraud fails no requests. Nothing shipped in the window.",
+    "contributingFactors": [
+      "refund batch in payment using up the shared payments.example.com API quota",
+      "provider answering live charges with 429 and payment passing them on as failures with no backoff"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "payment"]
+  },
+  "factors": ["payment/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpayment\\b"],
+      [
+        "names_rate_limit",
+        3,
+        "\\b429\\b|rate[- ]?limit|too many requests|quota|throttl"
+      ],
+      ["names_batch", 3, "refund|batch|sweep|(background|bulk|scheduled) job"],
+      [
+        "names_shared_key",
+        2,
+        "(same|shared|single|one)[^.\\n]{0,30}?(api )?(key|quota|credential|account|limit)|(key|quota)[^.\\n]{0,30}?shared"
+      ],
+      [
+        "names_provider",
+        1,
+        "payments\\.example\\.com|provider|third[- ]party|payment gateway"
+      ],
+      [
+        "names_partial",
+        1,
+        "\\b4\\d ?(%|percent)|(half|share|fraction|portion) of (the )?(live )?(charges|payments?|checkouts?|payment\\.charge)"
+      ],
+      [
+        "rules_out_fraud_change",
+        2,
+        "(fraud|risk-v38)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(fraud|risk-v38)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "fraud|risk-v3[78]"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_fraud_change",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(fraud|risk-v38)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(fraud|risk-v38)(?:[^.;\\n]|\\.\\d){0,40}?(model|config|change|swap)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(fraud|risk-v38)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((checkout|customer|user) (traffic|volume)|traffic (surge|spike)|load test)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name payment's own refund batch exhausting the provider API quota it shares with live charges, so payments.example.com answers a share of charges with 429 and checkout fails them, reaching edge-gateway? 5 = batch, shared quota, 429s and the victim chain. Naming only 'the payment provider is failing' scores at most 3; blaming the fraud model change scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the 429 errors on payment spans and logs and the batch progress logs starting at onset? Cap at 3 unless it connects the batch start to the first 429s."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss the fraud model swap with evidence, avoid claiming a deploy or a customer traffic surge, and avoid blaming checkout or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "payment": ["none_of_these"] },
+  "cause": [
+    "refund-sweep",
+    "Too Many Requests",
+    "(returned|answered) 429",
+    "ratelimit|rate limit|quota"
+  ]
+}

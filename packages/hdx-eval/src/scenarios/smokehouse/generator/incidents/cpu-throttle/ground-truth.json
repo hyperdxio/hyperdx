@@ -1,0 +1,117 @@
+{
+  "scenario": "cpu-throttle",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "fraud",
+    "summary": "Twenty four minutes before the anchor the platform team switched the namespace's VerticalPodAutoscaler to updateMode Auto for fraud, review and notification (change PLAT-4127, cost programme). The VPA updater then evicted and recreated fraud's pods one at a time, two minutes apart, cutting each pod's CPU request and limit from 1000m/2000m to 250m/500m. fraud's model scoring needs far more than half a core, so the recreated pods are throttled in most CFS periods: fraud.score on those pods now takes about 200 ms on average with a long tail, against about 25 ms before. fraud itself returns no errors and its version did not change. checkout waits on fraud and does not treat it as optional, so every checkout on a throttled pod slows by the same amount: a few percent of fraud calls outlast checkout's own 500 ms timeout on fraud, and far more often the whole checkout outlasts the 500 ms web-bff and mobile-bff allow it, so the checkout times out and fails with 504. The failing share grew in steps as each fraud pod was recreated, to about half of POST /checkout requests once all six were, ten minutes after the change. Every other route is healthy. When checkout's own timeout on fraud fires, no customer is charged, since fraud runs before payment; when a BFF gives up, checkout carries on, so some of those customers are charged despite the error. The 504s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Nothing shipped. review and notification were resized by the same change but have headroom and stayed healthy.",
+    "contributingFactors": [
+      "VPA auto mode cutting fraud's CPU limit to a quarter, below what model scoring needs",
+      "the resize judged on average CPU use rather than on fraud's latency under throttling",
+      "checkout treating fraud as required, and the BFFs giving checkout only 500 ms end to end"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["fraud/saturation", "fraud/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bfraud\\b"],
+      ["names_throttling", 3, "throttl|\\bcfs\\b|cpu (limit|starv|quota)"],
+      [
+        "names_vpa_change",
+        3,
+        "\\bvpa\\b|vertical ?pod ?autoscal|plat-4127|(cpu )?(limit|request)s?[^.\\n]{0,40}?(lower|reduc|cut|500m|quarter)|right-?siz"
+      ],
+      ["names_timeout", 2, "time[sd]? ?out|\\b504\\b"],
+      [
+        "notes_stepwise",
+        1,
+        "one (pod )?(by|at a) (one|time)|pod by pod|evict|recreat|in steps|stepwise"
+      ],
+      [
+        "notes_fraud_no_errors",
+        1,
+        "fraud[^.\\n]{0,60}?(no errors|error[- ]?free|succe\\w+|never fails|does not fail)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_resized_neighbour",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\breview\\b|\\bnotification\\b)",
+        true
+      ],
+      [
+        "false_blame_fraud_model",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(fraud (model|rules?) (change|swap|update)|new (fraud )?model)",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((fraud|checkout|customer|user) (traffic|volume)|traffic (surge|spike)|load test)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the platform team's VPA change cutting fraud's CPU limit as the origin, with throttled fraud calls pushing checkouts past their 500 ms timeouts and the failures reaching edge-gateway? 5 = the VPA change, the CPU throttling, the timeouts and the victim chain. Saying only 'fraud is slow' scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the checkout timeouts, fraud.score latency rising pod by pod in step with the VPA evictions, and fraud's runtime stats showing throttled CFS periods under a 500m limit? Cap at 3 unless it ties the per-pod latency steps to the evictions."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming a deploy, a traffic surge or a fraud model change, avoid blaming review or notification (resized but healthy), note that BFF timeouts can leave customers charged, and avoid blaming checkout or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "fraud": ["own_saturation", "config_change", "upstream_change"]
+  },
+  "cause": [
+    "PLAT-4127",
+    "VerticalPodAutoscaler|vpa",
+    "cfs periods|cpu limit|cpu request"
+  ]
+}

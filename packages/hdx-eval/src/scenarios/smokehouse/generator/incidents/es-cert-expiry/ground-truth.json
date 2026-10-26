@@ -1,0 +1,111 @@
+{
+  "scenario": "es-cert-expiry",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "search",
+    "summary": "The TLS certificate on the Elasticsearch cluster that search queries (catalog-index.search.svc, CN=*.search.svc, issued by internal-ca) expired nine minutes before the anchor and was never renewed; search pods had logged tls.expiry warnings every ten minutes for the hour before. search holds pooled keep-alive connections to Elasticsearch, so failures began as a trickle and climbed over about five minutes to roughly 95 percent of search requests as the pool recycled and every new TLS handshake was rejected with CERT_HAS_EXPIRED. The failing search.query spans end within a few milliseconds and have no es.search child, so search latency fell while its error rate rose; catalog and pricing are simply no longer called from /search and stay healthy on every other route. Nothing was deployed and no version changed. web-bff and mobile-bff pass the 503s on as 502s and the failures reach edge-gateway, two hops downstream, where the alert fires. Only GET /search is affected. The periodic catalog reindex that writes to catalog-index is routine and unrelated.",
+    "contributingFactors": [
+      "Elasticsearch TLS certificate behind search expired without renewal",
+      "keep-alive connection pool recycling onto new handshakes that all fail"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search"]
+  },
+  "factors": ["search/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bsearch\\b"],
+      [
+        "names_elasticsearch",
+        2,
+        "elasticsearch|catalog-index|\\bes\\.search\\b|\\bES\\b"
+      ],
+      [
+        "names_cert_expiry",
+        3,
+        "certif\\w*[^.\\n]{0,60}?(expir|not renewed|lapsed)|(expir\\w*|lapsed)[^.\\n]{0,40}?(certif\\w*|\\btls\\b|x509)|CERT_HAS_EXPIRED"
+      ],
+      [
+        "names_prior_warning",
+        1,
+        "tls\\.expiry|expir\\w* (warning|notice)|warn\\w*[^.\\n]{0,60}?expir"
+      ],
+      [
+        "notes_fail_fast",
+        1,
+        "fail\\w* fast|latency[^.\\n]{0,20}?(fell|dropped|went down|decreas)|(fell|dropped|decreas\\w*)[^.\\n]{0,30}?latency|no es\\.search|few milliseconds|short(er)? spans?"
+      ],
+      [
+        "notes_pool_recycle",
+        1,
+        "keep-?alive|pool(ed)?[^.\\n]{0,40}?recycl|recycl\\w*[^.\\n]{0,40}?connection|(new|fresh) (tls )?(connections?|handshakes?)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_callee",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?\\b(catalog(?![- ](index|reindex))|pricing)\\b",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at search's Elasticsearch cluster (catalog-index) presenting an expired TLS certificate, so search's handshakes fail, with edge-gateway two hops downstream as a victim? 5 = expired certificate, search as the failing caller, the propagation path. Blaming catalog, pricing, the reindex or a deploy scores at most 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the CERT_HAS_EXPIRED errors on search spans and logs, and ideally the tls.expiry warnings before onset or the gradual climb as pooled connections recycled? Cap at 3 if it names a certificate problem without citing the error text or the expiry warnings."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming a deploy (there was none), avoid treating search's falling latency as recovery, and avoid blaming search's callees or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "search": ["none_of_these"] },
+  "cause": [
+    "CERT_HAS_EXPIRED",
+    "certificate has expired",
+    "tls\\.expiry",
+    "CN=\\*\\.search\\.svc"
+  ]
+}

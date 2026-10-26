@@ -1,0 +1,107 @@
+{
+  "scenario": "session-schema",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "user-profile",
+    "summary": "Sixteen minutes before the anchor user-profile rolled from 1.4.2 to 2.1.0, one pod every thirty seconds. 2.1.0 adds session enrichment: whenever it loads a profile it writes a new display_prefs field into the user's session record in the shared sessions Redis. auth reads the same records in auth.verify on every request and decodes them against a strict schema that rejects unknown keys, so every session user-profile 2.1.0 has touched now fails with SessionDecodeError (ZodError: Unrecognized key(s) in object: 'display_prefs') and auth returns 500. The share of failing requests grows as more users load their profile and their sessions are rewritten, from about 1 percent a minute after the rollout to about 11 percent at the anchor, across every route, tenant and platform. user-profile itself is healthy: its spans, latency and error rate did not move, so the release looks clean on its own metrics. auth did not change and its sessions Redis is fast. auth runs first on every request, so the 500s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires.",
+    "contributingFactors": [
+      "user-profile 2.1.0 writing a new field into session records that auth owns and reads",
+      "auth decoding sessions against a strict schema that fails the request on an unknown key",
+      "user-profile's release judged only on its own error rate and latency"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "auth"]
+  },
+  "factors": ["user-profile/deploy", "auth/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 3, "user-profile"],
+      [
+        "ties_to_release",
+        3,
+        "2\\.1\\.0|user-profile[^.\\n]{0,30}?(deploy|roll[- ]?out|release)"
+      ],
+      [
+        "names_new_field",
+        3,
+        "display_prefs|unrecognized key|unknown (field|key)|new (field|key)|extra (field|key)"
+      ],
+      ["names_strict_parser", 2, "strict|zod|schema|sessiondecodeerror"],
+      [
+        "names_shared_store",
+        2,
+        "sessions? (redis|store|records?)|shared (redis|store|cache)"
+      ],
+      [
+        "names_auth_surfaces",
+        2,
+        "\\bauth\\b[^.\\n]{0,80}?(reject|fail|throw|error|500|decode)"
+      ],
+      [
+        "notes_growth",
+        1,
+        "\\bgrow|climb|rising|as (more )?(sessions|users)|over time|gradual"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_auth_change",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(auth (deploy|release|roll[- ]?out|version|code change|config))",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(redis (outage|failure|latency|is down|memory)|sessions? (store|redis) (outage|failure|latency|is down|slow))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name user-profile 2.1.0 writing a new field into shared session records as the origin, with auth's strict session decoding failing those requests and the 500s reaching edge-gateway? 5 = the release, the new field, the strict decode in auth and the victim chain. Naming auth as the origin with no link to user-profile 2.1.0 scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the SessionDecodeError logs naming display_prefs, the user-profile rollout and session enrichment logs at onset, failures growing over time across every route and tenant, and user-profile's own spans staying clean? Cap at 3 unless it explains why a healthy service two steps off the failing path is the origin."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming an auth change or a sessions Redis fault, avoid dismissing the user-profile release because user-profile looks healthy, and avoid blaming the BFFs or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "user-profile": ["deploy_defect"] },
+  "cause": [
+    "user-profile[^;]*2\\.1\\.0",
+    "session enrichment",
+    "writing display_prefs"
+  ]
+}

@@ -1,0 +1,117 @@
+{
+  "scenario": "fx-rates-stale",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "pricing",
+    "summary": "pricing stopped quoting prices in euros twelve minutes before the anchor. pricing-1 refreshes FX rates from rates.example.com every five minutes; from sixty seven minutes before the anchor every refresh has failed with 401 invalid_api_key, the provider having revoked the key pricing uses (fxk_live_...7Qd), and pricing kept serving the rates it fetched seventy two minutes before the anchor, logging a WARN on each failed refresh. pricing refuses to quote on rates older than its max_age of 60 minutes, so once the last good rates were an hour old every quote for an eu-west-1 request fails at once with 500 StaleRatesError: fx rate EUR/USD older than max_age 60m, refusing to quote. us-east-1 and us-west-2 quote in USD and are unaffected. About a fifth of GET /search, GET /product/{id}, GET /cart and POST /checkout requests fail, the eu-west-1 share, and the failures propagate through search, checkout, web-bff and mobile-bff to edge-gateway, where the alert fires. pricing's latency, stores and version did not change and nothing shipped; the hour of WARN lines before the failures is the early sign. promo's nightly promo-expiry-sweep cron, which ran four minutes before the failures began, is routine and unrelated: promo stays error-free.",
+    "contributingFactors": [
+      "rates.example.com rejecting the revoked FX API key on every refresh for an hour",
+      "pricing's 60 minute max_age on FX rates, refusing non-USD quotes once the last good rates aged out",
+      "every eu-west-1 request needing a EUR quote"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search", "checkout"]
+  },
+  "factors": ["pricing/segment", "pricing/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpricing\\b"],
+      [
+        "names_refresh_failure",
+        3,
+        "rates\\.example\\.com|invalid_api_key|(fx|rates?) refresh[^.\\n]{0,40}?(fail|401)|revoked|api key"
+      ],
+      ["names_stale_guard", 3, "stale|max_age|older than|an hour old"],
+      ["names_eu_segment", 2, "eu-west-1|\\beuros?\\b|\\bEUR\\b"],
+      [
+        "notes_early_warnings",
+        1,
+        "\\bWARN|warning|early sign|(an|one) hour (of|before)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_promo_sweep",
+        2,
+        "(promo-expiry-sweep|promo[^.;\\n]{0,30}?(cron|sweep|job))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(promo-expiry-sweep|promo[^.;\\n]{0,30}?(cron|sweep|job))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "promo-expiry-sweep|promo[^.;\\n]{0,30}?(cron|sweep|job)"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_promo_sweep",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(promo-expiry-sweep|promo[^.;\\n]{0,30}?(cron|sweep|job))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(promo-expiry-sweep|promo[^.;\\n]{0,30}?(cron|sweep|job))(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(pricing-db|price-cache|slow (database|db|cache))",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(traffic (surge|spike)|eu-west-1 (traffic|load))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the failing FX rates refresh, rates.example.com rejecting a revoked API key for an hour, as the trigger, with pricing's 60 minute max_age then refusing every eu-west-1 quote and the failures reaching edge-gateway? 5 = the refresh failures, the staleness guard, the eu-west-1 segment and the victim chain. Saying only that pricing fails EU quotes, or blaming a pricing store or the promo sweep, scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the StaleRatesError on pricing spans, the failures confined to eu-west-1, and the WARN refresh failures on pricing-1 starting about an hour before the first error? Cap at 3 unless it explains why the failures began an hour after the refreshes started failing."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the promo-expiry-sweep, a pricing deploy, a pricing store, eu-west-1 traffic or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "pricing": ["logged_warning", "failing_segment", "none_of_these"]
+  },
+  "cause": [
+    "rates\\.example\\.com",
+    "invalid_api_key",
+    "fxk_live",
+    "fx rates refresh"
+  ]
+}

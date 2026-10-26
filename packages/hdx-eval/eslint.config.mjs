@@ -70,4 +70,12 @@ export default [
       },
     },
   },
+  {
+    // Copy of the smoketown generator, kept close to upstream for re-syncing.
+    files: ['src/scenarios/smokehouse/generator/**'],
+    rules: {
+      'no-restricted-imports': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
 ];

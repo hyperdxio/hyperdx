@@ -151,6 +151,10 @@ export type GradeRecord = {
    * artifact quality, so no separate mechanical blend is needed.
    */
   combinedScore: number;
+  /** 1-based tool call that first names the origin service; null if never or not applicable. */
+  stepsToOrigin: number | null;
+  /** Negative rubric checks that matched (anchoring measure). */
+  negativeMatches: number;
   gradedAt: string;
   judgeModel: string;
 };

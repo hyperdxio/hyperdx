@@ -4,7 +4,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 type ObjectId = mongoose.Types.ObjectId;
 
-export interface ITeam extends Team {
+export interface ITeam extends Omit<Team, 'knowledgeGraphTraceSource'> {
+  knowledgeGraphTraceSource?: ObjectId;
   _id: ObjectId;
   createdAt: Date;
   updatedAt: Date;
@@ -35,6 +36,18 @@ export default mongoose.model<ITeam>(
         default: false,
       },
       isMetricsSeriesTableEnabled: {
+        type: Boolean,
+        default: false,
+      },
+      isKnowledgeGraphEnabled: {
+        type: Boolean,
+        default: false,
+      },
+      knowledgeGraphTraceSource: {
+        type: Schema.Types.ObjectId,
+        ref: 'Source',
+      },
+      knowledgeGraphIncludeUnconfirmed: {
         type: Boolean,
         default: false,
       },

@@ -1,0 +1,99 @@
+{
+  "scenario": "migration-lock",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "catalog",
+    "summary": "catalog's 1.5.0 release ran a Helm pre-upgrade migration job (catalog-migrate-7f9c2) eight minutes before the anchor: migration 0042_widen_products_sku runs ALTER TABLE products ALTER COLUMN sku TYPE varchar(64), a full rewrite of the 48 million row products table that holds an ACCESS EXCLUSIVE lock for its whole duration. Every catalog read of products queues behind that lock, so catalog's pg.select spans against catalog-db jumped in one step from about 6 ms to around 1.5 s, and about 30 percent of catalog requests fail after 2 s with canceling statement due to statement timeout. The job logs a growing count of sessions waiting for AccessShareLock on products. The catalog app pods never rolled and their application code is unchanged; the damage comes from the schema change itself. web-bff and mobile-bff (GET /home and GET /product/{id}) and search (GET /search) call catalog with a 500 ms timeout, so nearly every request touching catalog becomes a 504 that propagates to edge-gateway, where the alert fires; /profile, /cart, /orders and /checkout are unaffected. The ten-minute catalog reindex into Elasticsearch is routine and not involved, and search is a victim.",
+    "contributingFactors": [
+      "schema migration rewriting the products table under an ACCESS EXCLUSIVE lock on catalog-db",
+      "500 ms caller timeouts on catalog in the BFFs and search turning lock waits into 504s"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search", "catalog"]
+  },
+  "factors": ["catalog/deploy", "catalog/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcatalog\\b(?![- ]index)"],
+      [
+        "names_migration",
+        3,
+        "migration|alter table|schema change|\\bddl\\b|table rewrite"
+      ],
+      ["names_lock", 3, "\\block(ed|s|ing)?\\b|access ?exclusive|accessshare"],
+      ["names_store", 1, "catalog-db|postgres|pg\\.select|\\bproducts\\b"],
+      [
+        "names_statement_timeout",
+        1,
+        "statement[_ ]timeout|canceling statement|time[- ]?out|504"
+      ],
+      ["ties_to_release", 1, "1\\.5\\.0|pre-upgrade|helm|catalog-migrate"],
+      [
+        "notes_app_unchanged",
+        1,
+        "never rolled|not (yet )?rolled|still (run\\w*|on) 1\\.4\\.2|(code|application)[^.\\n]{0,40}?unchanged"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_search",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?\\b(search|elasticsearch|catalog-index)\\b",
+        true
+      ],
+      [
+        "false_blame_load",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(traffic|load|capacity|slow quer\\w*|\\bcpu\\b|surge)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the catalog 1.5.0 schema migration holding a table lock on products in catalog-db as the origin, with catalog reads queuing behind it and the 500 ms timeouts in the BFFs and search carrying that to edge-gateway? 5 = migration, lock and victim chain. Calling it generic database slowness or load scores at most 2; blaming search or the reindex scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the step change in catalog's pg.select duration, the statement timeout errors, and the migration job's logs (the ALTER TABLE and the lock waits)? Cap at 3 if it names slow catalog-db without the migration evidence."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming catalog's application code (the pods never rolled), search, Elasticsearch, the reindex or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "catalog": ["slow_datastore", "none_of_these"] },
+  "cause": [
+    "0042_widen_products_sku|catalog-migrate",
+    "migrat",
+    "Access(Exclusive|Share)Lock|ACCESS EXCLUSIVE",
+    "catalog's datastore catalog-db"
+  ]
+}

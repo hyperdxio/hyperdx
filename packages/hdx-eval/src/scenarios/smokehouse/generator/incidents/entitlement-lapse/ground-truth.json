@@ -1,0 +1,110 @@
+{
+  "scenario": "entitlement-lapse",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "auth",
+    "summary": "Thirty six minutes before the anchor auth's billing-sync marked tenant umbrella (pro tier) past_due after invoice INV-88412 was declined and revoked its pro-annual plan entitlements. auth caches each tenant's entitlements for about thirty minutes, so nothing happened until the cache entries expired, pod by pod, between six and two minutes before the anchor. From then on auth.verify builds umbrella's claims from a null plan and throws TypeError: Cannot read properties of null (reading 'features'), returning 500 for every umbrella request on every route; every other tenant is healthy. A lapsed plan should be refused with a clear 402 or 403, not a crash. Nothing shipped and no version changed. auth runs first on every request, so the 500s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. web-bff's render cache ttl change from 60s to 300s (CFG-3177), about a minute before the first failures, is a red herring: mobile-bff fails exactly the same way without it, and every failure is umbrella's TypeError in auth.",
+    "contributingFactors": [
+      "billing-sync revoking umbrella's plan after a declined invoice",
+      "auth crashing on a tenant with no plan instead of refusing the request",
+      "auth's thirty minute entitlements cache delaying the failures well past the billing change"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "auth"]
+  },
+  "factors": ["auth/segment", "auth/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bauth\\b"],
+      ["names_tenant", 3, "umbrella"],
+      [
+        "names_entitlement",
+        3,
+        "entitlement|past[_ ]due|subscription|billing|invoice|plan[^.\\n]{0,20}?(null|revoked|expired|lapsed|missing)"
+      ],
+      ["names_null_plan", 2, "\\bnull\\b|typeerror|reading 'features'"],
+      [
+        "notes_cache_delay",
+        2,
+        "cache[^.\\n]{0,60}?(expir|ttl|refresh)|(thirty|30)[- ]?min\\w*[^.\\n]{0,80}?(later|after|before|delay|cache)|delayed"
+      ],
+      [
+        "rules_out_render_cache_change",
+        2,
+        "(render[- ]cache|cfg-3177|web-bff('s)? (config|ttl))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(render[- ]cache|cfg-3177|web-bff('s)? (config|ttl))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "web-bff|render|CFG-3177|ttl"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_render_cache_change",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(render[- ]cache|cfg-3177|web-bff)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(render[- ]cache|cfg-3177|web-bff)(?:[^.;\\n]|\\.\\d){0,40}?(config|ttl|change|cache)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(render[- ]cache|cfg-3177|web-bff)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(redis|session (store|cache)|sessions (store|cache|redis))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name auth failing every request from tenant umbrella because billing-sync revoked its plan and auth crashes building claims from a null plan, with the 500s reaching edge-gateway? 5 = the tenant, the billing change, the null plan crash and the victim chain. Blaming web-bff's config change scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the TypeError logs naming umbrella and plan=null, failures confined to one tenant across every route, the billing-sync log and the entitlements cache refresh logs? Cap at 3 unless it connects the billing change thirty six minutes earlier to failures that began six minutes before the anchor through the cache."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss web-bff's render cache ttl change with evidence (mobile-bff fails the same way), avoid claiming a deploy or a sessions store fault, and avoid blaming edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "auth": ["failing_segment", "none_of_these"] },
+  "cause": ["umbrella", "past_due", "INV-88412", "entitlement"]
+}

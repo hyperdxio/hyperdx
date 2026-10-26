@@ -12,7 +12,7 @@
 
 import type { McpDefinition, McpKind } from '@/harness/types';
 
-function escapeRegex(s: string): string {
+export function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 

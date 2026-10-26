@@ -1,0 +1,113 @@
+{
+  "scenario": "malformed-response",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "promo",
+    "summary": "promo 2.3.0 went out as a canary eight minutes before the anchor, to promo-2, promo-4 and promo-5 ninety seconds apart, and was held at 50 percent after its canary analysis passed. When a promo code applies, 2.3.0 returns discount.amount as a string where checkout expects a number. promo itself answers 200 quickly, so its spans, error rate and latency look clean and the canary analysis, which only watched promo's own 5xx rate and p99, saw nothing. The failures surface one hop up in checkout, which throws PromoResponseError (expected number at discount.amount, got string) after the promo call returns and fails POST /checkout with a 500. Only checkouts that carry a promo code and were served by a promo pod on 2.3.0 fail; checkouts without a code, and those served by the three promo pods still on 1.4.2, succeed. Because promo runs before payment, no customer is charged for a failed checkout. The 500s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires; every other route is healthy. checkout itself did not change.",
+    "contributingFactors": [
+      "promo 2.3.0 changing the type of discount.amount in its response, a breaking change to its contract with checkout",
+      "canary analysis judging promo only on its own error rate and latency, so a 200 with a bad body passed",
+      "checkout failing the whole order on a promo parse error instead of checking out without the discount"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["promo/deploy", "checkout/segment", "checkout/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 3, "\\bpromo\\b(?!-db)"],
+      [
+        "ties_to_release",
+        3,
+        "2\\.3\\.0|promo[^.\\n]{0,20}?(deploy|roll[- ]?out|release|canary)"
+      ],
+      [
+        "names_malformed_body",
+        3,
+        "malformed|schema|contract|(string|type)[^.\\n]{0,40}?(number|numeric|mismatch)|discount\\.amount|pars(e|ing)[^.\\n]{0,30}?(error|fail)|promoresponseerror"
+      ],
+      [
+        "notes_callee_returns_200",
+        2,
+        "\\b200\\b|(promo|its) (own )?(spans?|error rate)[^.\\n]{0,40}?(clean|healthy|flat|zero|succe)|no errors? (on|in|from) promo"
+      ],
+      [
+        "names_caller_surfaces",
+        2,
+        "checkout[^.\\n]{0,80}?(throw|pars|fail|error)"
+      ],
+      [
+        "names_promo_code_segment",
+        2,
+        "promo[- ]?code|checkout\\.promo_code|discount (applies|applied)"
+      ],
+      [
+        "names_canary_split",
+        1,
+        "canary|50 ?(%|percent)|half (of )?the promo pods|three (of six )?promo pods|promo-[245]"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_checkout_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?checkout (deploy|release|code change|roll[- ]?out|bug)",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?\\bpayment\\b|payments\\.example\\.com",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?promo-db|postgres\\w*|database",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name promo 2.3.0 returning a malformed discount (a string where checkout expects a number) as the origin, even though every error is logged in checkout, and the checkout 500s reaching edge-gateway? 5 = promo release, the response contract break, and checkout as the place it surfaces. Naming checkout as the origin with no link to promo 2.3.0 scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the PromoResponseError in checkout, failures correlating with the promo pod's service.version on the child span and with a promo code being present, and promo's own spans returning 200? Cap at 3 unless it explains why promo looks healthy on its own metrics."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming checkout code, payment, promo-db or edge-gateway, and note that customers are not charged because promo runs before payment?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "promo": ["deploy_defect"] },
+  "cause": ["2\\.3\\.0", "PromoResponseError|discount\\.amount"]
+}

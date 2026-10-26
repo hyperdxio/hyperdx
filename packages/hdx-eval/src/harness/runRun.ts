@@ -3,7 +3,7 @@ import {
   getMcpDefinition,
   getPluginDefinition,
 } from '@/hyperdx/config';
-import type { Scenario } from '@/scenarios/types';
+import type { MemoryMode, Scenario } from '@/scenarios/types';
 
 import { runClaude } from './claudeSpawn';
 import type { ParsedEvent } from './streamParser';
@@ -38,6 +38,8 @@ export type RunCellOptions = {
   /** Plugin key — a key in the config `plugins` map, or `PLUGIN_NONE`
    *  (default) for the no-plugin baseline. */
   plugin?: string;
+  /** Recorded on the run; seeding is done by the CLI via scenario.prepare. */
+  memoryMode?: MemoryMode;
 };
 
 export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
@@ -79,7 +81,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
   const endedAtIso = new Date().toISOString();
   const endedAtMs = Date.now();
 
-  return assembleRecord({
+  const record = assembleRecord({
     events: result.events,
     stderr: result.stderr,
     exitCode: result.exitCode,
@@ -96,6 +98,7 @@ export async function runCell(opts: RunCellOptions): Promise<RunRecord> {
     endedAtIso,
     durationMs: endedAtMs - startedAtMs,
   });
+  return opts.memoryMode ? { ...record, memoryMode: opts.memoryMode } : record;
 }
 
 type AssembleInput = {

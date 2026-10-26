@@ -1,0 +1,148 @@
+.node {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.service,
+.datastore {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-width: 1px;
+}
+
+.service {
+  border-radius: 50%;
+}
+
+// A rounded square, so datastores read as a different kind of node from services.
+.datastore {
+  border-radius: 8px;
+}
+
+.highlighted {
+  box-shadow: 0 0 0 3px var(--color-border-emphasis);
+}
+
+.incident {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 200px;
+  padding: 4px 10px;
+  border: 1.5px solid var(--color-text-danger);
+  border-radius: 12px;
+  background-color: var(--color-bg-danger-subtle);
+  cursor: pointer;
+}
+
+.unconfirmed {
+  border-style: dashed;
+  opacity: 0.8;
+}
+
+// Incident view: the alert is where the walk starts, the root cause is where it ends.
+.start {
+  outline: 3px solid var(--color-text-warning);
+  outline-offset: 2px;
+}
+
+.target {
+  outline: 3px solid var(--color-text-danger);
+  outline-offset: 2px;
+}
+
+.affected {
+  outline: 2px dashed var(--color-border-emphasis);
+  outline-offset: 2px;
+}
+
+.startCaption {
+  color: var(--color-text-warning);
+}
+
+.targetCaption {
+  color: var(--color-text-danger);
+}
+
+.affectedCaption {
+  color: var(--color-text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--color-border);
+}
+
+.listItem {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--color-bg-hover);
+  }
+}
+
+.selected {
+  background-color: var(--color-bg-highlighted);
+}
+
+.step {
+  cursor: pointer;
+  border-radius: 4px;
+  padding: 2px 4px;
+
+  &:hover {
+    background-color: var(--color-bg-hover);
+  }
+}
+
+.activeStep {
+  background-color: var(--color-bg-highlighted);
+}
+
+.deadEnd {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.incidentsView {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 280px minmax(0, 1fr);
+  min-height: 0;
+}
+
+.detail {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--mantine-spacing-sm);
+  min-height: 0;
+  padding: var(--mantine-spacing-sm);
+  overflow-y: auto;
+}
+
+// Fixed height so the path stays readable however long the steps list grows.
+.pathCanvas {
+  display: flex;
+  flex: none;
+  height: max(340px, 45vh);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}

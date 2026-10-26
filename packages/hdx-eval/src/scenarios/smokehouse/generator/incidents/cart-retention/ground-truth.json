@@ -1,0 +1,109 @@
+{
+  "scenario": "cart-retention",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "cart",
+    "summary": "Twelve minutes before the anchor j.alvarez saved new retention settings for cart's sweeper from the ops console under CART-2044, meaning to shorten guest cart retention: abandon_after changed from 168h to 72, with no unit, and the sweeper reads a bare number as seconds. From its first run under the new setting, forty five seconds later, cart-sweeper deletes every cart idle for more than 72 seconds, once a minute; its first sweep evicted 61,240 abandoned carts where a sweep normally evicts tens to a few hundred, and cart's routine evicted abandoned carts lines now report hundreds every minute. Most shoppers take longer than that between adding items and paying, so cart.get now answers 200 with an empty cart for about 55 percent of checkouts. cart returns no errors, its latency is unchanged and its stores are healthy; GET /cart simply shows an empty cart. checkout assumes the cart it is placing has line items and throws TypeError: Cannot read properties of undefined (reading 'currency') in buildOrder, so about 55 percent of POST /checkout requests fail with 500 before pricing, payment or orders are called, and no card is charged. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Every other route is healthy. checkout 1.4.6, rolled out from forty two minutes before the anchor, is unrelated: it served cleanly for about half an hour before the setting was saved.",
+    "contributingFactors": [
+      "the CART-2044 sweeper setting abandon_after saved as a bare 72, read as seconds",
+      "checkout building an order from a cart without checking that it has line items"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["cart/log_signal", "checkout/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcart\\b"],
+      [
+        "names_retention_setting",
+        3,
+        "abandon_after|retention|sweeper|CART-2044|ops[- ]console"
+      ],
+      ["names_unit", 3, "seconds|no unit|\\bunit\\b|168h"],
+      [
+        "names_empty_cart",
+        2,
+        "empty cart|cart[^.\\n]{0,40}?empty|no line items|evicted|deleted"
+      ],
+      [
+        "names_checkout_typeerror",
+        1,
+        "TypeError|reading 'currency'|buildOrder"
+      ],
+      [
+        "notes_cart_no_errors",
+        1,
+        "cart[^.\\n]{0,40}?(\\b200\\b|no errors|healthy)"
+      ],
+      [
+        "rules_out_checkout_release",
+        2,
+        "(checkout[^.;\\n]{0,20}?(1\\.4\\.6|deploy|roll[- ]?out|release)|1\\.4\\.6)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(checkout[^.;\\n]{0,20}?(1\\.4\\.6|deploy|roll[- ]?out|release)|1\\.4\\.6)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "checkout[^.;\\n]{0,20}?(1\\.4\\.6|deploy|roll[- ]?out|release)|1\\.4\\.6"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_checkout_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(checkout[^.;\\n]{0,20}?(1\\.4\\.6|deploy|roll[- ]?out|release)|1\\.4\\.6)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(checkout[^.;\\n]{0,20}?(1\\.4\\.6|deploy|roll[- ]?out|release)|1\\.4\\.6)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_cart_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(carts? redis|cart-db|\\bredis\\b|cache (eviction|flush)|inventory)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the CART-2044 sweeper setting, abandon_after saved as a bare 72 and read as seconds, as the origin, with cart deleting carts idle over 72 seconds, cart.get returning empty carts and checkout throwing on them so the failures reach edge-gateway? 5 = the setting, the unit mistake, cart healthy on its own metrics, checkout's TypeError and the victim chain. Blaming checkout 1.4.6 or checkout's code alone scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in checkout's TypeError in buildOrder right after cart.get returns 200, the sweeper settings line on cart-1 at the onset, the first sweep evicting 61,240 carts and the evicted abandoned carts counts jumping in a line that is otherwise routine? Cap at 3 unless it explains why cart shows no errors."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming checkout 1.4.6, the carts Redis, cart-db, inventory or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "cart": ["config_change", "none_of_these"]
+  },
+  "cause": ["abandon_after", "cart-sweeper", "CART-2044", "168h -> 72"]
+}

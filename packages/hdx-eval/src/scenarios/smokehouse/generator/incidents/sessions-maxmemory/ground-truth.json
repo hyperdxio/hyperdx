@@ -1,0 +1,106 @@
+{
+  "scenario": "sessions-maxmemory",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "auth",
+    "summary": "Seventy nine minutes before the anchor a config change (AUTH-512) raised the session TTL for remember_me logins on every auth pod from 24h to 30d. Remember-me sessions stopped expiring after a day, so the sessions Redis that auth keeps sessions in grew steadily: from sixty nine minutes before the anchor auth-1 logged a WARN every five minutes with used_memory climbing from 2.6 GiB towards maxmemory 4 GiB, under maxmemory-policy noeviction. Nine minutes before the anchor it reached the limit. With noeviction Redis still serves reads but refuses writes, and auth.verify refreshes the session on every call; older keys still expire and free a little room, so about one auth.verify in five fails with ReplyError: OOM command not allowed when used memory > 'maxmemory'. Every route verifies the session first, so about a fifth of requests on every route fail, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. auth's redis.get spans stay fast and auth's version did not change. The user-profile rollout from 1.4.2 to 1.5.1, four minutes before the failures, is unrelated: user-profile serves no errors of its own and its requests fail only at auth.",
+    "contributingFactors": [
+      "the AUTH-512 change keeping remember_me sessions for 30 days",
+      "the sessions Redis running maxmemory-policy noeviction, so a full instance refuses writes",
+      "auth.verify writing to the session on every request"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["auth/log_signal", "auth/deploy"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bauth\\b"],
+      [
+        "names_redis_full",
+        3,
+        "maxmemory|used_memory|out of memory|\\bOOM\\b|memory (limit|full)|noeviction"
+      ],
+      [
+        "names_ttl_change",
+        3,
+        "AUTH-512|remember[_ -]?me|30d|30 days|session ttl"
+      ],
+      ["names_writes_refused", 1, "write|refus|touch|refresh"],
+      [
+        "notes_reads_fast",
+        1,
+        "redis\\.get[^.\\n]{0,40}?(fast|healthy|normal|unchanged)|reads? (still )?(work|succeed|served)|serves reads"
+      ],
+      ["notes_all_routes", 1, "every route|all routes"],
+      [
+        "rules_out_profile_deploy",
+        2,
+        "(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_profile_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(traffic (surge|spike)|load test|(login|user) (traffic|volume))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at auth, with the AUTH-512 change to a 30 day remember_me session TTL filling the sessions Redis to maxmemory, and noeviction refusing auth's session writes so a share of auth.verify calls fail on every route? 5 = the TTL change, the full Redis, the refused writes and edge-gateway as the victim. Naming only the OOM error scores at most 3."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the used_memory warnings climbing for an hour before the failures, the config.change lines on auth an hour and a quarter before, the OOM ReplyError on auth spans and the failures spread across every route? Cap at 3 unless it connects the TTL change to the memory growth."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the user-profile 1.5.1 rollout, a traffic surge, a deploy on auth or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "auth": ["config_change", "logged_warning", "none_of_these"]
+  },
+  "cause": ["used_memory|noeviction", "remember_me|AUTH-512", "session ttl"]
+}

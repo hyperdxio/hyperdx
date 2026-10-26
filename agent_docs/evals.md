@@ -238,6 +238,40 @@ tables are empty. For dual-slot A/B runs, seed both instances explicitly
 | `--judge-model` | `claude-opus-4-7` | Default. Use a strong model for judging. |
 | `--no-judge` | use for fast iteration | Skips the LLM judge (saves cost/time). Programmatic scores only. |
 
+## Knowledge graph conditions
+
+Compares the incident knowledge graph tools against the same agent without
+them on the `sh-` scenarios. Full detail, including the three `kg-*` MCP
+definitions (same URL, different `deniedTools`), is in
+[`packages/hdx-eval/README.md`](../packages/hdx-eval/README.md#knowledge-graph-conditions).
+
+Needs the eval team's `isKnowledgeGraphEnabled` flag on (a `Team` field, no UI
+yet; the eval team is the `setup-hyperdx` account's) and the `hyperdxApi` block
+`setup-hyperdx` writes. The exact Mongo command is in the README.
+
+`setup-hyperdx` skips the `sh-` scenarios. Each `sh-` run creates its own
+sources and pins its trace source with `PUT /api/v2/knowledge/settings`, in
+every `--memory` mode, then clears both and deletes the sources in cleanup. Its
+table, source and memory names use an opaque `sh_<hash>` slug so they do not
+give away the incident.
+
+```bash
+# Repeat with --memory misleading and --memory self as separate batches
+yarn workspace @hyperdx/hdx-eval dev run sh-<incident> \
+  --mcp kg-none,kg-topology,kg-memory --baseline kg-none --runs 3 --memory related
+
+# Retrieval only, no agent: recall@1, recall@3, MRR
+yarn workspace @hyperdx/hdx-eval dev kg-retrieval --incidents all
+```
+
+Run one `sh-` scenario per API instance at a time: memory is team-wide and each
+scenario clears and reseeds it. `kg-retrieval` queries with the answer-key
+symptom keys, so its recall is an upper bound for comparing ranking changes.
+
+Read "Steps to origin (mean)" and "Negative matches (mean)" next to score,
+tokens and seconds. Steps to origin also shows how many runs found the origin
+(k/n), since the mean covers only those. Three runs cannot separate means closer than about 0.05.
+
 ## Other Use Cases
 
 The dual-slot A/B comparison is the primary workflow, but the eval framework

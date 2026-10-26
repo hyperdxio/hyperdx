@@ -7,6 +7,7 @@ import { noisySignalsScenario } from './noisy-signals/generate';
 import { quietSaturationScenario } from './quiet-saturation/generate';
 import { segmentedRegressionScenario } from './segmented-regression/generate';
 import { serviceHealthCheckScenario } from './service-health-check/generate';
+import { SMOKEHOUSE_SCENARIOS } from './smokehouse/scenario';
 import type { Scenario } from './types';
 
 export const SCENARIOS: Record<string, Scenario> = {
@@ -19,6 +20,7 @@ export const SCENARIOS: Record<string, Scenario> = {
   [quietSaturationScenario.name]: quietSaturationScenario,
   [segmentedRegressionScenario.name]: segmentedRegressionScenario,
   [serviceHealthCheckScenario.name]: serviceHealthCheckScenario,
+  ...SMOKEHOUSE_SCENARIOS,
 };
 
 export const SCENARIO_NAMES = Object.keys(SCENARIOS);

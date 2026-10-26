@@ -1,0 +1,112 @@
+{
+  "scenario": "discount-typo",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "promo",
+    "summary": "Thirteen minutes before the anchor someone on the marketing team edited promo code SPRING25 in the promo admin (MKT-2291) and set percent_off from 25 to 125; the change is logged once on promo-5. promo applies the rule as written and returns a discount larger than the order, so every checkout using SPRING25 reaches payment with a negative total, and payments.example.com rejects the charge: payment answers 502 payments.example.com rejected charge: invalid_amount (amount must be greater than 0) and logs WARN lines with the negative amounts. That is about one checkout in eighteen, the share of orders carrying SPRING25, enough to cross the alert at edge-gateway after the failures propagate through checkout, web-bff and mobile-bff. Other promo codes and orders without one succeed. promo itself returns no errors and its latency did not move, payment's provider is otherwise healthy, and nothing shipped.",
+    "contributingFactors": [
+      "the MKT-2291 edit setting SPRING25 to percent_off 125",
+      "promo applying a discount larger than the order without a check",
+      "checkout charging a negative total, which the payment provider rejects"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "payment"]
+  },
+  "factors": ["payment/segment", "promo/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpromo\\b"],
+      ["names_code", 3, "SPRING25"],
+      [
+        "names_edit",
+        3,
+        "MKT-2291|percent_off|125 ?(%|percent)|marketing|promo admin"
+      ],
+      [
+        "names_negative_total",
+        2,
+        "negative|invalid_amount|greater than 0|larger than the order|exceeds? the order"
+      ],
+      [
+        "names_payment_victim",
+        1,
+        "payment[^.\\n]{0,80}?(reject|\\b502\\b|invalid_amount)"
+      ],
+      [
+        "notes_other_codes_ok",
+        1,
+        "(other|remaining) (promo )?codes|without (a code|one)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_provider",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(payments\\.example\\.com|payment provider|provider (outage|down))",
+        true
+      ],
+      [
+        "false_blame_payment_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(payment (deploy|release|code change|bug|roll[- ]?out))",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(traffic (surge|spike)|campaign traffic)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the MKT-2291 edit to promo code SPRING25, percent_off 25 to 125, as the trigger, with promo returning a discount larger than the order so payment's charges for those orders go negative and are rejected, failing those checkouts up to edge-gateway? 5 = the edit, the negative totals, SPRING25 only and the victim chain. Placing the fault at payment or its provider scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in payment's invalid_amount errors concentrating in checkout.promo_code=SPRING25, the promo admin line on promo-5 at onset, and payment's WARN lines with negative amounts? Cap at 3 unless it says other codes and orders without a code succeed."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming payments.example.com, a payment deploy, a traffic surge or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "promo": ["config_change", "none_of_these"],
+    "payment": ["failing_segment", "upstream_change"]
+  },
+  "cause": ["SPRING25", "MKT-2291", "percent_off"]
+}

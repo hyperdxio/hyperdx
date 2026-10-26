@@ -42,3 +42,11 @@ export const IDEMPOTENT_DESTRUCTIVE_TOOL: ToolBehaviorAnnotations = {
   idempotentHint: true,
   openWorldHint: false,
 };
+
+/** Adds a record and never overwrites or deletes one. Each call adds another. */
+export const APPEND_TOOL: ToolBehaviorAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: false,
+  openWorldHint: false,
+};

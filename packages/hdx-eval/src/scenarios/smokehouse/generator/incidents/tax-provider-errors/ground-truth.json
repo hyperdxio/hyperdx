@@ -1,0 +1,118 @@
+{
+  "scenario": "tax-provider-errors",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "pricing",
+    "summary": "Eleven minutes before the anchor tax.example.com, the tax provider pricing uses for checkout quotes, began failing a share of tax calculations with 503 Service Unavailable (error upstream_unavailable, 'calculation engine temporarily unavailable'), rising over two minutes to about a third of requests. pricing calls the provider only when it quotes a checkout, so on POST /checkout about one pricing.quote in three fails with 502 TaxProviderError, checkout fails the order with 502, and about a third of POST /checkout requests fail. Product, search and cart prices come from the same pricing pods with no tax call and are healthy, and pricing's price-cache and pricing-db latency are flat. Nothing in our systems changed: no deploy, no config change, no version change. The failures propagate through checkout, web-bff and mobile-bff to edge-gateway, where the alert fires. The sunset warnings pricing has logged every minute for weeks, saying /v2/transactions/calculate goes away in March 2027, are routine background and unrelated.",
+    "contributingFactors": [
+      "tax.example.com failing about a third of tax calculations on its side",
+      "pricing calling the tax provider synchronously on every checkout quote with no fallback or retry",
+      "checkout treating the tax quote as required"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "pricing"]
+  },
+  "factors": ["pricing/segment", "pricing/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpricing\\b"],
+      ["names_tax_provider", 3, "\\btax"],
+      [
+        "names_provider_error",
+        3,
+        "\\b503\\b|service unavailable|upstream_unavailable|taxprovidererror|third[- ]party|provider (outage|error|incident|fail)"
+      ],
+      [
+        "names_checkout_only",
+        2,
+        "(post /checkout|checkout)[^.\\n]{0,80}?(only|quote)|only[^.\\n]{0,60}?checkout"
+      ],
+      [
+        "notes_other_prices_ok",
+        1,
+        "(product|search|cart)[^.\\n]{0,80}?(healthy|unaffected|fine|succeed)"
+      ],
+      [
+        "rules_out_sunset",
+        2,
+        "(sunset|deprecat)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(sunset|deprecat)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "sunset|deprecat"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_sunset",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(sunset|deprecat)\\w*|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(sunset|deprecat)\\w*(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(price-cache|pricing-db|redis|postgres)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the tax provider tax.example.com failing a share of tax calculations as the origin, with pricing's checkout quotes failing on it and checkout passing the failures through to edge-gateway? 5 = the provider errors, that only checkout quotes call it, and the victim chain. Blaming pricing's code, its stores or the deprecation notice scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in pricing's TaxProviderError logs and the 503 Service Unavailable replies, the failures confined to pricing.quote on POST /checkout while other routes' quotes succeed, and flat price-cache and pricing-db latency? Cap at 3 unless it notes that nothing changed on our side when the failures began."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the long-standing sunset warnings, a deploy, pricing's stores or edge-gateway, and avoid claiming the failures cover every pricing call?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "pricing": ["none_of_these", "failing_segment"] },
+  "cause": [
+    "TaxProviderError",
+    "tax\\.example\\.com returned 5\\d\\d|503 Service Unavailable",
+    "upstream_unavailable|calculation engine"
+  ]
+}

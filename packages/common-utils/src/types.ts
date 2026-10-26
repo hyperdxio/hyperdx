@@ -2595,6 +2595,10 @@ export const TeamSchema = z
     hookId: z.string(),
     collectorAuthenticationEnforced: z.boolean(),
     isMetricsSeriesTableEnabled: z.boolean(),
+    isKnowledgeGraphEnabled: z.boolean(),
+    knowledgeGraphTraceSource: z.string().optional(),
+    // Eval only: retrieval also returns incidents no person has confirmed.
+    knowledgeGraphIncludeUnconfirmed: z.boolean(),
   })
   .merge(TeamClickHouseSettingsSchema);
 

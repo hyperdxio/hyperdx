@@ -1,0 +1,118 @@
+{
+  "scenario": "fraud-rule-publish",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "fraud",
+    "summary": "Ten minutes before the anchor risk-ops published ruleset risk-rules v203 (RISK-640), and fraud hot-loaded it on all six pods within forty seconds, logging each load, with no deploy. One of its new rules, R-2207 (device_velocity_v2), reads device.fingerprint, which only the iOS and Android apps send. On every web request the field is missing and the rules engine throws, so fraud answers 500 RuleEvalError: rule R-2207 (device_velocity_v2): field device.fingerprint is undefined for every web checkout, about half of POST /checkout, while iOS and Android checkouts score normally. checkout requires a fraud score, so those checkouts fail with 502, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. fraud's latency and version did not change and no other route calls fraud. mobile-bff 2.9.0, rolled out from thirty two minutes before the anchor, is unrelated: it served cleanly for twenty minutes before the ruleset loaded, and the failures follow the client platform, not the BFF.",
+    "contributingFactors": [
+      "the RISK-640 ruleset risk-rules v203 adding rule R-2207, which reads device.fingerprint",
+      "web clients never sending device.fingerprint",
+      "checkout requiring a fraud score on every order"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["fraud/segment", "fraud/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bfraud\\b"],
+      [
+        "names_ruleset",
+        3,
+        "risk-rules|v203|RISK-640|rule ?set|R-2207|device_velocity"
+      ],
+      [
+        "names_missing_field",
+        3,
+        "fingerprint|missing field|field[^.\\n]{0,30}?(missing|undefined)"
+      ],
+      [
+        "names_web_segment",
+        2,
+        "\\bweb\\b[^.\\n]{0,60}?(request|checkout|client|platform|only)|client platform|platform=web"
+      ],
+      [
+        "notes_mobile_ok",
+        1,
+        "(ios|android|mobile apps?)[^.\\n]{0,60}?(normal|fine|healthy|unaffected|succeed|score)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_mobile_release",
+        2,
+        "(mobile-bff[^.;\\n]{0,20}?(2\\.9\\.0|deploy|roll[- ]?out|release)|2\\.9\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(mobile-bff[^.;\\n]{0,20}?(2\\.9\\.0|deploy|roll[- ]?out|release)|2\\.9\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "mobile-bff[^.;\\n]{0,20}?(2\\.9\\.0|deploy|roll[- ]?out|release)|2\\.9\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_mobile_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(mobile-bff[^.;\\n]{0,20}?(2\\.9\\.0|deploy|roll[- ]?out|release)|2\\.9\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(mobile-bff[^.;\\n]{0,20}?(2\\.9\\.0|deploy|roll[- ]?out|release)|2\\.9\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_checkout",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(checkout (deploy|release|code change|bug|config)|web-bff)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the RISK-640 ruleset risk-rules v203 as the trigger, with rule R-2207 reading device.fingerprint, which web clients do not send, so fraud fails every web checkout and the failures reach edge-gateway through checkout and the BFFs? 5 = the ruleset, the rule and the missing field, web only, and the victim chain. Blaming mobile-bff 2.9.0 or a fraud deploy scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the RuleEvalError on fraud spans, the failures confined to client.platform=web, and the hot-load lines on each fraud pod lining up with the first failures? Cap at 3 unless it says iOS and Android checkouts are unaffected."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming mobile-bff 2.9.0, web-bff, checkout code or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "fraud": ["upstream_change", "config_change", "failing_segment"]
+  },
+  "cause": [
+    "risk-rules v203|\\bv203\\b",
+    "RISK-640",
+    "R-2207|device_velocity_v2"
+  ]
+}

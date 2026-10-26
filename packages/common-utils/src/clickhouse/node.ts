@@ -84,6 +84,41 @@ export class ClickhouseClient extends BaseClickhouseClient {
     return super.getClient() as NodeClickHouseClient;
   }
 
+  async command({
+    query,
+    query_params,
+    clickhouse_settings,
+  }: {
+    query: string;
+    query_params?: Record<string, unknown>;
+    clickhouse_settings?: ClickHouseSettings;
+  }): Promise<void> {
+    this.logQuery(query, query_params);
+    await this.getClient().command({
+      query,
+      query_params,
+      clickhouse_settings,
+    });
+  }
+
+  async insert<T extends Record<string, unknown>>({
+    table,
+    values,
+    clickhouse_settings,
+  }: {
+    table: string;
+    values: T[];
+    clickhouse_settings?: ClickHouseSettings;
+  }): Promise<void> {
+    this.logQuery(`INSERT INTO ${table} FORMAT JSONEachRow`);
+    await this.getClient().insert({
+      table,
+      values,
+      format: 'JSONEachRow',
+      clickhouse_settings,
+    });
+  }
+
   protected async __query<Format extends DataFormat>({
     query,
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- default generic value

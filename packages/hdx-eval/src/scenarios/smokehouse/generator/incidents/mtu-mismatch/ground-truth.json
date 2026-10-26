@@ -1,0 +1,112 @@
+{
+  "scenario": "mtu-mismatch",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "catalog",
+    "summary": "Thirteen minutes before the anchor the platform team began a CNI upgrade (PLAT-5207), restarting cilium-agent with 1.16.1 node by node, one node every four minutes, which raised the tunnel MTU from 1450 to 8951 on each upgraded node. Nodes not yet upgraded still use 1450, and packets larger than that sent from an upgraded node to an old one are dropped. Small requests and replies fit in one packet and pass, but catalog's full product bodies on GET /product/{id} and the product details search fetches for GET /search do not: catalog pods on upgraded nodes (catalog-3 first, then catalog-1, catalog-6 and catalog-4) stall writing those replies, log 'response write stalled' with only part of the bytes acknowledged, and fail with write ETIMEDOUT after about 1.5 s, by which time callers have hit their 500 ms timeout. About 85 percent of large replies from those pods fail, the rest going to callers on upgraded nodes, and failures step up as each node is upgraded. By the anchor four of six catalog pods are upgraded and over half of product and search requests fail; GET /home, which reads small catalog tiles, and every other route are healthy, and catalog-2 and catalog-5, on old nodes, serve cleanly. The failures propagate from catalog through search, web-bff and mobile-bff to edge-gateway, where the alert fires. catalog's code, version and catalog-db latency did not change, and nothing shipped. The same agent restart logged on payment, auth, fraud and other pods on those nodes is harmless for them because their replies are small.",
+    "contributingFactors": [
+      "the PLAT-5207 CNI upgrade raising the tunnel MTU to 8951 node by node while old nodes stay at 1450",
+      "path MTU discovery not working across the overlay, so oversized packets are dropped instead of refused",
+      "catalog's product replies being larger than one packet at the old MTU"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "catalog", "search"]
+  },
+  "factors": ["catalog/infra", "catalog/segment", "catalog/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcatalog\\b(?!-db)"],
+      ["names_mtu", 3, "\\bmtu\\b|packet size|jumbo|fragment"],
+      ["names_cni_upgrade", 3, "plat-5207|\\bcni\\b|cilium|network agent"],
+      [
+        "names_pod_split",
+        2,
+        "catalog-[1346]|upgraded nodes?|(some|four|4) (of (the )?(six|6) )?(catalog )?pods"
+      ],
+      [
+        "names_large_replies",
+        1,
+        "(large|big|full)[^.\\n]{0,40}?(repl|respons|bod|payload)|product (bod|page|detail)"
+      ],
+      [
+        "notes_home_healthy",
+        1,
+        "get /home[^.\\n]{0,80}?(healthy|fine|unaffected|clean)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(catalog-db|postgres)",
+        true
+      ],
+      [
+        "false_blame_search",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(\\bsearch\\b|elasticsearch|catalog-index)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the PLAT-5207 CNI upgrade raising the tunnel MTU on upgraded nodes as the origin, with catalog's large replies from pods on those nodes dropped on the way to callers on old nodes, timing out product and search requests through to edge-gateway? 5 = the CNI upgrade, the MTU mismatch, the large replies and the pod split, and the victim chain. Blaming catalog code or catalog-db scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in catalog's write ETIMEDOUT errors confined to the upgraded pods and to GET /product/{id} and GET /search, the node network logs naming the MTU change at the time each pod's failures began, and GET /home staying healthy on the same pods? Cap at 3 unless it explains why small replies from the same pods succeed."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming a deploy, a catalog-db or Elasticsearch fault, or blaming search or edge-gateway, and avoid treating the agent restarts on unaffected neighbours as evidence against the cause?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "catalog": ["host_fault", "upstream_change", "none_of_these"]
+  },
+  "cause": [
+    "PLAT-5207",
+    "cilium|\\bCNI\\b",
+    "\\bMTU\\b",
+    "write stalled|bytes acknowledged|write ETIMEDOUT"
+  ]
+}

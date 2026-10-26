@@ -6,6 +6,7 @@ import { CODE_VERSION, FRONTEND_URL } from '@/config';
 import dashboardPrompts from './prompts/dashboards/index';
 import alertsTools from './tools/alerts/index';
 import dashboardsTools from './tools/dashboards/index';
+import knowledgeTools from './tools/knowledge/index';
 import {
   BUILDER_TOOLS_LIST,
   SQL_FALLBACK_CRITERIA,
@@ -17,7 +18,7 @@ import traceTools from './tools/trace/index';
 import { McpContext } from './tools/types';
 import { createRegisterTool } from './utils/registerTool';
 
-const SERVER_INSTRUCTIONS = [
+const BASE_INSTRUCTIONS = [
   'ClickStack observability MCP server for querying logs, metrics, traces, and',
   'sessions, and for managing dashboards, alerts, sources, and saved searches.',
   '',
@@ -35,6 +36,16 @@ const SERVER_INSTRUCTIONS = [
   'Fetch the query_guide prompt for detailed syntax, and create_dashboard for',
   'dashboard authoring.',
 ].join('\n');
+
+const INCIDENT_INSTRUCTIONS =
+  'Start an alert investigation with clickstack_incident_context; it returns the dependency neighbourhood, the root cause ranking and past incidents in one call.';
+
+export const buildServerInstructions = (context: McpContext) =>
+  context.isKnowledgeGraphEnabled
+    ? `${BASE_INSTRUCTIONS}
+
+${INCIDENT_INSTRUCTIONS}`
+    : BASE_INSTRUCTIONS;
 
 // Served by the app; omitted when FRONTEND_URL is unset because MCP icon
 // sources must be absolute URLs. String concatenation (not `new URL`) keeps
@@ -61,7 +72,7 @@ const SERVER_INFO: Implementation = {
 
 export function createServer(context: McpContext) {
   const server = new McpServer(SERVER_INFO, {
-    instructions: SERVER_INSTRUCTIONS,
+    instructions: buildServerInstructions(context),
   });
 
   const registerTool = createRegisterTool(server, context);
@@ -73,6 +84,7 @@ export function createServer(context: McpContext) {
   queryTools(registrar);
   savedSearchesTools(registrar);
   traceTools(registrar);
+  if (context.isKnowledgeGraphEnabled) knowledgeTools(registrar);
   dashboardPrompts(server, context);
 
   return server;

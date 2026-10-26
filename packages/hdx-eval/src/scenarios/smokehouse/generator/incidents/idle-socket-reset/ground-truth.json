@@ -1,0 +1,119 @@
+{
+  "scenario": "idle-socket-reset",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "payment",
+    "summary": "Fourteen minutes before the anchor the payment provider moved payments.example.com behind new load balancers: payment's HTTP agent stats show the server header change from pgw-edge/4.2 to envoy at that moment, and the new load balancers close connections that sit idle for 30 seconds. payment's agent keeps idle sockets in its keep-alive pool for 60 seconds (freeSocketTimeout), so a charge sent on a pooled socket that has been idle between 30 and 60 seconds is reset by the provider and fails with read ECONNRESET within about 40 ms. payment does not retry, since a charge is not idempotent, and returns 502; about 22 percent of payment.charge calls fail this way on every payment pod. payment's latency on the charges that succeed is unchanged. The reset charges never reach the provider's backend, so no customer is charged for a failed checkout. checkout does not treat payment as optional, so POST /checkout fails with 502s that propagate through web-bff and mobile-bff to edge-gateway, where the alert fires; every other route is healthy. payment's own rollout from 1.4.2 to 1.4.3, which started five minutes after the first resets, is a red herring: the errors began before it, and pods on 1.4.2 and 1.4.3 fail at the same rate.",
+    "contributingFactors": [
+      "the provider's new load balancers closing connections idle for 30 seconds",
+      "payment's keep-alive pool keeping idle sockets for 60 seconds, longer than the provider's idle timeout",
+      "payment not retrying a charge that was reset before it reached the provider"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "payment"]
+  },
+  "factors": ["payment/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpayment\\b"],
+      [
+        "names_reset",
+        3,
+        "econnreset|connection reset|reset by (the )?(peer|provider)|socket hang ?up"
+      ],
+      [
+        "names_idle_timeout",
+        3,
+        "idle|keep-?alive|freesockettimeout|reused socket|stale (socket|connection)"
+      ],
+      [
+        "names_provider_change",
+        3,
+        "load balancer|\\blb\\b|envoy|pgw-edge|(provider|payments\\.example\\.com)[^.\\n]{0,60}?(chang|migrat|mov)"
+      ],
+      [
+        "names_partial",
+        1,
+        "\\b2\\d ?(%|percent)|(fifth|quarter|share|fraction|portion) of (the )?(charges|payments?|checkouts?|payment\\.charge)"
+      ],
+      ["notes_no_retry", 1, "not retr(y|ied)|no retry|without retry|idempoten"],
+      [
+        "rules_out_payment_deploy",
+        3,
+        "(1\\.4\\.3)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(1\\.4\\.3)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "1\\.4\\.3"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_payment_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(1\\.4\\.3|payment'?s? (own )?(deploy|roll[- ]?out|release))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(1\\.4\\.3|payment'?s? (own )?(deploy|roll[- ]?out|release))(?:[^.;\\n]|\\.\\d){0,40}?(roll[- ]?out|deploy|release|1\\.4\\.3)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(1\\.4\\.3|payment'?s? (own )?(deploy|roll[- ]?out|release))(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_rate_limit",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(rate[- ]?limit|\\b429\\b|quota|provider (outage|is down))",
+        true
+      ],
+      [
+        "false_blame_fraud",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bfraud\\b)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the provider's new load balancers resetting connections idle for 30 seconds, while payment's keep-alive pool reuses sockets idle up to 60 seconds, as the origin, with the ECONNRESET charges failing checkout and the failures reaching edge-gateway? 5 = the provider change, the idle-timeout mismatch, the resets and the victim chain. Saying only 'the payment provider is failing' scores at most 3; blaming payment 1.4.3 scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the ECONNRESET errors on reused idle sockets, payment's agent stats showing the server header change and resets starting at onset, and failures spread across every payment pod? Cap at 3 unless it shows the errors began before the 1.4.3 rollout."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss payment 1.4.3 with evidence (errors began first, same rate on both versions), avoid claiming a rate limit or a provider outage, and avoid blaming checkout, fraud or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "payment": ["upstream_change", "failing_callee"] },
+  "cause": [
+    "ECONNRESET",
+    "envoy",
+    "freeSocketTimeout|idle socket|socket idle|load balancer",
+    "reset by peer"
+  ]
+}

@@ -1,0 +1,124 @@
+{
+  "scenario": "clock-skew",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "payment",
+    "summary": "Eighty minutes before the anchor chronyd on node ip-10-0-7-42.ec2.internal was OOM-killed and not restarted, so the node's clock stopped being synchronised and began running fast by about 4.5 seconds a minute. payment signs every charge to payments.example.com with a request timestamp, and the provider rejects requests more than 300 seconds off its own clock. Two of six payment pods, payment-2 and payment-4, run on that node. From about fifty minutes before the anchor the provider's replies to them carried a Warning header about the growing skew, and about thirteen minutes before the anchor the skew passed 300 seconds: since then every charge from those two pods fails with 401 timestamp_out_of_tolerance, which payment returns to checkout as a 502 within about 130 ms. The other four payment pods charge the same provider without errors, and fraud-3, which shares the node, is healthy because fraud signs nothing. Failed checkouts are not charged. The 502s propagate through checkout, web-bff and mobile-bff to edge-gateway, where the alert fires. Nothing shipped and no version changed. The provider's scheduled maintenance notice for its payouts API (MNT-7731), posted sixteen minutes before the anchor, is a red herring: card charges from the four healthy pods succeed throughout, and the rejections name the request timestamp.",
+    "contributingFactors": [
+      "chronyd dying on node ip-10-0-7-42 and staying down, so the node's clock drifted",
+      "the payment provider rejecting signed requests more than 300 seconds off its clock",
+      "no alert on clock synchronisation, so an hour of drift went unnoticed"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "payment"]
+  },
+  "factors": ["payment/infra", "payment/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpayment\\b(?!s\\.example)"],
+      [
+        "names_clock_skew",
+        3,
+        "clock|skew|time (drift|offset)|\\bntp\\b|chrony|timestamp_out_of_tolerance"
+      ],
+      ["names_node", 3, "ip-10-0-7-42|\\bnode\\b|\\bhost\\b"],
+      [
+        "names_pods",
+        2,
+        "payment-[24]\\b|(2|two)\\s*(of|/|out of)\\s*(the )?(6|six)[^.\\n]{0,30}?pods"
+      ],
+      [
+        "names_rejection",
+        2,
+        "\\b401\\b|signature|signed|timestamp[^.\\n]{0,40}?(reject|tolerance)|reject\\w*[^.\\n]{0,40}?timestamp"
+      ],
+      [
+        "notes_sync_stopped",
+        1,
+        "chronyd|\\bntp\\b[^.\\n]{0,40}?(stop|kill|dead|not running|unsynchron)|(stopped|lost|no longer) (being )?(sync|synchroni)|unsynchronised"
+      ],
+      [
+        "rules_out_provider_maintenance",
+        2,
+        "(maintenance|mnt-7731|payouts)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(maintenance|mnt-7731|payouts)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "maintenance|MNT-7731|payouts|provider notice"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_provider",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(payments\\.example\\.com|provider|maintenance|mnt-7731|payouts)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(payments\\.example\\.com|provider|maintenance|mnt-7731|payouts)(?:[^.;\\n]|\\.\\d){0,40}?(outage|maintenance|down|degrad|incident|api|notice)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(payments\\.example\\.com|provider|maintenance|mnt-7731|payouts)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_fraud",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bfraud\\b)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name clock skew on node ip-10-0-7-42, after chronyd died, making the provider reject the signed charges of the two payment pods on that node, with the checkout failures reaching edge-gateway? 5 = the node, both pods, the timestamp rejection and the victim chain. Blaming the provider or its maintenance scores 1; naming the two pods without the clock scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the 401 timestamp_out_of_tolerance errors giving the skew, failures grouped by k8s.pod.name on payment-2 and payment-4, the chronyd log on the node, and the provider Warning headers that grew for half an hour before the failures? Cap at 3 unless it explains why the failures began over an hour after chronyd stopped."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss the provider maintenance notice with evidence (four pods charge fine against the same provider), note fraud-3 on the same node is healthy, avoid inventing a deploy, and avoid blaming checkout or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "payment": ["host_fault", "none_of_these"] },
+  "cause": [
+    "chronyd|clock",
+    "timestamp_out_of_tolerance",
+    "ip-10-0-7-42",
+    "concentrate on payment-2:.*payment-4:"
+  ]
+}

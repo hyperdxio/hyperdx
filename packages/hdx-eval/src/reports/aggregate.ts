@@ -31,6 +31,9 @@ export type CellSummary = {
     judged: number;
   };
   combinedScore: { mean: number };
+  /** Mean over the `found` of `n` runs that named the origin; null when none did. */
+  stepsToOrigin: { mean: number | null; found: number; n: number };
+  negativeMatches: { mean: number };
   toolCalls: { mean: number };
   toolErrors: { mean: number; rateMean: number; penaltyMean: number };
   tokens: {
@@ -228,6 +231,11 @@ function buildCellSummary(
       : mean(judgeable.map(p => p.grade.judge!.weightedScore));
 
   const combinedMean = mean(pairs.map(p => p.grade.combinedScore));
+  const steps = pairs
+    .map(p => p.grade.stepsToOrigin)
+    .filter((x): x is number => typeof x === 'number');
+  const stepsMean = steps.length === 0 ? null : mean(steps);
+  const negativeMean = mean(pairs.map(p => p.grade.negativeMatches ?? 0));
   const toolCallsMean = mean(pairs.map(p => p.run.toolCalls.length));
   const toolErrorsMean = mean(pairs.map(p => p.grade.toolErrors?.errors ?? 0));
   const toolErrorRateMean = mean(pairs.map(p => p.grade.toolErrors?.rate ?? 0));
@@ -322,6 +330,8 @@ function buildCellSummary(
       judged: judgeable.length,
     },
     combinedScore: { mean: combinedMean },
+    stepsToOrigin: { mean: stepsMean, found: steps.length, n: pairs.length },
+    negativeMatches: { mean: negativeMean },
     toolCalls: { mean: toolCallsMean },
     toolErrors: {
       mean: toolErrorsMean,

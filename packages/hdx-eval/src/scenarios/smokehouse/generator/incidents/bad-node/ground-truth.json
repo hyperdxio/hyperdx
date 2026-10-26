@@ -1,0 +1,89 @@
+{
+  "scenario": "bad-node",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "catalog",
+    "summary": "Two of six catalog pods, catalog-2 and catalog-5, both on node ip-10-0-3-17.ec2.internal, degraded about ten minutes before the anchor with no deploy. A node.condition log on those pods reports DiskPressure and a throttled EBS volume on the host, followed by repeated WARN iowait logs. On those two pods catalog's own latency rose from about 20 ms to about 350 ms and about 3% of their requests fail with 503 i/o timeout reading local cache; the other four catalog pods and catalog-db stay healthy. search, web-bff and mobile-bff call catalog.get with a 500 ms timeout, so the slow pods produce 504s that propagate to edge-gateway on /home, /search and /product, where the alert fires. Grouping catalog spans by k8s.pod.name shows the split.",
+    "contributingFactors": [
+      "disk throttling on node ip-10-0-3-17 hosting catalog-2 and catalog-5",
+      "500 ms caller timeouts on catalog.get turning the slow pods into 504s"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search", "catalog"]
+  },
+  "factors": ["catalog/infra", "catalog/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcatalog\\b"],
+      [
+        "names_pods",
+        3,
+        "catalog-[25]\\b|(2|two)\\s*(of|/|out of)\\s*(the )?(6|six)[^.\\n]{0,30}?pods|k8s\\.pod\\.name"
+      ],
+      ["names_node", 3, "ip-10-0-3-17|\\bnode\\b|\\bhost\\b|kubelet"],
+      ["names_io", 1, "iowait|i/o|disk|throttl"],
+      ["names_timeout", 1, "time[- ]?out|504"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(catalog-db|postgres\\w*|slow (database|db|query|queries))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief identify a bad node (ip-10-0-3-17, disk throttling) degrading the two catalog pods scheduled on it, with the rest of catalog healthy, and edge-gateway as where the alert fired? 5 = the node, both pods, the I/O mechanism and the propagation. Blaming catalog as a whole without the pod split caps at 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in catalog latency and errors grouped by k8s.pod.name, the node.condition and iowait logs naming the host, and no service.version change? Cap at 3 unless the pod split and the node log are joined explicitly."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid inventing a deploy, blaming catalog-db, the periodic catalog reindex, the BFFs or edge-gateway? Cap at 3 unless it says the other four catalog pods are healthy."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "catalog": ["host_fault"] },
+  "cause": ["ip-10-0-3-17", "DiskPressure", "iowait", "EIO|i/o timeout"]
+}

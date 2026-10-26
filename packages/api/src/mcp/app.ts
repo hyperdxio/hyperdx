@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import express from 'express';
 
 import { validateUserAccessKey } from '@/middleware/auth';
+import Team from '@/models/team';
 import logger from '@/utils/logger';
 import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
 
@@ -57,10 +58,23 @@ app.post('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
     return;
   }
 
+  // The flag only gates optional tools, so a failed lookup degrades to off.
+  let isKnowledgeGraphEnabled = false;
+  try {
+    const team = await Team.findById(teamId).select('isKnowledgeGraphEnabled');
+    isKnowledgeGraphEnabled = team?.isKnowledgeGraphEnabled ?? false;
+  } catch (err) {
+    logger.warn(
+      { err, teamId: teamId.toString() },
+      'MCP team flag lookup failed',
+    );
+  }
+
   const context: McpContext = {
     teamId: teamId.toString(),
     userId,
     mcpClient: userAgentClientInfo(req.get('User-Agent')),
+    isKnowledgeGraphEnabled,
   };
 
   setTraceAttributes({

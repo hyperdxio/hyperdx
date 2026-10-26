@@ -1,0 +1,88 @@
+{
+  "scenario": "deploy-red-herring",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "promo",
+    "summary": "The Postgres behind promo (server.address promo-db, db.system postgresql) slowed from about 6 ms to about 700 ms over four minutes starting ten minutes before the anchor. promo has no deploy and no errors of its own; its pg.select spans are simply slow. checkout calls promo.apply with a 500 ms timeout, so once the store latency passed that, every checkout request failed with a timeout (504). Early in the ramp, before promo passes 500 ms, the BFFs' own 500 ms timeout on checkout fires first, so checkout briefly looks like a latency regression right after its deploy. The failures propagate through web-bff and mobile-bff to edge-gateway where the alert fires. checkout rolled 1.4.2 -> 1.5.0 to all six pods three minutes before the slowdown began; that deploy is a red herring: 1.5.0 served cleanly for about four minutes before the first failure, and every checkout failure is a promo.apply timeout. Routes that do not call promo are unaffected.",
+    "contributingFactors": [
+      "promo-db latency step to ~700 ms",
+      "500 ms client timeout on promo.apply in checkout turning slowness into 504s"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": [],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpromo\\b(?![- ]?code)"],
+      ["names_the_store", 2, "promo-db|postgres(ql)?|pg\\.select"],
+      [
+        "names_latency_not_errors",
+        2,
+        "promo[^.\\n]{0,80}?(latency|slow|duration|p9[59]|ms)|(latency|slow|duration)[^.\\n]{0,80}?promo"
+      ],
+      ["names_timeout_mechanism", 2, "time[- ]?out|504"],
+      [
+        "rules_out_checkout_deploy",
+        3,
+        "checkout(?:(?!\\b(promo|until|then|broke|break|caus|introduc|spik|rose|rise|climb|jump|responsib|blame|suspect|regress)\\w*)[^.;\\n]){0,40}?(1\\.5\\.0|deploy|roll[- ]?out|release)(?:(?!\\b(promo|until|then|broke|break|caus|introduc|spik|rose|rise|climb|jump|responsib|blame|suspect|regress)\\w*)[^.;\\n]){0,80}?(healthy|innocent|benign|unrelated|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|served cleanly|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(1\\.5\\.0|\\b(that|the|this) (deploy|rollout|release))(?:(?!\\b(promo|until|then|broke|break|caus|introduc|spik|rose|rise|climb|jump|responsib|blame|suspect|regress)\\w*)[^.;\\n]){0,60}?(healthy|innocent|benign|unrelated|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|served cleanly|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:(?!\\b(promo|until|then|broke|break|caus|introduc|spik|rose|rise|climb|jump|responsib|blame|suspect|regress)\\w*)[^.;\\n]){0,40}?checkout(?:(?!\\b(promo|until|then|broke|break|caus|introduc|spik|rose|rise|climb|jump|responsib|blame|suspect|regress)\\w*)[^.;\\n]){0,30}?(1\\.5\\.0|deploy|roll[- ]?out)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "checkout[^\\n]{0,60}?(1\\.5\\.0|deploy|roll[- ]?out)|1\\.5\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      ["quantifies", 1, "(\\d{3}\\s?ms|~?700)"],
+      [
+        "false_blame_checkout_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )((?<!\\bon )(likely|probable|root|prime) cause:?|caused by|due to|because of|culprit|introduced by|regression in)[^.;\\n]{0,60}?(checkout[^.;\\n]{0,20}?)?(1\\.5\\.0|deploy|roll[- ]?out|release|new (version|build))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*|separate|tell)\\b(?:[^.?!\\n]|\\.\\d){0,40})(checkout(?:(?!\\b(promo|not|no|never|unrelated|healthy|innocent|benign)\\w*)[^.;\\n]){0,30}?)?(1\\.5\\.0|deploy|roll[- ]?out|release)(?:(?!\\b(promo|not|no|never|unrelated|healthy|innocent|benign)\\w*)[^.;\\n]){0,40}?\\b((is|was) (the |a )?(likely |root |prime |probable )?(cause|culprit|trigger)|caused|broke|introduced|responsible|to blame)",
+        true
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name promo's Postgres (promo-db) slowing as the origin and checkout's 500 ms timeout on promo.apply as the mechanism, three hops from edge-gateway? 5 = store, timeout and victim chain. Blaming checkout's 1.5.0 deploy caps at 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is the store latency shown from promo's pg.select spans, and is checkout's deploy dismissed with evidence (1.5.0 serving cleanly for minutes before the first failure, or every failure being a promo.apply timeout)? Cap at 3 if the deploy is dismissed without evidence."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming checkout's deploy, edge-gateway or a BFF, and avoid claiming promo returned errors of its own? Describing the early BFF timeouts on a slow checkout is correct, not a miss, provided the slowness is traced to promo.apply."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "promo": ["slow_datastore"] },
+  "cause": ["promo-db"]
+}

@@ -1,0 +1,117 @@
+{
+  "scenario": "nat-allowlist",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "shipping",
+    "summary": "Eleven minutes before the anchor the platform team changed a route table (NET-882, NAT capacity for us-east-1c) so that nodes ip-10-0-9-14 and ip-10-0-9-37 send internet traffic through a new NAT gateway, nat-0b7e21, with public address 3.91.204.17; the pods on those nodes logged the change, among them shipping-3 and shipping-6. shipping books every checkout with the carrier api.shipco.example.com, which only accepts calls from allowlisted source addresses, and 3.91.204.17 is not on the list. From that moment every booking from shipping-3 and shipping-6 is refused: shipping answers 502 carrier api.shipco.example.com returned 403: source address 3.91.204.17 is not permitted for account SHOP-4471, while the four other shipping pods book normally. About a third of POST /checkout requests fail, after the card has been charged, and the failures propagate through checkout, web-bff and mobile-bff to edge-gateway, where the alert fires; no other route calls shipping. payment-3 and payment-6 moved to the same NAT and are healthy, since the payment provider does not filter by source address. shipping's version did not change and nothing shipped. The SEA-3 label format change (WH-219, PDF to ZPL) logged on shipping three minutes earlier is unrelated: it applies to one warehouse's labels and fails no booking.",
+    "contributingFactors": [
+      "the NET-882 route table change sending two nodes out through nat-0b7e21",
+      "the carrier's source address allowlist not including 3.91.204.17",
+      "shipping booking inline after payment on every checkout"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["shipping/infra", "shipping/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bshipping\\b"],
+      ["names_nat", 3, "nat-0b7e21|\\bNAT\\b|NET-882|route table|egress"],
+      [
+        "names_allowlist",
+        3,
+        "allowlist|not permitted|ip_not_allowed|source (address|ip)|3\\.91\\.204\\.17"
+      ],
+      [
+        "names_pods",
+        2,
+        "shipping-3[^.\\n]{0,40}?shipping-6|shipping-6[^.\\n]{0,40}?shipping-3|two (of six )?(shipping )?pods|ip-10-0-9-(14|37)"
+      ],
+      ["names_charged", 1, "charged|after (the )?payment"],
+      [
+        "notes_payment_ok",
+        1,
+        "payment-[36][^.\\n]{0,80}?(healthy|fine|unaffected)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_label_change",
+        2,
+        "(WH-219|label format|ZPL)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(WH-219|label format|ZPL)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "WH-219|label format|ZPL"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_label_change",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(WH-219|label format|ZPL)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(WH-219|label format|ZPL)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_carrier_outage",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(carrier (outage|down|incident)|shipco (outage|down))",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bpayment\\b(?!-[36]))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the NET-882 route table change sending shipping-3 and shipping-6 out through the new NAT gateway nat-0b7e21 as the trigger, with the carrier refusing the new source address because it is not allowlisted, and the failed bookings failing checkout through the BFFs to edge-gateway? 5 = the NAT change, the allowlist, the two pods only and the victim chain. Calling it a carrier outage or blaming the label format change scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the 403 not permitted errors on shipping spans naming 3.91.204.17, the failures confined to shipping-3 and shipping-6, the network.event lines on those pods at onset, and payment-3 and payment-6 staying healthy on the same NAT? Cap at 3 unless it explains why only two shipping pods fail."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the WH-219 label format change, a carrier outage, payment or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "shipping": ["host_fault", "upstream_change", "none_of_these"]
+  },
+  "cause": ["nat-0b7e21", "NET-882", "\\bNAT\\b|route table"]
+}

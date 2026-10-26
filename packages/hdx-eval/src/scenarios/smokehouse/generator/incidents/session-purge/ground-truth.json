@@ -1,0 +1,102 @@
+{
+  "scenario": "session-purge",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "auth",
+    "summary": "Sixteen minutes before the anchor the security team (SECOPS-1207) started a forced logout of tenant initech after a credential stuffing report, run as a session purge from auth-2: for each of 1,214 initech users it runs KEYS session:initech:<user>:* against the sessions Redis and then deletes the matches. KEYS walks the whole keyspace and Redis is single threaded, so every call blocks the sessions Redis for about 900 ms, and the purge issues one about every six seconds. Every auth.verify that reaches sessions while a KEYS runs waits for it, whatever its tenant: auth's redis.get spans on sessions jump from about 6 ms to as much as 900 ms in bursts every six seconds, and the requests that wait longest outlast the BFFs' 500 ms timeout on auth, so about one request in eleven on every route fails with 504 at web-bff and mobile-bff. auth's code and version are unchanged, it returns no errors of its own, and it logs WARN lines that sessions commands waited over 250 ms; the purge's start and progress lines on auth-2 name the KEYS pattern. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. The purge has worked through under a fifth of its users by the anchor, so left alone it would go on for well over an hour. user-profile 1.5.1, rolled out from thirty six minutes before the anchor, is unrelated: user-profile stays error-free and its latency did not move.",
+    "contributingFactors": [
+      "the SECOPS-1207 session purge running KEYS against the sessions Redis once per user",
+      "every auth.verify reading the same single-threaded sessions Redis",
+      "the BFFs' 500 ms timeout on auth"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["auth/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bauth\\b"],
+      ["names_purge", 3, "purge|forced logout|SECOPS-1207|security team"],
+      [
+        "names_keys_command",
+        3,
+        "\\bKEYS\\b|keyspace|single[- ]threaded|block(s|ed|ing)? (the )?(sessions )?redis"
+      ],
+      [
+        "names_sessions_store",
+        2,
+        "sessions[^.\\n]{0,40}?(redis|store)|redis[^.\\n]{0,40}?sessions"
+      ],
+      ["names_bursts", 1, "burst|every (six|6) seconds|periodic"],
+      ["names_bff_timeout", 1, "time[sd]? ?out|\\b504\\b"],
+      [
+        "rules_out_profile_release",
+        2,
+        "(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_profile_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(user-profile[^.;\\n]{0,20}?(1\\.5\\.1|deploy|roll[- ]?out|release)|1\\.5\\.1)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(initech (traffic|requests|load)|credential stuffing (attack|traffic)|traffic (surge|spike)|auth (deploy|release|code change|bug))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the SECOPS-1207 session purge as the origin, running KEYS against the sessions Redis so each call blocks Redis for most of a second, auth.verify waits in bursts, and the BFFs time out on auth so the failures reach edge-gateway? 5 = the purge, the blocking KEYS calls, the bursts on every route and the victim chain. Blaming initech's traffic, an auth deploy or user-profile 1.5.1 scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in auth's redis.get spans on sessions jumping in six second bursts while auth returns no errors, the BFF timeouts on auth.verify, the purge start and progress lines on auth-2 naming the KEYS pattern, and auth's WARN lines about slow sessions commands? Cap at 3 unless it explains why every tenant fails, not only initech."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming user-profile 1.5.1, initech or credential stuffing traffic, an auth code change or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "auth": ["slow_datastore", "none_of_these"]
+  },
+  "cause": ["SECOPS-1207", "session purge", "KEYS session", "forced logout"]
+}

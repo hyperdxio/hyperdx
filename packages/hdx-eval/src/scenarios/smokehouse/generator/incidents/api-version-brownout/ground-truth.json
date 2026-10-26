@@ -1,0 +1,121 @@
+{
+  "scenario": "api-version-brownout",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "payment",
+    "summary": "payment still pins version 2022-11-15 of the payment provider's API, which the provider is retiring. Nine minutes before the anchor payments.example.com began a scheduled thirty minute brownout of that version, rejecting about half of the charges sent with it, and payment fails them with 502 PaymentGatewayError: payments.example.com returned 400 api_version_deprecated (version 2022-11-15 is in a scheduled brownout). checkout turns those into 502s, so about half of POST /checkout requests fail; the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. The other half succeed and every other route is healthy. Nothing changed on our side: no deploy, no config change, and payment's latency and its successful charges look normal. The warning was there all along: for as long as there is data payment has logged that the provider sends Deprecation and Sunset headers for API version 2022-11-15, so the line reads as routine background rather than as something new. payment's hourly settlement-export cron job started three minutes before the brownout on payment-4 and is unrelated: it exports settled charges to finance, its previous run an hour earlier had no failures around it, and the errors spread over all six payment pods.",
+    "contributingFactors": [
+      "payment pinning provider API version 2022-11-15 after the provider announced its sunset",
+      "the provider's scheduled brownout rejecting half of the requests on that version",
+      "the Deprecation and Sunset warnings logging for so long that they read as routine"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "payment"]
+  },
+  "factors": ["payment/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpayment\\b"],
+      [
+        "names_api_version",
+        3,
+        "2022-11-15|api[_ ]version|pinned (api )?version|pins? (the )?(api )?version"
+      ],
+      ["names_brownout", 3, "brown ?out|sunset|deprecat|retir"],
+      [
+        "names_provider",
+        2,
+        "payments\\.example\\.com|(payment |third[- ]party )?provider"
+      ],
+      [
+        "notes_warned_routine",
+        1,
+        "(deprecation|sunset)[^.\\n]{0,80}?(all along|routine|background|for (weeks|as long|months)|before)|warn\\w*[^.\\n]{0,60}?(all along|routine|ignored)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_settlement_job",
+        2,
+        "(settlement[- ]export|settlement job|cron job|hourly (export|job))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(settlement[- ]export|settlement job|cron job|hourly (export|job))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "settlement|cron"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_settlement_job",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(settlement[- ]export|settlement job|cron job|export job)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(settlement[- ]export|settlement job|cron job|export job)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((checkout|customer|user) (traffic|volume)|traffic (surge|spike)|rate limit)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the provider's scheduled brownout of API version 2022-11-15, which payment still pins, as the origin, with half of payment's charges rejected as api_version_deprecated and POST /checkout failing through to edge-gateway? 5 = the pinned version, the brownout, the victim chain and the fix of moving off the version. Calling it only 'the provider is returning errors' scores at most 3; blaming the settlement-export job scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the api_version_deprecated errors on payment spans and logs, the Deprecation and Sunset header warnings that predate the window, and payment's latency and successful charges being normal? Cap at 3 unless it notes the deprecation warnings were logging long before the failures."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the settlement-export job, a deploy (there was none), a traffic surge, checkout or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "payment": ["none_of_these"]
+  },
+  "cause": [
+    "brownout",
+    "api_version_deprecated",
+    "2022-11-15",
+    "Deprecation: true|Sunset:"
+  ]
+}

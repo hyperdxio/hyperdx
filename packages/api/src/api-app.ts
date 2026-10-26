@@ -14,6 +14,7 @@ import clickhouseProxyRouter from './routers/api/clickhouseProxy';
 import connectionsRouter from './routers/api/connections';
 import favoritesRouter from './routers/api/favorites';
 import iacRouter from './routers/api/iac';
+import incidentGraphRouter from './routers/api/incidentGraph';
 import pinnedFiltersRouter from './routers/api/pinnedFilters';
 import savedSearchRouter from './routers/api/savedSearch';
 import sourcesRouter from './routers/api/sources';
@@ -120,6 +121,7 @@ app.use('/favorites', isUserAuthenticated, favoritesRouter);
 app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
 app.use('/clickhouse-proxy', isUserAuthenticated, clickhouseProxyRouter);
 app.use('/iac', isUserAuthenticated, iacRouter);
+app.use('/knowledge', isUserAuthenticated, incidentGraphRouter);
 if (config.IS_PROMQL_ENABLED) {
   app.use('/v1/prometheus', isUserAuthenticated, routers.prometheusRouter);
 }

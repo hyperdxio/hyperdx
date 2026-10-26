@@ -36,7 +36,8 @@
     "packages/hdx-eval": {
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["tsx"],
-      "ignoreBinaries": ["claude"]
+      "ignoreBinaries": ["claude"],
+      "ignore": ["src/scenarios/smokehouse/generator/**"]
     }
   },
   "ignore": [

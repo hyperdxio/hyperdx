@@ -1,0 +1,113 @@
+{
+  "scenario": "sca-enforcement",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "payment",
+    "summary": "Eight minutes before the anchor the payment provider, payments.example.com, began enforcing strong customer authentication on cards issued in the EEA. It now declines those charges with decline_code authentication_required unless the charge went through a 3-D Secure challenge, and payment 1.4.2 has no mapping for that code: instead of returning a challenge it fails the charge with 502 PaymentProviderError: unmapped decline_code authentication_required. Nothing in the logs announced the change, and payment logged no warning before it. About 70 percent of charges from cloud.region eu-west-1 fail this way, roughly one POST /checkout in seven overall, and the failures propagate from checkout through web-bff and mobile-bff to edge-gateway, where the alert fires. Charges from us-east-1 and us-west-2 succeed, and every other route is healthy. payment's latency is unchanged and its version did not change; nothing shipped. The payout reconciliation job that started on payment-2 three minutes before the failures is unrelated: it only matches settlement files and never touches card charges.",
+    "contributingFactors": [
+      "payments.example.com enforcing strong customer authentication on EEA cards",
+      "payment having no mapping for decline_code authentication_required, so it fails the charge instead of asking for a challenge"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["payment/segment", "payment/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpayment\\b"],
+      [
+        "names_sca",
+        3,
+        "authentication_required|3-?D ?Secure|\\b3DS\\b|\\bSCA\\b|strong customer authentication"
+      ],
+      [
+        "names_unmapped",
+        2,
+        "unmapped|no mapping|not mapped|unhandled|unknown decline"
+      ],
+      ["names_region", 2, "eu-west-1|\\bEEA\\b|\\bEU\\b|europe"],
+      ["names_provider", 1, "payments\\.example\\.com|provider"],
+      [
+        "notes_other_regions",
+        1,
+        "(us-east-1|us-west-2|other regions)[^.\\n]{0,60}?(succeed|healthy|unaffected|fine)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_payout_job",
+        2,
+        "(payout|reconciliation)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(payout|reconciliation)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "payout|reconciliation"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_payout_job",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(payout|reconciliation)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(payout|reconciliation)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_fraud",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bfraud\\b)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at payment, with the provider now declining EEA charges with authentication_required (strong customer authentication) and payment failing them as unmapped instead of challenging, confined to eu-west-1, and the failures reaching edge-gateway? 5 = the provider change, the unmapped code, the region segment and the victim chain. Calling it a generic provider outage scores at most 3."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the PaymentProviderError message on payment spans, the failures concentrating in cloud.region eu-west-1, payment latency staying flat and no change logged before the failures? Cap at 3 unless it names the region segment."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the payout reconciliation job, fraud, a deploy or edge-gateway, and avoid claiming a warning that was never logged?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "payment": ["failing_segment", "none_of_these"]
+  },
+  "cause": [
+    "authentication_required",
+    "3-D Secure|\\b3DS\\b|\\bSCA\\b|sca_exemption"
+  ]
+}

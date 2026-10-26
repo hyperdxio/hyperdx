@@ -20,6 +20,7 @@ import { DEFAULT_JUDGE_SPEC, parseJudgeSpec } from './grading/judgeModel';
 import { preflightMcps } from './harness/preflight';
 import { runCell } from './harness/runRun';
 import { type McpKind, PLUGIN_NONE, type PromptVariant } from './harness/types';
+import { HyperdxApiClient } from './hyperdx/api';
 import {
   configExists,
   configMcpNames,
@@ -35,8 +36,13 @@ import {
 import { runCheck, runSetup } from './hyperdx/setup';
 import { columnKeyFor } from './reports/aggregate';
 import { writeBatchSummary } from './reports/store';
+import {
+  allRetrievalIncidents,
+  runRetrievalEval,
+  summarise,
+} from './retrieval/kgRetrieval';
 import { instrumentBatch, summarizeTimingRecord } from './runs/instrument';
-import { batchDirName } from './runs/path';
+import { batchDirName, runsRoot } from './runs/path';
 import { writeRun } from './runs/store';
 import { listBatches, listRunsInBatch, readRun } from './runs/store';
 import { getScenario, SCENARIO_NAMES, SCENARIOS } from './scenarios';
@@ -45,6 +51,9 @@ import {
   type SeedProgress,
   seedScenario,
 } from './scenarios/seedScenario';
+import type { MemoryMode, PrepareContext } from './scenarios/types';
+
+const MEMORY_MODES: MemoryMode[] = ['none', 'related', 'misleading', 'self'];
 
 if (!process.env.ANTHROPIC_API_KEY && process.env.AI_API_KEY) {
   process.env.ANTHROPIC_API_KEY = process.env.AI_API_KEY;
@@ -451,6 +460,14 @@ program
       'denies it.',
     'baseline',
   )
+  .option(
+    '--memory <mode>',
+    "Incident memory to seed before the scenario's runs and clear after: " +
+      '"none" (default), "related", "misleading" or "self". Applies to sh-* ' +
+      'scenarios; other scenarios ignore it. Cells within the scenario share ' +
+      'the memory.',
+    'none',
+  )
   .option('--no-grade', 'Skip automatic grading after runs complete')
   .option('--no-report', 'Skip automatic report generation after grading')
   .option(
@@ -500,6 +517,7 @@ program
         live?: true;
         concurrency: string;
         promptVariant: string;
+        memory: string;
         grade: boolean;
         report: boolean;
         judgeModel?: string;
@@ -563,6 +581,22 @@ program
       const promptVariant: PromptVariant = parsePromptVariant(
         cmdOpts.promptVariant,
       );
+      if (!MEMORY_MODES.includes(cmdOpts.memory as MemoryMode)) {
+        throw new Error(
+          `--memory must be one of ${MEMORY_MODES.join(', ')} (got "${cmdOpts.memory}")`,
+        );
+      }
+      const memoryMode = cmdOpts.memory as MemoryMode;
+      if (memoryMode !== 'none' && !scenario.prepare) {
+        console.warn(
+          `--memory ${memoryMode} ignored: ${scenario.name} has no memory seeding`,
+        );
+      }
+      if (scenario.prepare && !config.hyperdxApi) {
+        throw new Error(
+          `${scenario.name} needs hyperdxApi in eval.config.json. Run \`hdx-eval setup-hyperdx\` first.`,
+        );
+      }
       const runs = Number(cmdOpts.runs);
       // Precedence: explicit --max-turns > scenario.maxTurns > DEFAULT_MAX_TURNS.
       const maxTurns =
@@ -779,6 +813,7 @@ program
               apiKey,
               anchorTimeIso,
               promptVariant,
+              memoryMode,
             });
             const path = writeRun({ record, batchDir });
             const seconds = ((Date.now() - startedMs) / 1000).toFixed(1);
@@ -807,9 +842,27 @@ program
         }
       }
       const workerCount = Math.min(concurrency, cells.length);
-      await Promise.all(
-        Array.from({ length: workerCount }, (_, w) => worker(w + 1)),
-      );
+      // One scenario per process, so two scenarios never share the API's memory.
+      const prepareCtx: PrepareContext = {
+        memoryMode,
+        apiUrl: config.hyperdxApi?.apiUrl ?? '',
+        accessKey: config.hyperdxApi?.accessKey ?? '',
+        connectionId: config.hyperdxApi?.connectionId ?? '',
+        anchorTimeIso,
+        runsDir: runsRoot(),
+      };
+      try {
+        await scenario.prepare?.(prepareCtx);
+        await Promise.all(
+          Array.from({ length: workerCount }, (_, w) => worker(w + 1)),
+        );
+      } finally {
+        await scenario.cleanup?.(prepareCtx).catch(err => {
+          console.error(
+            `Scenario cleanup failed: ${err instanceof Error ? err.message : err}`,
+          );
+        });
+      }
 
       if (errors.length > 0) {
         console.error(
@@ -1094,6 +1147,60 @@ program
       console.log('  ' + summarizeTimingRecord(r));
     }
     console.log(`\nWrote ${records.length} *.timing.json sidecars.`);
+  });
+
+program
+  .command('kg-retrieval')
+  .description(
+    'Score incident retrieval alone (recall@1, recall@3, MRR); no agent run',
+  )
+  .option(
+    '--incidents <names>',
+    'Comma-separated smokehouse incidents (sh- prefix optional), or "all"',
+    'all',
+  )
+  .option('--out <path>', 'Write {summary, results} JSON here')
+  .action(async (cmdOpts: { incidents: string; out?: string }) => {
+    if (!configExists()) {
+      throw new Error(
+        `Eval config missing. Run \`hdx-eval setup-hyperdx\` first. Expected: ${configPath()}`,
+      );
+    }
+    const { hyperdxApi } = readConfig();
+    if (!hyperdxApi) {
+      throw new Error('kg-retrieval needs hyperdxApi in eval.config.json.');
+    }
+    const incidents =
+      cmdOpts.incidents === 'all'
+        ? allRetrievalIncidents()
+        : cmdOpts.incidents
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean);
+    const api = new HyperdxApiClient(hyperdxApi.apiUrl, hyperdxApi.accessKey);
+    const results = await runRetrievalEval(
+      api,
+      incidents,
+      hyperdxApi.connectionId,
+    );
+    const summary = summarise(results);
+    console.log(
+      `n=${summary.n} recall@1=${summary.recallAt1.toFixed(2)} recall@3=${summary.recallAt3.toFixed(2)} mrr=${summary.mrr.toFixed(3)}`,
+    );
+    console.table(
+      results.map(r => ({
+        incident: r.incident,
+        relatedRank: r.relatedRank ?? '-',
+        topTitle: r.top[0]?.title ?? '-',
+        topScore: r.top[0]?.score.toFixed(3) ?? '-',
+      })),
+    );
+    if (cmdOpts.out) {
+      fs.writeFileSync(
+        resolve(cmdOpts.out),
+        JSON.stringify({ summary, results }, null, 2),
+      );
+    }
   });
 
 program

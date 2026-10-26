@@ -1,0 +1,117 @@
+{
+  "scenario": "disk-full",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "orders",
+    "summary": "orders-db ran out of disk seven minutes before the anchor. About fifty minutes earlier the orders-cdc connector, which reads orders-db through the logical replication slot orders_cdc, failed on a Kafka metadata timeout and stopped without restarting; with the slot inactive, Postgres kept every WAL segment for it, and the orders db health logs show the volume climbing from about 62 percent to 100 percent with pg_wal holding tens of GiB. Once the volume filled, every insert fails with could not extend file: No space left on device, so orders.create on POST /checkout fails fast with 500s while GET /orders reads keep working and orders-db read latency is unchanged. checkout has already charged the card through payment before it calls orders.create, so customers are being charged without an order being recorded, and no order events reach email-worker. checkout returns 502s propagating through web-bff and mobile-bff to edge-gateway, where the alert fires. No deploy or config change landed in the window; payment is healthy.",
+    "contributingFactors": [
+      "inactive logical replication slot orders_cdc retaining WAL until the orders-db volume filled",
+      "writes to orders-db failing with No space left on device"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "orders"]
+  },
+  "factors": ["orders/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\borders\\b|orders-db"],
+      [
+        "names_disk_full",
+        3,
+        "no space left|disk[^.\\n]{0,20}?(full|exhaust|ran out|out of space|100)|(ran|run|running) out of (disk|space|storage)|volume[^.\\n]{0,30}?(full|filled|100)"
+      ],
+      [
+        "names_replication_slot",
+        3,
+        "replication slot|orders_cdc|orders-cdc|\\bwal\\b[^.\\n]{0,40}?(retain|kept|pil|grow|accumul)|(retain|kept|accumul)\\w*[^.\\n]{0,40}?\\bwal\\b|debezium"
+      ],
+      [
+        "notes_reads_work",
+        2,
+        "(reads?|selects?|get \\/orders|orders\\.list)[^.\\n]{0,60}?(still |keep )?(work|fine|healthy|succeed|unaffected|unchanged)"
+      ],
+      [
+        "notes_charged_without_order",
+        2,
+        "charged[^.\\n]{0,60}?(without|but no)[^.\\n]{0,20}?order|(payments?|charges?)[^.\\n]{0,60}?(succeed|captured|taken)[^.\\n]{0,60}?order[^.\\n]{0,40}?(fail|missing|not)|orphan\\w* (charge|payment)"
+      ],
+      [
+        "names_early_trigger",
+        1,
+        "kafka|(\\d+|fifty|forty)[- ]?min\\w*[^.\\n]{0,40}?(earlier|before)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?\\bpayment\\b",
+        true
+      ],
+      [
+        "false_blame_pool",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(connection pool|pool exhaust\\w*|slow (database|db|quer\\w*)|\\block)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name orders-db running out of disk because the inactive orders_cdc replication slot kept WAL after its connector stopped, so orders inserts fail and checkout fails, reaching edge-gateway? 5 = disk full, the replication slot as the reason, the write-only failure and the victim chain. Naming disk full without why scores at most 3; blaming a slow database, the pool or payment scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the No space left on device errors on orders.create, reads on GET /orders still succeeding, and the db health and connector logs from before onset? Cap at 3 if the pre-onset logs are not used."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it note that cards are charged before the failed insert (customers charged with no order), avoid claiming a deploy, and avoid blaming payment, checkout or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "orders": ["none_of_these"] },
+  "cause": [
+    "No space left on device",
+    "could not extend file",
+    "orders[-_]cdc",
+    "pg_wal|replication slot"
+  ]
+}

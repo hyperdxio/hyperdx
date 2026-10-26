@@ -1,0 +1,115 @@
+{
+  "scenario": "cache-stampede",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "cart",
+    "summary": "Eighteen minutes before the anchor the cloud provider replaced carts-redis-0001, the Redis node that caches carts for cart, after a host hardware failure, and the node came back with an empty dataset because persistence is disabled. With a cold cache nearly every cart.get misses Redis and reads cart-db instead: the cache hit ratio fell from about 90 percent to about 2 percent, the extra reads saturated cart-db, and its query latency rose from about 6 ms to about 700 ms within a minute. cart's Redis client spans stay fast because a miss returns quickly; the time is in cart's cart-db spans, and a few percent of cart requests fail inside cart waiting for a cart-db connection. web-bff, mobile-bff and checkout call cart with a 500 ms timeout, so most GET /cart and POST /checkout requests fail with 504s. cart only writes a cart back to Redis after its read completes, and cart abandons the read when the caller times out, so the cache refills slowly: by the anchor cart-db latency has eased to about 400 ms and the hit ratio is back near half, and the failures are falling but not over. The 504s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Nothing shipped, no version changed and traffic did not rise.",
+    "contributingFactors": [
+      "the carts Redis node being replaced and returning empty, with persistence disabled",
+      "every cache miss falling through to cart-db with nothing to limit concurrent refills",
+      "cart abandoning timed-out reads before writing them back, so the cache refills slowly",
+      "500 ms caller timeouts on cart in the BFFs and checkout turning slow cart-db reads into 504s"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "cart"]
+  },
+  "factors": ["cart/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcart\\b(?!-db)"],
+      [
+        "names_cache_restart",
+        3,
+        "(redis|cache|carts-redis-0001)[^.\\n]{0,60}?(restart|replac|empty|flush|cold|wiped|lost|evict)|cold (cache|start)|empty (cache|dataset)"
+      ],
+      [
+        "names_stampede",
+        3,
+        "stampede|thundering herd|dogpil|cache miss|miss(es)?[^.\\n]{0,60}?cart-db|hit (ratio|rate)"
+      ],
+      [
+        "names_db_overload",
+        2,
+        "cart-db[^.\\n]{0,80}?(slow|latency|overload|saturat|\\d+ ?ms)|slow quer"
+      ],
+      [
+        "names_slow_refill",
+        2,
+        "(refill|warm|repopulat|recover)\\w*[^.\\n]{0,80}?(slow|gradual|never|timed[- ]out|abandon)|(slow|gradual)\\w*[^.\\n]{0,40}?(refill|warm|repopulat|recover)|write[- ]?back|written back"
+      ],
+      ["names_timeout", 1, "time[- ]?out|504"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_inventory",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\binventory\\b)",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((cart|checkout|customer|user) (traffic|volume)|traffic (surge|spike)|load test)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the carts Redis node coming back empty after it was replaced, with every cart read falling through to cart-db and overloading it, and the resulting cart timeouts reaching edge-gateway? 5 = the cold cache, the miss storm on cart-db, the timeouts and the victim chain. Saying only 'cart-db is slow' with no link to the cache scores at most 2; blaming a deploy, traffic or inventory scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the node replacement and reconnect logs at onset (keys 0), the hit ratio logs, cart's cart-db spans slowing while its Redis spans stay fast, and the slow query logs? Cap at 3 unless it explains why the failures persist long after Redis came back."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it say no deploy or traffic change was involved, note that the failures are easing on their own but not over, and avoid blaming inventory, the BFFs or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "cart": ["slow_datastore", "none_of_these"] },
+  "cause": [
+    "carts-redis",
+    "ElastiCache",
+    "empty dataset|cold cache|hit ratio",
+    "cart's datastore cart-db"
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "scenario": "id-sequence-exhausted",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "orders",
+    "summary": "Nine minutes before the anchor orders_id_seq, the sequence behind the int4 id column of the orders table in orders-db, reached its maximum value of 2147483647. Since then every orders.create insert fails at once with error: nextval: reached maximum value of sequence \"orders_id_seq\" (2147483647), and orders returns 500 on every call from checkout. orders.list reads on GET /orders still succeed, and orders-db latency is unchanged: the database is healthy, it simply cannot hand out another id. For thirty minutes before that an id capacity check on orders logged a WARN every five minutes counting down the ids left, and nobody acted on it. orders.create runs after payment.charge, so each failed checkout has already charged the card with no order written. checkout turns the 500s into 502s and every POST /checkout fails; the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Every other route is healthy. orders 1.7.1, rolled out about forty four minutes before the anchor, is unrelated: it served orders cleanly for over half an hour before the sequence ran out.",
+    "contributingFactors": [
+      "orders.id declared as a serial int4 column, so orders_id_seq stops at 2147483647",
+      "the id capacity warnings on orders counting down for thirty minutes with no owner",
+      "checkout writing the order after charging the card, so each failure leaves a charge with no order"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "orders"]
+  },
+  "factors": ["orders/log_signal", "orders/segment"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\borders\\b"],
+      [
+        "names_sequence",
+        3,
+        "orders_id_seq|sequence[^.\\n]{0,60}?(maximum|\\bmax\\b|exhaust|ran out|run out|2147483647|overflow|wrap)|(maximum|\\bmax\\b)[^.\\n]{0,20}?(value of )?(the )?sequence|2,?147,?483,?647|\\bint4\\b|integer (overflow|max)"
+      ],
+      [
+        "names_inserts_fail",
+        2,
+        "insert|orders\\.create|nextval|new (order )?ids?"
+      ],
+      [
+        "notes_reads_ok",
+        1,
+        "(orders\\.list|GET /orders|reads?)[^.\\n]{0,60}?(succeed|healthy|fine|unaffected|still work)"
+      ],
+      [
+        "store_not_slow",
+        1,
+        "orders-db[^.\\n]{0,80}?(latency|healthy|fast|unchanged|not slow)|(database|\\bdb\\b)[^.\\n]{0,40}?(healthy|not slow|unchanged)"
+      ],
+      [
+        "names_capacity_warning",
+        1,
+        "capacity|ids left|count(ing|ed)? down|warn\\w*[^.\\n]{0,60}?(sequence|\\bids?\\b)"
+      ],
+      ["notes_charged", 1, "charg|after payment"],
+      [
+        "rules_out_orders_deploy",
+        2,
+        "(orders[^.;\\n]{0,20}?(1\\.7\\.1|deploy|roll[- ]?out|release)|1\\.7\\.1)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(orders[^.;\\n]{0,20}?(1\\.7\\.1|deploy|roll[- ]?out|release)|1\\.7\\.1)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "orders[^\\n]{0,60}?(1\\.7\\.1|deploy|roll[- ]?out)|1\\.7\\.1"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_orders_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(orders (1\\.7\\.1|deploy|roll[- ]?out|release)|1\\.7\\.1)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(orders (1\\.7\\.1|deploy|roll[- ]?out|release)|1\\.7\\.1)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(slow (orders-db|database|db|quer(y|ies))|orders-db (latency|slow\\w*|load|disk))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name orders_id_seq reaching the int4 maximum as the origin, so every orders.create insert fails while reads succeed, with checkout's POST /checkout failures reaching edge-gateway? 5 = the exhausted sequence, inserts failing, the victim chain and that the card is charged first. Blaming orders 1.7.1 or a slow orders-db scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the nextval reached maximum value errors on orders spans and logs, the failures confined to orders.create while orders.list succeeds, orders-db latency unchanged, and the id capacity warnings counting down before onset? Cap at 3 unless it cites the error text or the countdown."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming orders 1.7.1 (which served cleanly for over half an hour), a slow database, checkout or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "orders": ["logged_warning", "none_of_these"]
+  },
+  "cause": [
+    "orders_id_seq",
+    "maximum value of sequence",
+    "ids left|id capacity"
+  ]
+}

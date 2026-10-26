@@ -1,0 +1,113 @@
+{
+  "scenario": "waf-ruleset",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "edge-gateway",
+    "summary": "Eleven minutes before the anchor the security team (SEC-2304) began applying the WAF ruleset owasp-crs-4.7 at paranoia level 2, with request body inspection, to edge-gateway, one pod every twenty seconds; each edge-gateway pod logged a config.change when it took effect, and edge-gateway's version did not change. Rule 942440 uses a regular expression that backtracks on checkout's JSON request bodies, so on every enforced pod POST /checkout spends about 170 ms in inspection and about 40 percent of checkout requests hit the 250 ms inspection timeout. The WAF fails closed, so edge-gateway answers 503 WAF inspection timeout: rule 942440 exceeded 250ms on request body, request blocked, without forwarding the request. The failures start and stay at edge-gateway itself: web-bff, mobile-bff, checkout and everything behind them are healthy and simply receive fewer checkout requests, and blocked customers are never charged. GET routes carry no body and are unaffected. mobile-bff 2.4.0, rolled out about thirty one minutes before the anchor, is unrelated: it served cleanly for twenty minutes before the ruleset took effect, and the blocked requests never reach it.",
+    "contributingFactors": [
+      "the SEC-2304 WAF ruleset owasp-crs-4.7 applied to edge-gateway with request body inspection and a fail-closed 250 ms timeout",
+      "rule 942440's regular expression backtracking on checkout's JSON request bodies"
+    ]
+  },
+  "dispatch": {
+    "attach": []
+  },
+  "factors": ["edge-gateway/segment", "edge-gateway/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "edge-gateway"],
+      [
+        "names_waf",
+        3,
+        "\\bwaf\\b|owasp|crs-4\\.7|ruleset|rule 942440|sec-2304|body inspection|request inspection|web application firewall"
+      ],
+      [
+        "names_inspection_timeout",
+        2,
+        "inspection[^.\\n]{0,40}?(timeout|timed out|exceed|250 ?ms)|backtrack|regular expression|regex"
+      ],
+      [
+        "names_checkout_route",
+        2,
+        "POST /checkout|checkout (requests?|route|bodies|body)|request bod(y|ies)"
+      ],
+      [
+        "notes_downstream_healthy",
+        2,
+        "(web-bff|mobile-bff|checkout|downstream|backends?)[^.\\n]{0,80}?(healthy|unaffected|never (reach|see)|fewer|not (failing|involved)|no errors)"
+      ],
+      [
+        "notes_gets_ok",
+        1,
+        "GET[^.\\n]{0,60}?(unaffected|healthy|fine|no body)"
+      ],
+      [
+        "rules_out_mobile_deploy",
+        2,
+        "(mobile-bff[^.;\\n]{0,20}?(2\\.4\\.0|deploy|roll[- ]?out|release)|2\\.4\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(mobile-bff[^.;\\n]{0,20}?(2\\.4\\.0|deploy|roll[- ]?out|release)|2\\.4\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "mobile-bff[^\\n]{0,60}?(2\\.4\\.0|deploy|roll[- ]?out)|2\\.4\\.0"
+        }
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway(?![^.\\n]{0,80}?(waf|owasp|crs|rule|inspect|sec-2304))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_mobile_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(mobile-bff (2\\.4\\.0|deploy|roll[- ]?out|release)|2\\.4\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(mobile-bff (2\\.4\\.0|deploy|roll[- ]?out|release)|2\\.4\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_checkout",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bcheckout (service|deploy|release|bug|code)|web-bff|payment|orders)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at edge-gateway itself, in the SEC-2304 owasp-crs-4.7 WAF ruleset with request body inspection, whose rule 942440 times out on checkout bodies so the gateway blocks POST /checkout with 503s before forwarding? 5 = the ruleset, the inspection timeout, POST /checkout only and the services behind the gateway healthy. Blaming mobile-bff 2.4.0, checkout or any backend scores at most 2; saying only 'edge-gateway is failing' with no ruleset scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the WAF inspection timeout errors on edge-gateway spans, the config.change logs on each gateway pod lining up with each pod's first failures, the failures confined to POST /checkout, and checkout traffic dropping behind the gateway with no errors there? Cap at 3 unless it notes that the requests never reach the backends."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming mobile-bff 2.4.0, checkout, payment or orders, and avoid calling a GET route affected?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "edge-gateway": ["config_change"]
+  },
+  "cause": [
+    "SEC-2304",
+    "owasp-crs|waf ruleset|\\bwaf\\b",
+    "942440",
+    "inspection timeout|body inspection"
+  ]
+}

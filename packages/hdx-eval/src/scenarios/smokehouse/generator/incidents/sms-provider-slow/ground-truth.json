@@ -1,0 +1,115 @@
+{
+  "scenario": "sms-provider-slow",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "notification",
+    "summary": "Twelve minutes before the anchor sms.example.com, the SMS provider notification sends order confirmation texts through, slowed down over four minutes. notification sends the text inline on notify.order, so its own spans grew from about 10 ms to a p95 of about 700 ms; notification has no datastore and returns no errors, and its logs warn every fifteen seconds that sms sends via sms.example.com are slow. checkout calls notify.order as an optional call at the end of POST /checkout, after payment, orders and shipping, and waits for it up to its 500 ms timeout. A checkout has already taken about 300 ms by then, so whenever notification takes more than about 200 ms checkout runs past the 500 ms timeout web-bff and mobile-bff set on it, and they fail the request with 504 although checkout itself finishes and the order is placed. About seven in ten POST /checkout requests fail; every other route is healthy. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Nothing shipped and no config changed. email-worker's weekly-digest cron batch, started six minutes before onset, is unrelated: email-worker is off the request path and stayed error-free.",
+    "contributingFactors": [
+      "sms.example.com, the SMS provider, slowing down",
+      "notification sending the order confirmation text inline on notify.order instead of queueing it",
+      "checkout waiting up to its 500 ms timeout on an optional call, inside the BFFs' own 500 ms budget for checkout"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["checkout/slow_dependency", "notification/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 3, "\\bnotification\\b|notify\\.order"],
+      ["names_sms_provider", 3, "\\bsms\\b|text message"],
+      [
+        "names_optional_wait",
+        2,
+        "optional|inline|synchronous|in the request path|waits? (up to|for)"
+      ],
+      [
+        "names_bff_timeout",
+        1,
+        "(web-bff|mobile-bff|bff)[^.\\n]{0,80}?(time[sd]? ?out|\\b504\\b)|(time[sd]? ?out|\\b504\\b)[^.\\n]{0,80}?(web-bff|mobile-bff|bff)"
+      ],
+      ["notes_checkout_route", 1, "post /checkout|checkout (requests|route)"],
+      [
+        "notes_notification_no_errors",
+        1,
+        "notification[^.\\n]{0,80}?(no errors|error[- ]?free|returns no errors|answers 200)"
+      ],
+      [
+        "rules_out_digest",
+        2,
+        "(email-worker|digest)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(email-worker|digest)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "email-worker|digest"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_digest",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(email-worker|digest)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(email-worker|digest)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bpayment\\b|payments\\.example\\.com)",
+        true
+      ],
+      [
+        "false_blame_checkout_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(checkout (deploy|release|code change|roll[- ]?out|bug))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the SMS provider sms.example.com slowing notification's inline order confirmation texts as the origin, with checkout waiting on the optional notify.order call long enough that web-bff and mobile-bff time out on POST /checkout and the failures reach edge-gateway? 5 = the provider, notification's inline send, the optional call eating checkout's budget and the victim chain. Blaming checkout or payment scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in notification's own span latency rising with no datastore or errors, its slow sms send logs, checkout's client spans to notification timing out at 500 ms while checkout returns 200, and the BFF 504s on checkout? Cap at 3 unless it explains why an optional call that fails softly still fails the request."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming email-worker's weekly-digest batch, a deploy, payment or edge-gateway, and avoid claiming notification returned errors?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "notification": ["none_of_these", "own_saturation"] },
+  "cause": ["sms\\.example\\.com|\\bsms\\b", "notification's own time"]
+}

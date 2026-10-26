@@ -26,6 +26,7 @@ import {
   IconSettings,
   IconSitemap,
   IconTable,
+  IconTopologyStar3,
 } from '@tabler/icons-react';
 
 import api from '@/api';
@@ -105,6 +106,13 @@ const NAV_LINKS: NavLinkConfig[] = [
     label: 'Service Map',
     href: '/service-map',
     icon: <IconSitemap size={16} />,
+    isBeta: true,
+  },
+  {
+    id: 'incident-graph',
+    label: 'Incident graph',
+    href: '/incident-graph',
+    icon: <IconTopologyStar3 size={16} />,
     isBeta: true,
   },
 ];

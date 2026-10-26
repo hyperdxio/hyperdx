@@ -1,0 +1,98 @@
+{
+  "scenario": "retry-storm",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "inventory",
+    "summary": "About twelve minutes before the anchor inventory returned 503 lock service unavailable on most requests for about 90 seconds. cart retries inventory.reserve up to three times on a 5xx or timeout, so the retries multiplied inventory's request volume, to about two and a half times normal during the blip and about one and a half times after it. The retry load kept inventory saturated after the original fault cleared: its own latency stays near 250 ms and about a third of requests are rejected with 503 rejected: worker queue full. Each retry adds another attempt to cart's request, so cart overruns the 500 ms timeout in web-bff, mobile-bff and checkout, and those 504s, plus 502s from exhausted retries during the blip, propagate to edge-gateway, where the alert fires. cart logs a WARN retrying inventory.reserve line on each retry. There was no deploy, and inventory-db latency is unchanged.",
+    "contributingFactors": [
+      "brief inventory outage (lock service unavailable)",
+      "cart's retry policy on inventory.reserve amplifying load and keeping inventory saturated"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "cart", "checkout"]
+  },
+  "factors": ["inventory/traffic", "inventory/saturation", "cart/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\binventory\\b"],
+      ["names_retries", 3, "retr(y|ies|ied|ying)"],
+      [
+        "names_amplification",
+        2,
+        "amplif|multipl|(volume|load|traffic|request (rate|count))[^.\\n]{0,40}?(rose|rise|jump|doubl|tripl|increas|times)|retry storm|thundering herd"
+      ],
+      [
+        "names_persistence",
+        2,
+        "(after|past|beyond|outlast)[^.\\n]{0,40}?(fault|blip|outage|initial|original)[^.\\n]{0,20}?(clear|end|stop|recover|pass)|self[- ]sustain|persist|outlast"
+      ],
+      ["names_caller", 1, "\\bcart\\b"],
+      ["names_timeout", 1, "time[- ]?out|504"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(inventory-db|postgres\\w*|slow (database|db|query|queries))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief identify a brief inventory outage amplified by cart's retries into sustained overload, so errors persist after the original fault ended, with edge-gateway as where the alert fired? 5 = the blip, the retry amplification, the persistence and the timeout path. Naming inventory as failing without the retries caps at 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in inventory request volume rising above cart's call rate, the resend_count or WARN retry logs on cart, the blip's lock service errors giving way to worker queue full rejections, and inventory-db latency staying flat? Cap at 3 unless the volume increase is shown from span counts."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming inventory-db, a deploy, the BFFs or edge-gateway, and avoid claiming the original fault is still active? Cap at 3 unless it says the first fault cleared while errors continued."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "inventory": ["retry_amplification"] },
+  "cause": [
+    "callers resend to inventory",
+    "lock service unavailable",
+    "retrying inventory"
+  ]
+}

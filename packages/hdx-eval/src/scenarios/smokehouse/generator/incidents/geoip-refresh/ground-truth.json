@@ -1,0 +1,105 @@
+{
+  "scenario": "geoip-refresh",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "edge-gateway",
+    "summary": "Nine minutes before the anchor edge-gateway's weekly geoipupdate run downloaded GeoLite2-City.mmdb build 20260922 at 14.1 MB, where the previous build was 68.4 MB, and reloaded the geo resolver without verifying the checksum. It ran on one edge-gateway pod every thirty seconds, and each pod logged the download. The file is truncated, so every lookup that misses the gateway's IP cache reads past its end and fails with GeoIPLookupError: unexpected end of database while reading search tree node. On each updated pod about one request in five fails with 500 before it is forwarded, on every route alike. The errors start and stay at edge-gateway: web-bff, mobile-bff and every service behind them are healthy and only see fewer requests. edge-gateway's version did not change and nothing shipped. web-bff's render cache TTL change (WEB-771) two minutes earlier is unrelated: web-bff serves no errors and the failing requests never reach it.",
+    "contributingFactors": [
+      "the weekly GeoIP refresh loading a truncated GeoLite2-City database without a checksum check",
+      "edge-gateway failing the request when the region lookup throws, instead of serving it without a region"
+    ]
+  },
+  "dispatch": {
+    "attach": []
+  },
+  "factors": ["edge-gateway/log_signal", "edge-gateway/deploy"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "edge-gateway"],
+      ["names_geoip", 3, "geoip|geolite|mmdb|geo ?(ip )?database|geo resolver"],
+      [
+        "names_truncated",
+        2,
+        "truncat|14\\.1 ?MB|smaller|incomplete|corrupt|unexpected end of database|checksum"
+      ],
+      ["names_lookup_error", 1, "GeoIPLookupError|lookup (fail|error)"],
+      [
+        "notes_downstream_healthy",
+        2,
+        "(web-bff|mobile-bff|downstream|backends?)[^.\\n]{0,80}?(healthy|unaffected|never (reach|see)|fewer|not (failing|involved)|no errors)"
+      ],
+      [
+        "notes_all_routes",
+        1,
+        "every route|all routes|across routes|route[- ]independent"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_web_ttl",
+        2,
+        "(WEB-771|render cache( ttl)?|web-bff[^.;\\n]{0,20}?(config|ttl))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(WEB-771|render cache( ttl)?|web-bff[^.;\\n]{0,20}?(config|ttl))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "WEB-771|render cache( ttl)?|web-bff[^.;\\n]{0,20}?(config|ttl)"
+        }
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway(?![^.\\n]{0,80}?(geo|mmdb|lookup))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_web_ttl",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(WEB-771|render cache( ttl)?|web-bff[^.;\\n]{0,20}?(config|ttl))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(WEB-771|render cache( ttl)?|web-bff[^.;\\n]{0,20}?(config|ttl))(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_backend",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\b(web-bff|mobile-bff) (deploy|release|bug|code)|\\bauth\\b)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at edge-gateway's GeoIP database refresh, which loaded a truncated GeoLite2-City file, with lookups that miss the IP cache throwing and failing requests at the gateway before they are forwarded? 5 = the refresh, the truncated file and the failures staying at edge-gateway. Blaming a backend scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the geoipupdate log lines on each edge-gateway pod, the smaller file size, the GeoIPLookupError on edge-gateway spans and the staggered start by pod? Cap at 3 unless it notes that web-bff, mobile-bff and the services behind them are healthy."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming web-bff's render cache TTL change (WEB-771), a backend, a deploy or traffic?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "edge-gateway": ["config_change", "none_of_these"]
+  },
+  "cause": ["geoip|GeoLite2", "\\.mmdb", "build 20260922"]
+}

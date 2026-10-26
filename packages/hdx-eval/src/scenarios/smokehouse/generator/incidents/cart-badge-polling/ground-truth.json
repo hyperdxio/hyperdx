@@ -1,0 +1,104 @@
+{
+  "scenario": "cart-badge-polling",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "mobile-bff",
+    "summary": "Version 5.10.0 of the Android app, ShopApp-Android, is in a Play Console staged rollout: mobile-bff's release tracker logged it at 5 percent of Android users twenty nine minutes before the anchor, 15 percent at twenty one, 40 percent at thirteen and 60 percent at seven. 5.10.0 refreshes the cart badge with GET /cart every ten seconds while the app is open, so GET /cart requests through mobile-bff grow with each step, to several times their usual volume across every tenant. cart reads cart-db on every cart.get, and the extra reads slow cart-db from about 6 ms to about 200 ms; the carts Redis stays fast. cart.get then often takes longer than the 500 ms its callers allow, and POST /checkout, which calls cart before pricing, payment and orders, fails most: about two thirds of checkouts fail with 504, and a smaller share of GET /cart. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. No server-side service shipped, and cart's version did not change. cart's eviction batch size change (CART-2101) a minute before the failures is unrelated: it only changes how many abandoned carts the sweeper deletes at a time.",
+    "contributingFactors": [
+      "ShopApp-Android 5.10.0 polling GET /cart every ten seconds",
+      "the staged rollout raising the share of Android users on 5.10.0 in steps",
+      "cart-db slowing under the extra reads, behind callers' 500 ms timeouts"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "cart", "checkout"]
+  },
+  "factors": ["mobile-bff/traffic", "cart/traffic", "cart/slow_dependency"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "mobile-bff|android|client"],
+      ["names_app_release", 3, "5\\.10\\.0|ShopApp-Android|android app"],
+      ["names_polling", 2, "poll|every ten seconds|every 10 ?s|badge|refresh"],
+      [
+        "names_traffic",
+        2,
+        "traffic|volume|requests? (grew|grow|rose|increase)|more requests"
+      ],
+      ["names_cart_db", 2, "cart-db|cart's (database|datastore)"],
+      ["names_checkout", 1, "\\bcheckout"],
+      [
+        "notes_redis_fast",
+        1,
+        "(carts|redis)[^.\\n]{0,40}?(fast|healthy|normal|unchanged)"
+      ],
+      [
+        "rules_out_cart_config",
+        2,
+        "(CART-2101|eviction batch|cart[^.;\\n]{0,20}?config)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(CART-2101|eviction batch|cart[^.;\\n]{0,20}?config)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "CART-2101|eviction batch|cart[^.;\\n]{0,20}?config"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_cart_config",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(CART-2101|eviction batch|cart[^.;\\n]{0,20}?config)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(CART-2101|eviction batch|cart[^.;\\n]{0,20}?config)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_tenant",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((single|one) tenant|\\b(acme|globex|initech|umbrella|hooli|vandelay|wonka|stark)\\b|\\bbots?\\b|scraper)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at the ShopApp-Android 5.10.0 release, whose cart badge polls GET /cart every ten seconds, with cart reads growing as the staged rollout widened until cart-db slowed and cart and checkout timed out? 5 = the app release, the polling, the step-wise growth and the chain to edge-gateway. Blaming cart-db alone scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in GET /cart volume growing through mobile-bff only, the release tracker lines stepping up before each jump, cart-db client spans slowing while the carts Redis stays fast, and the checkout timeouts? Cap at 3 unless it ties the growth to the rollout steps."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming cart's eviction batch change (CART-2101), a single tenant or bot, a server-side deploy or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "mobile-bff": ["traffic_flood", "upstream_change"],
+    "cart": ["traffic_flood", "slow_datastore", "upstream_change"]
+  },
+  "cause": ["ShopApp-Android", "5\\.10\\.0"]
+}

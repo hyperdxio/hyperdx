@@ -1,0 +1,115 @@
+{
+  "scenario": "broker-disk-alarm",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "orders",
+    "summary": "Twelve minutes before the anchor the RabbitMQ node rabbitmq-0 crossed its disk free limit (free 1.9 GiB against disk_free_limit 2 GiB) and raised a disk resource alarm, so it blocks every connection that publishes to it. Every orders pod logged amqp: connection.blocked received from rabbitmq-0 within six seconds, and then repeated that its publishers were blocked. orders spreads its order-events publishers over rabbitmq-0 and rabbitmq-1, so about half of orders.create calls wait on a publish to rabbitmq-0 that never completes and fail after 2000 ms with PublishTimeoutError. checkout calls orders.create with a 500 ms timeout, so about half of POST /checkout requests fail with 504, after the customer has already been charged, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. orders-db is healthy and orders.list, which does not publish, is unaffected; every other route is healthy. Nothing shipped and the orders version did not change. email-worker's suppression list sync job, started three minutes earlier, is unrelated: it only reads from esp.example.com and writes email-worker's own table, and email-worker serves no errors.",
+    "contributingFactors": [
+      "rabbitmq-0 reaching its disk free limit and blocking publishers",
+      "orders publishing order-events synchronously inside orders.create",
+      "checkout's 500 ms timeout on orders.create"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["orders/log_signal", "orders/infra"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\borders\\b"],
+      ["names_broker", 3, "rabbitmq|broker|amqp"],
+      [
+        "names_disk_alarm",
+        3,
+        "disk (free )?(limit|alarm)|disk_free_limit|resource alarm|low on disk|connection\\.blocked|blocked (connection|publish)"
+      ],
+      ["names_publish", 2, "publish"],
+      [
+        "names_checkout_timeout",
+        1,
+        "checkout[^.\\n]{0,80}?(time[sd]? ?out|\\b504\\b)|500 ms timeout"
+      ],
+      [
+        "notes_store_healthy",
+        1,
+        "orders-db[^.\\n]{0,40}?(healthy|fast|fine|unchanged|normal)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_sync_job",
+        2,
+        "(suppression list|email-worker[^.;\\n]{0,20}?(job|sync))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(suppression list|email-worker[^.;\\n]{0,20}?(job|sync))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "suppression list|email-worker[^.;\\n]{0,20}?(job|sync)"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_sync_job",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(suppression list|email-worker[^.;\\n]{0,20}?(job|sync))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(suppression list|email-worker[^.;\\n]{0,20}?(job|sync))(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(orders-db|postgres\\w*|slow (database|db|query))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at orders, with rabbitmq-0 hitting its disk free limit and blocking the connections orders publishes order-events on, so orders.create waits and checkout times out, and the failures reaching edge-gateway? 5 = the disk alarm, the blocked publishes, the checkout timeouts and edge-gateway as the victim. Blaming orders-db scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the connection.blocked warnings on every orders pod at onset, the PublishTimeoutError on orders spans, orders.list staying healthy and the failures confined to POST /checkout? Cap at 3 unless it says orders-db is healthy."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming email-worker's suppression list sync job, orders-db, a deploy or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "orders": ["logged_warning", "none_of_these"]
+  },
+  "cause": [
+    "connection\\.blocked",
+    "disk_free_limit|low on disk|resource alarm",
+    "rabbitmq-0"
+  ]
+}

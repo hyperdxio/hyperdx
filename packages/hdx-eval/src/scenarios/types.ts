@@ -93,6 +93,19 @@ export type PostRunInspectionContext = {
   cleanup?: boolean;
 };
 
+export type MemoryMode = 'none' | 'related' | 'misleading' | 'self';
+
+export type PrepareContext = {
+  memoryMode: MemoryMode;
+  apiUrl: string;
+  accessKey: string;
+  /** Eval ClickHouse connection, for scenarios that create their own sources. */
+  connectionId: string;
+  anchorTimeIso?: string;
+  /** Root directory holding run batches, for modes that read earlier runs. */
+  runsDir: string;
+};
+
 export type Scenario = {
   name: string;
   /** Optional per-scenario override.
@@ -152,6 +165,12 @@ export type Scenario = {
   postRunInspection?: (
     ctx: PostRunInspectionContext,
   ) => Promise<PostRunInspectionResult>;
+
+  /** Runs once before the scenario's cells (e.g. to seed incident memory). */
+  prepare?: (ctx: PrepareContext) => Promise<void>;
+
+  /** Runs once after the scenario's cells, even when a run failed. */
+  cleanup?: (ctx: PrepareContext) => Promise<void>;
 };
 
 /** Helper for tests: drain an iterable into one combined batch. */

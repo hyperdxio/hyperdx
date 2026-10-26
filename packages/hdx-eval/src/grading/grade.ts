@@ -15,6 +15,7 @@ import {
   judgeCredentialsAvailable,
   parseJudgeSpec,
 } from './judgeModel';
+import { negativeMatches, stepsToOrigin } from './origin';
 import { runAdoptionChecks, runProgrammaticChecks } from './programmatic';
 import { loadScenarioRubric } from './rubric';
 import {
@@ -344,6 +345,17 @@ async function gradeOne(args: {
     Math.min(1, rawCombined - toolErrors.penalty),
   );
 
+  const expected = (scenario.groundTruth.expected ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const origin = expected.originService;
+  const alerting = expected.userFacingService ?? expected.affectedService;
+  const originStep =
+    typeof origin === 'string' && typeof alerting === 'string'
+      ? stepsToOrigin(record.toolCalls, origin, alerting)
+      : null;
+
   return {
     schemaVersion: 2,
     runId: record.runId,
@@ -356,6 +368,8 @@ async function gradeOne(args: {
     inspectionSummary: inspectionResult?.summary,
     inspectionEvidence: inspectionResult?.evidence || undefined,
     combinedScore,
+    stepsToOrigin: originStep,
+    negativeMatches: negativeMatches(programmatic),
     gradedAt: new Date().toISOString(),
     judgeModel: judge?.model ?? (opts.skipJudge ? 'skipped' : judgeSpec),
   };

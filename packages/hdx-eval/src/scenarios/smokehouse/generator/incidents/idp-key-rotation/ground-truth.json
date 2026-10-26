@@ -1,0 +1,114 @@
+{
+  "scenario": "idp-key-rotation",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "auth",
+    "summary": "Ten minutes before the anchor the external identity provider, login.example.com, rotated the signing key of its EU region to kid idp-eu-2026-10 without publishing it in its JWKS ahead of time. auth verifies customer access tokens against a copy of the provider's JWKS that it caches for 24 hours and does not refetch when it meets an unknown kid, so its cached keyset still holds only idp-eu-2026-04 and idp-us-2026-04. Every token signed with the new key fails auth.verify with 500 SigningKeyNotFoundError: no key matching kid \"idp-eu-2026-10\" in cached JWKS from login.example.com, and auth logs WARN jwks unknown kid lines. Access tokens live fifteen minutes, so the share grows as EU sessions refresh: by the anchor about two thirds of requests from cloud.region eu-west-1 fail, on every route, and none from us-east-1 or us-west-2. The BFFs fail every request whose auth.verify fails, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. auth's latency, sessions store and version are unchanged. The signing key lines auth logs every few minutes are its own session key rotations and are routine, and the BFFs' WARN lines about auth.verify returning 500 are symptoms.",
+    "contributingFactors": [
+      "the identity provider's unannounced EU signing key rotation to idp-eu-2026-10",
+      "auth's 24 hour JWKS cache with no refetch on an unknown kid"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["auth/segment", "auth/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bauth\\b"],
+      [
+        "names_idp_rotation",
+        3,
+        "idp-eu-2026-10|login\\.example\\.com|identity provider|\\bidp\\b"
+      ],
+      [
+        "names_jwks_cache",
+        3,
+        "jwks|keyset|unknown kid|no key matching|SigningKeyNotFound|refetch"
+      ],
+      ["names_eu_segment", 2, "eu-west-1|\\beu\\b|europe"],
+      [
+        "notes_us_healthy",
+        1,
+        "(us-east-1|us-west-2)[^.\\n]{0,60}?(healthy|unaffected|no errors|fine)|none from us-"
+      ],
+      [
+        "notes_ramp",
+        1,
+        "fifteen minutes|15 minutes|refresh|grows|growing|ramp"
+      ],
+      [
+        "rules_out_session_rotation",
+        1,
+        "(rotated the signing key on auth|session key rotations?)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(rotated the signing key on auth|session key rotations?)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "rotated the signing key on auth|session key rotations?"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_session_rotation",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(rotated the signing key on auth|session key rotations?)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(rotated the signing key on auth|session key rotations?)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_sessions_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(sessions (redis|store)|\\bredis\\b|auth (deploy|release|roll[- ]?out|bug))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at the external identity provider's EU signing key rotation to idp-eu-2026-10, which auth's cached JWKS does not contain and does not refetch, so EU tokens fail auth.verify and the failures reach edge-gateway? 5 = the key rotation, the JWKS cache, the eu-west-1 segment growing as tokens refresh, and the victim chain. Blaming auth's own routine key rotation, the sessions Redis or an auth deploy scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the SigningKeyNotFoundError on auth spans naming the new kid, the failures confined to cloud.region eu-west-1 and growing over fifteen minutes, and auth's WARN jwks unknown kid lines listing the cached keys? Cap at 3 unless it explains why the share keeps growing."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming auth's own signing key rotation lines, the sessions store, the BFFs or edge-gateway, and avoid calling US traffic affected?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "auth": ["none_of_these", "failing_segment"]
+  },
+  "cause": [
+    "idp-eu-2026-10",
+    "SigningKeyNotFound|no key matching kid|unknown kid",
+    "jwks|keyset",
+    "login\\.example\\.com"
+  ]
+}

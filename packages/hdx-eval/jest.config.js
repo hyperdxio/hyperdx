@@ -19,6 +19,11 @@ module.exports = {
     '@/(.*)$': '<rootDir>/$1',
   },
   transformIgnorePatterns: ['/node_modules/(?!(ai|@ai-sdk|@workflow/serde)/)'],
+  // Copy of the smoketown generator, kept close to upstream for re-syncing.
+  coveragePathIgnorePatterns: [
+    '/node_modules/',
+    'src/scenarios/smokehouse/generator/',
+  ],
   // Coverage floor pinned just below measured reality so coverage can only
   // ratchet up. Decay below these numbers fails the build. Raise them
   // deliberately as coverage improves; never lower them silently.

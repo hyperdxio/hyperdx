@@ -1,0 +1,87 @@
+{
+  "scenario": "two-faults",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "inventory",
+    "summary": "Two unrelated faults overlap. First, the Postgres behind inventory (inventory-db) slowed from about 6 ms to about 900 ms over ten minutes starting twelve minutes before the anchor; cart and checkout call inventory.reserve with a 500 ms timeout and fail with 504s. Second, four minutes later, pricing rolled 1.4.2 -> 1.5.0 to all six pods and its enterprise cache-miss fallback started returning 500 (FallbackHandlerError: schema mismatch in enterprise_v2_response) for requests with tenant.tier=enterprise and cache.hit=false. Both propagate to edge-gateway, where the alert fires. Once inventory times out, /cart and /checkout fail at cart before reaching pricing, so pricing's errors show mostly on /search and /product. Neither explains the other: inventory has no deploy, and pricing's failures are confined to the enterprise cache-miss segment on every route that calls pricing.",
+    "contributingFactors": [
+      "inventory-db latency step to ~900 ms with 500 ms caller timeouts",
+      "pricing 1.5.0 failing enterprise cache-miss requests"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "cart"]
+  },
+  "factors": ["pricing/deploy", "pricing/segment", "pricing/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_inventory", 2, "\\binventory\\b"],
+      ["names_inventory_store", 2, "inventory-db|postgres(ql)?|pg\\.update"],
+      ["names_timeout_mechanism", 1, "time[- ]?out|504"],
+      ["names_pricing", 2, "\\bpricing\\b"],
+      ["names_pricing_deploy", 2, "1\\.5\\.0"],
+      ["names_enterprise_segment", 2, "enterprise"],
+      [
+        "names_pricing_error",
+        1,
+        "FallbackHandlerError|schema mismatch|enterprise_v2_response"
+      ],
+      [
+        "says_independent",
+        2,
+        "(?<!\\bnot (a |an )?)\\b(two|separate|independent|distinct|unrelated) (root )?(causes?|faults?|incidents?|problems?|failures?|issues?)\\b|(independent(ly)?|separate|unrelated)[^.\\n]{0,20}?\\b(from|of) (inventory|pricing|each other|one another)|\\bindependently\\b|neither (explains|caused?|causes) the other"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name both faults: inventory-db latency with the 500 ms caller timeouts, and pricing 1.5.0 failing enterprise cache-miss requests? 5 = both with mechanisms. Naming only one caps at 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is each fault shown from its own data (inventory's pg.update latency; pricing's error split by tenant.tier and cache.hit, the rollout logs), with separate onsets?"
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid folding one fault into the other (for example calling the pricing errors a symptom of inventory), and avoid blaming edge-gateway or a BFF?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "inventory": ["slow_datastore"],
+    "pricing": ["deploy_defect", "failing_segment"]
+  },
+  "cause": [
+    "inventory-db",
+    "1\\.4\\.2 -> 1\\.5\\.0",
+    "FallbackHandlerError|enterprise_v2_response|schema mismatch",
+    "tenant\\.tier=enterprise|cache\\.hit=false"
+  ]
+}

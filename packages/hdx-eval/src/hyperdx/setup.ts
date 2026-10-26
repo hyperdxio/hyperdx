@@ -1,20 +1,23 @@
-import { scenarioTables } from '@/clickhouse/schema';
 import { QUERY_TIMEOUT_SECONDS } from '@/harness/mcpConfig';
 import type { McpDefinition } from '@/harness/types';
 import { SCENARIO_NAMES } from '@/scenarios';
+import { SMOKEHOUSE_PREFIX } from '@/scenarios/smokehouse/shared';
 
-import { HyperdxApiClient, type HyperdxSource } from './api';
+import { HyperdxApiClient } from './api';
 import {
   configPath,
   type EvalConfig,
   readConfig as readEvalConfig,
   writeConfig,
 } from './config';
+import { ensureScenarioSources, sourceId } from './sources';
 
 const EVAL_CONNECTION_NAME = 'hdx-eval-clickhouse';
-const TRACE_DEFAULT_SELECT =
-  'Timestamp, ServiceName, SpanName, Duration, StatusCode';
-const LOG_DEFAULT_SELECT = 'Timestamp, ServiceName, SeverityText, Body';
+
+/** Smokehouse runs create their own sources (pinScenario), so 80 scenarios do not add 240 sources here. */
+export const SETUP_SCENARIO_NAMES = SCENARIO_NAMES.filter(
+  n => !n.startsWith(SMOKEHOUSE_PREFIX),
+);
 
 export type SetupOptions = {
   apiUrl: string;
@@ -66,7 +69,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
     createdConnection = true;
   }
 
-  // 4. Ensure one Trace Source + one Log Source per scenario.
+  // 4. Ensure trace, log and metric Sources per scenario.
   let sources = await api.listSources();
   if (opts.resetSources) {
     const evalSources = sources.filter(s => s.name.startsWith('eval-'));
@@ -75,65 +78,12 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
     }
     sources = await api.listSources();
   }
-  const sourcesByName = new Map(sources.map(s => [s.name, s]));
   const created: string[] = [];
-  const scenarioIds: Record<
-    string,
-    { tracesSourceId: string; logsSourceId: string; metricsSourceId: string }
-  > = {};
-
-  for (const name of SCENARIO_NAMES) {
-    const tables = scenarioTables(name);
-    const traceName = `eval-${name}-traces`;
-    const logName = `eval-${name}-logs`;
-    const metricName = `eval-${name}-metrics`;
-
-    let traceSource = sourcesByName.get(traceName);
-    if (!traceSource) {
-      traceSource = await api.createSource(
-        buildTraceSourceBody(traceName, connection._id, tables.traces, {
-          kvRollupTable: tables.tracesKvRollup,
-          keyRollupTable: tables.tracesKeyRollup,
-        }),
-      );
-      created.push(traceName);
-    }
-
-    let logSource = sourcesByName.get(logName);
-    if (!logSource) {
-      logSource = await api.createSource(
-        buildLogSourceBody(logName, connection._id, tables.logs, {
-          kvRollupTable: tables.logsKvRollup,
-          keyRollupTable: tables.logsKeyRollup,
-        }),
-      );
-      created.push(logName);
-    }
-
-    let metricSource = sourcesByName.get(metricName);
-    if (!metricSource) {
-      metricSource = await api.createSource(
-        buildMetricSourceBody(
-          metricName,
-          connection._id,
-          {
-            gauge: tables.metricsGauge,
-            sum: tables.metricsSum,
-            histogram: tables.metricsHistogram,
-            exponentialHistogram: tables.metricsExponentialHistogram,
-            summary: tables.metricsSummary,
-          },
-          sourceId(logSource),
-        ),
-      );
-      created.push(metricName);
-    }
-
-    scenarioIds[name] = {
-      tracesSourceId: sourceId(traceSource),
-      logsSourceId: sourceId(logSource),
-      metricsSourceId: sourceId(metricSource),
-    };
+  const scenarioIds: NonNullable<EvalConfig['scenarios']> = {};
+  for (const name of SETUP_SCENARIO_NAMES) {
+    const r = await ensureScenarioSources(api, name, connection._id, sources);
+    created.push(...r.created);
+    scenarioIds[name] = r.ids;
   }
 
   const mcpUrl = `${opts.apiUrl.replace(/\/$/, '')}/mcp`;
@@ -209,114 +159,6 @@ export async function runSetup(opts: SetupOptions): Promise<SetupResult> {
     configPath: configPath(),
     config,
     created: { connection: createdConnection, sources: created },
-  };
-}
-
-function sourceId(source: HyperdxSource): string {
-  return source.id ?? source._id;
-}
-
-// Apply a per-query max_execution_time to every Source so the HyperDX MCP
-// faces the same query timeout as the ClickHouse MCP. Simulates a busy
-// production cluster where queries that scan everything time out.
-const EVAL_QUERY_SETTINGS = [
-  { setting: 'max_execution_time', value: String(QUERY_TIMEOUT_SECONDS) },
-];
-
-function buildTraceSourceBody(
-  name: string,
-  connectionId: string,
-  tableName: string,
-  rollup: { kvRollupTable: string; keyRollupTable: string },
-): Record<string, unknown> {
-  return {
-    name,
-    kind: 'trace',
-    connection: connectionId,
-    from: { databaseName: 'default', tableName },
-    timestampValueExpression: 'Timestamp',
-    defaultTableSelectExpression: TRACE_DEFAULT_SELECT,
-    durationExpression: 'Duration',
-    durationPrecision: 9,
-    traceIdExpression: 'TraceId',
-    spanIdExpression: 'SpanId',
-    parentSpanIdExpression: 'ParentSpanId',
-    spanNameExpression: 'SpanName',
-    spanKindExpression: 'SpanKind',
-    statusCodeExpression: 'StatusCode',
-    statusMessageExpression: 'StatusMessage',
-    serviceNameExpression: 'ServiceName',
-    resourceAttributesExpression: 'ResourceAttributes',
-    eventAttributesExpression: 'SpanAttributes',
-    implicitColumnExpression: 'SpanName',
-    querySettings: EVAL_QUERY_SETTINGS,
-    metadataMaterializedViews: {
-      keyRollupTable: rollup.keyRollupTable,
-      kvRollupTable: rollup.kvRollupTable,
-      granularity: '15 minute',
-    },
-  };
-}
-
-function buildMetricSourceBody(
-  name: string,
-  connectionId: string,
-  metricTables: {
-    gauge: string;
-    sum: string;
-    histogram: string;
-    exponentialHistogram: string;
-    summary: string;
-  },
-  logSourceId: string,
-): Record<string, unknown> {
-  return {
-    name,
-    kind: 'metric',
-    connection: connectionId,
-    from: { databaseName: 'default', tableName: '' },
-    timestampValueExpression: 'TimeUnix',
-    serviceNameExpression: 'ServiceName',
-    resourceAttributesExpression: 'ResourceAttributes',
-    metricTables: {
-      gauge: metricTables.gauge,
-      sum: metricTables.sum,
-      histogram: metricTables.histogram,
-      'exponential histogram': metricTables.exponentialHistogram,
-      summary: metricTables.summary,
-    },
-    logSourceId,
-    querySettings: EVAL_QUERY_SETTINGS,
-  };
-}
-
-function buildLogSourceBody(
-  name: string,
-  connectionId: string,
-  tableName: string,
-  rollup: { kvRollupTable: string; keyRollupTable: string },
-): Record<string, unknown> {
-  return {
-    name,
-    kind: 'log',
-    connection: connectionId,
-    from: { databaseName: 'default', tableName },
-    timestampValueExpression: 'Timestamp',
-    defaultTableSelectExpression: LOG_DEFAULT_SELECT,
-    serviceNameExpression: 'ServiceName',
-    severityTextExpression: 'SeverityText',
-    bodyExpression: 'Body',
-    traceIdExpression: 'TraceId',
-    spanIdExpression: 'SpanId',
-    resourceAttributesExpression: 'ResourceAttributes',
-    eventAttributesExpression: 'LogAttributes',
-    implicitColumnExpression: 'Body',
-    querySettings: EVAL_QUERY_SETTINGS,
-    metadataMaterializedViews: {
-      keyRollupTable: rollup.keyRollupTable,
-      kvRollupTable: rollup.kvRollupTable,
-      granularity: '15 minute',
-    },
   };
 }
 

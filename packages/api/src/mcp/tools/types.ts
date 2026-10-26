@@ -15,6 +15,8 @@ export type McpContext = {
    * Identity of the calling MCP client application, parsed from User-Agent.
    */
   mcpClient?: McpClientInfo;
+  /** Gates registration of the incident knowledge graph tools. */
+  isKnowledgeGraphEnabled?: boolean;
 };
 
 /**

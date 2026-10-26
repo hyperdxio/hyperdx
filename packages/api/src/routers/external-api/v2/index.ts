@@ -6,6 +6,7 @@ import alertsRouter from '@/routers/external-api/v2/alerts';
 import chartsRouter from '@/routers/external-api/v2/charts';
 import connectionsRouter from '@/routers/external-api/v2/connections';
 import dashboardRouter from '@/routers/external-api/v2/dashboards';
+import knowledgeRouter from '@/routers/external-api/v2/knowledge';
 import savedSearchesRouter from '@/routers/external-api/v2/savedSearches';
 import searchRouter from '@/routers/external-api/v2/search';
 import sourcesRouter from '@/routers/external-api/v2/sources';
@@ -46,6 +47,13 @@ router.use(
   defaultRateLimiter,
   validateUserAccessKey,
   dashboardRouter,
+);
+
+router.use(
+  '/knowledge',
+  defaultRateLimiter,
+  validateUserAccessKey,
+  knowledgeRouter,
 );
 
 router.use(

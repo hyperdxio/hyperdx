@@ -1,0 +1,111 @@
+{
+  "scenario": "breaker-stuck-open",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "checkout",
+    "summary": "checkout's circuit breaker to fraud is stuck open. fraud 2.0.0 rolled out forty minutes before the anchor and moved its health check from /healthz to /health/live and /health/ready; that was harmless on its own. Twelve minutes before the anchor fraud failed every request for about fifty seconds while its model server reloaded, and the breaker on every checkout pod opened after five consecutive 503s. fraud recovered straight away and has been healthy since, but checkout's half-open probe still calls GET /healthz, gets a 404 every thirty seconds, and reopens the breaker, so it never closes. Every POST /checkout on an affected pod now fails fast with a 503 CircuitBreakerOpenError after the cart, pricing and promo calls and before fraud is called, so fraud's request volume dropped sharply while its own error rate is zero. checkout-3 and checkout-5 were evicted by a node drain six minutes before the anchor, came back with a closed breaker and are healthy, which confirms the stuck state lives in the running checkout pods. The 503s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires; other routes are healthy. No customer is charged, since payment comes after fraud.",
+    "contributingFactors": [
+      "checkout's fraud breaker probing /healthz, which fraud 2.0.0 removed, so the half-open probe always fails",
+      "a fifty second fraud blip opening the breaker on every checkout pod",
+      "checkout failing closed with no fraud score instead of degrading"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["fraud/deploy", "checkout/log_signal", "fraud/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcheckout\\b"],
+      [
+        "names_breaker",
+        3,
+        "circuit[- ]?breaker|breaker|circuit[^.\\n]{0,20}?open|circuitbreakeropenerror"
+      ],
+      [
+        "names_stuck",
+        2,
+        "(stuck|stays?|remains?|never) (open|clos)|never (recover|reset)|not (closing|recovering)|reopen"
+      ],
+      [
+        "names_probe_404",
+        3,
+        "/healthz|health[- ]?(check|endpoint|probe)[^.\\n]{0,60}?(404|moved|removed|renamed|changed)|half[- ]open probe|\\b404\\b"
+      ],
+      [
+        "ties_to_fraud_release",
+        2,
+        "(fraud[^.\\n]{0,20}?)?2\\.0\\.0|fraud[^.\\n]{0,20}?(deploy|roll[- ]?out|release)"
+      ],
+      [
+        "notes_fraud_recovered",
+        2,
+        "fraud[^.\\n]{0,80}?(recovered|healthy|error[- ]?free|zero errors|no errors|back)|(blip|outage)[^.\\n]{0,40}?(ended|over|brief|short|fifty|50)"
+      ],
+      [
+        "notes_drained_pods",
+        1,
+        "checkout-[35]|node drain|evicted|restart(ed)? pods?[^.\\n]{0,40}?(healthy|recover|clos)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bpayment\\b|payments\\.example\\.com)",
+        true
+      ],
+      [
+        "false_blame_fraud_down",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )fraud (is|remains|still) (down|failing|unavailable|erroring)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,40}?(fraud (outage|errors|failures|is down)|ongoing fraud)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief say checkout's circuit breaker to fraud is stuck open because its half-open probe hits /healthz, which fraud 2.0.0 removed, after a short fraud blip opened it, with the fail-fast 503s reaching edge-gateway? 5 = breaker, why it cannot close, the fraud release and the blip. Saying fraud is down, or naming only 'fraud caused it', scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the CircuitBreakerOpenError errors, the probe 404 logs and fraud's route-not-found logs, fraud being error-free with falling traffic, and the drained pods recovering? Cap at 3 unless it explains why the problem persists after fraud recovered."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming fraud is still failing, avoid blaming payment or edge-gateway, and connect a release from forty minutes earlier to a failure that started twelve minutes before the anchor?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "checkout": ["none_of_these"] },
+  "cause": [
+    "CircuitBreakerOpen|circuit fraud",
+    "/healthz|/health/(live|ready)|health endpoints",
+    "half-open"
+  ]
+}

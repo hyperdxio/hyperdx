@@ -1,3 +1,5 @@
+import type { MemoryMode } from '@/scenarios/types';
+
 /**
  * MCP identifier — a free-form string key matching an entry in the
  * `mcps` section of `eval.config.json`. No longer restricted to a
@@ -113,4 +115,6 @@ export type RunRecord = {
   };
   totalCostUsd: number | null;
   stderr: string;
+  /** Incident memory seeded for the run; absent on runs before the flag existed. */
+  memoryMode?: MemoryMode;
 };

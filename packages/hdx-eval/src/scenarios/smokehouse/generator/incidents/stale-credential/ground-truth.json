@@ -1,0 +1,118 @@
+{
+  "scenario": "stale-credential",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "search",
+    "summary": "search is still presenting a retired service token to pricing. Fifty minutes before the anchor the platform rotated the token callers use for pricing: pricing added signing key svc-2026-09 and kept accepting the old key svc-2026-08 for a 42 minute grace period, and web-bff, mobile-bff and checkout logged a secret reload to the new key within seconds. search logged no reload: its pods read the token file once at startup and never picked up the new secret. Through the grace period pricing warned every five minutes that it was still accepting tokens signed by the retiring key, all from search. Eight minutes before the anchor the grace period ended and pricing removed svc-2026-08, so every pricing.quote call from search is now rejected with 401 invalid_token, and search turns each one into a 502 PricingClientError. Every GET /search fails; product, cart and checkout calls to pricing from the other callers are healthy, and Elasticsearch and catalog latency are flat. Nothing shipped and no version changed. The 502s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. auth's routine signing key rotation messages are steady background and unrelated.",
+    "contributingFactors": [
+      "search loading the pricing service token once at startup instead of reloading the rotated secret",
+      "pricing removing the old signing key at the end of the grace period while one caller still used it",
+      "the retiring key warnings in pricing going unanswered for forty minutes"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search", "pricing"]
+  },
+  "factors": ["search/log_signal", "pricing/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bsearch\\b"],
+      [
+        "names_credential",
+        3,
+        "service token|credential|secret|\\btoken\\b|signing key|\\bkid\\b|\\b401\\b|unauthori[sz]ed"
+      ],
+      [
+        "names_rotation",
+        3,
+        "rotat|retir|grace|old (signing )?(key|token|credential)|stale (key|token|credential|secret)"
+      ],
+      [
+        "names_no_reload",
+        2,
+        "sub[- ]?path|(never|not|didn't|did not|failed to|without) (re)?load|never picked up|not (picked up|refreshed|updated)|(once )?at startup|still (sending|using|presenting)"
+      ],
+      [
+        "names_callee_rejects",
+        1,
+        "pricing[^.\\n]{0,60}?(reject|401|refus|unauthori)|(401|reject\\w*|unauthori[sz]ed)[^.\\n]{0,60}?pricing"
+      ],
+      [
+        "notes_other_callers_ok",
+        1,
+        "(web-bff|mobile-bff|checkout|other callers)[^.\\n]{0,80}?(reload|new (key|token)|healthy|unaffected|fine|succeed)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(elasticsearch|catalog-index|\\bes\\b|catalog-db|price-cache|pricing-db)",
+        true
+      ],
+      [
+        "false_blame_auth",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(\\bauth\\b)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name search's stale pricing service token as the origin: the token was rotated, search never reloaded it, and once pricing's grace period for the old key ended every search call to pricing got a 401, failing GET /search through to edge-gateway? 5 = the rotation, search not reloading, the grace period ending and the victim chain. Blaming pricing as broken scores at most 2; blaming Elasticsearch or auth scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the 401 invalid_token rejections on pricing spans for GET /search, search's PricingClientError logs, the secret reload logs from every other caller and none from search, and pricing's retiring key warnings? Cap at 3 unless it connects a rotation from fifty minutes earlier to failures that began eight minutes before the anchor."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming a deploy or an Elasticsearch fault, avoid blaming edge-gateway or auth's routine key rotation, and note that other pricing callers are healthy?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "search": ["config_change", "none_of_these"] },
+  "cause": [
+    "svc-2026-0[89]",
+    "keyring",
+    "invalid_token|401 Unauthorized",
+    "retiring key|token file|secret reload"
+  ]
+}

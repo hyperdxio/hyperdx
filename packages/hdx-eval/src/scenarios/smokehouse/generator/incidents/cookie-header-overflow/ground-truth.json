@@ -1,0 +1,108 @@
+{
+  "scenario": "cookie-header-overflow",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "web-bff",
+    "summary": "Twenty two minutes before the anchor the growth marketing team published a new version of the storefront's tag manager container, which sets an A/B experiment cookie, _exp_bundle, on the shop domain and appends to it on every experiment exposure. Browsers that keep shopping carry a larger cookie on every request, and once a browser's request headers pass 16 KiB, the max-http-header-size limit of web-bff's Node HTTP server (16384 bytes, the default), web-bff's parser rejects the request with HPE_HEADER_OVERFLOW and closes the socket before any handler runs. web-bff therefore records no server span and no error for these requests; its only record of them is untraced WARN clientError HPE_HEADER_OVERFLOW lines that name _exp_bundle as the largest cookie. edge-gateway sees the upstream close the connection and answers 502 upstream prematurely closed connection while reading response header from upstream web-bff. The share grows over twenty minutes as more browsers' cookies cross the limit, to about a quarter of web requests, on every route. Only the web client is affected: iOS and Android requests are healthy, and every service behind the gateway is healthy. The failures surface at edge-gateway, where the alert fires; edge-gateway is reporting a symptom of web-bff's header limit, not the origin. web-bff 1.4.3, rolled out thirty five minutes before the anchor, is unrelated: it served cleanly for thirteen minutes before the first overflow, and the header limit did not change with it.",
+    "contributingFactors": [
+      "the tag manager publish adding the growing _exp_bundle experiment cookie",
+      "web-bff's 16 KiB max-http-header-size limit, which drops oversized requests before any handler or span runs"
+    ]
+  },
+  "dispatch": {
+    "attach": []
+  },
+  "factors": ["web-bff/log_signal", "edge-gateway/segment"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "web-bff"],
+      [
+        "names_header_overflow",
+        3,
+        "HPE_HEADER_OVERFLOW|header overflow|max-http-header-size|16 ?KiB|header (size )?limit"
+      ],
+      ["names_cookie", 3, "_exp_bundle|cookie|tag manager"],
+      [
+        "names_web_only",
+        2,
+        "(ios|android)[^.\\n]{0,60}?(unaffected|healthy|fine|no errors)|only (the )?web|web (client|browsers?|users) only"
+      ],
+      [
+        "notes_no_bff_span",
+        1,
+        "no server span|before (any|its) handler|never reach(es)? (a |its )?handler|untraced"
+      ],
+      [
+        "rules_out_bff_release",
+        2,
+        "(web-bff[^.;\\n]{0,20}?(1\\.4\\.3|deploy|roll[- ]?out|release)|1\\.4\\.3)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(web-bff[^.;\\n]{0,20}?(1\\.4\\.3|deploy|roll[- ]?out|release)|1\\.4\\.3)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "web-bff[^.;\\n]{0,20}?(1\\.4\\.3|deploy|roll[- ]?out|release)|1\\.4\\.3"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_bff_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(web-bff[^.;\\n]{0,20}?(1\\.4\\.3|deploy|roll[- ]?out|release)|1\\.4\\.3)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(web-bff[^.;\\n]{0,20}?(1\\.4\\.3|deploy|roll[- ]?out|release)|1\\.4\\.3)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_backend",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(mobile-bff|\\bauth\\b|catalog|search|checkout|pricing)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at web-bff's HTTP header size limit, hit by the growing _exp_bundle experiment cookie from the tag manager publish, so web-bff drops web requests with HPE_HEADER_OVERFLOW before any handler runs and edge-gateway answers 502? 5 = the cookie, the 16 KiB limit, web clients only and edge-gateway as the reporter rather than the origin. Blaming web-bff 1.4.3 or a backend scores at most 2; saying only 'edge-gateway returns 502s' scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in edge-gateway's 502 upstream prematurely closed connection errors with no web-bff span beneath them, the failures confined to client.platform=web, and web-bff's untraced HPE_HEADER_OVERFLOW warnings naming _exp_bundle? Cap at 3 unless it explains why web-bff shows no errors of its own."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming web-bff 1.4.3, mobile-bff, auth or any backend, and avoid calling iOS or Android affected?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "web-bff": ["none_of_these", "logged_warning"]
+  },
+  "cause": [
+    "_exp_bundle|largest cookie",
+    "HPE_HEADER_OVERFLOW|header overflow",
+    "max-http-header-size"
+  ]
+}

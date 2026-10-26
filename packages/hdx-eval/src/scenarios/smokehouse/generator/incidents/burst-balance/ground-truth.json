@@ -1,0 +1,120 @@
+{
+  "scenario": "burst-balance",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "orders",
+    "summary": "orders-db's storage ran out of burst credits fourteen minutes before the anchor. orders-db sits on gp2 volume vol-0c3e7a, which bursts to 3000 IOPS on credits and falls back to 600 baseline IOPS when they run out. About seventy minutes before that, an autovacuum of public.orders to prevent wraparound began reading the whole table and drained the burst balance steadily from 100 percent to 0. orders' db health logs show the balance falling and the vacuum's progress, orders logged WARN lines from about twenty minutes before the failures as the balance passed 30 percent, and then a WARN that the volume was throttled to 600 baseline IOPS. With the volume throttled, orders' pg.insert and pg.select spans on orders-db slowed over two minutes from about 6 ms to about 140 ms. orders itself returns no errors, its code did not change and its traffic is steady. checkout calls orders.create last in a POST /checkout that already spends most of the BFFs' 500 ms budget, so about a third of checkouts now time out at web-bff and mobile-bff, and the failures propagate to edge-gateway, where the alert fires. GET /orders is slower but within its timeout, and every other route is healthy. shipping 1.5.0, rolled out from twenty two minutes before the anchor, is unrelated: shipping stays error-free and its latency did not move.",
+    "contributingFactors": [
+      "the anti-wraparound autovacuum on public.orders draining orders-db's gp2 burst balance",
+      "vol-0c3e7a throttled to 600 baseline IOPS once the balance reached 0",
+      "POST /checkout running close to the BFFs' 500 ms timeout before orders slowed"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["orders/log_signal", "orders/infra"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\borders(-db)?\\b"],
+      [
+        "names_burst_credits",
+        3,
+        "burst (balance|credits?)|gp2|baseline iops|iops|vol-0c3e7a"
+      ],
+      ["names_vacuum", 2, "vacuum|wraparound"],
+      [
+        "names_store_slow",
+        2,
+        "(orders-db|pg\\.(insert|select)|storage|disk)[^.\\n]{0,80}?(slow|\\d+ ms|latency|throttl)"
+      ],
+      [
+        "names_checkout_timeout",
+        1,
+        "checkout[^.\\n]{0,120}?(time[sd]? ?out|504)"
+      ],
+      [
+        "notes_early_warning",
+        1,
+        "(warn|warning)[^.\\n]{0,80}?(before|ahead|earlier)|(before|ahead of) the failures"
+      ],
+      [
+        "notes_no_code_change",
+        1,
+        "code did not change|no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_shipping_release",
+        2,
+        "(shipping[^.;\\n]{0,20}?(1\\.5\\.0|deploy|roll[- ]?out|release)|1\\.5\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(shipping[^.;\\n]{0,20}?(1\\.5\\.0|deploy|roll[- ]?out|release)|1\\.5\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "shipping[^.;\\n]{0,20}?(1\\.5\\.0|deploy|roll[- ]?out|release)|1\\.5\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_shipping_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(shipping[^.;\\n]{0,20}?(1\\.5\\.0|deploy|roll[- ]?out|release)|1\\.5\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(shipping[^.;\\n]{0,20}?(1\\.5\\.0|deploy|roll[- ]?out|release)|1\\.5\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_orders_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(orders (deploy|release|code change|roll[- ]?out|bug)|connection pool|traffic (surge|spike))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at orders-db's storage: the gp2 volume's burst balance, drained by the anti-wraparound autovacuum on public.orders, reaching 0 so the volume is throttled to baseline IOPS, orders' queries slow and checkouts time out up to edge-gateway? 5 = the burst credits, the vacuum behind them, the slow store calls and the victim chain. Saying only 'orders-db is slow' scores at most 2; blaming shipping 1.5.0 or an orders code change scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in orders' pg.insert and pg.select spans slowing at onset while orders returns no errors, the db health logs showing the burst balance falling to 0 and the vacuum's progress, and the WARN lines that came before the failures? Cap at 3 unless it uses the warnings logged ahead of the failures."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming shipping 1.5.0, an orders deploy, a connection pool, a traffic surge or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "orders": ["slow_datastore", "logged_warning"]
+  },
+  "cause": [
+    "burst balance|burst credits",
+    "vol-0c3e7a|gp2",
+    "baseline IOPS",
+    "wraparound|autovacuum"
+  ]
+}

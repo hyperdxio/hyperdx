@@ -1,0 +1,128 @@
+{
+  "scenario": "subnet-exhaustion",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "search",
+    "summary": "search could not scale out for the evening peak. From twenty minutes before the anchor search traffic rose as it does every evening, across every tenant and both BFFs, to about 1.6 times its daytime volume. search's HorizontalPodAutoscaler asked for more replicas as usual, but no new pod could start: hpa WARN lines on search report the extra pods Pending with failed to assign an IP address to container, because subnet-0a1b2c3d in us-east-1b, which search's nodes draw pod IPs from, has 0 free IPs. The data platform team's spark-batch node group had scaled out on the same subnet earlier that evening and holds the remaining addresses. Six search pods carry the peak until it is about a third of the way up; past that search's own server time grows with load while its Elasticsearch, catalog and pricing calls stay flat, and a growing share of GET /search requests outlast the BFFs' 500 ms timeout or are rejected with 503 Service Unavailable: search concurrency limit reached (64 in flight). By the anchor about two in five searches fail. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Every other route is healthy and nothing shipped. The rise in traffic is ordinary evening load spread across every tenant, not a flood, and the sitemap-rebuild cron job on catalog-4, which ran for under seven minutes early in the rise, is unrelated: catalog stays error-free.",
+    "contributingFactors": [
+      "subnet-0a1b2c3d out of pod IPs, so search's HPA cannot start new pods",
+      "the evening traffic peak, more than six search pods can serve"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": [
+    "search/saturation",
+    "search/traffic",
+    "search/infra",
+    "search/log_signal"
+  ],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bsearch\\b"],
+      [
+        "names_ip_exhaustion",
+        3,
+        "(ip|address)[^.\\n]{0,40}?(exhaust|free|assign|left)|subnet|failed to assign"
+      ],
+      [
+        "names_scaling_blocked",
+        3,
+        "\\bhpa\\b|autoscal|scal(e|ing) (out|up)|replicas|Pending"
+      ],
+      [
+        "names_own_saturation",
+        2,
+        "search[^.\\n]{0,40}?(own|server)[^.\\n]{0,20}?(time|latency)|saturat|concurrency limit"
+      ],
+      [
+        "notes_organic_traffic",
+        2,
+        "(evening|daily|ordinary|organic|normal) (peak|load|traffic)|every tenant"
+      ],
+      [
+        "notes_stores_flat",
+        1,
+        "(elasticsearch|catalog|pricing|stores?|callees?|calls)[^.\\n]{0,40}?(flat|healthy|steady|unchanged)"
+      ],
+      [
+        "rules_out_sitemap",
+        1,
+        "(sitemap(-rebuild)?)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(sitemap(-rebuild)?)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "sitemap(-rebuild)?"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_sitemap",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(sitemap(-rebuild)?)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(sitemap(-rebuild)?)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_flood",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(tenant flood|traffic (surge|spike|flood)|hooli|scraper|\\bbots?\\b|elasticsearch|catalog-index)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at search being unable to scale out because subnet-0a1b2c3d has no free pod IPs, so the evening peak saturates its six pods and GET /search fails up to edge-gateway? 5 = the IP exhaustion, the blocked HPA, the ordinary peak as the load and the victim chain. Calling it a traffic flood or a slow Elasticsearch scores at most 2; naming saturation with no reason it could not scale scores at most 3."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in search's own time rising with load while its store and callee calls stay flat, the hpa WARN lines with pods Pending and failed to assign an IP address, and the traffic rise being spread across every tenant and both BFFs? Cap at 3 unless it uses the hpa lines."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming a single tenant, a flood or bots, Elasticsearch, the sitemap-rebuild job or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "search": ["own_saturation", "traffic_flood", "none_of_these"]
+  },
+  "cause": [
+    "failed to assign an IP",
+    "subnet-0a1b2c3d",
+    "free IPs",
+    "pods Pending"
+  ]
+}

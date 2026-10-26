@@ -1,0 +1,114 @@
+{
+  "scenario": "egress-policy",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "checkout",
+    "summary": "Ten minutes before the anchor the security team began enforcing a default-deny egress NetworkPolicy, pci-egress-default-deny (SEC-2231), on checkout's pods, one pod every thirty seconds; each checkout pod logged when it took effect. The policy allows egress only to pod selectors in checkout's own namespace, commerce, plus kube-dns, and shipping runs in the logistics namespace, so checkout's connections to shipping are now dropped: every shipping.book call hangs until checkout's 1000 ms connect timeout and checkout fails the order with 504 connect ETIMEDOUT 10.43.12.7:8080 (shipping.logistics.svc.cluster.local). web-bff and mobile-bff time out on checkout at 500 ms first, and within three minutes every POST /checkout fails. The call comes after payment.charge and orders.create, so each failed checkout has already charged the card and written the order. shipping shows no errors and no slowdown; it simply stopped receiving bookings from checkout. Every other route is healthy, and checkout's other callees answer normally. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. shipping's 1.6.0 rollout, finished about twenty one minutes before onset, is unrelated: shipping served bookings cleanly on 1.6.0 for twenty minutes before the policy took effect.",
+    "contributingFactors": [
+      "the SEC-2231 default-deny egress policy on checkout's pods, whose allowlist covers only the commerce namespace",
+      "shipping running in a different namespace, logistics, that the allowlist does not select",
+      "checkout booking shipping after charging the card, so each failure leaves a charged order"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["checkout/infra", "checkout/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcheckout\\b"],
+      [
+        "names_network_policy",
+        3,
+        "network ?polic|egress|sec-2231|default[- ]deny|firewall"
+      ],
+      [
+        "names_shipping_blocked",
+        3,
+        "shipping[^.\\n]{0,80}?(block|denied|drop|unreachable|etimedout|connect)|(block|den|drop|connect|etimedout)\\w*[^.\\n]{0,80}?shipping"
+      ],
+      ["names_namespace", 2, "namespace|logistics|allow ?list"],
+      [
+        "notes_charged",
+        1,
+        "charg|after payment|orders?\\.create|already (paid|placed|written)"
+      ],
+      [
+        "notes_shipping_healthy",
+        1,
+        "shipping[^.\\n]{0,80}?(no errors|healthy|error[- ]?free|no slowdown|stopped receiving)"
+      ],
+      [
+        "rules_out_shipping_deploy",
+        2,
+        "(shipping[^.;\\n]{0,20}?(1\\.6\\.0|deploy|roll[- ]?out|release)|1\\.6\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(shipping[^.;\\n]{0,20}?(1\\.6\\.0|deploy|roll[- ]?out|release)|1\\.6\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "shipping[^\\n]{0,60}?(1\\.6\\.0|deploy|roll[- ]?out)|1\\.6\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_shipping",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(shipping|1\\.6\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(shipping|1\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_checkout_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(checkout (deploy|release|code change|roll[- ]?out|bug))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the SEC-2231 default-deny egress policy on checkout's pods as the origin, with its allowlist missing shipping's namespace so checkout's calls to shipping time out on connect and every POST /checkout fails through to edge-gateway? 5 = the policy, why shipping is blocked, the connect timeouts and the victim chain. Blaming shipping or its 1.6.0 rollout scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in checkout's connect ETIMEDOUT errors naming shipping.logistics, the policy enforcement logs on each checkout pod lining up with each pod's first failures, and shipping receiving no bookings while showing no errors? Cap at 3 unless it notes that each failure has already charged the card."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming shipping's 1.6.0 rollout, shipping itself, a checkout code change or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "checkout": ["config_change", "upstream_change", "none_of_these"]
+  },
+  "cause": [
+    "SEC-2231",
+    "pci-egress-default-deny|network ?policy|k8s\\.networkpolicy",
+    "shipping\\.logistics"
+  ]
+}

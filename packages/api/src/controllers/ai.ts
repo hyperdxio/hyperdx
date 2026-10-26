@@ -12,7 +12,7 @@ import {
   ChartConfigWithDateRange,
   pickSampleWeightExpressionProps,
 } from '@hyperdx/common-utils/dist/types';
-import type { LanguageModel } from 'ai';
+import type { EmbeddingModel, LanguageModel } from 'ai';
 import * as chrono from 'chrono-node';
 import ms from 'ms';
 import z from 'zod';
@@ -72,6 +72,25 @@ export function getAIModel(): LanguageModel {
         `Unknown AI provider: ${provider}. Currently supported: anthropic, openai`,
       );
   }
+}
+
+// Embeddings need the openai provider; Anthropic has no embeddings API.
+export function getEmbeddingModel(): EmbeddingModel | null {
+  if (config.AI_PROVIDER !== 'openai') return null;
+  if (!config.AI_API_KEY) {
+    throw new Error('No API key defined for OpenAI provider. Set AI_API_KEY.');
+  }
+  const headers = config.AI_REQUEST_HEADERS
+    ? parseJSON<Record<string, string>>(
+        config.AI_REQUEST_HEADERS,
+        'AI_REQUEST_HEADERS',
+      )
+    : {};
+  return createOpenAI({
+    apiKey: config.AI_API_KEY,
+    ...(config.AI_BASE_URL && { baseURL: config.AI_BASE_URL }),
+    ...(Object.keys(headers).length > 0 && { headers }),
+  }).embedding(config.AI_EMBEDDING_MODEL_NAME || 'text-embedding-3-small');
 }
 
 export async function getAIMetadata(source: ISource) {

@@ -1,0 +1,124 @@
+{
+  "scenario": "mesh-root-rotation",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "pricing",
+    "summary": "The service mesh's root CA was moved from istio-ca-root-2023 to istio-ca-root-2026, with every sidecar meant to trust both roots during the change. pricing's sidecars run a pinned older proxy, istio-proxy 1.18.7, and two minutes before the first failures each pricing pod logged that it rejected the updated root CA bundle from istiod (unknown field custom_validator_config), so pricing still trusts only the old root. From eighteen minutes before the anchor each workload's certificate renewed on its own schedule, about one pod a minute across search, web-bff, mobile-bff, checkout and pricing, now issued by istio-ca-root-2026; each pod logged its sds rotation. Every caller pod that has rotated is refused by pricing's sidecar: its calls to pricing fail with 503 upstream connect error ... CERTIFICATE_VERIFY_FAILED (pricing.commerce.svc.cluster.local:8080) without reaching the pricing app, and pricing's sidecars warn about inbound TLS handshakes failing with certificate signed by unknown authority. pricing's own spans show no errors, only fewer requests. The share grows stepwise as more caller pods rotate: by the anchor about two thirds of GET /search, GET /product/{id}, GET /cart and POST /checkout requests fail with 502, while routes that never call pricing are healthy. The failures propagate through search, checkout, web-bff and mobile-bff to edge-gateway, where the alert fires. Nothing shipped. The cert-manager renewal of the public shop-example-com-tls certificate on edge-gateway five minutes before the first failures is unrelated: it serves the public listener, not the mesh.",
+    "contributingFactors": [
+      "the mesh root CA moving to istio-ca-root-2026 while pricing's sidecars stayed on a pinned istio-proxy 1.18.7",
+      "pricing's sidecars rejecting the updated trust bundle and refusing callers with certificates from the new root",
+      "workload certificates rotating pod by pod, so the share of failing callers grows over time"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search", "checkout"]
+  },
+  "factors": ["pricing/infra", "pricing/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpricing\\b"],
+      [
+        "names_root_rotation",
+        3,
+        "root (ca|certificate)|istio-ca-root|trust bundle|ca rotation|certificate authority|workload certificate"
+      ],
+      [
+        "names_pinned_proxy",
+        2,
+        "1\\.18\\.7|pinned|older (proxy|sidecar)|custom_validator_config|rejected[^.\\n]{0,40}?(bundle|rootca|config)"
+      ],
+      [
+        "names_tls_failure",
+        2,
+        "CERTIFICATE_VERIFY_FAILED|unknown authority|tls (handshake|error)|mtls"
+      ],
+      [
+        "notes_pricing_app_healthy",
+        1,
+        "pricing[^.\\n]{0,80}?(no errors|never reach|fewer requests|not reach|healthy)"
+      ],
+      [
+        "notes_stepwise",
+        1,
+        "pod by pod|stepwise|grows|growing|one pod a minute|as (more )?(caller )?pods rotate"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_gateway_cert",
+        2,
+        "(cert-manager|shop-example-com-tls|public (tls )?certificate|letsencrypt)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly|finished)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(cert-manager|shop-example-com-tls|public (tls )?certificate|letsencrypt)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "cert-manager|shop-example-com-tls|letsencrypt"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_gateway_cert",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(cert-manager|shop-example-com-tls|letsencrypt)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(cert-manager|shop-example-com-tls|letsencrypt)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_caller_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((search|checkout|web-bff|mobile-bff) (deploy|release|code change|roll[- ]?out|bug))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at pricing's sidecars, on a pinned istio-proxy 1.18.7 that rejected the updated trust bundle, so they refuse callers whose workload certificates now chain to istio-ca-root-2026, with the share of failing callers growing as their certificates rotate and the failures reaching edge-gateway? 5 = the root rotation, pricing's sidecars not trusting the new root, the stepwise growth and pricing's app never seeing the calls. Blaming the edge-gateway certificate renewal, a caller's code or the pricing app scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the CERTIFICATE_VERIFY_FAILED errors on callers naming pricing, the sds rotation lines on each caller pod lining up with that pod's first failures, the ROOTCA rejection lines on pricing pods, the handshake warnings on pricing, and pricing's spans showing no errors? Cap at 3 unless it explains why only rotated caller pods fail."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the cert-manager renewal on edge-gateway, a deploy, search, checkout or the BFFs, and avoid calling routes that never call pricing affected?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "pricing": ["upstream_change", "none_of_these"]
+  },
+  "cause": [
+    "istio-ca-root-2026",
+    "workload certificate",
+    "trust bundle|ROOTCA rejected",
+    "istio-proxy 1\\.18\\.7|custom_validator_config"
+  ]
+}

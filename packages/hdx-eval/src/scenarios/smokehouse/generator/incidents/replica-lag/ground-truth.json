@@ -1,0 +1,130 @@
+{
+  "scenario": "replica-lag",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "orders",
+    "summary": "Fourteen minutes before the anchor the finance team's month-end dashboard refresh (application_name finance-month-end-refresh, user bi_readonly) began running long queries on orders-db-replica-1, the read replica of orders-db. The replica pauses WAL replay while a conflicting query runs, for up to max_standby_streaming_delay of 30 seconds before it cancels the query, and the dashboard issues the next query right after, so replay lag on orders-db-replica-1 now climbs from 0 to about 30 seconds in every 40 second cycle where it used to sit under half a second. orders' db health logs show the replay lag rising and orders logs WARN lines that replay is waiting on a conflicting query from bi_readonly. shipping reads the order it is booking from orders-db-replica-1, and checkout calls shipping.book moments after orders.create writes the order to the primary, so while replay is paused every booking fails with 500 OrderNotFoundError: order not found in orders-db-replica-1 after 3 reads, and checkout fails with 502. About three quarters of POST /checkout requests fail, in bursts that follow the 40 second cycle, and each failed checkout has already charged the card and written the order. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. orders itself, its primary orders-db and every other route are healthy, and nothing shipped. The orders-archive cron job on orders-2, which finished about thirteen minutes before the replica began lagging, is unrelated.",
+    "contributingFactors": [
+      "the finance-month-end-refresh dashboard queries on orders-db-replica-1 pausing WAL replay",
+      "shipping reading orders from the replica moments after checkout writes them to the primary",
+      "max_standby_streaming_delay of 30 seconds letting replay wait on each conflicting query"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "shipping"]
+  },
+  "factors": ["orders/log_signal", "shipping/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\borders(-db)?\\b"],
+      [
+        "names_replica_lag",
+        3,
+        "replica[^.\\n]{0,40}?(lag|behind|stale|paus|replay)|replay[^.\\n]{0,20}?(lag|paus|wait)|replication lag"
+      ],
+      [
+        "names_bi_query",
+        3,
+        "bi_readonly|finance-month-end|month-end (dashboard|refresh|report)|dashboard (refresh|queries|query)|conflicting query|analytics quer"
+      ],
+      [
+        "names_shipping_read",
+        2,
+        "shipping[^.\\n]{0,80}?(replica|not found|ordernotfound)|ordernotfound"
+      ],
+      [
+        "notes_primary_healthy",
+        1,
+        "(orders|primary|orders-db)[^.\\n]{0,60}?(healthy|unaffected|fine|not slow|no errors)"
+      ],
+      [
+        "notes_charged",
+        1,
+        "charg|after payment|orders?\\.create|already (paid|placed|written)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_archive_job",
+        1,
+        "(orders-archive|archive (job|cron))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly|finished)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(orders-archive|archive (job|cron))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "orders-archive|archive (job|cron)"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_archive_job",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(orders-archive|archive (job|cron))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(orders-archive|archive (job|cron))(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_shipping_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(shipping (deploy|release|code change|roll[- ]?out|bug))",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name replay lag on orders-db-replica-1, caused by the bi_readonly finance-month-end-refresh queries pausing WAL replay, as the origin, with shipping failing to find just-written orders on the replica so checkout fails and the failures reach edge-gateway? 5 = the replica lag, the dashboard queries behind it, shipping reading from the replica and the victim chain. Blaming shipping's code, the orders-archive job or orders-db's primary scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in shipping's OrderNotFoundError naming orders-db-replica-1, the replay lag in orders' db health logs, the WARN lines naming the conflicting bi_readonly query, and the failures coming in bursts that follow the 40 second stall cycle? Cap at 3 unless it explains why orders and its primary look healthy."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the orders-archive job, a deploy, shipping's code, orders-db's primary or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "orders": ["logged_warning", "none_of_these"]
+  },
+  "cause": [
+    "bi_readonly",
+    "finance-month-end",
+    "replay (lag|waiting)|conflicting query",
+    "max_standby_streaming_delay"
+  ]
+}

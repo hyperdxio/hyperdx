@@ -64,6 +64,8 @@ function pair(
     },
     toolErrors: { total: 1, errors: 0, rate: 0, penalty: 0, samples: [] },
     combinedScore: 0.94,
+    stepsToOrigin: null,
+    negativeMatches: 0,
     gradedAt: '',
     judgeModel: 'claude-opus-4-7',
   };
@@ -101,6 +103,32 @@ describe('renderMarkdownReport', () => {
     expect(md).toContain('hyperdx');
   });
 
+  it('renders a null steps-to-origin with the missing-value marker', () => {
+    expect(md).toMatch(/\| Steps to origin \(mean\) \| — \| — \|/);
+  });
+
+  it('shows how many runs found the origin next to the mean', () => {
+    const withSteps = (mcp: string, i: number, steps: number | null) => {
+      const p = pair('sh-x', mcp, i);
+      p.grade.stepsToOrigin = steps;
+      return p;
+    };
+    const out = renderMarkdownReport(
+      buildAggregate({
+        batchDir: '/tmp/b',
+        pairs: [
+          withSteps('kg-memory', 0, 2),
+          withSteps('kg-memory', 1, null),
+          withSteps('kg-memory', 2, 4),
+          withSteps('kg-none', 0, null),
+        ],
+      }),
+    );
+    expect(out).toMatch(
+      /\| Steps to origin \(mean\) \| 3\.0 \(2\/3\) \| — \(0\/1\) \|/,
+    );
+  });
+
   it('emits a section per scenario', () => {
     expect(md).toContain('## error-root-cause');
     expect(md).toContain('## latency-spike');
@@ -111,6 +139,8 @@ describe('renderMarkdownReport', () => {
     expect(md).toContain('Programmatic score');
     expect(md).toContain('Judge mean (weighted)');
     expect(md).toContain('Tool calls (mean)');
+    expect(md).toContain('Steps to origin (mean)');
+    expect(md).toContain('Negative matches (mean)');
     expect(md).toContain('Output tokens (mean)');
     expect(md).toContain('Wall clock (s, mean)');
     expect(md).toContain('Termination');

@@ -1,0 +1,128 @@
+{
+  "scenario": "date-rollover",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "shipping",
+    "summary": "Twenty minutes before the anchor shipping's calendar-sync batch worked out the business date in UTC, activated the next day's carrier cutoff calendar across the warehouses and retired the current day's. US warehouses (IAD-1 in America/New_York, SEA-3 in America/Los_Angeles) look up the cutoff by their local date, which had not rolled over, so every lookup misses with CalendarLookupError: no carrier cutoff calendar for that date, and shipping.book returns 500. Each shipping pod picks up the new calendar when it refreshes its cache, so pods fail one by one over the following thirteen minutes, and the error rate climbs in steps rather than all at once. eu-west-1 bookings keep working because that warehouse keys its calendar by the UTC date. Nothing shipped and no version changed. shipping.book runs late in POST /checkout, after payment.charge and orders.create, so affected customers in us-east-1 and us-west-2 are charged and get an order record but checkout returns a 502 and no shipment is booked; those orders need reconciling. The failures propagate through checkout and web-bff and mobile-bff to edge-gateway, where the alert fires. notification's daily-digest batch started at the same moment and notification latency rose a little, but notification is an optional call, shows no errors, and is a red herring.",
+    "contributingFactors": [
+      "calendar-sync computing the business date in UTC while US warehouses look up by local date",
+      "calendar-sync retiring the current day calendar instead of keeping it until each warehouse rolls over",
+      "shipping booked after payment and order creation in checkout, so failures leave charged orders with no shipment"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "shipping"]
+  },
+  "factors": ["shipping/segment", "shipping/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bshipping\\b"],
+      [
+        "names_calendar_job",
+        3,
+        "calendar[- ]?sync|cutoff calendar|calendar (batch|job)"
+      ],
+      [
+        "names_date_bug",
+        3,
+        "time ?zone|\\butc\\b|local date|date (boundary|rollover|roll[- ]over)|next day|wrong date|off[- ]by[- ]one"
+      ],
+      [
+        "names_region_split",
+        2,
+        "eu-west-1|(us-east-1|us-west-2)[^.\\n]{0,40}?(only|but not|while)|\\bus\\b (warehouses|regions)|europe"
+      ],
+      [
+        "notes_charged_without_shipment",
+        2,
+        "(charged|payment)[^.\\n]{0,80}?(no|without|before|not)[^.\\n]{0,30}?(shipment|shipping|booking|booked)|reconcil"
+      ],
+      [
+        "notes_staggered_pods",
+        1,
+        "(pod|cache)[^.\\n]{0,40}?refresh|one by one|staggered|in steps"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_digest",
+        2,
+        "(notification|digest)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(notification|digest)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "notification|digest"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_digest",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(notification|digest)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(notification|digest)(?:[^.;\\n]|\\.\\d){0,40}?(batch|digest|job|latency)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(notification|digest)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bpayment\\b|payments\\.example\\.com|orders-db)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name shipping's calendar-sync batch activating the next day's carrier cutoff calendar (a UTC versus warehouse-local date bug), so US bookings fail lookups, as the origin, with checkout failures reaching edge-gateway? 5 = the batch, the date or timezone mechanism, the region scope and the victim chain. Blaming the notification digest scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the CalendarLookupError messages naming a date and the active calendar, the calendar-sync log, eu-west-1 staying healthy, and pods failing as they refresh their cache? Cap at 3 unless it connects the batch run to the first failures."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it rule out the notification digest with evidence (optional call, no errors), avoid claiming a deploy, and flag that affected customers were charged without a shipment?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "shipping": ["none_of_these"] },
+  "cause": [
+    "calendar-sync",
+    "carrier cutoff calendar",
+    "CalendarLookupError",
+    "computed in UTC"
+  ]
+}

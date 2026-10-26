@@ -1,0 +1,96 @@
+{
+  "scenario": "dependency-cascade",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "inventory",
+    "summary": "The Postgres behind inventory (server.address inventory-db, db.system postgresql) slowed from about 6 ms to about 900 ms over ten minutes starting twelve minutes before the anchor. inventory's own spans carry no errors and it has had no deploy; its pg.update client spans are simply slow. cart and checkout call inventory.reserve with a 500 ms timeout, so once the store latency passed that they began recording timeout errors (504) and failing their own requests, which propagate through web-bff and mobile-bff to edge-gateway, where p95 climbed and the alert fired. Routes that do not touch cart or checkout are unaffected.",
+    "contributingFactors": [
+      "inventory-db latency step to ~900 ms",
+      "500 ms client timeout on inventory.reserve in cart and checkout turning slowness into 504s"
+    ]
+  },
+  "dispatch": { "attach": ["web-bff", "mobile-bff", "cart", "checkout"] },
+  "factors": [],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\binventory\\b"],
+      [
+        "names_the_store",
+        2,
+        "inventory-db|postgres(ql)?|pg\\.update|db\\.system"
+      ],
+      [
+        "names_latency_not_errors",
+        2,
+        "inventory[^.\\n]{0,80}?(latency|slow|duration|p9[59]|ms)|(latency|slow|duration)[^.\\n]{0,80}?inventory"
+      ],
+      ["names_timeout_mechanism", 2, "time[- ]?out|504"],
+      [
+        "names_intermediate_victims",
+        1,
+        "\\bcart\\b[^.\\n]{0,80}?\\bcheckout\\b|\\bcheckout\\b[^.\\n]{0,80}?\\bcart\\b"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      ["quantifies", 1, "(\\d{3,4}\\s?ms|9\\d\\d\\s?ms|~?900)"],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_bff",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)[^.\\n]{0,40}?(web|mobile)-bff",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at inventory's Postgres latency (not inventory errors, not a deploy), and explain that cart and checkout's 500 ms timeouts on inventory.reserve turned that latency into 504s that propagated to edge-gateway? 5 = both the store latency and the timeout are named as factors with the propagation path. Naming edge-gateway or a BFF as the cause scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in evidence: inventory pg.update client span duration rising from single-digit ms to hundreds, inventory server spans error-free, timeout errors on the cart and checkout client spans, and no version change on inventory? Cap at 3 unless the brief distinguishes inventory being slow from inventory failing."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the services where the errors appear (edge-gateway, the BFFs, cart, checkout) and avoid inventing a deploy? Cap at 3 unless it says explicitly that the alerting service is a victim."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "inventory": ["slow_datastore"] },
+  "cause": ["inventory-db"]
+}

@@ -1,0 +1,119 @@
+{
+  "scenario": "client-timeout",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "checkout",
+    "summary": "Fourteen minutes before the anchor a config change (CFG-3202, \"fail fast on fraud scoring\") set checkout's http.client.default_timeout from 500ms to 150ms on every checkout pod. The setting is the default for all of checkout's callees, not only fraud. Most callees answer in well under 150 ms, but payment.charge takes its usual ~130 ms with a wide spread, so about a third of charges now exceed the budget: checkout gives up with timeout after 150ms calling payment and POST /checkout returns 504. payment itself is healthy and unchanged: its span duration, error rate and provider calls are the same as before, and the timed out charges complete at payments.example.com after checkout has given up, so those customers are charged with no order created and may be charged again if they retry; those payments need reconciling. Nothing shipped and no version changed. The 504s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires; other routes are healthy. The provider status notice PSP-7781 about elevated latency in eu, six minutes before the change, is a red herring: payment latency did not move and checkouts fail in every region alike.",
+    "contributingFactors": [
+      "a config change lowering checkout's default client timeout to 150ms for every callee instead of only fraud",
+      "payment charges taking about 130 ms, so a share of them exceed the new timeout",
+      "checkout abandoning charges that still complete at the provider, leaving charged customers with no order"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["checkout/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcheckout\\b"],
+      ["names_timeout", 3, "time[- ]?(out|d out)|\\b504\\b|150 ?ms"],
+      [
+        "names_config_change",
+        3,
+        "config(uration)?[^.\\n]{0,40}?(change|push|lower|set|update)|cfg-3202|default[_ ]timeout"
+      ],
+      [
+        "names_wrong_scope",
+        2,
+        "(all|every)[^.\\n]{0,30}?(of checkout's )?(callees|upstreams|clients|calls|dependencies)|(meant|intended) (for|to)[^.\\n]{0,40}?fraud|not only fraud|fraud only"
+      ],
+      [
+        "notes_payment_healthy",
+        2,
+        "payment[^.\\n]{0,100}?(healthy|unchanged|flat|did not move|didn't move|normal|usual|~?130 ?ms)"
+      ],
+      [
+        "notes_charged_without_order",
+        1,
+        "charged[^.\\n]{0,60}?(no order|without (an )?order|again)|double[- ]charg|reconcil"
+      ],
+      [
+        "rules_out_provider",
+        2,
+        "(provider|payments\\.example\\.com|psp-7781|status (notice|page))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(provider|payments\\.example\\.com|psp-7781|status (notice|page))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "provider|payments\\.example\\.com|PSP-7781|status"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_provider",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(provider|payments\\.example\\.com|psp-7781)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(provider|payments\\.example\\.com|psp-7781)(?:[^.;\\n]|\\.\\d){0,40}?(latency|slow|incident|degrad|outage|status)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(provider|payments\\.example\\.com|psp-7781)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )((root cause|culprit)[^.\\n]{0,12}?\\bpayment\\b|\\bpayment\\b( service)? (is|was) (slow|degraded|the (likely |root )?cause))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the checkout config change that lowered the default client timeout to 150ms for every callee as the origin, with payment charges at their usual ~130 ms now timing out at checkout and the 504s reaching edge-gateway? 5 = the change, why it hits payment, payment being healthy and the victim chain. Blaming payment or the provider scores at most 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the config.change logs at onset, the client spans timing out at exactly 150 ms on payment.charge while payment's own spans are unchanged and succeed, and the failures starting at the change? Cap at 3 unless it explains why only payment calls fail."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss the provider status notice with evidence (payment latency flat, every region affected), avoid claiming a deploy, and flag that timed out charges still went through?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "checkout": ["config_change"] },
+  "cause": ["CFG-3202", "default_timeout", "fail fast on fraud scoring"]
+}

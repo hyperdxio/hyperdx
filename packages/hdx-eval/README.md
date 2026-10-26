@@ -164,8 +164,8 @@ anonymize the MCP identity for fair LLM judging.
 |---|---|---|
 | `mcps` | yes | MCP registry (see above) |
 | `plugins` | no | Claude Code plugin registry (see [Plugins](#plugins)) |
-| `scenarios` | no | Per-scenario HyperDX Source IDs (populated by `setup-hyperdx`) |
-| `hyperdxApi` | no | HyperDX API URL + access key (used only by `setup-hyperdx`) |
+| `scenarios` | no | Per-scenario HyperDX Source IDs (populated by `setup-hyperdx`; `sh-` scenarios create their own sources per run) |
+| `hyperdxApi` | no | HyperDX API URL, access key and connection ID (used by `setup-hyperdx`, `run sh-*` and `kg-retrieval`) |
 | `clickhouse` | no | ClickHouse connection for `seed`, `drop`, `runs-instrument` commands |
 | `anchorTime` | no | Fixed "now" anchor (ISO 8601). Auto-generated and saved on first `run`. See [Anchor Time](#anchor-time). |
 
@@ -251,11 +251,151 @@ Each named plugin is loaded into the isolated agent session via `--plugin-url`
 }
 ```
 
+## Knowledge graph conditions
+
+These compare the incident knowledge graph tools against the same agent
+without them, on the 80 `sh-` smokehouse scenarios. The three conditions are
+three MCP definitions on one URL that differ only in `deniedTools`:
+
+- `kg-none`: all eight knowledge tools denied. Plain ClickStack.
+- `kg-topology`: the six incident tools denied (everything except
+  `clickstack_trace_root_cause` and `clickstack_blast_radius`).
+- `kg-memory`: nothing denied.
+
+```json
+{
+  "mcps": {
+    "kg-none": {
+      "type": "http",
+      "url": "http://localhost:30198/mcp",
+      "headers": { "Authorization": "Bearer <access key>" },
+      "toolPattern": "mcp__kg-none__*",
+      "label": "KG none",
+      "brandTerms": ["ClickStack", "HyperDX"],
+      "deniedTools": [
+        "mcp__kg-none__clickstack_trace_root_cause",
+        "mcp__kg-none__clickstack_blast_radius",
+        "mcp__kg-none__clickstack_open_incident",
+        "mcp__kg-none__clickstack_record_incident_action",
+        "mcp__kg-none__clickstack_resolve_incident",
+        "mcp__kg-none__clickstack_find_similar_incidents",
+        "mcp__kg-none__clickstack_get_incident_playbook",
+        "mcp__kg-none__clickstack_incident_context"
+      ]
+    },
+    "kg-topology": {
+      "type": "http",
+      "url": "http://localhost:30198/mcp",
+      "headers": { "Authorization": "Bearer <access key>" },
+      "toolPattern": "mcp__kg-topology__*",
+      "label": "KG topology",
+      "brandTerms": ["ClickStack", "HyperDX"],
+      "deniedTools": [
+        "mcp__kg-topology__clickstack_open_incident",
+        "mcp__kg-topology__clickstack_record_incident_action",
+        "mcp__kg-topology__clickstack_resolve_incident",
+        "mcp__kg-topology__clickstack_find_similar_incidents",
+        "mcp__kg-topology__clickstack_get_incident_playbook",
+        "mcp__kg-topology__clickstack_incident_context"
+      ]
+    },
+    "kg-memory": {
+      "type": "http",
+      "url": "http://localhost:30198/mcp",
+      "headers": { "Authorization": "Bearer <access key>" },
+      "toolPattern": "mcp__kg-memory__*",
+      "label": "KG memory",
+      "brandTerms": ["ClickStack", "HyperDX"],
+      "deniedTools": []
+    }
+  }
+}
+```
+
+The incident tools are `clickstack_open_incident`,
+`clickstack_record_incident_action`, `clickstack_resolve_incident`,
+`clickstack_find_similar_incidents`, `clickstack_get_incident_playbook` and
+`clickstack_incident_context`.
+
+### Prerequisites
+
+- The eval team's `isKnowledgeGraphEnabled` flag is on. It is a field on the
+  `Team` document in MongoDB with no UI yet, so set it directly. The eval team
+  is the one for the account `setup-hyperdx` creates:
+  `const team = db.users.findOne({ email: "<eval email>" }).team; db.teams.updateOne({ _id: team }, { $set: { isKnowledgeGraphEnabled: true } })`.
+- The `hyperdxApi` block in `eval.config.json` that `setup-hyperdx` writes.
+  Every `sh-` run and `kg-retrieval` call the API with its access key and
+  connection ID.
+
+`setup-hyperdx` does not create sources for the `sh-` scenarios. Before its
+runs, `run sh-<incident>` creates that scenario's trace, log and metric
+sources, then calls `PUT /api/v2/knowledge/settings` to make its trace source
+the team's knowledge graph source, with `includeUnconfirmed` on for
+`--memory self` and off otherwise. This happens for every `--memory` mode,
+including `none`. Cleanup clears the scenario's memory, resets both settings
+and deletes the sources. `kg-retrieval` does the same once for the whole run.
+There is no trace source to set by hand.
+
+Table names, source names and memory titles for `sh-` scenarios use an opaque
+slug (`sh_` plus 8 hex characters of the scenario name's SHA-1), so the agent
+cannot read the incident name from them. The CLI key stays `sh-<incident>`.
+
+### Running
+
+```bash
+yarn workspace @hyperdx/hdx-eval dev run sh-<incident> \
+  --mcp kg-none,kg-topology,kg-memory --baseline kg-none --runs 3 --memory related
+```
+
+Run the same command again with `--memory misleading` and `--memory self` as
+separate batches. `related` seeds confirmed records of similar incidents,
+`misleading` seeds confirmed records that share only the origin service, and
+`self` seeds the agent's own earlier briefs, unconfirmed. `--memory none` is the
+default.
+
+Run one `sh-` scenario per API instance at a time. Incident memory is
+team-wide, and each scenario clears and reseeds it before its runs. The CLI
+prints a warning when it clears leftover `[eval:...]` incidents, which means
+another run is live against that API or an earlier one crashed.
+
+### Retrieval alone
+
+```bash
+yarn workspace @hyperdx/hdx-eval dev kg-retrieval --incidents all --out retrieval.json
+```
+
+Scores `clickstack_find_similar_incidents` with no agent: recall@1, recall@3
+and MRR for the related incident. It queries with the incident's own answer-key
+symptom keys, so the numbers are an upper bound. Use it to compare ranking
+changes, not as a measure of what an agent recalls.
+
+### Reading the report
+
+The report adds two rows next to score, tokens and seconds:
+
+- Steps to origin (mean): the index of the first tool call whose arguments
+  name the origin service, not counting the incident recording calls. Lower is
+  faster to the right place. The mean covers only the runs that named the
+  origin, so the cell also shows found k/n, for example `3.0 (2/3)`. Scenarios
+  where the origin is the alerting service are excluded.
+- Negative matches (mean): how many wrong-answer checks the final answer hit.
+  A rise under `--memory misleading` means the agent anchored on a past cause.
+
+A condition is better when score holds or rises while steps to origin and
+tokens fall. Three runs cannot separate means closer than about 0.05, so treat
+smaller gaps as noise and add runs.
+
+### Worked example
+
+TODO (placeholder): run `yarn workspace @hyperdx/hdx-eval dev run sh-cache-stampede --mcp kg-none,kg-topology,kg-memory --baseline kg-none --runs 1 --memory related` and paste the report table here.
+
 ## Scenarios
 
 Each scenario writes into its own ClickHouse tables
 (`eval_<scenario>_otel_traces` / `eval_<scenario>_otel_logs`) whose schema
-mirrors HyperDX's `otel_traces` / `otel_logs` exactly.
+mirrors HyperDX's `otel_traces` / `otel_logs` exactly. `sh-` scenarios use an
+opaque slug in place of the name (see
+[Knowledge graph conditions](#knowledge-graph-conditions)).
 
 | Scenario | Agent Prompt | What's Planted |
 |---|---|---|
@@ -286,7 +426,7 @@ All commands are run via `yarn workspace @hyperdx/hdx-eval dev <command>`.
 ### Setup
 
 ```bash
-dev setup-hyperdx                           # one-time: register + create Sources
+dev setup-hyperdx                           # one-time: register + create Sources (not sh-)
 dev setup-hyperdx --api-url http://...      # explicit API URL
 dev setup-hyperdx --check                   # validate existing config
 dev setup-hyperdx --reset-sources           # recreate all Sources

@@ -1,0 +1,113 @@
+{
+  "scenario": "flag-sdk-defaults",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "checkout",
+    "summary": "Twenty minutes before the anchor the hosted feature flag service, flags.example.com, dropped checkout's streaming connection: every checkout pod logged that its stream disconnected with 503 Service Unavailable and that it was serving cached flag values with a ten minute cache TTL, and then logged a failed reconnect every minute. Ten minutes before the anchor the cached values began to expire, one checkout pod every forty seconds, and each pod logged that it was serving code defaults for 214 flags. The code default for checkout.tax_engine_v2 is false, so those pods send taxed orders down the legacy tax path, which calls tax-v1.internal, a host retired months ago, and fails with LegacyTaxError: getaddrinfo ENOTFOUND tax-v1.internal. About 60 percent of checkouts on each expired pod fail with 500, more than half of POST /checkout requests by the anchor, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Every other route is healthy. Nothing shipped and checkout's version did not change; no one changed a flag. pricing's price-cache TTL change (PRC-118), a minute before the first failures, is unrelated: pricing serves no errors and its latency is unchanged.",
+    "contributingFactors": [
+      "the flags.example.com stream outage",
+      "checkout's flag SDK falling back to code defaults once its ten minute cache expired",
+      "the code default for checkout.tax_engine_v2 pointing at a retired tax host"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["checkout/log_signal", "checkout/deploy"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcheckout\\b"],
+      [
+        "names_flag_service",
+        3,
+        "flags\\.example\\.com|flag (service|provider|sdk)|feature flag (service|provider)"
+      ],
+      [
+        "names_defaults",
+        3,
+        "code defaults?|default (values?|flags?)|cache[^.\\n]{0,20}?expir|stale"
+      ],
+      ["names_tax_path", 2, "tax_engine_v2|legacy tax|tax-v1|ENOTFOUND"],
+      [
+        "names_staggered",
+        1,
+        "one (checkout )?pod (every|at a time)|forty seconds|pod by pod|staggered"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_pricing_ttl",
+        2,
+        "(PRC-118|price-cache ttl|pricing[^.;\\n]{0,20}?(config|ttl))(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(PRC-118|price-cache ttl|pricing[^.;\\n]{0,20}?(config|ttl))",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "PRC-118|price-cache ttl|pricing[^.;\\n]{0,20}?(config|ttl)"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_pricing_ttl",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(PRC-118|price-cache ttl|pricing[^.;\\n]{0,20}?(config|ttl))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(PRC-118|price-cache ttl|pricing[^.;\\n]{0,20}?(config|ttl))(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_dns",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bdns\\b|coredns|resolver)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at checkout, with the flags.example.com outage leaving its flag SDK on cached values until they expired, then on code defaults that switch off checkout.tax_engine_v2 and send taxed orders to a retired tax host? 5 = the flag service outage, the expiry to defaults, the legacy tax failures and the victim chain to edge-gateway. Blaming DNS scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the stream disconnect warnings ten minutes before the failures, the 'serving code defaults' line on each checkout pod as its failures start, and the LegacyTaxError on checkout spans? Cap at 3 unless it explains the ten minute gap between the outage and the failures."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming pricing's price-cache TTL change (PRC-118), DNS, a deploy, a flag change by a person or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "checkout": ["logged_warning", "config_change", "none_of_these"]
+  },
+  "cause": [
+    "flags\\.example\\.com",
+    "code defaults|serving cached flag values|flag sdk"
+  ]
+}

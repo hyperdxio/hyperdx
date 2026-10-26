@@ -1,0 +1,125 @@
+{
+  "scenario": "vault-sealed",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "promo",
+    "summary": "vault.internal, the Vault cluster that issues promo's dynamic Postgres credentials, sealed fifty minutes before the anchor, and every promo pod logged that lease renewal for database/creds/promo-ro failed with 503 Vault is sealed, repeating every five minutes with the time left on its credential. Each pod's credential (v-kubernetes-promo-ro-...) was issued at a different time and none could be renewed, so from ten minutes before the anchor they expired one pod at a time, two and a half minutes apart, promo-1 first. Connections already open keep working; as each pod's pool recycles, the new logins fail with error: password authentication failed for user \"v-kubernetes-promo-ro-...\", so each pod's failure share climbs to all of its requests over about four minutes. By the anchor three pods fail every promo.apply, a fourth fails more than half and the other two are next. checkout calls promo.apply on every order, so more than half of POST /checkout requests fail with 502, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires; other routes do not call promo and are healthy. promo-db is healthy, promo's version did not change and nothing shipped. The checkout feature flag checkout.promo_banner_v2 (MKT-1182), widened to 25% of web sessions two minutes before the first failures, is unrelated: it changes only the banner checkout renders and fails no request.",
+    "contributingFactors": [
+      "vault.internal sealed, so lease renewals for database/creds/promo-ro fail",
+      "promo's dynamic Postgres credentials expiring one pod at a time",
+      "checkout requiring promo.apply on every order"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["promo/log_signal", "promo/infra"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpromo\\b"],
+      ["names_vault", 3, "vault|sealed"],
+      [
+        "names_lease",
+        3,
+        "lease|renew|dynamic (postgres |database )?credential|credentials? (expir|lapse)|expired"
+      ],
+      [
+        "names_auth_failure",
+        2,
+        "password authentication failed|logins? fail|authentication fail"
+      ],
+      [
+        "names_staggered",
+        1,
+        "one (pod )?at a time|one after another|staggered|pod by pod|two and a half minutes|promo-1 first"
+      ],
+      [
+        "notes_store_healthy",
+        1,
+        "promo-db[^.\\n]{0,40}?(healthy|fast|fine|unchanged|normal)|not (a )?slow (database|db)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_banner_flag",
+        2,
+        "(promo_banner_v2|MKT-1182|banner (flag|experiment)|checkout[^.;\\n]{0,20}?(feature )?flag)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(promo_banner_v2|MKT-1182|banner (flag|experiment)|checkout[^.;\\n]{0,20}?(feature )?flag)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "promo_banner_v2|MKT-1182|banner (flag|experiment)|checkout[^.;\\n]{0,20}?(feature )?flag"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_banner_flag",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(promo_banner_v2|MKT-1182|banner (flag|experiment)|checkout[^.;\\n]{0,20}?(feature )?flag)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(promo_banner_v2|MKT-1182|banner (flag|experiment)|checkout[^.;\\n]{0,20}?(feature )?flag)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(promo-db|postgres\\w*|slow (database|db|query))",
+        true
+      ],
+      [
+        "false_blame_promo_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(promo (deploy|release|code change|bug|roll[- ]?out))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name Vault sealing as the trigger, so promo's dynamic Postgres credentials could not be renewed and expired pod by pod, failing promo's database logins and with them checkout, through the BFFs to edge-gateway? 5 = the sealed Vault, the failed lease renewals, the staggered expiry and the victim chain. Saying only that promo cannot log in to promo-db, or blaming the checkout flag, scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the password authentication failed errors on promo spans, their per-pod start times, and the WARN lease renewal lines on every promo pod from fifty minutes before the anchor counting down to each expiry? Cap at 3 unless it explains why the pods failed at different times."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming checkout.promo_banner_v2, promo-db performance, a promo deploy or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "promo": ["logged_warning", "none_of_these"]
+  },
+  "cause": [
+    "vault[^\\n]{0,40}sealed|sealed[^\\n]{0,40}vault",
+    "lease renewal",
+    "database/creds/promo"
+  ]
+}

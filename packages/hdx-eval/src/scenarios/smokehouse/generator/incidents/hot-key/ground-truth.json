@@ -1,0 +1,109 @@
+{
+  "scenario": "hot-key",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "pricing",
+    "summary": "Twelve minutes before the anchor email-worker sent the fall-drop-2026 marketing campaign, 2.4 million emails to the subscribers of every tenant, all linking to one product, sku-4411. Product page views roughly doubled within four minutes, spread across every tenant, mostly on mobile; overall traffic rose only about a third. Every price quote for sku-4411 reads the same Redis key, price:sku-4411, and a key lives on exactly one shard of the price-cache cluster, so shard 0003 took nearly all of the new load: its single engine thread saturated while the other five shards stayed under 2 ms. Commands on shard 0003 now time out after 250 ms, for the hot key and for every other price key that hashes to that shard, and pricing returns 503. About 40 percent of product page quotes fail and about 10 percent of quotes on /search, /cart and /checkout. pricing is required on all of those routes, so the 503s become 502s through search, checkout, web-bff and mobile-bff and propagate to edge-gateway, where the alert fires. pricing had no deploy and no version change, and adding pricing pods would not help while one shard holds the key. catalog's rollout from 1.4.2 to 1.6.0, which finished two minutes before onset, is a red herring: catalog shows no errors or latency change and every failure is a pricing Redis timeout.",
+    "contributingFactors": [
+      "the fall-drop campaign sending every tenant's subscribers to one product at once",
+      "every quote for sku-4411 reading one Redis key, so a single price-cache shard carries all of it",
+      "pricing failing the quote on a price-cache timeout instead of reading pricing-db"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search", "checkout", "pricing"]
+  },
+  "factors": ["pricing/traffic", "pricing/segment", "pricing/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpricing\\b(?!-db)"],
+      [
+        "names_hot_key",
+        3,
+        "hot[- ]?(key|shard|partition|spot)|sku-4411|price:sku|(single|one) (redis )?key"
+      ],
+      ["names_shard", 2, "shard|0003|hash[- ]?slot"],
+      [
+        "names_campaign",
+        3,
+        "campaign|fall-drop|marketing|email (blast|send)|newsletter"
+      ],
+      ["names_redis", 1, "redis|price-cache|elasticache"],
+      [
+        "names_product_skew",
+        1,
+        "(product|/product)[^.\\n]{0,80}?(40|forty|most|worst|higher)|(40|forty) ?(%|percent)"
+      ],
+      [
+        "rules_out_catalog_deploy",
+        2,
+        "(catalog|1\\.6\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(catalog|1\\.6\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "catalog|1\\.6\\.0"
+        }
+      ],
+      [
+        "notes_pricing_unchanged",
+        1,
+        "pricing[^.\\n]{0,60}?(no (deploy|roll[- ]?out|release|version change|code change)|unchanged|did not change|didn't change)|no (deploy|version change|code change)[^.\\n]{0,40}?pricing"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_catalog_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(catalog|1\\.6\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(catalog|1\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,40}?(roll[- ]?out|deploy|release|1\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(catalog|1\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_pricing_db",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(pricing-db|postgres\\w*|database)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name a hot key, price:sku-4411 on one price-cache shard, saturated by the fall-drop campaign's product traffic, as the origin, with pricing's Redis timeouts failing quotes and the failures reaching edge-gateway? 5 = the campaign, the single key and shard, the timeouts in pricing and the victim chain. Blaming the catalog rollout scores 1; saying only 'traffic surge' or 'Redis is slow' without the one shard scores at most 3."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the pricing timeout logs naming shard 0003 and the price:sku-4411 key, the client stats showing one shard slow while the others stay fast, the campaign.send log linking to sku-4411, and product page quotes failing at a higher rate than other routes? Cap at 3 unless it explains why a modest rise in total traffic breaks one shard."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss catalog's 1.6.0 rollout with evidence (no catalog errors, failures are pricing timeouts), avoid blaming pricing-db, a pricing deploy or edge-gateway, and avoid proposing more pricing pods as the fix?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "pricing": ["slow_datastore", "traffic_flood"] },
+  "cause": ["sku-4411", "fall-drop-2026", "price-cache|shard 0003"]
+}

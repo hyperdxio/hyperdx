@@ -1,0 +1,118 @@
+{
+  "scenario": "fd-leak",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "shipping",
+    "summary": "shipping leaks a socket, and with it a file descriptor, every time its background carrier rate refresh to UPS is aborted on a timeout; the code has done this for months, but the refresh rarely timed out. Seventy five minutes before the anchor the UPS rate API began timing out intermittently, and from then on open file descriptors on every shipping pod climbed by about 50 to 65 a minute toward the 4096 nofile limit. Bookings are not on the refresh path, so shipping's latency stayed flat and nothing failed for an hour. When a pod reaches the limit every new socket or file it opens fails with EMFILE: too many open files, so shipping.book on that pod fails with 500 within milliseconds. shipping-2 hit the limit about fourteen minutes before the anchor, then shipping-4, shipping-1 and shipping-6; shipping-3 is close; shipping-5, rescheduled after a node drain thirty minutes before the anchor, runs a fresh process and is healthy. shipping runs after payment and orders in POST /checkout, so customers are charged and an order is created without a shipment being booked. The 500s fail checkout and propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. shipping had no deploy and no version change. The orders rollout from 1.4.2 to 1.7.0, a minute before the first failures, is a red herring: orders shows no errors and every failure is EMFILE in shipping.",
+    "contributingFactors": [
+      "a socket leak in shipping on every aborted carrier rate refresh",
+      "the UPS rate API timing out, which turned a rare leak into a steady one an hour before any failure",
+      "shipping booking after the charge in POST /checkout, so failed bookings leave charged orders"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "shipping"]
+  },
+  "factors": ["shipping/saturation", "shipping/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bshipping\\b"],
+      [
+        "names_fd_exhaustion",
+        3,
+        "emfile|file descriptors?|open files|\\bfds?\\b|ulimit|nofile"
+      ],
+      [
+        "names_leak",
+        3,
+        "leak\\w*|never (closed|released|freed)|not (closed|released)|(sockets?|descriptors?|fds?)[^.\\n]{0,40}?(grow|climb|accumulat|pil)"
+      ],
+      ["names_carrier_trigger", 3, "carrier|\\bups\\b|rate refresh"],
+      [
+        "names_pod_stagger",
+        2,
+        "shipping-5|pods?[^.\\n]{0,60}?(one (at a time|by one)|staggered|in turn|at different times)|(fresh|new) process|reschedul"
+      ],
+      [
+        "notes_charged_without_shipment",
+        1,
+        "(charg|paid|payment)[^.\\n]{0,80}?(without|no|before|but)[^.\\n]{0,40}?(shipment|shipping|booking|label)"
+      ],
+      [
+        "rules_out_orders_deploy",
+        2,
+        "(orders|1\\.7\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(orders|1\\.7\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "orders|1\\.7\\.0"
+        }
+      ],
+      [
+        "notes_shipping_unchanged",
+        1,
+        "shipping[^.\\n]{0,60}?(no (deploy|roll[- ]?out|release|version change|code change)|unchanged|did not change|didn't change)|no (deploy|version change|code change)[^.\\n]{0,40}?shipping"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_orders_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(orders|1\\.7\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(orders|1\\.7\\.0)(?:[^.;\\n]|\\.\\d){0,40}?(roll[- ]?out|deploy|release|1\\.7\\.0)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(orders|1\\.7\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_payment",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bpayment\\b)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name file descriptor exhaustion on shipping pods, from sockets leaked on aborted UPS rate refreshes, as the origin, with EMFILE failing bookings and the checkout failures reaching edge-gateway? 5 = the leak, the carrier timeouts that drive it, the pods failing one by one and the victim chain. Blaming the orders rollout scores 1; naming EMFILE without the leak or its trigger scores at most 3."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the EMFILE errors, the runtime stats showing open fds climbing to 4096 per pod, the carrier refresh timeouts starting an hour earlier, and shipping-5 staying healthy after its reschedule? Cap at 3 unless it explains why failures began an hour after the carrier timeouts."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss orders' 1.7.0 rollout with evidence (no orders errors, failures are EMFILE in shipping), note that customers are charged without a booked shipment, and avoid blaming payment or edge-gateway? A restart of shipping pods only buys time and should not be presented as the fix."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "shipping": ["exhausted_pool", "none_of_these"] },
+  "cause": [
+    "EMFILE",
+    "too many open files",
+    "open fds|nofile|file descriptor",
+    "carrier rate refresh|ups-rates"
+  ]
+}

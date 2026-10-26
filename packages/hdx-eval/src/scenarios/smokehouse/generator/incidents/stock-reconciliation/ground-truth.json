@@ -1,0 +1,111 @@
+{
+  "scenario": "stock-reconciliation",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "inventory",
+    "summary": "Eleven minutes before the anchor fulfilment-ops ran a warehouse management reconciliation, FUL-3318, from inventory-4: it applied the snapshot wms-iad-1@2026-09-22T09:40Z to inventory's stock_levels table, 18,240 SKUs written in 41 seconds with nothing rejected. The snapshot counts in-transit units as negative stock, so for the SKUs it touched the available quantity is now below zero, and any reservation of one of them breaks the table's check constraint: inventory.reserve fails at once with 500 error: new row for relation \"stock_levels\" violates check constraint \"stock_levels_available_nonnegative\". About 18 percent of reservations fail, steady since the write finished. cart treats reservations as required, so about 18 percent of GET /cart requests and about the same share of POST /checkout requests fail with 502, and the failures propagate through checkout, web-bff and mobile-bff to edge-gateway, where the alert fires. inventory-db is as fast as before, inventory did not change version, and nothing shipped. cart's WARN lines about carts marking lines unavailable are what customers see, not a cause.",
+    "contributingFactors": [
+      "the FUL-3318 wms-iad-1 snapshot loaded into stock_levels with in-transit units counted as negative stock",
+      "the stock_levels_available_nonnegative check constraint rejecting reservations of those SKUs",
+      "cart treating inventory reservations as required"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "cart", "checkout"]
+  },
+  "factors": ["inventory/log_signal", "inventory/error_message"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\binventory\\b"],
+      [
+        "names_reconciliation",
+        3,
+        "reconcil|wms|warehouse management|ful-3318|fulfil?ment-ops|snapshot"
+      ],
+      [
+        "names_negative_stock",
+        2,
+        "negative|below zero|in[- ]transit|available < 0"
+      ],
+      [
+        "names_check_constraint",
+        2,
+        "check constraint|stock_levels_available_nonnegative|violat"
+      ],
+      [
+        "notes_store_fast",
+        1,
+        "inventory-db[^.\\n]{0,60}?(fast|normal|healthy|unchanged|not slow)|(no|not a) slow (database|db|datastore)"
+      ],
+      ["names_cart_victim", 1, "\\bcart\\b[^.\\n]{0,80}?(required|502|fail)"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(inventory-db|slow (database|db|query|queries))",
+        true
+      ],
+      [
+        "false_blame_cart",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(cart (deploy|release|code change|roll[- ]?out|bug|config))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name fulfilment-ops' FUL-3318 reconciliation, which loaded the wms-iad-1 snapshot into stock_levels with negative available stock, as the origin, with reservations of those SKUs breaking the check constraint so inventory fails cart and checkout requests and the failures reach edge-gateway? 5 = the reconciliation, the negative stock, the constraint failures and the victim chain. Saying only 'inventory is failing' or blaming a slow inventory-db or a deploy scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the check constraint errors on inventory spans and logs, the reconciliation start and finish lines on inventory-4 lining up with the first failures, the steady share after the write finished, and inventory-db staying fast? Cap at 3 unless it explains why the write itself reported no rejections."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming a deploy, inventory-db, cart's code or edge-gateway, and avoid treating cart's unavailable-lines warnings as the cause?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "inventory": ["upstream_change", "none_of_these"]
+  },
+  "cause": ["FUL-3318", "wms reconciliation|wms-iad-1", "fulfilment-ops"]
+}

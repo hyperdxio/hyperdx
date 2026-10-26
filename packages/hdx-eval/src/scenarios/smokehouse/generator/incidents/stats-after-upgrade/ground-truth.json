@@ -1,0 +1,122 @@
+{
+  "scenario": "stats-after-upgrade",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "user-profile",
+    "summary": "Fourteen minutes before the anchor the data-platform team upgraded users-db, the Postgres behind user-profile, from PostgreSQL 14.11 to 16.4 by blue/green switchover (DBA-3410). Every user-profile pod logged its users-db pool re-established against server_version 16.4 within seconds. pg_upgrade does not carry planner statistics over and nobody ran ANALYZE on the new cluster, so the profile lookup that joins users to user_preferences now plans a sequential scan: user-profile's pg.select spans on users-db went from about 6 ms to a p95 of about 800 ms in one step, and user-profile logs slow query warnings naming users-db. user-profile returns no errors and its version did not change. About four in ten GET /profile requests take longer than the 500 ms timeout web-bff and mobile-bff set on user-profile and fail with 504; every other route is healthy. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. review's 2.2.0 rollout, finished nine minutes before onset, is unrelated: review is an optional call on product pages and stayed error-free.",
+    "contributingFactors": [
+      "the PostgreSQL 14 to 16 upgrade of users-db (DBA-3410) leaving the new cluster without planner statistics",
+      "no ANALYZE run after the switchover, so the profile lookup plans a sequential scan until autovacuum analyzes users",
+      "web-bff and mobile-bff giving user-profile a 500 ms budget"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["user-profile/slow_dependency", "user-profile/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "user-profile|users-db"],
+      [
+        "names_upgrade",
+        3,
+        "upgrad|blue/green|switchover|dba-3410|16\\.4|postgres(ql)? 16"
+      ],
+      [
+        "names_statistics",
+        3,
+        "statistic|analy[sz]e|query plan|planner|seq(uential)? scan"
+      ],
+      [
+        "names_store_latency",
+        2,
+        "(users-db|pg\\.select)[^.\\n]{0,80}?(slow|latency|p9[59]|\\d+ ?ms)|(slow|latency)[^.\\n]{0,80}?users-db"
+      ],
+      [
+        "names_bff_timeout",
+        1,
+        "(web-bff|mobile-bff|bff)[^.\\n]{0,80}?(time[sd]? ?out|\\b504\\b)|(time[sd]? ?out|\\b504\\b)[^.\\n]{0,80}?(web-bff|mobile-bff|bff)"
+      ],
+      ["notes_profile_route", 1, "get /profile|profile (requests|route|page)"],
+      [
+        "rules_out_review_deploy",
+        2,
+        "(review[^.;\\n]{0,20}?(2\\.2\\.0|deploy|roll[- ]?out|release)|2\\.2\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(review[^.;\\n]{0,20}?(2\\.2\\.0|deploy|roll[- ]?out|release)|2\\.2\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "review[^\\n]{0,60}?(2\\.2\\.0|deploy|roll[- ]?out)|2\\.2\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_review_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(review|2\\.2\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(review|2\\.2\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_user_profile_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(user-profile (deploy|release|code change|roll[- ]?out|bug))",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((profile|user) (traffic|volume)|traffic (surge|spike)|load test)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the users-db upgrade to PostgreSQL 16 (DBA-3410) as the origin, with the new cluster lacking planner statistics so user-profile's lookups slowed past the BFFs' 500 ms timeout on GET /profile and the failures reached edge-gateway? 5 = the upgrade, the missing statistics or bad plan, the slow users-db reads and the victim chain. Saying only 'users-db is slow' scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in user-profile's pg.select spans on users-db stepping up at the switchover, the pool re-established logs naming server_version 16.4, the slow query warnings, and the BFF 504s on user-profile? Cap at 3 unless it ties the slowdown to the moment of the switchover."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming review's 2.2.0 rollout, a user-profile code change, traffic or edge-gateway, and avoid claiming user-profile returned errors of its own?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "user-profile": ["slow_datastore", "upstream_change", "config_change"]
+  },
+  "cause": [
+    "DBA-3410",
+    "blue/green|switchover",
+    "server_version|16\\.4",
+    "user-profile's datastore users-db",
+    "planner statistics|\\bANALYZE\\b|seq(uential)? scan"
+  ]
+}

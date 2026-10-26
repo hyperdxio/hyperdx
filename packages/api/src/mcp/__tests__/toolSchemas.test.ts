@@ -22,7 +22,11 @@ import { createTestClient } from './mcpTestUtils';
 describe('MCP tool input schemas', () => {
   // The tools/list response is built purely from the registered Zod schemas,
   // so no database or ClickHouse fixtures are needed here.
-  const context: McpContext = { teamId: 'team-id', userId: 'user-id' };
+  const context: McpContext = {
+    teamId: 'team-id',
+    userId: 'user-id',
+    isKnowledgeGraphEnabled: true,
+  };
 
   // `strict: false` keeps Ajv from complaining about the vocabulary quirks of
   // machine-generated schemas (unknown keywords, `additionalItems`, etc.).

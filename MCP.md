@@ -148,6 +148,39 @@ with:
 | `clickstack_get_webhook`         | List available webhook destinations for use as alert notification channels                    |
 | `clickstack_save_webhook`        | Create (omit id) or update (provide id) a webhook notification destination (slack, generic, or incidentio) |
 | `clickstack_delete_webhook`      | Permanently delete a webhook by ID (blocked while alerts still reference it)                   |
+| `clickstack_incident_context`    | Start an alert investigation: root cause ranking, blast radius and up to 3 confirmed past incidents with playbooks, in one call |
+| `clickstack_trace_root_cause`    | Walk the service graph downstream from an alerting service and rank the services and datastores whose error rate or p95 latency rose |
+| `clickstack_blast_radius`        | List the services that depend on a node, with hop counts and anomaly deltas                    |
+| `clickstack_open_incident`       | Open an incident record for an investigation                                                   |
+| `clickstack_record_incident_action` | Record a step taken during an incident, so it can feed a playbook                          |
+| `clickstack_resolve_incident`    | Resolve an incident with its root cause, resolution and which steps led to the fix              |
+| `clickstack_find_similar_incidents` | Rank confirmed past incidents by symptom overlap, graph closeness and age                  |
+| `clickstack_get_incident_playbook` | Steps that led to the fix in a past incident, and the leads that were ruled out              |
+
+The eight knowledge graph tools above, from `clickstack_incident_context`
+down, appear only when the team's `isKnowledgeGraphEnabled` flag is on. Two are
+topology tools (`clickstack_trace_root_cause`, `clickstack_blast_radius`); the
+other six are incident tools, with `clickstack_incident_context` also running
+the topology walk.
+
+To set it up:
+
+- Turn the flag on in MongoDB: `db.teams.updateOne({}, { $set: { isKnowledgeGraphEnabled: true } })`.
+  There is no endpoint for the flag.
+- If the team has more than one trace source, pick the one the graph reads with
+  `PUT /api/v2/knowledge/settings` and body `{ "traceSourceId": "<source id>" }`
+  (`null` clears it). `GET /api/v2/knowledge/settings` shows the current value.
+- The ClickHouse user of that source's connection needs `CREATE TABLE`,
+  `INSERT`, `ALTER ADD COLUMN` and `ALTER DELETE` on the source's database. The tables
+  (`hdx_kg_*`) are created there on first use. Deleting incidents uses
+  lightweight deletes with `lightweight_deletes_sync`, so it needs a ClickHouse
+  version that supports that setting.
+
+A resolved incident is used for retrieval only after a person confirms it with
+`POST /api/v2/knowledge/incidents/:id/confirm`, which needs a personal access
+key. `GET /api/v2/knowledge/incidents?status=resolved&confirmed=false` lists
+what is waiting for review and `GET /api/v2/knowledge/incidents/:id` shows one
+incident with its recorded steps.
 
 > **Maintainers:** when adding/removing/renaming a query tool, update this table
 > and — for builder (non-SQL) tools — the hand-curated `BUILDER_TOOLS_LIST` in

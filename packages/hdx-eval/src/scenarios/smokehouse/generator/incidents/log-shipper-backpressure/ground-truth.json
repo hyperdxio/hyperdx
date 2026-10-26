@@ -1,0 +1,109 @@
+{
+  "scenario": "log-shipper-backpressure",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "edge-gateway",
+    "summary": "Thirteen minutes before the anchor the observability team (OBS-918) moved edge-gateway's fluent-bit sidecar from loki.logging:3100 to the new collector, otel-gw.observability:4318, by hot reload, one gateway pod every fifteen seconds. The new collector throttles the gateway's log volume with HTTP 429 Too Many Requests, so fluent-bit retries its chunks, fills its 5 MB memory buffer and pauses its tail input, after between two and a half and four and a half minutes on each pod. With the input paused nothing reads the access log fifo, /var/log/gateway/access.fifo, so the gateway's workers block writing each request's access log line: on every paused pod edge-gateway's own time rose by about 240 ms on every route, and about 12 percent of its requests are rejected with 503 Service Unavailable: 1024 worker_connections are not enough before they are forwarded. The origin is edge-gateway itself, in its log shipping sidecar: web-bff, mobile-bff and every service behind them are healthy and simply receive fewer requests, and edge-gateway's version did not change. The fluent-bit WARN lines on each gateway pod show the 429 retries and then the paused input, each pod's pause lining up with its first failures. recommendation 2.0.1, rolled out from thirty three minutes before the anchor, is unrelated: recommendation stays error-free and its latency did not move.",
+    "contributingFactors": [
+      "the OBS-918 switch of edge-gateway's fluent-bit output to otel-gw.observability, which throttles it with 429s",
+      "the gateway writing access logs synchronously to a fifo the sidecar stops reading"
+    ]
+  },
+  "dispatch": {
+    "attach": []
+  },
+  "factors": [
+    "edge-gateway/saturation",
+    "edge-gateway/log_signal",
+    "edge-gateway/infra"
+  ],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "edge-gateway"],
+      [
+        "names_fluent_bit",
+        3,
+        "fluent-?bit|log shipp|sidecar|OBS-918|otel-gw|collector"
+      ],
+      [
+        "names_backpressure",
+        3,
+        "\\b429\\b|throttl|buffer|paused|fifo|access log"
+      ],
+      ["names_worker_connections", 2, "worker_connections|worker connections"],
+      [
+        "notes_downstream_healthy",
+        2,
+        "(web-bff|mobile-bff|downstream|backends?|services behind)[^.\\n]{0,80}?(healthy|unaffected|fewer|no errors)"
+      ],
+      ["notes_all_routes", 1, "every route|all routes"],
+      [
+        "rules_out_reco_release",
+        2,
+        "(recommendation[^.;\\n]{0,20}?(2\\.0\\.1|deploy|roll[- ]?out|release)|2\\.0\\.1)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(recommendation[^.;\\n]{0,20}?(2\\.0\\.1|deploy|roll[- ]?out|release)|2\\.0\\.1)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "recommendation[^.;\\n]{0,20}?(2\\.0\\.1|deploy|roll[- ]?out|release)|2\\.0\\.1"
+        }
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway(?![^.\\n]{0,80}?(fluent|log|sidecar|OBS-918|access|fifo|collector|429))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_reco_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(recommendation[^.;\\n]{0,20}?(2\\.0\\.1|deploy|roll[- ]?out|release)|2\\.0\\.1)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(recommendation[^.;\\n]{0,20}?(2\\.0\\.1|deploy|roll[- ]?out|release)|2\\.0\\.1)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_backend",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(web-bff|mobile-bff|\\bauth\\b|catalog|checkout|traffic (surge|spike))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at edge-gateway itself, in its fluent-bit sidecar: the OBS-918 switch to a collector that throttles it with 429s, the sidecar's buffer filling and its input pausing, and the gateway's workers blocking on access log writes until they run out of worker connections? 5 = the sidecar change, the backpressure path, every route affected and the services behind the gateway healthy. Blaming recommendation 2.0.1 or any backend scores at most 2; saying only 'edge-gateway is overloaded' with no log shipping cause scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in edge-gateway's own time rising and its worker_connections 503s, the fluent-bit reload, 429 retry and paused input lines on each gateway pod lining up pod by pod with that pod's first failures, and the services behind the gateway showing no errors? Cap at 3 unless it ties the per-pod pause times to the per-pod failures."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming recommendation 2.0.1, web-bff, mobile-bff, a traffic surge or any backend?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "edge-gateway": ["own_saturation", "config_change", "upstream_change"]
+  },
+  "cause": [
+    "fluent-bit",
+    "OBS-918",
+    "otel-gw\\.observability|429 Too Many Requests",
+    "mem buf overlimit|access\\.fifo"
+  ]
+}

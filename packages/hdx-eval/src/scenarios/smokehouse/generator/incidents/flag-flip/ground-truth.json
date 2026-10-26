@@ -1,0 +1,97 @@
+{
+  "scenario": "flag-flip",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "auth",
+    "summary": "About ten minutes before the anchor the feature flag auth.sync_revocation_check flipped from false to true on auth; the only marker is a config.change log on each auth pod, and no pod changed version. With the flag on, auth.verify checks the token revocation list synchronously on every request, so auth latency rose from about 20 ms to about 110 ms and around 1.5% of calls fail with RevocationCheckError: revocation list fetch timed out, logged as ERROR on auth. auth sits on every route, so the errors and the added latency propagate through web-bff and mobile-bff to edge-gateway on all routes at once, where the alert fires. There was no deploy, and the sessions Redis is unchanged.",
+    "contributingFactors": [
+      "auth.sync_revocation_check flag turned on",
+      "synchronous revocation check adding latency and timing out on every route"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "auth"]
+  },
+  "factors": ["auth/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bauth\\b"],
+      [
+        "names_flag",
+        3,
+        "sync_revocation|feature[- ]flag|config(uration)?[ .]?(change|flip|flag|toggle)|flag (flip|change|toggle|turned)"
+      ],
+      [
+        "cites_config_event",
+        2,
+        "config\\.change|config(uration)? (change )?(event|log)|flag[^.\\n]{0,40}?(false ?-> ?true|false to true)"
+      ],
+      ["names_error", 2, "RevocationCheckError|revocation"],
+      [
+        "notes_no_version_change",
+        2,
+        "no (deploy|roll[- ]?out|release|version change|new version)|(no|not|without)[^.\\n]{0,30}?(changed|change) version|version[^.\\n]{0,30}?unchanged|nothing (shipped|deployed)"
+      ],
+      ["names_all_routes", 1, "(every|all) routes?"],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(redis|sessions (store|cache))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief identify the auth.sync_revocation_check flag turning on as the change, with synchronous revocation checks adding latency and RevocationCheckError failures on auth, propagating on every route to edge-gateway? 5 = the flag, the mechanism and the all-routes propagation. Blaming auth without the flag caps at 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is the onset tied to the config.change logs on the auth pods, with no service.version change, and are the RevocationCheckError spans and logs and the auth latency step cited? Cap at 3 unless the brief shows the config event lines up with the onset."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid inventing a deploy, blaming the sessions Redis, the BFFs or edge-gateway? Cap at 3 unless it says explicitly that no version changed."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "auth": ["config_change"] },
+  "cause": [
+    "sync_revocation_check",
+    "CFG-2291",
+    "RevocationCheck|revocation list"
+  ]
+}

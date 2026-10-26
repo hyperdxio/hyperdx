@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import dagre from '@dagrejs/dagre';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import {
@@ -21,7 +20,6 @@ import {
   Node,
   NodeChange,
   Panel,
-  Position,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -31,6 +29,7 @@ import { SQLPreview } from '@/components/ChartSQLPreview';
 import useServiceMap, { ServiceAggregation } from '@/hooks/useServiceMap';
 import { useResolvedColorScheme } from '@/useUserPreferences';
 
+import { getGraphLayout } from './graphLayout';
 import ServiceMapEdge, { ServiceMapEdgeData } from './ServiceMapEdge';
 import ServiceMapLegend from './ServiceMapLegend';
 import {
@@ -54,40 +53,6 @@ const nodeTypes = {
 const edgeTypes: EdgeTypes = {
   request: ServiceMapEdge,
 };
-
-function getGraphLayout(nodes: Node[], edges: Edge[]): Node[] {
-  const NODE_SIZE = 80;
-
-  const dagreGraph = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir: 'LR' });
-
-  for (const node of nodes) {
-    dagreGraph.setNode(node.id, { width: NODE_SIZE, height: NODE_SIZE / 2 });
-  }
-
-  for (const edge of edges) {
-    dagreGraph.setEdge(edge.source, edge.target);
-  }
-
-  dagre.layout(dagreGraph);
-
-  const newNodes: Node[] = nodes.map(node => {
-    const nodeWithPosition = dagreGraph.node(node.id);
-    const newNode = {
-      ...node,
-      targetPosition: Position.Left,
-      sourcePosition: Position.Right,
-      position: {
-        x: nodeWithPosition.x - NODE_SIZE / 2,
-        y: nodeWithPosition.y - NODE_SIZE / 2,
-      },
-    };
-
-    return newNode;
-  });
-
-  return newNodes;
-}
 
 interface ServiceMapPresentationProps {
   services: Map<string, ServiceAggregation> | undefined;

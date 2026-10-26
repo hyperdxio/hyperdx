@@ -1,4 +1,7 @@
 import type { ClickHouseClient } from '@clickhouse/client';
+import { createHash } from 'crypto';
+
+import { SMOKEHOUSE_PREFIX } from '@/scenarios/smokehouse/shared';
 
 export const EVAL_DATABASE = 'default';
 const SOURCE_TRACES_TABLE = 'otel_traces';
@@ -38,13 +41,19 @@ export type ScenarioTables = {
   logsKeyRollup: string;
 } & Record<MetricTableField, string>;
 
+/** Name the agent can see (tables, sources, memory titles). Smokehouse names would give away the incident, so they are hashed. */
+export function publicScenarioName(scenario: string): string {
+  if (!scenario.startsWith(SMOKEHOUSE_PREFIX)) return scenario;
+  return `sh_${createHash('sha1').update(scenario).digest('hex').slice(0, 8)}`;
+}
+
 export function scenarioSlug(scenario: string): string {
   if (!/^[a-z0-9_-]+$/.test(scenario)) {
     throw new Error(
       `Invalid scenario name "${scenario}": must match /^[a-z0-9_-]+$/`,
     );
   }
-  return scenario.replace(/-/g, '_');
+  return publicScenarioName(scenario).replace(/-/g, '_');
 }
 
 export function scenarioTables(scenario: string): ScenarioTables {

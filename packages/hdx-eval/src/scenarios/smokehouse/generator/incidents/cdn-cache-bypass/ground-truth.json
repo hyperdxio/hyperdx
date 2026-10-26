@@ -1,0 +1,113 @@
+{
+  "scenario": "cdn-cache-bypass",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "web-bff",
+    "summary": "Eleven minutes before the anchor web-bff 1.6.0 began rolling out, one pod every thirty seconds (WEB-902). Its release notes say product pages now send Cache-Control: private, no-store, so the personalised price badge is never shared. The CDN in front of the shop honours that header and stops caching product pages; as its cached copies expire over about six minutes, GET /product/{id} requests from web-bff grow to several times their usual volume. Each one asks pricing for a quote, and the extra reads slow pricing-db from about 6 ms to about 200 ms, with pricing logging slow price_rules queries. pricing sits on the search, product, cart and checkout paths behind 500 ms timeouts, and POST /checkout, which waits on pricing on top of cart, payment and orders, suffers most: about two thirds of checkouts fail with 504, along with a few percent of searches and product pages. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. web-bff itself serves the new version without errors; the change shows only as more traffic. pricing's code and version did not change, and its slow query warnings are a symptom of the extra load, not a change on pricing.",
+    "contributingFactors": [
+      "web-bff 1.6.0 marking product pages Cache-Control: private, no-store",
+      "the CDN no longer absorbing product page traffic",
+      "pricing-db slowing under the extra reads, behind callers' 500 ms timeouts"
+    ]
+  },
+  "dispatch": {
+    "attach": ["mobile-bff", "pricing", "checkout"]
+  },
+  "factors": ["web-bff/deploy", "web-bff/traffic", "pricing/slow_dependency"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "web-bff"],
+      ["names_release", 3, "1\\.6\\.0|WEB-902"],
+      [
+        "names_cache_header",
+        3,
+        "cache-control|no-store|private|\\bcdn\\b|cach(e|ing) (bypass|miss|disabled|stopped)|stops? caching"
+      ],
+      [
+        "names_traffic",
+        2,
+        "traffic|volume|requests? (grew|grow|rose|increase|surge)|more requests"
+      ],
+      [
+        "names_pricing_db",
+        2,
+        "pricing-db|pricing's (database|datastore)|price_rules"
+      ],
+      ["names_checkout", 1, "\\bcheckout"],
+      [
+        "notes_symptom_warnings",
+        1,
+        "symptom|consequence|result of the (extra|added) (load|reads|traffic)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_pricing",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(pricing (deploy|release|code|config|bug))|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(pricing (deploy|release|code|config|bug))(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(pricing-db|postgres\\w*|slow (database|db|query))",
+        true
+      ],
+      [
+        "false_blame_bot",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(\\bbots?\\b|scraper|crawler|ddos|attack)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at the web-bff 1.6.0 rollout, whose Cache-Control: private, no-store header stopped the CDN caching product pages, so product traffic reached the origin several times over and slowed pricing-db until callers timed out? 5 = the release, the cache header, the extra traffic and the slow pricing-db chain to edge-gateway. Blaming pricing-db alone scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the web-bff rollout and release notes before the failures, GET /product/{id} volume rising from web-bff only, pricing-db client spans slowing and the checkout timeouts? Cap at 3 unless it ties the traffic growth to the release."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming pricing's code, a bot or attack, pricing-db as the cause or edge-gateway, and treat pricing's slow query warnings as a symptom?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "web-bff": ["deploy_defect", "traffic_flood"],
+    "pricing": ["slow_datastore", "traffic_flood", "upstream_change"]
+  },
+  "cause": [
+    "web-bff[^;\\n]{0,40}1\\.6\\.0",
+    "1\\.4\\.2 -> 1\\.6\\.0",
+    "Cache-Control|no-store",
+    "WEB-902"
+  ]
+}

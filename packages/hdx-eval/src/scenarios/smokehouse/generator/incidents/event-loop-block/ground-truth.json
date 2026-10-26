@@ -1,0 +1,116 @@
+{
+  "scenario": "event-loop-block",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "pricing",
+    "summary": "Fourteen minutes before the anchor the tenant globex published a price list of 212,480 rules, up from 9,120 (change PL-8812). pricing compiles a tenant's price rules synchronously on a price-cache miss, and the compiled set for globex is 38.4 MiB, over the 8 MiB maximum entry size of pricing's rule cache, so it is never cached and every globex cache miss recompiles it. Each compile blocks that pricing pod's Node event loop for 1.5 to 2.3 seconds, and every request the pod is serving at the time stalls with it, whatever its tenant; the stalled spans on a pod all end together when the block clears. pricing logs the synchronous compile and event loop lag warnings on all six pods, and its pricing-db and price-cache client spans stay fast, so the time is spent inside pricing's own handler. Callers of pricing (search, web-bff and mobile-bff on GET /product/{id} and GET /cart, and checkout) give up after their 500 ms timeouts, and the resulting 504s and 502s propagate to edge-gateway, where the alert fires. Most failing requests belong to other tenants, so this is not a globex-only problem. Nothing was deployed and no version changed.",
+    "contributingFactors": [
+      "synchronous price rule compilation in pricing blocking the event loop on each globex cache miss",
+      "compiled rule set larger than the rule cache's 8 MiB maximum entry, so it is recompiled every time",
+      "500 ms caller timeouts on pricing in search, the BFFs and checkout turning the stalls into 504s"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search", "checkout"]
+  },
+  "factors": ["pricing/saturation", "pricing/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpricing\\b(?!-db)"],
+      [
+        "names_event_loop",
+        3,
+        "event[- ]?loop|synchronous|\\bsync\\b|block(s|ed|ing)? the (pod|process|thread)|cpu[- ]bound"
+      ],
+      ["names_trigger_tenant", 3, "globex"],
+      [
+        "names_price_list",
+        2,
+        "price[- ]?list|price rules?|\\brules?\\b[^.\\n]{0,30}?(import|publish|compil)|212,?480|pl-8812"
+      ],
+      [
+        "names_cache_gap",
+        2,
+        "(too (large|big)|exceeds?|over)[^.\\n]{0,60}?(cache|8 ?mib)|not cached|never cached|recompil"
+      ],
+      [
+        "notes_all_tenants",
+        2,
+        "(all|every|other|any) tenants?|whatever (its|the) tenant|not (a |just )?globex[- ]only|regardless of tenant"
+      ],
+      ["names_timeout", 1, "time[- ]?out|504"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(pricing-db|price-cache|redis|postgres\\w*)",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(traffic (surge|spike)|globex (traffic|volume|load)|load test|request volume)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name pricing's synchronous compile of globex's newly enlarged price list, which is too big to cache, blocking the event loop on each globex cache miss and stalling every request on that pod, with caller timeouts carrying it to edge-gateway? 5 = trigger (price list), mechanism (synchronous compile, no caching) and the victim chain. Blaming pricing-db, Redis or a traffic surge scores at most 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in pricing's own span time growing while its store client spans stay fast, the event loop lag and compile logs, and stalls on a pod ending together across tenants? Cap at 3 unless it explains why other tenants fail when only globex triggers it."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming a deploy, avoid calling it a globex-only issue, and avoid blaming search, the BFFs or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "pricing": ["own_saturation", "none_of_these"] },
+  "cause": [
+    "globex",
+    "PL-8812",
+    "event loop",
+    "price (rules|list)",
+    "pricing's own time"
+  ]
+}

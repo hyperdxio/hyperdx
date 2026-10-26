@@ -150,6 +150,18 @@ function renderScenarioTable(
     c => val(c?.toolCalls.mean, oneDecimal),
     d => signedNumber(d?.toolCalls, 1),
   );
+  // k/n only where some run found the origin; elsewhere the metric does not apply.
+  const originFound = columns.some(
+    m => (scenario.cells[m]?.stepsToOrigin?.found ?? 0) > 0,
+  );
+  addRow('Steps to origin (mean)', c => {
+    const s = c?.stepsToOrigin;
+    if (!s || !originFound) return val(s?.mean ?? undefined, oneDecimal);
+    return `${val(s.mean ?? undefined, oneDecimal)} (${s.found}/${s.n})`;
+  });
+  addRow('Negative matches (mean)', c =>
+    val(c?.negativeMatches?.mean, oneDecimal),
+  );
   addRow('Tool errors (mean)', c => val(c?.toolErrors?.mean, oneDecimal));
   addRow('Tool-error penalty', c =>
     val(c?.toolErrors?.penaltyMean, x => `${(x * 100).toFixed(0)}pp`),

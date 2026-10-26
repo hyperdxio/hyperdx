@@ -1,0 +1,112 @@
+{
+  "scenario": "inventory-query-regression",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "inventory",
+    "summary": "inventory 1.9.0 began rolling out twelve minutes before the anchor, one pod a minute, and was on all six pods six minutes later. 1.9.0 upgrades its ORM, which now binds sku as text, so the reservation statement UPDATE stock_levels SET reserved = reserved + $1 WHERE sku = $2::text no longer uses the sku index and runs a Seq Scan over the 2.18 million rows of stock_levels. Every upgraded pod adds scans to the one inventory-db, so writes slow on old and new pods alike, in steps as the rollout proceeds: inventory's pg.update spans went from about 6 ms to about 185 ms. inventory returns no errors of its own. POST /checkout runs inventory.reserve through cart inside the BFFs' 500 ms budget, so about half of checkouts now time out with 504 at web-bff and mobile-bff, and a few GET /cart requests time out too; the failures propagate to edge-gateway, where the alert fires. The data-platform change DBA-3517, which lowered log_min_duration_statement on inventory-db from 1000 ms to 250 ms seventy seconds into the rollout, is harmless: it changes only what gets logged, and it is why inventory's slow statement WARN lines, which name the Seq Scan, start right after it.",
+    "contributingFactors": [
+      "inventory 1.9.0's ORM binding sku as text, so the reserve UPDATE scans stock_levels",
+      "all inventory pods sharing one inventory-db, so old pods slow too",
+      "checkout running inventory reservations inside the 500 ms BFF budget"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "cart", "checkout"]
+  },
+  "factors": ["inventory/deploy", "inventory/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\binventory\\b"],
+      ["names_release", 3, "1\\.9\\.0"],
+      [
+        "names_seq_scan",
+        3,
+        "seq(uential)? scan|index (is )?(no longer|not) used|no longer uses the (sku )?index|::text|binds sku as text|full (table )?scan"
+      ],
+      [
+        "names_store_slow",
+        2,
+        "(pg\\.update|inventory-db|writes?)[^.\\n]{0,80}?(slow|\\d+ ?ms)"
+      ],
+      [
+        "names_stepwise",
+        1,
+        "\\bsteps?\\b|as (the )?rollout|pod by pod|one pod a minute|old and new pods"
+      ],
+      ["names_checkout_timeout", 1, "time[sd]? ?out|\\b504\\b"],
+      [
+        "rules_out_dba_change",
+        2,
+        "(DBA-3517|log_min_duration_statement|parameter group)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(DBA-3517|log_min_duration_statement|parameter group)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "DBA-3517|log_min_duration_statement|parameter group"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_dba_change",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(DBA-3517|log_min_duration_statement|parameter group)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(DBA-3517|log_min_duration_statement|parameter group)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_cart",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(cart (deploy|release|code change|bug|config))",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(traffic (surge|spike)|load test|(cart|checkout) (traffic|volume))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name inventory 1.9.0 as the trigger, with its reserve UPDATE no longer using the sku index so it scans stock_levels, slowing the shared inventory-db for every pod and timing out checkouts through cart and the BFFs to edge-gateway? 5 = the release, the scan, the slowdown on all pods and the victim chain. Blaming DBA-3517 or saying only that inventory-db is slow scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the rollout events lining up with each step in inventory's pg.update latency, the slow statement lines naming the Seq Scan and the $2::text cast, and the checkout timeouts? Cap at 3 unless it explains why old-version pods slowed too."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming DBA-3517, cart, a traffic surge or edge-gateway, and avoid calling it a database fault with no code change?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "inventory": ["deploy_defect", "slow_datastore"]
+  },
+  "cause": ["\\b1\\.9\\.0\\b", "Seq Scan on stock_levels", "\\$2::text"]
+}

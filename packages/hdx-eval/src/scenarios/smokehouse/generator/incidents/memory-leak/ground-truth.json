@@ -1,0 +1,113 @@
+{
+  "scenario": "memory-leak",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "cart",
+    "summary": "cart 1.5.0, rolled to all six cart pods 45 minutes before the anchor, leaks heap. It served cleanly for about twenty minutes; then, pod by pod, the heap passed half of its 1.84 GiB limit and mark-compact GC pauses grew from tens of milliseconds to over a second, visible as a widening, spiky cart server span duration on the affected pods while cart's Redis and Postgres client spans and its inventory calls stay fast. When a pod reaches the limit it is OOMKilled (exit code 137, JavaScript heap out of memory) and restarts, which briefly resets connections to it and returns it to normal until the heap fills again; the pods fill at different rates, so they degrade and restart at staggered times from about nine minutes before the anchor. web-bff and mobile-bff (GET /cart) and checkout (POST /checkout) call cart with a 500 ms timeout, so the pauses become 504s that propagate to edge-gateway, where the alert fires. notification's rollout from 1.4.2 to 1.6.0, about twelve minutes before the anchor as the timeouts climbed, is a red herring: notification is an optional call from checkout, shows no errors or latency change, and the cart pauses started well before it.",
+    "contributingFactors": [
+      "heap leak in cart 1.5.0 driving GC pauses and OOMKill restarts",
+      "500 ms caller timeouts on cart in the BFFs and checkout turning GC pauses into 504s"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["cart/deploy", "cart/saturation", "cart/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcart\\b(?!-db)"],
+      [
+        "names_leak",
+        3,
+        "(memory|heap)[^.\\n]{0,30}?(leak|grow|exhaust|limit|pressure)|leak\\w*[^.\\n]{0,30}?(memory|heap)|out of memory|\\boom"
+      ],
+      ["names_gc", 2, "\\bgc\\b|garbage[- ]collect|mark-compact"],
+      [
+        "names_restarts",
+        2,
+        "oom[- ]?kill|exit code 137|restart(s|ed|ing)?[^.\\n]{0,40}?\\b(pods?|containers?|cart)\\b|\\b(pods?|containers?|cart)\\b[^.\\n]{0,40}?restart"
+      ],
+      [
+        "ties_to_release",
+        3,
+        "(1\\.5\\.0|cart[^.\\n]{0,20}?(deploy|roll[- ]?out|release))[^\\n]{0,200}?(leak|heap|memory|\\bgc\\b)|(leak|heap|memory|\\bgc\\b)[^\\n]{0,200}?(1\\.5\\.0|cart[^.\\n]{0,20}?(deploy|roll[- ]?out|release))"
+      ],
+      [
+        "notes_delay",
+        1,
+        "served cleanly|(\\d+|twenty|thirty|forty)[- ]?min\\w*[^.\\n]{0,60}?(after|before|later)|delayed|slow(ly)? (burn|build|grow|fill)"
+      ],
+      ["names_timeout", 1, "time[- ]?out|504"],
+      [
+        "rules_out_notification_deploy",
+        3,
+        "notification(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?notification",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "notification|1\\.6\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_notification_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(notification|1\\.6\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(notification|1\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,40}?(roll[- ]?out|deploy|release|1\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(notification|1\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(cart-db|redis|postgres\\w*|inventory)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name cart 1.5.0 leaking memory as the origin, with GC pauses and OOMKill restarts, and the 500 ms timeouts in the BFFs and checkout carrying the pauses to edge-gateway? 5 = the leak, the release it came with, and the victim chain. Blaming the notification rollout, cart's stores or inventory scores at most 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in cart's own span duration growing per pod while its store and inventory calls stay fast, the GC pause and heap logs, and the OOMKilled terminations? Cap at 3 unless it explains why a release from forty minutes earlier fits: it served cleanly first and symptoms grew with heap fill."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss notification's 1.6.0 rollout with evidence (optional call, no movement, pauses began before it) and avoid blaming edge-gateway or the BFFs?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "cart": ["deploy_defect", "none_of_these"] },
+  "cause": [
+    "1\\.4\\.2 -> 1\\.5\\.0",
+    "heap",
+    "OOMKill|out of memory",
+    "mark-compact|gc pause"
+  ]
+}

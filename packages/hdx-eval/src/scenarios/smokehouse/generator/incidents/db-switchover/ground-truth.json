@@ -1,0 +1,98 @@
+{
+  "scenario": "db-switchover",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "inventory",
+    "summary": "Twenty two minutes before the anchor a planned switchover for host maintenance (MAINT-1184) promoted inventory-db-b and demoted inventory-db-a to a read-only standby. inventory's connections were terminated, and every pod reconnected to inventory-db.internal using a cached DNS entry that still pointed at the old primary's address, 10.0.4.17. Every reservation write on those pods now fails with cannot execute UPDATE in a read-only transaction (SQLSTATE 25006), so inventory.reserve returns 500. Each pod heals when its DNS cache entry (ttl 1800s) expires and it re-resolves to 10.0.4.23, so the pods recover one by one, nine to thirty six minutes after the switchover, and the error rate falls in steps; at the anchor inventory-4, inventory-5 and inventory-6 are still failing. cart calls inventory without retry and does not treat it as optional, so GET /cart and POST /checkout fail with 502s that propagate through checkout and web-bff and mobile-bff to edge-gateway, where the alert fires. No inventory code or version changed. shipping's rollout from 1.4.2 to 1.5.1, three minutes before the switchover, is a red herring: shipping shows no errors and the failures are all read-only write errors on inventory.",
+    "contributingFactors": [
+      "inventory's resolver caching the database address for thirty minutes, so pods reconnected to the demoted primary",
+      "the switchover demoting the old primary to a read-only standby that still accepts connections",
+      "cart treating inventory reservations as required, so write failures fail whole carts and checkouts"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "cart", "checkout", "inventory"]
+  },
+  "factors": ["inventory/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\binventory\\b"],
+      ["names_read_only", 3, "read[- ]only|25006|cannot execute update"],
+      ["names_switchover", 3, "switch[- ]?over|fail[- ]?over|promot|demot"],
+      [
+        "names_stale_dns",
+        3,
+        "\\bdns\\b|re-?resolv|cached (ip|address|host|entry)|stale (ip|address|host|connection|endpoint)|old primary"
+      ],
+      [
+        "notes_pods_recover",
+        1,
+        "(pods?|inventory-\\d)[^.\\n]{0,60}?(recover|heal|reconnect|healthy)|one by one|staggered|in steps"
+      ],
+      [
+        "rules_out_shipping_deploy",
+        2,
+        "(shipping|1\\.5\\.1)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(shipping|1\\.5\\.1)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "shipping|1\\.5\\.1"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_shipping_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(shipping|1\\.5\\.1)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(shipping|1\\.5\\.1)(?:[^.;\\n]|\\.\\d){0,40}?(roll[- ]?out|deploy|release|1\\.5\\.1)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(shipping|1\\.5\\.1)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name inventory writing to the demoted, read-only inventory-db-a after the planned switchover, because its cached DNS entry still points at the old primary, with cart and checkout failures reaching edge-gateway? 5 = the switchover, the read-only errors, the stale address and the victim chain. Saying only 'inventory-db is down' scores at most 3; blaming the shipping rollout scores 1."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the SQLSTATE 25006 errors naming the old address, the switchover notice and reconnect logs at onset, and the per-pod DNS refresh logs that line up with each pod recovering? Cap at 3 unless it explains why pods recover one at a time."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss shipping's 1.5.1 rollout with evidence (no shipping errors), avoid blaming cart, checkout or edge-gateway, and note that the problem is clearing on its own but not yet on every pod?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "inventory": ["none_of_these"] },
+  "cause": [
+    "MAINT-1184",
+    "switchover",
+    "read-only transaction",
+    "inventory-db-a|10\\.0\\.4\\.17|cached DNS"
+  ]
+}

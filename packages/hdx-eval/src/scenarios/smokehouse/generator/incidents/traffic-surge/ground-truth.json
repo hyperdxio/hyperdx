@@ -1,0 +1,93 @@
+{
+  "scenario": "traffic-surge",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "search",
+    "summary": "Starting about ten minutes before the anchor, tenant hooli (free tier) flooded GET /search through web-bff, ramping over three minutes to about seven times normal search request volume. No deploy or config change preceded it. search's own server span latency rose with the request volume, from about 20 ms to about 250 ms, and it began shedding load with 503 search overloaded: request queue full. Errors hit every tenant at a similar rate; hooli stands out by request count, not by error rate. web-bff and mobile-bff call search with a 500 ms timeout, so the slow and shed searches become 504s and 502s that propagate to edge-gateway, where p95 climbed and the alert fired. Elasticsearch, catalog and pricing latency stay flat.",
+    "contributingFactors": [
+      "request surge from tenant hooli on GET /search",
+      "search latency and load shedding rising with volume"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search"]
+  },
+  "factors": ["search/traffic", "search/saturation"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bsearch\\b"],
+      ["names_tenant", 2, "hooli"],
+      [
+        "names_volume",
+        3,
+        "surge|flood|(traffic|request|volume|load|rps|throughput)[^.\\n]{0,40}?(spike|jump|rose|rise|increas|burst|times|\\dx)"
+      ],
+      [
+        "names_load_latency",
+        2,
+        "(latency|slow|duration)[^.\\n]{0,60}?(volume|load|traffic)|(volume|load|traffic)[^.\\n]{0,60}?(latency|slow|saturat)"
+      ],
+      ["names_shedding", 1, "shed|queue full|overload|503"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(elasticsearch|catalog-index|es\\.search|slow (index|query|queries))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief identify a request surge from tenant hooli on GET /search as the cause, with search slowing and shedding under the volume, and edge-gateway as where the alert fired? 5 = the tenant, the route, search saturating with volume and the propagation. Naming search as slow without the volume change caps at 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in span counts by tenant.id and route showing the surge, search server span latency rising in step with volume, the shed 503s, and Elasticsearch, catalog and pricing staying flat? Cap at 3 unless request volume is shown from data, not assumed."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming hooli's requests as uniquely failing (errors hit every tenant), a deploy, Elasticsearch, or edge-gateway? Cap at 3 unless it separates the tenant that drives volume from the tenants that see errors."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "search": ["traffic_flood"] },
+  "cause": ["hooli", "requests to (search|web-bff) \\d+ -> \\d+"]
+}

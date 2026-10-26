@@ -1,0 +1,115 @@
+{
+  "scenario": "bulk-import",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "catalog",
+    "summary": "Eighteen minutes before the anchor the merchandising team started a supplier feed import (vandelay-2026-09, MERCH-882) from catalog-3: 4,200,000 rows upserted into catalog-db in batches of 5,000 with no rate limit. catalog-db shares the Postgres instance commerce-pg-2 with inventory-db, and the import's write load makes every commit on the instance wait. Over two minutes inventory's reservation writes (pg.update on inventory-db) slowed from about 6 ms to about 320 ms. About one inventory.reserve call in eight now takes longer than cart's 500 ms timeout and cart fails it with 504, and the rest leave cart and checkout so slow that web-bff, mobile-bff and edge-gateway time out on them: about a quarter of GET /cart requests and most POST /checkout requests fail. The failures propagate through checkout, web-bff and mobile-bff to edge-gateway, where the alert fires. Every other route is healthy. inventory itself returns no errors and its code and version did not change; its slow statement logs name commerce-pg-2. catalog stays healthy on its own metrics: its reads on catalog-db rose only from about 6 ms to about 11 ms and catalog serves no errors, so the source of the load shows only in the import's progress logs on catalog-3. Nothing shipped.",
+    "contributingFactors": [
+      "the feed import upserting into catalog-db with no rate limit",
+      "catalog-db and inventory-db sharing the Postgres instance commerce-pg-2",
+      "cart treating inventory reservations as required, inside request paths with a 500 ms budget"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "cart", "checkout"]
+  },
+  "factors": ["catalog/log_signal", "inventory/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 3, "\\bcatalog\\b(?!-db)"],
+      [
+        "names_import",
+        3,
+        "import|upsert|supplier feed|merch-882|merchandising|bulk (load|write)"
+      ],
+      [
+        "names_shared_instance",
+        3,
+        "commerce-pg-2|(same|shared|single|one) (postgres(ql)? )?(instance|cluster|host|server)|shares?d?[^.\\n]{0,40}?(instance|cluster|host)"
+      ],
+      [
+        "names_inventory_writes",
+        2,
+        "inventory[^.\\n]{0,80}?(write|update|reserv|commit)"
+      ],
+      ["names_cart_timeout", 1, "cart[^.\\n]{0,80}?(time[sd]? ?out|\\b504\\b)"],
+      [
+        "notes_catalog_healthy",
+        1,
+        "catalog[^.\\n]{0,80}?(healthy|fast|unaffected|no errors|error[- ]?free)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_inventory_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(inventory (deploy|release|code change|roll[- ]?out|bug))",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((cart|checkout|customer|user) (traffic|volume)|traffic (surge|spike)|load test)",
+        true
+      ],
+      [
+        "false_blame_cart",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(cart (deploy|release|code change|roll[- ]?out|bug|config))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name catalog's supplier feed import, writing to catalog-db on the Postgres instance it shares with inventory-db, as the origin, with inventory's slowed writes timing out cart and checkout requests and the failures reaching edge-gateway? 5 = the import, the shared instance, the slow inventory writes and the victim chain. Saying only 'inventory-db is slow' scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the cart and checkout timeouts, inventory's pg.update spans slowing at onset, the import start and progress logs on catalog-3, and both sides naming commerce-pg-2? Cap at 3 unless it explains why catalog, the source of the load, looks healthy."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid claiming a deploy, a traffic surge or an inventory or cart code change, avoid confusing the import with the routine catalog reindex, and avoid blaming edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "catalog": ["none_of_these"] },
+  "cause": ["feed import", "vandelay", "MERCH-882"]
+}

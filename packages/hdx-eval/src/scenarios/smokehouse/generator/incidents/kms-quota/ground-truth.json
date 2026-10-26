@@ -1,0 +1,125 @@
+{
+  "scenario": "kms-quota",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "user-profile",
+    "summary": "Thirteen minutes before the anchor the security team turned on field-level encryption in user-profile (SEC-2410, config change pii.field_encryption, one pod every twenty seconds): every profile read now decrypts address, phone and date_of_birth with the KMS key alias/pii-profile. KMS limits requests per account and region, and payment shares that limit: it calls kms:Decrypt on alias/card-vault to unwrap the card key on every charge. Once all six user-profile pods were encrypting, about 30 percent of payment's Decrypt calls are throttled, and payment, which does not retry them, fails those charges at once with 503 ThrottlingException: Rate exceeded (kms:Decrypt on alias/card-vault). user-profile's SDK retries its own throttled calls and they get through: its kms client stats show hundreds of throttled and retried calls every thirty seconds, and its reads are about 35 ms slower but return no errors. About 30 percent of POST /checkout requests fail with 502, and the failures propagate through checkout, web-bff and mobile-bff to edge-gateway, where the alert fires. Neither payment nor user-profile shipped anything and payments.example.com is healthy. review 2.6.0, rolled out from eighteen minutes before the anchor, is unrelated: review is optional, off the checkout path, and stays error-free.",
+    "contributingFactors": [
+      "SEC-2410 field-level encryption making every user-profile read call KMS",
+      "the account's KMS request quota shared by user-profile and payment",
+      "payment not retrying throttled kms:Decrypt calls"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["user-profile/log_signal", "payment/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "user-profile"],
+      [
+        "names_encryption",
+        3,
+        "SEC-2410|field[- ]level encryption|field_encryption|\\bpii\\b"
+      ],
+      [
+        "names_kms_quota",
+        3,
+        "quota|(request|rate) limit|limits requests|throttl|rate exceeded|shares? that limit"
+      ],
+      [
+        "names_payment_fails",
+        2,
+        "payment[^.\\n]{0,80}?(throttl|fail|\\b503\\b|decrypt)"
+      ],
+      [
+        "notes_profile_retries",
+        1,
+        "retr(y|ies|ied)|user-profile[^.\\n]{0,60}?(no errors|slower|healthy)"
+      ],
+      [
+        "notes_nothing_shipped",
+        1,
+        "(neither|nor)[^.\\n]{0,40}?shipped|no (deploy|release)|nothing shipped|payments\\.example\\.com is healthy"
+      ],
+      [
+        "rules_out_review_release",
+        2,
+        "(review[^.;\\n]{0,20}?(2\\.6\\.0|deploy|roll[- ]?out|release)|2\\.6\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(review[^.;\\n]{0,20}?(2\\.6\\.0|deploy|roll[- ]?out|release)|2\\.6\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "review[^.;\\n]{0,20}?(2\\.6\\.0|deploy|roll[- ]?out|release)|2\\.6\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_review_release",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(review[^.;\\n]{0,20}?(2\\.6\\.0|deploy|roll[- ]?out|release)|2\\.6\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(review[^.;\\n]{0,20}?(2\\.6\\.0|deploy|roll[- ]?out|release)|2\\.6\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_provider",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(payments\\.example\\.com|payment provider|provider (outage|down))",
+        true
+      ],
+      [
+        "false_blame_payment_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(payment (deploy|release|code change|bug|roll[- ]?out))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name SEC-2410's field-level encryption on user-profile as the trigger, with its KMS calls using up the account's shared KMS request quota so payment's kms:Decrypt calls are throttled and charges fail, reaching edge-gateway through checkout and the BFFs? 5 = the encryption change, the shared quota, payment failing while user-profile retries through, and the victim chain. Placing the fault inside payment alone or at the payment provider scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in payment's ThrottlingException errors rising as each user-profile pod logged its config.change, user-profile's kms client stats of throttled and retried calls, and user-profile's small latency rise with no errors? Cap at 3 unless it explains why user-profile itself does not fail."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming review 2.6.0, payments.example.com, a payment code change or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "user-profile": ["config_change"],
+    "payment": ["upstream_change", "none_of_these"]
+  },
+  "cause": [
+    "SEC-2410",
+    "field[_ -]?level encryption|field_encryption",
+    "alias/pii-profile"
+  ]
+}

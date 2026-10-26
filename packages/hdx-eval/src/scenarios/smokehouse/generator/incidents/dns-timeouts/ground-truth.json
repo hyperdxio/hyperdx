@@ -1,0 +1,115 @@
+{
+  "scenario": "dns-timeouts",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "payment",
+    "summary": "Eleven minutes before the anchor CoreDNS, the cluster DNS at nameserver 10.96.0.10, fell behind at the evening peak after the platform team's cost change PLAT-5544 raised coresPerReplica in its autoscaler, so it ran two replicas instead of six. Pods resolve external names through ndots 5 and four search domains, so each external lookup costs five queries, and a share of them now time out or come back SERVFAIL. payment resolves payments.example.com on every charge, so about 18 percent of payment.charge calls fail: half with getaddrinfo EAI_AGAIN payments.example.com after the 2.5 second resolver timeout, which checkout's 500 ms timeout turns into 504s, and half quickly with queryA ESERVFAIL payments.example.com, which checkout passes on as 502. About one POST /checkout request in six fails, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. email-worker fails to resolve smtp.example.com on the same share of order emails and requeues them, which fails no request. payment's code, version and provider are unchanged; its WARN logs show lookups via nameserver 10.96.0.10 timing out. Every other route is healthy. The checkout.express_pay feature flag (PAY-2210), turned on for 10 percent of web sessions five minutes before the failures, is unrelated: failing charges come from every session, and the errors are DNS failures inside payment.",
+    "contributingFactors": [
+      "CoreDNS scaled down to two replicas by PLAT-5544 and overloaded at peak",
+      "ndots 5 multiplying every external lookup by the four search domains",
+      "payment resolving payments.example.com on every charge, inside checkout's 500 ms timeout"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "email-worker"]
+  },
+  "factors": ["payment/log_signal", "payment/infra"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bpayment\\b"],
+      [
+        "names_dns",
+        3,
+        "\\bdns\\b|coredns|EAI_AGAIN|SERVFAIL|getaddrinfo|nameserver|resolv"
+      ],
+      [
+        "names_coredns_capacity",
+        2,
+        "coredns[^.\\n]{0,80}?(replica|scal|capacity|overload|behind)|PLAT-5544|coresPerReplica|autoscaler"
+      ],
+      [
+        "names_checkout_timeout",
+        1,
+        "checkout[^.\\n]{0,80}?(time[sd]? ?out|504)"
+      ],
+      ["notes_email_worker", 1, "email-worker|smtp\\.example\\.com"],
+      [
+        "notes_no_payment_change",
+        1,
+        "payment's (code|version)[^.\\n]{0,40}?unchanged|no (deploy|release|change) (on|in|to) payment|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_flag",
+        2,
+        "(express_pay|PAY-2210)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(express_pay|PAY-2210)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "express_pay|PAY-2210"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_flag",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(express_pay|PAY-2210)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(express_pay|PAY-2210)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_provider",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(payments\\.example\\.com|payment provider|provider (outage|errors)|payment (deploy|release|code change|bug))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at cluster DNS: CoreDNS scaled down (PLAT-5544) and overloaded, so payment's lookups of payments.example.com time out with EAI_AGAIN or fail with SERVFAIL, checkout fails and the failures reach edge-gateway? 5 = DNS as the cause, the CoreDNS capacity change, payment's lookups on every charge and the victim chain. Blaming the payment provider, payment's code or the express_pay flag scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the EAI_AGAIN and ESERVFAIL errors on payment spans, payment's WARN lookups timing out via nameserver 10.96.0.10, checkout's 504 timeouts, and email-worker failing to resolve smtp.example.com at the same time? Cap at 3 unless it notes that two services resolving different hosts fail together."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming payments.example.com, the express_pay flag, a payment deploy or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "payment": ["none_of_these"]
+  },
+  "cause": [
+    "coredns",
+    "PLAT-5544|coresPerReplica",
+    "EAI_AGAIN|ESERVFAIL|SERVFAIL",
+    "nameserver 10\\.96\\.0\\.10"
+  ]
+}

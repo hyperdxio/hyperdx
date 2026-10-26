@@ -49,6 +49,11 @@ export const swaggerOptions = {
         description:
           'Endpoints for querying raw data from log and trace sources',
       },
+      {
+        name: 'Knowledge',
+        description:
+          'Endpoints for incident records and knowledge graph settings, available when the team flag is on',
+      },
     ],
     components: {
       securitySchemes: {

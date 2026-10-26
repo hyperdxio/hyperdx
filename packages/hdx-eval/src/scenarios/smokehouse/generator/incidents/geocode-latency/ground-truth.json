@@ -1,0 +1,119 @@
+{
+  "scenario": "geocode-latency",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "shipping",
+    "summary": "Fourteen minutes before the anchor the third-party geocoder's EU endpoint, eu.geo.example.com, slowed down over three minutes, from a p99 of about 70 ms to about 1300 ms; the US endpoint stayed fast. shipping validates every destination address with the geocoder inside shipping.book before booking, so shipping.book for eu-west-1 requests now takes about 700 ms on average. shipping still answers 200 and logs no errors; only its address validation stats show the EU geocoder p99 far over its 300 ms budget. checkout calls shipping last in POST /checkout with a 500 ms timeout, so nearly every eu-west-1 checkout fails with 504, most through checkout's timeout on shipping and the rest through web-bff and mobile-bff timing out on checkout, while us-east-1 and us-west-2 checkouts and every other route are healthy. payment and orders run before shipping, so these customers have already been charged and have an order even though checkout reports a failure. The 504s propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. Nothing shipped and no version or config changed in our systems. The payments.example.com maintenance notice for eu-west-1 (PGW-5521), logged two minutes before onset and every five minutes since, is a red herring: payment spans in eu-west-1 stay fast and error-free and no checkout fails on payment.",
+    "contributingFactors": [
+      "shipping calling the geocoder synchronously on every booking, with no budget shorter than checkout's timeout",
+      "checkout calling shipping after payment and orders, so a slow booking fails a checkout that already charged the customer",
+      "no cache or fallback for address validation when the geocoder is slow"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["shipping/segment", "shipping/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 3, "\\bshipping\\b"],
+      ["names_geocoder", 3, "geocod|address validation|geo\\.example\\.com"],
+      ["names_eu_segment", 3, "eu-west-1|\\beu\\b|europe"],
+      ["names_timeout", 2, "time[sd]? ?out|\\b504\\b"],
+      [
+        "notes_shipping_200",
+        2,
+        "\\b200\\b|shipping[^.\\n]{0,60}?(no errors|error[- ]?free|succe\\w+|without error)"
+      ],
+      ["notes_third_party", 1, "third[- ]party|external|vendor"],
+      ["notes_charged", 1, "charged|already (placed|created|written)"],
+      [
+        "rules_out_payment_notice",
+        2,
+        "(payment|pgw-5521|maintenance)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(payment|pgw-5521|maintenance)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "payment|maintenance|pgw-5521"
+        }
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_payment_notice",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,40}?(payment|pgw-5521|maintenance)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(payment|pgw-5521|maintenance)(?:[^.;\\n]|\\.\\d){0,40}?(maintenance|provider|notice|latency)(?:[^.;\\n]|\\.\\d){0,30}?\\b(is|was) (the )?(likely |root |prime )?(cause|culprit|trigger)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(payment|pgw-5521|maintenance)(?:[^.;\\n]|\\.\\d){0,40}?\\b(caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_checkout_change",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(checkout (deploy|release|code change|roll[- ]?out|config change))",
+        true
+      ],
+      [
+        "false_blame_traffic",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((eu|european|checkout|customer|user) (traffic|volume)|traffic (surge|spike)|load test)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name shipping's address validation waiting on a slow third-party geocoder for eu-west-1 as the origin, with checkout's 500 ms timeout on shipping failing EU checkouts and the failures reaching edge-gateway? 5 = the geocoder, the EU segment, shipping answering 200 slowly and the victim chain. Naming checkout as the origin, or 'shipping is slow' with no cause, scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in checkout's timeouts calling shipping, shipping.book durations for eu-west-1 only, and shipping's geocoder stats showing the EU endpoint p99 rising at onset while the US endpoint stays fast? Cap at 3 unless it explains why shipping has no errors of its own."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it dismiss the payment provider's EU maintenance notice with evidence (payment spans fast and error-free), note that customers were charged and have orders despite the error, and avoid claiming a deploy or blaming checkout or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "shipping": ["failing_callee", "failing_segment"] },
+  "cause": [
+    "geocod",
+    "eu\\.geo\\.example",
+    "address validation",
+    "shipping's own time"
+  ]
+}

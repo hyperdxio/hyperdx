@@ -29,10 +29,51 @@ type MeResponse = {
   team: { _id: string; name: string };
 };
 
+// Eval-side mirrors of the knowledge REST bodies; hdx-eval does not depend on the api package.
+type KnowledgeOutcome = 'unknown' | 'led_to_fix' | 'useful' | 'dead_end';
+export type OpenIncidentInput = {
+  title: string;
+  alertingService: string;
+  symptomKeys?: string[];
+  summary?: string;
+};
+export type RecordActionInput = {
+  actionType: 'query' | 'hypothesis' | 'remediation' | 'note';
+  tool?: string;
+  args?: Record<string, unknown>;
+  reason?: string;
+  summary: string;
+};
+export type ResolveIncidentInput = {
+  rootCause: string;
+  rootCauseNode: string;
+  resolution: string;
+  affectedNodes?: string[];
+  outcomes?: { seq: number; outcome: KnowledgeOutcome }[];
+  summary?: string;
+};
+
+export type SimilarIncidentsQuery = {
+  service: string;
+  symptomKeys: string[];
+  text?: string;
+  includeUnconfirmed?: boolean;
+  topK: number;
+};
+export type SimilarIncident = { incident: { title: string }; score: number };
+export type KnowledgeSettings = {
+  traceSourceId: string | null;
+  includeUnconfirmed: boolean;
+};
+
 export class HyperdxApiClient {
   private cookies: CookieJar = new Map();
 
-  constructor(private readonly apiUrl: string) {}
+  /** `accessKey` is only needed for the External API v2 methods (Bearer auth). */
+  constructor(
+    private readonly apiUrl: string,
+    private readonly accessKey?: string,
+  ) {}
 
   private url(path: string): string {
     return `${this.apiUrl.replace(/\/$/, '')}${path}`;
@@ -103,6 +144,92 @@ export class HyperdxApiClient {
       throw err;
     }
     return { status: res.status, body: parsed as T };
+  }
+
+  private async v2<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
+    if (!this.accessKey) {
+      throw new Error('HyperdxApiClient needs an accessKey for v2 calls');
+    }
+    const res = await fetch(this.url(`/api/v2${path}`), {
+      method,
+      headers: {
+        Authorization: `Bearer ${this.accessKey}`,
+        Accept: 'application/json',
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: AbortSignal.timeout(30_000),
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      const err = new Error(
+        `${method} /api/v2${path} → ${res.status}: ${text.slice(0, 300)}`,
+      );
+      (err as ApiError).status = res.status;
+      throw err;
+    }
+    return (JSON.parse(text) as { data: T }).data;
+  }
+
+  private knowledge<T>(method: string, path: string, body?: unknown) {
+    return this.v2<T>(method, `/knowledge${path}`, body);
+  }
+
+  putKnowledgeSettings(
+    input: Partial<KnowledgeSettings>,
+  ): Promise<KnowledgeSettings> {
+    return this.knowledge('PUT', '/settings', input);
+  }
+
+  listSourcesV2(): Promise<HyperdxSource[]> {
+    return this.v2('GET', '/sources');
+  }
+
+  createSourceV2(input: Record<string, unknown>): Promise<HyperdxSource> {
+    return this.v2('POST', '/sources', input);
+  }
+
+  async deleteSourceV2(id: string): Promise<void> {
+    await this.v2('DELETE', `/sources/${encodeURIComponent(id)}`);
+  }
+
+  openIncident(input: OpenIncidentInput): Promise<{ incident_id: string }> {
+    return this.knowledge('POST', '/incidents', input);
+  }
+
+  recordAction(id: string, input: RecordActionInput): Promise<{ seq: number }> {
+    return this.knowledge('POST', `/incidents/${id}/actions`, input);
+  }
+
+  resolveIncident(id: string, input: ResolveIncidentInput): Promise<unknown> {
+    return this.knowledge('POST', `/incidents/${id}/resolve`, input);
+  }
+
+  confirmIncident(id: string): Promise<unknown> {
+    return this.knowledge('POST', `/incidents/${id}/confirm`);
+  }
+
+  async similarIncidents(q: SimilarIncidentsQuery): Promise<SimilarIncident[]> {
+    const params = new URLSearchParams({
+      service: q.service,
+      symptomKeys: q.symptomKeys.join(','),
+      includeUnconfirmed: String(q.includeUnconfirmed ?? false),
+      topK: String(q.topK),
+    });
+    if (q.text) params.set('text', q.text);
+    return this.knowledge('GET', `/incidents/similar?${params}`);
+  }
+
+  async deleteIncidents(titlePrefix: string): Promise<number> {
+    const r = await this.knowledge<{ deleted: number }>(
+      'DELETE',
+      `/incidents?titlePrefix=${encodeURIComponent(titlePrefix)}`,
+    );
+    return r.deleted;
   }
 
   async ping(): Promise<boolean> {

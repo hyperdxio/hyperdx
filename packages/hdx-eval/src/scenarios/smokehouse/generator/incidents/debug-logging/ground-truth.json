@@ -1,0 +1,119 @@
+{
+  "scenario": "debug-logging",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "cart",
+    "summary": "Twelve minutes before the anchor an engineer, m.okafor, raised the ROOT logger on every cart pod from INFO to DEBUG through cart's admin endpoint (POST /admin/loggers) while investigating CART-1931, four seconds apart per pod, with no expiry; each cart pod logged the level change and no pod changed version. cart writes its log lines synchronously, and at DEBUG it serialises the whole cart snapshot on every read, so cart now emits a flood of DEBUG c.s.cart.CartRepository lines and its own server time rose from about 20 ms to about 200 ms with a wide spread, while its carts Redis and cart-db client spans stay as fast as before, and so do its inventory.reserve calls. cart itself returns no errors. GET /cart mostly still fits inside the BFFs' 500 ms timeout, but POST /checkout already spends about 300 ms in its other callees, so with the slower cart.get about half of checkout requests now take longer than the BFFs' 500 ms timeout and fail with 504. The failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. review's 2.3.0 rollout, which finished about three minutes before the level change, is unrelated: review is optional on product pages and served cleanly on 2.3.0 throughout.",
+    "contributingFactors": [
+      "cart's ROOT logger left at DEBUG with no expiry after the CART-1931 investigation",
+      "cart writing its log lines synchronously, so the debug volume lands in its own request time",
+      "POST /checkout already spending most of the BFFs' 500 ms timeout before cart slowed"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["cart/saturation", "cart/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcart\\b"],
+      [
+        "names_debug_logging",
+        3,
+        "\\bdebug\\b|log(ger)? level|/admin/loggers|cart-1931|log (flood|volume)|verbose logging"
+      ],
+      [
+        "names_own_time",
+        2,
+        "cart[^.\\n]{0,60}?(own|server|handler)[^.\\n]{0,20}?(span|latency|time|duration)"
+      ],
+      [
+        "stores_not_slow",
+        1,
+        "(carts|cart-db|redis|store|database|inventory)[^.\\n]{0,80}?(fast|normal|flat|healthy|unchanged|not slow|steady)"
+      ],
+      [
+        "names_checkout_timeout",
+        2,
+        "checkout[^.\\n]{0,80}?(time[sd]?[- ]?out|\\b504\\b|500 ms)"
+      ],
+      [
+        "notes_no_version_change",
+        1,
+        "no (pod )?(deploy|roll[- ]?out|release|version change)|(did not|didn't|no pod) change[sd]? version|nothing (shipped|deployed)"
+      ],
+      [
+        "rules_out_review_deploy",
+        2,
+        "(review[^.;\\n]{0,20}?(2\\.3\\.0|deploy|roll[- ]?out|release)|2\\.3\\.0)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly|finished)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(review[^.;\\n]{0,20}?(2\\.3\\.0|deploy|roll[- ]?out|release)|2\\.3\\.0)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "review[^\\n]{0,60}?(2\\.3\\.0|deploy|roll[- ]?out)|2\\.3\\.0"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_review_deploy",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(review (2\\.3\\.0|deploy|roll[- ]?out|release)|2\\.3\\.0)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(review (2\\.3\\.0|deploy|roll[- ]?out|release)|2\\.3\\.0)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(cart-db|carts redis|redis|slow (database|db|query|queries)|inventory)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at cart, in its ROOT logger being raised to DEBUG through the admin endpoint (CART-1931) and left there, with the synchronous debug logging slowing cart's own time until checkout outlasts the BFFs' 500 ms timeout and the failures reach edge-gateway? 5 = the log level change, cart's own time, the checkout timeouts and edge-gateway as the victim. Blaming review 2.3.0, a slow datastore or inventory scores at most 2; saying only 'cart is slow' with no log level change scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in cart's logging level change lines on each pod lining up with cart slowing, the flood of DEBUG lines from cart, cart's server spans growing while its Redis, Postgres and inventory spans stay fast, and checkout's 504s? Cap at 3 unless it contrasts cart's own time with its store and callee time."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming review's 2.3.0 rollout, cart-db, the carts Redis, inventory, checkout or edge-gateway, and avoid calling GET /cart broadly failing?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "cart": ["own_saturation", "config_change"]
+  },
+  "cause": [
+    "log(ger)? level|level of logger",
+    "INFO -> DEBUG|\\bDEBUG\\b",
+    "/admin/loggers",
+    "CART-1931"
+  ]
+}

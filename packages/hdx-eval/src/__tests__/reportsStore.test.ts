@@ -53,6 +53,8 @@ function buildGrade(run: RunRecord, combined: number): GradeRecord {
     },
     toolErrors: { total: 0, errors: 0, rate: 0, penalty: 0, samples: [] },
     combinedScore: combined,
+    stepsToOrigin: null,
+    negativeMatches: 0,
     gradedAt: '',
     judgeModel: 'claude-opus-4-7',
   };

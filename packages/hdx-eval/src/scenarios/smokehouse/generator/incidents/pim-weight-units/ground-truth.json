@@ -1,0 +1,108 @@
+{
+  "scenario": "pim-weight-units",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "catalog",
+    "summary": "Ten minutes before the anchor catalog-2 applied PIM sync batch 4418 to catalog-db: 6,412 products updated in weight and dimensions. The PIM feed switched its weight unit from grams to kilograms in that batch, and its header says weight_unit=kg, but catalog stores the numbers as weight_grams, as it did for every earlier batch with weight_unit=g. A 450 gram product is now stored as 0.45 grams. shipping rates each parcel with the carrier when checkout books it, rounds the weight to whole grams, and ups rejects the shipment with CarrierRateError: ups rejected shipment: package weight 0 g is below the minimum of 1 g. About a quarter of POST /checkout requests hold one of the updated products and fail with 500 at shipping.book, after payment has been charged and the order created, and the failures propagate from checkout through web-bff and mobile-bff to edge-gateway, where the alert fires. catalog itself serves no errors and its spans do not move; the change shows only in the sync log line on catalog-2. shipping's code and version did not change, and nothing shipped. The label printer backlog at warehouse IAD-1 that shipping logs from six minutes before the failures began is unrelated: it is a warehouse queue and fails no request.",
+    "contributingFactors": [
+      "the PIM feed switching weight_unit from g to kg in batch 4418",
+      "catalog storing feed weights as weight_grams without reading the unit",
+      "shipping booking after payment and order creation, so a carrier rejection fails a charged checkout"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout", "shipping"]
+  },
+  "factors": ["catalog/log_signal", "shipping/log_signal", "shipping/segment"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcatalog\\b(?!-db)"],
+      ["names_pim_sync", 3, "\\bpim\\b|batch 4418|product information|feed"],
+      ["names_unit", 3, "kilogram|\\bkg\\b|weight_unit|\\bunits?\\b"],
+      [
+        "names_weight_zero",
+        2,
+        "\\b0 g\\b|zero|weight[^.\\n]{0,40}?(below|minimum|round)"
+      ],
+      ["names_shipping", 1, "shipping"],
+      [
+        "notes_charged",
+        1,
+        "(after|already)[^.\\n]{0,40}?(charged|paid|payment)"
+      ],
+      [
+        "notes_catalog_healthy",
+        1,
+        "catalog[^.\\n]{0,80}?(healthy|no errors|error[- ]?free|do not move|does not move|unaffected)"
+      ],
+      [
+        "rules_out_printer",
+        2,
+        "(label printer|printer|IAD-1)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(label printer|printer|IAD-1)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "label printer|printer|IAD-1"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_printer",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(label printer|printer|IAD-1)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(label printer|printer|IAD-1)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_carrier",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?((ups|carrier) (outage|incident|degrad\\w*|api change)|shipping (deploy|release|bug|code change))",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at catalog's PIM sync batch 4418, which carried weights in kilograms while catalog stores grams, so shipping sends zero gram parcels the carrier rejects and checkouts with those products fail? 5 = the unit change, the zero weights, the carrier rejection and the victim chain to edge-gateway. Blaming shipping or the carrier scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the sync log line on catalog-2 with weight_unit=kg against earlier batches' weight_unit=g, the CarrierRateError on shipping spans, and catalog's own spans staying clean? Cap at 3 unless it notes that the failing checkouts were already charged."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the label printer backlog, the carrier, a shipping deploy, the routine catalog reindex or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "catalog": ["upstream_change", "none_of_these"],
+    "shipping": ["upstream_change", "failing_segment", "none_of_these"]
+  },
+  "cause": ["weight_unit=kg", "batch 4418|6,412 products"]
+}

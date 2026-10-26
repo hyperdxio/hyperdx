@@ -1,0 +1,114 @@
+{
+  "scenario": "outlier-ejection",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "catalog",
+    "summary": "Ten and a half minutes before the anchor the platform team (PLAT-6302) updated the mesh DestinationRule for catalog: outlierDetection consecutive5xxErrors went from 50 to 1, with baseEjectionTime 30s and maxEjectionPercent 100, and each catalog pod logged the config.change. With a limit of one, any single 5xx from a catalog pod ejects it from every caller's load balancing pool for 30 seconds, and with no cap on the ejected share the callers' sidecars keep finding several, and at times all, catalog pods ejected. Over four minutes a growing share of calls to catalog from web-bff, mobile-bff and search fail in the caller's sidecar with 503 no healthy upstream, and envoy logs on those callers report catalog pods ejected for 30s. About one GET /home, GET /product/{id} and GET /search request in nine fails, and the failures propagate through web-bff and mobile-bff to edge-gateway, where the alert fires. catalog itself is healthy: its spans show no errors and no added latency, because the rejected requests never reach it. Routes that do not call catalog are healthy, and nothing shipped. The yellow health of the search Elasticsearch cluster, one unassigned replica shard while es-data-2 restarts, is unrelated: search's es.search calls stay fast and error-free.",
+    "contributingFactors": [
+      "the PLAT-6302 mesh policy ejecting a catalog pod after a single 5xx, with maxEjectionPercent 100",
+      "callers' sidecars failing requests with no healthy upstream instead of sending them to catalog"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "search"]
+  },
+  "factors": ["catalog/infra", "web-bff/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bcatalog\\b"],
+      [
+        "names_mesh_policy",
+        3,
+        "outlier|eject|destinationrule|PLAT-6302|consecutive ?5xx|mesh (policy|config)"
+      ],
+      [
+        "names_no_upstream",
+        2,
+        "no healthy upstream|upstream connect error|sidecar|envoy"
+      ],
+      [
+        "notes_catalog_healthy",
+        2,
+        "catalog[^.\\n]{0,80}?(healthy|no errors|error[- ]?free|never (reach|see)|unaffected)"
+      ],
+      ["names_callers", 1, "web-bff|mobile-bff|\\bsearch\\b"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_es_yellow",
+        2,
+        "(yellow|unassigned|es-data-2|replica shard)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(yellow|unassigned|es-data-2|replica shard)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "yellow|unassigned|es-data-2|replica shard"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_es",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(yellow|unassigned|es-data-2|replica shard|elasticsearch)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(yellow|unassigned|es-data-2|replica shard|elasticsearch)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_catalog_code",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(catalog (deploy|release|bug|code)|catalog-db)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at the PLAT-6302 mesh policy for catalog, which ejects a pod after one 5xx with no cap, so callers' sidecars answer 503 no healthy upstream while catalog itself stays healthy, and the failures reach edge-gateway? 5 = the policy change, the ejections, catalog being healthy and the victim chain. Blaming catalog's code or catalog-db scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the config.change lines on catalog pods just before onset, the no healthy upstream errors on web-bff, mobile-bff and search spans, the envoy ejection warnings and catalog's clean spans? Cap at 3 unless it says the failing requests never reach catalog."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming the yellow Elasticsearch cluster, catalog-db, a catalog deploy or edge-gateway?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "catalog": ["config_change", "upstream_change"],
+    "web-bff": ["failing_callee", "upstream_change"]
+  },
+  "cause": [
+    "PLAT-6302",
+    "outlier ?detection|outlierDetection|ejected catalog",
+    "consecutive ?5xx"
+  ]
+}

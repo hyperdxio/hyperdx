@@ -1,0 +1,121 @@
+{
+  "scenario": "node-drain",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "auth",
+    "summary": "Twenty minutes before the anchor the platform team began a node pool upgrade (PLAT-5390) from general-v7 to general-v8, cordoning and draining one node every four minutes; each evicted pod logged a node.drain line naming its node. Node n runs pod n of auth, catalog, cart and search. catalog, cart and search sleep in a preStop hook so their endpoints are removed before they get SIGTERM, and drop nothing. auth has no preStop hook: on SIGTERM it closes its HTTP server at once while its endpoint is still in rotation, so for about 25 seconds after each drain every auth.verify call routed to the evicted pod fails with 503 upstream connect error or disconnect/reset before headers (reset reason: connection termination). auth.verify is on every route, so each drain produces a short burst of 502s on all routes that propagates through web-bff and mobile-bff to edge-gateway, where the alert fires, and errors return to normal between drains. The failures move from auth-1 to auth-2 and on in step with the drains, and the replacement auth pods on general-v8 nodes serve cleanly; no version changed and nothing shipped. fraud's feature store lag warnings, which began six minutes before the first drain, are unrelated: fraud returns no errors and checkout's fraud scores succeed.",
+    "contributingFactors": [
+      "the PLAT-5390 node pool upgrade draining one node every four minutes",
+      "auth closing its HTTP server on SIGTERM with no preStop hook, while its endpoint is still in rotation",
+      "auth.verify sitting on every route, so each drain fails a slice of all traffic"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff"]
+  },
+  "factors": ["auth/infra", "auth/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\bauth\\b"],
+      ["names_drain", 3, "drain|node pool|plat-5390|cordon|evict|general-v8"],
+      [
+        "names_shutdown",
+        3,
+        "pre ?stop|sigterm|graceful|shut ?down|endpoint[^.\\n]{0,40}?(rotation|removal|removed)|still (in rotation|receiv)"
+      ],
+      [
+        "names_bursts",
+        2,
+        "burst|in step with|each drain|every four minutes|(25|twenty five) ?s(econds)?\\b|intermittent|periodic"
+      ],
+      [
+        "notes_others_clean",
+        1,
+        "(catalog|cart|search)[^.\\n]{0,80}?(pre ?stop|drop nothing|no errors|clean)"
+      ],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "rules_out_fraud_warning",
+        2,
+        "(fraud|feature store)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(fraud|feature store)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "fraud|feature store"
+        }
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_fraud",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(fraud|feature store)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(fraud|feature store)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(sessions|redis)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief name the PLAT-5390 node pool upgrade draining nodes as the trigger and auth's shutdown without a preStop hook as why it fails, with each drain causing a short burst of auth.verify 503s on the evicted pod that reaches edge-gateway on every route? 5 = the drains, auth's ungraceful shutdown, the bursts moving pod by pod and the victim chain. Blaming auth's code, the sessions Redis or fraud scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the node.drain logs lining up with each burst, the connection termination errors on the evicted auth pod only, auth logging SIGTERM where catalog, cart and search log a preStop sleep, and errors returning to normal between drains? Cap at 3 unless it explains why the other drained services drop nothing."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming a deploy (there was none), the sessions Redis, fraud's feature store lag or edge-gateway, and avoid calling it a single bad node?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "auth": ["upstream_change", "host_fault"]
+  },
+  "cause": [
+    "PLAT-5390",
+    "node\\.drain|node pool upgrade|cordoned",
+    "general-v[78]",
+    "preStop|SIGTERM"
+  ]
+}

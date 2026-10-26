@@ -1,0 +1,103 @@
+{
+  "scenario": "pool-exhaustion",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "orders",
+    "summary": "orders ran out of Postgres connections starting about ten minutes before the anchor, with no deploy and no change on orders-db: its pg.insert and pg.select client spans stay at single-digit milliseconds, but orders server spans grew from about 20 ms to 400 ms or more over eight minutes because handlers wait to acquire a connection before they run. About one in ten orders requests now fail with TimeoutError: timed out acquiring a connection from pool orders-db, and orders logs WARN lines reporting 10 of 10 connections in use with a growing wait queue. checkout calls orders.create and the BFFs call orders.list with a 500 ms timeout, so the waits and pool errors become 504s and 502s that propagate through web-bff and mobile-bff to edge-gateway, where the alert fires.",
+    "contributingFactors": [
+      "orders connection pool exhausted, requests queue to acquire a connection",
+      "500 ms caller timeouts in checkout and the BFFs turning the waits into 504s"
+    ]
+  },
+  "dispatch": {
+    "attach": ["web-bff", "mobile-bff", "checkout"]
+  },
+  "factors": ["orders/saturation", "orders/log_signal"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "\\borders\\b"],
+      [
+        "names_pool",
+        3,
+        "pool[^.\\n]{0,40}?(exhaust|saturat|starv|full|timed? ?out)|acquir\\w* (a )?connection|(run|ran|running) out of[^.\\n]{0,20}?connections|connections? in use"
+      ],
+      [
+        "store_not_slow",
+        2,
+        "orders-db[^.\\n]{0,80}?(normal|flat|healthy|unchanged|fast|not slow)|(store|database|db|pg\\.\\w+)[^.\\n]{0,60}?(normal|flat|healthy|unchanged|not slow|single-digit)|no change on orders-db"
+      ],
+      [
+        "names_own_latency",
+        1,
+        "orders[^.\\n]{0,40}?(server|own|handler)[^.\\n]{0,20}?(span|latency|time|duration)"
+      ],
+      ["names_timeout", 1, "time[- ]?out|504"],
+      ["names_intermediate_victims", 1, "\\bcheckout\\b"],
+      [
+        "notes_no_deploy",
+        1,
+        "no (deploy|roll[- ]?out|release|version change|change (found|shipped))|nothing (shipped|deployed|changed)"
+      ],
+      [
+        "names_gateway_as_victim",
+        1,
+        "edge-gateway[^.\\n]{0,80}?(propagat|victim|downstream|symptom|not the (cause|origin)|three hops)|(propagat|cascad)[^.\\n]{0,80}?edge-gateway"
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway",
+        true
+      ],
+      [
+        "false_blame_deploy",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(deploy|roll[- ]?out|release|new version)",
+        true
+      ],
+      [
+        "false_blame_store",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit)[^.\\n]{0,60}?(orders-db|postgres\\w*|slow (database|db|query|queries))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the origin at orders exhausting its database connection pool, with requests queuing to acquire a connection, and explain that checkout's and the BFFs' 500 ms timeouts turned the waits into 504s that reached edge-gateway? 5 = pool exhaustion, the timeout path and edge-gateway as the victim. Blaming a slow orders-db or a deploy scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in orders server span duration rising while its pg client spans stay fast, the TimeoutError acquiring a connection on orders spans and ERROR logs, and the WARN pool reports? Cap at 3 unless the brief contrasts orders' own time with its store time."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it avoid blaming orders-db, a deploy (there was none), checkout, the BFFs or edge-gateway? Cap at 3 unless it says the database itself is not slow."
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": { "orders": ["exhausted_pool"] },
+  "cause": [
+    "acquiring a connection",
+    "pool orders-db",
+    "10 of 10 connections",
+    "orders's own time"
+  ]
+}

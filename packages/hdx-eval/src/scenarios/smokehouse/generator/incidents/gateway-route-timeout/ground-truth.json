@@ -1,0 +1,108 @@
+{
+  "scenario": "gateway-route-timeout",
+  "expected": {
+    "affectedService": "edge-gateway",
+    "originService": "edge-gateway",
+    "summary": "edge-gateway 2.8.0 went live nine minutes before the anchor in a blue/green cutover that switched all six edge-gateway pods at once. 2.8.0 renamed the per-route setting route.timeout to upstream_timeout, and the gateway's config still uses the old key, so each pod logged at startup that route.timeout was ignored on 7 routes and that it was using the listener default of 400 ms, where every route used to wait 500 ms. Most requests finish well inside 400 ms, but POST /checkout takes about 340 ms at the median and over 400 ms on its slowest tenth, so about one checkout in fifteen now fails at edge-gateway with 504 timeout after 400ms calling web-bff or mobile-bff. The BFFs and checkout complete those requests with 200, so those orders are still placed and charged and the customer never sees the reply. web-bff and mobile-bff log WARN lines that the client closed the connection before the response was written (499), which are harmless symptoms of the gateway hanging up; the BFFs, checkout and everything behind them are healthy. GET routes are unaffected.",
+    "contributingFactors": [
+      "edge-gateway 2.8.0 renaming route.timeout to upstream_timeout while the config still sets the old key",
+      "the 400 ms listener default replacing the 500 ms route timeout",
+      "POST /checkout's slowest tenth taking longer than 400 ms"
+    ]
+  },
+  "dispatch": {
+    "attach": []
+  },
+  "factors": ["edge-gateway/deploy", "edge-gateway/segment"],
+  "rubric": {
+    "programmatic": [
+      ["names_origin_service", 2, "edge-gateway"],
+      ["names_release", 3, "2\\.8\\.0|blue/green|cutover"],
+      [
+        "names_ignored_key",
+        3,
+        "route\\.timeout|upstream_timeout|renamed|ignored|listener default"
+      ],
+      ["names_new_timeout", 2, "400 ?ms|timeout after 400"],
+      [
+        "names_checkout_route",
+        1,
+        "POST /checkout|checkout (requests?|route)|one checkout in"
+      ],
+      [
+        "notes_backends_healthy",
+        2,
+        "(web-bff|mobile-bff|checkout|BFFs|backends?|behind)[^.\\n]{0,80}?(healthy|\\b200\\b|unaffected|complete|no errors)"
+      ],
+      ["notes_still_charged", 1, "still (placed|charged)|charged|duplicate"],
+      ["notes_gets_ok", 1, "GET[^.\\n]{0,60}?(unaffected|healthy|fine)"],
+      [
+        "rules_out_bff_warnings",
+        2,
+        "(\\b499\\b|client clos\\w* the connection|closed the connection)(?:(?!\\b(until|then|broke|break|caus|introduc|responsib|blame|suspect|regress)\\w*)(?:[^.;\\n]|\\.\\d)){0,120}?(healthy|benign|unrelated|innocent|not the (cause|culprit)|ruled? out|refuted|red herring|coinciden\\w*|did not move|didn't move|no errors|error[- ]?free|harmless|routine|served cleanly)(?![^.;\\n]{0,24}?\\b(until|then)\\b)(?!\\s*\\?)|(?<!(\\bno|\\bnot|n't|\\bnever)\\b[^.;\\n]{0,12})(red herring|ruled? out|refuted|coinciden\\w*)(?:[^.;\\n]|\\.\\d){0,40}?(\\b499\\b|client clos\\w* the connection|closed the connection)",
+        false,
+        {
+          "section": "Ruled out",
+          "pattern": "\\b499\\b|client clos\\w* the connection|closed the connection"
+        }
+      ],
+      [
+        "false_blame_gateway",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|culprit|origin)(?:(?!upstream of|hops? |propagat|victim|downstream|symptom)[^.\\n]){0,40}?(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )edge-gateway(?![^.\\n]{0,80}?(2\\.8\\.0|route|timeout|upstream_timeout|cutover|release|deploy|config))",
+        true
+      ],
+      [
+        "false_blame_reindex",
+        2,
+        "((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})reindex(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?(caused|cause of|culprit|origin|responsible for|to blame))|((?<!\\b(no|not|never|nothing|nobody|unrelated|rul\\w*|dismiss\\w*|coincident\\w*)\\b[^.?!\\n]{0,60})(root cause|caused by|due to|because of|culprit|contributing factor)(?:(?!\\b(no|not|never|unrelated|coincident|ruled? out|dismiss\\w*|benign|harmless|but|while|whereas|and|actual|real)\\b)[^.;\\n]){0,60}?reindex)",
+        true
+      ],
+      [
+        "false_blame_bffs",
+        3,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by|introduced by|regression in)[^.;\\n]{0,40}?(web-bff|mobile-bff|\\bBFFs?\\b|checkout service|\\b499\\b)|(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(web-bff|mobile-bff|\\bBFFs?\\b|checkout service|\\b499\\b)(?:[^.;\\n]|\\.\\d){0,40}?\\b((is|was|are|were) (the )?(likely |root |prime )?(cause|culprit|trigger)|caused|broke|introduced)\\b",
+        true
+      ],
+      [
+        "false_blame_checkout_slow",
+        2,
+        "(?<!\\b(no|not|never|whether|if|unlikely|doubt\\w*|possib\\w*|rul\\w*|dismiss\\w*|eliminat\\w*)\\b[^.?!\\n]{0,24})(?<!n't )(root cause|caused by|due to|because of|culprit|triggered by)[^.\\n]{0,50}?(slow checkout|checkout (latency|slowdown|regression|deploy)|payment)",
+        true
+      ]
+    ],
+    "judge": {
+      "criteria": [
+        {
+          "id": "correctness",
+          "weight": 3,
+          "description": "Does the brief place the fault at edge-gateway itself, in the 2.8.0 cutover that ignores route.timeout and falls back to the 400 ms listener default, so the gateway times out POST /checkout requests the BFFs and checkout still complete? 5 = the release, the ignored key and the new 400 ms limit, checkout's slow tail and the healthy backends. Blaming the BFFs, checkout or payment, or saying only that the gateway times out, scores at most 2."
+        },
+        {
+          "id": "evidence_grounding",
+          "weight": 3,
+          "description": "Is it grounded in the deployment.rollout and route.timeout ignored lines on every gateway pod at the cutover, the gateway's 504 timeout after 400ms errors starting at that moment, and the BFF and checkout spans ending with 200 on those same traces? Cap at 3 unless it says the orders behind the timeouts were still placed."
+        },
+        {
+          "id": "calibration",
+          "weight": 2,
+          "description": "Does it treat the BFFs' 499 warnings as a symptom, and avoid blaming web-bff, mobile-bff, checkout, payment or a slow backend?"
+        },
+        {
+          "id": "conciseness",
+          "weight": 1,
+          "description": "Concise, structured, no filler or speculation."
+        }
+      ]
+    }
+  },
+  "mechanisms": {
+    "edge-gateway": ["deploy_defect"]
+  },
+  "cause": [
+    "\\b2\\.8\\.0\\b",
+    "route\\.timeout",
+    "upstream_timeout",
+    "listener default"
+  ]
+}
