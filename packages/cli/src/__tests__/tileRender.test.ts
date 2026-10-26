@@ -86,4 +86,65 @@ describe('renderTileContent', () => {
     );
     expect(render(DisplayType.StackedLine)).not.toBe(render(DisplayType.Line));
   });
+
+  it('draws a distribution heatmap with its duration axis', () => {
+    const heatmapConfig = {
+      displayType: DisplayType.Heatmap,
+      dateRange,
+      numberFormat: { output: 'duration', factor: 0.001 },
+    } as unknown as ChartConfigWithDateRange;
+    const result: TileQueryResult = {
+      status: 'heatmap',
+      queriedConfig: heatmapConfig,
+      grid: {
+        times: [dateRange[0].getTime(), dateRange[0].getTime() + 60_000],
+        stepMs: 60_000,
+        yAxis: { type: 'numeric', scale: 'log', edges: [1, 10, 100, 1000] },
+        cells: [9, 1, 0, 0, 2, 30],
+      },
+    };
+    const output = stripAnsi(
+      renderTileContent({ result, source: undefined, width: 60, height: 12 }),
+    );
+    expect(output).toContain('events per cell, max 30');
+    expect(output).toMatch(/[░▒▓█]/);
+
+    expect(
+      stripAnsi(
+        renderTileContent({
+          result: { ...result, grid: undefined },
+          source: undefined,
+          width: 60,
+          height: 12,
+        }),
+      ),
+    ).toContain('Not enough data points');
+  });
+
+  it('formats a saved Duration heatmap as durations without a numberFormat', () => {
+    const result: TileQueryResult = {
+      status: 'heatmap',
+      queriedConfig: {
+        displayType: DisplayType.Heatmap,
+        dateRange,
+        select: [{ aggFn: 'count', valueExpression: 'Duration' }],
+      } as unknown as ChartConfigWithDateRange,
+      grid: {
+        times: [dateRange[0].getTime()],
+        stepMs: 0,
+        yAxis: { type: 'numeric', scale: 'log', edges: [1e6, 1e7, 1e8, 1e9] },
+        cells: [3, 5, 1],
+      },
+    };
+    const traceSource = {
+      kind: 'trace',
+      durationExpression: 'Duration',
+      durationPrecision: 9,
+    } as never;
+    const output = stripAnsi(
+      renderTileContent({ result, source: traceSource, width: 60, height: 12 }),
+    );
+    expect(output).toMatch(/\d+(ms|s)\b/);
+    expect(output).not.toContain('1.0B');
+  });
 });

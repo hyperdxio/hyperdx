@@ -5,14 +5,27 @@
  */
 
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  getHeatmapMode,
+  type HeatmapGrid,
+  type HeatmapResult,
+  heatmapRowEdges,
+  toHeatmapResult,
+} from '@hyperdx/common-utils/dist/core/heatmap';
+import { queryDistributionHeatmap } from '@hyperdx/common-utils/dist/core/distributionHeatmap';
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  isBuilderChartConfig,
+  isHeatmapCompatibleSource,
+} from '@hyperdx/common-utils/dist/guards';
 import type {
   ChartConfigWithDateRange,
   SavedChartConfig,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import type { ProxyClickhouseClient, SourceResponse } from '@/api/client';
+import { heatmapNumberFormat } from '@/shared/formatNumber';
 import {
   CLI_SUPPORTED_DISPLAY_TYPES,
   convertTileConfigForQuery,
@@ -28,6 +41,14 @@ export type TileQueryResult =
       data: ResponseJSON<Record<string, string | number>>;
     }
   | {
+      status: 'heatmap';
+      queriedConfig: ChartConfigWithDateRange;
+      /** Undefined when the range has too few distinct values to bucket */
+      grid: HeatmapGrid | undefined;
+      /** The same grid in the shape the MCP server returns, for --json */
+      heatmap?: HeatmapResult;
+    }
+  | {
       status: 'markdown';
       /** Markdown tiles render statically without querying */
       markdown: string;
@@ -37,6 +58,9 @@ export type TileQueryResult =
       status: 'unresolved';
       resolution: Extract<ResolvedTileConfig, { ok: false }>;
     };
+
+// Value buckets per heatmap column; the renderer merges them to fit its rows.
+const HEATMAP_VALUE_BUCKETS = 40;
 
 export interface FetchTileDataParams {
   clickhouseClient: ProxyClickhouseClient;
@@ -89,6 +113,69 @@ export async function fetchTileData({
       return { status: 'unsupported', message: resolution.message };
     }
     return { status: 'unresolved', resolution };
+  }
+
+  if (displayType === DisplayType.Heatmap) {
+    const heatmapConfig = resolution.config;
+    if (
+      !isBuilderChartConfig(heatmapConfig) ||
+      getHeatmapMode(heatmapConfig) === 'series'
+    ) {
+      return {
+        status: 'unsupported',
+        message: 'Series heatmap tiles are not supported in the CLI yet.',
+      };
+    }
+    // The CLI's source kind is a string; map it onto SourceKind for the shared guard.
+    const sourceKind = Object.values(SourceKind).find(k => k === source?.kind);
+    if (
+      source &&
+      !(sourceKind && isHeatmapCompatibleSource({ kind: sourceKind }))
+    ) {
+      return {
+        status: 'unsupported',
+        message: `Distribution heatmaps need a trace source; "${source.name}" is a ${source.kind} source.`,
+      };
+    }
+    const result = await queryDistributionHeatmap({
+      client: clickhouseClient,
+      metadata,
+      config: heatmapConfig,
+      // resolveTileConfig swaps in the command's granularity, which is unset
+      // by default; fall back to the tile's own.
+      granularity:
+        granularity ??
+        ('granularity' in config ? config.granularity : undefined),
+      targetTimeBuckets: maxTimeBuckets,
+      nBuckets: HEATMAP_VALUE_BUCKETS,
+      querySettings: source?.querySettings,
+      opts: { abort_signal: signal },
+    });
+    const { heatmap } = result;
+    const firstSelect = Array.isArray(heatmapConfig.select)
+      ? heatmapConfig.select[0]
+      : undefined;
+    return {
+      status: 'heatmap',
+      queriedConfig: heatmapConfig,
+      // Label rows with the bucket bounds widthBucket counted, not the
+      // web's centred display edges.
+      grid: heatmap && {
+        ...heatmap.grid,
+        yAxis: {
+          type: 'numeric',
+          scale: heatmap.scaleType,
+          edges: heatmapRowEdges(heatmap.bucketEdges, heatmap.scaleType),
+        },
+      },
+      heatmap:
+        heatmap &&
+        toHeatmapResult(heatmap, {
+          valueExpression: firstSelect?.valueExpression ?? '',
+          granularity: result.granularity,
+          numberFormat: heatmapNumberFormat(heatmapConfig, source),
+        }),
+    };
   }
 
   const queriedConfig = convertTileConfigForQuery(resolution.config, {

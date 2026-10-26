@@ -709,6 +709,8 @@ export function timeBucketByGranularity(
 
   let current = toStartOfInterval(start, granularity);
   const granularitySeconds = convertGranularityToSeconds(granularity);
+  // Units beyond day convert to 0 seconds, which would never advance.
+  if (!(granularitySeconds > 0)) return buckets;
   while (current < end) {
     buckets.push(current);
     current = fnsAdd(current, {
@@ -1902,3 +1904,113 @@ export type MetadataMVQueryOptions = Map<
   string,
   Map<'NativeColumn' | string, string[]> // map from column name to keys
 >;
+
+/** Whether a SQL expression calls an aggregate function. */
+export const isAggregateFunction = (value: string) => {
+  const fns = [
+    // Basic aggregates
+    'count',
+    'countIf',
+    'countDistinct',
+    'sum',
+    'sumIf',
+    'avg',
+    'avgIf',
+    'min',
+    'max',
+    'any',
+    'anyLast',
+    'groupArray',
+    'groupArrayInsertAt',
+    'groupArrayMovingAvg',
+    'groupArraySample',
+    'groupUniqArray',
+    'groupUniqArrayIf',
+    'groupArrayIntersect',
+    'groupArrayIntersectIf',
+    'groupArrayReduce',
+    'groupBitmap',
+    'groupBitmapIf',
+    'groupBitmapOr',
+    'groupBitmapXor',
+
+    // Quantiles
+    'quantile',
+    'quantileIf',
+    'quantileExact',
+    'quantileExactWeighted',
+    'quantileTiming',
+    'quantileTimingWeighted',
+    'quantileTDigest',
+    'quantileTDigestWeighted',
+    'quantileBFloat16',
+    'quantileBFloat16Weighted',
+    'quantiles',
+    'median',
+    'medianExact',
+    'medianTDigest',
+    'medianBFloat16',
+
+    // Statistical functions
+    'stddevPop',
+    'stddevPopIf',
+    'stddevSamp',
+    'stddevSampIf',
+    'varPop',
+    'varPopIf',
+    'varSamp',
+    'varSampIf',
+    'covarPop',
+    'covarSamp',
+    'corr',
+
+    // Combinators
+    'uniq',
+    'uniqExact',
+    'uniqCombined',
+    'uniqCombined64',
+    'uniqHLL12',
+    'uniqTheta',
+
+    // Bit operations
+    'groupBitAnd',
+    'groupBitOr',
+    'groupBitXor',
+
+    // Map and tuple
+    'groupArrayMap',
+    'groupArrayTuple',
+    'groupArraySorted',
+    'topK',
+    'topKIf',
+    'topKWeighted',
+
+    // Aggregate combinators
+    'argMin',
+    'argMax',
+    'minMap',
+    'maxMap',
+
+    // Specialized aggregates
+    'runningDifference',
+    'retention',
+    'sequenceCount',
+    'sequenceMatch',
+    'histogram',
+    'simpleLinearRegression',
+    'stochasticLinearRegression',
+    'categoricalInformationValue',
+    'sumMap',
+    'sumMapFiltered',
+    'sumWithOverflow',
+    'entropy',
+    'skewPop',
+    'skewSamp',
+    'kurtPop',
+    'kurtSamp',
+  ];
+
+  // Make case-insensitive since ClickHouse function names are case-insensitive
+  const lowerValue = value.toLowerCase();
+  return fns.some(fn => lowerValue.includes(fn.toLowerCase() + '('));
+};

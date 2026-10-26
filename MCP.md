@@ -137,6 +137,7 @@ with:
 | `clickstack_service_health`      | One-call service health on a trace source: throughput, error rate, p50/p95 and top errors per service, compared with yesterday and ranked worst first |
 | `clickstack_timeseries`          | Plot metrics over time as a line or stacked bar chart (works on log, trace, and metric sources)        |
 | `clickstack_table`               | Compute aggregated metrics as a table, single number, or pie chart (works on log, trace, and metric sources) |
+| `clickstack_heatmap`             | Show how a value such as span latency is distributed over time (trace sources)               |
 | `clickstack_search`              | Browse individual log, event, or trace rows                                                  |
 | `clickstack_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
 | `clickstack_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |

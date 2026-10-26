@@ -8,7 +8,12 @@ import type {
 
 import type { ChartCall } from '../types';
 
-import { chartedTool, renderChart, stripControlChars } from './chart.js';
+import {
+  chartedTool,
+  isChartable,
+  renderChart,
+  stripControlChars,
+} from './chart.js';
 
 const KEEP = 20;
 const MAX_COLUMNS = 140;
@@ -82,21 +87,23 @@ export const register: Register = on => {
     // The server fixes its default window before the query runs.
     const calledAt = Date.now();
     const ran = await next(e);
-    if (!chartedTool(e.tool) || ran.deny !== undefined || ran.isError)
-      return ran;
+    if (ran.deny !== undefined || ran.isError) return ran;
     const call: ChartCall = {
       tool: e.tool,
       input: e,
       output: ran.result,
       calledAt,
     };
-    // Chart bookkeeping must never fail the call it watched.
+    // Chart bookkeeping must never fail the call it watched. Only results that
+    // draw are kept, so query_tile calls on other tiles don't evict charts.
     try {
-      await update($, calls, all =>
-        Object.fromEntries(
-          [...Object.entries(all), [e.tool_use_id, call]].slice(-KEEP),
-        ),
-      );
+      if (isChartable(e.tool, e, ran.result)) {
+        await update($, calls, all =>
+          Object.fromEntries(
+            [...Object.entries(all), [e.tool_use_id, call]].slice(-KEEP),
+          ),
+        );
+      }
     } catch {
       // The row keeps the engine's own rendering.
     }

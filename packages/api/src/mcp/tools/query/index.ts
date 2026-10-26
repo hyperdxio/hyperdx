@@ -3,6 +3,7 @@ import type { ToolDefinition, ToolRegistrar } from '@/mcp/tools/types';
 import { registerEmergingSignals } from './emergingSignals';
 import { registerEventDeltas } from './eventDeltas';
 import { registerEventPatterns } from './eventPatterns';
+import { registerHeatmap } from './heatmap';
 import { registerSearch } from './search';
 import { registerServiceHealth } from './serviceHealth';
 import { registerSql } from './sql';
@@ -13,6 +14,7 @@ const queryTools: ToolDefinition = (registrar: ToolRegistrar) => {
   registerServiceHealth(registrar);
   registerTimeseries(registrar);
   registerTable(registrar);
+  registerHeatmap(registrar);
   registerSearch(registrar);
   registerEventPatterns(registrar);
   registerEventDeltas(registrar);

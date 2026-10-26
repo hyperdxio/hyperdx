@@ -2,7 +2,11 @@ import PQueue from '@esm2cjs/p-queue';
 import { z } from 'zod';
 
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
-import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
+import {
+  parseTimeRange,
+  runConfigTile,
+  savedTileGranularity,
+} from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { runWithTimeout } from '@/mcp/utils/timeout';
@@ -126,6 +130,23 @@ export function summarizeRows(text: string): {
     parsed = JSON.parse(text);
   } catch {
     return {};
+  }
+  if (parsed != null && typeof parsed === 'object' && 'heatmap' in parsed) {
+    // A distribution heatmap: one row per time bucket, null when empty.
+    const { heatmap } = parsed;
+    const counts: unknown[] =
+      heatmap != null &&
+      typeof heatmap === 'object' &&
+      'counts' in heatmap &&
+      Array.isArray(heatmap.counts)
+        ? heatmap.counts
+        : [];
+    return {
+      hasData: counts.some(
+        column => Array.isArray(column) && column.some(n => n > 0),
+      ),
+      rowCount: counts.length,
+    };
   }
   if (parsed == null || typeof parsed !== 'object' || !('result' in parsed)) {
     return {};
@@ -308,6 +329,10 @@ export function registerQueryTiles({
                   runConfigTile(teamId.toString(), tile, startDate, endDate, {
                     abortSignal: signal,
                     variables,
+                    savedGranularity: savedTileGranularity(
+                      dashboard.tiles,
+                      tile.id,
+                    ),
                   }),
                 deadlineAt,
               );

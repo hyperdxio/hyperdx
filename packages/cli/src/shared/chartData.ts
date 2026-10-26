@@ -20,6 +20,10 @@ import {
   type ColumnMetaType,
   type ResponseJSON,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  heatmapCountColumns,
+  type HeatmapGrid,
+} from '@hyperdx/common-utils/dist/core/heatmap';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
 import type {
   ChartConfigWithOptDateRange,
@@ -29,6 +33,7 @@ import type {
 import type { SourceResponse } from '@/api/client';
 import type {
   CategoricalEntry,
+  HeatmapData,
   TableColumn,
   TimeChartSeries,
 } from '@/termchart';
@@ -550,4 +555,14 @@ export function deriveTableColumns({
     displayName: key,
     isGroupColumn: groupByKeys.includes(key),
   }));
+}
+
+/** A heatmap grid as termchart draws it: per-column counts, seconds timestamps. */
+export function formatHeatmapGrid(grid: HeatmapGrid): HeatmapData | undefined {
+  if (grid.yAxis.type !== 'numeric') return undefined;
+  return {
+    times: grid.times.map(t => t / 1000),
+    rowEdges: grid.yAxis.edges,
+    counts: heatmapCountColumns(grid),
+  };
 }

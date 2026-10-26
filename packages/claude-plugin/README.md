@@ -1,9 +1,11 @@
 # @hyperdx/claude-plugin
 
 A Claude Code plugin that draws ClickStack MCP query results as charts in the
-terminal. When Claude runs `clickstack_timeseries` or `clickstack_table`, the
-tool row shows a line, stacked bar, bar, pie, number or table chart in place of
-the raw JSON. Claude still reads the full result.
+terminal. When Claude runs `clickstack_timeseries`, `clickstack_table` or
+`clickstack_heatmap`, the tool row shows a line, stacked bar, bar, pie, number,
+table or heatmap chart in place of the raw JSON. Claude still reads the full
+result. `clickstack_query_tile` results are drawn when the tile is a
+distribution heatmap.
 
 Charts are drawn by the same renderers as the `hdx` CLI, so a query looks the
 same in both.
