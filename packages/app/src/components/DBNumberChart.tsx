@@ -25,6 +25,7 @@ import {
 } from '@/hooks/useChartConfig';
 import { useLocalChartQuery } from '@/hooks/useLocalChartQuery';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useResultTransform } from '@/hooks/useResultTransform';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import {
   formatNumber,
@@ -92,9 +93,8 @@ export default function DBNumberChart({
     queryKeyPrefix,
     enabled: enabled && !local.active,
   });
-  const { data, isLoading, isError, error, isPlaceholderData } = local.active
-    ? local
-    : remote;
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useResultTransform(local.active ? local : remote, config.transformSql);
 
   // The value is the first numeric value in the first row of the result
   const valueColumn = data?.meta

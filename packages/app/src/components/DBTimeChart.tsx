@@ -60,6 +60,7 @@ import {
 import { useTimeChartQuery } from '@/hooks/useLocalChartQuery';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useResultColumnFilterKeys } from '@/hooks/useResultColumnFilterKeys';
+import { useResultTransform } from '@/hooks/useResultTransform';
 import { useChartNumberFormats, useSource } from '@/source';
 import type { NumberFormat, TileFilterHandler } from '@/types';
 
@@ -549,13 +550,14 @@ function DBTimeChartComponent({
     { enabled: showMVOptimizationIndicator || showDateRangeIndicator },
   );
 
+  const timeChartQuery = useTimeChartQuery(queriedConfig, {
+    queryKeyPrefix,
+    enabled,
+    disableQueryChunking,
+    enableParallelQueries,
+  });
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
-    useTimeChartQuery(queriedConfig, {
-      queryKeyPrefix,
-      enabled,
-      disableQueryChunking,
-      enableParallelQueries,
-    });
+    useResultTransform(timeChartQuery, config.transformSql);
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {
     const previousPeriodDateRange =
@@ -585,13 +587,14 @@ function DBTimeChartComponent({
     previousPeriodChartConfig.dateRange,
   ]);
 
+  const previousPeriodQuery = useQueriedChartConfig(previousPeriodChartConfig, {
+    placeholderData: (prev: any) => prev,
+    queryKey: [queryKeyPrefix, previousPeriodChartConfig, 'chunked'],
+    enabled: !!(enabled && config.compareToPreviousPeriod),
+    enableQueryChunking: true,
+  });
   const { data: previousPeriodData, isLoading: isPreviousPeriodLoading } =
-    useQueriedChartConfig(previousPeriodChartConfig, {
-      placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, previousPeriodChartConfig, 'chunked'],
-      enabled: !!(enabled && config.compareToPreviousPeriod),
-      enableQueryChunking: true,
-    });
+    useResultTransform(previousPeriodQuery, config.transformSql);
 
   const isLoadingOrPlaceholder =
     isLoading ||

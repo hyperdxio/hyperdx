@@ -76,8 +76,11 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
     });
 
     await test.step('Verify the unrestricted chart renders more bars than the limit we will apply', async () => {
+      // The ungrouped result stays on screen until the grouped one is ready
+      await expect
+        .poll(async () => chartExplorerPage.getBars().count())
+        .toBeGreaterThan(3);
       totalBars = await chartExplorerPage.getBars().count();
-      expect(totalBars).toBeGreaterThan(3);
     });
 
     await test.step('Apply a series limit of 3', async () => {
@@ -117,13 +120,15 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
     await test.step('Order by ServiceName ascending and capture the bar order', async () => {
       await chartExplorerPage.chartEditor.setOrderBy('ServiceName ASC');
       await chartExplorerPage.chartEditor.runQuery();
-      await expect(chartExplorerPage.getBars().first()).toBeVisible({
-        timeout: 15000,
-      });
+      // Need at least two distinct bars for the ordering to be observable, and
+      // the ungrouped result stays on screen until the grouped one is ready.
+      await expect
+        .poll(async () => (await chartExplorerPage.getBarLabels()).length, {
+          timeout: 15000,
+        })
+        .toBeGreaterThan(1);
 
       ascendingLabels = await chartExplorerPage.getBarLabels();
-      // Need at least two distinct bars for the ordering to be observable.
-      expect(ascendingLabels.length).toBeGreaterThan(1);
     });
 
     await test.step('Order by ServiceName descending and verify the order is reversed', async () => {
@@ -226,6 +231,23 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
     });
   });
 
+  test('should transform the query result with SQL in the browser', async ({
+    page,
+  }) => {
+    await test.step('Run a number chart with a transform', async () => {
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Number);
+      await chartExplorerPage.chartEditor.setTransformSql('$res * 0 + 42');
+      await chartExplorerPage.chartEditor.runQuery(false);
+    });
+
+    await test.step('The chart shows the transformed value', async () => {
+      await expect(page.getByTestId('number-chart-value')).toHaveText('42', {
+        timeout: 30000,
+      });
+    });
+  });
+
   test('should switch display types without querying ClickHouse again', async ({
     page,
   }) => {
@@ -247,7 +269,17 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
       await expect
         .poll(() => chartQueries.some(sql => sql.includes('__hdx_time_bucket')))
         .toBe(true);
-      await chartExplorerPage.page.waitForLoadState('networkidle');
+      // A chunked query sends its windows one after another; wait for the last
+      await expect
+        .poll(
+          async () => {
+            const sent = chartQueries.length;
+            await page.waitForTimeout(1000);
+            return chartQueries.length === sent;
+          },
+          { timeout: 20000 },
+        )
+        .toBe(true);
       chartQueries.length = 0;
     });
 

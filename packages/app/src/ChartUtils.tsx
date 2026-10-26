@@ -268,8 +268,10 @@ export function convertToTimeChartConfig(
 export function convertToSharedTimeChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
-  if (!isBuilderChartConfig(config)) {
-    return convertToTimeChartConfig(config);
+  // Runs over the result in the browser, so it isn't part of the query
+  const { transformSql: _transformSql, ...queryConfig } = config;
+  if (!isBuilderChartConfig(queryConfig)) {
+    return convertToTimeChartConfig(queryConfig);
   }
   const {
     displayType: _displayType,
@@ -277,7 +279,7 @@ export function convertToSharedTimeChartConfig(
     onClick: _onClick,
     having,
     ...rest
-  } = config;
+  } = queryConfig;
   return convertToTimeChartConfig(
     isNonEmptyWhereExpr(having) ? { ...rest, having } : rest,
   );

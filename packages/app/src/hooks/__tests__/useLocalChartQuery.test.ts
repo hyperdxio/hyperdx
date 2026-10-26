@@ -34,7 +34,6 @@ const meta = [
 
 const FROM =
   "FROM file('rows.jsonl', 'JSONEachRow', '`count()` UInt64, `max(Duration)` Float64, `ServiceName` LowCardinality(String), `__hdx_time_bucket` DateTime')";
-const SETTINGS = 'SETTINGS output_format_json_quote_64bit_integers = 1';
 
 describe('getLocalTransform', () => {
   it('re-aggregates additive functions from the time chart query', () => {
@@ -109,7 +108,7 @@ describe('buildLocalChartSql', () => {
         kind: 'table',
       }),
     ).toBe(
-      `SELECT sum(\`count()\`) AS \`count()\`, max(\`max(Duration)\`) AS \`max(Duration)\`, \`ServiceName\` ${FROM} GROUP BY \`ServiceName\` ORDER BY \`ServiceName\` ${SETTINGS}`,
+      `SELECT sum(\`count()\`) AS \`count()\`, max(\`max(Duration)\`) AS \`max(Duration)\`, \`ServiceName\` ${FROM} GROUP BY \`ServiceName\` ORDER BY \`ServiceName\``,
     );
   });
 
@@ -122,7 +121,7 @@ describe('buildLocalChartSql', () => {
         kind: 'number',
       }),
     ).toBe(
-      `SELECT sum(\`count()\`) AS \`count()\`, max(\`max(Duration)\`) AS \`max(Duration)\` ${FROM} ${SETTINGS}`,
+      `SELECT sum(\`count()\`) AS \`count()\`, max(\`max(Duration)\`) AS \`max(Duration)\` ${FROM}`,
     );
   });
 
@@ -135,7 +134,7 @@ describe('buildLocalChartSql', () => {
         kind: 'categorical',
         limit: 10,
       }),
-    ).toContain('ORDER BY `count()` DESC, `ServiceName` LIMIT 10 SETTINGS');
+    ).toContain('ORDER BY `count()` DESC, `ServiceName` LIMIT 10');
   });
 
   it.each([
@@ -156,7 +155,7 @@ describe('buildLocalChartSql', () => {
         kind: 'table',
         orderBy,
       }),
-    ).toContain('ORDER BY `count()` DESC, `ServiceName` ASC SETTINGS');
+    ).toContain('ORDER BY `count()` DESC, `ServiceName` ASC');
   });
 
   it('rejects an ORDER BY that is not a result column', () => {

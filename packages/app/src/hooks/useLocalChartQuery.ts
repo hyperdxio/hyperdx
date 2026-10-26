@@ -9,7 +9,6 @@ import {
   isUsingGroupBy,
 } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
-  escapeSqlString,
   hasPositiveSeriesLimit,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
@@ -23,7 +22,13 @@ import { useQuery } from '@tanstack/react-query';
 
 import api from '@/api';
 import { convertToSharedTimeChartConfig } from '@/ChartUtils';
-import { getChdb, IS_CHDB_AVAILABLE, queryChdbRows } from '@/chdb';
+import {
+  chdbFileTable,
+  getChdb,
+  IS_CHDB_AVAILABLE,
+  queryChdbRows,
+  quoteIdentifier,
+} from '@/chdb';
 import { BASE_PATH } from '@/config';
 import {
   getMinGranularitySeconds,
@@ -44,9 +49,6 @@ const REAGGREGATE_FNS = new Map([
   ['max', 'max'],
   ['any', 'any'],
 ]);
-
-const quoteIdentifier = (name: string) =>
-  `\`${name.replace(/\\/g, '\\\\').replace(/`/g, '\\`')}\``;
 
 /**
  * The time chart's query. Charts that re-aggregate its cached result in chdb
@@ -184,9 +186,6 @@ export function buildLocalChartSql({
           .map(({ name }) => name)
           .filter(name => name !== FIXED_TIME_BUCKET_EXPR_ALIAS);
   const groupIds = groups.map(quoteIdentifier);
-  const structure = meta
-    .map(({ name, type }) => `${quoteIdentifier(name)} ${type}`)
-    .join(', ');
 
   const userOrder = toLocalOrderBy(orderBy, [...values, ...groups]);
   // Mirrors the defaults of convertToTableChartConfig and
@@ -208,14 +207,12 @@ export function buildLocalChartSql({
       ),
       ...groupIds,
     ].join(', ')}`,
-    `FROM file('${escapeSqlString(file)}', 'JSONEachRow', '${escapeSqlString(structure)}')`,
+    `FROM ${chdbFileTable(file, meta)}`,
     groupIds.length > 0 ? `GROUP BY ${groupIds.join(', ')}` : '',
     order.length > 0 ? `ORDER BY ${order.join(', ')}` : '',
     limit != null && Number.isInteger(limit) && limit > 0
       ? `LIMIT ${limit}`
       : '',
-    // Like the remote client, keep 64-bit integers exact in JS
-    'SETTINGS output_format_json_quote_64bit_integers = 1',
   ]
     .filter(Boolean)
     .join(' ');

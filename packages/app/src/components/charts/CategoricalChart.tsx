@@ -22,6 +22,7 @@ import {
 } from '@/hooks/useChartConfig';
 import { useLocalChartQuery } from '@/hooks/useLocalChartQuery';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useResultTransform } from '@/hooks/useResultTransform';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import { getColorProps } from '@/utils';
 import { stripClientSideConfigFields } from '@/utils/chartConfig';
@@ -90,9 +91,8 @@ export function useCategoricalChart({
     queryKey: [queryKeyPrefix, stripClientSideConfigFields(queriedConfig)],
     enabled: enabled && !local.active,
   });
-  const { data, isLoading, isError, error, isPlaceholderData } = local.active
-    ? local
-    : remote;
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useResultTransform(local.active ? local : remote, config.transformSql);
 
   const toolbarItems = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];

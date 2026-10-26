@@ -164,6 +164,15 @@ export const TABS_WITH_GENERATED_SQL = new Set([
   'heatmap',
 ]);
 
+/** Tabs whose charts can run a transform over their query result. */
+export const TABS_WITH_TRANSFORM = new Set([
+  'table',
+  'time',
+  'number',
+  'pie',
+  'bar',
+]);
+
 export function computeDbTimeChartConfig(
   queriedConfig: ChartConfigWithDateRange | undefined,
   alert: ChartEditorFormState['alert'],

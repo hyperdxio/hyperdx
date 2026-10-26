@@ -291,6 +291,19 @@ export class ChartEditorComponent {
     await dismissSqlAutocomplete(this.page);
   }
 
+  /** Replace the SQL the chart runs over its query result in the browser. */
+  async setTransformSql(sql: string) {
+    await dismissSqlAutocomplete(this.page);
+    await this.page
+      .getByTestId('transform-sql-input')
+      .locator('.cm-content')
+      .click();
+    await this.page.keyboard.press('ControlOrMeta+A');
+    await this.page.keyboard.press('Delete');
+    await this.page.keyboard.type(sql);
+    await dismissSqlAutocomplete(this.page);
+  }
+
   /**
    * The tile-editor modal. Series-level lookups have to be scoped to it: the
    * dashboard behind it renders its own WHERE input with identical markup.

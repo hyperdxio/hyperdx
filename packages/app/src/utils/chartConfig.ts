@@ -9,10 +9,11 @@ import { ChartConfigWithOptDateRange } from '@hyperdx/common-utils/dist/types';
 export function stripClientSideConfigFields(
   config: ChartConfigWithOptDateRange,
 ): ChartConfigWithOptDateRange {
-  if (!isPromqlChartConfig(config)) return config;
+  const { transformSql: _transformSql, ...queryConfig } = config;
+  if (!isPromqlChartConfig(queryConfig)) return queryConfig;
   return {
-    ...config,
-    promqlExpression: getPromqlSeries(config).map(
+    ...queryConfig,
+    promqlExpression: getPromqlSeries(queryConfig).map(
       ({ reducer: _reducer, ...series }) => series,
     ),
   };

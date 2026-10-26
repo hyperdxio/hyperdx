@@ -1793,6 +1793,10 @@ const SharedChartSettingsSchema = z.object({
   // builder group-by time charts a positive value also drives the
   // __hdx_series_limit CTE (see SelectSQLStatementSchema.seriesLimit).
   seriesLimit: z.number().int().nonnegative().nullish(),
+  // A calculation the app applies in the browser (chdb) to every value in the
+  // tile's query result before rendering it; `$res` is the value, as in
+  // `$res * 2`. Client-side only, so it is not part of the ClickHouse query.
+  transformSql: z.string().optional(),
 });
 
 // How a grouped ratio divides once split into numerator/denominator series:

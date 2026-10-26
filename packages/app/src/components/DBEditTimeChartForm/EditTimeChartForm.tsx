@@ -71,8 +71,10 @@ import {
   firstSourceItemValue,
   useFilteredSortedSourceItems,
 } from '@/components/sourceSelectUtils';
+import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { IS_PROMQL_ENABLED } from '@/config';
 import HDXMarkdownChart from '@/HDXMarkdownChart';
+import { TRANSFORM_VALUE_PLACEHOLDER } from '@/hooks/useResultTransform';
 import {
   getDurationMsExpression,
   getFirstSeriesNumberFormat,
@@ -95,6 +97,7 @@ import {
   displayTypeToActiveTab,
   resolveTilePreviewFilters,
   TABS_WITH_GENERATED_SQL,
+  TABS_WITH_TRANSFORM,
   withBroadcastFilters,
   zSavedChartConfig,
 } from './utils';
@@ -1277,6 +1280,18 @@ export default function EditTimeChartForm({
               heatmapMode={builderHeatmapMode}
               onHeatmapModeChange={onHeatmapModeChange}
             />
+          )}
+          {TABS_WITH_TRANSFORM.has(activeTab) && (
+            <Box mt="sm" data-testid="transform-sql-input">
+              <SQLInlineEditorControlled
+                control={control}
+                name="transformSql"
+                label="Transform"
+                placeholder={`Calculation for each value (ex. ${TRANSFORM_VALUE_PLACEHOLDER} * 2)`}
+                tooltipText={`Optional. Your browser applies this to every value in the result before drawing it; ${TRANSFORM_VALUE_PLACEHOLDER} is the value.`}
+                onSubmit={onSubmit}
+              />
+            </Box>
           )}
           <ChartActionBar
             control={control}

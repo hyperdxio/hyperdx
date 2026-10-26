@@ -277,6 +277,7 @@ export function convertFormStateToSavedChartConfig(
         'lineInterpolation',
         'alternateRowBackground',
         'seriesLimit',
+        'transformSql',
         // 'alert', // TODO: Support alerts on PromQL (HDX-4636)
       ]),
       promqlExpression: formPromqlExpressions(form),
@@ -308,6 +309,7 @@ export function convertFormStateToSavedChartConfig(
         // series cap in formatResponseForTimeChart). See
         // SharedChartSettingsSchema.seriesLimit.
         'seriesLimit',
+        'transformSql',
         'alert',
         'onClick',
       ]),
@@ -382,6 +384,7 @@ export function convertFormStateToChartConfig(
         'lineInterpolation',
         'alternateRowBackground',
         'seriesLimit',
+        'transformSql',
       ]),
       promqlExpression: formPromqlExpressions(form),
       connection: source?.connection ?? form.connection ?? '',
@@ -412,6 +415,7 @@ export function convertFormStateToChartConfig(
         // Per-tile render cap for raw SQL time charts (see the save-config path
         // above and SharedChartSettingsSchema.seriesLimit).
         'seriesLimit',
+        'transformSql',
         'onClick',
       ]),
       sqlTemplate: form.sqlTemplate ?? '',

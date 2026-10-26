@@ -28,6 +28,7 @@ import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanati
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useResultColumnFilterKeys } from '@/hooks/useResultColumnFilterKeys';
+import { useResultTransform } from '@/hooks/useResultTransform';
 import {
   getBuilderValueColumnCount,
   useChartNumberFormats,
@@ -145,9 +146,8 @@ export default function DBTableChart({
     // Keep the current rows on screen while a refresh loads the new range
     keepPreviousData: true,
   });
-  const { data, isLoading, isError, error, isPlaceholderData } = local.active
-    ? local
-    : remote;
+  const { data, isLoading, isError, error, isPlaceholderData } =
+    useResultTransform(local.active ? local : remote, config.transformSql);
   const hasNextPage = !local.active && remote.hasNextPage;
   const { observerRef: fetchMoreRef } = useIntersectionObserver(
     remote.fetchNextPage,
