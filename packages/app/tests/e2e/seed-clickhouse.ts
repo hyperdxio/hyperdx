@@ -93,6 +93,9 @@ export const INTERESTING_FILTER_KEYS_ROWS = [
     serviceName: 'service1',
     resourceAttrValue: 'value1',
     jsonValue: 'value1',
+    jsonInteger: 42,
+    jsonMixed: 42,
+    jsonBoolean: true,
     clusterName: 'cluster1',
     serviceNameHyphen: 'svc-one',
     mapHyphenValue: 'mapval1',
@@ -103,6 +106,9 @@ export const INTERESTING_FILTER_KEYS_ROWS = [
     serviceName: 'service2',
     resourceAttrValue: 'value2',
     jsonValue: 'value2',
+    jsonInteger: 43,
+    jsonMixed: '43',
+    jsonBoolean: false,
     clusterName: 'cluster2',
     serviceNameHyphen: 'svc-two',
     mapHyphenValue: 'mapval2',
@@ -113,6 +119,9 @@ export const INTERESTING_FILTER_KEYS_ROWS = [
     serviceName: 'service3',
     resourceAttrValue: 'value3',
     jsonValue: 'value3',
+    jsonInteger: 44,
+    jsonMixed: '44',
+    jsonBoolean: false,
     clusterName: 'cluster3',
     serviceNameHyphen: 'svc-three',
     mapHyphenValue: 'mapval3',
@@ -788,7 +797,12 @@ function generateK8sEventLogs(
 function generateInterestingFilterKeyLogData(seedRef: number): string {
   return INTERESTING_FILTER_KEYS_ROWS.map((row, i) => {
     const timestampNs = (seedRef - (i + 1) * 1000) * 1000000;
-    const json = `{"key": {"subKey": {"subSubKey": "${row.jsonValue}"}}}`;
+    const json = JSON.stringify({
+      key: { subKey: { subSubKey: row.jsonValue } },
+      integer: row.jsonInteger,
+      mixed: row.jsonMixed,
+      boolean: row.jsonBoolean,
+    });
     // JSON column with a hyphenated name AND hyphenated nested keys.
     const jsonHyphen = `{"key-1": {"key-2": "${row.jsonHyphenValue}"}}`;
     return (
