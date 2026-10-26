@@ -11,6 +11,7 @@ import {
   ChartConfigWithOptTimestamp,
   ChartPaletteToken,
   ColorCondition,
+  SortSpecificationList,
 } from '@hyperdx/common-utils/dist/types';
 import { Text } from '@mantine/core';
 import { SortingState } from '@tanstack/react-table';
@@ -22,6 +23,7 @@ import {
 } from '@/ChartUtils';
 import { Table, TableVariant } from '@/HDXMultiSeriesTableChart';
 import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
+import { useLocalChartQuery } from '@/hooks/useLocalChartQuery';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
@@ -97,6 +99,17 @@ export default function DBTableChart({
 
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
+  const sortOrderBy = useMemo<SortSpecificationList | undefined>(
+    () =>
+      effectiveSort.length
+        ? effectiveSort.map(o => ({
+            valueExpression: o.id,
+            ordering: o.desc ? 'DESC' : 'ASC',
+          }))
+        : undefined,
+    [effectiveSort],
+  );
+
   const queriedConfig = useMemo(() => {
     if (isRawSqlChartConfig(config)) return config;
     if (isPromqlChartConfig(config)) {
@@ -108,36 +121,37 @@ export default function DBTableChart({
 
     const _config = convertToTableChartConfig(config);
 
-    if (effectiveSort.length) {
-      _config.orderBy = effectiveSort.map(o => {
-        return {
-          valueExpression: o.id,
-          ordering: o.desc ? 'DESC' : 'ASC',
-        };
-      });
+    if (sortOrderBy) {
+      _config.orderBy = sortOrderBy;
     }
     return _config;
-  }, [config, effectiveSort, minGranularitySeconds]);
+  }, [config, sortOrderBy, minGranularitySeconds]);
 
   const { data: mvOptimizationData } = useMVOptimizationExplanation(
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined,
   );
 
-  const {
-    data,
-    fetchNextPage,
-    hasNextPage,
-    isLoading,
-    isError,
-    error,
-    isPlaceholderData,
-  } = useOffsetPaginatedQuery(queriedConfig, {
+  const local = useLocalChartQuery(config, {
+    kind: 'table',
+    orderBy:
+      sortOrderBy ??
+      (isBuilderChartConfig(config) ? config.orderBy : undefined),
+    queryKeyPrefix,
     enabled,
+  });
+  const remote = useOffsetPaginatedQuery(queriedConfig, {
+    enabled: enabled && !local.active,
     queryKeyPrefix,
     // Keep the current rows on screen while a refresh loads the new range
     keepPreviousData: true,
   });
-  const { observerRef: fetchMoreRef } = useIntersectionObserver(fetchNextPage);
+  const { data, isLoading, isError, error, isPlaceholderData } = local.active
+    ? local
+    : remote;
+  const hasNextPage = !local.active && remote.hasNextPage;
+  const { observerRef: fetchMoreRef } = useIntersectionObserver(
+    remote.fetchNextPage,
+  );
 
   // Returns an array of aliases, so we can check if something is using an alias
   const aliasMap = useMemo(() => {

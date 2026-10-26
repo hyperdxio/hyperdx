@@ -224,6 +224,52 @@ test.describe('Chart Explorer Functionality', { tag: ['@charts'] }, () => {
         .toEqual(descendingLabels.slice(0, seriesLimit));
     });
   });
+
+  test('should switch display types without querying ClickHouse again', async ({
+    page,
+  }) => {
+    const chartQueries: string[] = [];
+    page.on('request', request => {
+      const sql = request.postData() ?? '';
+      if (
+        request.url().includes('/clickhouse-proxy') &&
+        sql.includes('count()')
+      ) {
+        chartQueries.push(sql);
+      }
+    });
+
+    await test.step('Run a time series grouped by ServiceName', async () => {
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+      await chartExplorerPage.chartEditor.setGroupBy('ServiceName');
+      await chartExplorerPage.chartEditor.runQuery();
+      await expect
+        .poll(() => chartQueries.some(sql => sql.includes('__hdx_time_bucket')))
+        .toBe(true);
+      await chartExplorerPage.page.waitForLoadState('networkidle');
+      chartQueries.length = 0;
+    });
+
+    await test.step('Table, number, pie and bar charts render from that result', async () => {
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Table);
+      // The first local chart waits for chdb to load
+      await expect(
+        page.getByRole('columnheader', { name: 'ServiceName', exact: true }),
+      ).toBeVisible({ timeout: 30000 });
+
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Number);
+      await expect(page.getByTestId('number-chart-value')).toHaveText(/\d/);
+
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Pie);
+      await expect(page.getByTestId('pie-chart-legend')).toBeVisible();
+
+      await chartExplorerPage.chartEditor.setChartType(DisplayType.Bar);
+      await expect(chartExplorerPage.getBars().first()).toBeVisible();
+
+      expect(chartQueries).toEqual([]);
+    });
+  });
+
   test(
     'should carry the builder config over to a macro-based SQL template when switching to SQL mode',
     { tag: '@full-stack' },

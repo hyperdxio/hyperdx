@@ -75,11 +75,15 @@ try {
 }
 
 // Copy chdb-wasm's browser assets into public/chdb-wasm (loaded by src/chdb.ts).
-// chdb-wasm fetches these by URL at runtime instead of going through the
-// bundler, and Next serves nothing from node_modules. Only the single-threaded
-// bundle is copied: the app isn't cross-origin isolated, so the threaded one
-// can't run. Unchanged files are skipped because chdb.wasm is ~160 MB.
+// src/chdb.ts imports the package from here by URL at runtime instead of going
+// through the bundler, whose webpack build fails on its Node-only code paths,
+// and Next serves nothing from node_modules. Only the single-threaded bundle is
+// copied: the app isn't cross-origin isolated, so the threaded one can't run.
+// Unchanged files are skipped because chdb.wasm is ~160 MB.
 const CHDB_ASSETS = [
+  'index.js',
+  'async.js',
+  'platform.js',
   'worker.js',
   'bindings.js',
   'status.js',

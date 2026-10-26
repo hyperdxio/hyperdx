@@ -106,6 +106,7 @@ export default [
       'eslint.config.mjs',
       'public/__ENV.js',
       'public/pyodide/**',
+      'public/chdb-wasm/**',
       'global-setup.js',
       'scripts/**',
     ],

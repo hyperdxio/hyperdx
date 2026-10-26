@@ -14,8 +14,9 @@ import {
 } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
+import { getChdb } from '@/chdb';
 import { DynamicFavicon } from '@/components/DynamicFavicon';
-import { IS_LOCAL_MODE, parseResourceAttributes } from '@/config';
+import { BASE_PATH, IS_LOCAL_MODE, parseResourceAttributes } from '@/config';
 import {
   DEFAULT_FONT_VAR,
   FONT_VAR_MAP,
@@ -154,6 +155,12 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   useEffect(() => {
     installHdxDebug();
     fetchServerVersion();
+  }, []);
+
+  // Charts re-aggregate in chdb, so create the db now rather than when the
+  // first chart needs it.
+  useEffect(() => {
+    getChdb(BASE_PATH).catch(err => console.warn('Could not load chdb:', err));
   }, []);
 
   // port to react query ? (needs to wrap with QueryClientProvider)

@@ -9,7 +9,7 @@ import { Text } from '@mantine/core';
 import { keepPreviousData } from '@tanstack/react-query';
 
 import api from '@/api';
-import { convertToTimeChartConfig } from '@/ChartUtils';
+import { convertToSharedTimeChartConfig } from '@/ChartUtils';
 import {
   getMinGranularitySeconds,
   useQueriedChartConfig,
@@ -40,14 +40,14 @@ export function useSearchTotalCount(
   } = {},
 ) {
   const { data: me, isLoading: isLoadingMe } = api.useMe();
-  // convertToTimeChartConfig below resolves 'auto', so the minimum has to
+  // convertToSharedTimeChartConfig below resolves 'auto', so the minimum has to
   // be applied before that happens.
   const { data: source } = useSource({ id: config.source });
   const minGranularitySeconds = getMinGranularitySeconds(source);
 
   // queriedConfig, queryKey, and enableQueryChunking match DBTimeChart so that react query can de-dupe these queries.
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig({ ...config, minGranularitySeconds }),
+    () => convertToSharedTimeChartConfig({ ...config, minGranularitySeconds }),
     [config, minGranularitySeconds],
   );
   const {

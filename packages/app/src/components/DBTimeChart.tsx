@@ -30,12 +30,11 @@ import {
   IconChartLine,
 } from '@tabler/icons-react';
 
-import api from '@/api';
 import {
   AGG_FNS,
   buildEventsSearchUrl,
   ChartKeyJoiner,
-  convertToTimeChartConfig,
+  convertToSharedTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
   type LineData,
@@ -58,6 +57,7 @@ import {
   getMinGranularitySeconds,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
+import { useTimeChartQuery } from '@/hooks/useLocalChartQuery';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useResultColumnFilterKeys } from '@/hooks/useResultColumnFilterKeys';
 import { useChartNumberFormats, useSource } from '@/source';
@@ -488,10 +488,8 @@ function DBTimeChartComponent({
     fillNulls,
   } = useTimeChartSettings(configWithFloor);
 
-  const { data: me, isLoading: isLoadingMe } = api.useMe();
-
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(configWithFloor),
+    () => convertToSharedTimeChartConfig(configWithFloor),
     [configWithFloor],
   );
 
@@ -552,22 +550,11 @@ function DBTimeChartComponent({
   );
 
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
-    useQueriedChartConfig(queriedConfig, {
-      placeholderData: (prev: any) => prev,
-      queryKey: [
-        queryKeyPrefix,
-        queriedConfig,
-        'chunked',
-        {
-          disableQueryChunking,
-          enableParallelQueries,
-          parallelizeWhenPossible: me?.team?.parallelizeWhenPossible,
-        },
-      ],
-      enabled: enabled && !isLoadingMe,
-      enableQueryChunking: !disableQueryChunking,
-      enableParallelQueries:
-        enableParallelQueries && me?.team?.parallelizeWhenPossible,
+    useTimeChartQuery(queriedConfig, {
+      queryKeyPrefix,
+      enabled,
+      disableQueryChunking,
+      enableParallelQueries,
     });
 
   const previousPeriodChartConfig: ChartConfigWithDateRange = useMemo(() => {

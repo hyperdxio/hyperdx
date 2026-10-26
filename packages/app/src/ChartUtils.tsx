@@ -14,7 +14,10 @@ import {
   getQueriedPromqlSeries,
   isRangeQuery,
 } from '@hyperdx/common-utils/dist/core/promql';
-import { isMetricChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import {
+  isMetricChartConfig,
+  isNonEmptyWhereExpr,
+} from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { SERIES_KEY_JOINER } from '@hyperdx/common-utils/dist/core/seriesNameTemplate';
 import {
   convertDateRangeToGranularityString,
@@ -254,6 +257,30 @@ export function convertToTimeChartConfig(
         dateRange,
         granularity,
       };
+}
+
+/**
+ * The config a time chart queries. Table, number, pie and bar charts
+ * re-aggregate its cached result in the browser (useLocalChartQuery), so the
+ * builder fields that only differ between display types are dropped to keep
+ * them all on one cache entry.
+ */
+export function convertToSharedTimeChartConfig(
+  config: ChartConfigWithDateRange,
+): ChartConfigWithDateRange {
+  if (!isBuilderChartConfig(config)) {
+    return convertToTimeChartConfig(config);
+  }
+  const {
+    displayType: _displayType,
+    orderBy: _orderBy,
+    onClick: _onClick,
+    having,
+    ...rest
+  } = config;
+  return convertToTimeChartConfig(
+    isNonEmptyWhereExpr(having) ? { ...rest, having } : rest,
+  );
 }
 
 export function useTimeChartSettings(

@@ -25,6 +25,7 @@ import {
   getMinGranularitySeconds,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
+import { useLocalChartQuery } from '@/hooks/useLocalChartQuery';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import {
@@ -248,12 +249,19 @@ export default function DBNumberChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error, isPlaceholderData } =
-    useQueriedChartConfig(queriedConfig, {
-      placeholderData: (prev: any) => prev,
-      queryKeyPrefix,
-      enabled,
-    });
+  const local = useLocalChartQuery(config, {
+    kind: 'number',
+    queryKeyPrefix,
+    enabled,
+  });
+  const remote = useQueriedChartConfig(queriedConfig, {
+    placeholderData: (prev: any) => prev,
+    queryKeyPrefix,
+    enabled: enabled && !local.active,
+  });
+  const { data, isLoading, isError, error, isPlaceholderData } = local.active
+    ? local
+    : remote;
 
   // The value is the first numeric value in the first row of the result
   const valueColumn = data?.meta

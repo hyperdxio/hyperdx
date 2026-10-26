@@ -20,6 +20,7 @@ import {
   getMinGranularitySeconds,
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
+import { useLocalChartQuery } from '@/hooks/useLocalChartQuery';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSingleSeriesNumberFormat, useSource } from '@/source';
 import { getColorProps } from '@/utils';
@@ -75,12 +76,23 @@ export function useCategoricalChart({
   const { data: mvOptimizationData } =
     useMVOptimizationExplanation(builderQueriedConfig);
 
-  const { data, isLoading, isError, error, isPlaceholderData } =
-    useQueriedChartConfig(queriedConfig, {
-      placeholderData: (prev: any) => prev,
-      queryKey: [queryKeyPrefix, stripClientSideConfigFields(queriedConfig)],
-      enabled,
-    });
+  const local = useLocalChartQuery(config, {
+    kind: 'categorical',
+    orderBy: isBuilderChartConfig(config) ? config.orderBy : undefined,
+    limit: isBuilderChartConfig(queriedConfig)
+      ? queriedConfig.limit?.limit
+      : undefined,
+    queryKeyPrefix,
+    enabled,
+  });
+  const remote = useQueriedChartConfig(queriedConfig, {
+    placeholderData: (prev: any) => prev,
+    queryKey: [queryKeyPrefix, stripClientSideConfigFields(queriedConfig)],
+    enabled: enabled && !local.active,
+  });
+  const { data, isLoading, isError, error, isPlaceholderData } = local.active
+    ? local
+    : remote;
 
   const toolbarItems = useMemo(() => {
     const allToolbarItems: React.ReactNode[] = [];
