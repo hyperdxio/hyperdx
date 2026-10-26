@@ -106,19 +106,10 @@ jest.mock('@/useFormatTime', () => ({
 // Imported after the mock factories above.
 import { DBRowSidePanelInner } from '@/components/DBRowSidePanel';
 import useSidePanelStack from '@/hooks/useSidePanelStack';
+import { makeLogSource, makeTraceSource } from '@/llm/__fixtures__/sources';
 
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-const LOG_SOURCE = {
-  id: 'log-src',
-  kind: 'log',
-  eventAttributesExpression: 'LogAttributes',
-} as TSource;
-// eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
-const TRACE_SOURCE = {
-  id: 'trace-src',
-  kind: 'trace',
-  eventAttributesExpression: 'SpanAttributes',
-} as TSource;
+const LOG_SOURCE = makeLogSource();
+const TRACE_SOURCE = makeTraceSource();
 
 function Harness({ source }: { source: TSource }) {
   const sidePanelStack = useSidePanelStack({ initialRowId: 'row-1' });
