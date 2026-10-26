@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import Script from 'next/script';
@@ -11,11 +11,18 @@ import {
   Anchor,
   Collapse,
   Flex,
+  getDefaultZIndex,
   Group,
+  Overlay,
   ScrollArea,
   Text,
 } from '@mantine/core';
-import { useDisclosure, useLocalStorage } from '@mantine/hooks';
+import {
+  useDisclosure,
+  useFocusTrap,
+  useHotkeys,
+  useLocalStorage,
+} from '@mantine/hooks';
 import {
   IconArrowBarToLeft,
   IconBell,
@@ -31,7 +38,6 @@ import {
 import api from '@/api';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
-import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
 import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
 import { useFavorites } from '@/favorites';
@@ -52,6 +58,7 @@ import {
   AppNavUserMenu,
 } from './AppNav.components';
 import { AppNavFeedback } from './AppNavFeedback';
+import { useAppNavCollapse } from './useAppNavCollapse';
 
 import styles from './AppNav.module.scss';
 
@@ -69,6 +76,8 @@ declare global {
     Reo?: { init: (options: { clientID: string; source?: string }) => void };
   }
 }
+
+const COLLAPSED_NAV_WIDTH = 50;
 
 // Navigation link configuration
 type NavLinkConfig = {
@@ -186,14 +195,26 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   const { data: meData } = api.useMe();
 
-  const [isPreferCollapsed, setIsPreferCollapsed] = useLocalStorage<boolean>({
-    key: 'isNavCollapsed',
-    defaultValue: false,
-  });
+  const { isCollapsed, isOverlay, toggle, closeOverlay } = useAppNavCollapse(
+    router.asPath,
+  );
 
-  const isCollapsed = useCompactViewport() || isPreferCollapsed;
+  useHotkeys(isOverlay ? [['Escape', closeOverlay]] : []);
 
-  const navWidth = isCollapsed ? 50 : 250;
+  // The open nav is a modal dialog: focus moves into it when it opens, stays
+  // in it, and returns to the expand button when it closes.
+  const navId = useId();
+  const focusTrapRef = useFocusTrap(isOverlay);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const wasOverlayRef = useRef(false);
+  useEffect(() => {
+    if (wasOverlayRef.current && !isOverlay) {
+      toggleRef.current?.focus();
+    }
+    wasOverlayRef.current = isOverlay;
+  }, [isOverlay]);
+
+  const navWidth = isCollapsed ? COLLAPSED_NAV_WIDTH : 250;
 
   useEffect(() => {
     HyperDX.addAction('user navigated', {
@@ -330,7 +351,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   return (
     <AppNavContext value={{ isCollapsed, pathname }}>
-      {fixed && (
+      {fixed && !isOverlay && (
         <div
           className={styles.navGhost}
           style={{
@@ -339,17 +360,47 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           }}
         ></div>
       )}
+      {isOverlay && (
+        <>
+          {/* Holds the rail's space so the page does not move under the open nav. */}
+          <div
+            style={{
+              width: COLLAPSED_NAV_WIDTH,
+              minWidth: COLLAPSED_NAV_WIDTH,
+            }}
+          />
+          <Overlay
+            fixed
+            backgroundOpacity={0.4}
+            zIndex={getDefaultZIndex('overlay')}
+            onClick={closeOverlay}
+            data-testid="app-nav-overlay"
+          />
+        </>
+      )}
       <InstallInstructionModal
         show={showInstallInstructions}
         onHide={closeInstallInstructions}
       />
       <div
+        id={navId}
+        ref={focusTrapRef}
         data-testid="app-nav"
+        {...(isOverlay && {
+          role: 'dialog',
+          'aria-modal': true,
+          'aria-label': 'Navigation',
+        })}
         className={cx(styles.nav, {
           [styles.navFixed]: fixed,
           [styles.navCollapsed]: isCollapsed,
+          [styles.navOverlay]: isOverlay,
         })}
-        style={{ width: navWidth }}
+        style={
+          isOverlay
+            ? { width: navWidth, zIndex: getDefaultZIndex('overlay') }
+            : { width: navWidth }
+        }
       >
         <div style={{ width: navWidth }}>
           <div
@@ -392,8 +443,11 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               className={cx(styles.collapseButton, {
                 [styles.collapseButtonCollapsed]: isCollapsed,
               })}
+              ref={toggleRef}
               title="Collapse/Expand Navigation"
-              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
+              aria-expanded={!isCollapsed}
+              aria-controls={navId}
+              onClick={toggle}
             >
               <IconArrowBarToLeft size={16} />
             </ActionIcon>

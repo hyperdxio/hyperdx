@@ -135,6 +135,8 @@ Sessions keeps a **single-row** query toolbar (source, where filter, time range,
 
 A viewport under 900px is compact. `useCompactViewport` (`packages/app/src/components/CompactViewport/useCompactViewport.ts`) is the cutoff, and the nav collapses on the same width. Pages that switch layout use this hook.
 
+On a compact viewport the nav is a rail, and its expand button opens the full nav over the page as a modal dialog (`useAppNavCollapse`). It closes on Escape, on a backdrop click, and on any route change. That open state is not stored, for the same reason as the panel state below. The row side panel opens full width, without the resize handle or the width toggle.
+
 A page that is a side panel plus a main pane uses `ResponsiveSidePanel` (`packages/app/src/components/CompactViewport/ResponsiveSidePanel.tsx`):
 
 - Wide: the panel sits beside the main pane.
