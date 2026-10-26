@@ -20,7 +20,7 @@ import {
 import { IconChevronDown } from '@tabler/icons-react';
 
 import { fieldIdentifier } from '@/components/Explore/fieldIdentifier';
-import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
+import SQLInlineEditor from '@/components/Explore/owned/SQLInlineEditor';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
 
 import classes from './FieldPicker.module.scss';

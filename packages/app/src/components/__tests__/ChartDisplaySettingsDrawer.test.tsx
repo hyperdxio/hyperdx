@@ -1,5 +1,4 @@
 import React from 'react';
-import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DisplayType,
   MAX_LEGEND_TEMPLATE_LENGTH,
@@ -639,31 +638,6 @@ describe('ChartDisplaySettingsDrawer', () => {
       await user.click(screen.getByRole('button', { name: /apply/i }));
 
       expect(onChange).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('Explore alignment', () => {
-    it('shows and applies granularity only when requested', async () => {
-      const onChange = jest.fn();
-      const user = userEvent.setup();
-
-      renderWithMantine(
-        <ChartDisplaySettingsDrawer
-          {...baseProps}
-          configType="builder"
-          displayType={DisplayType.Line}
-          settings={{ granularity: Granularity.FiveMinute }}
-          showGranularity
-          onChange={onChange}
-        />,
-      );
-
-      expect(screen.getByTestId('granularity-picker')).toHaveValue('5 minutes');
-      await user.click(screen.getByRole('button', { name: 'Apply' }));
-
-      expect(onChange.mock.calls[0][0]).toMatchObject({
-        granularity: Granularity.FiveMinute,
-      });
     });
   });
 });

@@ -5,7 +5,7 @@ import { IconSettings } from '@tabler/icons-react';
 
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
-} from '@/components/ChartDisplaySettingsDrawer';
+} from '@/components/Explore/owned/ChartDisplaySettingsDrawer';
 
 export function ExploreChartSettings({
   settings,

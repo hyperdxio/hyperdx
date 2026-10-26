@@ -9,7 +9,10 @@ import {
   TTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 
-import { buildEventsSearchUrl, buildTableRowSearchUrl } from '@/ChartUtils';
+import {
+  buildEventsSearchUrl,
+  buildTableRowSearchUrl,
+} from '@/components/Explore/owned/ChartUtils';
 
 const dateRange: [Date, Date] = [
   new Date('2026-01-01T00:00:00.000Z'),

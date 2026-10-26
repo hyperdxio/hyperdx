@@ -2,7 +2,6 @@ import * as React from 'react';
 import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { TSource } from '@hyperdx/common-utils/dist/types';
 import { Button, Card, Drawer, Stack, Text } from '@mantine/core';
-import { IconList } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
 // Easter egg: April Fools 2026 — see aiSummarize/ for details.
@@ -10,7 +9,6 @@ import AISummarizePatternButton from '@/components/AISummarizePatternButton';
 import DBRowSidePanel from '@/components/DBRowSidePanel';
 import { RawLogTable } from '@/components/DBRowTable';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
-import { PatternTemplate } from '@/components/Patterns/PatternTemplate';
 import {
   LEVEL_COLUMN_ALIAS,
   Pattern,
@@ -30,16 +28,12 @@ export default function PatternSidePanel({
   pattern,
   bodyValueExpression,
   source,
-  onViewMatchingEvents,
-  highlightPattern = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
   pattern: Pattern;
   bodyValueExpression: string;
   source: TSource;
-  onViewMatchingEvents?: () => void;
-  highlightPattern?: boolean;
 }) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 100;
@@ -141,25 +135,7 @@ export default function PatternSidePanel({
             <DrawerBody>
               <Stack>
                 <Card p="md">
-                  <Text size="sm">
-                    {highlightPattern ? (
-                      <PatternTemplate text={pattern.pattern} />
-                    ) : (
-                      pattern.pattern
-                    )}
-                  </Text>
-                  {onViewMatchingEvents != null && (
-                    <Button
-                      variant="primary"
-                      size="xs"
-                      mt="sm"
-                      leftSection={<IconList size={14} />}
-                      onClick={onViewMatchingEvents}
-                      data-testid="view-matching-events"
-                    >
-                      View matching events
-                    </Button>
-                  )}
+                  <Text size="sm">{pattern.pattern}</Text>
                   <AISummarizePatternButton pattern={pattern} />
                 </Card>
                 <Card p="md">

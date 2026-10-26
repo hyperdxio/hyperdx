@@ -68,17 +68,12 @@ type SQLInlineEditorProps = {
   queryHistoryType?: string;
   parentRef?: HTMLElement | null;
   allowMultiline?: boolean;
-  /** Collapsed editor height in px. Defaults from `size` (xs → 30, else 36). */
-  minHeight?: number;
   dateRange?: [Date, Date];
   sourceId?: string;
   // With multiple tableConnections, offer only fields present in ALL of them
   // (intersection) rather than the union — for an expression that must be valid
   // against every connection, e.g. a chart-level Group By over multiple series.
   intersectFields?: boolean;
-  // Show a line-number gutter. Off by default so existing inline usages stay
-  // compact; opt-in for editor-style surfaces (e.g. the Explore query editor).
-  showLineNumbers?: boolean;
   // Whether the dashboard variables in scope apply to this expression: offer
   // them as completions, and warn about the references that won't work.
   enableVariables?: boolean;
@@ -104,11 +99,9 @@ export default function SQLInlineEditor({
   queryHistoryType,
   parentRef,
   allowMultiline = true,
-  minHeight,
   dateRange,
   sourceId,
   intersectFields,
-  showLineNumbers = false,
   enableVariables = false,
 }: SQLInlineEditorProps & TableConnectionChoice) {
   const { colorScheme } = useMantineColorScheme();
@@ -338,16 +331,6 @@ export default function SQLInlineEditor({
     [allowMultiline, submitFromEditor, tooltipExt],
   );
 
-  // A new object on every render makes CodeMirror reconfigure and re-inject
-  // its theme's CSS rules.
-  const basicSetup = useMemo(
-    () => ({
-      ...DEFAULT_CODE_MIRROR_BASIC_SETUP,
-      lineNumbers: showLineNumbers,
-    }),
-    [showLineNumbers],
-  );
-
   const onClickCodeMirror = useCallback(() => {
     if (ref?.current?.view) {
       startCompletion(ref.current.view);
@@ -356,8 +339,7 @@ export default function SQLInlineEditor({
 
   const validationState = variableValidationState(variableIssues, !!error);
   const baseHeight =
-    minHeight ??
-    (size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm);
+    size === 'xs' ? EDITOR_INPUT_HEIGHTS.xs : EDITOR_INPUT_HEIGHTS.sm;
 
   return (
     <div
@@ -416,7 +398,7 @@ export default function SQLInlineEditor({
             }, [setIsFocused])}
             extensions={cmExtensions}
             onCreateEditor={updateAutocompleteColumns}
-            basicSetup={basicSetup}
+            basicSetup={DEFAULT_CODE_MIRROR_BASIC_SETUP}
             placeholder={placeholder}
             onClick={onClickCodeMirror}
           />

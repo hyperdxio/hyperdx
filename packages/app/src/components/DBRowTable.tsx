@@ -36,13 +36,11 @@ import {
 } from '@hyperdx/common-utils/dist/drain';
 import {
   BuilderChartConfigWithDateRange,
-  RawSqlChartConfig,
   SelectList,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Box,
-  Divider,
   Flex,
   Group,
   Modal,
@@ -125,8 +123,6 @@ import {
   TableSearchInput,
   TableSearchMatchIndicator,
 } from './DBTable/TableSearchInput';
-import { PatternTemplate } from './Patterns/PatternTemplate';
-import { TableDisplaySettings } from './Search/TableDisplaySettings';
 import { SQLPreview } from './ChartSQLPreview';
 import { CsvExportButton } from './CsvExportButton';
 import { RowSidePanelContext } from './DBRowSidePanel';
@@ -382,8 +378,6 @@ export const RawLogTable = memo(
     getRowWhere,
     variant = 'default',
     onRemoveColumn,
-    tableBarRightSection,
-    formatPatternColumn = false,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -427,13 +421,7 @@ export const RawLogTable = memo(
     getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
     onRemoveColumn?: (column: string) => void;
-    /** When defined (including `null`), the table actions move from the header
-     *  into a bar attached to the top of the table, with this at its right end. */
-    tableBarRightSection?: React.ReactNode;
-    /** Highlight Drain templates. Explore only. */
-    formatPatternColumn?: boolean;
   }) => {
-    const hasTableBar = tableBarRightSection !== undefined;
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
       const returnedRows = dedupRows
@@ -532,15 +520,8 @@ export const RawLogTable = memo(
       csvColumns,
     );
 
-    const [isSelectionModeOn, setSelectionModeOn] = useLocalStorage(
-      'hdx-row-selection-enabled',
-      false,
-    );
-    // Tables with a bar get an on/off toggle there; others keep selection on.
-    const isRowSelectionActive =
-      enableRowSelection && (!hasTableBar || isSelectionModeOn);
     const rowSelection = useRowSelection(dedupedRows, {
-      enabled: isRowSelectionActive,
+      enabled: enableRowSelection,
       resetKey: selectionResetKey,
       onSelectionChange: onSelectedRowsChange,
     });
@@ -573,7 +554,7 @@ export const RawLogTable = memo(
 
     const leadingColumnsWidth =
       (showExpandButton ? EXPAND_COLUMN_SIZE : 0) +
-      (isRowSelectionActive ? ROW_SELECTION_COLUMN_WIDTH : 0);
+      (enableRowSelection ? ROW_SELECTION_COLUMN_WIDTH : 0);
 
     const lastColumnWidth = useMemo(() => {
       if (displayedColumns.length === 0) return MIN_LAST_COLUMN_WIDTH;
@@ -677,15 +658,11 @@ export const RawLogTable = memo(
                 tableSearch.matchIndices[tableSearch.currentMatchIndex] ===
                   info.row.index;
 
-              const displayValue = tableSearch.searchQuery ? (
-                highlightText(truncatedStrValue, tableSearch.searchQuery, {
-                  isCurrentMatch,
-                })
-              ) : formatPatternColumn && column === 'pattern' ? (
-                <PatternTemplate text={truncatedStrValue} />
-              ) : (
-                truncatedStrValue
-              );
+              const displayValue = tableSearch.searchQuery
+                ? highlightText(truncatedStrValue, tableSearch.searchQuery, {
+                    isCurrentMatch,
+                  })
+                : truncatedStrValue;
 
               return (
                 <span
@@ -718,7 +695,6 @@ export const RawLogTable = memo(
         aliasMap,
         lastColumnWidth,
         wrapLinesEnabled,
-        formatPatternColumn,
         tableSearch.searchQuery,
         tableSearch.matchIndices,
         tableSearch.currentMatchIndex,
@@ -993,135 +969,8 @@ export const RawLogTable = memo(
       [],
     );
 
-    const resetWidthsAction = tableId &&
-      Object.keys(columnSizeStorage).length > 0 && (
-        <UnstyledButton
-          onClick={() => setColumnSizeStorage({})}
-          title="Reset Column Widths"
-          display="flex"
-        >
-          <MantineTooltip label="Reset Column Widths">
-            <IconRotateClockwise size={16} />
-          </MantineTooltip>
-        </UnstyledButton>
-      );
-    const sqlAction = config && (
-      <UnstyledButton
-        onClick={() => handleSqlModalOpen(true)}
-        title="Show Generated SQL"
-        tabIndex={0}
-        display="flex"
-      >
-        <MantineTooltip label="Show Generated SQL">
-          <IconCode size={16} />
-        </MantineTooltip>
-      </UnstyledButton>
-    );
-    const wrapAction = (
-      <UnstyledButton
-        onClick={() => setWrapLinesEnabled(prev => !prev)}
-        title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
-        display="flex"
-      >
-        <MantineTooltip
-          label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
-        >
-          {wrapLinesEnabled ? (
-            <IconTextWrapDisabled size={16} />
-          ) : (
-            <IconTextWrap size={16} />
-          )}
-        </MantineTooltip>
-      </UnstyledButton>
-    );
-    const csvAction = (
-      <CsvExportButton
-        data={csvData}
-        filename={getCsvFilename}
-        className="fs-6"
-      >
-        <MantineTooltip
-          label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
-        >
-          <IconDownload size={16} />
-        </MantineTooltip>
-      </CsvExportButton>
-    );
-    const settingsAction = onSettingsClick != null && (
-      <UnstyledButton
-        onClick={() => onSettingsClick()}
-        title="Settings"
-        display="flex"
-      >
-        <MantineTooltip label="Settings">
-          <IconSettings size={16} />
-        </MantineTooltip>
-      </UnstyledButton>
-    );
-    const rowSelectionMenu = isRowSelectionActive && (
-      <RowSelectionMenu
-        selectedCount={rowSelection.selectedCount}
-        getSelectedRows={rowSelection.getSelectedRows}
-        columns={csvColumns}
-        onClear={rowSelection.clearSelection}
-      />
-    );
-
     return (
-      <Flex
-        direction="column"
-        h="100%"
-        className={cx({ [styles.framed]: hasTableBar })}
-      >
-        {hasTableBar && (
-          <Group
-            className={styles.tableBar}
-            justify="space-between"
-            wrap="nowrap"
-            gap="sm"
-            data-testid="search-results-table-bar"
-          >
-            <Group gap="sm" wrap="nowrap">
-              {rowSelectionMenu}
-            </Group>
-            <Group gap="sm" wrap="nowrap" align="center">
-              <TableDisplaySettings
-                rowSelection={
-                  enableRowSelection
-                    ? {
-                        enabled: isSelectionModeOn,
-                        onChange: enabled => {
-                          if (!enabled) {
-                            rowSelection.clearSelection();
-                          }
-                          setSelectionModeOn(enabled);
-                        },
-                      }
-                    : undefined
-                }
-                wrapLines={wrapLinesEnabled}
-                onWrapLinesChange={setWrapLinesEnabled}
-                onResetColumnWidths={
-                  tableId && Object.keys(columnSizeStorage).length > 0
-                    ? () => setColumnSizeStorage({})
-                    : undefined
-                }
-              />
-              <Divider orientation="vertical" />
-              <Group gap={12} wrap="nowrap" align="center">
-                {sqlAction}
-                {csvAction}
-                {settingsAction}
-              </Group>
-              {tableBarRightSection != null && (
-                <>
-                  <Divider orientation="vertical" />
-                  {tableBarRightSection}
-                </>
-              )}
-            </Group>
-          </Group>
-        )}
+      <Flex direction="column" h="100%">
         <Box pos="relative" style={{ flex: 1, minHeight: 0 }}>
           {/* Find within page search bar - floating on top right */}
           <TableSearchInput
@@ -1170,7 +1019,7 @@ export const RawLogTable = memo(
                 {displayedColumns.length > 0 &&
                   table.getHeaderGroups().map(headerGroup => (
                     <tr key={headerGroup.id}>
-                      {isRowSelectionActive && <RowSelectionHeaderCell />}
+                      {enableRowSelection && <RowSelectionHeaderCell />}
                       {headerGroup.headers.map((header, headerIndex) => {
                         const isLast =
                           headerIndex === headerGroup.headers.length - 1;
@@ -1191,21 +1040,87 @@ export const RawLogTable = memo(
                                 : undefined
                             }
                             lastItemButtons={
-                              hasTableBar ? undefined : (
-                                <Group
-                                  gap={8}
-                                  mr={8}
-                                  wrap="nowrap"
-                                  align="center"
+                              <Group
+                                gap={8}
+                                mr={8}
+                                wrap="nowrap"
+                                align="center"
+                              >
+                                {tableId &&
+                                  Object.keys(columnSizeStorage).length > 0 && (
+                                    <UnstyledButton
+                                      onClick={() => setColumnSizeStorage({})}
+                                      title="Reset Column Widths"
+                                      display="flex"
+                                    >
+                                      <MantineTooltip label="Reset Column Widths">
+                                        <IconRotateClockwise size={16} />
+                                      </MantineTooltip>
+                                    </UnstyledButton>
+                                  )}
+                                {config && (
+                                  <UnstyledButton
+                                    onClick={() => handleSqlModalOpen(true)}
+                                    title="Show Generated SQL"
+                                    tabIndex={0}
+                                    display="flex"
+                                  >
+                                    <MantineTooltip label="Show Generated SQL">
+                                      <IconCode size={16} />
+                                    </MantineTooltip>
+                                  </UnstyledButton>
+                                )}
+                                <UnstyledButton
+                                  onClick={() =>
+                                    setWrapLinesEnabled(prev => !prev)
+                                  }
+                                  title={`${wrapLinesEnabled ? 'Disable' : 'Enable'}  Wrap Lines`}
+                                  display="flex"
                                 >
-                                  {resetWidthsAction}
-                                  {sqlAction}
-                                  {wrapAction}
-                                  {csvAction}
-                                  {settingsAction}
-                                  {rowSelectionMenu}
-                                </Group>
-                              )
+                                  <MantineTooltip
+                                    label={`${wrapLinesEnabled ? 'Disable' : 'Enable'} Wrap Lines`}
+                                  >
+                                    {wrapLinesEnabled ? (
+                                      <IconTextWrapDisabled size={16} />
+                                    ) : (
+                                      <IconTextWrap size={16} />
+                                    )}
+                                  </MantineTooltip>
+                                </UnstyledButton>
+
+                                <CsvExportButton
+                                  data={csvData}
+                                  filename={getCsvFilename}
+                                  className="fs-6"
+                                >
+                                  <MantineTooltip
+                                    label={`Download Table as CSV (max ${maxRows.toLocaleString()} rows)${isLimited ? ' - data truncated' : ''}`}
+                                  >
+                                    <IconDownload size={16} />
+                                  </MantineTooltip>
+                                </CsvExportButton>
+                                {onSettingsClick != null && (
+                                  <UnstyledButton
+                                    onClick={() => onSettingsClick()}
+                                    title="Settings"
+                                    display="flex"
+                                  >
+                                    <MantineTooltip label="Settings">
+                                      <IconSettings size={16} />
+                                    </MantineTooltip>
+                                  </UnstyledButton>
+                                )}
+                                {enableRowSelection && (
+                                  <RowSelectionMenu
+                                    selectedCount={rowSelection.selectedCount}
+                                    getSelectedRows={
+                                      rowSelection.getSelectedRows
+                                    }
+                                    columns={csvColumns}
+                                    onClear={rowSelection.clearSelection}
+                                  />
+                                )}
+                              </Group>
                             }
                           />
                         );
@@ -1225,7 +1140,7 @@ export const RawLogTable = memo(
                 const rowId = getRowId(row.original);
                 const isExpanded = expandedRows[rowId] ?? false;
                 const isRowSelected =
-                  isRowSelectionActive && rowSelection.isSelected(rowId);
+                  enableRowSelection && rowSelection.isSelected(rowId);
 
                 return (
                   // A row and its inline expansion are two `tr`s but one
@@ -1247,7 +1162,7 @@ export const RawLogTable = memo(
                         [styles.tableRow__multiSelected]: isRowSelected,
                       })}
                     >
-                      {isRowSelectionActive && (
+                      {enableRowSelection && (
                         <RowSelectionCell
                           rowId={rowId}
                           isSelected={isRowSelected}
@@ -1358,7 +1273,7 @@ export const RawLogTable = memo(
                     {showExpandButton && isExpanded && (
                       <ExpandedLogRow
                         columnsLength={
-                          columns.length + (isRowSelectionActive ? 1 : 0)
+                          columns.length + (enableRowSelection ? 1 : 0)
                         }
                         virtualKey={virtualRow.key.toString()}
                         source={source}
@@ -1665,7 +1580,6 @@ function DBSqlRowTableComponent({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
-  tableBarRightSection,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1699,7 +1613,6 @@ function DBSqlRowTableComponent({
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
-  tableBarRightSection?: React.ReactNode;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -2021,123 +1934,8 @@ function DBSqlRowTableComponent({
         variant={variant}
         onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
         tableId={tableId}
-        tableBarRightSection={tableBarRightSection}
       />
     </>
   );
 }
 export const DBSqlRowTable = memo(DBSqlRowTableComponent);
-
-export type RawSqlRowTableConfig = RawSqlChartConfig & {
-  dateRange: [Date, Date];
-};
-
-/**
- * The same row table, fed by a hand-written statement instead of the builder.
- * Rows are identified from their own values (plus any aliases in the SQL), so
- * a row opens in the side panel whenever the statement selects the source's
- * columns; there are no extra key columns to lean on, since the SQL is not
- * ours to append to. Raw SQL does not paginate.
- */
-function DBRawSqlRowTableComponent({
-  config,
-  sourceId,
-  onRowDetailsClick,
-  highlightedLineId,
-  enabled = true,
-  queryKeyPrefix,
-  renderRowDetails,
-  onScroll,
-  onError,
-  tableId,
-  errorVariant,
-  tableBarRightSection,
-}: {
-  config: RawSqlRowTableConfig;
-  sourceId?: string;
-  onRowDetailsClick?: (
-    rowWhere: RowWhereResult,
-    row: Record<string, any>,
-  ) => void;
-  highlightedLineId?: string;
-  enabled?: boolean;
-  queryKeyPrefix?: string;
-  renderRowDetails?: (r: {
-    id: string;
-    aliasWith?: WithClause[];
-    [key: string]: unknown;
-  }) => React.ReactNode;
-  onScroll?: (scrollTop: number) => void;
-  onError?: (error: Error | ClickHouseQueryError) => void;
-  tableId?: string;
-  errorVariant?: ChartErrorStateVariant;
-  tableBarRightSection?: React.ReactNode;
-}) {
-  const { data, isFetching, isError, error } = useOffsetPaginatedQuery(config, {
-    enabled,
-    queryKeyPrefix,
-  });
-
-  const columnMap = useMemo(
-    () => selectColumnMapWithoutAdditionalKeys(data?.meta, 0),
-    [data],
-  );
-  const columns = useMemo(() => Array.from(columnMap.keys()), [columnMap]);
-
-  const rows = useMemo(() => {
-    const objectTypeColumns = columns.filter(c =>
-      isJSDataTypeJSONStringifiable(columnMap.get(c)?._type),
-    );
-    return (data?.data ?? []).map(row => {
-      const newRow = { ...row };
-      objectTypeColumns.forEach(c => {
-        newRow[c] = JSON.stringify(row[c]);
-      });
-      return newRow;
-    });
-  }, [data, columns, columnMap]);
-
-  const aliasMap = useMemo(
-    () => chSqlToAliasMap(data?.chSql ?? { sql: '', params: {} }),
-    [data],
-  );
-  const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
-
-  const _onRowDetailsClick = useCallback(
-    (row: Record<string, any>) => onRowDetailsClick?.(getRowWhere(row), row),
-    [onRowDetailsClick, getRowWhere],
-  );
-
-  useEffect(() => {
-    if (isError && onError && error) {
-      onError(error);
-    }
-  }, [isError, onError, error]);
-
-  const { data: source } = useSource({ id: sourceId });
-
-  return (
-    <RawLogTable
-      wrapLines={false}
-      displayedColumns={columns}
-      highlightedLineId={highlightedLineId}
-      rows={rows}
-      renderRowDetails={renderRowDetails}
-      isLoading={isFetching}
-      hasNextPage={false}
-      onRowDetailsClick={_onRowDetailsClick}
-      onScroll={onScroll}
-      generateRowId={getRowWhere}
-      isError={isError}
-      error={error ?? undefined}
-      errorVariant={errorVariant}
-      columnTypeMap={columnMap}
-      dateRange={config.dateRange}
-      source={source}
-      getRowWhere={getRowWhere}
-      tableId={tableId}
-      tableBarRightSection={tableBarRightSection}
-    />
-  );
-}
-export const DBRawSqlRowTable = memo(DBRawSqlRowTableComponent);

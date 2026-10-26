@@ -11,7 +11,7 @@ import {
   tokenizeAtCursor,
   useAutoCompleteOptions,
 } from '@/hooks/useAutoCompleteOptions';
-import { useGetKeyValues, useMultipleAllFields } from '@/hooks/useMetadata';
+import { useAllFields, useGetKeyValues } from '@/hooks/useMetadata';
 
 enableMapSet();
 
@@ -46,6 +46,7 @@ jest.mock('../useMetadata', () => {
       getKeyValuesWithMVs: jest.fn(),
       getAllKeyValues: jest.fn(),
     }),
+    useAllFields: jest.fn(),
     useMultipleAllFields: jest.fn(),
     useGetKeyValues: jest.fn(),
     useColumns: jest.fn().mockReturnValue({ data: [], isLoading: false }),
@@ -103,7 +104,7 @@ describe('useAutoCompleteOptions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    (useMultipleAllFields as jest.Mock).mockReturnValue({
+    (useAllFields as jest.Mock).mockReturnValue({
       data: mockFields,
       isLoading: false,
       error: null,
@@ -270,8 +271,8 @@ describe('useAutoCompleteOptions', () => {
   // The hook has to hand the table connection down to field discovery, or
   // callers a source id can't serve — the dashboard-wide WHERE, metric
   // sources — get an empty field list. Asserted on the call args rather than
-  // on `options` because `useMultipleAllFields` is mocked to return
-  // `mockFields` unconditionally, which is exactly what hid the bug.
+  // on `options` because `useAllFields` is mocked to return `mockFields`
+  // unconditionally, which is exactly what hid the bug.
   it('discovers fields from the tableConnection when no sourceId is given', () => {
     renderHook(
       () =>
@@ -281,32 +282,30 @@ describe('useAutoCompleteOptions', () => {
       { wrapper },
     );
 
-    expect(jest.mocked(useMultipleAllFields).mock.calls.at(-1)?.[0]).toEqual([
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
       mockTableConnection,
-    ]);
+    );
   });
 
-  // An array means a metric source charting more than one metric table. A
-  // suggestion valid for only one of them would break the other series' query,
-  // so discovery spans them all and keeps the intersection.
-  it('intersects fields across every table connection when given an array', () => {
-    const otherConnection = {
-      databaseName: 'other_db',
-      tableName: 'logs',
-      connectionId: 'conn2',
-    };
-
+  it('uses the first table connection when given an array', () => {
     renderHook(
       () =>
         useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
-          tableConnection: [mockTableConnection, otherConnection],
+          tableConnection: [
+            mockTableConnection,
+            {
+              databaseName: 'other_db',
+              tableName: 'logs',
+              connectionId: 'conn2',
+            },
+          ],
         }),
       { wrapper },
     );
 
-    const call = jest.mocked(useMultipleAllFields).mock.calls.at(-1);
-    expect(call?.[0]).toEqual([mockTableConnection, otherConnection]);
-    expect(call?.[1]?.intersect).toBe(true);
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
+      mockTableConnection,
+    );
   });
 });
 

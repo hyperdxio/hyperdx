@@ -38,10 +38,10 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { substituteChartConfigVariables } from '@hyperdx/common-utils/dist/variables';
+import { notifications } from '@mantine/notifications';
 
 import DateRangeIndicator from './components/charts/DateRangeIndicator';
 import { MVOptimizationExplanationResult } from './hooks/useMVOptimizationExplanation';
-import { translateMetricGroupFilters } from './utils/metricPivot';
 import {
   DEFAULT_SERIES_LIMIT,
   MAX_RENDERED_TIME_CHART_SERIES,
@@ -1189,25 +1189,12 @@ export function buildEventsSearchUrl({
   dateRange,
   groupFilters,
   valueRangeFilter,
-  targetSource,
-  basePath = '/search',
 }: {
   source: TSource;
   config: BuilderChartConfigWithDateRange;
   dateRange: [Date, Date];
   groupFilters?: Array<{ column: string; value: any }>;
   valueRangeFilter?: { expression: string; value: number; threshold?: number };
-  /**
-   * Where a metric chart's drill-down lands: the source named by the metric
-   * source's `logSourceId`. Supplying it lets the clicked series carry over as
-   * a filter; without it the drill-down can only narrow by time.
-   */
-  targetSource?: TSource;
-  /**
-   * Destination page. Both read the same params, so drilling down from Explore
-   * can stay on Explore instead of handing the reader to the Search page.
-   */
-  basePath?: '/search' | '/explore';
 }): string | null {
   if (!source?.id) {
     return null;
@@ -1221,6 +1208,19 @@ export function buildEventsSearchUrl({
   });
 
   const isMetricChart = isMetricChartConfig(config);
+  if (isMetricChart) {
+    const logSourceId =
+      source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined;
+    if (logSourceId == null) {
+      notifications.show({
+        color: 'yellow',
+        message: 'No log source is associated with the selected metric source.',
+      });
+      return null;
+    }
+  }
 
   let where = config.where;
   let whereLanguage = config.whereLanguage || 'lucene';
@@ -1278,31 +1278,15 @@ export function buildEventsSearchUrl({
     to: to.toString(),
   };
 
-  // A metric chart's WHERE and filters are written against metric tables, so
-  // they mean nothing on the destination and are dropped. The clicked series is
-  // the exception: it names an entity, and re-addressed against the target's
-  // own attribute expression it is the whole point of the drill-down.
+  // If its a metric chart, we don't pass the where and filters
   if (isMetricChart) {
-    if (!targetSource?.id) {
-      return null;
-    }
-    const { filters: pivotFilters } = translateMetricGroupFilters({
-      groupFilters,
-      metricSource: source,
-      targetSource,
-    });
-
     params.where = '';
-    // Explore's query bar is SQL-only; handing it `lucene` would switch the
-    // language out from under the reader on arrival.
-    params.whereLanguage = basePath === '/explore' ? 'sql' : 'lucene';
-    params.filters = JSON.stringify(
-      pivotFilters.map(({ column, value }) => ({
-        type: 'sql' as const,
-        condition: `${column} IN (${SqlString.escape(value)})`,
-      })),
-    );
-    params.source = targetSource.id;
+    params.whereLanguage = 'lucene';
+    params.filters = JSON.stringify([]);
+    params.source =
+      (source.kind === SourceKind.Metric || source.kind === SourceKind.Trace
+        ? source.logSourceId
+        : undefined) ?? '';
   }
 
   // Include the select parameter if provided to preserve custom columns
@@ -1312,7 +1296,7 @@ export function buildEventsSearchUrl({
     params.select = config.eventTableSelect;
   }
 
-  return `${basePath}?${new URLSearchParams(params).toString()}`;
+  return `/search?${new URLSearchParams(params).toString()}`;
 }
 
 export function buildDashboardReplaySearchUrl({

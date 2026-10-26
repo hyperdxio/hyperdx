@@ -49,7 +49,7 @@ import { getEventBody, useSource } from '@/source';
 import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
-import { formatDistanceToNowStrictShort, useLocalStorage } from '@/utils';
+import { formatDistanceToNowStrictShort } from '@/utils';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import {
   getRowLookupWindow,
@@ -76,8 +76,6 @@ import DBTracePanel from './DBTracePanel';
 import {
   DrawerFullWidthToggle,
   INITIAL_DRAWER_WIDTH_PERCENT,
-  INITIAL_ROW_PANEL_WIDTH_PERCENT,
-  ROW_PANEL_WIDTH_STORAGE_KEY,
 } from './DrawerUtils';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
@@ -102,11 +100,6 @@ export type RowSidePanelContextProps = {
     whereLanguage: SearchConfig['whereLanguage'];
     source?: TSource;
   }) => string;
-  /**
-   * The page `generateSearchUrl` points at authors SQL only (Explore), so
-   * actions with both forms of an expression must send the SQL one.
-   */
-  sqlOnlySearchUrl?: boolean;
   generateChartUrl?: (config: {
     aggFn: string;
     field: string;
@@ -114,10 +107,6 @@ export type RowSidePanelContextProps = {
   }) => string;
   displayedColumns?: string[];
   toggleColumn?: (column: string) => void;
-  /** Dimensions the view is currently grouped by, for the toggle's state. */
-  groupByFields?: string[];
-  /** Only provided where the view has a grouping to change (Explore). */
-  toggleGroupBy?: (field: string) => void;
   shareUrl?: string;
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
@@ -148,8 +137,6 @@ export function deriveRowSidePanelContextForSource(
       : undefined,
     displayedColumns: sameSource ? parentContext.displayedColumns : undefined,
     toggleColumn: sameSource ? parentContext.toggleColumn : undefined,
-    groupByFields: sameSource ? parentContext.groupByFields : undefined,
-    toggleGroupBy: sameSource ? parentContext.toggleGroupBy : undefined,
   };
 }
 
@@ -251,11 +238,6 @@ type DBRowSidePanelProps = {
   // Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
-  /**
-   * Persist the panel width and open at the narrower row-panel default.
-   * Explore only — other drawers keep the session-player width.
-   */
-  rememberWidth?: boolean;
 };
 
 type DBRowSidePanelInnerProps = DBRowSidePanelProps & {
@@ -1328,35 +1310,18 @@ export default function DBRowSidePanelErrorBoundary({
   source,
   closeOnClickOutside = true,
   keepOpenSelector,
-  rememberWidth = false,
 }: DBRowSidePanelProps) {
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
-  // Explore remembers the width across reloads. Other pages keep the wider
-  // session-player default and do not write it to storage.
-  const [storedWidth, setStoredWidth] = useLocalStorage(
-    ROW_PANEL_WIDTH_STORAGE_KEY,
-    INITIAL_ROW_PANEL_WIDTH_PERCENT,
-  );
   const { size, setSize, startResize } = useResizable(
-    rememberWidth ? storedWidth : INITIAL_DRAWER_WIDTH_PERCENT,
-    'right',
-    rememberWidth ? setStoredWidth : undefined,
+    INITIAL_DRAWER_WIDTH_PERCENT,
   );
 
   const isFullWidth = size >= 99;
   const toggleFullWidth = useCallback(() => {
-    const next = isFullWidth
-      ? rememberWidth
-        ? INITIAL_ROW_PANEL_WIDTH_PERCENT
-        : INITIAL_DRAWER_WIDTH_PERCENT
-      : 100;
-    setSize(next);
-    if (rememberWidth) {
-      setStoredWidth(next);
-    }
-  }, [isFullWidth, rememberWidth, setSize, setStoredWidth]);
+    setSize(isFullWidth ? INITIAL_DRAWER_WIDTH_PERCENT : 100);
+  }, [isFullWidth, setSize]);
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
 

@@ -8,9 +8,9 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useDisclosure } from '@mantine/hooks';
 
+import type { FilterStateHook } from '@/components/Explore/owned/searchFilters';
 import SyntaxReferenceModal from '@/components/SearchInput/SyntaxReferenceModal';
 import { useMultipleAllFields } from '@/hooks/useMetadata';
-import type { FilterStateHook } from '@/searchFilters';
 import { useSource } from '@/source';
 
 import { AddFilterControl } from './AddFilterControl';

@@ -10,7 +10,7 @@ import { IconHelp } from '@tabler/icons-react';
 
 import { SQL_PLACEHOLDERS } from '@/components/ChartEditor/constants';
 import { RawSqlChartInstructions } from '@/components/ChartEditor/RawSqlChartInstructions';
-import { SQLEditorControlled } from '@/components/SQLEditor/SQLEditor';
+import { SQLEditorControlled } from '@/components/Explore/owned/SQLEditor';
 import { type SQLCompletion } from '@/components/SQLEditor/utils';
 
 import styles from './QueryEditor.module.scss';

@@ -62,6 +62,7 @@ import {
   type MetricExplorerSelection,
 } from '@/components/Explore/ExploreMetricExplorerModal';
 import { ExploreQueryEditor } from '@/components/Explore/ExploreQueryEditor';
+import { useSearchPageFilterState } from '@/components/Explore/owned/searchFilters';
 import {
   CheckBoxControlled,
   TextInputControlled,
@@ -78,7 +79,6 @@ import {
   parseAttributeKeysFromSuggestions,
   useFetchMetricResourceAttrs,
 } from '@/hooks/useFetchMetricResourceAttrs';
-import { useSearchPageFilterState } from '@/searchFilters';
 import { COLORS, getColorFromCSSToken, getMetricTableName } from '@/utils';
 
 type SeriesItem = NonNullable<

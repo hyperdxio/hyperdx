@@ -21,8 +21,6 @@ import {
   BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
   DisplayType,
-  SourceKind,
-  TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
 import { IconChartBar, IconChartLine } from '@tabler/icons-react';
@@ -144,11 +142,6 @@ export function decodeSeriesGroupFilters({
 function ChartTooltipOverlay({
   payload,
   buildSearchUrl,
-  buildRelatedTraceUrl,
-  drillInLabel,
-  focusLabel,
-  showSingleSeriesActions,
-  seriesActions = 'icons',
   onDismiss,
   onFocusSeries,
   onShowAllSeries,
@@ -161,11 +154,6 @@ function ChartTooltipOverlay({
 }: {
   payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
-  buildRelatedTraceUrl?: (key?: string, value?: number) => string | null;
-  drillInLabel?: string;
-  focusLabel?: string;
-  showSingleSeriesActions?: boolean;
-  seriesActions?: 'icons' | 'menu';
   onDismiss: () => void;
   /** Focus a series by its raw series key (dataKey) and display name. */
   onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
@@ -224,17 +212,8 @@ function ChartTooltipOverlay({
     if (!isOpen) return;
     const handleMouseDown = (e: MouseEvent) => {
       const target = e.target;
-      if (target instanceof Node) {
-        if (dropdownRef.current?.contains(target)) return;
-        // Don't dismiss when clicking inside a portaled child of the tooltip
-        // (e.g. the per-series action Menu.Dropdown, which uses withinPortal
-        // and therefore renders outside dropdownRef.current in the DOM).
-        if (
-          target instanceof Element &&
-          target.closest('[data-tooltip-child-portal]')
-        ) {
-          return;
-        }
+      if (target instanceof Node && dropdownRef.current?.contains(target)) {
+        return;
       }
       onDismiss();
     };
@@ -260,7 +239,7 @@ function ChartTooltipOverlay({
             onDismiss();
           }
         }}
-        closeOnClickOutside={seriesActions !== 'menu'}
+        closeOnClickOutside
         closeOnEscape
         trapFocus={false}
         withinPortal
@@ -301,11 +280,6 @@ function ChartTooltipOverlay({
             numberFormatByKey={numberFormatByKey}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
             buildSearchUrl={buildSearchUrl}
-            buildRelatedTraceUrl={buildRelatedTraceUrl}
-            drillInLabel={drillInLabel}
-            focusLabel={focusLabel}
-            showSingleSeriesActions={showSingleSeriesActions}
-            seriesActions={seriesActions}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
             onShowAllSeries={onShowAllSeries}
@@ -353,12 +327,6 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
-  /**
-   * Page a series drill-down opens. Defaults to the Search page; Explore points
-   * it at itself so drilling into a chart doesn't hand the reader to a
-   * different page mid-investigation.
-   */
-  drillDownPath?: '/search' | '/explore';
 };
 
 function DBTimeChartComponent({
@@ -384,7 +352,6 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
-  drillDownPath,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -579,23 +546,6 @@ function DBTimeChartComponent({
     (config.compareToPreviousPeriod && !previousPeriodData?.isComplete) ||
     isPlaceholderData;
 
-  // Where a metric chart's drill-down lands. Loaded here so the clicked series
-  // can be re-addressed against the destination's own attribute expression
-  // rather than arriving as a bare time range.
-  const { data: drillDownTargetSource } = useSource({
-    id:
-      source?.kind === SourceKind.Metric || source?.kind === SourceKind.Trace
-        ? source.logSourceId
-        : undefined,
-  });
-  const { data: relatedTraceSource } = useSource({
-    id:
-      source?.kind === SourceKind.Metric &&
-      drillDownTargetSource?.kind === SourceKind.Log
-        ? drillDownTargetSource.traceSourceId
-        : undefined,
-  });
-
   const { formatByColumn, chartFormat: axisNumberFormat } =
     useChartNumberFormats(queriedConfig, data?.meta);
 
@@ -768,11 +718,7 @@ function DBTimeChartComponent({
   }, [activeClickPayload]);
 
   const buildSearchUrl = useCallback(
-    (
-      seriesKey?: string,
-      seriesValue?: number,
-      targetSource: TSource | undefined = drillDownTargetSource,
-    ) => {
+    (seriesKey?: string, seriesValue?: number) => {
       // Raw SQL charts are not supported for drill-down as we don't know the source which is being used.
       if (
         clickedActiveLabelDate == null ||
@@ -892,8 +838,6 @@ function DBTimeChartComponent({
         dateRange: [from, to],
         groupFilters,
         valueRangeFilter,
-        targetSource,
-        basePath: drillDownPath,
       });
     },
     [
@@ -901,20 +845,10 @@ function DBTimeChartComponent({
       config,
       granularity,
       source,
-      drillDownTargetSource,
-      drillDownPath,
       groupColumns,
       valueColumns,
       isSingleValueColumn,
     ],
-  );
-
-  const buildRelatedTraceUrl = useCallback(
-    (seriesKey?: string, seriesValue?: number) =>
-      relatedTraceSource
-        ? buildSearchUrl(seriesKey, seriesValue, relatedTraceSource)
-        : null,
-    [buildSearchUrl, relatedTraceSource],
   );
 
   // Focus a series from the drill-down menu. When the consumer supplied an
@@ -1070,29 +1004,6 @@ function DBTimeChartComponent({
           <ChartTooltipOverlay
             payload={activeClickPayload}
             buildSearchUrl={buildSearchUrl}
-            buildRelatedTraceUrl={
-              drillDownPath === '/explore' && source?.kind === SourceKind.Metric
-                ? buildRelatedTraceUrl
-                : undefined
-            }
-            drillInLabel={
-              drillDownPath === '/explore'
-                ? source?.kind === SourceKind.Metric
-                  ? 'View related logs'
-                  : 'View events'
-                : undefined
-            }
-            focusLabel={
-              drillDownPath === '/explore'
-                ? onFocusSeries
-                  ? 'Filter to this series'
-                  : 'Focus series'
-                : undefined
-            }
-            showSingleSeriesActions={
-              drillDownPath === '/explore' && source?.kind === SourceKind.Metric
-            }
-            seriesActions={drillDownPath === '/explore' ? 'menu' : 'icons'}
             // Stable reference so the overlay's scroll-dismissal effect doesn't
             // re-register its window listener on every re-render.
             onDismiss={dismissPinned}

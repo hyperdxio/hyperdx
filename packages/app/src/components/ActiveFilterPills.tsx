@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { FilterRange } from '@hyperdx/common-utils/dist/filters';
 import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -19,8 +18,6 @@ import {
   IconX,
 } from '@tabler/icons-react';
 
-import { formatClauseLabel } from '@/components/Explore/filterExpressionModel';
-import type { QueryLanguage } from '@/components/Explore/queryModeSafety';
 import { useGetKeyValues } from '@/hooks/useMetadata';
 import type { FilterStateHook } from '@/searchFilters';
 import { useFormatTime } from '@/useFormatTime';
@@ -39,7 +36,7 @@ const EMPTY_DATE_TIME_COLUMNS: ReadonlyMap<string, string> = new Map();
 
 type FormatTime = ReturnType<typeof useFormatTime>;
 
-export type PillItem = {
+type PillItem = {
   field: string;
   value: string;
   type: 'included' | 'excluded' | 'range';
@@ -48,7 +45,6 @@ export type PillItem = {
   // user's locale/timezone). The raw `value`/`rawValue` are kept intact for
   // SQL generation, value editing, copy, and the URL round-trip.
   displayValue?: string;
-  range?: FilterRange;
 };
 
 function flattenFilters(
@@ -85,23 +81,11 @@ function flattenFilters(
       });
     }
     if (state.range != null) {
-      const { min, max, minOp = '>=', maxOp = '<=' } = state.range;
-      const value =
-        min != null && max != null
-          ? `${min} – ${max}`
-          : min != null
-            ? `${minOp}${min}`
-            : max != null
-              ? `${maxOp}${max}`
-              : '';
-      if (value) {
-        pills.push({
-          field,
-          value,
-          type: 'range',
-          range: state.range,
-        });
-      }
+      pills.push({
+        field,
+        value: `${state.range.min} – ${state.range.max}`,
+        type: 'range',
+      });
     }
   }
   return pills;
@@ -121,13 +105,11 @@ const pillStyle = {
   overflow: 'hidden',
 };
 
-export function FilterPill({
+function FilterPill({
   pill,
   isInvalid,
   invalidReason,
   chartConfig,
-  language,
-  variant = 'strip',
   onRemove,
   onTogglePolarity,
   onReplaceValue,
@@ -136,33 +118,12 @@ export function FilterPill({
   isInvalid?: boolean;
   invalidReason?: string;
   chartConfig: BuilderChartConfigWithDateRange;
-  language?: QueryLanguage;
-  variant?: 'strip' | 'inline';
   onRemove: () => void;
   onTogglePolarity: () => void;
   onReplaceValue: (value: string) => void;
 }) {
   const isExcluded = pill.type === 'excluded';
-  const display = pill.displayValue ?? pill.value;
-  const parts = language
-    ? formatClauseLabel(
-        {
-          kind: 'clause',
-          field: pill.field,
-          value: pill.value,
-          type: pill.type,
-          rawValue: pill.rawValue,
-          displayValue: pill.displayValue,
-          range: pill.range,
-        },
-        language,
-      )
-    : {
-        prefix: '',
-        field: pill.field,
-        operator: isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ',
-        value: display,
-      };
+  const operator = isExcluded ? ' != ' : pill.type === 'range' ? ': ' : ' = ';
 
   // A range pill has no single value to copy or flip, and an unapplied filter
   // (column missing on the active source) can only be removed. Both keep the
@@ -216,10 +177,11 @@ export function FilterPill({
     [keyValues, pill.value],
   );
 
+  const label = pill.displayValue ?? pill.value;
   const tooltipLabel = isInvalid
     ? (invalidReason ??
       `Filter not applied: "${pill.field}" isn't a column on the current source. It will reapply if you switch back.`)
-    : `${parts.prefix}${parts.field}${parts.operator}${parts.value}`;
+    : `${pill.field}${operator}${label}`;
 
   const showDangerAccent = isExcluded && !isInvalid;
 
@@ -263,79 +225,52 @@ export function FilterPill({
             ? 'transparent'
             : isExcluded
               ? 'var(--mantine-color-red-light)'
-              : variant === 'inline'
-                ? 'color-mix(in srgb, var(--color-bg-muted) 80%, transparent)'
-                : 'var(--color-bg-hover)',
+              : 'var(--color-bg-hover)',
           border: isInvalid
             ? '1px dashed var(--color-border-emphasis)'
-            : variant === 'inline'
-              ? '1px solid var(--color-border-muted)'
-              : '1px solid transparent',
+            : '1px solid transparent',
           opacity: isInvalid ? 0.75 : 1,
         }}
       >
-        {parts.prefix !== '' && (
-          <Text
-            span
-            size="xxs"
-            fw={500}
-            style={{
-              flexShrink: 0,
-              color: showDangerAccent
-                ? 'var(--mantine-color-red-light-color)'
-                : 'var(--color-text-muted)',
-              textDecoration: isInvalid ? 'line-through' : undefined,
-            }}
-          >
-            {parts.prefix}
-          </Text>
-        )}
         <Text
           span
           size="xxs"
+          c="dimmed"
           fw={500}
           style={{
             flexShrink: 0,
             maxWidth: 100,
-            color: variant === 'inline' ? 'var(--color-text-info)' : undefined,
             textDecoration: isInvalid ? 'line-through' : undefined,
           }}
-          c={variant === 'inline' ? undefined : 'dimmed'}
           truncate="start"
         >
-          {parts.field}
+          {pill.field}
         </Text>
         <Text
           span
           size="xxs"
+          c="dimmed"
           style={{
             color: showDangerAccent
               ? 'var(--mantine-color-red-light-color)'
-              : variant === 'inline'
-                ? 'var(--color-text-muted)'
-                : undefined,
+              : undefined,
             textDecoration: isInvalid ? 'line-through' : undefined,
           }}
-          c={variant === 'inline' || showDangerAccent ? undefined : 'dimmed'}
         >
-          {parts.operator}
+          {operator}
         </Text>
         <Text
           span
           size="xxs"
           fw={500}
           truncate
-          style={{
-            color:
-              variant === 'inline' ? 'var(--color-text-success)' : undefined,
-            textDecoration: isInvalid ? 'line-through' : undefined,
-          }}
+          style={{ textDecoration: isInvalid ? 'line-through' : undefined }}
         >
-          {parts.value}
+          {label}
         </Text>
         <ActionIcon
           size={14}
-          variant={variant === 'inline' ? 'subtle' : 'transparent'}
+          variant="transparent"
           color="gray"
           onClick={e => {
             // Keep the one-click remove without also toggling the action menu.

@@ -3,8 +3,8 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { FilterExpression } from '@/components/Explore/FilterExpression';
+import type { FilterStateHook } from '@/components/Explore/owned/searchFilters';
 import { useGetKeyValues } from '@/hooks/useMetadata';
-import type { FilterStateHook } from '@/searchFilters';
 
 jest.mock('@/hooks/useMetadata', () => ({
   __esModule: true,

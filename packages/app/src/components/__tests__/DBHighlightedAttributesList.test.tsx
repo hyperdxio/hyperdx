@@ -5,11 +5,11 @@ import userEvent from '@testing-library/user-event';
 import {
   DBHighlightedAttributesList,
   type HighlightedAttribute,
-} from '@/components/DBHighlightedAttributesList';
+} from '@/components/Explore/owned/DBHighlightedAttributesList';
 import {
   RowSidePanelContext,
   type RowSidePanelContextProps,
-} from '@/components/DBRowSidePanel';
+} from '@/components/Explore/owned/DBRowSidePanel';
 
 const source = { id: 'src-1', kind: SourceKind.Log } as TSource;
 

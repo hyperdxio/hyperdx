@@ -11,38 +11,15 @@ const MAX_PANEL_OFFSET_PX = 25;
 
 type ResizeDirection = 'left' | 'right' | 'top' | 'bottom';
 
-/**
- * All `startResize` reads off the event. A React mouse event satisfies it, so
- * `onMouseDown={startResize}` still type-checks, and callers that synthesise
- * one do not have to fake a whole SyntheticEvent.
- */
-type ResizeStartEvent = Pick<
-  ReactMouseEvent<HTMLElement>,
-  'preventDefault' | 'clientX' | 'clientY'
->;
-
 function useResizable(
   initialSizePercent: number,
   direction: ResizeDirection = 'right',
-  /**
-   * Called once when the drag finishes, not on every frame — a caller
-   * persisting the size would otherwise write on every mousemove.
-   */
-  onResizeEnd?: (sizePercent: number) => void,
 ) {
   const [sizePercentage, setSizePercentage] = useState(initialSizePercent);
 
   // Track drag start
   const startPosRef = useRef(0);
   const startSizeRef = useRef(0);
-  // Mirrors the state so `endResize` can report the final size without
-  // depending on it, which would re-register the listeners mid-drag.
-  const latestSizeRef = useRef(initialSizePercent);
-
-  const setSize = useCallback((next: number) => {
-    latestSizeRef.current = next;
-    setSizePercentage(next);
-  }, []);
 
   const isVertical = direction === 'top' || direction === 'bottom';
   const axis: 'clientX' | 'clientY' = isVertical ? 'clientY' : 'clientX';
@@ -68,20 +45,19 @@ function useResizable(
 
       const newSize = startSizeRef.current + deltaPercent * directionMultiplier;
 
-      setSize(Math.min(Math.max(minPercent, newSize), maxPercent));
+      setSizePercentage(Math.min(Math.max(minPercent, newSize), maxPercent));
     },
-    [isVertical, axis, directionMultiplier, setSize],
+    [isVertical, axis, directionMultiplier],
   );
 
   const endResize = useCallback(() => {
     document.removeEventListener('mousemove', handleResize);
     // eslint-disable-next-line react-hooks/immutability
     document.removeEventListener('mouseup', endResize);
-    onResizeEnd?.(latestSizeRef.current);
-  }, [handleResize, onResizeEnd]);
+  }, [handleResize]);
 
   const startResize = useCallback(
-    (e: ResizeStartEvent) => {
+    (e: ReactMouseEvent<HTMLElement>) => {
       e.preventDefault();
       startPosRef.current = e[axis];
       startSizeRef.current = sizePercentage;
@@ -100,7 +76,7 @@ function useResizable(
 
   return {
     size: sizePercentage,
-    setSize,
+    setSize: setSizePercentage,
     startResize,
   };
 }

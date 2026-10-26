@@ -2,7 +2,6 @@ import Link from 'next/link';
 import {
   ActionIcon,
   Group,
-  Menu,
   Stack,
   Text,
   Tooltip,
@@ -12,12 +11,8 @@ import { useClipboard } from '@mantine/hooks';
 import {
   IconArrowsMaximize,
   IconCheck,
-  IconConnection,
   IconCopy,
-  IconDotsVertical,
-  IconFilter,
   IconFocusCentered,
-  IconLogs,
   IconSearch,
 } from '@tabler/icons-react';
 
@@ -37,10 +32,14 @@ import {
 } from './ChartTooltip';
 
 /**
- * The series actions every chart had before Explore: search, copy, and focus
- * as icon buttons. Explore opts into {@link SeriesMenuRow} instead.
+ * One pinned-tooltip series row: the shared ChartTooltipItem plus, when
+ * `actions` is set, the per-series action cluster (Search / Copy / Focus). The
+ * cluster is flexShrink:0 so it doesn't shift as the name truncates or the copy
+ * icon swaps to a check (which would move the buttons out from under the cursor).
+ *
+ * Search is hidden when `actions.drillInUrl` is undefined (source-less charts).
  */
-function SeriesIconRow({
+function SeriesRow({
   name,
   dataKey,
   color,
@@ -57,10 +56,12 @@ function SeriesIconRow({
   previousValue?: number;
   numberFormat?: NumberFormat;
   actions?: {
+    /** Drill-in URL; when undefined the Search action is hidden (no source). */
     drillInUrl?: string;
     onDrillIn: () => void;
     onFocus: () => void;
   };
+  /** z-index for the action tooltips, so they sit above the pinned popover. */
   actionTooltipZIndex?: number;
 }) {
   const clipboard = useClipboard({ timeout: 1500 });
@@ -154,135 +155,6 @@ function SeriesIconRow({
   );
 }
 
-/**
- * One pinned-tooltip series row with a compact menu for investigation actions.
- * Explore only — other charts keep {@link SeriesIconRow}.
- */
-function SeriesMenuRow({
-  name,
-  dataKey,
-  color,
-  value,
-  previousValue,
-  numberFormat,
-  actions,
-  actionTooltipZIndex,
-}: {
-  name: string;
-  dataKey?: string;
-  color?: string;
-  value: number;
-  previousValue?: number;
-  numberFormat?: NumberFormat;
-  actions?: {
-    /** Primary event/log drill-in; hidden when the chart has no target source. */
-    drillInUrl?: string;
-    drillInLabel: string;
-    relatedTracesUrl?: string;
-    onDrillIn: () => void;
-    onFocus: () => void;
-    focusLabel: string;
-  };
-  /** z-index for the action tooltips, so they sit above the pinned popover. */
-  actionTooltipZIndex?: number;
-}) {
-  const clipboard = useClipboard({ timeout: 1500 });
-
-  const item = (
-    <ChartTooltipItem
-      color={color ?? ''}
-      name={name}
-      value={value}
-      numberFormat={numberFormat}
-      indicator="line"
-      previous={previousValue}
-    />
-  );
-
-  if (actions == null) {
-    return item;
-  }
-
-  return (
-    <Group gap={8} wrap="nowrap" justify="space-between">
-      <div style={{ minWidth: 0, flex: 1 }}>{item}</div>
-      <Menu
-        withinPortal
-        position="bottom-end"
-        width={190}
-        zIndex={actionTooltipZIndex}
-      >
-        <Menu.Target>
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            aria-label={`Actions for ${name}`}
-            data-testid={`chart-series-actions-${dataKey}`}
-          >
-            <IconDotsVertical size={13} />
-          </ActionIcon>
-        </Menu.Target>
-        <Menu.Dropdown data-tooltip-child-portal>
-          <Menu.Item
-            leftSection={<IconFilter size={14} />}
-            data-testid={`chart-focus-series-${dataKey}`}
-            onClick={actions.onFocus}
-          >
-            {actions.focusLabel}
-          </Menu.Item>
-          {actions.drillInUrl && (
-            <Menu.Item
-              component={Link}
-              href={actions.drillInUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              prefetch={false}
-              leftSection={
-                actions.drillInLabel === 'View related logs' ? (
-                  <IconLogs size={14} />
-                ) : (
-                  <IconSearch size={14} />
-                )
-              }
-              data-testid={`chart-view-events-link-${dataKey}`}
-              onClick={actions.onDrillIn}
-            >
-              {actions.drillInLabel}
-            </Menu.Item>
-          )}
-          {actions.relatedTracesUrl && (
-            <Menu.Item
-              component={Link}
-              href={actions.relatedTracesUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              prefetch={false}
-              leftSection={<IconConnection size={14} />}
-              data-testid={`chart-view-traces-link-${dataKey}`}
-              onClick={actions.onDrillIn}
-            >
-              View related traces
-            </Menu.Item>
-          )}
-          <Menu.Item
-            leftSection={
-              clipboard.copied ? (
-                <IconCheck size={14} />
-              ) : (
-                <IconCopy size={14} />
-              )
-            }
-            data-testid={`chart-copy-name-${dataKey}`}
-            onClick={() => clipboard.copy(name)}
-          >
-            {clipboard.copied ? 'Copied' : 'Copy series label'}
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>
-    </Group>
-  );
-}
-
 export type ChartSeriesTooltipProps = {
   /** Bucket label (epoch seconds as a string) for the timestamp header. */
   activeLabel: string;
@@ -294,19 +166,6 @@ export type ChartSeriesTooltipProps = {
   previousPeriodOffsetSeconds?: number;
   /** Drill-down URL for the whole bucket (no args) or one series (key + value). */
   buildSearchUrl?: (key?: string, value?: number) => string | null;
-  /** Metric-only trace pivot for the same bucket/series. */
-  buildRelatedTraceUrl?: (key?: string, value?: number) => string | null;
-  /** Label for the primary drill-in action. */
-  drillInLabel?: string;
-  /** Label for the in-place series action. */
-  focusLabel?: string;
-  /** Metric lines stay actionable even when only one series is rendered. */
-  showSingleSeriesActions?: boolean;
-  /**
-   * `icons` is the chart tooltip every page uses. `menu` is Explore's
-   * investigation menu and must be opted into.
-   */
-  seriesActions?: 'icons' | 'menu';
   /** Dismiss the tooltip (used by links + focus). */
   onDismiss?: () => void;
   /** Focus a series by its raw key + display name. */
@@ -358,11 +217,6 @@ export function ChartSeriesTooltip({
   numberFormatByKey,
   previousPeriodOffsetSeconds,
   buildSearchUrl,
-  buildRelatedTraceUrl,
-  drillInLabel,
-  focusLabel = 'Focus series',
-  showSingleSeriesActions = false,
-  seriesActions = 'icons',
   onDismiss,
   onFocusSeries,
   onShowAllSeries,
@@ -402,7 +256,7 @@ export function ChartSeriesTooltip({
 
   // Per-series actions only make sense with more than one group (a single series
   // is covered by the header/footer).
-  const showPerSeriesActions = rows.length > 1 || showSingleSeriesActions;
+  const showPerSeriesActions = rows.length > 1;
 
   // buildSearchUrl is always supplied but returns null when drill-down isn't
   // possible (no source, or a raw-SQL/PromQL config). The whole-bucket URL is
@@ -419,10 +273,6 @@ export function ChartSeriesTooltip({
     />
   );
 
-  const resolvedDrillInLabel =
-    drillInLabel ??
-    (seriesActions === 'menu' ? 'View events' : 'View All Events');
-
   const showAllSeriesAction =
     onShowAllSeries != null ? (
       <UnstyledButton
@@ -434,9 +284,7 @@ export function ChartSeriesTooltip({
       >
         <Group gap={8} py={2}>
           <IconArrowsMaximize size={14} />
-          <Text size="xs">
-            {seriesActions === 'menu' ? 'Show all series' : 'Show All Series'}
-          </Text>
+          <Text size="xs">Show All Series</Text>
         </Group>
       </UnstyledButton>
     ) : null;
@@ -452,12 +300,8 @@ export function ChartSeriesTooltip({
       style={{ textDecoration: 'none' }}
     >
       <Group gap={8} py={2}>
-        {resolvedDrillInLabel === 'View related logs' ? (
-          <IconLogs size={14} />
-        ) : (
-          <IconSearch size={14} />
-        )}
-        <Text size="xs">{resolvedDrillInLabel}</Text>
+        <IconSearch size={14} />
+        <Text size="xs">View All Events</Text>
       </Group>
     </Link>
   ) : null;
@@ -487,28 +331,8 @@ export function ChartSeriesTooltip({
                   Number.isFinite(payload.value) ? payload.value : undefined,
                 ) ?? bucketSearchUrl)
               : undefined;
-          const relatedTracesUrl =
-            showPerSeriesActions && canDrillDown
-              ? (buildRelatedTraceUrl?.(
-                  payload.dataKey,
-                  Number.isFinite(payload.value) ? payload.value : undefined,
-                ) ?? undefined)
-              : undefined;
-          const rowActions = showPerSeriesActions
-            ? {
-                drillInUrl: seriesUrl ?? undefined,
-                onDrillIn: () => onDismiss?.(),
-                onFocus: () => {
-                  onFocusSeries?.({
-                    dataKey: payload.dataKey,
-                    name,
-                  });
-                  onDismiss?.();
-                },
-              }
-            : undefined;
-          return seriesActions === 'menu' ? (
-            <SeriesMenuRow
+          return (
+            <SeriesRow
               key={payload.dataKey ?? name ?? idx}
               name={name}
               dataKey={payload.dataKey}
@@ -518,27 +342,20 @@ export function ChartSeriesTooltip({
               numberFormat={rowNumberFormat}
               actionTooltipZIndex={actionTooltipZIndex}
               actions={
-                rowActions
+                showPerSeriesActions
                   ? {
-                      ...rowActions,
-                      drillInLabel: resolvedDrillInLabel,
-                      relatedTracesUrl,
-                      focusLabel,
+                      drillInUrl: seriesUrl ?? undefined,
+                      onDrillIn: () => onDismiss?.(),
+                      onFocus: () => {
+                        onFocusSeries?.({
+                          dataKey: payload.dataKey,
+                          name,
+                        });
+                        onDismiss?.();
+                      },
                     }
                   : undefined
               }
-            />
-          ) : (
-            <SeriesIconRow
-              key={payload.dataKey ?? name ?? idx}
-              name={name}
-              dataKey={payload.dataKey}
-              color={payload.color}
-              value={payload.value!}
-              previousValue={payload.previousValue}
-              numberFormat={rowNumberFormat}
-              actionTooltipZIndex={actionTooltipZIndex}
-              actions={rowActions}
             />
           );
         })}

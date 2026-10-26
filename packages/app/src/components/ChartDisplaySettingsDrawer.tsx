@@ -4,7 +4,6 @@ import {
   UnknownTemplateHelperError,
   validateTemplate,
 } from '@hyperdx/common-utils/dist/core/handlebarsEnv';
-import { Granularity } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
@@ -26,7 +25,6 @@ import {
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
-import { GranularityPicker } from '@/GranularityPicker';
 import { FormatTime } from '@/useFormatTime';
 
 import { BackgroundChartInput } from './BackgroundChartInput';
@@ -51,7 +49,6 @@ export type ChartConfigDisplaySettings = Pick<
   | 'colorRules'
   | 'backgroundChart'
 > & {
-  granularity?: Granularity | 'auto';
   groupByColumnsOnLeft?: boolean;
   alternateRowBackground?: boolean;
   // Per-tile series cap. On builder group-by/pie/bar charts it's a fetch cap
@@ -87,10 +84,6 @@ interface ChartDisplaySettingsDrawerProps {
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
-  /** Persistent tile-editor rail vs the original slide-over drawer. */
-  variant?: 'drawer' | 'panel';
-  /** Explore owns no separate granularity control, unlike Chart Explorer. */
-  showGranularity?: boolean;
 }
 
 function applyDefaultSettings(
@@ -118,7 +111,6 @@ function applyDefaultSettings(
       ? attachLocalIds(settings.colorRules)
       : undefined,
     backgroundChart: settings.backgroundChart,
-    granularity: settings.granularity,
   };
 }
 
@@ -132,8 +124,6 @@ export default function ChartDisplaySettingsDrawer({
   onClose,
   previousDateRange,
   isPerSeriesNumberFormatAllowed = false,
-  variant = 'drawer',
-  showGranularity = false,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
     () => applyDefaultSettings(settings, defaultNumberFormat),
@@ -165,7 +155,7 @@ export default function ChartDisplaySettingsDrawer({
   const applyChanges = useCallback(() => {
     handleSubmit(formValues => {
       // Strip client-side localIds before passing rules to the config.
-      const { colorRules, granularity, ...rest } = formValues;
+      const { colorRules, ...rest } = formValues;
       // Persist numberFormat only when the user actually chose one: either the
       // tile already had an explicit override (settings.numberFormat) or the
       // user changed the format control in this session (dirtyFields). Otherwise
@@ -181,24 +171,13 @@ export default function ChartDisplaySettingsDrawer({
             ? formValues.numberFormat
             : undefined,
           colorRules: colorRules ? stripLocalIds(colorRules) : undefined,
-          ...(showGranularity ? { granularity } : {}),
         },
         hasDirtyFields,
       );
-      // Close only on successful validation; the tile-settings panel stays open.
-      if (variant === 'drawer') {
-        onClose();
-      }
+      // Close only on successful validation
+      onClose();
     })();
-  }, [
-    onChange,
-    handleSubmit,
-    onClose,
-    settings.numberFormat,
-    dirtyFields,
-    variant,
-    showGranularity,
-  ]);
+  }, [onChange, handleSubmit, onClose, settings.numberFormat, dirtyFields]);
 
   const resetToDefaults = useCallback(() => {
     reset(
@@ -251,64 +230,121 @@ export default function ChartDisplaySettingsDrawer({
   const showBackgroundChart = displayType === DisplayType.Number;
   const isBackgroundChartDisabled = configType === 'sql';
 
-  const body = (
-    <Stack>
-      {isTimeChart && (
-        <>
-          {showGranularity && (
-            <Controller
+  return (
+    <Drawer
+      title="Display Settings"
+      opened={opened}
+      onClose={handleClose}
+      position="right"
+    >
+      <Stack>
+        {isTimeChart && (
+          <>
+            <CheckBoxControlled
               control={control}
-              name="granularity"
-              render={({ field: { onChange, value } }) => (
-                <GranularityPicker
-                  value={value ?? 'auto'}
-                  onChange={onChange}
-                  label="Alignment"
-                  size="xs"
-                />
-              )}
-            />
-          )}
-          <CheckBoxControlled
-            control={control}
-            name="alignDateRangeToGranularity"
-            size="xs"
-            label="Show Complete Intervals"
-          />
-          <Box>
-            <Checkbox
+              name="alignDateRangeToGranularity"
               size="xs"
-              label="Fill Missing Intervals with Zero"
-              checked={isFillNullsEnabled}
-              onChange={e => {
-                setValue('fillNulls', e.currentTarget.checked ? 0 : false);
-              }}
+              label="Show Complete Intervals"
             />
-          </Box>
-          <CheckBoxControlled
-            control={control}
-            name="compareToPreviousPeriod"
-            size="xs"
-            label="Compare to Previous Period"
-            description={
-              previousDateRange && (
-                <>
-                  (
-                  <FormatTime value={previousDateRange[0]} format="short" />
-                  {' - '}
-                  <FormatTime value={previousDateRange[1]} format="short" />)
-                </>
-              )
-            }
-          />
-          <CheckBoxControlled
-            control={control}
-            name="fitYAxisToData"
-            size="xs"
-            label="Fit Y-Axis to Data"
-            description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
-          />
-          {showSeriesLimit && (
+            <Box>
+              <Checkbox
+                size="xs"
+                label="Fill Missing Intervals with Zero"
+                checked={isFillNullsEnabled}
+                onChange={e => {
+                  setValue('fillNulls', e.currentTarget.checked ? 0 : false);
+                }}
+              />
+            </Box>
+            <CheckBoxControlled
+              control={control}
+              name="compareToPreviousPeriod"
+              size="xs"
+              label="Compare to Previous Period"
+              description={
+                previousDateRange && (
+                  <>
+                    (
+                    <FormatTime value={previousDateRange[0]} format="short" />
+                    {' - '}
+                    <FormatTime value={previousDateRange[1]} format="short" />)
+                  </>
+                )
+              }
+            />
+            <CheckBoxControlled
+              control={control}
+              name="fitYAxisToData"
+              size="xs"
+              label="Fit Y-Axis to Data"
+              description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
+            />
+            {showSeriesLimit && (
+              <Box>
+                <Controller
+                  control={control}
+                  name="seriesLimit"
+                  render={({ field: { onChange, value } }) => (
+                    <NumberInput
+                      size="xs"
+                      label="Series Limit"
+                      description={
+                        isRawSqlTimeChart
+                          ? `Maximum number of series rendered, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
+                          : `Maximum number of series fetched for a group-by chart, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
+                      }
+                      placeholder={`Default (${MAX_RENDERED_TIME_CHART_SERIES})`}
+                      min={0}
+                      allowDecimal={false}
+                      value={value ?? ''}
+                      onChange={v =>
+                        onChange(v === '' || v == null ? null : Number(v))
+                      }
+                    />
+                  )}
+                />
+              </Box>
+            )}
+            <Divider />
+          </>
+        )}
+
+        {showLegendTemplate && (
+          <>
+            <Box>
+              <TextInputControlled
+                control={control}
+                name="legendTemplate"
+                size="xs"
+                label="Legend template"
+                description="Handlebars template rendered with each series' Prometheus labels. Leave empty for the default legend. Additional labels will be added if the template does not produce unique labels for each series."
+                placeholder="e.g. {{namespace}} - {{pod}}"
+                data-testid="legend-template-input"
+                rules={{
+                  validate: value => {
+                    if (typeof value !== 'string' || !value) return true;
+                    const trimmed = value.trim();
+                    if (trimmed.length > MAX_LEGEND_TEMPLATE_LENGTH) {
+                      return `Template is too long (${trimmed.length} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`;
+                    }
+                    try {
+                      validateTemplate(trimmed);
+                      return true;
+                    } catch (err) {
+                      return err instanceof UnknownTemplateHelperError
+                        ? err.message
+                        : 'Invalid Handlebars template';
+                    }
+                  },
+                }}
+              />
+            </Box>
+            <Divider />
+          </>
+        )}
+
+        {showCategoricalLimit && (
+          <>
             <Box>
               <Controller
                 control={control}
@@ -317,13 +353,9 @@ export default function ChartDisplaySettingsDrawer({
                   <NumberInput
                     size="xs"
                     label="Series Limit"
-                    description={
-                      isRawSqlTimeChart
-                        ? `Maximum number of series rendered, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
-                        : `Maximum number of series fetched for a group-by chart, keeping those with the largest values. Leave empty for the default (${MAX_RENDERED_TIME_CHART_SERIES}); set 0 for unlimited.`
-                    }
-                    placeholder={`Default (${MAX_RENDERED_TIME_CHART_SERIES})`}
-                    min={0}
+                    description="Maximum number of values displayed, keeping those with the largest values. Leave empty to fetch all."
+                    placeholder="Disabled (e.g. 10)"
+                    min={1}
                     allowDecimal={false}
                     value={value ?? ''}
                     onChange={v =>
@@ -333,196 +365,106 @@ export default function ChartDisplaySettingsDrawer({
                 )}
               />
             </Box>
-          )}
-          <Divider />
-        </>
-      )}
+            <Divider />
+          </>
+        )}
 
-      {showLegendTemplate && (
-        <>
-          <Box>
-            <TextInputControlled
-              control={control}
-              name="legendTemplate"
-              size="xs"
-              label="Legend template"
-              description="Handlebars template rendered with each series' Prometheus labels. Leave empty for the default legend. Additional labels will be added if the template does not produce unique labels for each series."
-              placeholder="e.g. {{namespace}} - {{pod}}"
-              data-testid="legend-template-input"
-              rules={{
-                validate: value => {
-                  if (typeof value !== 'string' || !value) return true;
-                  const trimmed = value.trim();
-                  if (trimmed.length > MAX_LEGEND_TEMPLATE_LENGTH) {
-                    return `Template is too long (${trimmed.length} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`;
-                  }
-                  try {
-                    validateTemplate(trimmed);
-                    return true;
-                  } catch (err) {
-                    return err instanceof UnknownTemplateHelperError
-                      ? err.message
-                      : 'Invalid Handlebars template';
-                  }
-                },
-              }}
-            />
-          </Box>
-          <Divider />
-        </>
-      )}
-
-      {showCategoricalLimit && (
-        <>
-          <Box>
-            <Controller
-              control={control}
-              name="seriesLimit"
-              render={({ field: { onChange, value } }) => (
-                <NumberInput
-                  size="xs"
-                  label="Series Limit"
-                  description="Maximum number of values displayed, keeping those with the largest values. Leave empty to fetch all."
-                  placeholder="Disabled (e.g. 10)"
-                  min={1}
-                  allowDecimal={false}
-                  value={value ?? ''}
-                  onChange={v =>
-                    onChange(v === '' || v == null ? null : Number(v))
-                  }
-                />
-              )}
-            />
-          </Box>
-          <Divider />
-        </>
-      )}
-
-      {showTableOptions && (
-        <>
-          {showGroupByColumnsOnLeft && (
-            <CheckBoxControlled
-              control={control}
-              name="groupByColumnsOnLeft"
-              size="xs"
-              label="Display Group By Columns on Left"
-            />
-          )}
-          <CheckBoxControlled
-            control={control}
-            name="alternateRowBackground"
-            size="xs"
-            label="Alternate Row Background"
-          />
-          <Divider />
-        </>
-      )}
-
-      {showTileColor && (
-        <>
-          <Box>
-            <Text size="xs" c="dimmed" mb={4}>
-              Color
-            </Text>
-            <Controller
-              control={control}
-              name="color"
-              render={({ field: { onChange, value } }) => (
-                <ColorSwatchInput
-                  value={value}
-                  onChange={onChange}
-                  ariaLabel="Number tile color"
-                />
-              )}
-            />
-          </Box>
-          <Box>
-            <Controller
-              control={control}
-              name="colorRules"
-              render={({ field: { onChange, value } }) => (
-                <ColorRulesEditor value={value ?? []} onChange={onChange} />
-              )}
-            />
-          </Box>
-          <Divider />
-        </>
-      )}
-
-      {showBackgroundChart && (
-        <>
-          <Controller
-            control={control}
-            name="backgroundChart"
-            render={({ field: { onChange, value } }) => (
-              <BackgroundChartInput
-                value={value}
-                onChange={onChange}
-                disabled={isBackgroundChartDisabled}
+        {showTableOptions && (
+          <>
+            {showGroupByColumnsOnLeft && (
+              <CheckBoxControlled
+                control={control}
+                name="groupByColumnsOnLeft"
+                size="xs"
+                label="Display Group By Columns on Left"
               />
             )}
-          />
-          <Divider />
-        </>
-      )}
+            <CheckBoxControlled
+              control={control}
+              name="alternateRowBackground"
+              size="xs"
+              label="Alternate Row Background"
+            />
+            <Divider />
+          </>
+        )}
 
-      <NumberFormatForm
-        control={control}
-        setValue={setValue}
-        disclaimer={
-          isPerSeriesNumberFormatAllowed ? (
-            <Alert variant="outline" color="yellow" p="xs">
-              <Text size="xs" m={0}>
-                Format may be overridden on individual series.
+        {showTileColor && (
+          <>
+            <Box>
+              <Text size="xs" c="dimmed" mb={4}>
+                Color
               </Text>
-            </Alert>
-          ) : undefined
-        }
-      />
-      <Divider />
-      <Group gap="xs" mt="xs" justify="space-between">
-        <Button type="submit" variant="secondary" onClick={resetToDefaults}>
-          Reset to Defaults
-        </Button>
-        <Button
-          type="submit"
-          variant="primary"
-          onClick={applyChanges}
-          data-testid="display-settings-apply-button"
-        >
-          Apply
-        </Button>
-      </Group>
-    </Stack>
-  );
+              <Controller
+                control={control}
+                name="color"
+                render={({ field: { onChange, value } }) => (
+                  <ColorSwatchInput
+                    value={value}
+                    onChange={onChange}
+                    ariaLabel="Number tile color"
+                  />
+                )}
+              />
+            </Box>
+            <Box>
+              <Controller
+                control={control}
+                name="colorRules"
+                render={({ field: { onChange, value } }) => (
+                  <ColorRulesEditor value={value ?? []} onChange={onChange} />
+                )}
+              />
+            </Box>
+            <Divider />
+          </>
+        )}
 
-  if (variant === 'panel') {
-    return (
-      <Box
-        p="sm"
-        data-testid="tile-settings-rail"
-        style={{
-          border: '1px solid var(--color-border)',
-          borderRadius: 'var(--mantine-radius-default)',
-          background: 'var(--color-bg-surface, transparent)',
-        }}
-      >
-        <Text size="sm" fw={500} mb="sm">
-          Tile settings
-        </Text>
-        {body}
-      </Box>
-    );
-  }
+        {showBackgroundChart && (
+          <>
+            <Controller
+              control={control}
+              name="backgroundChart"
+              render={({ field: { onChange, value } }) => (
+                <BackgroundChartInput
+                  value={value}
+                  onChange={onChange}
+                  disabled={isBackgroundChartDisabled}
+                />
+              )}
+            />
+            <Divider />
+          </>
+        )}
 
-  return (
-    <Drawer
-      title="Display Settings"
-      opened={opened}
-      onClose={handleClose}
-      position="right"
-    >
-      {body}
+        <NumberFormatForm
+          control={control}
+          setValue={setValue}
+          disclaimer={
+            isPerSeriesNumberFormatAllowed ? (
+              <Alert variant="outline" color="yellow" p="xs">
+                <Text size="xs" m={0}>
+                  Format may be overridden on individual series.
+                </Text>
+              </Alert>
+            ) : undefined
+          }
+        />
+        <Divider />
+        <Group gap="xs" mt="xs" justify="space-between">
+          <Button type="submit" variant="secondary" onClick={resetToDefaults}>
+            Reset to Defaults
+          </Button>
+          <Button
+            type="submit"
+            variant="primary"
+            onClick={applyChanges}
+            data-testid="display-settings-apply-button"
+          >
+            Apply
+          </Button>
+        </Group>
+      </Stack>
     </Drawer>
   );
 }

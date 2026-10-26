@@ -1,8 +1,11 @@
 import { Fragment, memo, useCallback, useMemo } from 'react';
 import type { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
-import { FilterPill, type PillItem } from '@/components/ActiveFilterPills';
-import type { FilterStateHook } from '@/searchFilters';
+import {
+  FilterPill,
+  type PillItem,
+} from '@/components/Explore/owned/ActiveFilterPills';
+import type { FilterStateHook } from '@/components/Explore/owned/searchFilters';
 import { useFormatTime } from '@/useFormatTime';
 
 import {

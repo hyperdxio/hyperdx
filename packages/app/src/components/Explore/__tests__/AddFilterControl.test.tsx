@@ -2,7 +2,7 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { AddFilterControl } from '@/components/Explore/AddFilterControl';
-import type { FilterStateHook } from '@/searchFilters';
+import type { FilterStateHook } from '@/components/Explore/owned/searchFilters';
 
 jest.mock('@/hooks/useMetadata', () => ({
   useGetKeyValues: jest.fn(() => ({ data: [], isFetching: false })),

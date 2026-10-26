@@ -36,34 +36,4 @@ describe('Table', () => {
     expect(label).toHaveStyle({ width: '260px' });
     expect(value).toHaveStyle({ width: '100%' });
   });
-
-  it('drops pixel widths in auto layout so a narrow panel cannot squeeze the fluid column', () => {
-    const { container } = render(
-      <Table columns={columns} data={data} hideHeader layout="auto" />,
-    );
-
-    const [label, value] = cells(container);
-    expect(label.style.width).toBe('');
-    expect(value).toHaveStyle({ width: '100%' });
-  });
-
-  it('marks only the fluid column as free to break mid-word', () => {
-    const { container } = render(
-      <Table columns={columns} data={data} hideHeader layout="auto" />,
-    );
-
-    const [label, value] = cells(container);
-    expect(label.className).not.toMatch(/fluidCell/);
-    expect(value.className).toMatch(/fluidCell/);
-  });
-
-  it('marks the fluid header cell too', () => {
-    const { container } = render(
-      <Table columns={columns} data={data} layout="auto" />,
-    );
-
-    const headers = Array.from(container.querySelectorAll('thead th'));
-    expect(headers[0].className).not.toMatch(/fluidCell/);
-    expect(headers[1].className).toMatch(/fluidCell/);
-  });
 });

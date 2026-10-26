@@ -201,18 +201,11 @@ export function useAutoCompleteOptions(
     () => dateRange ?? [new Date(NOW - 24 * 60 * 60 * 1000), new Date(NOW)],
     [dateRange],
   );
-  const tableConnections = useMemo(
-    () =>
-      _tableConnection
-        ? Array.isArray(_tableConnection)
-          ? _tableConnection
-          : [_tableConnection]
-        : undefined,
-    [_tableConnection],
-  );
-  // The chart config that fetches values only needs one table; an intersected
-  // field exists in all of them.
-  const tableConnection = tableConnections?.[0];
+  const tableConnection = _tableConnection
+    ? Array.isArray(_tableConnection)
+      ? _tableConnection[0]
+      : _tableConnection
+    : undefined;
 
   // Build chart config and keys for fetching values from rollup tables
   const chartConfig = useMemo<BuilderChartConfigWithDateRange>(
@@ -232,7 +225,7 @@ export function useAutoCompleteOptions(
   } = useFetchFacets({
     chartConfig,
     sourceId: sourceId ?? null,
-    tableConnections,
+    tableConnection,
     dateRange: effectiveDateRange,
     mode: 'all',
     disableValues: true,

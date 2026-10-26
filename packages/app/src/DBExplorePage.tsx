@@ -93,13 +93,19 @@ import { keepPreviousData, useIsFetching } from '@tanstack/react-query';
 import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
-import { ChartConfigDisplaySettings } from '@/components/ChartDisplaySettingsDrawer';
 import { ContactSupportText } from '@/components/ContactSupportText';
-import { DBSearchPageFilters } from '@/components/DBSearchPageFilters';
 import { cleanClickHouseExpression } from '@/components/DBSearchPageFilters/utils';
-import { DBTimeChart, type SeriesGroupFilter } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
+import { ChartConfigDisplaySettings } from '@/components/Explore/owned/ChartDisplaySettingsDrawer';
+import { DBSearchPageFilters } from '@/components/Explore/owned/DBSearchPageFilters';
+import DBSqlRowTableWithSideBar from '@/components/Explore/owned/DBSqlRowTableWithSidebar';
+import {
+  DBTimeChart,
+  type SeriesGroupFilter,
+} from '@/components/Explore/owned/DBTimeChart';
+import PatternTable from '@/components/Explore/owned/PatternTable';
+import { useSearchPageFilterState } from '@/components/Explore/owned/searchFilters';
 import {
   getDefaultExploreLanguage,
   hasUneditableLuceneWhere,
@@ -125,7 +131,6 @@ import {
   useSavedSearch,
   useUpdateSavedSearch,
 } from '@/savedSearch';
-import { useSearchPageFilterState } from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
 import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { parseRelativeTimeQuery, useNewTimeQuery } from '@/timeQuery';
@@ -136,7 +141,6 @@ import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import { DBBarChart } from './components/DBBarChart';
 import DBNumberChart from './components/DBNumberChart';
 import { DBPieChart } from './components/DBPieChart';
-import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import DBTableChart from './components/DBTableChart';
 import { DBTreemapChart } from './components/DBTreemapChart';
 import { ExploreChartSettings } from './components/Explore/ExploreChartSettings';
@@ -164,7 +168,6 @@ import {
   MetricBrowseRail,
 } from './components/MetricWall/MetricBrowse';
 import { nextSearchForPatternMatch } from './components/Patterns/patternColumn';
-import PatternTable from './components/PatternTable';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import { exploreViewSupportsFormulas } from './components/Search/exploreFormulas';

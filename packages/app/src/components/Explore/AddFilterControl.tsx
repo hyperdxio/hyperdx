@@ -11,8 +11,8 @@ import {
 } from '@mantine/core';
 import { IconFilterPlus } from '@tabler/icons-react';
 
+import type { FilterStateHook } from '@/components/Explore/owned/searchFilters';
 import { useGetKeyValues } from '@/hooks/useMetadata';
-import type { FilterStateHook } from '@/searchFilters';
 
 import {
   buildFilterUpdate,

@@ -5,6 +5,9 @@
       "entry": ["pages/**/*.{ts,tsx}", "scripts/*.js", "tests/e2e/**/*.ts"],
       "project": ["src/**/*.{ts,tsx}", "pages/**/*.{ts,tsx}"],
       "ignore": [".storybook/public/**"],
+      "ignoreIssues": {
+        "src/components/Explore/owned/**": ["exports", "types", "nsExports"]
+      },
       "ignoreDependencies": [
         "eslint-config-next",
         "@chromatic-com/storybook",

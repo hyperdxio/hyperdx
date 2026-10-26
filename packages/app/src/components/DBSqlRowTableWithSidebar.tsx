@@ -24,12 +24,7 @@ import DBRowSidePanel, {
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
 import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
-import {
-  DBRawSqlRowTable,
-  DBRowTableVariant,
-  DBSqlRowTable,
-  RawSqlRowTableConfig,
-} from './DBRowTable';
+import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
   sourceId: string;
@@ -59,10 +54,6 @@ interface Props {
   // it. Enabled by default; pass `false` to opt out.
   closeOnClickOutside?: boolean;
   keepOpenSelector?: string;
-  rememberWidth?: boolean;
-  tableBarRightSection?: React.ReactNode;
-  /** Show the rows of this hand-written statement instead of `config`'s. */
-  rawSqlConfig?: RawSqlRowTableConfig;
 }
 
 // Clicking the results table (selecting/switching rows, scrolling) keeps the
@@ -93,9 +84,6 @@ export default function DBSqlRowTableWithSideBar({
   onResolvedColumnsChange,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
-  rememberWidth = false,
-  tableBarRightSection,
-  rawSqlConfig,
 }: Props) {
   const { data: sourceData } = useSource({ id: sourceId });
   const [rowId, setRowId] = useQueryState('rowWhere', parseAsStringEncoded);
@@ -142,52 +130,33 @@ export default function DBSqlRowTableWithSideBar({
           onClose={onCloseSidebar}
           closeOnClickOutside={closeOnClickOutside}
           keepOpenSelector={keepOpenSelector}
-          rememberWidth={rememberWidth}
         />
       )}
-      {rawSqlConfig ? (
-        <DBRawSqlRowTable
-          config={rawSqlConfig}
-          sourceId={sourceId}
-          onRowDetailsClick={onOpenSidebar}
-          highlightedLineId={rowId ?? undefined}
-          enabled={enabled}
-          queryKeyPrefix={'dbRawSqlRowTable'}
-          renderRowDetails={renderRowDetails}
-          onScroll={onScroll}
-          onError={onError}
-          tableId={tableId}
-          errorVariant={errorVariant}
-          tableBarRightSection={tableBarRightSection}
-        />
-      ) : (
-        <DBSqlRowTable
-          config={config}
-          sourceId={sourceId}
-          onRowDetailsClick={onOpenSidebar}
-          highlightedLineId={rowId ?? undefined}
-          enabled={enabled}
-          isLive={isLive ?? true}
-          queryKeyPrefix={'dbSqlRowTable'}
-          onSortingChange={onSortingChange}
-          denoiseResults={denoiseResults}
-          initialSortBy={initialSortBy}
-          renderRowDetails={renderRowDetails}
-          onScroll={onScroll}
-          onError={onError}
-          onExpandedRowsChange={onExpandedRowsChange}
-          collapseAllRows={collapseAllRows}
-          variant={variant}
-          enableSmallFirstWindow={enableSmallFirstWindow}
-          tableId={tableId}
-          errorVariant={errorVariant}
-          enableRowSelection={enableRowSelection}
-          selectionResetKey={selectionResetKey}
-          onSelectedRowsChange={onSelectedRowsChange}
-          onResolvedColumnsChange={onResolvedColumnsChange}
-          tableBarRightSection={tableBarRightSection}
-        />
-      )}
+      <DBSqlRowTable
+        config={config}
+        sourceId={sourceId}
+        onRowDetailsClick={onOpenSidebar}
+        highlightedLineId={rowId ?? undefined}
+        enabled={enabled}
+        isLive={isLive ?? true}
+        queryKeyPrefix={'dbSqlRowTable'}
+        onSortingChange={onSortingChange}
+        denoiseResults={denoiseResults}
+        initialSortBy={initialSortBy}
+        renderRowDetails={renderRowDetails}
+        onScroll={onScroll}
+        onError={onError}
+        onExpandedRowsChange={onExpandedRowsChange}
+        collapseAllRows={collapseAllRows}
+        variant={variant}
+        enableSmallFirstWindow={enableSmallFirstWindow}
+        tableId={tableId}
+        errorVariant={errorVariant}
+        enableRowSelection={enableRowSelection}
+        selectionResetKey={selectionResetKey}
+        onSelectedRowsChange={onSelectedRowsChange}
+        onResolvedColumnsChange={onResolvedColumnsChange}
+      />
     </RowSidePanelContext>
   );
 }
