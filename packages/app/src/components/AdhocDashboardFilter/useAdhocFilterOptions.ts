@@ -59,8 +59,14 @@ const toQuotedKeys = (keys: string[], columns: ColumnMeta[]) => {
 /**
  * A SQL source's filterable keys, as SQL expressions in the search sidebar's
  * key format: scalar columns, and the keys inside its map and JSON columns.
+ * `keepType` defaults to the ad hoc rule, which drops DateTime. Column and
+ * sort pickers pass a predicate that keeps every type.
  */
-export function getSqlSourceKeys(fields: Field[], columns: ColumnMeta[]) {
+export function getSqlSourceKeys(
+  fields: Field[],
+  columns: ColumnMeta[],
+  keepType: (type: string) => boolean = isAdhocComparableDataType,
+) {
   const columnNames = (types: JSDataType[]) =>
     filterColumnMetaByType(columns, types)?.map(column => column.name) ?? [];
   const jsonColumns = columnNames([JSDataType.JSON]);
@@ -69,19 +75,22 @@ export function getSqlSourceKeys(fields: Field[], columns: ColumnMeta[]) {
     .filter(
       field =>
         (field.path.length > 1 || isJSDataTypeScalar(field.jsType)) &&
-        isAdhocComparableDataType(field.type),
+        keepType(field.type),
     )
     .map(field => mergePath(field.path, jsonColumns, mapColumns));
   return toQuotedKeys(keys, columns);
 }
 
 /** A SQL source's scalar columns, the only keys known without field metadata. */
-export function getSqlSourceColumnKeys(columns: ColumnMeta[]) {
+export function getSqlSourceColumnKeys(
+  columns: ColumnMeta[],
+  keepType: (type: string) => boolean = isAdhocComparableDataType,
+) {
   const keys = columns
     .filter(
       column =>
         isJSDataTypeScalar(convertCHDataTypeToJSType(column.type)) &&
-        isAdhocComparableDataType(column.type),
+        keepType(column.type),
     )
     .map(column => column.name);
   return toQuotedKeys(keys, columns);

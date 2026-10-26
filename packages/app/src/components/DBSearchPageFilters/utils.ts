@@ -1,7 +1,10 @@
 // Utility functions for parsing and grouping map-like field names
 
 import SqlString from 'sqlstring';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  type Field,
+  parseKeyPath,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import type { Facet } from '@/hooks/useMetadata';
@@ -71,6 +74,18 @@ export function cleanClickHouseExpression(key: string): string {
   cleanKey = cleanKey.replace(/`([^`]+)`/g, '$1');
 
   return cleanKey;
+}
+
+const isLowCardinality = (type: string) => type.includes('LowCardinality');
+
+// Low-cardinality fields first: they make the most useful facets and groupings.
+export function sortLowCardinalityFirst<T extends Pick<Field, 'type'>>(
+  fields: T[],
+): T[] {
+  return [...fields].sort(
+    (a, b) =>
+      Number(isLowCardinality(b.type)) - Number(isLowCardinality(a.type)),
+  );
 }
 
 // Parse map-like field names and extract the base name and property path

@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 
+import { useDisplayTimeZone } from './useDisplayTimeZone';
 import { useUserPreferences } from './useUserPreferences';
 
 type DateLike = number | string | Date;
@@ -16,8 +17,9 @@ const parse = (time: DateLike) => {
 
 export const useFormatTime = () => {
   const {
-    userPreferences: { isUTC, timeFormat },
+    userPreferences: { timeFormat },
   } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   return React.useCallback(
     (time: DateLike, { format }: { format?: DateFormat } | undefined = {}) => {
@@ -25,7 +27,7 @@ export const useFormatTime = () => {
         const date = parse(time);
         return formatDate(date, {
           clock: timeFormat,
-          isUTC,
+          timeZone,
           format,
         });
       } catch (err) {
@@ -33,7 +35,7 @@ export const useFormatTime = () => {
         return 'Unknown date';
       }
     },
-    [isUTC, timeFormat],
+    [timeZone, timeFormat],
   );
 };
 
