@@ -4,6 +4,8 @@ import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
 import { omit } from 'lodash';
 import { z } from 'zod';
 
+import { stripTypeWrappers } from '@/core/eventDeltas';
+
 export { default as objectHash } from 'object-hash';
 
 import {
@@ -1163,6 +1165,21 @@ export const isFirstOrderByAscending = (
 
   return !isDescending;
 };
+
+/**
+ * Whether timeFilterExpr filters this part of a timestamp expression with
+ * inclusive bounds on both ends: toStartOf*, toDate, or a Date/Date32 column.
+ */
+export function isRoundedTimestampPart(
+  part: string,
+  columnType: string | undefined,
+): boolean {
+  return (
+    parseToStartOfFunction(part) != null ||
+    /^toDate\s*\(/.test(part) ||
+    /^Date(?:32)?$/i.test(stripTypeWrappers(columnType ?? ''))
+  );
+}
 
 /**
  * Parses a single expression of the form

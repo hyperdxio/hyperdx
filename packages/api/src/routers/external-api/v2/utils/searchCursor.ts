@@ -1,26 +1,35 @@
-import { createHash } from 'crypto';
+import { createHash, createHmac, timingSafeEqual } from 'crypto';
+
+import { EXPRESS_SESSION_SECRET } from '@/config';
 
 const CURSOR_VERSION = 1;
 const FINGERPRINT_LENGTH = 16;
-// Above the `offset` field's 10,000 cap so a walk can page through a dense
-// window; still bounded because cursors are unsigned.
-export const MAX_CURSOR_OFFSET = 1_000_000;
 // Also the `offset` request field's cap.
 export const MAX_SINGLE_WINDOW_OFFSET = 10_000;
-
-// Windows are built up front, so the range is capped. Also checked on decoded
-// cursors, which are unsigned.
-export const MAX_CURSOR_RANGE_MS = 366 * 24 * 60 * 60 * 1000;
+const SIGNATURE_CONTEXT = 'hdx-search-cursor:';
+/** Hidden column carrying each row's second; reserved in `select`. */
+export const CURSOR_TS_COLUMN = '__hdx_cursor_ts';
 
 /** Literal `cursor` value that starts a windowed cursor walk. */
 export const CURSOR_START = 'start';
 
+export type CursorWindow = {
+  ordinal: number;
+  startTime: string;
+  endTime: string;
+};
+
 export type SearchCursorState = {
-  windowIndex: number;
+  window: CursorWindow;
   offset: number;
   /** Time range pinned by the walk, so a defaulted endTime stays stable. */
   startTime: string;
   endTime: string;
+};
+
+/** A walk in progress; `window` is null on its first page. */
+export type SearchWalk = Omit<SearchCursorState, 'window'> & {
+  window: CursorWindow | null;
 };
 
 export type CursorFingerprintInput = {
@@ -55,29 +64,52 @@ export function fingerprintQuery(input: CursorFingerprintInput): string {
     .slice(0, FINGERPRINT_LENGTH);
 }
 
+// Signed with the session secret, so a cursor can only come from this server
+// and is valid wherever its sessions are.
+function sign(payload: string, secret: string): Buffer {
+  return createHmac('sha256', secret)
+    .update(SIGNATURE_CONTEXT + payload)
+    .digest();
+}
+
 export function encodeSearchCursor(
   state: SearchCursorState,
   fingerprint: string,
+  secret: string = EXPRESS_SESSION_SECRET,
 ): string {
-  return Buffer.from(
+  const payload = Buffer.from(
     JSON.stringify({
       v: CURSOR_VERSION,
-      w: state.windowIndex,
+      k: state.window.ordinal,
+      ws: state.window.startTime,
+      we: state.window.endTime,
       o: state.offset,
       f: fingerprint,
       s: state.startTime,
       e: state.endTime,
     }),
   ).toString('base64url');
+  return `${payload}.${sign(payload, secret).toString('base64url')}`;
 }
 
 export function decodeSearchCursor(
   cursor: string,
   fingerprint: string,
+  secret: string = EXPRESS_SESSION_SECRET,
 ): SearchCursorState | CursorDecodeError {
+  const [payload, signature, ...rest] = cursor.split('.');
+  if (!payload || !signature || rest.length > 0) {
+    return { error: 'INVALID_CURSOR' };
+  }
+  const expected = sign(payload, secret);
+  const actual = Buffer.from(signature, 'base64url');
+  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+    return { error: 'INVALID_CURSOR' };
+  }
+
   let parsed: unknown;
   try {
-    parsed = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+    parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
   } catch {
     return { error: 'INVALID_CURSOR' };
   }
@@ -86,26 +118,39 @@ export function decodeSearchCursor(
     return { error: 'INVALID_CURSOR' };
   }
   const fields: Record<string, unknown> = { ...parsed };
-  const { v, w, o, f, s: start, e: end } = fields;
+  const { v, k, ws, we, o, f, s: start, e: end } = fields;
   if (
     v !== CURSOR_VERSION ||
-    typeof w !== 'number' ||
+    typeof k !== 'number' ||
     typeof o !== 'number' ||
-    !Number.isInteger(w) ||
+    !Number.isInteger(k) ||
     !Number.isInteger(o) ||
-    w < 0 ||
+    k < 0 ||
     o < 0 ||
-    o > MAX_CURSOR_OFFSET ||
     typeof f !== 'string' ||
+    typeof ws !== 'string' ||
+    typeof we !== 'string' ||
     typeof start !== 'string' ||
-    typeof end !== 'string' ||
-    Number.isNaN(Date.parse(start)) ||
-    Number.isNaN(Date.parse(end))
+    typeof end !== 'string'
+  ) {
+    return { error: 'INVALID_CURSOR' };
+  }
+  const [wsMs, weMs, startMs, endMs] = [ws, we, start, end].map(Date.parse);
+  if (
+    [wsMs, weMs, startMs, endMs].some(Number.isNaN) ||
+    wsMs < startMs ||
+    weMs > endMs ||
+    wsMs > weMs
   ) {
     return { error: 'INVALID_CURSOR' };
   }
   if (f !== fingerprint) {
     return { error: 'CURSOR_QUERY_MISMATCH' };
   }
-  return { windowIndex: w, offset: o, startTime: start, endTime: end };
+  return {
+    window: { ordinal: k, startTime: ws, endTime: we },
+    offset: o,
+    startTime: start,
+    endTime: end,
+  };
 }

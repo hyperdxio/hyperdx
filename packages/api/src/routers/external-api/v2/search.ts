@@ -21,12 +21,12 @@ import { externalDashboardSearchRequestSchema } from '@/utils/zod';
 import { runSearchConfig, type SearchErrorCode } from './utils/search';
 import {
   CURSOR_START,
+  CURSOR_TS_COLUMN,
   decodeSearchCursor,
   encodeSearchCursor,
   fingerprintQuery,
-  MAX_CURSOR_RANGE_MS,
   MAX_SINGLE_WINDOW_OFFSET,
-  type SearchCursorState,
+  type SearchWalk,
 } from './utils/searchCursor';
 
 const searchQueryDuration = getHistogram('hyperdx.search.query.duration_ms', {
@@ -150,9 +150,8 @@ const CH_USER_INPUT_ERRORS = new Set([
  *             Send the literal string "start" to begin cursor paging, then pass
  *             back the nextCursor from each response. When set, offset is
  *             ignored; omit cursor entirely to use offset-based paging.
- *             Cursor paging supports time ranges of up to 366 days. As with
- *             offset, rows that share a timestamp can be skipped or repeated
- *             between pages unless orderBy breaks the tie.
+ *             As with offset, rows that share a timestamp can be skipped or
+ *             repeated between pages unless orderBy breaks the tie.
  *
  *             Keep requesting pages until nextCursor is null. A page that is
  *             empty or returns fewer rows than maxResults does NOT mean the
@@ -240,6 +239,9 @@ const searchRequestSchema = z.object({
       message:
         'select must not contain semicolons or SELECT subqueries; ' +
         'use column references, map lookups, or scalar functions only',
+    })
+    .refine(value => !value.includes(CURSOR_TS_COLUMN), {
+      message: `select must not use the reserved name ${CURSOR_TS_COLUMN}`,
     })
     .describe(
       'Comma-separated list of column expressions to return. ' +
@@ -397,7 +399,6 @@ function codeToStatus(code: SearchErrorCode): number {
     case 'SOURCE_NOT_FOUND':
     case 'CONNECTION_NOT_FOUND':
       return 404;
-    case 'CURSOR_QUERY_MISMATCH':
     case 'CURSOR_WINDOW_TOO_DENSE':
       return 400;
     default: {
@@ -445,10 +446,10 @@ router.post(
 
       // The cursor pins this request's resolved range, so a defaulted endTime
       // stays the same on later pages.
-      let cursorState: SearchCursorState | undefined;
+      let cursorState: SearchWalk | undefined;
       if (cursor === CURSOR_START) {
         cursorState = {
-          windowIndex: 0,
+          window: null,
           offset: 0,
           startTime: startDate.toISOString(),
           endTime: endDate.toISOString(),
@@ -461,7 +462,7 @@ router.post(
             message:
               decoded.error === 'CURSOR_QUERY_MISMATCH'
                 ? 'Cursor does not match this query. Start a new search.'
-                : 'Cursor is malformed.',
+                : 'Cursor is invalid or expired. Start a new search with cursor "start".',
           });
         }
         // Reject an explicitly changed bound; omitted or empty bounds default
@@ -476,17 +477,6 @@ router.post(
           });
         }
         cursorState = decoded;
-      }
-      if (
-        cursorState &&
-        Date.parse(cursorState.endTime) - Date.parse(cursorState.startTime) >
-          MAX_CURSOR_RANGE_MS
-      ) {
-        searchQueryErrors.add(1, { error_type: 'CURSOR_RANGE_TOO_LARGE' });
-        return res.status(400).json({
-          message:
-            'Cursor paging supports time ranges up to 366 days. Narrow startTime/endTime.',
-        });
       }
 
       const config = externalDashboardSearchRequestSchema.parse({

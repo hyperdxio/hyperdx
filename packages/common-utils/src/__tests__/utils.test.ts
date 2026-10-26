@@ -19,6 +19,7 @@ import {
   hasPositiveSeriesLimit,
   isFirstOrderByAscending,
   isJsonExpression,
+  isRoundedTimestampPart,
   isTimestampExpressionInFirstOrderBy,
   joinQuerySettings,
   optimizeTimestampValueExpression,
@@ -2547,6 +2548,22 @@ describe('utils', () => {
           "SELECT __hdx_json_replacement_0, ResourceAttributes['key.key2'], 'a.b.c' FROM table",
       };
       expect(actual).toEqual(expected);
+    });
+  });
+
+  describe('isRoundedTimestampPart', () => {
+    it.each([
+      ['toStartOfMinute(Timestamp)', undefined, true],
+      ['toDate(Timestamp)', undefined, true],
+      ['EventDate', 'Date', true],
+      ['EventDate', 'LowCardinality(Date)', true],
+      ['EventDate', 'Nullable(Date32)', true],
+      ['TimestampTime', 'DateTime', false],
+      ['Timestamp', 'DateTime64(9)', false],
+      ['toDateTime(Timestamp)', undefined, false],
+      ['TODATE(Timestamp)', undefined, false],
+    ])('%s (%s) -> %s', (part, columnType, expected) => {
+      expect(isRoundedTimestampPart(part, columnType)).toBe(expected);
     });
   });
 

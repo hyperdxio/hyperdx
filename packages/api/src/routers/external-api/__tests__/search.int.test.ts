@@ -1,3 +1,4 @@
+import type { QuerySettings } from '@hyperdx/common-utils/dist/types';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 import request from 'supertest';
@@ -18,6 +19,7 @@ import {
   encodeSearchCursor,
   fingerprintQuery,
 } from '@/routers/external-api/v2/utils/searchCursor';
+import logger from '@/utils/logger';
 
 const DEFAULT_END_TIME = Math.floor(Date.now() / 60000) * 60000;
 const DEFAULT_START_TIME = DEFAULT_END_TIME - 3600 * 1000;
@@ -582,6 +584,9 @@ describe('External API v2 Search', () => {
     ]);
   };
 
+  const cursorOffset = (cursor: string) =>
+    JSON.parse(Buffer.from(cursor.split('.')[0], 'base64url').toString()).o;
+
   const cursorBody = () => ({
     sourceId: logSource.id.toString(),
     startTime: iso(DEFAULT_START_TIME),
@@ -703,12 +708,303 @@ describe('External API v2 Search', () => {
     },
   );
 
-  it('rejects a cursor walk over a range longer than a year', async () => {
-    await search({
+  it('starts a cursor walk over a range longer than a year', async () => {
+    await seedCursorRows();
+
+    const res = await search({
       ...cursorBody(),
       startTime: iso(DEFAULT_END_TIME - 400 * 24 * 60 * 60 * 1000),
       cursor: 'start',
+    }).expect(200);
+    expect(res.body.data).toHaveLength(5);
+    expect(res.body.nextCursor).toBeTruthy();
+  });
+
+  it('pages past 10,000 rows in a range shorter than the first window', async () => {
+    const rangeStart = DEFAULT_END_TIME - 10 * 60 * 1000;
+    await bulkInsertLogs(
+      Array.from({ length: 10_050 }, (_, i) => ({
+        ServiceName: 'cursor-dense-test',
+        Timestamp: new Date(rangeStart + i * 50),
+        SeverityText: 'INFO',
+        Body: `dense-${i}`,
+      })),
+    );
+    const body = {
+      ...cursorBody(),
+      startTime: iso(rangeStart),
+      where: 'ServiceName:"cursor-dense-test"',
+      maxResults: 2000,
+    };
+
+    const seen = new Set<string>();
+    const offsets: number[] = [];
+    let cursor: string | null | undefined;
+    for (let pages = 0; pages < 20; pages++) {
+      const res = await search({ ...body, cursor: cursor ?? 'start' }).expect(
+        200,
+      );
+      res.body.data.forEach((r: Record<string, string>) => seen.add(r.Body));
+      cursor = res.body.nextCursor;
+      if (cursor == null) break;
+      offsets.push(cursorOffset(cursor));
+    }
+    expect(cursor).toBeNull();
+    expect(seen.size).toBe(10_050);
+    // Rows are 50ms apart, so a second holds 20 of them.
+    expect(Math.max(...offsets)).toBeLessThanOrEqual(20);
+  });
+
+  it.each(['Timestamp DESC', 'Timestamp ASC'])(
+    'returns every row once when one second holds more rows than a page (%s)',
+    async orderBy => {
+      const second = DEFAULT_END_TIME - 5 * 60 * 1000;
+      await bulkInsertLogs(
+        Array.from({ length: 900 }, (_, i) => ({
+          ServiceName: 'cursor-burst-test',
+          Timestamp: new Date(second + i),
+          SeverityText: 'INFO',
+          Body: `burst-${i}`,
+        })),
+      );
+      const body = {
+        ...cursorBody(),
+        where: 'ServiceName:"cursor-burst-test"',
+        orderBy,
+        maxResults: 300,
+      };
+
+      const seen: string[] = [];
+      let cursor: string | null | undefined;
+      for (let pages = 0; pages < 20; pages++) {
+        const res = await search({ ...body, cursor: cursor ?? 'start' }).expect(
+          200,
+        );
+        seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+        cursor = res.body.nextCursor;
+        if (cursor == null) break;
+      }
+      expect(cursor).toBeNull();
+      expect(seen).toHaveLength(900);
+      expect(new Set(seen).size).toBe(900);
+    },
+  );
+
+  it('walks every row exactly once in ascending order', async () => {
+    await seedCursorRows();
+    // seedCursorRows puts four rows on one Timestamp; Body breaks the tie.
+
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    for (let pages = 0; pages < 50; pages++) {
+      const res = await search({
+        ...cursorBody(),
+        orderBy: 'Timestamp ASC, Body ASC',
+        cursor: cursor ?? 'start',
+      }).expect(200);
+      seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+      cursor = res.body.nextCursor;
+      if (cursor == null) break;
+    }
+    expect(cursor).toBeNull();
+    expect(seen).toHaveLength(43);
+    expect(new Set(seen).size).toBe(43);
+  });
+
+  it.each([
+    ['omitted', {}],
+    ['without a timestamp', { select: 'Body' }],
+  ])(
+    'never returns the cursor timestamp column when select is %s',
+    async (_label, selectField) => {
+      await seedCursorRows();
+      const { select: _omit, ...rest } = cursorBody();
+      const res = await search({
+        ...rest,
+        ...selectField,
+        cursor: 'start',
+      }).expect(200);
+      expect(res.body.data.length).toBeGreaterThan(0);
+      for (const row of res.body.data) {
+        expect(row).not.toHaveProperty('__hdx_cursor_ts');
+      }
+    },
+  );
+
+  const createLimitedSource = (querySettings: QuerySettings) =>
+    Source.create({
+      kind: SourceKind.Log,
+      team: logSource.team,
+      from: logSource.from,
+      defaultTableSelectExpression: 'Timestamp, SeverityText, Body',
+      timestampValueExpression: 'Timestamp',
+      connection: logSource.connection,
+      name: 'Logs (limited)',
+      querySettings,
+    });
+
+  it('fails a cursor walk instead of truncating when source settings say break', async () => {
+    await seedCursorRows();
+    const limited = await createLimitedSource([
+      { setting: 'max_rows_to_read', value: '1' },
+      { setting: 'read_overflow_mode', value: 'break' },
+    ]);
+    const errorSpy = jest.spyOn(logger, 'error');
+
+    const { maxResults: _max, ...body } = cursorBody();
+    // Offset paging keeps the source's 'break' setting; a cursor walk overrides
+    // it and fails instead of truncating.
+    await search({ ...body, sourceId: limited.id.toString() }).expect(200);
+    expect(errorSpy).not.toHaveBeenCalled();
+    const res = await search({
+      ...body,
+      sourceId: limited.id.toString(),
+      cursor: 'start',
+    });
+    expect(res.status).toBe(500);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ chType: 'TOO_MANY_ROWS' }),
+      '[search] ClickHouse query error',
+    );
+    errorSpy.mockRestore();
+  });
+
+  it.each([5, 100])(
+    'walks every row when maxResults %i is at or above the source max_result_rows',
+    async maxResults => {
+      await seedCursorRows();
+      const limited = await createLimitedSource([
+        { setting: 'max_result_rows', value: '5' },
+        { setting: 'result_overflow_mode', value: 'break' },
+      ]);
+
+      const seen: string[] = [];
+      let cursor: string | null | undefined;
+      for (let pages = 0; pages < 50; pages++) {
+        const res = await search({
+          ...cursorBody(),
+          sourceId: limited.id.toString(),
+          maxResults,
+          cursor: cursor ?? 'start',
+        }).expect(200);
+        expect(res.body.data.length).toBeLessThanOrEqual(5);
+        seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+        cursor = res.body.nextCursor;
+        if (cursor == null) break;
+      }
+
+      expect(cursor).toBeNull();
+      expect(seen).toHaveLength(43);
+      expect(new Set(seen).size).toBe(43);
+    },
+  );
+
+  it('keeps a DISTINCT select distinct during a cursor walk', async () => {
+    const now = DEFAULT_END_TIME - 2 * 60 * 1000;
+    await bulkInsertLogs(
+      Array.from({ length: 30 }, (_, i) => ({
+        ServiceName: 'cursor-distinct-test',
+        // Half the rows are older than the first 15m window's start.
+        Timestamp: new Date(now - (i < 15 ? i : 30 * 60 + i) * 1000),
+        SeverityText: 'INFO',
+        Body: `dup-${i % 3}`,
+      })),
+    );
+
+    const seen: string[] = [];
+    let cursor: string | null | undefined;
+    for (let pages = 0; pages < 20; pages++) {
+      const res = await search({
+        ...cursorBody(),
+        where: 'ServiceName:"cursor-distinct-test"',
+        select: 'DISTINCT Body',
+        maxResults: 2,
+        cursor: cursor ?? 'start',
+      }).expect(200);
+      seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+      cursor = res.body.nextCursor;
+      if (cursor == null) break;
+    }
+    expect(seen.sort()).toEqual(['dup-0', 'dup-1', 'dup-2']);
+  });
+
+  it.each([
+    [
+      'a rounded leading key',
+      'toStartOfMinute(Timestamp), Timestamp',
+      'toStartOfMinute(Timestamp) DESC, Body ASC',
+    ],
+    [
+      'an exact leading key on a compound expression',
+      'toDateTime(Timestamp), Timestamp',
+      'Timestamp DESC',
+    ],
+  ])(
+    'returns every row once when the walk is ordered by %s',
+    async (_label, timestampValueExpression, orderBy) => {
+      const compound = await Source.create({
+        kind: SourceKind.Log,
+        team: logSource.team,
+        from: logSource.from,
+        defaultTableSelectExpression: 'Timestamp, SeverityText, Body',
+        timestampValueExpression,
+        connection: logSource.connection,
+        name: 'Logs (compound)',
+      });
+      const minute =
+        Math.floor((DEFAULT_END_TIME - 3 * 60 * 1000) / 60_000) * 60_000;
+      // Body order is unrelated to time, so a cut on the wrong key loses rows.
+      await bulkInsertLogs(
+        Array.from({ length: 120 }, (_, i) => ({
+          ServiceName: 'cursor-order-test',
+          Timestamp: new Date(minute + i * 400),
+          SeverityText: 'INFO',
+          Body: `row-${String((i * 37) % 120).padStart(3, '0')}`,
+        })),
+      );
+
+      const seen: string[] = [];
+      let cursor: string | null | undefined;
+      for (let pages = 0; pages < 50; pages++) {
+        const res = await search({
+          ...cursorBody(),
+          sourceId: compound.id.toString(),
+          where: 'ServiceName:"cursor-order-test"',
+          orderBy,
+          maxResults: 10,
+          cursor: cursor ?? 'start',
+        }).expect(200);
+        seen.push(...res.body.data.map((r: Record<string, string>) => r.Body));
+        cursor = res.body.nextCursor;
+        if (cursor == null) break;
+      }
+      expect(cursor).toBeNull();
+      expect(seen).toHaveLength(120);
+      expect(new Set(seen).size).toBe(120);
+    },
+  );
+
+  it('rejects a select that uses the reserved cursor column name', async () => {
+    await search({
+      ...cursorBody(),
+      select: 'Timestamp AS __hdx_cursor_ts',
+      cursor: 'start',
     }).expect(400);
+  });
+
+  it('rejects a cursor whose contents were edited', async () => {
+    await seedCursorRows();
+
+    const first = await search({ ...cursorBody(), cursor: 'start' }).expect(
+      200,
+    );
+    const [payload, signature] = String(first.body.nextCursor).split('.');
+    const edited = JSON.parse(Buffer.from(payload, 'base64url').toString());
+    edited.o += 1;
+    const forged = `${Buffer.from(JSON.stringify(edited)).toString('base64url')}.${signature}`;
+
+    const res = await search({ ...cursorBody(), cursor: forged }).expect(400);
+    expect(res.body.message).toMatch(/invalid or expired/);
   });
 
   const forgeCursor = (
@@ -717,7 +1013,11 @@ describe('External API v2 Search', () => {
   ) =>
     encodeSearchCursor(
       {
-        windowIndex: 0,
+        window: {
+          ordinal: 0,
+          startTime: iso(DEFAULT_START_TIME),
+          endTime: iso(DEFAULT_END_TIME),
+        },
         offset,
         startTime: iso(DEFAULT_START_TIME),
         endTime: iso(DEFAULT_END_TIME),

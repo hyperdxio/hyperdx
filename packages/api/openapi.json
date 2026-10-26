@@ -4818,7 +4818,7 @@
             "type": "string",
             "maxLength": 1024,
             "example": "start",
-            "description": "Send the literal string \"start\" to begin cursor paging, then pass\nback the nextCursor from each response. When set, offset is\nignored; omit cursor entirely to use offset-based paging.\nCursor paging supports time ranges of up to 366 days. As with\noffset, rows that share a timestamp can be skipped or repeated\nbetween pages unless orderBy breaks the tie.\n\nKeep requesting pages until nextCursor is null. A page that is\nempty or returns fewer rows than maxResults does NOT mean the\nresults are exhausted.\n"
+            "description": "Send the literal string \"start\" to begin cursor paging, then pass\nback the nextCursor from each response. When set, offset is\nignored; omit cursor entirely to use offset-based paging.\nAs with offset, rows that share a timestamp can be skipped or\nrepeated between pages unless orderBy breaks the tie.\n\nKeep requesting pages until nextCursor is null. A page that is\nempty or returns fewer rows than maxResults does NOT mean the\nresults are exhausted.\n"
           }
         }
       },

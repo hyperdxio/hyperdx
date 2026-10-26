@@ -101,28 +101,3 @@ export function generateTimeWindowsAscending(
 
   return windows;
 }
-
-/**
- * Windows are [start, end), so a row on a shared boundary lands on one page.
- * The window holding the caller's endTime also includes its end.
- */
-export function windowInclusivity(
-  window: TimeWindow,
-  windowCount: number,
-): { dateRangeStartInclusive: boolean; dateRangeEndInclusive: boolean } {
-  const isLast = window.windowIndex === windowCount - 1;
-
-  if (window.direction === 'DESC') {
-    // Windows walk backwards: index 0 is newest, the last index is oldest.
-    return {
-      dateRangeStartInclusive: true,
-      dateRangeEndInclusive: window.windowIndex === 0,
-    };
-  }
-
-  // ASC: index 0 is oldest, the last index is newest.
-  return {
-    dateRangeStartInclusive: true,
-    dateRangeEndInclusive: isLast,
-  };
-}
