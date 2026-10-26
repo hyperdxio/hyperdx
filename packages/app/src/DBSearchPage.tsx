@@ -2326,6 +2326,22 @@ function DBSearchPageContent() {
     [setValue, onSubmit],
   );
 
+  // The dropdown source can move before the URL source does. An empty SELECT
+  // is shown as this default, so it has to follow the dropdown, the same way
+  // the sort default follows useDefaultOrderBy(inputSource).
+  const savedSelect =
+    savedSearchId &&
+    savedSearch?.id === savedSearchId &&
+    inputSource === savedSearch.source
+      ? savedSearch.select
+      : undefined;
+  const sourceDefaultSelect =
+    inputSourceObj?.kind === SourceKind.Log ||
+    inputSourceObj?.kind === SourceKind.Trace
+      ? inputSourceObj.defaultTableSelectExpression
+      : undefined;
+  const defaultSelect = savedSelect ?? sourceDefaultSelect ?? '';
+
   // SELECT and ORDER BY shape the results table, so they sit on that table
   // and stay hidden on Event Deltas and Event Patterns.
   const resultsClauseEditors =
@@ -2333,7 +2349,7 @@ function DBSearchPageContent() {
       <Group gap="xs" wrap="wrap">
         <ColumnsPopover
           value={inputSelect ?? ''}
-          defaultValue={defaultSearchConfig.select ?? ''}
+          defaultValue={defaultSelect}
           fieldOptions={clauseFieldOptions}
           knownColumns={knownColumns}
           onApply={applySelect}
