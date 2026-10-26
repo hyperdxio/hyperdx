@@ -1,9 +1,8 @@
 import {
-  SourceKind,
-  SourceSchema,
-  SourceSchemaNoId,
-  type TSource,
-} from '@hyperdx/common-utils/dist/types';
+  mapGranularityToInternalFormat,
+  toExternalSource,
+} from '@hyperdx/common-utils/dist/externalSource';
+import { SourceKind, SourceSchemaNoId } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
 import { z } from 'zod';
 
@@ -20,44 +19,6 @@ import { SourceDocument } from '@/models/source';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
 import logger from '@/utils/logger';
 import { objectIdSchema } from '@/utils/zod';
-
-export function mapGranularityToExternalFormat(granularity: string): string {
-  const matches = granularity.match(/^(\d+) (second|minute|hour|day)$/);
-  if (matches == null) return granularity;
-
-  const [, amount, unit] = matches;
-  switch (unit) {
-    case 'second':
-      return `${amount}s`;
-    case 'minute':
-      return `${amount}m`;
-    case 'hour':
-      return `${amount}h`;
-    case 'day':
-      return `${amount}d`;
-    default:
-      return granularity;
-  }
-}
-
-export function mapGranularityToInternalFormat(granularity: string): string {
-  const matches = granularity.match(/^(\d+)(s|m|h|d)$/);
-  if (matches == null) return granularity;
-
-  const [, amount, unit] = matches;
-  switch (unit) {
-    case 's':
-      return `${amount} second`;
-    case 'm':
-      return `${amount} minute`;
-    case 'h':
-      return `${amount} hour`;
-    case 'd':
-      return `${amount} day`;
-    default:
-      return granularity;
-  }
-}
 
 // Maps external short-form granularities (e.g. "5m") in the request body to
 // the internal SQL interval format (e.g. "5 minute") expected by SourceSchema.
@@ -127,44 +88,6 @@ function rejectPromqlSourceWhenDisabled(
   next();
 }
 
-function mapSourceToExternalSource(source: TSource): TSource {
-  if (!('materializedViews' in source)) return source;
-
-  const mapped = { ...source };
-
-  if (Array.isArray(source.materializedViews)) {
-    mapped.materializedViews = source.materializedViews.map(view => ({
-      ...view,
-      minGranularity: mapGranularityToExternalFormat(view.minGranularity),
-    }));
-  }
-
-  if (
-    'metadataMaterializedViews' in source &&
-    source.metadataMaterializedViews
-  ) {
-    mapped.metadataMaterializedViews = {
-      ...source.metadataMaterializedViews,
-      granularity: mapGranularityToExternalFormat(
-        source.metadataMaterializedViews.granularity,
-      ),
-    };
-  }
-
-  return mapped;
-}
-
-function applyLegacyDefaults(
-  parsed: Record<string, unknown>,
-): Record<string, unknown> {
-  // Legacy Session sources were created before timestampValueExpression was
-  // required. The old code defaulted it to 'TimestampTime' at query time.
-  if (parsed.kind === SourceKind.Session && !parsed.timestampValueExpression) {
-    return { ...parsed, timestampValueExpression: 'TimestampTime' };
-  }
-  return parsed;
-}
-
 function formatExternalSource(source: SourceDocument) {
   // Convert to JSON so that any ObjectIds are converted to strings
   const json = JSON.stringify(
@@ -187,13 +110,8 @@ function formatExternalSource(source: SourceDocument) {
     })(),
   );
 
-  // Parse using the SourceSchema to strip out any fields not defined in the schema
-  const parseResult = SourceSchema.safeParse(
-    applyLegacyDefaults(JSON.parse(json)),
-  );
-  if (parseResult.success) {
-    return mapSourceToExternalSource(parseResult.data);
-  }
+  const parseResult = toExternalSource(JSON.parse(json));
+  if (parseResult.success) return parseResult.data;
 
   // If parsing fails, log the error and return undefined
   logger.error(
