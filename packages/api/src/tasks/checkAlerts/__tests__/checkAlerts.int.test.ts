@@ -1704,6 +1704,44 @@ describe('checkAlerts', () => {
       // TODO: test call arguments
     });
 
+    it('renderAlertTemplate - titleEmoji false leaves a title without the emoji intact', async () => {
+      const team = await createTeam({ name: 'My Team' });
+      const webhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/123',
+        name: 'My_Webhook',
+        titleEmoji: false,
+      }).save();
+
+      await renderAlertTemplate({
+        alertProvider,
+        clickhouseClient: mockClickhouseClient,
+        metadata: mockMetadata,
+        state: AlertState.ALERT,
+        template: 'Custom body',
+        view: {
+          ...defaultSearchView,
+          alert: {
+            ...defaultSearchView.alert,
+            channel: {
+              type: 'webhook',
+              webhookId: webhook._id.toString(),
+            },
+          },
+        },
+        title: 'Alert for "My Search" - 10 lines found',
+        teamId: team._id.toString(),
+        teamWebhooksById: new Map<string, typeof webhook>([
+          [webhook._id.toString(), webhook],
+        ]),
+      });
+
+      expect(
+        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
+      ).toBe('Alert for "My Search" - 10 lines found');
+    });
+
     it('renderAlertTemplate - custom body with single action', async () => {
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({

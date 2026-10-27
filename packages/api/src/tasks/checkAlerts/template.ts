@@ -734,6 +734,7 @@ export const renderAlertTemplate = async ({
       ...(view.isGroupedAlert && group ? { groupId: group } : {}),
     });
 
+    const emoji = stateTitleEmoji(state);
     jobs.push({
       eventId,
       alertId: alert.id,
@@ -744,8 +745,8 @@ export const renderAlertTemplate = async ({
         hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
         // The shared title carries the state emoji; a webhook can opt out.
         title:
-          channel.channel.titleEmoji === false
-            ? title.slice(stateTitleEmoji(state).length)
+          channel.channel.titleEmoji === false && title.startsWith(emoji)
+            ? title.slice(emoji.length)
             : title,
         body: renderedBody,
         state,
