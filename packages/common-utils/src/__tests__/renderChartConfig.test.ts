@@ -603,7 +603,7 @@ describe('renderChartConfig', () => {
         },
       ],
       groupBy:
-        "Attributes['destination_service_name'], Attributes['response_code']",
+        "Attributes['destination_service_name'], Attributes['a,b']",
       where: '',
       whereLanguage: 'sql',
       timestampValueExpression: 'TimeUnix',
@@ -619,14 +619,14 @@ describe('renderChartConfig', () => {
     );
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatch(
-      /tuple\(\s*Attributes\['destination_service_name'\]\s*,\s*Attributes\['response_code'\]\s*\)/,
+      /tuple\(\s*Attributes\['destination_service_name'\]\s*,\s*Attributes\['a,b'\]\s*\)/,
     );
     expect(actual).toContain('TopGroups');
     expect(actual).toMatch(
       /Attributes\['destination_service_name'\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\['destination_service_name'\]\)\s*!=\s*''/,
     );
     expect(actual).toMatch(
-      /Attributes\['response_code'\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\['response_code'\]\)\s*!=\s*''/,
+      /Attributes\['a,b'\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\['a,b'\]\)\s*!=\s*''/,
     );
   });
 

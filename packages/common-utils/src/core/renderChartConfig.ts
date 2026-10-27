@@ -1554,6 +1554,30 @@ async function renderGroupBy(
   );
 }
 
+async function renderGroupByColumns(
+  groupBy: NonNullable<BuilderChartConfigWithOptDateRangeEx['groupBy']>,
+  config: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<ChSql[]> {
+  // One ChSql per group-by column (groupBy may be an array or a comma-separated
+  // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
+  // inside Map['a,b']; per-column null filters need them separated.
+  if (typeof groupBy === 'string') {
+    return splitAndTrimWithBracket(groupBy).map(
+      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
+    );
+  }
+  // Strip aliases: these go inside tuple(...)/`IS NOT NULL`, where an
+  // `AS "alias"` suffix is a syntax error (unlike the outer GROUP BY).
+  const rendered = await renderSelectList(
+    groupBy.map(col => ({ ...col, alias: undefined })),
+    config,
+    metadata,
+    { mergeRatio: false },
+  );
+  return Array.isArray(rendered) ? rendered : [rendered];
+}
+
 async function renderSeriesLimitCte(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
@@ -1603,25 +1627,11 @@ async function renderSeriesLimitCte(
       ])
     : [];
 
-  // One ChSql per group-by column (groupBy may be an array or a comma-separated
-  // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
-  // inside Map['a,b']; the per-column null filter below needs them separated.
-  let groupByCols: ChSql[];
-  if (typeof chartConfig.groupBy === 'string') {
-    groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
-      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
-    );
-  } else {
-    // Strip aliases: these go inside tuple(...)/`IS NOT NULL`, where an
-    // `AS "alias"` suffix is a syntax error (unlike the outer GROUP BY).
-    const rendered = await renderSelectList(
-      chartConfig.groupBy.map(col => ({ ...col, alias: undefined })),
-      chartConfig,
-      metadata,
-      { mergeRatio: false },
-    );
-    groupByCols = Array.isArray(rendered) ? rendered : [rendered];
-  }
+  const groupByCols = await renderGroupByColumns(
+    chartConfig.groupBy!,
+    chartConfig,
+    metadata,
+  );
   const groupByTuple = concatChSql(',', groupByCols);
 
   // Rank by the value the chart actually plots, so "top N" means top N by what
@@ -2334,32 +2344,16 @@ async function translateMetricChartConfig(
 
     if (shouldApplyIncreaseGroupLimit) {
       // Render the user's groupBy against the Bucketed CTE so column
-      // references resolve to the CTE's projection. Aliases are stripped:
-      // these expressions go inside tuple(...) in the ranking CTE and the
-      // outer IN predicate, where an `AS "alias"` suffix is a syntax error
-      // (mirrors the strip in renderSeriesLimitCte).
-      // One ChSql per group-by column (groupBy may be an array or a
-      // comma-separated string). splitAndTrimWithBracket respects []/()/quotes
-      // so it won't split inside Map['a,b']; the per-column null filter below
-      // needs them separated.
-      let groupByCols: ChSql[];
-      if (typeof chartConfig.groupBy === 'string') {
-        groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
-          col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
-        );
-      } else {
-        const rendered = await renderSelectList(
-          chartConfig.groupBy!.map(col => ({ ...col, alias: undefined })),
-          {
-            ...chartConfig,
-            from: { databaseName: '', tableName: 'Bucketed' },
-            with: sumWith,
-          } as BuilderChartConfigWithOptDateRangeEx,
-          metadata,
-          { mergeRatio: false },
-        );
-        groupByCols = Array.isArray(rendered) ? rendered : [rendered];
-      }
+      // references resolve to the CTE's projection.
+      const groupByCols = await renderGroupByColumns(
+        chartConfig.groupBy!,
+        {
+          ...chartConfig,
+          from: { databaseName: '', tableName: 'Bucketed' },
+          with: sumWith,
+        } as BuilderChartConfigWithOptDateRangeEx,
+        metadata,
+      );
       const groupBySql = concatChSql(',', groupByCols);
 
       // Exclude rows where any groupBy column is NULL/empty so they don't
