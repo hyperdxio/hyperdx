@@ -424,57 +424,6 @@ describe('alerts router', () => {
     expect(afterClear.body.data.note).toBeNull();
   });
 
-  it('round-trips titleEmoji through create, update, and clear', async () => {
-    const dashboard = await agent
-      .post('/dashboards')
-      .send(MOCK_DASHBOARD)
-      .expect(200);
-
-    const alert = await agent
-      .post('/alerts')
-      .send({
-        ...makeAlertInput({
-          dashboardId: dashboard.body.id,
-          tileId: dashboard.body.tiles[0].id,
-          webhookId: webhook._id.toString(),
-        }),
-        titleEmoji: false,
-      })
-      .expect(200);
-    expect(alert.body.data.titleEmoji).toBe(false);
-
-    const single = await agent
-      .get(`/alerts/${alert.body.data._id}`)
-      .expect(200);
-    expect(single.body.data.titleEmoji).toBe(false);
-
-    await agent
-      .put(`/alerts/${alert.body.data._id}`)
-      .send({
-        ...alert.body.data,
-        dashboardId: dashboard.body.id,
-        titleEmoji: true,
-      })
-      .expect(200);
-    const afterUpdate = await agent
-      .get(`/alerts/${alert.body.data._id}`)
-      .expect(200);
-    expect(afterUpdate.body.data.titleEmoji).toBe(true);
-
-    await agent
-      .put(`/alerts/${alert.body.data._id}`)
-      .send({
-        ...alert.body.data,
-        dashboardId: dashboard.body.id,
-        titleEmoji: null,
-      })
-      .expect(200);
-    const afterClear = await agent
-      .get(`/alerts/${alert.body.data._id}`)
-      .expect(200);
-    expect(afterClear.body.data.titleEmoji).toBeNull();
-  });
-
   it('round-trips displayName and tags through create, update, and revert', async () => {
     const dashboard = await agent
       .post('/dashboards')

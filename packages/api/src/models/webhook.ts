@@ -23,6 +23,8 @@ export interface IWebhook {
   updatedAt: Date;
   url?: string;
   description?: string;
+  // false drops the state emoji prefix from notification titles
+  titleEmoji?: boolean;
   // reminder to serialize/convert the Mongoose model instance to a plain javascript object when using
   // to strip the additional properties that are related to the Mongoose internal representation -> webhook.headers.toJSON()
   queryParams?: MongooseMap;
@@ -48,6 +50,10 @@ const WebhookSchema = new Schema<IWebhook>(
     },
     description: {
       type: String,
+      required: false,
+    },
+    titleEmoji: {
+      type: Boolean,
       required: false,
     },
     queryParams: {

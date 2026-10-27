@@ -181,32 +181,6 @@ describe('utils/externalApi', () => {
     });
   });
 
-  describe('titleEmoji handling', () => {
-    it('returns titleEmoji as null when the value is null', () => {
-      const alert = createAlertDocument({ titleEmoji: null });
-
-      const translated = translateAlertDocumentToExternalAlert(alert);
-
-      expect(translated.titleEmoji).toBeNull();
-    });
-
-    it('returns titleEmoji as null when the value is undefined', () => {
-      const alert = createAlertDocument({ titleEmoji: undefined });
-
-      const translated = translateAlertDocumentToExternalAlert(alert);
-
-      expect(translated.titleEmoji).toBeNull();
-    });
-
-    it('returns titleEmoji when the value is false', () => {
-      const alert = createAlertDocument({ titleEmoji: false });
-
-      const translated = translateAlertDocumentToExternalAlert(alert);
-
-      expect(translated.titleEmoji).toBe(false);
-    });
-  });
-
   describe('numConsecutiveWindows handling', () => {
     it('returns numConsecutiveWindows as null when the value is null', () => {
       const alert = createAlertDocument({ numConsecutiveWindows: null });

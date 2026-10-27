@@ -4,4 +4,4 @@
 '@hyperdx/common-utils': minor
 ---
 
-feat: add optional `titleEmoji` alert field; `false` removes the emoji prefix from notification titles
+feat: add optional `titleEmoji` webhook option; `false` removes the emoji prefix from notification titles sent through that webhook

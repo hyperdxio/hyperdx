@@ -130,6 +130,23 @@ describe('WebhookForm', () => {
     );
   });
 
+  it('saves titleEmoji false when the emoji checkbox is cleared', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.type(screen.getByTestId('webhook-name-input'), 'ops');
+    await user.type(
+      screen.getByTestId('webhook-url-input'),
+      'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX',
+    );
+    await user.click(screen.getByTestId('webhook-title-emoji-checkbox'));
+    await user.click(screen.getByTestId('add-webhook-button'));
+
+    expect(mockSaveWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ titleEmoji: false }),
+    );
+  });
+
   it('does not show the template variables for a slack webhook', () => {
     renderForm();
 

@@ -480,7 +480,6 @@ describe('External API Alerts', () => {
           tags: [],
           message: 'This is a test alert for format verification',
           note: null,
-          titleEmoji: null,
           numConsecutiveWindows: null,
           threshold: 123,
           interval: '15m',
@@ -2726,45 +2725,6 @@ describe('External API Alerts', () => {
       expect(getResponse.body.data.numConsecutiveWindows).toBeNull();
     });
   });
-
-  describe('Notification title emoji (titleEmoji)', () => {
-    it('should default titleEmoji to null when not provided', async () => {
-      const { alert } = await createTestAlert();
-
-      expect(alert.titleEmoji).toBeNull();
-    });
-
-    it('should create an alert with titleEmoji false and return it on GET', async () => {
-      const { alert } = await createTestAlert({ titleEmoji: false });
-
-      expect(alert.titleEmoji).toBe(false);
-
-      const getResponse = await authRequest(
-        'get',
-        `${ALERTS_BASE_URL}/${alert.id}`,
-      ).expect(200);
-
-      expect(getResponse.body.data.titleEmoji).toBe(false);
-    });
-
-    it('should update an alert to set titleEmoji', async () => {
-      const { alert, alertInput } = await createTestAlert({
-        titleEmoji: false,
-      });
-
-      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
-        .send({ ...alertInput, titleEmoji: true })
-        .expect(200);
-
-      const getResponse = await authRequest(
-        'get',
-        `${ALERTS_BASE_URL}/${alert.id}`,
-      ).expect(200);
-
-      expect(getResponse.body.data.titleEmoji).toBe(true);
-    });
-  });
-
   describe('Multiple notification channels', () => {
     const makeWebhookNamed = async (name: string) =>
       await Webhook.findOneAndUpdate(

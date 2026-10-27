@@ -113,7 +113,6 @@ const formatAlertResponse = (
       'name',
       'message',
       'note',
-      'titleEmoji',
       'createdAt',
       'updatedAt',
       'executionErrors',

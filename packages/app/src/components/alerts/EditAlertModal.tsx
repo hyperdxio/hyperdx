@@ -115,7 +115,6 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
     tags: alert.tags,
     // Persisted null -> undefined for the NumberInput.
     numConsecutiveWindows: alert.numConsecutiveWindows ?? undefined,
-    titleEmoji: alert.titleEmoji,
   };
 
   if (alert.source === AlertSource.TILE) {

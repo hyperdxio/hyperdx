@@ -299,7 +299,6 @@ export const makeAlert = (
     name: alert.name ?? null,
     message: alert.message ?? null,
     note: alert.note ?? null,
-    titleEmoji: alert.titleEmoji ?? null,
 
     displayName,
     tags,

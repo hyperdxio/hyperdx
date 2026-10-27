@@ -191,16 +191,6 @@ describe('EditAlertModal', () => {
     );
   });
 
-  it('echoes titleEmoji back unchanged on save', async () => {
-    renderModal({ ...savedSearchAlert, titleEmoji: false });
-
-    await submitForm();
-
-    expect(updateAlertMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ titleEmoji: false }),
-    );
-  });
-
   it('sends an edited display name in the PUT payload', async () => {
     renderModal(savedSearchAlert);
 

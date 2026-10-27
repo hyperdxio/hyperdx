@@ -2477,16 +2477,27 @@ describe('checkAlerts', () => {
       );
     });
 
-    it('SAVED_SEARCH alert - titleEmoji false drops the emoji from fired and resolved titles', async () => {
+    it('SAVED_SEARCH alert - titleEmoji is applied per webhook on fired and resolved titles', async () => {
       const {
         team,
         webhook,
         connection,
         source,
         savedSearch,
-        teamWebhooksById,
         clickhouseClient,
-      } = await setupSavedSearchAlertTest();
+      } = await setupSavedSearchAlertTest({
+        webhookSettings: { titleEmoji: false } as IWebhook,
+      });
+      const emojiWebhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/456',
+        name: 'Emoji Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+        [emojiWebhook._id.toString(), emojiWebhook],
+      ]);
 
       const details = await createAlertDetails(
         team,
@@ -2501,7 +2512,7 @@ describe('checkAlerts', () => {
           thresholdType: AlertThresholdType.ABOVE,
           threshold: 1,
           savedSearchId: savedSearch.id,
-          titleEmoji: false,
+          message: '@webhook-Emoji_Webhook',
         },
         {
           taskType: AlertTaskType.SAVED_SEARCH,
@@ -2544,21 +2555,22 @@ describe('checkAlerts', () => {
       );
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
-      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
-      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
-        1,
+      const textsFor = (url: string) =>
+        (slack.postMessageToWebhook as jest.Mock).mock.calls
+          .filter(([calledUrl]) => calledUrl === url)
+          .map(([, payload]) => payload.text);
+
+      const [plainFired, plainResolved] = textsFor(
         'https://hooks.slack.com/services/123',
-        expect.objectContaining({
-          text: 'Alert for "My Search" - 2 lines found',
-        }),
       );
-      expect(slack.postMessageToWebhook).toHaveBeenNthCalledWith(
-        2,
-        'https://hooks.slack.com/services/123',
-        expect.objectContaining({
-          text: expect.not.stringMatching(/🚨|✅/),
-        }),
+      expect(plainFired).toBe('Alert for "My Search" - 2 lines found');
+      expect(plainResolved).toMatch(/^Alert for "My Search"/);
+
+      const [emojiFired, emojiResolved] = textsFor(
+        'https://hooks.slack.com/services/456',
       );
+      expect(emojiFired).toBe('🚨 Alert for "My Search" - 2 lines found');
+      expect(emojiResolved).toMatch(/^✅ Alert for "My Search"/);
     });
 
     // The scheduled alert task and the app search page both go through

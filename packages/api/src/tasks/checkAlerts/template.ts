@@ -265,6 +265,9 @@ export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
 };
 
+const stateTitleEmoji = (state?: AlertState): string =>
+  isAlertResolved(state) ? '✅ ' : '🚨 ';
+
 /**
  * Formats the value to match the decimal precision of the threshold.
  * This ensures consistent display of numbers in alert messages.
@@ -367,9 +370,8 @@ export const buildAlertMessageTemplateTitle = ({
     dashboard,
   });
 
-  // Add emoji prefix based on alert state, unless the alert opts out
-  const stateEmoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
-  const emoji = alert.titleEmoji === false ? '' : stateEmoji;
+  // Add emoji prefix based on alert state
+  const emoji = stateTitleEmoji(state);
 
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
@@ -740,7 +742,11 @@ export const renderAlertTemplate = async ({
       populatedChannel: channel,
       message: {
         hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
-        title,
+        // The shared title carries the state emoji; a webhook can opt out.
+        title:
+          channel.channel.titleEmoji === false
+            ? title.slice(stateTitleEmoji(state).length)
+            : title,
         body: renderedBody,
         state,
         startTime: view.startTime.getTime(),

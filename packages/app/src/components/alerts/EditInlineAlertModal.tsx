@@ -56,7 +56,6 @@ export function inlineAlertToChartConfig(
       note: alert.note ?? null,
       // Persisted null -> undefined for the NumberInput.
       numConsecutiveWindows: alert.numConsecutiveWindows ?? undefined,
-      titleEmoji: alert.titleEmoji,
     },
   };
 }
