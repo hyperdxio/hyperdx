@@ -2485,14 +2485,14 @@ describe('checkAlerts', () => {
         source,
         savedSearch,
         clickhouseClient,
-      } = await setupSavedSearchAlertTest({
-        webhookSettings: { titleEmoji: false } as IWebhook,
-      });
+      } = await setupSavedSearchAlertTest();
+      webhook.titleEmoji = false;
+      await webhook.save();
       const emojiWebhook = await new Webhook({
         team: team._id,
         service: 'slack',
         url: 'https://hooks.slack.com/services/456',
-        name: 'Emoji Webhook',
+        name: 'Emoji_Webhook',
       }).save();
       const teamWebhooksById = new Map<string, typeof webhook>([
         [webhook._id.toString(), webhook],
@@ -2556,8 +2556,9 @@ describe('checkAlerts', () => {
       expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
 
       const textsFor = (url: string) =>
-        (slack.postMessageToWebhook as jest.Mock).mock.calls
-          .filter(([calledUrl]) => calledUrl === url)
+        jest
+          .mocked(slack.postMessageToWebhook)
+          .mock.calls.filter(([calledUrl]) => calledUrl === url)
           .map(([, payload]) => payload.text);
 
       const [plainFired, plainResolved] = textsFor(
