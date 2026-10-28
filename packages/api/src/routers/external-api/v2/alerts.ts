@@ -1032,12 +1032,14 @@ router.post(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      const alert = await silenceAlert(
+      const silenced = await silenceAlert(
         req.params.id,
         teamId,
         userId,
         new Date(req.body.mutedUntil),
       );
+      const alert =
+        silenced && (await getAlertWithDisplayRefs(req.params.id, teamId));
       if (alert == null) {
         return res.status(404).json({ message: 'Alert not found' });
       }
@@ -1107,7 +1109,9 @@ router.delete(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      const alert = await unsilenceAlert(req.params.id, teamId);
+      const unsilenced = await unsilenceAlert(req.params.id, teamId);
+      const alert =
+        unsilenced && (await getAlertWithDisplayRefs(req.params.id, teamId));
       if (alert == null) {
         return res.status(404).json({ message: 'Alert not found' });
       }

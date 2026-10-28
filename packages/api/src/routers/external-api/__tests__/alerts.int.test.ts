@@ -977,6 +977,41 @@ describe('External API Alerts', () => {
       expect(stored?.silenced).toBeUndefined();
     });
 
+    it('should return inherited displayName and tags from the silence routes', async () => {
+      const dashboard = await createTestDashboard({ name: 'Inherited' });
+      await Dashboard.updateOne(
+        { _id: dashboard._id },
+        { tags: ['inherited-tag'] },
+      );
+      const alert = await createTestAlertDirectly({
+        dashboard: dashboard._id,
+        tileId: dashboard.tiles[0].id,
+      });
+      const url = `${ALERTS_BASE_URL}/${alert.id}`;
+
+      const fetched = await authRequest('get', url).expect(200);
+      expect(fetched.body.data).toMatchObject({
+        displayName: 'Inherited - Tile',
+        tags: ['inherited-tag'],
+      });
+
+      const silenced = await authRequest('post', `${url}/silenced`)
+        .send({ mutedUntil: futureDate().toISOString() })
+        .expect(200);
+      expect(silenced.body.data).toMatchObject({
+        displayName: fetched.body.data.displayName,
+        tags: fetched.body.data.tags,
+      });
+
+      const unsilenced = await authRequest('delete', `${url}/silenced`).expect(
+        200,
+      );
+      expect(unsilenced.body.data).toMatchObject({
+        displayName: fetched.body.data.displayName,
+        tags: fetched.body.data.tags,
+      });
+    });
+
     it('should return 404 with a JSON body when silencing a non-existent alert', async () => {
       const response = await authRequest(
         'post',
