@@ -376,18 +376,28 @@ const fastifySQL = ({
   }
 };
 
+// keySql/valueSql are SQL literals taken verbatim from the parsed condition.
+// The parser's `.value` keeps escape sequences undecoded, so re-escaping it
+// with SqlString would double-escape quotes and backslashes.
+function kvItemsConcatSql(
+  keySql: string,
+  separator: string,
+  valueSql: string,
+): string {
+  return `concat(${keySql}, ${SqlString.format('?', [separator])}, ${valueSql})`;
+}
+
 function generateHasSqlForKvItemsColumn(
   column: string,
-  key: string,
+  keySql: string,
   separator: string,
-  value: string,
+  valueSql: string,
 ): string {
-  return SqlString.format('has(??, concat(?, ?, ?))', [
-    column,
-    key,
+  return `has(${SqlString.format('??', [column])}, ${kvItemsConcatSql(
+    keySql,
     separator,
-    value,
-  ]);
+    valueSql,
+  )})`;
 }
 
 export const rewriteSqlFilterWithKvItems = (
@@ -432,11 +442,11 @@ export const rewriteSqlFilterWithKvItems = (
       ) {
         return;
       }
-      const mapKey: string = idxNode.value;
+      const keySql = parser.exprToSQL(idxNode);
       const info = textIndexInfoLookup.get(mapColumn)?.kv;
       if (!info) return;
 
-      let values: string[];
+      const valueNodes: { value: string }[] = [];
       if (op === '=') {
         const right = node.right;
         if (
@@ -445,11 +455,10 @@ export const rewriteSqlFilterWithKvItems = (
         ) {
           return;
         }
-        values = [right.value];
+        valueNodes.push(right);
       } else {
         const right = node.right;
         if (right?.type !== 'expr_list' || !Array.isArray(right.value)) return;
-        const collected: string[] = [];
         for (const item of right.value) {
           if (
             item?.type !== 'single_quote_string' ||
@@ -457,41 +466,41 @@ export const rewriteSqlFilterWithKvItems = (
           ) {
             return;
           }
-          collected.push(item.value);
+          valueNodes.push(item);
         }
-        values = collected;
       }
       // Bail on empty values: `Map['k']='' ` also matches absent keys because
       // Map(String, String)'s subscript default is '', which `has(items, 'k=')`
       // alone does not preserve. Same rationale for empty entries in IN lists.
-      if (values.length === 0 || values.some(v => v === '')) return;
+      if (valueNodes.length === 0 || valueNodes.some(v => v.value === '')) {
+        return;
+      }
+      const valueSqls = valueNodes.map(v => parser.exprToSQL(v));
 
       let replacement: string;
-      if (values.length === 1) {
+      if (valueSqls.length === 1) {
         replacement = generateHasSqlForKvItemsColumn(
           info.columnName,
-          mapKey,
+          keySql,
           info.separator,
-          values[0],
+          valueSqls[0],
         );
       } else if (info.useHasAny) {
         // ClickHouse >= 26.5 supports `hasAny` over the direct_read map items
         // column in a single call.
         replacement = `hasAny(${SqlString.format('??', [
           info.columnName,
-        ])}, array(${values
-          .map(v =>
-            SqlString.format('concat(?, ?, ?)', [mapKey, info.separator, v]),
-          )
+        ])}, array(${valueSqls
+          .map(v => kvItemsConcatSql(keySql, info.separator, v))
           .join(', ')}))`;
       } else {
         // Backport branches (26.2/26.3/26.4) support `has` but not `hasAny` over
         // the items column, so we fall back to a chain of `has(...) OR ...`.
-        replacement = `(${values
+        replacement = `(${valueSqls
           .map(v =>
             generateHasSqlForKvItemsColumn(
               info.columnName,
-              mapKey,
+              keySql,
               info.separator,
               v,
             ),
