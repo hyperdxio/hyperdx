@@ -387,19 +387,6 @@ function kvItemsConcatSql(
   return `concat(${keySql}, ${SqlString.format('?', [separator])}, ${valueSql})`;
 }
 
-function generateHasSqlForKvItemsColumn(
-  column: string,
-  keySql: string,
-  separator: string,
-  valueSql: string,
-): string {
-  return `has(${SqlString.format('??', [column])}, ${kvItemsConcatSql(
-    keySql,
-    separator,
-    valueSql,
-  )})`;
-}
-
 export const rewriteSqlFilterWithKvItems = (
   condition: string,
   textIndexInfoLookup: TextIndexInfoLookup,
@@ -477,34 +464,24 @@ export const rewriteSqlFilterWithKvItems = (
       }
       const valueSqls = valueNodes.map(v => parser.exprToSQL(v));
 
+      const columnSql = SqlString.format('??', [info.columnName]);
+      const concatSql = (valueSql: string) =>
+        kvItemsConcatSql(keySql, info.separator, valueSql);
+
       let replacement: string;
       if (valueSqls.length === 1) {
-        replacement = generateHasSqlForKvItemsColumn(
-          info.columnName,
-          keySql,
-          info.separator,
-          valueSqls[0],
-        );
+        replacement = `has(${columnSql}, ${concatSql(valueSqls[0])})`;
       } else if (info.useHasAny) {
         // ClickHouse >= 26.5 supports `hasAny` over the direct_read map items
         // column in a single call.
-        replacement = `hasAny(${SqlString.format('??', [
-          info.columnName,
-        ])}, array(${valueSqls
-          .map(v => kvItemsConcatSql(keySql, info.separator, v))
+        replacement = `hasAny(${columnSql}, array(${valueSqls
+          .map(concatSql)
           .join(', ')}))`;
       } else {
         // Backport branches (26.2/26.3/26.4) support `has` but not `hasAny` over
         // the items column, so we fall back to a chain of `has(...) OR ...`.
         replacement = `(${valueSqls
-          .map(v =>
-            generateHasSqlForKvItemsColumn(
-              info.columnName,
-              keySql,
-              info.separator,
-              v,
-            ),
-          )
+          .map(v => `has(${columnSql}, ${concatSql(v)})`)
           .join(' OR ')})`;
       }
 
