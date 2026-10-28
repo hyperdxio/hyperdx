@@ -6,6 +6,7 @@
 
 /** Bulleted list of the builder (non-SQL) query tools and what they're for. */
 export const BUILDER_TOOLS_LIST = [
+  '  • clickstack_service_health — per-service throughput, errors, latency vs yesterday, ranked',
   '  • clickstack_table — aggregations, top-N, single-value KPIs, breakdowns',
   '  • clickstack_timeseries — trends / metrics over time',
   '  • clickstack_search — browsing individual log/trace rows',

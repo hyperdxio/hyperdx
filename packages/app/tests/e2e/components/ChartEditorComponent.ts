@@ -210,6 +210,24 @@ export class ChartEditorComponent {
   }
 
   /**
+   * Type a multi-line SQL WHERE clause, one line per entry. Lines are split
+   * with Shift+Enter, since a bare Enter in the editor submits the query.
+   */
+  async setMultilineSqlWhere(
+    lines: string[],
+    scope: 'chart' | 'series' = 'chart',
+  ) {
+    const [first = '', ...rest] = lines;
+    await this.setWhereLanguage('SQL', scope);
+    await this.whereInput(scope).fillSql(first);
+    for (const line of rest) {
+      await this.page.keyboard.press('Shift+Enter');
+      await this.page.keyboard.type(line);
+    }
+    await dismissSqlAutocomplete(this.page);
+  }
+
+  /**
    * Type into a WHERE input while it is in Lucene mode, where it renders as a
    * plain textarea rather than CodeMirror. Leaves the suggestion dropdown open.
    */
@@ -1248,6 +1266,32 @@ export class ChartEditorComponent {
     return this.page
       .getByTestId('heatmap-scale-control')
       .getByRole('radio', { name: scale, exact: true });
+  }
+
+  /**
+   * Set "Line interpolation" in the Display Settings drawer (line and stacked
+   * line charts). Opens the drawer, picks the mode, then applies and closes.
+   */
+  async setLineInterpolation(mode: 'Smooth' | 'Linear' | 'Step') {
+    await this.openDisplaySettings();
+    await this.page
+      .getByTestId('line-interpolation-control')
+      .locator('.mantine-SegmentedControl-label')
+      .filter({ hasText: new RegExp(`^${mode}$`) })
+      .click();
+    await this.applyDisplaySettings();
+  }
+
+  /** Switch line / stacked bar / stacked line from the preview's toolbar. */
+  async setPreviewDisplayType(type: 'line' | 'stacked_bar' | 'stacked_line') {
+    await this.editorForm().getByTestId(`display-switcher-${type}`).click();
+  }
+
+  /** A "Line interpolation" option's (visually hidden) radio in the open drawer. */
+  lineInterpolationOption(mode: 'Smooth' | 'Linear' | 'Step'): Locator {
+    return this.page
+      .getByTestId('line-interpolation-control')
+      .getByRole('radio', { name: mode, exact: true });
   }
 
   /**

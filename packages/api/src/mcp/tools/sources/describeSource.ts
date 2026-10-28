@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import {
@@ -145,6 +146,8 @@ async function describeSourceSchema(
       body: source.bodyExpression,
       serviceName: source.serviceNameExpression,
       severityText: source.severityTextExpression,
+      severityNumber: source.severityNumberExpression,
+      eventName: source.eventNameExpression,
       traceId: source.traceIdExpression,
     };
   } else if (source.kind === SourceKind.Metric) {
@@ -555,7 +558,7 @@ export function registerDescribeSource({
     'clickstack_describe_source',
     {
       title: 'Describe Source Schema',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'CALL THIS BEFORE WRITING QUERIES — prevents unknown-column errors.\n\n' +
         'Returns the full column schema, map-attribute keys, and sampled low-cardinality ' +

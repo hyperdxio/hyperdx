@@ -5,6 +5,12 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
 
+import {
+  decodeUrlParamValue,
+  encodeJsonUrlParamValue,
+  encodeUrlParamValue,
+} from './urlParamEncoding';
+
 /**
  * Problem: nuqs serializes spaces as '+' (form-encoding). When
  * URLs are shared via Microsoft Teams (and some other systems), they re-encode
@@ -25,15 +31,8 @@ import { SortingState } from '@tanstack/react-table';
  * as %0A automatically).
  */
 export const parseAsStringEncoded = createParser<string>({
-  parse: value => {
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      // Malformed URI sequence – return as-is for robustness.
-      return value;
-    }
-  },
-  serialize: value => encodeURIComponent(value),
+  parse: decodeUrlParamValue,
+  serialize: encodeUrlParamValue,
 });
 
 /**
@@ -80,12 +79,12 @@ export function parseAsJsonEncoded<T>(
       }
 
       try {
-        return finalize(JSON.parse(decodeURIComponent(value)));
+        return finalize(JSON.parse(decodeUrlParamValue(value)));
       } catch {
         return null;
       }
     },
-    serialize: value => encodeURIComponent(JSON.stringify(value)),
+    serialize: encodeJsonUrlParamValue,
   });
 }
 

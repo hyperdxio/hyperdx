@@ -1,6 +1,6 @@
 // Port from ChartUtils + source.ts
 import { add as fnsAdd, format as fnsFormat } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
 import { omit } from 'lodash';
 import { z } from 'zod';
 
@@ -760,24 +760,49 @@ const TIME_TOKENS = {
   },
 };
 
+export const UTC_TIME_ZONE = 'Etc/UTC';
+
+/** Formats `date` in `timeZone` (an IANA name), or the local zone if unset. */
 export const formatDate = (
   date: Date,
   {
-    isUTC = false,
+    timeZone,
     format = 'normal',
     clock = '12h',
   }: {
-    isUTC?: boolean;
+    timeZone?: string;
     format?: 'normal' | 'short' | 'withMs' | 'time' | 'withYear';
     clock?: '12h' | '24h';
   },
 ) => {
   const formatStr = TIME_TOKENS[format][clock];
 
-  return isUTC
-    ? formatInTimeZone(date, 'Etc/UTC', formatStr)
+  return timeZone
+    ? formatInTimeZone(date, timeZone, formatStr)
     : fnsFormat(date, formatStr);
 };
+
+/**
+ * The clock reading of `date` in `timeZone`, as a Date whose UTC fields hold
+ * that reading. Lets date maths and parsing run in a zone other than the
+ * runtime's own, using the UTC getters and setters.
+ */
+export function toWallClock(date: Date, timeZone: string): Date {
+  // Not getTimezoneOffset: it takes a clock reading, so for instants near a
+  // DST change it returns the offset from the other side of the change.
+  return new Date(
+    formatInTimeZone(date, timeZone, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
+  );
+}
+
+/**
+ * Inverse of `toWallClock`, using the zone's offset on that date. A reading in
+ * the hour repeated when clocks go back maps to its first occurrence.
+ */
+export function fromWallClock(wallClock: Date, timeZone: string): Date {
+  // An ISO string without an offset is read as a clock reading in `timeZone`.
+  return zonedTimeToUtc(wallClock.toISOString().slice(0, 23), timeZone);
+}
 
 type Dashboard = z.infer<typeof DashboardSchema>;
 type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;

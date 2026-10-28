@@ -27,6 +27,7 @@ jest.mock('next/router', () => ({
 jest.mock('nuqs', () => ({
   parseAsString: 'parseAsString',
   useQueryState: () => [null, jest.fn()],
+  createParser: (opts: object) => opts,
 }));
 jest.mock('../source', () => ({
   useSources: () => ({ data: mockSources }),

@@ -20,6 +20,7 @@ import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import { getSource } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
   isQueryOutOfTime,
@@ -64,7 +65,7 @@ export function registerTraceBreakdown({
     'clickstack_trace_top_time_consuming_operations',
     {
       title: 'Top Time-Consuming Operations Across Matching Traces',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description: TRACE_BREAKDOWN_DESCRIPTION,
       inputSchema: traceBreakdownSchema,
     },

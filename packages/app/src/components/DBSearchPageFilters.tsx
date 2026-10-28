@@ -91,6 +91,7 @@ import {
   type FacetEntry,
   getFilterStateEntry,
   groupFacetsByBaseName,
+  sortNestedFacetKeys,
   toQuotedClickHouseKeyExpression,
 } from './DBSearchPageFilters/utils';
 
@@ -1185,6 +1186,7 @@ const DBSearchPageFiltersComponent = ({
   onCollapse,
   searchScope = 'span',
   onSearchScopeChange,
+  fill = false,
 }: {
   analysisMode: 'results' | 'delta' | 'pattern';
   setAnalysisMode: (mode: 'results' | 'delta' | 'pattern') => void;
@@ -1200,6 +1202,8 @@ const DBSearchPageFiltersComponent = ({
   onCollapse?: () => void;
   searchScope?: SearchScope;
   onSearchScopeChange?: (scope: SearchScope) => void;
+  /** Fill the parent instead of the resizable desktop width. Used in the compact drawer. */
+  fill?: boolean;
 } & FilterStateHook) => {
   const setFilterValue = useCallback(
     (
@@ -1424,6 +1428,8 @@ const DBSearchPageFiltersComponent = ({
         value: Array.from(filterState[key].included),
       });
     }
+
+    sortNestedFacetKeys(_facets);
 
     // prioritize facets that are primary keys
     _facets.sort((a, b) => {
@@ -1742,8 +1748,23 @@ const DBSearchPageFiltersComponent = ({
   );
 
   return (
-    <Box className={classes.filtersPanel} style={{ width: `${size}%` }}>
-      <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
+    <Box
+      className={classes.filtersPanel}
+      style={
+        fill
+          ? {
+              width: '100%',
+              maxWidth: 'none',
+              minWidth: 0,
+              flex: 1,
+              borderRight: 'none',
+            }
+          : { width: `${size}%` }
+      }
+    >
+      {!fill && (
+        <div className={resizeStyles.resizeHandle} onMouseDown={startResize} />
+      )}
       <ScrollArea
         h="100%"
         scrollbarSize={4}

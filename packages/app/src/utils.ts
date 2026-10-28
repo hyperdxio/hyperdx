@@ -9,6 +9,11 @@ import {
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import {
+  replaceBacktickedIdentifiers,
+  restoreReplacements,
+  splitAndTrimWithBracket,
+} from '@hyperdx/common-utils/dist/core/utils';
+import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
   ColorCondition,
@@ -352,6 +357,27 @@ export const getLogLevelClass = (lvl: string | undefined) => {
         ? 'info'
         : undefined;
 };
+
+/**
+ * Error or warn level of a log row, or undefined when it is neither.
+ * SeverityNumber is normalized by the SDK, so it wins when set; 0 means
+ * unspecified, which falls back to matching SeverityText.
+ * https://github.com/open-telemetry/opentelemetry-specification/blob/v1.59.0/specification/logs/data-model.md#field-severitynumber
+ */
+export function getLogSeverityLevel({
+  severityNumber,
+  severityText,
+}: {
+  severityNumber?: unknown;
+  severityText?: string;
+}): 'error' | 'warn' | undefined {
+  const number = Number(severityNumber);
+  if (number > 0) {
+    return number >= 17 ? 'error' : number >= 13 ? 'warn' : undefined;
+  }
+  const level = getLogLevelClass(severityText);
+  return level === 'error' || level === 'warn' ? level : undefined;
+}
 
 /**
  * Chart Categorical Palette - ten distinguishable hues based on
@@ -980,6 +1006,32 @@ const formatAutoScaleData = (
   return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
 };
 
+const AVERAGE_UNITS = [
+  [1e3, 'thousand'],
+  [1e6, 'million'],
+  [1e9, 'billion'],
+  [1e12, 'trillion'],
+] as const;
+
+// numbro's default lowPrecision abbreviates anything that rounds to the next
+// unit (750 -> "0.8k"), while turning it off picks the unit before rounding
+// (999,700 -> "1000k"). Pick the unit from the rounded value instead.
+function averageUnitOptions(
+  displayed: number,
+  mantissa: number,
+): Pick<numbro.Format, 'forceAverage' | 'lowPrecision'> {
+  const abs = Math.abs(displayed);
+  const round = (v: number) => Math.round(v * 10 ** mantissa) / 10 ** mantissa;
+  let scaled = abs;
+  let unit: numbro.Format['forceAverage'];
+  for (const [power, name] of AVERAGE_UNITS) {
+    if (round(scaled) < 1000) break;
+    unit = name;
+    scaled = abs / power;
+  }
+  return unit ? { forceAverage: unit } : { lowPrecision: false };
+}
+
 export const formatNumber = (
   value?: string | number,
   options?: NumberFormat,
@@ -1036,11 +1088,20 @@ export const formatNumber = (
     return formatDurationMs(ms);
   }
 
+  // Factor is only currently available for the time output
+  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
     mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
+    ...(options.average &&
+      options.output !== 'byte' &&
+      averageUnitOptions(
+        value * factor * (options.output === 'percent' ? 100 : 1),
+        mantissa,
+      )),
     ...(options.output === 'byte' && {
       base: options.decimalBytes ? 'decimal' : 'general',
       spaceSeparated: true,
@@ -1050,9 +1111,6 @@ export const formatNumber = (
       currencySymbol: options.currencySymbol || '$',
     }),
   };
-
-  // Factor is only currently available for the time output
-  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
 
   return (
     numbro(value * factor).format(numbroFormat) +
@@ -1269,10 +1327,23 @@ export const withMapKeyAlias = (
 };
 
 /**
+ * Split a SELECT or ORDER BY list. A comma inside a backtick-quoted name is
+ * not a separator. Those names are tokenized first so a later join cannot
+ * insert a space inside one. The shared splitter stays unaware of backticks.
+ */
+export function splitClauseList(input: string): string[] {
+  const { sqlWithReplacements, replacements } =
+    replaceBacktickedIdentifiers(input);
+  return splitAndTrimWithBracket(sqlWithReplacements).map(part =>
+    restoreReplacements(part, replacements.quotedText),
+  );
+}
+
+/**
  * The sort to keep once a SELECT item is removed. Sorting on an aliased column
  * from the table header orders by the alias itself (`"service.name" DESC`),
- * which stops resolving once the item is gone, so that falls back to the
- * default sort.
+ * which stops resolving once the item is gone. Each top-level key that sorts
+ * by that alias is dropped. The default sort is used only when none remain.
  */
 export const orderByAfterRemovingSelectItem = (
   item: string,
@@ -1283,8 +1354,15 @@ export const orderByAfterRemovingSelectItem = (
   if (alias == null) {
     return orderBy;
   }
-  const sortedBy = orderBy.trim().replace(/\s+(ASC|DESC)$/i, '');
-  return sortedBy === `"${alias}"` ? defaultOrderBy : orderBy;
+  const quoted = `"${alias}"`;
+  const keys = splitClauseList(orderBy);
+  const kept = keys.filter(
+    key => key.replace(/\s+(ASC|DESC)$/i, '') !== quoted,
+  );
+  if (kept.length === keys.length) {
+    return orderBy;
+  }
+  return kept.length === 0 ? defaultOrderBy : kept.join(', ');
 };
 
 const _useTry = <T>(fn: () => T): [null | Error | unknown, null | T] => {

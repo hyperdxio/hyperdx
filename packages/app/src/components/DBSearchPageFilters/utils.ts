@@ -1,7 +1,10 @@
 // Utility functions for parsing and grouping map-like field names
 
 import SqlString from 'sqlstring';
-import { parseKeyPath } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  type Field,
+  parseKeyPath,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import type { FilterState } from '@hyperdx/common-utils/dist/filters';
 
 import type { Facet } from '@/hooks/useMetadata';
@@ -71,6 +74,18 @@ export function cleanClickHouseExpression(key: string): string {
   cleanKey = cleanKey.replace(/`([^`]+)`/g, '$1');
 
   return cleanKey;
+}
+
+const isLowCardinality = (type: string) => type.includes('LowCardinality');
+
+// Low-cardinality fields first: they make the most useful facets and groupings.
+export function sortLowCardinalityFirst<T extends Pick<Field, 'type'>>(
+  fields: T[],
+): T[] {
+  return [...fields].sort(
+    (a, b) =>
+      Number(isLowCardinality(b.type)) - Number(isLowCardinality(a.type)),
+  );
 }
 
 // Parse map-like field names and extract the base name and property path
@@ -172,6 +187,31 @@ export function groupFacetsByBaseName(facets: FacetEntry[]) {
   }
 
   return { grouped: Array.from(grouped.values()), nonGrouped };
+}
+
+const naturalCompare = new Intl.Collator(undefined, { numeric: true }).compare;
+
+// Sorts the keys inside each nested group A–Z, keeping groups in the order they
+// first appear. Other facets keep their order and move ahead of the nested
+// ones, which is harmless because grouped and non-grouped facets render
+// separately.
+export function sortNestedFacetKeys(facets: { key: string }[]) {
+  const groupOrder = new Map<string, number>();
+  for (const { key } of facets) {
+    const baseName = parseMapFieldName(key)?.baseName;
+    if (baseName != null && !groupOrder.has(baseName)) {
+      groupOrder.set(baseName, groupOrder.size);
+    }
+  }
+  facets.sort((a, b) => {
+    const nestedA = parseMapFieldName(a.key);
+    const nestedB = parseMapFieldName(b.key);
+    if (!nestedA || !nestedB) return Number(!!nestedA) - Number(!!nestedB);
+    return (
+      groupOrder.get(nestedA.baseName)! - groupOrder.get(nestedB.baseName)! ||
+      naturalCompare(nestedA.propertyPath, nestedB.propertyPath)
+    );
+  });
 }
 
 // Look up a filterState entry by either bracket-form or dot-form map sub-key.

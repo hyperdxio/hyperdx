@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
@@ -83,7 +84,7 @@ const emergingSignalsSchema = z.object({
   currentEndTime: z
     .string()
     .describe(
-      'End of the CURRENT / report window (ISO 8601). Required — pass the ' +
+      'End of the CURRENT / report window (ISO 8601). Pass the ' +
         'current timestamp for a window ending now.',
     ),
   baselineStartTime: z
@@ -104,7 +105,7 @@ const emergingSignalsSchema = z.object({
     .max(25_000)
     .optional()
     .default(10_000)
-    .describe('Rows sampled per window for pattern mining. Default 10000.'),
+    .describe('Rows sampled from each window for pattern mining.'),
   topN: z
     .number()
     .min(1)
@@ -112,7 +113,7 @@ const emergingSignalsSchema = z.object({
     .optional()
     .default(20)
     .describe(
-      'Max emerging + disappeared patterns to return each. Default 20.',
+      'Maximum patterns returned in each list (emerging and disappeared).',
     ),
   minShareRatio: z
     .number()
@@ -122,8 +123,8 @@ const emergingSignalsSchema = z.object({
     .describe(
       'How many times more frequent (by share of window) a pattern must be in ' +
         'the current window vs baseline to count as EMERGING (and vice-versa ' +
-        'for DISAPPEARED). Default 3× — a pattern must have tripled its share to ' +
-        'qualify as a shift, not just noise.',
+        'for DISAPPEARED). At 3, a pattern must have tripled its share to ' +
+        'qualify as a shift rather than noise.',
     ),
 });
 
@@ -139,7 +140,7 @@ export function registerEmergingSignals({
     'clickstack_emerging_signals',
     {
       title: 'Emerging & Disappeared Signals',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Detect what is NEW or GONE between an earlier baseline window and a ' +
         'current window — log/event patterns that emerged, ramped up, or ' +

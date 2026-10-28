@@ -690,6 +690,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *             instead of zero, making small fluctuations between series easier
  *             to see.
  *           default: false
+ *         lineInterpolation:
+ *           type: string
+ *           enum: [smooth, linear, step]
+ *           example: "step"
+ *           description: >
+ *             How points are connected. Defaults to "smooth" when omitted.
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -834,6 +840,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *           type: boolean
  *           description: Fill missing time buckets with zero instead of leaving gaps.
  *           default: true
+ *         lineInterpolation:
+ *           type: string
+ *           enum: [smooth, linear, step]
+ *           example: "step"
+ *           description: >
+ *             How points are connected. Defaults to "linear" when omitted.
  *         numberFormat:
  *           $ref: '#/components/schemas/NumberFormat'
  *           description: Number formatting options for displayed values.
@@ -1223,12 +1235,18 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *
  *     HeatmapChartConfig:
  *       description: >
- *         Heatmap tile. Heatmap is builder-only (no Raw SQL variant). Omit
- *         heatmapMode (or set it to "distribution") for the distribution
- *         variant; set heatmapMode to "series" for the series variant.
+ *         Heatmap tile. There is no Raw SQL variant. For the builder variant,
+ *         omit heatmapMode (or set it to "distribution") for the distribution
+ *         heatmap, or set it to "series" for the series heatmap. Set
+ *         configType to "promql" for the PromQL variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/HeatmapDistributionChartConfig'
  *         - $ref: '#/components/schemas/HeatmapSeriesChartConfig'
+ *         - $ref: '#/components/schemas/HeatmapPromqlChartConfig'
+ *       discriminator:
+ *         propertyName: configType
+ *         mapping:
+ *           promql: '#/components/schemas/HeatmapPromqlChartConfig'
  *
  *     SearchChartConfig:
  *       type: object
@@ -1374,6 +1392,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *                 data instead of zero, making small fluctuations between
  *                 series easier to see.
  *               default: false
+ *             lineInterpolation:
+ *               type: string
+ *               enum: [smooth, linear, step]
+ *               example: "step"
+ *               description: >
+ *                 How points are connected. Defaults to "smooth" when omitted.
  *
  *     BarRawSqlChartConfig:
  *       description: Raw SQL configuration for a stacked-bar time-series chart.
@@ -1418,6 +1442,12 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               type: boolean
  *               description: Expand date range boundaries to the query granularity interval.
  *               default: true
+ *             lineInterpolation:
+ *               type: string
+ *               enum: [smooth, linear, step]
+ *               example: "step"
+ *               description: >
+ *                 How points are connected. Defaults to "linear" when omitted.
  *
  *     TableRawSqlChartConfig:
  *       description: Raw SQL configuration for a table chart.
@@ -1490,44 +1520,425 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *               description: Display as a categorical bar chart.
  *               example: "bar"
  *
+ *     PromqlRangeExpression:
+ *       type: object
+ *       required:
+ *         - expression
+ *       description: A PromQL expression evaluated over the dashboard time range.
+ *       properties:
+ *         expression:
+ *           type: string
+ *           maxLength: 10000
+ *           description: >
+ *             PromQL expression. Supports dashboard variables and the
+ *             $__interval, $__rate_interval, and $__range macros.
+ *           example: "sum by (job) (rate(http_requests_total[$__rate_interval]))"
+ *         alias:
+ *           type: string
+ *           maxLength: 10000
+ *           description: Prefixed to every series name this expression produces.
+ *           example: "Requests"
+ *
+ *     PromqlInstantExpression:
+ *       description: >
+ *         A PromQL expression on a table, number, pie, or bar tile, which can be
+ *         evaluated at a single instant instead of over a range.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlRangeExpression'
+ *         - type: object
+ *           properties:
+ *             queryType:
+ *               type: string
+ *               enum: [range, instant]
+ *               description: >
+ *                 Whether to evaluate over the time range or at its end.
+ *                 Defaults to "range" when omitted.
+ *               example: "instant"
+ *
+ *     PromqlReducibleExpression:
+ *       description: >
+ *         A PromQL expression on a number, pie, or bar tile, which reduces each
+ *         series of a range query to a single value.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlInstantExpression'
+ *         - type: object
+ *           properties:
+ *             reducer:
+ *               type: string
+ *               enum: [lastNotNull, min, max, mean, sum, count]
+ *               description: >
+ *                 How each series' samples are reduced to one value. Defaults
+ *                 to "lastNotNull" when omitted. It also applies to instant
+ *                 queries, where each series has a single sample, so e.g.
+ *                 "count" turns every value into 1.
+ *               example: "max"
+ *
+ *     PromqlChartConfigBase:
+ *       type: object
+ *       required:
+ *         - configType
+ *         - sourceId
+ *       description: >
+ *         Shared fields for PromQL chart configs. Set configType to "promql" and
+ *         provide sourceId + expressions. The connection is read from the source.
+ *         PromQL is a preview feature and must be enabled on the deployment
+ *         (ENABLE_PROMQL) before PromQL tiles can be queried.
+ *       properties:
+ *         configType:
+ *           type: string
+ *           enum: [promql]
+ *           description: Must be "promql" to use the PromQL chart config variant.
+ *           example: "promql"
+ *         sourceId:
+ *           type: string
+ *           description: ID of the PromQL source to query. Must be a source of kind "promql".
+ *           example: "65f5e4a3b9e77c001a333333"
+ *         granularity:
+ *           type: string
+ *           pattern: '^(\d+ (second|minute|hour|day)|auto)$'
+ *           description: >
+ *             Resolution of range queries, used as the Prometheus step and the
+ *             $__interval macro. Defaults to "auto", which picks one from the
+ *             time range.
+ *           example: "5 minute"
+ *         numberFormat:
+ *           $ref: '#/components/schemas/NumberFormat'
+ *           description: Number formatting options for displayed values.
+ *
+ *     PromqlTimeChartConfigBase:
+ *       description: Shared fields for PromQL time-series chart configs.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - expressions
+ *           properties:
+ *             expressions:
+ *               type: array
+ *               minItems: 1
+ *               maxItems: 10
+ *               description: PromQL expressions to plot.
+ *               items:
+ *                 $ref: '#/components/schemas/PromqlRangeExpression'
+ *             legendTemplate:
+ *               type: string
+ *               maxLength: 1024
+ *               description: >
+ *                 Template for series names, using the series' Prometheus labels
+ *                 in double braces.
+ *               example: "{{job}} - {{instance}}"
+ *             fillNulls:
+ *               type: boolean
+ *               description: Fill missing time buckets with zero instead of leaving gaps.
+ *               default: true
+ *             alignDateRangeToGranularity:
+ *               type: boolean
+ *               description: Expand date range boundaries to the query granularity interval.
+ *               default: true
+ *             seriesLimit:
+ *               type: integer
+ *               minimum: 0
+ *               description: >
+ *                 Maximum number of series rendered (top-N by value). Omit to use
+ *                 the default render cap, set 0 for unlimited, or a positive N to
+ *                 keep the top N series.
+ *               example: 5
+ *
+ *     LinePromqlChartConfig:
+ *       description: PromQL configuration for a line time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlTimeChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [line]
+ *               description: Display as a line time-series chart.
+ *               example: "line"
+ *             compareToPreviousPeriod:
+ *               type: boolean
+ *               description: Overlay the equivalent previous time period for comparison.
+ *               default: false
+ *             lineInterpolation:
+ *               type: string
+ *               enum: [smooth, linear, step]
+ *               example: "step"
+ *               description: >
+ *                 How points are connected. Defaults to "smooth" when omitted.
+ *
+ *     BarPromqlChartConfig:
+ *       description: PromQL configuration for a stacked-bar time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlTimeChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [stacked_bar]
+ *               description: Display as a stacked-bar time-series chart.
+ *               example: "stacked_bar"
+ *
+ *     StackedLinePromqlChartConfig:
+ *       description: PromQL configuration for a stacked-line time-series chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlTimeChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [stacked_line]
+ *               description: Display as a stacked-line time-series chart.
+ *               example: "stacked_line"
+ *             lineInterpolation:
+ *               type: string
+ *               enum: [smooth, linear, step]
+ *               example: "step"
+ *               description: >
+ *                 How points are connected. Defaults to "linear" when omitted.
+ *
+ *     TablePromqlChartConfig:
+ *       description: >
+ *         PromQL configuration for a table chart, with one row per sample: a
+ *         column per label, a Value column, and a Timestamp column when the
+ *         expression is a range query. An instant query gives one row per
+ *         series.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *             - expressions
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [table]
+ *               description: Display as a table chart.
+ *               example: "table"
+ *             expressions:
+ *               type: array
+ *               minItems: 1
+ *               maxItems: 10
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
+ *               items:
+ *                 $ref: '#/components/schemas/PromqlInstantExpression'
+ *
+ *     NumberPromqlChartConfig:
+ *       description: PromQL configuration for a single big-number chart.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *             - expressions
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [number]
+ *               description: Display as a single big-number chart.
+ *               example: "number"
+ *             expressions:
+ *               type: array
+ *               minItems: 1
+ *               maxItems: 10
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored. The tile displays the first value.
+ *               items:
+ *                 $ref: '#/components/schemas/PromqlReducibleExpression'
+ *             color:
+ *               $ref: '#/components/schemas/ChartPaletteToken'
+ *               description: Optional static color applied to the displayed number.
+ *             colorRules:
+ *               type: array
+ *               maxItems: 10
+ *               description: >
+ *                 Ordered conditional color rules evaluated against the displayed
+ *                 value (last match wins). Falls back to color, then the default
+ *                 text color when no rule matches.
+ *               items:
+ *                 $ref: '#/components/schemas/NumberTileColorCondition'
+ *             backgroundChart:
+ *               $ref: '#/components/schemas/BackgroundChart'
+ *               description: >
+ *                 Optional trend sparkline drawn behind the number. Only rendered
+ *                 when the expression uses a range query.
+ *
+ *     PiePromqlChartConfig:
+ *       description: PromQL configuration for a pie chart, with one slice per series.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *             - expressions
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [pie]
+ *               description: Display as a pie chart.
+ *               example: "pie"
+ *             expressions:
+ *               type: array
+ *               minItems: 1
+ *               maxItems: 10
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
+ *               items:
+ *                 $ref: '#/components/schemas/PromqlReducibleExpression'
+ *             legendTemplate:
+ *               type: string
+ *               maxLength: 1024
+ *               description: >
+ *                 Template for slice names, using the series' Prometheus labels
+ *                 in double braces.
+ *               example: "{{job}}"
+ *             limit:
+ *               type: integer
+ *               minimum: 0
+ *               description: >
+ *                 Maximum number of slices (top-N by value), at most 500. Omit
+ *                 or set 0 to show up to 500.
+ *               example: 10
+ *
+ *     CategoricalBarPromqlChartConfig:
+ *       description: PromQL configuration for a categorical bar chart, with one bar per series.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *             - expressions
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [bar]
+ *               description: Display as a categorical bar chart.
+ *               example: "bar"
+ *             expressions:
+ *               type: array
+ *               minItems: 1
+ *               maxItems: 10
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
+ *               items:
+ *                 $ref: '#/components/schemas/PromqlReducibleExpression'
+ *             legendTemplate:
+ *               type: string
+ *               maxLength: 1024
+ *               description: >
+ *                 Template for bar names, using the series' Prometheus labels in
+ *                 double braces.
+ *               example: "{{job}}"
+ *             limit:
+ *               type: integer
+ *               minimum: 0
+ *               description: >
+ *                 Maximum number of bars (top-N by value), at most 500. Omit or
+ *                 set 0 to show up to 500.
+ *               example: 10
+ *
+ *     HeatmapPromqlChartConfig:
+ *       description: PromQL configuration for a heatmap.
+ *       allOf:
+ *         - $ref: '#/components/schemas/PromqlChartConfigBase'
+ *         - type: object
+ *           required:
+ *             - displayType
+ *             - expressions
+ *           properties:
+ *             displayType:
+ *               type: string
+ *               enum: [heatmap]
+ *               description: Display as a heatmap.
+ *               example: "heatmap"
+ *             expressions:
+ *               type: array
+ *               minItems: 1
+ *               maxItems: 10
+ *               description: >
+ *                 PromQL expressions. Only the first is queried; the rest are
+ *                 kept but ignored.
+ *               items:
+ *                 $ref: '#/components/schemas/PromqlRangeExpression'
+ *             heatmapMode:
+ *               type: string
+ *               enum: [distribution, series, histogram]
+ *               description: >
+ *                 "distribution" buckets the values of all series over time,
+ *                 "series" draws one row per series, and "histogram" draws one
+ *                 row per Prometheus histogram bucket (series need an "le"
+ *                 label). Defaults to "distribution" when omitted.
+ *               example: "histogram"
+ *             heatmapScaleType:
+ *               type: string
+ *               enum: [log, linear]
+ *               description: Y-axis scale of a distribution heatmap.
+ *               example: "log"
+ *             legendTemplate:
+ *               type: string
+ *               maxLength: 1024
+ *               description: >
+ *                 Template for row names of a series heatmap, using the series'
+ *                 Prometheus labels in double braces.
+ *               example: "{{job}}"
+ *
  *     LineChartConfig:
  *       description: >
  *         Line chart. Omit configType for the builder variant (requires sourceId
  *         and select). Set configType to "sql" for the Raw SQL variant (requires
- *         connectionId and sqlTemplate).
+ *         connectionId and sqlTemplate), or to "promql" for the PromQL variant
+ *         (requires sourceId and expressions).
  *       oneOf:
  *         - $ref: '#/components/schemas/LineBuilderChartConfig'
  *         - $ref: '#/components/schemas/LineRawSqlChartConfig'
+ *         - $ref: '#/components/schemas/LinePromqlChartConfig'
  *       discriminator:
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/LineRawSqlChartConfig'
+ *           promql: '#/components/schemas/LinePromqlChartConfig'
  *
  *     BarChartConfig:
  *       description: >
  *         Stacked-bar chart. Omit configType for the builder variant (requires
  *         sourceId and select). Set configType to "sql" for the Raw SQL variant
- *         (requires connectionId and sqlTemplate).
+ *         (requires connectionId and sqlTemplate), or to "promql" for the PromQL
+ *         variant (requires sourceId and expressions).
  *       oneOf:
  *         - $ref: '#/components/schemas/BarBuilderChartConfig'
  *         - $ref: '#/components/schemas/BarRawSqlChartConfig'
+ *         - $ref: '#/components/schemas/BarPromqlChartConfig'
  *       discriminator:
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/BarRawSqlChartConfig'
+ *           promql: '#/components/schemas/BarPromqlChartConfig'
  *
  *     StackedLineChartConfig:
  *       description: >
  *         Stacked-line chart. Omit configType for the builder variant (requires
  *         sourceId and select). Set configType to "sql" for the Raw SQL variant
- *         (requires connectionId and sqlTemplate).
+ *         (requires connectionId and sqlTemplate), or to "promql" for the PromQL
+ *         variant (requires sourceId and expressions).
  *       oneOf:
  *         - $ref: '#/components/schemas/StackedLineBuilderChartConfig'
  *         - $ref: '#/components/schemas/StackedLineRawSqlChartConfig'
+ *         - $ref: '#/components/schemas/StackedLinePromqlChartConfig'
  *       discriminator:
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/StackedLineRawSqlChartConfig'
+ *           promql: '#/components/schemas/StackedLinePromqlChartConfig'
  *
  *     OnClickFilterTemplate:
  *       type: object
@@ -1686,63 +2097,76 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       description: >
  *         Table chart. Omit configType for the builder variant (requires sourceId
  *         and select). Set configType to "sql" for the Raw SQL variant (requires
- *         connectionId and sqlTemplate).
+ *         connectionId and sqlTemplate), or to "promql" for the PromQL variant
+ *         (requires sourceId and expressions).
  *       oneOf:
  *         - $ref: '#/components/schemas/TableBuilderChartConfig'
  *         - $ref: '#/components/schemas/TableRawSqlChartConfig'
+ *         - $ref: '#/components/schemas/TablePromqlChartConfig'
  *       discriminator:
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/TableRawSqlChartConfig'
+ *           promql: '#/components/schemas/TablePromqlChartConfig'
  *
  *     NumberChartConfig:
  *       description: >
  *         Single big-number chart. Omit configType for the builder variant
  *         (requires sourceId and select). Set configType to "sql" for the Raw
- *         SQL variant (requires connectionId and sqlTemplate).
+ *         SQL variant (requires connectionId and sqlTemplate), or to "promql"
+ *         for the PromQL variant (requires sourceId and expressions).
  *       oneOf:
  *         - $ref: '#/components/schemas/NumberBuilderChartConfig'
  *         - $ref: '#/components/schemas/NumberRawSqlChartConfig'
+ *         - $ref: '#/components/schemas/NumberPromqlChartConfig'
  *       discriminator:
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/NumberRawSqlChartConfig'
+ *           promql: '#/components/schemas/NumberPromqlChartConfig'
  *
  *     PieChartConfig:
  *       description: >
  *         Pie chart. Omit configType for the builder variant (requires sourceId
  *         and select). Set configType to "sql" for the Raw SQL variant (requires
- *         connectionId and sqlTemplate).
+ *         connectionId and sqlTemplate), or to "promql" for the PromQL variant
+ *         (requires sourceId and expressions).
  *       oneOf:
  *         - $ref: '#/components/schemas/PieBuilderChartConfig'
  *         - $ref: '#/components/schemas/PieRawSqlChartConfig'
+ *         - $ref: '#/components/schemas/PiePromqlChartConfig'
  *       discriminator:
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/PieRawSqlChartConfig'
+ *           promql: '#/components/schemas/PiePromqlChartConfig'
  *
  *     CategoricalBarChartConfig:
  *       description: >
  *         Categorical bar chart (one bar per group value; not a time series).
  *         Omit configType for the builder variant (requires sourceId and
  *         select). Set configType to "sql" for the Raw SQL variant (requires
- *         connectionId and sqlTemplate).
+ *         connectionId and sqlTemplate), or to "promql" for the PromQL variant
+ *         (requires sourceId and expressions).
  *       oneOf:
  *         - $ref: '#/components/schemas/CategoricalBarBuilderChartConfig'
  *         - $ref: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *         - $ref: '#/components/schemas/CategoricalBarPromqlChartConfig'
  *       discriminator:
  *         propertyName: configType
  *         mapping:
  *           sql: '#/components/schemas/CategoricalBarRawSqlChartConfig'
+ *           promql: '#/components/schemas/CategoricalBarPromqlChartConfig'
  *
  *     TileConfig:
  *       description: >
  *         Tile chart configuration. displayType is the primary discriminant and
- *         determines which variant group applies. For displayTypes that support
- *         both builder and Raw SQL modes (line, stacked_bar, stacked_line, table,
- *         number, pie, bar), configType is the secondary discriminant: omit it for
- *         the builder variant or set it to "sql" for the Raw SQL variant. The heatmap,
- *         search, event_patterns, and markdown displayTypes only have a builder variant.
+ *         determines which variant group applies. configType is the secondary
+ *         discriminant: omit it for the builder variant, set it to "sql" for the
+ *         Raw SQL variant, or set it to "promql" for the PromQL variant. Line,
+ *         stacked_bar, stacked_line, table, number, pie, and bar support all
+ *         three. Heatmap supports builder and PromQL. Search, event_patterns,
+ *         and markdown only have a builder variant.
  *       oneOf:
  *         - $ref: '#/components/schemas/LineChartConfig'
  *         - $ref: '#/components/schemas/BarChartConfig'
@@ -2168,7 +2592,9 @@ const EXTERNAL_DASHBOARD_PROJECTION = {
  *       description: |
  *         A filter whose dropdown lists the values for a Prometheus label,
  *         read from a PromQL source over the dashboard's time range.
- *         Supports variable mode only.
+ *         Supports variable mode only. PromQL is a preview feature and must be
+ *         enabled on the deployment (ENABLE_PROMQL) before these filters can
+ *         list values.
  *       required:
  *         - type
  *         - name

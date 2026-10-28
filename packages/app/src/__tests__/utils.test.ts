@@ -20,6 +20,7 @@ import {
   formatNumber,
   getAllMetricTables,
   getColorFromCSSToken,
+  getLogSeverityLevel,
   getMetricTableName,
   isColumnInSelect,
   mapKeyBy,
@@ -29,6 +30,7 @@ import {
   parseTimestampToMs,
   resolveConditionalColor,
   sortingStateToOrderByString,
+  splitClauseList,
   stripTrailingSlash,
   useQueryHistory,
   withMapKeyAlias,
@@ -506,6 +508,36 @@ describe('formatNumber', () => {
         average: true,
       };
       expect(formatNumber(1234567, format)).toBe('1m');
+    });
+
+    it('only abbreviates from 1000, not from 500', () => {
+      const format: NumberFormat = {
+        output: 'number',
+        average: true,
+        mantissa: 1,
+      };
+      expect(formatNumber(750, format)).toBe('750.0');
+      expect(formatNumber(1500, format)).toBe('1.5k');
+      expect(formatNumber(600000, format)).toBe('600.0k');
+    });
+
+    it('moves to the next unit when rounding reaches 1000 of the current one', () => {
+      const format: NumberFormat = { output: 'number', average: true };
+      expect(formatNumber(999700, format)).toBe('1m');
+      expect(formatNumber(-999700, format)).toBe('-1m');
+      expect(formatNumber(999.6e6, format)).toBe('1b');
+      expect(formatNumber(999.6, format)).toBe('1k');
+      expect(formatNumber(999960, { ...format, mantissa: 1 })).toBe('1.0m');
+      expect(formatNumber(999940, { ...format, mantissa: 1 })).toBe('999.9k');
+      expect(formatNumber(9.9999, { output: 'percent', average: true })).toBe(
+        '1k%',
+      );
+    });
+
+    it('still formats byte output when average is set', () => {
+      expect(
+        formatNumber(268435456, { output: 'byte', average: true, mantissa: 1 }),
+      ).toBe('256.0 MB');
     });
   });
 
@@ -1505,6 +1537,16 @@ describe('isColumnInSelect', () => {
   });
 });
 
+describe('splitClauseList', () => {
+  it('keeps a comma inside a backtick-quoted name', () => {
+    expect(splitClauseList('Timestamp, `a,b`, Body')).toEqual([
+      'Timestamp',
+      '`a,b`',
+      'Body',
+    ]);
+  });
+});
+
 describe('orderByAfterRemovingSelectItem', () => {
   const item = `ResourceAttributes['service.name'] AS "service.name"`;
 
@@ -1532,6 +1574,51 @@ describe('orderByAfterRemovingSelectItem', () => {
     expect(
       orderByAfterRemovingSelectItem('Body', 'Body DESC', 'Timestamp DESC'),
     ).toBe('Body DESC');
+  });
+
+  it('drops only the removed alias from a multi-field sort', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"service.name" ASC, Timestamp DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('Timestamp DESC');
+    expect(
+      orderByAfterRemovingSelectItem(
+        item,
+        '"http.method" DESC, "service.name" ASC',
+        'Timestamp DESC',
+      ),
+    ).toBe('"http.method" DESC');
+  });
+
+  it('keeps a comma inside a backtick-quoted sort name', () => {
+    expect(
+      orderByAfterRemovingSelectItem(
+        'upper(Body) AS "message"',
+        '"message" ASC, `a,b` DESC',
+        'Timestamp DESC',
+      ),
+    ).toBe('`a,b` DESC');
+  });
+});
+
+describe('getLogSeverityLevel', () => {
+  it.each([
+    [12, 'error', undefined],
+    [13, undefined, 'warn'],
+    [16, 'error', 'warn'],
+    [17, 'info', 'error'],
+    ['17', undefined, 'error'],
+    [0, 'ERROR', 'error'],
+    [undefined, 'Warning', 'warn'],
+    ['', 'fatal', 'error'],
+    [undefined, 'info', undefined],
+  ])('maps %p and %p to %p', (severityNumber, severityText, expected) => {
+    expect(getLogSeverityLevel({ severityNumber, severityText })).toBe(
+      expected,
+    );
   });
 });
 

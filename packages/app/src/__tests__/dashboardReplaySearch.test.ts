@@ -9,6 +9,13 @@ import {
 
 import { buildDashboardReplaySearchUrl } from '@/ChartUtils';
 
+// The search page reads these params with nuqs (double-encoded). Mirror that
+// read path so the tests assert the value the destination actually recovers.
+const readWhere = (url: URL) =>
+  decodeURIComponent(url.searchParams.get('where') ?? '');
+const readFilters = (url: URL) =>
+  JSON.parse(decodeURIComponent(url.searchParams.get('filters') ?? '[]'));
+
 const dateRange: [Date, Date] = [
   new Date('2026-01-01T00:00:00.000Z'),
   new Date('2026-01-01T01:00:00.000Z'),
@@ -66,8 +73,8 @@ describe('buildDashboardReplaySearchUrl', () => {
     const url = new URL(result ?? '', 'http://localhost');
     expect(url.pathname).toBe('/search');
     expect(url.searchParams.get('source')).toBe('logs');
-    expect(url.searchParams.get('where')).toBe('service:web');
-    expect(JSON.parse(url.searchParams.get('filters') ?? '')).toEqual([
+    expect(readWhere(url)).toBe('service:web');
+    expect(readFilters(url)).toEqual([
       { type: 'sql', condition: "SeverityText = 'error'" },
     ]);
     expect(url.searchParams.get('from')).toBe(
@@ -93,9 +100,47 @@ describe('buildDashboardReplaySearchUrl', () => {
     });
 
     expect(result).not.toBeNull();
-    expect(
-      new URL(result ?? '', 'http://localhost').searchParams.get('where'),
-    ).toBe('status:error');
+    expect(readWhere(new URL(result ?? '', 'http://localhost'))).toBe(
+      'status:error',
+    );
+  });
+
+  it('double-encodes multi-line where, filters, and select', () => {
+    const multiline = (...lines: string[]) => lines.join('\n');
+    const where = multiline(
+      "ServiceName = 'receive' and",
+      "ResourceAttributes['cluster_type'] = 'data-plane' and\tNamespace = 'x'",
+    );
+    const filters = [
+      { type: 'sql' as const, condition: multiline('a = 1 and', 'b = 2\r') },
+    ];
+    const select = multiline('Timestamp,', 'Body');
+
+    const result = buildDashboardReplaySearchUrl({
+      source: logSource,
+      config: {
+        ...builderConfig,
+        where,
+        whereLanguage: 'sql',
+        filters,
+        eventTableSelect: select,
+      },
+      dateRange,
+    });
+    expect(result).not.toBeNull();
+
+    // When the search page writes any other param, nuqs re-renders these from
+    // the once-decoded query string without escaping control characters, and
+    // the browser strips them. One decode must leave none behind.
+    const url = new URL(result ?? '', 'http://localhost');
+    for (const key of ['where', 'filters', 'select']) {
+      expect(url.searchParams.get(key)).not.toMatch(/[\n\r\t]/);
+    }
+    expect(readWhere(url)).toBe(where);
+    expect(readFilters(url)).toEqual(filters);
+    expect(decodeURIComponent(url.searchParams.get('select') ?? '')).toBe(
+      select,
+    );
   });
 
   it('rejects per-series conditions that cannot be faithfully replayed', () => {

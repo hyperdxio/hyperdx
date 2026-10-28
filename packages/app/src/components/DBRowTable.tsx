@@ -95,6 +95,8 @@ import {
   MIN_LAST_COLUMN_WIDTH,
   UNDEFINED_WIDTH,
 } from '@/tableUtils';
+import { getTimeZoneShortName } from '@/timeZone';
+import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { FormatTime } from '@/useFormatTime';
 import {
   DEFAULT_ROW_CLICK_ACTION,
@@ -466,8 +468,9 @@ export const RawLogTable = memo(
     );
 
     const {
-      userPreferences: { isUTC, rowClickAction },
+      userPreferences: { rowClickAction },
     } = useUserPreferences();
+    const timeZone = useDisplayTimeZone();
     const { scale: contentFontScale } = useContentFontSize();
 
     // The ClickHouse dashboard's slow-query list has no side panel to open, so
@@ -674,7 +677,7 @@ export const RawLogTable = memo(
             // TODO: add support for sorting on Dynamic JSON fields
             enableSorting: jsColumnType !== JSDataType.Dynamic,
             accessorFn: curry(retrieveColumnValue)(column), // Columns can contain '.' and will not work with accessorKey
-            header: `${columnNameMap?.[column] ?? column}${isDate ? (isUTC ? ' (UTC)' : ' (Local)') : ''}`,
+            header: `${columnNameMap?.[column] ?? column}${isDate ? ` (${timeZone ? getTimeZoneShortName(timeZone) : 'Local'})` : ''}`,
             cell: info => {
               const value = info.getValue<any>(); // This can be any type realistically (numbers, strings, etc.)
 
@@ -745,7 +748,7 @@ export const RawLogTable = memo(
         }) as ColumnDef<any>[]),
       ],
       [
-        isUTC,
+        timeZone,
         highlightedLineId,
         displayedColumns,
         columnSizeOpts,

@@ -1,7 +1,5 @@
 // From: https://github.com/albertodeago/curl-generator/blob/master/src/main.ts
-// Forked to allow multiple headers with the same name
-
-type StringMap = { [key: string]: string };
+// Forked to allow repeated header names and any HTTP method
 
 /**
  * Additional options for curl command.
@@ -50,17 +48,7 @@ type CurlAdditionalOptions = {
 };
 
 type CurlRequest = {
-  method?:
-    | 'GET'
-    | 'get'
-    | 'POST'
-    | 'post'
-    | 'PUT'
-    | 'put'
-    | 'PATCH'
-    | 'patch'
-    | 'DELETE'
-    | 'delete';
+  method?: string;
   headers?: [string, string][];
   body?: object | string;
   url: string;
@@ -77,20 +65,16 @@ const newLine = '\n';
 const getCurlMethod = function (method?: string): string {
   let result = '';
   if (method) {
-    const types: StringMap = {
-      GET: '-X GET',
-      POST: '-X POST',
-      PUT: '-X PUT',
-      PATCH: '-X PATCH',
-      DELETE: '-X DELETE',
-    };
-    result = ` ${types[method.toUpperCase()]}`;
+    const upper = method.toUpperCase();
+    // The method comes from telemetry, so quote anything that isn't a plain
+    // token before it reaches a shell.
+    result = ` -X ${/^[A-Z0-9_-]+$/.test(upper) ? upper : escapeStringPosix(upper)}`;
   }
   return slash + newLine + result;
 };
 
 /**
- * @param {StringMap} headers
+ * @param {[string, string][]} headers
  * @returns {string}
  */
 const getCurlHeaders = function (headers?: [string, string][]): string {

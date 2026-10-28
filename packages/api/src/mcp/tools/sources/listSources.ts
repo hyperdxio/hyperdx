@@ -17,6 +17,7 @@ import {
   getConnectionsByTeam,
 } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { runWithTimeout } from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
@@ -206,7 +207,7 @@ export function registerListSources({
     'clickstack_list_sources',
     {
       title: 'List Sources & Connections',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'List all data sources (logs, metrics, traces) and database connections available to this team. ' +
         'Returns source IDs, names, kinds, and connection IDs as a lightweight catalog. ' +
@@ -284,6 +285,8 @@ export function registerListSources({
             body: s.bodyExpression,
             serviceName: s.serviceNameExpression,
             severityText: s.severityTextExpression,
+            severityNumber: s.severityNumberExpression,
+            eventName: s.eventNameExpression,
             traceId: s.traceIdExpression,
           };
         } else if (s.kind === SourceKind.Metric) {
