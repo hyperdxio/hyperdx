@@ -1670,7 +1670,6 @@ describe('checkAlerts', () => {
       // TODO: test call arguments
     });
 
-
     it('renderAlertTemplate - custom body with single action', async () => {
       const team = await createTeam({ name: 'My Team' });
       const webhook = await new Webhook({
