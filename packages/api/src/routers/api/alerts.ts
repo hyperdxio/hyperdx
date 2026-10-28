@@ -34,7 +34,11 @@ import { IAlertHistory } from '@/models/alertHistory';
 import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { setBusinessContext } from '@/utils/instrumentation';
 import { PreSerialized, sendJson } from '@/utils/serialization';
-import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
+import {
+  internalAlertSchema,
+  mutedUntilSchema,
+  objectIdSchema,
+} from '@/utils/zod';
 
 const router = express.Router();
 
@@ -400,12 +404,7 @@ router.post(
   '/:id/silenced',
   validateRequest({
     body: z.object({
-      mutedUntil: z
-        .string()
-        .datetime()
-        .refine(val => new Date(val) > new Date(), {
-          message: 'mutedUntil must be in the future',
-        }),
+      mutedUntil: mutedUntilSchema,
     }),
     params: z.object({
       id: objectIdSchema,

@@ -6724,6 +6724,16 @@
               }
             }
           },
+          "400": {
+            "description": "Invalid request, such as a malformed alert ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "401": {
             "description": "Unauthorized",
             "content": {

@@ -519,6 +519,11 @@ const DISPLAY_REF_POPULATE = [
   { path: 'dashboard', select: 'name tags tiles.id tiles.config.name' },
 ];
 
+/** Populate (and project) the search or dashboard reference of an alert document in place */
+export const populateAlertDisplayRefs = (
+  alert: NonNullable<Awaited<ReturnType<typeof getAlertById>>>,
+) => alert.populate<AlertWithDisplayRefs>(DISPLAY_REF_POPULATE);
+
 /** Get alerts, with a populated (and projected) search or dashboard reference */
 export const getAlertsWithDisplayRefs = async (
   teamId: ObjectId,

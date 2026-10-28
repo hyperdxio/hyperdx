@@ -8,6 +8,7 @@ import {
   deleteAlert,
   getAlertsWithDisplayRefs,
   getAlertWithDisplayRefs,
+  populateAlertDisplayRefs,
   silenceAlert,
   unsilenceAlert,
   updateAlert,
@@ -32,6 +33,7 @@ import {
   alertSchema,
   ExternalAlertInput,
   InternalAlertInput,
+  mutedUntilSchema,
   objectIdSchema,
 } from '@/utils/zod';
 
@@ -1013,12 +1015,7 @@ router.post(
   '/:id/silenced',
   processRequest({
     body: z.object({
-      mutedUntil: z
-        .string()
-        .datetime({ offset: true })
-        .refine(val => new Date(val) > new Date(), {
-          message: 'mutedUntil must be in the future',
-        }),
+      mutedUntil: mutedUntilSchema,
     }),
     params: z.object({
       id: objectIdSchema,
@@ -1032,17 +1029,16 @@ router.post(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      const silenced = await silenceAlert(
+      const updatedAlert = await silenceAlert(
         req.params.id,
         teamId,
         userId,
         new Date(req.body.mutedUntil),
       );
-      const alert =
-        silenced && (await getAlertWithDisplayRefs(req.params.id, teamId));
-      if (alert == null) {
+      if (!updatedAlert) {
         return res.status(404).json({ message: 'Alert not found' });
       }
+      const alert = await populateAlertDisplayRefs(updatedAlert);
 
       res.json({
         data: translateAlertDocumentToExternalAlertWithChartConfig(alert),
@@ -1076,6 +1072,12 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/AlertResponseEnvelope'
+ *       '400':
+ *         description: Invalid request, such as a malformed alert ID
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '401':
  *         description: Unauthorized
  *         content:
@@ -1109,12 +1111,11 @@ router.delete(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      const unsilenced = await unsilenceAlert(req.params.id, teamId);
-      const alert =
-        unsilenced && (await getAlertWithDisplayRefs(req.params.id, teamId));
-      if (alert == null) {
+      const updatedAlert = await unsilenceAlert(req.params.id, teamId);
+      if (!updatedAlert) {
         return res.status(404).json({ message: 'Alert not found' });
       }
+      const alert = await populateAlertDisplayRefs(updatedAlert);
 
       res.json({
         data: translateAlertDocumentToExternalAlertWithChartConfig(alert),
