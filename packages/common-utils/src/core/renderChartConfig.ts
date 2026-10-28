@@ -1560,8 +1560,10 @@ async function renderGroupByColumns(
   metadata: Metadata,
 ): Promise<ChSql[]> {
   // One ChSql per group-by column (groupBy may be an array or a comma-separated
-  // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
-  // inside Map['a,b']; per-column null filters need them separated.
+  // string). The string branch emits raw SQL per split column and does not
+  // consult `config` or `metadata`; only the array branch resolves columns via
+  // `renderSelectList(config, metadata)`. splitAndTrimWithBracket respects
+  // []/()/quotes so it won't split inside Map['a,b'].
   if (typeof groupBy === 'string') {
     return splitAndTrimWithBracket(groupBy).map(
       col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
@@ -2343,8 +2345,8 @@ async function translateMetricChartConfig(
     let outerWhere: string = '';
 
     if (shouldApplyIncreaseGroupLimit) {
-      // Render the user's groupBy against the Bucketed CTE so column
-      // references resolve to the CTE's projection.
+      // For array groupBy, resolve column references against the Bucketed CTE
+      // projection; string groupBy is split directly into per-column SQL.
       const groupByCols = await renderGroupByColumns(
         chartConfig.groupBy!,
         {
