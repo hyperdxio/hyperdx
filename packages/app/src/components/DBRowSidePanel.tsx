@@ -35,7 +35,13 @@ import {
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
+import {
+  IconCopy,
+  IconKeyboard,
+  IconSearchOff,
+  IconShare,
+  IconX,
+} from '@tabler/icons-react';
 
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
 import { useOpenedRowSpanSelection } from '@/hooks/useOpenedRowSpanSelection';
@@ -79,6 +85,7 @@ import {
   DrawerFullWidthToggle,
   INITIAL_DRAWER_WIDTH_PERCENT,
 } from './DrawerUtils';
+import EmptyState from './EmptyState';
 import { eventRowWhereParser } from './eventRowWhere';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
@@ -929,6 +936,24 @@ export const DBRowSidePanelInner = ({
           {controls}
         </Box>
         <div className={styles.loadingState}>Error loading row data</div>
+      </>
+    );
+  }
+
+  // Without a row the timestamp is an Invalid Date, and the tabs would query
+  // with a NaN time range.
+  if (normalizedRow == null) {
+    return (
+      <>
+        <Box px="sm" pt="sm" pb="xs">
+          {controls}
+        </Box>
+        <EmptyState
+          p="sm"
+          icon={<IconSearchOff size={28} />}
+          title="Event not found"
+          description="It may have been deleted or aged out of retention. Use the back button or the breadcrumbs above to return."
+        />
       </>
     );
   }
