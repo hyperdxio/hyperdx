@@ -1488,13 +1488,13 @@ describe('checkAlerts', () => {
         buildAlertMessageTemplateTitle({
           view: defaultSearchView,
         }),
-      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
+      ).toMatchInlineSnapshot(`"Alert for "My Search" - 10 lines found"`);
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
+        `"Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
       );
       // Inline alerts default to the chart config's name
       expect(
@@ -1502,41 +1502,7 @@ describe('checkAlerts', () => {
           view: defaultInlineAlertView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
-      );
-    });
-
-    it('buildAlertMessageTemplateTitle with state parameter', () => {
-      // Test ALERT state (should have 🚨 emoji)
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultSearchView,
-          state: AlertState.ALERT,
-        }),
-      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultChartView,
-          state: AlertState.ALERT,
-        }),
-      ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
-      );
-
-      // Test OK state (should have ✅ emoji)
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultSearchView,
-          state: AlertState.OK,
-        }),
-      ).toMatchInlineSnapshot(`"✅ Alert for "My Search" - 10 lines found"`);
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultChartView,
-          state: AlertState.OK,
-        }),
-      ).toMatchInlineSnapshot(
-        `"✅ Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
+        `"Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -1556,7 +1522,7 @@ describe('checkAlerts', () => {
           view: decimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 1111.1 meets or exceeds 1.5"`,
+        `"Alert for "My Dashboard - Test Chart" - 1111.1 meets or exceeds 1.5"`,
       );
 
       // Test with multiple decimal places
@@ -1574,7 +1540,7 @@ describe('checkAlerts', () => {
           view: multiDecimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 1.1235 meets or exceeds 0.1234"`,
+        `"Alert for "My Dashboard - Test Chart" - 1.1235 meets or exceeds 0.1234"`,
       );
 
       // Test with integer value and decimal threshold
@@ -1592,7 +1558,7 @@ describe('checkAlerts', () => {
           view: integerValueView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 10.00 meets or exceeds 0.12"`,
+        `"Alert for "My Dashboard - Test Chart" - 10.00 meets or exceeds 0.12"`,
       );
     });
 
@@ -1704,43 +1670,6 @@ describe('checkAlerts', () => {
       // TODO: test call arguments
     });
 
-    it('renderAlertTemplate - titleEmoji false leaves a title without the emoji intact', async () => {
-      const team = await createTeam({ name: 'My Team' });
-      const webhook = await new Webhook({
-        team: team._id,
-        service: 'slack',
-        url: 'https://hooks.slack.com/services/123',
-        name: 'My_Webhook',
-        titleEmoji: false,
-      }).save();
-
-      await renderAlertTemplate({
-        alertProvider,
-        clickhouseClient: mockClickhouseClient,
-        metadata: mockMetadata,
-        state: AlertState.ALERT,
-        template: 'Custom body',
-        view: {
-          ...defaultSearchView,
-          alert: {
-            ...defaultSearchView.alert,
-            channel: {
-              type: 'webhook',
-              webhookId: webhook._id.toString(),
-            },
-          },
-        },
-        title: 'Alert for "My Search" - 10 lines found',
-        teamId: team._id.toString(),
-        teamWebhooksById: new Map<string, typeof webhook>([
-          [webhook._id.toString(), webhook],
-        ]),
-      });
-
-      expect(
-        jest.mocked(slack.postMessageToWebhook).mock.calls[0][1].text,
-      ).toBe('Alert for "My Search" - 10 lines found');
-    });
 
     it('renderAlertTemplate - custom body with single action', async () => {
       const team = await createTeam({ name: 'My Team' });
@@ -1766,7 +1695,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -1827,7 +1756,7 @@ describe('checkAlerts', () => {
             webhookName: 'My_Webhook',
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -1913,7 +1842,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById,
       });
@@ -1938,7 +1867,7 @@ describe('checkAlerts', () => {
             host: 'web2',
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById,
       });
@@ -2028,7 +1957,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '✅ Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
