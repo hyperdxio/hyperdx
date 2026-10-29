@@ -47,9 +47,10 @@
   },
   "scripts": {
     "dev": "nodemon --on-change-only --watch ./src --ext ts --exec \"yarn dev:build\"",
-    "dev:build": "tsup && tsc --emitDeclarationOnly --declaration && tsc-alias",
-    "build": "tsup",
-    "ci:build": "tsup",
+    "dev:build": "yarn build",
+    "build": "tsup && yarn build:types",
+    "build:types": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
+    "ci:build": "yarn build",
     "lint": "npx eslint . --ext .ts --max-warnings 80",
     "lint:fix": "npx eslint . --ext .ts --fix",
     "ci:lint": "yarn lint && yarn tsc --noEmit",
