@@ -1533,6 +1533,7 @@ async function renderGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
+  // Note: per-column splitting for string groupBy happens in renderGroupByColumns.
   return concatChSql(
     ',',
     isUsingGroupBy(chartConfig)
@@ -1630,7 +1631,7 @@ async function renderSeriesLimitCte(
     : [];
 
   const groupByCols = await renderGroupByColumns(
-    chartConfig.groupBy!,
+    chartConfig.groupBy,
     chartConfig,
     metadata,
   );

@@ -575,6 +575,7 @@ describe('renderChartConfig', () => {
     expect(actual).toMatch(
       /Attributes\[['"]env['"]\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\[['"]env['"]\]\)\s*!=\s*''/,
     );
+    expect(actual).not.toMatch(/toString\([^)]*,/);
   });
 
   it('should handle aggFn=increase with comma-separated string groupBy', async () => {
