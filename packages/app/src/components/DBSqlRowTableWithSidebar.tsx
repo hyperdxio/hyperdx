@@ -17,12 +17,13 @@ import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import { ChartErrorStateVariant } from './charts/ChartErrorState';
-import { RowDataPanel } from './DBRowDataPanel';
+import { RowDataPanel, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
 import DBRowSidePanel, {
   RowSidePanelContext,
   RowSidePanelContextProps,
 } from './DBRowSidePanel';
+import { DBRowSidePanelErrorState } from './DBRowSidePanelErrorState';
 import { DBRowTableVariant, DBSqlRowTable } from './DBRowTable';
 
 interface Props {
@@ -45,6 +46,9 @@ interface Props {
   enableSmallFirstWindow?: boolean;
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
+  enableRowSelection?: boolean;
+  selectionResetKey?: string;
+  onSelectedRowsChange?: (hasSelectedRows: boolean) => void;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
   // Clicking outside the row side panel (and outside `keepOpenSelector`) closes
   // it. Enabled by default; pass `false` to opt out.
@@ -74,6 +78,9 @@ export default function DBSqlRowTableWithSideBar({
   enableSmallFirstWindow,
   tableId,
   errorVariant,
+  enableRowSelection,
+  selectionResetKey,
+  onSelectedRowsChange,
   onResolvedColumnsChange,
   closeOnClickOutside = true,
   keepOpenSelector = DEFAULT_KEEP_OPEN_SELECTOR,
@@ -113,23 +120,30 @@ export default function DBSqlRowTableWithSideBar({
     [sourceData],
   );
 
+  // `rowWhere`/`rowSource` survive a source switch, so a stale `rowWhere` can
+  // outlive the panel it belongs to. Deriving the table's highlight from this
+  // element keeps it from highlighting a row — and from treating the panel as
+  // open, which suppresses inline expansion — while no panel is mounted.
+  const sidePanel =
+    sourceData && (rowSource === sourceId || !rowSource) ? (
+      <DBRowSidePanel
+        source={sourceData}
+        rowId={rowId ?? undefined}
+        aliasWith={aliasWith}
+        onClose={onCloseSidebar}
+        closeOnClickOutside={closeOnClickOutside}
+        keepOpenSelector={keepOpenSelector}
+      />
+    ) : null;
+
   return (
-    <RowSidePanelContext.Provider value={context ?? {}}>
-      {sourceData && (rowSource === sourceId || !rowSource) && (
-        <DBRowSidePanel
-          source={sourceData}
-          rowId={rowId ?? undefined}
-          aliasWith={aliasWith}
-          onClose={onCloseSidebar}
-          closeOnClickOutside={closeOnClickOutside}
-          keepOpenSelector={keepOpenSelector}
-        />
-      )}
+    <RowSidePanelContext value={context ?? {}}>
+      {sidePanel}
       <DBSqlRowTable
         config={config}
         sourceId={sourceId}
         onRowDetailsClick={onOpenSidebar}
-        highlightedLineId={rowId ?? undefined}
+        highlightedLineId={sidePanel ? (rowId ?? undefined) : undefined}
         enabled={enabled}
         isLive={isLive ?? true}
         queryKeyPrefix={'dbSqlRowTable'}
@@ -145,9 +159,12 @@ export default function DBSqlRowTableWithSideBar({
         enableSmallFirstWindow={enableSmallFirstWindow}
         tableId={tableId}
         errorVariant={errorVariant}
+        enableRowSelection={enableRowSelection}
+        selectionResetKey={selectionResetKey}
+        onSelectedRowsChange={onSelectedRowsChange}
         onResolvedColumnsChange={onResolvedColumnsChange}
       />
-    </RowSidePanelContext.Provider>
+    </RowSidePanelContext>
   );
 }
 
@@ -170,6 +187,22 @@ function RowOverviewPanelWrapper({
     'hdx-expanded-row-default-tab',
     InlineTab.ColumnValues,
   );
+
+  // Surface the same error state the row side panel shows (e.g. `SELECT *`
+  // failures on Distributed/Merge tables) rather than silently rendering an
+  // empty expanded row. Both tabs load the same row data, so a failure here
+  // affects the whole expanded row.
+  const { isError, error } = useRowData({ source, rowId, aliasWith });
+
+  if (isError && error) {
+    return (
+      <div className="position-relative">
+        <div className="px-3 py-3">
+          <DBRowSidePanelErrorState error={error} source={source} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="position-relative">

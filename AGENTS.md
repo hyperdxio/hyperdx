@@ -61,8 +61,16 @@ directory:
 - `agent_docs/architecture.md` - Detailed architecture patterns and data models
 - `agent_docs/tech_stack.md` - Technology stack details and component patterns
 - `agent_docs/development.md` - Development workflows, testing, and common tasks
-- `agent_docs/code_style.md` - Code patterns and best practices (read only when
-  actively coding)
+- `agent_docs/code_style.md` - Code patterns and best practices. **Read this
+  before writing or planning any `packages/app` UI change, and before adding a
+  type, Zod schema, helper, or component in any package**, not just while
+  typing code. It carries required patterns that are invisible from the
+  surrounding file (sentence-case UI text, mandated Button/ActionIcon variants,
+  `useConfirm` for confirmation dialogs, `EmptyState`, and where shared code
+  already lives), so copying the conventions of the component you are editing is
+  not sufficient.
+- `agent_docs/naming_objects.md` - How users name and rename objects
+  (`InlineNameInput`). Read before adding or changing any name field
 - `agent_docs/observability.md` - Instrumentation standards (tracing, metrics,
   context) and the shared helpers (read when adding or changing a feature)
 
@@ -84,10 +92,18 @@ before stopping.
 1. **Multi-tenancy**: All data is scoped to `Team` - ensure proper filtering
 2. **Type safety**: Use TypeScript strictly; Zod schemas for validation
 3. **Existing patterns**: Follow established patterns in the codebase - explore
-   similar files before implementing
+   similar files before implementing. **Before you define a type, Zod schema,
+   helper, or component, grep for one that already exists.** Search for the
+   operation it performs (`bucket`, `valid.*url`, `split.*trim`) - not the name
+   you were about to give it, because names differ. Look in
+   `packages/common-utils/src/` first, then the package you are editing. If you
+   find it, import or alias it; do not add a second definition. See
+   `agent_docs/code_style.md` → "Before you add a type, schema, or helper"
 4. **Component size**: Keep files under 300 lines; break down large components
 5. **UI Components**: Use custom Button/ActionIcon variants (`primary`,
-   `secondary`, `danger`) - see `agent_docs/code_style.md` for required patterns
+   `secondary`, `danger`), `useConfirm` for "are you sure?" dialogs rather than
+   a hand-rolled `Modal`, and sentence case for all user-facing text - see
+   `agent_docs/code_style.md` for required patterns
 6. **Testing**: Tests live in `__tests__/` directories; use Jest for
    unit/integration tests
 7. **Observability**: This is an observability product - instrument new code as
@@ -100,6 +116,34 @@ before stopping.
    them). Use the shared helpers in
    `packages/api/src/utils/instrumentation.ts`. See
    [`agent_docs/observability.md`](agent_docs/observability.md).
+8. **Communication**: Be concise and straightforward - in chat, in code
+   comments, in commits, and in PR descriptions. See
+   [Communication style](#communication-style) below.
+
+## Communication style
+
+Write plainly. This applies to everything you produce: chat replies, code
+comments, commit messages, PR descriptions, and docs.
+
+- **Lead with the answer.** State the result first, then the detail that
+  supports it. No preamble, no restating the request back at the reader.
+- **Cut filler.** Drop hedges ("it seems like", "essentially", "basically"),
+  intensifiers ("very", "extremely", "quite"), and throat-clearing ("in order
+  to" → "to"). Prefer short concrete words over long abstract ones.
+- **Keep summaries short.** A handful of bullets or a short paragraph. Don't
+  recap what the diff already shows, and don't restate one point in three
+  different phrasings.
+- **No self-narration.** Skip the play-by-play of your own process, the options
+  you rejected, and the victory lap ("Perfect!", "All done!"). Report what
+  changed and what is still broken.
+- **Comments explain _why_, not _what_.** The code already says what it does.
+  Omit the comment when the line is self-evident; write one when a choice needs
+  justification — a workaround, a non-obvious constraint, a ClickHouse quirk. No
+  banner comments, no ASCII section dividers, and no `// increment the counter`
+  restatements. This applies to test bodies too: don't narrate each step of a
+  test that already reads top-to-bottom.
+- **Say it straight.** If something is broken, unverified, or skipped, say so in
+  one sentence. Don't soften bad news and don't oversell partial work.
 
 ## Running Tests
 
@@ -195,20 +239,153 @@ efficient and accurate:
    agent solved the wrong problem or made a plausible-but-wrong trade-off.
 
 3. **Name agent-generated branches with a `claude/`, `agent/`, or `ai/` prefix**
-   (e.g., `claude/add-rate-limiting`). This allows the PR triage classifier to
-   apply appropriate scrutiny and lets reviewers calibrate their attention.
+   (e.g., `claude/add-rate-limiting`) so reviewers can calibrate their attention.
+   This is a convention for humans: the PR triage classifier deliberately ignores
+   branch names and tiers every PR on what the diff touches and how big it is.
 
 4. **Write or update tests alongside the implementation**, not after. Configure
    your agent to produce tests before writing implementation code. See the
    Testing section below for the commands to use.
 
-5. **Ensure a changeset exists before pushing a PR.** Any change to a published
+5. **Attach before/after screenshots to any PR that changes the UI.** Anything
+   visible in `packages/app` needs a "Before" (`main`) and "After" (branch)
+   image in the PR template's screenshots table, taken on the same screen, data,
+   viewport, and theme. Use a short video for interactions. If you can't capture
+   screenshots yourself (no browser tool), say so in the PR description and
+   leave the table for the human author to fill; never submit an empty table
+   silently. See
+   [CONTRIBUTING.md](CONTRIBUTING.md#ui-changes-need-beforeafter-screenshots).
+
+6. **Write reproduction steps a reviewer can follow.** Fill in the PR
+   template's "How to reproduce" section with numbered steps that show the
+   problem on `main` and the fix on the branch. Start from
+   [play.hyperdx.io](https://play.hyperdx.io) when the bug shows there, or from
+   `yarn app:dev:local` connected to the demo server (onboarding → "Connect to
+   Demo Server"; the PR's Vercel preview runs the same local mode). Full-stack
+   `yarn dev` pre-provisions a local ClickHouse connection and never shows that
+   button, so use it only when the change needs the API. Name UI elements by
+   visible text, and list any env vars,
+   feature flags, schema, or seed data needed. When filing issues, apply the
+   same standard. See
+   [CONTRIBUTING.md](CONTRIBUTING.md#reproducing-issues-and-prs).
+
+7. **Ensure a changeset exists before pushing a PR.** Any change to a published
    package (`@hyperdx/app`, `@hyperdx/api`, `@hyperdx/otel-collector`, etc.) that
    is user-facing or affects behavior must include a changeset in `.changeset/`.
    Add one with `yarn changeset` (or create the markdown file by hand following
    the format of existing entries), choosing the appropriate semver bump, before
    pushing the branch. Skip only for changes that don't warrant a release (docs,
    internal tooling, tests, CI).
+
+8. **The root `CHANGELOG.md` is generated at release time.** During each
+   release, CI writes an AI-generated cross-package summary section into the
+   root `CHANGELOG.md` on the "Release HyperDX" PR. Review and edit it there
+   like any other file — but keep the `<!-- hyperdx-release-notes … -->` comment
+   marker intact; it is how your edits are recognised when the release branch is
+   rebuilt. Use `###` or deeper for any heading you add — a `##` marks a release
+   boundary, and the next release refuses to splice rather than risk deleting
+   whatever ended up below it. Your edits are regenerated away when new
+   changesets land on `main` (the previous text is passed to the generator, so
+   phrasing is preserved best-effort, not guaranteed). They can also be lost
+   outright if a second push to `main` lands while a changelog run is still in
+   flight — the edit is held only in that run's artifact. If an edit matters,
+   re-check it on the release PR before merging. Don't edit the root
+   `CHANGELOG.md` in feature PRs; the only exception is the one-time seed that
+   introduced the file.
+
+### How the root changelog is generated
+
+Defined in `.github/workflows/release.yml`; the splicing logic lives in
+`.github/scripts/release-notes.mjs`.
+
+```
+push to main
+    |
+    v
+check_changesets
+    |  1. capture the branch's current CHANGELOG.md -> artifact
+    |     (must happen BEFORE the next step destroys it)
+    |  2. changesets/action force-rebuilds changeset-release/main from main
+    |     and opens/updates the "Release HyperDX" PR
+    v
+release_changelog_draft            contents: read - no push token
+    |
+    |  app version unchanged?  --yes-->  skip (CLI/common-utils-only release)
+    |  changeset hash matches?  --yes-->  reuse previous section verbatim
+    |                           --no-->  Claude writes a fresh body, given
+    |                                    the old section as context
+    v
+  body artifact                    the model's only output
+    |
+    v
+release_changelog_publish          contents: write - the model never ran here
+    |
+    |  branch moved since drafting?  --yes-->  skip, the newer run republishes
+    |  validate (no headings/markers/images/off-site links)
+    |  append the package list, splice into CHANGELOG.md
+    v
+push to changeset-release/main  ->  appears as a diff in the release PR,
+    |                               where a maintainer can edit it
+    v
+merge the release PR  ->  CHANGELOG.md lands on main  ->  served in "What's new"
+```
+
+The job split is a security boundary, not tidiness: the model reads changeset
+bodies, commit messages and PR bodies, which anyone opening a PR controls. Its
+job holds `ANTHROPIC_API_KEY` and a `contents: read` token, but no push
+credential and no ability to alter the script that does the splicing. Because
+the API key shares that process, the generator gets `--tools "Read" "Write"` and
+nothing else: no `Bash`, and no `Grep` or `Glob` either, since those read files
+without consulting a `Read` path rule. It may write exactly one file, granted by
+an `Edit(<path>)` rule, and `/proc`, `/sys`, `/home` and `/etc` are denied
+outright — `/proc/self/environ` carries the whole environment, and the output
+is published to a public branch.
+
+Three flags with three different jobs, which is worth keeping straight when
+editing this: `--tools` restricts what exists, `--allowedTools` only
+pre-approves (it is what stops a `-p` run stalling on a prompt it cannot
+answer), and `--disallowedTools` denies. A path rule attached to `Write` is
+accepted and then never consulted — file permissions are checked against
+`Edit` and `Read` rules — so write confinement is spelled `Edit(<path>)`.
+
+Because the generator has no way to list a directory, every input is
+materialised for it at a known path by trusted shell, including all the
+changesets concatenated into one file. Left to discover
+`.changeset/gentle-boats-serve.md` by name it cannot, and it writes a changelog
+that quietly omits whatever it could not find.
+
+The generator calls the Claude Code CLI, not
+`anthropics/claude-code-action`: that action accepts only GitHub entity events
+and rejects `push`, and everything it adds on top of the CLI — a token, entity
+context, PR comments — is what this job deliberately does without.
+
+## Responding to review feedback
+
+Two bots review every PR (Claude Code Review inline + summary, Deep Review
+summary). No finding blocks merge automatically; a maintainer decides what
+lands. Severity tells you what they will expect.
+
+1. **Triage before you touch code.** Two questions per comment: did this PR
+   introduce the problem (would reverting the PR make it go away?), and how
+   severe is it?
+   - Critical or major (P0/P1) that this PR introduced, in new or edited code:
+     fix it before asking for review. A maintainer will require it if it is
+     real.
+   - Minor (P2/P3) that this PR introduced: your call. Fix if small, else
+     reply.
+   - A defect that was already there before this PR, or a suggestion to widen
+     the change (hoist, dedupe, refactor neighbours, fix other call sites):
+     never fix here, whatever the severity. Reply in the thread with one
+     sentence; if it is critical, say so plainly so a maintainer sees it. The
+     reviewer reads replies and does not re-report what a human has answered.
+2. **Do not touch files the PR did not already touch** unless fixing a defect
+   in this PR's own change requires it.
+3. **Push review fixes as new commits, not a force-push.** The repo
+   squash-merges, so commit count never reaches `main`; review history does.
+4. **After two rounds of bot findings, stop.** Ask a maintainer to look at the
+   scope instead of addressing more automated comments. A PR that keeps
+   growing to satisfy a bot is drifting from its purpose.
+5. A finding you disagree with is not a defect. Say so and move on.
 
 ## GitHub Action Workflow (when invoked via @claude)
 

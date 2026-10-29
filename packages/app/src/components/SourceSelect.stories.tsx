@@ -130,7 +130,6 @@ export const Default: Story = {
 
 /** With the adjacent source-management kebab menu (view schema, edit, etc.). */
 export const WithManagementMenu: Story = {
-  name: 'With Management Menu',
   render: args => <SourceSelectWrapper {...args} />,
   args: {
     size: 'sm',
@@ -151,7 +150,6 @@ export const NoSelection: Story = {
 
 /** Restricted to a single signal kind via `allowedSourceKinds`. */
 export const LogsOnly: Story = {
-  name: 'Logs Only',
   render: args => <SourceSelectWrapper {...args} />,
   args: {
     size: 'sm',

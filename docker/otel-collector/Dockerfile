@@ -59,9 +59,8 @@ USER ${USER_UID}:${USER_GID}
 COPY --from=supervisor --chmod=755 /usr/local/bin/opampsupervisor /opampsupervisor
 COPY --from=ocb-builder --chmod=755 /build/output/otelcol-hyperdx /otelcontribcol
 
-# Copy entrypoint and log tail wrapper scripts
+# Copy entrypoint script
 COPY --chmod=755 docker/otel-collector/entrypoint.sh /entrypoint.sh
-COPY --chmod=755 docker/otel-collector/log-tailer.sh /log-tailer.sh
 
 ## dev ##############################################################################################
 FROM base AS dev
@@ -75,11 +74,12 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 COPY --chown=10001:10001 docker/otel-collector/config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
+COPY --chown=10001:10001 docker/otel-collector/config.standalone.oidc.yaml /etc/otelcol-contrib/standalone-oidc-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.promql.yaml /etc/otelcol-contrib/standalone-promql-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 
-EXPOSE 4317 4318 13133
+EXPOSE 4317 4318 13133 8125/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -q --spider http://localhost:13133/ || exit 1
@@ -98,11 +98,12 @@ LABEL org.opencontainers.image.vendor="HyperDX" \
 COPY --chown=10001:10001 docker/otel-collector/config.yaml /etc/otelcol-contrib/config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.yaml /etc/otelcol-contrib/standalone-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.auth.yaml /etc/otelcol-contrib/standalone-auth-config.yaml
+COPY --chown=10001:10001 docker/otel-collector/config.standalone.oidc.yaml /etc/otelcol-contrib/standalone-oidc-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/config.standalone.promql.yaml /etc/otelcol-contrib/standalone-promql-config.yaml
 COPY --chown=10001:10001 docker/otel-collector/supervisor_docker.yaml.tmpl /etc/otel/supervisor.yaml.tmpl
 COPY --chown=10001:10001 docker/otel-collector/schema /etc/otel/schema
 
-EXPOSE 4317 4318 13133
+EXPOSE 4317 4318 13133 8125/udp
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD wget -q --spider http://localhost:13133/ || exit 1

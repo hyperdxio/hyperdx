@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import Team from '@/models/team';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
 
@@ -33,9 +34,22 @@ describe('team router', () => {
       .toMatchInlineSnapshot(`
       {
         "allowedAuthMethods": [],
+        "isMetricsSeriesTableEnabled": false,
         "name": "fake@deploysentinel.com's Team",
       }
     `);
+  });
+
+  it('GET /team reflects isMetricsSeriesTableEnabled when set', async () => {
+    const { agent, team } = await getLoggedInAgent(server);
+
+    await Team.findByIdAndUpdate(team._id, {
+      isMetricsSeriesTableEnabled: true,
+    });
+
+    const resp = await agent.get('/team').expect(200);
+
+    expect(resp.body.isMetricsSeriesTableEnabled).toBe(true);
   });
 
   it('GET /team/tags - no tags', async () => {
@@ -46,7 +60,7 @@ describe('team router', () => {
     expect(resp.body.data).toMatchInlineSnapshot(`[]`);
   });
 
-  it('GET /team/tags', async () => {
+  it('GET /team/tags - unscoped, then scoped by resourceType', async () => {
     const { agent, team } = await getLoggedInAgent(server);
     await agent
       .post('/dashboards')
@@ -82,17 +96,73 @@ describe('team router', () => {
         tags: ['test', 'test2'],
       })
       .expect(200);
+
+    await Alert.create({
+      team: team.id,
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: new mongoose.Types.ObjectId(),
+      threshold: 10,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channel: {
+        type: 'webhook',
+        webhookId: new mongoose.Types.ObjectId().toString(),
+      },
+      tags: ['test2', 'test3'],
+    });
+
+    await Alert.create({
+      team: new mongoose.Types.ObjectId(),
+      source: AlertSource.SAVED_SEARCH,
+      savedSearch: new mongoose.Types.ObjectId(),
+      threshold: 10,
+      thresholdType: AlertThresholdType.ABOVE,
+      interval: '5m',
+      channel: {
+        type: 'webhook',
+        webhookId: new mongoose.Types.ObjectId().toString(),
+      },
+      tags: ['other-team'],
+    });
+
     const resp = await agent.get('/team/tags').expect(200);
-    expect(resp.body.data).toStrictEqual(['test', 'test2']);
+    expect(resp.body.data.sort()).toStrictEqual(['test', 'test2', 'test3']);
+
+    const dashboardTags = await agent
+      .get('/team/tags')
+      .query({ resourceType: 'dashboard' })
+      .expect(200);
+    expect(dashboardTags.body.data.sort()).toStrictEqual(['test']);
+
+    const savedSearchTags = await agent
+      .get('/team/tags')
+      .query({ resourceType: 'savedSearch' })
+      .expect(200);
+    expect(savedSearchTags.body.data.sort()).toStrictEqual(['test', 'test2']);
+
+    const alertTags = await agent
+      .get('/team/tags')
+      .query({ resourceType: 'alert' })
+      .expect(200);
+    expect(alertTags.body.data.sort()).toStrictEqual(['test2', 'test3']);
+  });
+
+  it('GET /team/tags - rejects an unknown resourceType', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    await agent
+      .get('/team/tags')
+      .query({ resourceType: 'webhook' })
+      .expect(400);
   });
 
   it('GET /team/members', async () => {
     const { agent, team } = await getLoggedInAgent(server);
-    const user1 = await User.create({
+    await User.create({
       email: 'user1@example.com',
       team: team.id,
     });
-    const user2 = await User.create({
+    await User.create({
       email: 'user2@example.com',
       team: team.id,
     });
@@ -143,7 +213,7 @@ describe('team router', () => {
     const { agent } = await getLoggedInAgent(server);
 
     // Create invitation with lowercase email
-    const resp1 = await agent
+    await agent
       .post('/team/invitation')
       .send({
         email: 'casesensitive@example.com',
@@ -158,7 +228,7 @@ describe('team router', () => {
     const firstToken = firstInvite!.token;
 
     // Try to create invitation with uppercase email
-    const resp2 = await agent
+    await agent
       .post('/team/invitation')
       .send({
         email: 'CaseSensitive@Example.com',
@@ -331,6 +401,23 @@ describe('team router', () => {
     const resp2 = await agent.get('/team/invitations').expect(200);
 
     expect(resp2.body.data).toHaveLength(0);
+  });
+
+  // The delete used to be an unscoped findByIdAndDelete, so any authenticated
+  // user could revoke another team's pending invitation given its id.
+  it('DELETE /team/invitation/:teamInviteId will not touch another team', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const otherTeamInvite = await TeamInvite.create({
+      email: 'other_team@example.com',
+      name: 'Other Team Invite',
+      teamId: new ObjectId(),
+      token: 'other_team_token',
+    });
+
+    await agent.delete(`/team/invitation/${otherTeamInvite._id}`).expect(404);
+
+    expect(await TeamInvite.findById(otherTeamInvite._id)).not.toBeNull();
   });
 
   it('PATCH /team/apiKey', async () => {

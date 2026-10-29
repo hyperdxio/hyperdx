@@ -443,7 +443,6 @@ describe('util', () => {
 
     it('should handle very large window sizes correctly', () => {
       const windowSizeInMins = 120; // 2 hours
-      const maxLookbackTime = 24 * oneHourMs; // 24 hours for large windows
       const normalRange = 12 * oneHourMs; // 12 hours - within limit
       const startTime = now - normalRange;
       const endTime = now;

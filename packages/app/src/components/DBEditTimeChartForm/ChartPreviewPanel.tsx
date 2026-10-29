@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
@@ -10,20 +12,26 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Accordion, Divider, Stack, Text } from '@mantine/core';
-import { IconCode, IconList } from '@tabler/icons-react';
+import { Accordion, Box, Divider, Stack, Text } from '@mantine/core';
+import { IconList } from '@tabler/icons-react';
 import { SortingState } from '@tanstack/react-table';
 
 import { buildTableRowSearchUrl } from '@/ChartUtils';
-import { getAlertReferenceLines } from '@/components/Alerts';
+import {
+  getAlertReferenceLines,
+  getAlertReferenceLineValues,
+} from '@/components/Alerts';
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
 import ChartSQLPreview from '@/components/ChartSQLPreview';
 import { DBBarChart } from '@/components/DBBarChart';
 import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
+  buildHeatmapSeriesConfig,
   HEATMAP_N_BUCKETS,
-  toHeatmapChartConfig,
+  HeatmapSeriesChartConfig,
+  resolveHeatmapGranularity,
+  toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
 import { DBPieChart } from '@/components/DBPieChart';
@@ -32,29 +40,41 @@ import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import EmptyState from '@/components/EmptyState';
 import PatternTable from '@/components/PatternTable';
+import PromQLPreview from '@/components/PromQLEditor/PromQLPreview';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import {
   getEventBody,
   getFirstTimestampValueExpression,
   isSingleExpression,
+  useSource,
 } from '@/source';
 import {
   orderByStringToSortingState,
   sortingStateToOrderByString,
 } from '@/utils';
 
-import { buildSampleEventsConfig, isQueryReady } from './utils';
+import { QueryPreviewAccordion } from './QueryPreviewAccordion';
+import {
+  buildRenderedPromqlExpression,
+  buildSampleEventsConfig,
+  isQueryReady,
+  tabQueriesData,
+} from './utils';
+
+/** Why a preview accordion is empty before its tile has been run. */
+const RUN_TO_PREVIEW = 'Run the query to see the preview';
 
 function HeatmapPreview({
   config,
+  minGranularitySeconds,
 }: {
-  config: BuilderChartConfigWithDateRange;
+  config: HeatmapSeriesChartConfig;
+  minGranularitySeconds: number | undefined;
 }) {
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(config);
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        config={heatmapConfig}
-        scaleType={scaleType}
+        query={toHeatmapQuery({ ...config, minGranularitySeconds })}
         showLegend
         errorVariant="inline"
       />
@@ -66,7 +86,8 @@ function HeatmapPreview({
  * Heatmap renders via two sequential ClickHouse queries — bounds first, then
  * the bucketed-counts query that uses the resolved min/max.  Show both,
  * labeled, with placeholder tokens for the bucket-array literals (which only
- * exist at runtime once the bounds query returns).
+ * exist at runtime once the bounds query returns). A series heatmap runs a
+ * single time-chart query instead.
  */
 function HeatmapSQLPreview({
   config,
@@ -75,17 +96,43 @@ function HeatmapSQLPreview({
   config: BuilderChartConfigWithOptTimestamp;
   dateRange: [Date, Date];
 }) {
-  if (!config.timestampValueExpression) {
+  const { timestampValueExpression } = config;
+  if (!timestampValueExpression) {
     return null;
   }
-  const { heatmapConfig, scaleType } = toHeatmapChartConfig(
-    config as BuilderChartConfigWithDateRange,
-  );
-  const granularity = convertDateRangeToGranularityString(dateRange, 245);
+  const configWithTimestamp: BuilderChartConfigWithDateRange = {
+    ...config,
+    timestampValueExpression,
+  };
+  const query = toHeatmapQuery(configWithTimestamp);
+
+  // Only PromQL heatmaps are calculated or histograms, and they have no SQL
+  if (query.mode === 'calculated' || query.mode === 'histogram') {
+    return null;
+  }
+
+  if (query.mode === 'series') {
+    const seriesConfig = { ...query.config, dateRange };
+    return (
+      <ChartSQLPreview
+        config={buildHeatmapSeriesConfig(
+          seriesConfig,
+          resolveHeatmapGranularity(seriesConfig),
+        )}
+        enableCopy
+      />
+    );
+  }
+  const { config: heatmapConfig, scaleType } = query;
+  const granularity = resolveHeatmapGranularity({
+    granularity: heatmapConfig.granularity,
+    dateRange,
+  });
 
   const boundsConfig = buildHeatmapBoundsConfig({
     config: heatmapConfig,
     scaleType,
+    granularity,
   });
 
   const bucketConfig = buildHeatmapBucketConfig({
@@ -127,8 +174,12 @@ type ChartPreviewPanelProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   showGeneratedSql: boolean;
   showSampleEvents: boolean;
+  showGeneratedPromql: boolean;
   dbTimeChartConfig?: ChartConfigWithDateRange;
+  /** Required dashboard filters with nothing selected that block this tile. */
+  missingRequiredFilterNames?: string[];
   setValue: (name: 'orderBy', value: string) => void;
+  setDisplayType: (displayType: DisplayType) => void;
   onSubmit: () => void;
 };
 
@@ -143,13 +194,27 @@ export function ChartPreviewPanel({
   chartConfigForExplanations,
   showGeneratedSql,
   showSampleEvents,
+  showGeneratedPromql,
   dbTimeChartConfig,
+  missingRequiredFilterNames,
   setValue,
+  setDisplayType,
   onSubmit,
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
 
-  const queryReady = !!isQueryReady(queriedConfig);
+  const { data: queriedSource } = useSource({ id: queriedConfig?.source });
+  const minGranularitySeconds = getMinGranularitySeconds(queriedSource);
+  const renderedPromql = useMemo(
+    () => buildRenderedPromqlExpression(queriedConfig, minGranularitySeconds),
+    [queriedConfig, minGranularitySeconds],
+  );
+
+  const blockingFilterNames = missingRequiredFilterNames ?? [];
+  const isBlockedByRequiredFilters =
+    blockingFilterNames.length > 0 && tabQueriesData(activeTab);
+  const queryReady =
+    !isBlockedByRequiredFilters && !!isQueryReady(queriedConfig);
 
   const onTableSortingChange = useCallback(
     (sortState: SortingState | null) => {
@@ -181,9 +246,30 @@ export function ChartPreviewPanel({
     [queriedConfig, tableSource, dateRange, queryReady],
   );
 
+  const referenceLineValues = useMemo(
+    () =>
+      alert
+        ? getAlertReferenceLineValues({
+            threshold: alert.threshold,
+            thresholdMax: alert.thresholdMax,
+            thresholdType: alert.thresholdType,
+          })
+        : undefined,
+    [alert],
+  );
+
   return (
     <>
-      {!queryReady && activeTab !== 'markdown' ? (
+      {isBlockedByRequiredFilters ? (
+        <EmptyState
+          description={`Missing required filters: ${blockingFilterNames.join(
+            ', ',
+          )}. Select a value for each required filter, or turn off “Apply filters” to preview this tile without them.`}
+          variant="card"
+          fullWidth
+          data-testid="preview-missing-required-filters"
+        />
+      ) : !queryReady && tabQueriesData(activeTab) ? (
         <EmptyState
           description="Please start by defining your chart above and then click the play button to query data."
           variant="card"
@@ -205,7 +291,11 @@ export function ChartPreviewPanel({
                     })
                 : undefined
             }
-            onSortingChange={onTableSortingChange}
+            onSortingChange={
+              isBuilderChartConfig(queriedConfig)
+                ? onTableSortingChange
+                : undefined
+            }
             sort={tableSortState}
             showMVOptimizationIndicator={false}
             errorVariant="inline"
@@ -217,6 +307,7 @@ export function ChartPreviewPanel({
           <DBTimeChart
             sourceId={sourceId}
             config={dbTimeChartConfig}
+            setDisplayType={setDisplayType}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={
               alert &&
@@ -226,8 +317,13 @@ export function ChartPreviewPanel({
                 thresholdType: alert.thresholdType,
               })
             }
+            referenceLineValues={referenceLineValues}
             errorVariant="inline"
             showMVOptimizationIndicator={false}
+            // Preview doesn't need the MV indicators; disabling both lets
+            // DBTimeChart skip the extra MV-optimization EXPLAIN query, which
+            // otherwise fires on every edit-modal open / submit.
+            showDateRangeIndicator={false}
           />
         </div>
       )}
@@ -260,8 +356,14 @@ export function ChartPreviewPanel({
       )}
       {queryReady &&
         queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'heatmap' && <HeatmapPreview config={queriedConfig} />}
+        (isBuilderChartConfig(queriedConfig) ||
+          isPromqlChartConfig(queriedConfig)) &&
+        activeTab === 'heatmap' && (
+          <HeatmapPreview
+            config={queriedConfig}
+            minGranularitySeconds={minGranularitySeconds}
+          />
+        )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&
@@ -399,31 +501,54 @@ export function ChartPreviewPanel({
               </Accordion.Item>
             </Accordion>
           )}
-          <Accordion defaultValue="">
-            <Accordion.Item value={'SQL'}>
-              <Accordion.Control icon={<IconCode size={16} />}>
-                <Text size="sm" style={{ alignSelf: 'center' }}>
-                  Generated SQL
-                </Text>
-              </Accordion.Control>
-              <Accordion.Panel>
-                {queryReady &&
-                  chartConfigForExplanations != null &&
-                  (activeTab === 'heatmap' &&
-                  isBuilderChartConfig(chartConfigForExplanations) ? (
-                    <HeatmapSQLPreview
-                      config={chartConfigForExplanations}
-                      dateRange={dateRange}
-                    />
-                  ) : (
-                    <ChartSQLPreview
-                      config={chartConfigForExplanations}
-                      enableCopy
-                    />
-                  ))}
-              </Accordion.Panel>
-            </Accordion.Item>
-          </Accordion>
+          <QueryPreviewAccordion
+            value="SQL"
+            label="Generated SQL"
+            disabledReason={
+              queryReady && chartConfigForExplanations != null
+                ? undefined
+                : RUN_TO_PREVIEW
+            }
+          >
+            {chartConfigForExplanations != null &&
+              (activeTab === 'heatmap' &&
+              isBuilderChartConfig(chartConfigForExplanations) ? (
+                <HeatmapSQLPreview
+                  config={chartConfigForExplanations}
+                  dateRange={dateRange}
+                />
+              ) : (
+                <ChartSQLPreview
+                  config={chartConfigForExplanations}
+                  enableCopy
+                />
+              ))}
+          </QueryPreviewAccordion>
+        </>
+      )}
+      {showGeneratedPromql && (
+        <>
+          <Divider mt="md" />
+          <QueryPreviewAccordion
+            value="promql"
+            label="Generated PromQL"
+            disabledReason={
+              renderedPromql == null ? RUN_TO_PREVIEW : renderedPromql.error
+            }
+          >
+            <Stack gap="xs">
+              {(renderedPromql?.expressions ?? []).map((entry, index, all) => (
+                <Box key={entry.id}>
+                  {all.length > 1 && (
+                    <Text size="xxs" c="dimmed" mb={2}>
+                      {entry.alias ?? `Expression ${index + 1}`}
+                    </Text>
+                  )}
+                  <PromQLPreview expression={entry.expression} />
+                </Box>
+              ))}
+            </Stack>
+          </QueryPreviewAccordion>
         </>
       )}
     </>

@@ -1,17 +1,14 @@
-import { ResponseJSON } from '@clickhouse/client';
-
 import {
   ChSql,
   chSqlToAliasMap,
-  computeRatio,
-  computeResultSetRatio,
+  chSqlToSelectColumns,
   convertCHDataTypeToJSType,
+  isCHFixedStringType,
   JSDataType,
-  mergeResultSets,
 } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import { Metadata, MetadataCache } from '@/core/metadata';
-import { FIXED_TIME_BUCKET_EXPR_ALIAS } from '@/core/renderChartConfig';
+import { replaceMacros } from '@/macros';
 
 describe('convertCHDataTypeToJSType - unit - type', () => {
   it('Date type', () => {
@@ -147,6 +144,20 @@ describe('convertCHDataTypeToJSType - unit - type', () => {
   });
 });
 
+describe('isCHFixedStringType', () => {
+  it('matches FixedString and wrappers, and ignores String', () => {
+    expect(isCHFixedStringType('FixedString(32)')).toBe(true);
+    expect(isCHFixedStringType('Nullable(FixedString(32))')).toBe(true);
+    expect(isCHFixedStringType('LowCardinality(FixedString(16))')).toBe(true);
+    expect(
+      isCHFixedStringType('LowCardinality(Nullable(FixedString(32)))'),
+    ).toBe(true);
+    expect(isCHFixedStringType('String')).toBe(false);
+    expect(isCHFixedStringType('Nullable(String)')).toBe(false);
+    expect(isCHFixedStringType('LowCardinality(String)')).toBe(false);
+  });
+});
+
 describe('chSqlToAliasMap - alias unit test', () => {
   it('No alias', () => {
     const chSqlInput: ChSql = {
@@ -271,6 +282,17 @@ describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () =>
     });
   });
 
+  it('recovers a quoted alias through the fallback', () => {
+    const chSqlInput: ChSql = {
+      sql: `${samplingCte} SELECT client_ip as \`x-host-header\`, ServiceName as service FROM db.t WHERE ${samplingWhere}`,
+      params: {},
+    };
+    expect(chSqlToAliasMap(chSqlInput)).toEqual({
+      'x-host-header': 'client_ip',
+      service: 'ServiceName',
+    });
+  });
+
   it('restores JSON-path aliases recovered through the fallback', () => {
     const chSqlInput: ChSql = {
       sql: `${samplingCte} SELECT ResourceAttributes.service.name as service, Timestamp as ts FROM db.t WHERE ${samplingWhere}`,
@@ -312,700 +334,101 @@ describe('chSqlToAliasMap - resilient parsing of ClickHouse-specific SQL', () =>
   });
 });
 
-describe('computeRatio', () => {
-  it('should correctly compute ratio of two numbers', () => {
-    expect(computeRatio('10', '2')).toBe(5);
-    expect(computeRatio('3', '4')).toBe(0.75);
-    expect(computeRatio('0', '5')).toBe(0);
-  });
-
-  it('should return NaN when denominator is zero', () => {
-    expect(isNaN(computeRatio('10', '0'))).toBe(true);
-  });
-
-  it('should return NaN for non-numeric inputs', () => {
-    expect(isNaN(computeRatio('abc', '2'))).toBe(true);
-    expect(isNaN(computeRatio('10', 'xyz'))).toBe(true);
-    expect(isNaN(computeRatio('abc', 'xyz'))).toBe(true);
-    expect(isNaN(computeRatio('', '5'))).toBe(true);
-  });
-
-  it('should handle string representations of numbers', () => {
-    expect(computeRatio('10.5', '2')).toBe(5.25);
-    expect(computeRatio('-10', '5')).toBe(-2);
-    expect(computeRatio('10', '-5')).toBe(-2);
-  });
-
-  it('should handle number input types', () => {
-    expect(computeRatio(10, 2)).toBe(5);
-    expect(computeRatio(3, 4)).toBe(0.75);
-    expect(computeRatio(10.5, 2)).toBe(5.25);
-    expect(computeRatio(0, 5)).toBe(0);
-    expect(isNaN(computeRatio(10, 0))).toBe(true);
-    expect(computeRatio(-10, 5)).toBe(-2);
-  });
-
-  it('should handle mixed string and number inputs', () => {
-    expect(computeRatio('10', 2)).toBe(5);
-    expect(computeRatio(10, '2')).toBe(5);
-    expect(computeRatio(3, '4')).toBe(0.75);
-    expect(isNaN(computeRatio(10, ''))).toBe(true);
-  });
-});
-
-describe('computeResultSetRatio', () => {
-  it('should compute ratio for a valid result set with timestamp column', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'timestamp', type: 'DateTime' },
-        { name: 'requests', type: 'UInt64' },
-        { name: 'errors', type: 'UInt64' },
-      ],
-      data: [
-        { timestamp: '2025-04-15 10:00:00', requests: '100', errors: '10' },
-        { timestamp: '2025-04-15 11:00:00', requests: '200', errors: '20' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(mockResultSet, {
-      numeratorName: 'requests',
-      denominatorName: 'errors',
+describe('chSqlToAliasMap - backtick-quoted identifiers', () => {
+  it('resolves an alias whose name needs quoting, keeping its siblings', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT client_ip AS `x-host-header`,time AS `__hdx_timestamp`,ServiceName AS svc FROM otel.logs WHERE time > 1 LIMIT 10',
+      params: {},
     });
-
-    expect(result.meta.length).toBe(2);
-    expect(result.meta[0].name).toBe('requests/errors');
-    expect(result.meta[0].type).toBe('Float64');
-    expect(result.meta[1].name).toBe('timestamp');
-
-    expect(result.data.length).toBe(2);
-    expect(result.data[0]['requests/errors']).toBe(10);
-    expect(result.data[0].timestamp).toBe('2025-04-15 10:00:00');
-    expect(result.data[1]['requests/errors']).toBe(10);
-    expect(result.data[1].timestamp).toBe('2025-04-15 11:00:00');
-  });
-
-  it('should compute ratio for a valid result set without timestamp column', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'requests', type: 'UInt64' },
-        { name: 'errors', type: 'UInt64' },
-      ],
-      data: [{ requests: '100', errors: '10' }],
-      rows: 1,
-      statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 50 },
-    };
-
-    const result = computeResultSetRatio(mockResultSet, {
-      numeratorName: 'requests',
-      denominatorName: 'errors',
+    expect(res).toEqual({
+      'x-host-header': 'client_ip',
+      __hdx_timestamp: 'time',
+      svc: 'ServiceName',
     });
-
-    expect(result.meta.length).toBe(1);
-    expect(result.meta[0].name).toBe('requests/errors');
-    expect(result.meta[0].type).toBe('Float64');
-
-    expect(result.data.length).toBe(1);
-    expect(result.data[0]['requests/errors']).toBe(10);
-    expect(result.data[0].timestamp).toBeUndefined();
   });
 
-  it('should handle NaN values in ratio computation', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'timestamp', type: 'DateTime' },
-        { name: 'requests', type: 'UInt64' },
-        { name: 'errors', type: 'UInt64' },
-      ],
-      data: [
-        { timestamp: '2025-04-15 10:00:00', requests: '100', errors: '0' },
-        { timestamp: '2025-04-15 11:00:00', requests: 'invalid', errors: '20' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(mockResultSet, {
-      numeratorName: 'requests',
-      denominatorName: 'errors',
+  it('keeps the quoting on a column whose name needs it', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT `x-host-header` AS host,`M-1`['a'] AS mapped FROM otel.logs LIMIT 10",
+      params: {},
     });
-
-    expect(result.data.length).toBe(2);
-    expect(isNaN(result.data[0]['requests/errors'])).toBe(true);
-    expect(isNaN(result.data[1]['requests/errors'])).toBe(true);
-  });
-
-  it('should throw error when result set has insufficient columns', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'timestamp', type: 'DateTime' },
-        { name: 'requests', type: 'UInt64' },
-      ],
-      data: [{ timestamp: '2025-04-15 10:00:00', requests: '100' }],
-      rows: 1,
-      statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 50 },
-    };
-
-    // Denominator operand does not exist in the meta -> can't compute.
-    expect(() =>
-      computeResultSetRatio(mockResultSet, {
-        numeratorName: 'requests',
-        denominatorName: 'errors',
-      }),
-    ).toThrow(/Unable to compute ratio/);
-  });
-
-  it('computes a grouped ratio as each group own rate by default (per_group)', () => {
-    // Joined meta seeds the two value columns first, then the group + timestamp
-    // columns (mirrors queryChartConfig's merge output).
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-        { name: 'timestamp', type: 'DateTime' },
-      ],
-      data: [
-        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
-        { errors: '30', total: '100', tenant: 'globex', timestamp: 't0' },
-        { errors: '10', total: '100', tenant: 'acme', timestamp: 't1' },
-      ],
-      rows: 3,
-      statistics: { elapsed: 0.1, rows_read: 3, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(mockResultSet, {
-      numeratorName: 'errors',
-      denominatorName: 'total',
+    expect(res).toEqual({
+      host: '`x-host-header`',
+      mapped: "`M-1`['a']",
     });
-
-    // ratio column + carried-through group + timestamp
-    expect(result.meta.map(m => m.name)).toEqual([
-      'errors/total',
-      'tenant',
-      'timestamp',
-    ]);
-    // Each group divided by its own denominator (per-group rate), not a shared
-    // bucket total.
-    expect(result.data).toEqual([
-      { 'errors/total': 0.2, tenant: 'acme', timestamp: 't0' }, // 20/100
-      { 'errors/total': 0.3, tenant: 'globex', timestamp: 't0' }, // 30/100
-      { 'errors/total': 0.1, tenant: 'acme', timestamp: 't1' }, // 10/100
-    ]);
   });
 
-  it('computes a grouped ratio as each group share of the per-bucket total in share_of_total mode (lines sum to the overall)', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-        { name: 'timestamp', type: 'DateTime' },
-      ],
-      data: [
-        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
-        { errors: '30', total: '100', tenant: 'globex', timestamp: 't0' },
-        { errors: '10', total: '100', tenant: 'acme', timestamp: 't1' },
-      ],
-      rows: 3,
-      statistics: { elapsed: 0.1, rows_read: 3, bytes_read: 100 },
-    };
+  it('records no entry for a quoted column selected without an alias', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT `x-host-header`,ServiceName AS svc FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ svc: 'ServiceName' });
+  });
 
-    const result = computeResultSetRatio(
-      mockResultSet,
-      { numeratorName: 'errors', denominatorName: 'total' },
-      'share_of_total',
+  it('keeps aliases when the only quoted identifier is in the WHERE', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT ServiceName AS svc FROM otel.logs WHERE `x-host-header`='v' LIMIT 10",
+      params: {},
+    });
+    expect(res).toEqual({ svc: 'ServiceName' });
+  });
+
+  it('preserves quoting inside an aliased expression', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT lower(`x-host-header`) AS host,multiIf(`a-b` > 1, `c-d`, 0) AS m FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({
+      host: 'lower(`x-host-header`)',
+      m: 'multiIf(`a-b` > 1, `c-d`, 0)',
+    });
+  });
+
+  it('re-quotes a double-quoted column name', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT "x-host-header" AS host FROM otel.logs LIMIT 10',
+      params: {},
+    });
+    expect(res).toEqual({ host: '`x-host-header`' });
+  });
+
+  it('restores more than ten quoted identifiers', () => {
+    const select = Array.from(
+      { length: 12 },
+      (_, i) => `\`c-${i}\` AS a${i}`,
+    ).join(',');
+    const res = chSqlToAliasMap({
+      sql: `SELECT ${select} FROM otel.logs LIMIT 10`,
+      params: {},
+    });
+    expect(res).toEqual(
+      Object.fromEntries(
+        Array.from({ length: 12 }, (_, i) => [`a${i}`, `\`c-${i}\``]),
+      ),
     );
-
-    // Denominator is the per-bucket total across all groups (t0: 200, t1: 100),
-    // so each group is its contribution to the overall rate.
-    expect(result.data).toEqual([
-      { 'errors/total': 0.1, tenant: 'acme', timestamp: 't0' }, // 20/200
-      { 'errors/total': 0.15, tenant: 'globex', timestamp: 't0' }, // 30/200
-      { 'errors/total': 0.1, tenant: 'acme', timestamp: 't1' }, // 10/100
-    ]);
-    // t0 contributions sum to the overall error rate for that bucket (50/200).
-    const t0 = result.data.filter(r => r.timestamp === 't0');
-    expect(t0.reduce((s, r) => s + r['errors/total'], 0)).toBeCloseTo(0.25);
   });
 
-  it('renders a zero-error group as 0% (missing numerator), not N/A', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-        { name: 'timestamp', type: 'DateTime' },
-      ],
-      data: [
-        // has errors -> contributes 20/200
-        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
-        // denominator only (no rows in the error-filtered numerator query) -> 0%
-        { total: '100', tenant: 'globex', timestamp: 't0' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(
-      mockResultSet,
-      { numeratorName: 'errors', denominatorName: 'total' },
-      'share_of_total',
-    );
-
-    expect(result.data[0]['errors/total']).toBe(0.1); // 20 / (100+100)
-    expect(result.data[1]['errors/total']).toBe(0); // 0 / 200
-  });
-
-  it('does not let a group missing the denominator poison the bucket total', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-        { name: 'timestamp', type: 'DateTime' },
-      ],
-      data: [
-        // present in both numerator and denominator
-        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
-        // numerator only (no matching denominator row) -> total is undefined.
-        // Must not turn the bucket total into NaN for the other groups.
-        { errors: '5', tenant: 'globex', timestamp: 't0' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(
-      mockResultSet,
-      { numeratorName: 'errors', denominatorName: 'total' },
-      'share_of_total',
-    );
-
-    // Bucket total is 100 (only acme contributes a denominator), so acme's
-    // share is still well-defined rather than NaN.
-    expect(result.data[0]['errors/total']).toBe(0.2); // 20 / 100
-  });
-
-  it('divides each group by the grand total in share_of_total mode when there is no timestamp column (Table/Number ratio)', () => {
-    // No timestamp column -> every row shares the '__all__' bucket, so a grouped
-    // non-time-series ratio in share_of_total mode is each group's share of the
-    // grand total across all groups. This locks that intended semantic.
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-      ],
-      data: [
-        { errors: '20', total: '100', tenant: 'acme' },
-        { errors: '30', total: '300', tenant: 'globex' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(
-      mockResultSet,
-      { numeratorName: 'errors', denominatorName: 'total' },
-      'share_of_total',
-    );
-
-    // Grand total = 100 + 300 = 400, so each group is divided by 400.
-    expect(result.data).toEqual([
-      { 'errors/total': 0.05, tenant: 'acme' }, // 20/400
-      { 'errors/total': 0.075, tenant: 'globex' }, // 30/400
-    ]);
-  });
-
-  it('divides each group by its own denominator in per_group mode (default)', () => {
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-      ],
-      data: [
-        { errors: '20', total: '100', tenant: 'acme' },
-        { errors: '30', total: '300', tenant: 'globex' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(mockResultSet, {
-      numeratorName: 'errors',
-      denominatorName: 'total',
+  it('restores quoted identifiers alongside a JSON path', () => {
+    const res = chSqlToAliasMap({
+      sql: 'SELECT concat(j.p0, `c-1`, `c-10`) AS m FROM otel.logs LIMIT 10',
+      params: {},
     });
-
-    expect(result.data).toEqual([
-      { 'errors/total': 0.2, tenant: 'acme' }, // 20/100
-      { 'errors/total': 0.1, tenant: 'globex' }, // 30/300
-    ]);
+    expect(res).toEqual({ m: 'concat(j.p0, `c-1`, `c-10`)' });
   });
 
-  it('yields NaN in share_of_total mode when a bucket denominator total is zero', () => {
-    // Every group in the bucket has a zero denominator, so the bucket total is
-    // 0 and each share is a divide-by-zero -> NaN (computeRatio guards it).
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-        { name: 'timestamp', type: 'DateTime' },
-      ],
-      data: [
-        { errors: '5', total: '0', tenant: 'acme', timestamp: 't0' },
-        { errors: '3', total: '0', tenant: 'globex', timestamp: 't0' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(
-      mockResultSet,
-      { numeratorName: 'errors', denominatorName: 'total' },
-      'share_of_total',
-    );
-
-    expect(isNaN(result.data[0]['errors/total'])).toBe(true);
-    expect(isNaN(result.data[1]['errors/total'])).toBe(true);
-  });
-
-  it('yields NaN in per_group mode for a row missing its own denominator', () => {
-    // per_group divides each row by its own denominator; a row absent from the
-    // denominator split has undefined -> NaN, without poisoning other rows.
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-        { name: 'timestamp', type: 'DateTime' },
-      ],
-      data: [
-        { errors: '20', total: '100', tenant: 'acme', timestamp: 't0' },
-        // numerator only, no denominator for this group
-        { errors: '5', tenant: 'globex', timestamp: 't0' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(mockResultSet, {
-      numeratorName: 'errors',
-      denominatorName: 'total',
+  it('leaves backticks inside string literals alone', () => {
+    const res = chSqlToAliasMap({
+      sql: "SELECT Body AS body FROM otel.logs WHERE Body = 'a `b` c' LIMIT 10",
+      params: {},
     });
-
-    expect(result.data[0]['errors/total']).toBe(0.2); // 20/100
-    expect(isNaN(result.data[1]['errors/total'])).toBe(true); // 5/undefined
-  });
-
-  it('buckets share_of_total by the real time bucket, not a Date-typed group-by dimension ordered ahead of it', () => {
-    // A DateTime group-by dimension (`day`) precedes the real time bucket in the
-    // meta. inferTimestampColumn would pick `day` (first Date-typed column) and
-    // sum the denominator over the wrong column; resolving by the query
-    // builder's FIXED_TIME_BUCKET_EXPR_ALIAS picks the true bucket instead.
-    const mockResultSet: ResponseJSON<any> = {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'total', type: 'UInt64' },
-        { name: 'day', type: 'Date' }, // group-by dimension, Date-typed
-        { name: FIXED_TIME_BUCKET_EXPR_ALIAS, type: 'DateTime' }, // real bucket
-      ],
-      data: [
-        // Bucket t0 spans two distinct `day` values; the per-bucket total must
-        // be 100 + 300 = 400, not per-`day` (which the hijack would produce).
-        {
-          errors: '20',
-          total: '100',
-          day: '2025-04-15',
-          [FIXED_TIME_BUCKET_EXPR_ALIAS]: 't0',
-        },
-        {
-          errors: '30',
-          total: '300',
-          day: '2025-04-16',
-          [FIXED_TIME_BUCKET_EXPR_ALIAS]: 't0',
-        },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    };
-
-    const result = computeResultSetRatio(
-      mockResultSet,
-      { numeratorName: 'errors', denominatorName: 'total' },
-      'share_of_total',
-    );
-
-    // Divided by the true bucket total (400), not by each row's own `day` total.
-    expect(result.data[0]['errors/total']).toBe(0.05); // 20/400
-    expect(result.data[1]['errors/total']).toBe(0.075); // 30/400
-  });
-});
-
-describe('mergeResultSets', () => {
-  // Two split queries (one per series) that share a group-by dimension and are
-  // NOT time-series (Table display, no timestamp column).
-  const groupedSplits = (): ResponseJSON<any>[] => [
-    {
-      meta: [
-        { name: 'errors', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-      ],
-      data: [
-        { errors: '20', tenant: 'acme' },
-        { errors: '30', tenant: 'globex' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    },
-    {
-      meta: [
-        { name: 'total', type: 'UInt64' },
-        { name: 'tenant', type: 'String' },
-      ],
-      data: [
-        { total: '100', tenant: 'acme' },
-        { total: '200', tenant: 'globex' },
-      ],
-      rows: 2,
-      statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-    },
-  ];
-
-  it('merges the numerator and denominator rows for the same group into one row instead of clobbering', () => {
-    const merged = mergeResultSets({
-      resultSets: groupedSplits(),
-      isTimeSeries: false,
-      isRatio: false,
-    });
-
-    // Each group keeps BOTH operands (the second split does not overwrite the
-    // first) — this is the merge step the grouped-ratio fix depends on.
-    expect(merged.meta?.map(m => m.name)).toEqual([
-      'errors',
-      'total',
-      'tenant',
-    ]);
-    expect(merged.data).toEqual([
-      { errors: '20', total: '100', tenant: 'acme' },
-      { errors: '30', total: '200', tenant: 'globex' },
-    ]);
-  });
-
-  it('computes the grouped ratio end-to-end from the split result sets (per-group default)', () => {
-    const merged = mergeResultSets({
-      resultSets: groupedSplits(),
-      isTimeSeries: false,
-      isRatio: true,
-    });
-
-    // Default per_group -> each group divided by its own denominator.
-    expect(merged.data).toEqual([
-      { 'errors/total': 20 / 100, tenant: 'acme' },
-      { 'errors/total': 30 / 200, tenant: 'globex' },
-    ]);
-  });
-
-  it('passes ratioMode through to computeResultSetRatio (share_of_total)', () => {
-    const merged = mergeResultSets({
-      resultSets: groupedSplits(),
-      isTimeSeries: false,
-      isRatio: true,
-      ratioMode: 'share_of_total',
-    });
-
-    // No timestamp -> share of the grand total (300): 20/300, 30/300.
-    expect(merged.data).toEqual([
-      { 'errors/total': 20 / 300, tenant: 'acme' },
-      { 'errors/total': 30 / 300, tenant: 'globex' },
-    ]);
-  });
-
-  it('keeps grouped time-series rows distinct when computing a ratio (timestamp + group column)', () => {
-    // Both a real timestamp and a group dimension: rows at the same bucket but
-    // different groups must not collapse, and each group keeps its own operands.
-    const resultSets: ResponseJSON<any>[] = [
-      {
-        meta: [
-          { name: 'errors', type: 'UInt64' },
-          { name: 'tenant', type: 'String' },
-          { name: 'timestamp', type: 'DateTime' },
-        ],
-        data: [
-          { errors: '20', tenant: 'acme', timestamp: 't0' },
-          { errors: '30', tenant: 'globex', timestamp: 't0' },
-        ],
-        rows: 2,
-        statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-      },
-      {
-        meta: [
-          { name: 'total', type: 'UInt64' },
-          { name: 'tenant', type: 'String' },
-          { name: 'timestamp', type: 'DateTime' },
-        ],
-        data: [
-          { total: '100', tenant: 'acme', timestamp: 't0' },
-          { total: '300', tenant: 'globex', timestamp: 't0' },
-        ],
-        rows: 2,
-        statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-      },
-    ];
-
-    const merged = mergeResultSets({
-      resultSets,
-      isTimeSeries: true,
-      isRatio: true,
-    });
-
-    // Two distinct groups in the same bucket, each divided by its own total.
-    expect(merged.data).toEqual([
-      { 'errors/total': 0.2, tenant: 'acme', timestamp: 't0' }, // 20/100
-      { 'errors/total': 0.1, tenant: 'globex', timestamp: 't0' }, // 30/300
-    ]);
-  });
-
-  it('keeps operands distinct when both splits resolve to the same value-column alias', () => {
-    // A ratio of count(request) filtered / unfiltered: the alias omits the WHERE
-    // filter, so both splits emit a `count(request)` column. They must not
-    // collapse into one column (which would make the ratio uncomputable).
-    const resultSets: ResponseJSON<any>[] = [
-      {
-        meta: [
-          { name: 'count(request)', type: 'UInt64' },
-          { name: 'timestamp', type: 'DateTime' },
-        ],
-        data: [{ 'count(request)': '5', timestamp: 't0' }],
-        rows: 1,
-        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
-      },
-      {
-        meta: [
-          { name: 'count(request)', type: 'UInt64' },
-          { name: 'timestamp', type: 'DateTime' },
-        ],
-        data: [{ 'count(request)': '20', timestamp: 't0' }],
-        rows: 1,
-        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
-      },
-    ];
-
-    const merged = mergeResultSets({
-      resultSets,
-      isTimeSeries: true,
-      isRatio: true,
-    });
-
-    // 5 / 20 — would throw "Unable to compute ratio" if the two operands
-    // collapsed into a single column. The label strips the disambiguation
-    // suffix so it reads count(request)/count(request).
-    expect(merged.data).toEqual([
-      { 'count(request)/count(request)': 0.25, timestamp: 't0' },
-    ]);
-  });
-
-  it('keeps colliding value columns distinct across splits that also carry a group dimension', () => {
-    // Same-alias operands (count(request) filtered / unfiltered) AND a group-by
-    // dimension carried through both splits. The colliding value column is
-    // renamed per split index while the group dimension merges, so each group
-    // keeps both operands and divides correctly.
-    const resultSets: ResponseJSON<any>[] = [
-      {
-        meta: [
-          { name: 'count(request)', type: 'UInt64' },
-          { name: 'tenant', type: 'String' },
-          { name: 'timestamp', type: 'DateTime' },
-        ],
-        data: [
-          { 'count(request)': '5', tenant: 'acme', timestamp: 't0' },
-          { 'count(request)': '9', tenant: 'globex', timestamp: 't0' },
-        ],
-        rows: 2,
-        statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-      },
-      {
-        meta: [
-          { name: 'count(request)', type: 'UInt64' },
-          { name: 'tenant', type: 'String' },
-          { name: 'timestamp', type: 'DateTime' },
-        ],
-        data: [
-          { 'count(request)': '20', tenant: 'acme', timestamp: 't0' },
-          { 'count(request)': '30', tenant: 'globex', timestamp: 't0' },
-        ],
-        rows: 2,
-        statistics: { elapsed: 0.1, rows_read: 2, bytes_read: 100 },
-      },
-    ];
-
-    const merged = mergeResultSets({
-      resultSets,
-      isTimeSeries: true,
-      isRatio: true,
-    });
-
-    expect(merged.data).toEqual([
-      {
-        'count(request)/count(request)': 0.25,
-        tenant: 'acme',
-        timestamp: 't0',
-      }, // 5/20
-      {
-        'count(request)/count(request)': 0.3,
-        tenant: 'globex',
-        timestamp: 't0',
-      }, // 9/30
-    ]);
-  });
-
-  it('returns the merged rows undivided when a ratio split has no numeric value column', () => {
-    // If one split yields no inferable numeric column, its operand name is ''.
-    // Reading positionally leaves denominatorName undefined; rather than throw
-    // "Unable to compute ratio" and fail the whole chart, the merge returns the
-    // rows undivided.
-    const resultSets: ResponseJSON<any>[] = [
-      {
-        meta: [
-          { name: 'errors', type: 'UInt64' },
-          { name: 'timestamp', type: 'DateTime' },
-        ],
-        data: [{ errors: '20', timestamp: 't0' }],
-        rows: 1,
-        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
-      },
-      {
-        // No numeric column at all (e.g. an empty/failed split projection).
-        meta: [{ name: 'timestamp', type: 'DateTime' }],
-        data: [{ timestamp: 't0' }],
-        rows: 1,
-        statistics: { elapsed: 0.1, rows_read: 1, bytes_read: 100 },
-      },
-    ];
-
-    expect(() =>
-      mergeResultSets({ resultSets, isTimeSeries: true, isRatio: true }),
-    ).not.toThrow();
-
-    const merged = mergeResultSets({
-      resultSets,
-      isTimeSeries: true,
-      isRatio: true,
-    });
-
-    // No ratio column — the merged rows pass through undivided.
-    expect(merged.data).toEqual([{ errors: '20', timestamp: 't0' }]);
-    expect(merged.meta?.some(m => m.name.includes('/'))).toBe(false);
+    expect(res).toEqual({ body: 'Body' });
   });
 });
 
 describe('processClickhouseSettings - optimization settings', () => {
   let client: ClickhouseClient;
   let mockQueryMethod: jest.Mock;
-  let metadataCache: MetadataCache;
 
   const createClient = () => {
     const newClient = new ClickhouseClient({
@@ -1049,7 +472,6 @@ describe('processClickhouseSettings - optimization settings', () => {
     const setup = createClient();
     client = setup.client;
     mockQueryMethod = setup.mockQueryMethod;
-    metadataCache = setup.cache;
   });
 
   afterEach(() => {
@@ -1112,6 +534,10 @@ describe('processClickhouseSettings - optimization settings', () => {
       // { name: 'use_top_k_dynamic_filtering', value: '1' },
       { name: 'use_skip_indexes_on_data_read', value: '1' },
       { name: 'use_skip_indexes_for_disjunctions', value: '1' },
+      {
+        name: 'allow_calculating_subcolumns_sizes_for_merge_tree_reading',
+        value: '1',
+      },
     ]);
 
     await client.query({
@@ -1138,9 +564,13 @@ describe('processClickhouseSettings - optimization settings', () => {
       // use_top_k_dynamic_filtering: '1',
       use_skip_indexes_on_data_read: '1',
       use_skip_indexes_for_disjunctions: '1',
+      allow_calculating_subcolumns_sizes_for_merge_tree_reading: '0',
     });
   });
 
+  // The exact-equality assertion below is what keeps unavailable settings off
+  // the wire — e.g. a pre-26.3 server that would reject
+  // allow_calculating_subcolumns_sizes_for_merge_tree_reading as unknown.
   it('should only apply available optimization settings', async () => {
     setupMockQuery([
       { name: 'use_skip_indexes_for_top_k', value: '1' },
@@ -1268,5 +698,179 @@ describe('processClickhouseSettings - optimization settings', () => {
         call[0].query === 'SELECT name, value FROM system.settings',
     );
     expect(settingsCalls.length).toEqual(1);
+  });
+});
+
+describe('chSqlToSelectColumns', () => {
+  const columns = (sql: string, params: Record<string, unknown> = {}) =>
+    chSqlToSelectColumns({ sql, params });
+
+  it('resolves aliases to their expressions and marks group-by items', () => {
+    expect(
+      columns(
+        "SELECT ServiceName AS svc, LogAttributes['k'] AS k, count() AS c FROM logs GROUP BY svc, k ORDER BY c LIMIT 10",
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: "LogAttributes['k']", isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('keeps complex expressions verbatim', () => {
+    expect(
+      columns(
+        "SELECT toStartOfHour(Timestamp) AS hour, concat(ServiceName, '-', SeverityText), count() FROM logs GROUP BY hour, concat(ServiceName, '-', SeverityText)",
+      ),
+    ).toEqual([
+      { expression: 'toStartOfHour(Timestamp)', isGroupBy: true },
+      { expression: "concat(ServiceName, '-', SeverityText)", isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it.each([
+    ['aliased', 'AS k', 'k'],
+    ['followed by a comma', '', "ParentSpanId = ''"],
+  ])('trims binary expressions %s', (_case, alias, groupBy) => {
+    expect(
+      columns(
+        `SELECT ParentSpanId = ''  ${alias}, ServiceName || '-' || SpanName   AS name, count() FROM logs GROUP BY ${groupBy}, name`,
+      ),
+    ).toEqual([
+      { expression: "ParentSpanId = ''", isGroupBy: true },
+      { expression: "ServiceName || '-' || SpanName", isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches GROUP BY items by position', () => {
+    expect(columns('SELECT count(), ServiceName FROM logs GROUP BY 2')).toEqual(
+      [
+        { expression: 'count()', isGroupBy: false },
+        { expression: 'ServiceName', isGroupBy: true },
+      ],
+    );
+  });
+
+  it('matches GROUP BY expressions ignoring whitespace and case', () => {
+    expect(
+      columns(
+        'SELECT lower(ServiceName), count() FROM logs GROUP BY LOWER( ServiceName )',
+      ),
+    ).toEqual([
+      { expression: 'lower(ServiceName)', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it.each([
+    ['double-quoted', '"Svc Name"'],
+    ['backtick-quoted', '`Svc Name`'],
+    ['quoted bare', '"svc"'],
+  ])('matches %s GROUP BY aliases', (_case, alias) => {
+    expect(
+      columns(
+        `SELECT ServiceName AS ${alias}, count() FROM logs GROUP BY ${alias}`,
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches quoted GROUP BY columns', () => {
+    expect(
+      columns(
+        'SELECT ServiceName, `x-host`, count() FROM logs GROUP BY "ServiceName", `x-host`',
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: '`x-host`', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches parenthesized GROUP BY items', () => {
+    expect(
+      columns(
+        'SELECT ServiceName, lower(SeverityText), count() FROM logs GROUP BY (ServiceName), (lower(SeverityText))',
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'lower(SeverityText)', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('matches GROUP BY expressions over backtick-quoted identifiers', () => {
+    expect(
+      columns(
+        'SELECT lower(`x-host`), count() FROM logs GROUP BY lower(`x-host`)',
+      ),
+    ).toEqual([
+      { expression: 'lower(`x-host`)', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('reads the outer query of a CTE', () => {
+    expect(
+      columns(
+        'WITH recent AS (SELECT ServiceName AS s FROM logs GROUP BY s) SELECT s AS service, count() FROM recent GROUP BY service',
+      ),
+    ).toEqual([
+      { expression: 's', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('restores JSON paths', () => {
+    expect(
+      columns(
+        'SELECT LogAttributes.user.id AS user, count() FROM logs GROUP BY user',
+      ),
+    ).toEqual([
+      { expression: 'LogAttributes.user.id', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it('reads queries with query params and a SETTINGS clause', () => {
+    expect(
+      columns(
+        'SELECT ServiceName, count() FROM logs WHERE Timestamp > fromUnixTimestamp64Milli({start:Int64}) GROUP BY ServiceName SETTINGS max_threads = 1',
+        { start: 1 },
+      ),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
+  });
+
+  it.each([
+    ['there is no GROUP BY', 'SELECT ServiceName, Body FROM logs'],
+    ['it selects *', 'SELECT *, count() FROM logs GROUP BY ServiceName'],
+    ['it groups by ALL', 'SELECT ServiceName, count() FROM logs GROUP BY ALL'],
+    ['it does not parse', 'SELECT ServiceName, count( FROM logs GROUP BY 1'],
+  ])('returns undefined when %s', (_case, sql) => {
+    expect(columns(sql)).toBeUndefined();
+  });
+
+  it('parses a raw SQL template once its macros are replaced', () => {
+    const sql = replaceMacros(
+      {
+        sqlTemplate:
+          'SELECT ServiceName AS svc, count() FROM $__sourceTable WHERE $__timeFilter(Timestamp) AND $__filters GROUP BY svc',
+        from: { databaseName: 'default', tableName: 'otel_logs' },
+      },
+      "(toString(SeverityText) = 'error')",
+    );
+    expect(
+      columns(sql, { startDateMilliseconds: 1, endDateMilliseconds: 2 }),
+    ).toEqual([
+      { expression: 'ServiceName', isGroupBy: true },
+      { expression: 'count()', isGroupBy: false },
+    ]);
   });
 });

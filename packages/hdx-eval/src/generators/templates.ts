@@ -13,21 +13,6 @@ import type { SeededRng } from '@/rng/seeded';
 // inconsistent severity strings. Mirror that mess so agents have to handle
 // case folding and aliasing.
 
-const SEVERITY_DISTRIBUTION: { value: string; weight: number }[] = [
-  { value: 'info', weight: 60 },
-  { value: 'INFO', weight: 8 },
-  { value: 'information', weight: 8 },
-  { value: 'debug', weight: 5 },
-  { value: 'DEBUG', weight: 2 },
-  { value: 'warn', weight: 8 },
-  { value: 'WARN', weight: 1.5 },
-  { value: 'warning', weight: 1 },
-  { value: 'error', weight: 3 },
-  { value: 'ERROR', weight: 1.5 },
-  { value: 'fatal', weight: 0.4 },
-  { value: 'trace', weight: 1.6 },
-];
-
 const SEVERITY_NUMBER_BY_TEXT: Record<string, number> = {
   trace: 1,
   TRACE: 1,
@@ -44,14 +29,6 @@ const SEVERITY_NUMBER_BY_TEXT: Record<string, number> = {
   fatal: 21,
   FATAL: 21,
 };
-
-function pickSeverity(rng: SeededRng): {
-  text: string;
-  number: number;
-} {
-  const text = rng.weightedPick(SEVERITY_DISTRIBUTION);
-  return { text, number: SEVERITY_NUMBER_BY_TEXT[text] ?? 9 };
-}
 
 /**
  * Pick a severity but bias toward a target band ('info'|'warn'|'error').

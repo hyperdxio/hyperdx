@@ -5,10 +5,13 @@ import { serializeError } from 'serialize-error';
 import app from '@/api-app';
 import * as config from '@/config';
 import { LOCAL_APP_TEAM } from '@/controllers/team';
-import { connectDB, mongooseConnection } from '@/models';
+import { runStartupMigrations } from '@/migrations';
+import { connectDBWithRetry, mongooseConnection } from '@/models';
 import opampApp from '@/opamp/app';
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
+import { verifySessionSecret } from '@/utils/sessionSecret';
+import { verifyTokenEncryption } from '@/utils/tokenEncryption';
 
 export default class Server {
   protected shouldHandleGracefulShutdown = true;
@@ -24,7 +27,7 @@ export default class Server {
     return http.createServer(opampApp);
   }
 
-  protected async shutdown(signal?: string) {
+  protected async shutdown(_signal?: string) {
     let hasError = false;
     logger.info('Closing all db clients...');
     const [mongoCloseResult] = await Promise.allSettled([
@@ -85,7 +88,19 @@ export default class Server {
       });
     }
 
-    await connectDB();
+    // Checked before Mongo so a bad encryption key or KMS policy is reported
+    // even while the Mongo connect below is still retrying.
+    await verifyTokenEncryption();
+    verifySessionSecret();
+
+    // The HTTP servers above are already listening so that `/health`
+    // (liveness) responds while we connect; `/ready` (readiness) stays 503
+    // until the connection below succeeds. Retries forever — see
+    // connectDBWithRetry for why a single failed initial connect must not be
+    // allowed to leave the process running but permanently unable to serve.
+    await connectDBWithRetry();
+
+    await runStartupMigrations();
 
     // Initialize default connections and sources for local app mode
     if (config.IS_LOCAL_APP_MODE) {

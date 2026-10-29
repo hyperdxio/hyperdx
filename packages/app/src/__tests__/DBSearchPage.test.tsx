@@ -417,6 +417,43 @@ describe('useDefaultOrderBy', () => {
 });
 
 describe('getDefaultSourceId', () => {
+  it('returns empty string if sources is undefined', () => {
+    expect(getDefaultSourceId(undefined, undefined)).toBe('');
+  });
+
+  it('returns empty string if sources is empty', () => {
+    expect(getDefaultSourceId([], undefined)).toBe('');
+  });
+
+  it('returns empty string if sources is empty but lastSelectedSourceId is a string', () => {
+    expect(getDefaultSourceId([], 'some-id')).toBe('');
+  });
+
+  it('returns lastSelectedSourceId if it exists in sources', () => {
+    const sources = [
+      { id: 'a', kind: SourceKind.Log },
+      { id: 'b', kind: SourceKind.Log },
+      { id: 'c', kind: SourceKind.Log },
+    ];
+    expect(getDefaultSourceId(sources, 'b')).toBe('b');
+  });
+
+  it('returns first source id if lastSelectedSourceId is not in sources', () => {
+    const sources = [
+      { id: 'a', kind: SourceKind.Log },
+      { id: 'b', kind: SourceKind.Log },
+    ];
+    expect(getDefaultSourceId(sources, 'z')).toBe('a');
+  });
+
+  it('returns first source id if lastSelectedSourceId is undefined', () => {
+    const sources = [
+      { id: 'x', kind: SourceKind.Log },
+      { id: 'y', kind: SourceKind.Log },
+    ];
+    expect(getDefaultSourceId(sources, undefined)).toBe('x');
+  });
+
   it('returns "" when sources is undefined', () => {
     expect(getDefaultSourceId(undefined, undefined)).toBe('');
   });
@@ -425,19 +462,54 @@ describe('getDefaultSourceId', () => {
     expect(getDefaultSourceId([], undefined)).toBe('');
   });
 
-  it('returns "" when every source is disabled', () => {
+  it('returns "" when there is no searchable (log/trace) source', () => {
     const sources = [
-      { id: 'a', disabled: true },
-      { id: 'b', disabled: true },
+      { id: 'a', kind: SourceKind.Metric },
+      { id: 'b', kind: SourceKind.Session },
     ];
     expect(getDefaultSourceId(sources, 'a')).toBe('');
   });
 
+  it('returns "" when there is no enabled source', () => {
+    const sources = [
+      { id: 'a', kind: SourceKind.Log, disabled: true },
+      { id: 'b', kind: SourceKind.Log, disabled: true },
+    ];
+    expect(getDefaultSourceId(sources, 'a')).toBe('');
+  });
+
+  it('skips metric/session sources and defaults to the first log/trace source', () => {
+    const sources = [
+      { id: 'metrics', kind: SourceKind.Metric },
+      { id: 'sessions', kind: SourceKind.Session },
+      { id: 'logs', kind: SourceKind.Log },
+      { id: 'traces', kind: SourceKind.Trace },
+    ];
+    expect(getDefaultSourceId(sources, undefined)).toBe('logs');
+  });
+
+  it('prefers an enabled log/trace source over an earlier disabled one', () => {
+    const sources = [
+      { id: 'metrics', kind: SourceKind.Metric },
+      { id: 'logs', kind: SourceKind.Log, disabled: true },
+      { id: 'traces', kind: SourceKind.Trace, disabled: false },
+    ];
+    expect(getDefaultSourceId(sources, undefined)).toBe('traces');
+  });
+
+  it('ignores a last-selected source of an incompatible kind', () => {
+    const sources = [
+      { id: 'metrics', kind: SourceKind.Metric },
+      { id: 'logs', kind: SourceKind.Log },
+    ];
+    expect(getDefaultSourceId(sources, 'metrics')).toBe('logs');
+  });
+
   it('returns the last-selected source when it is enabled', () => {
     const sources = [
-      { id: 'a', disabled: false },
-      { id: 'b', disabled: false },
-      { id: 'c' }, // disabled is undefined => treated as enabled
+      { id: 'a', kind: SourceKind.Log, disabled: false },
+      { id: 'b', kind: SourceKind.Log, disabled: false },
+      { id: 'c', kind: SourceKind.Log }, // disabled is undefined => treated as enabled
     ];
     expect(getDefaultSourceId(sources, 'b')).toBe('b');
     expect(getDefaultSourceId(sources, 'c')).toBe('c');
@@ -445,26 +517,26 @@ describe('getDefaultSourceId', () => {
 
   it('falls back to the first enabled source when last-selected is disabled', () => {
     const sources = [
-      { id: 'a', disabled: true },
-      { id: 'b', disabled: false },
-      { id: 'c', disabled: false },
+      { id: 'a', kind: SourceKind.Log, disabled: true },
+      { id: 'b', kind: SourceKind.Log, disabled: false },
+      { id: 'c', kind: SourceKind.Log, disabled: false },
     ];
     expect(getDefaultSourceId(sources, 'a')).toBe('b');
   });
 
   it('falls back to the first enabled source when last-selected is unknown', () => {
     const sources = [
-      { id: 'a', disabled: true },
-      { id: 'b', disabled: false },
+      { id: 'a', kind: SourceKind.Log, disabled: true },
+      { id: 'b', kind: SourceKind.Log, disabled: false },
     ];
     expect(getDefaultSourceId(sources, 'unknown-id')).toBe('b');
   });
 
   it('returns the first enabled source when last-selected is undefined and the list is mixed', () => {
     const sources = [
-      { id: 'a', disabled: true },
-      { id: 'b', disabled: false },
-      { id: 'c', disabled: false },
+      { id: 'a', kind: SourceKind.Log, disabled: true },
+      { id: 'b', kind: SourceKind.Log, disabled: false },
+      { id: 'c', kind: SourceKind.Log, disabled: false },
     ];
     expect(getDefaultSourceId(sources, undefined)).toBe('b');
   });

@@ -3,7 +3,7 @@ import {
   Completion,
   CompletionContext,
 } from '@codemirror/autocomplete';
-import { EditorView } from '@uiw/react-codemirror';
+import { EditorView, Extension } from '@uiw/react-codemirror';
 
 import { clickhouseSql } from '@/utils/codeMirror';
 
@@ -17,6 +17,7 @@ export type SQLCompletion = {
   label: string;
   apply?: string;
   detail?: string;
+  info?: string | (() => Node);
   type?: string;
 };
 
@@ -112,7 +113,19 @@ export const DEFAULT_CODE_MIRROR_BASIC_SETUP = {
   highlightActiveLineGutter: false,
 };
 
-export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
+// CodeMirror never removes a theme's CSS rules, so each distinct theme is built once.
+const styleThemeCache = new Map<string | undefined, Extension>();
+
+export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) => {
+  let theme = styleThemeCache.get(maxEditorHeight);
+  if (theme == null) {
+    theme = buildCodeMirrorStyleTheme(maxEditorHeight);
+    styleThemeCache.set(maxEditorHeight, theme);
+  }
+  return theme;
+};
+
+const buildCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
   EditorView.baseTheme({
     '&.cm-editor.cm-focused': {
       outline: '0px solid transparent',
@@ -121,6 +134,11 @@ export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
       background: 'transparent !important',
     },
     '& .cm-tooltip-autocomplete': {
+      // Set z-index to ensure that autocompletes which are portaled to the
+      // document body are above modals and drawers. The `!important` is
+      // necessary because CodeMirror's own `.cm-tooltip { z-index: 100 }`
+      // would otherwise override this rule.
+      zIndex: 'var(--mantine-z-index-max) !important',
       whiteSpace: 'nowrap',
       wordWrap: 'break-word',
       maxWidth: '100%',
@@ -159,6 +177,20 @@ export const createCodeMirrorStyleTheme = (maxEditorHeight?: string) =>
       borderRadius: '4px',
       padding: '8px',
       color: 'var(--color-text)',
+      // Override the `nowrap` from the autocomplete list, so that the info
+      // text (longer, only one shown at a time) wraps instead of overflowing.
+      whiteSpace: 'normal',
+      overflowWrap: 'break-word',
+      width: 'max-content',
+      maxWidth: '320px',
+      maxHeight: '300px',
+      overflowY: 'auto',
+    },
+    // Trailing detail on a completion's help — the variable's current
+    // selection — set apart from the prose above it.
+    '& .cm-tooltip-autocomplete .cm-completionInfo-footnote': {
+      marginTop: '6px',
+      color: 'var(--color-text-muted)',
     },
     '& .cm-completionIcon': {
       width: '16px',

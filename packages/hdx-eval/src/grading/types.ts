@@ -10,6 +10,40 @@ export type ProgrammaticCheck = {
   negative?: boolean;
 };
 
+/**
+ * An adoption check detects metric engagement from tool-call **arguments**
+ * alone: it is satisfied when some single tool call's input args name one of
+ * the scenario's target metrics, regardless of which tool was called. This
+ * keeps the grader arm-agnostic — a ClickStack metric tool naming
+ * `jvm.gc.pause` and a raw SQL query filtering `MetricName = 'jvm.gc.pause'`
+ * both count. Tool names and tool outputs are never matched.
+ */
+export type AdoptionCheck = {
+  id: string;
+  /** Required (positive) unless `informational: true`; ignored for
+   *  informational checks. */
+  weight?: number;
+  /**
+   * Any-of list of full metric names/keys (e.g.
+   * `process.runtime.jvm.memory.used`). Matched case-insensitively with
+   * `.`/`_`-tolerant separators, so `jvm_gc_pause` also counts.
+   */
+  metrics: string[];
+  /**
+   * Optional extra regex that must ALSO match the same call's args (e.g.
+   * `pool|pod` for "grouped the memory metric by pod/pool").
+   */
+  alsoPattern?: string;
+  /**
+   * When true, the check is evaluated and reported (per-check usage rate)
+   * but EXCLUDED from the weighted adoption score. Use for metrics whose
+   * facts have cheaper substitutes in other signals — querying them is
+   * thoroughness, not the behavior the score measures, and an efficient
+   * agent that skips them should still read 100%.
+   */
+  informational?: boolean;
+};
+
 type JudgeCriterion = {
   id: string;
   weight: number;
@@ -19,12 +53,11 @@ type JudgeCriterion = {
 export type Rubric = {
   programmatic: ProgrammaticCheck[];
   /**
-   * Optional transcript-aware checks. Same regex-check shape as
-   * `programmatic`, but run against the serialized tool-call transcript
-   * (tool names + args) instead of the final answer. Used to grade
-   * tool-adoption signals (e.g. "used a metric tool").
+   * Optional metric-adoption checks, run against the input args of each
+   * tool call (never tool names, outputs, or the prompt). Absent ⇒ the
+   * scenario has no adoption grading.
    */
-  transcript?: ProgrammaticCheck[];
+  adoption?: AdoptionCheck[];
   judge: { criteria: JudgeCriterion[] };
 };
 
@@ -34,6 +67,9 @@ export type ProgrammaticHit = {
   matched: boolean;
   satisfied: boolean;
   negative?: boolean;
+  /** Present (true) on adoption hits whose check is informational —
+   *  reported but excluded from the score. */
+  informational?: boolean;
 };
 
 export type ProgrammaticResult = {
@@ -86,8 +122,8 @@ export type GradeRecord = {
   mcp: McpKind;
   programmatic: ProgrammaticResult;
   /**
-   * Transcript-aware (tool-adoption) check results, when the scenario rubric
-   * defines a `transcript` block. Absent when the rubric has no `transcript` block.
+   * Metric-adoption check results, when the scenario rubric defines an
+   * `adoption` block. Absent when the rubric has no `adoption` block.
    */
   adoption?: ProgrammaticResult;
   judge: JudgeResult | null;

@@ -267,6 +267,46 @@ describe('useAutoCompleteOptions', () => {
       },
     ]);
   });
+
+  // The hook has to hand the table connection down to field discovery, or
+  // callers a source id can't serve — the dashboard-wide WHERE, metric
+  // sources — get an empty field list. Asserted on the call args rather than
+  // on `options` because `useAllFields` is mocked to return `mockFields`
+  // unconditionally, which is exactly what hid the bug.
+  it('discovers fields from the tableConnection when no sourceId is given', () => {
+    renderHook(
+      () =>
+        useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
+          tableConnection: mockTableConnection,
+        }),
+      { wrapper },
+    );
+
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
+      mockTableConnection,
+    );
+  });
+
+  it('uses the first table connection when given an array', () => {
+    renderHook(
+      () =>
+        useAutoCompleteOptions(luceneFormatter, 'ResourceAttributes', {
+          tableConnection: [
+            mockTableConnection,
+            {
+              databaseName: 'other_db',
+              tableName: 'logs',
+              connectionId: 'conn2',
+            },
+          ],
+        }),
+      { wrapper },
+    );
+
+    expect(jest.mocked(useAllFields).mock.calls.at(-1)?.[0]).toEqual(
+      mockTableConnection,
+    );
+  });
 });
 
 describe('tokenizeAtCursor', () => {

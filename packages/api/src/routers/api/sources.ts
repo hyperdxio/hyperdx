@@ -6,6 +6,7 @@ import express from 'express';
 import { z } from 'zod';
 import { validateRequest } from 'zod-express-middleware';
 
+import { validateConnectionId } from '@/controllers/connection';
 import {
   createSource,
   deleteSource,
@@ -43,6 +44,16 @@ router.post(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
+      const connectionCheck = await validateConnectionId(
+        req.body.connection,
+        teamId,
+      );
+      if (!connectionCheck.ok) {
+        return res
+          .status(connectionCheck.status)
+          .json({ message: connectionCheck.message });
+      }
+
       const source = await createSource(teamId.toString(), {
         ...req.body,
         team: teamId.toString(),
@@ -66,6 +77,16 @@ router.put(
   async (req, res, next) => {
     try {
       const { teamId } = getNonNullUserWithTeam(req);
+
+      const connectionCheck = await validateConnectionId(
+        req.body.connection,
+        teamId,
+      );
+      if (!connectionCheck.ok) {
+        return res
+          .status(connectionCheck.status)
+          .json({ message: connectionCheck.message });
+      }
 
       const source = await updateSource(teamId.toString(), req.params.id, {
         ...req.body,

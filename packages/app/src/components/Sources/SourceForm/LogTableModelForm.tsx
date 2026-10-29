@@ -11,7 +11,10 @@ import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import {
   DEFAULT_DATABASE,
+  EVENT_NAME_EXPRESSION_HELP_TEXT,
   KNOWN_COLUMNS_EXPRESSION_HELP_TEXT,
+  SERVICE_VERSION_EXPRESSION_HELP_TEXT,
+  SEVERITY_NUMBER_EXPRESSION_HELP_TEXT,
 } from './constants';
 import { ExpressionFormRow } from './ExpressionFormRow';
 import { FormRow } from './FormRow';
@@ -121,6 +124,17 @@ export function LogTableModelForm(props: TableModelProps) {
         <ExpressionFormRow
           control={control}
           setValue={setValue}
+          name="serviceVersionExpression"
+          label="Service Version Expression"
+          placeholder="ResourceAttributes['service.version']"
+          helpText={SERVICE_VERSION_EXPRESSION_HELP_TEXT}
+          columns={columns}
+          sourceKind={SourceKind.Log}
+          tableConnection={tableConnection}
+        />
+        <ExpressionFormRow
+          control={control}
+          setValue={setValue}
           name="severityTextExpression"
           label="Log Level Expression"
           placeholder="SeverityText"
@@ -131,9 +145,31 @@ export function LogTableModelForm(props: TableModelProps) {
         <ExpressionFormRow
           control={control}
           setValue={setValue}
+          name="severityNumberExpression"
+          label="Severity Number Expression"
+          placeholder="SeverityNumber"
+          helpText={SEVERITY_NUMBER_EXPRESSION_HELP_TEXT}
+          columns={columns}
+          sourceKind={SourceKind.Log}
+          tableConnection={tableConnection}
+        />
+        <ExpressionFormRow
+          control={control}
+          setValue={setValue}
           name="bodyExpression"
           label="Body Expression"
           placeholder="Body"
+          columns={columns}
+          sourceKind={SourceKind.Log}
+          tableConnection={tableConnection}
+        />
+        <ExpressionFormRow
+          control={control}
+          setValue={setValue}
+          name="eventNameExpression"
+          label="Event Name Expression"
+          placeholder="EventName"
+          helpText={EVENT_NAME_EXPRESSION_HELP_TEXT}
           columns={columns}
           sourceKind={SourceKind.Log}
           tableConnection={tableConnection}

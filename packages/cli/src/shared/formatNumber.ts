@@ -165,6 +165,32 @@ const formatAutoScaleData = (
   return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
 };
 
+const AVERAGE_UNITS = [
+  [1e3, 'thousand'],
+  [1e6, 'million'],
+  [1e9, 'billion'],
+  [1e12, 'trillion'],
+] as const;
+
+// numbro's default lowPrecision abbreviates anything that rounds to the next
+// unit (750 -> "0.8k"), while turning it off picks the unit before rounding
+// (999,700 -> "1000k"). Pick the unit from the rounded value instead.
+function averageUnitOptions(
+  displayed: number,
+  mantissa: number,
+): Pick<numbro.Format, 'forceAverage' | 'lowPrecision'> {
+  const abs = Math.abs(displayed);
+  const round = (v: number) => Math.round(v * 10 ** mantissa) / 10 ** mantissa;
+  let scaled = abs;
+  let unit: numbro.Format['forceAverage'];
+  for (const [power, name] of AVERAGE_UNITS) {
+    if (round(scaled) < 1000) break;
+    unit = name;
+    scaled = abs / power;
+  }
+  return unit ? { forceAverage: unit } : { lowPrecision: false };
+}
+
 export const formatNumber = (
   value?: string | number,
   options?: NumberFormat,
@@ -221,11 +247,20 @@ export const formatNumber = (
     return formatDurationMs(ms);
   }
 
+  // Factor is only currently available for the time output
+  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
     mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
+    ...(options.average &&
+      options.output !== 'byte' &&
+      averageUnitOptions(
+        value * factor * (options.output === 'percent' ? 100 : 1),
+        mantissa,
+      )),
     ...(options.output === 'byte' && {
       base: options.decimalBytes ? 'decimal' : 'general',
       spaceSeparated: true,
@@ -235,9 +270,6 @@ export const formatNumber = (
       currencySymbol: options.currencySymbol || '$',
     }),
   };
-
-  // Factor is only currently available for the time output
-  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
 
   return (
     numbro(value * factor).format(numbroFormat) +
@@ -287,6 +319,27 @@ function formatDurationMs(ms: number): string {
   }
 
   return `${parseFloat((ms / 3_600_000).toFixed(2))}h`;
+}
+
+/**
+ * Compact duration labels for axis ticks — fewer decimals, shorter units.
+ *
+ * @source packages/app/src/utils.ts (formatDurationMsCompact)
+ */
+function formatDurationMsCompact(ms: number): string {
+  if (ms < 0) return `-${formatDurationMsCompact(-ms)}`;
+  if (ms === 0) return '0';
+  if (ms < 0.001) return `${+(ms * 1e6).toPrecision(2)}ns`;
+  if (ms < 1) {
+    const µs = ms * 1000;
+    return µs < 10 ? `${+µs.toPrecision(2)}µs` : `${Math.round(µs)}µs`;
+  }
+  if (ms < 1000) {
+    return ms < 10 ? `${+ms.toPrecision(2)}ms` : `${Math.round(ms)}ms`;
+  }
+  if (ms < 120_000) return `${+(ms / 1000).toPrecision(3)}s`;
+  if (ms < 3_600_000) return `${+(ms / 60_000).toPrecision(2)}m`;
+  return `${+(ms / 3_600_000).toPrecision(2)}h`;
 }
 
 // ---- Number-format resolution (de-hooked from packages/app/src/source.ts) --
@@ -476,13 +529,49 @@ export function resolveChartNumberFormats(
   return { formatByColumn, chartFormat };
 }
 
+// A tick's decimal places search downward from the configured mantissa,
+// capped at this - mirrors HDXMultiSeriesTimeChart.tsx for parity.
+const MAX_AXIS_MANTISSA = 2;
+
+// The termchart gutter is a fixed 10-column labelWidth (termchart/
+// timeseries.ts), not the web's 40px/5-char SVG-pixel math - unrelated media.
+const AXIS_CHAR_BUDGET = 10;
+
+// Longest suffix ("KiB/s", 5) the sub-1 rescue below will fully bypass the
+// budget for; "Gibit/s" (7) is long enough that overflow isn't worth it.
+const SUB1_SUFFIX_LIMIT = 5;
+
+// Trims insignificant trailing zeros ("1.00k" -> "1k") and a sign left
+// over from a value that rounded to zero ("-0"/"-0%" -> "0"/"0%").
+function trimTrailingZeros(formatted: string): string {
+  const trimmed = formatted
+    .replace(/(\.\d*?)0+(?=\D*$)/, '$1')
+    .replace(/\.(?=\D*$)/, '');
+  return trimmed.replace(/^-(0%?)$/, '$1');
+}
+
+// The fixed-width gutter budgets a suffix like every other character,
+// unless the value is under 1 with a short suffix (see the web twin).
+function axisLabelBudget(formatted: string): number {
+  const spaceIndex = formatted.indexOf(' ');
+  if (spaceIndex !== -1) {
+    const numericPart = formatted.slice(0, spaceIndex);
+    const suffixLength = formatted.length - spaceIndex - 1;
+    if (
+      /^-?0(\.\d+)?$/.test(numericPart) &&
+      suffixLength <= SUB1_SUFFIX_LIMIT
+    ) {
+      return Infinity;
+    }
+  }
+  return AXIS_CHAR_BUDGET;
+}
+
 /**
- * Build a termchart y-axis tick formatter from a chart's number format:
- * compact, no decimals — the same semantics as the web's y-axis.
- * Returns undefined (termchart default formatting) when the chart has
- * no number format.
+ * Termchart y-axis tick formatter: same mantissa-search/axisLabelBudget
+ * semantics as the web's y-axis; undefined when the chart is unconfigured.
  *
- * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (tickFormatter)
+ * @source packages/app/src/HDXMultiSeriesTimeChart.tsx (formatAxisTick)
  */
 export function axisTickFormatter(
   numberFormat: NumberFormat | undefined,
@@ -490,11 +579,32 @@ export function axisTickFormatter(
   if (!numberFormat) {
     return undefined;
   }
-  return (value: number) =>
-    formatNumber(value, {
-      ...numberFormat,
-      average: true,
-      mantissa: 0,
-      unit: undefined,
-    });
+  return (value: number) => {
+    // formatNumber returns early for 'duration' - use the compact formatter
+    // instead, matching the web's formatAxisTick.
+    if (numberFormat.output === 'duration') {
+      const factor = numberFormat.factor ?? 1;
+      return formatDurationMsCompact(value * factor * 1000);
+    }
+
+    const maxMantissa = Math.max(
+      0,
+      Math.min(numberFormat.mantissa ?? 0, MAX_AXIS_MANTISSA),
+    );
+    for (let mantissa = maxMantissa; mantissa >= 0; mantissa--) {
+      const candidate = trimTrailingZeros(
+        formatNumber(value, {
+          ...numberFormat,
+          mantissa,
+          average: true,
+          unit: undefined,
+        }),
+      );
+      if (mantissa === 0 || candidate.length <= axisLabelBudget(candidate)) {
+        return candidate;
+      }
+    }
+    // Unreachable: the mantissa === 0 case above always returns.
+    return '';
+  };
 }

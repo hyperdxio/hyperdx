@@ -1,17 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import produce from 'immer';
-import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  TableConnection,
+  tcFromSource,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import {
   FilterState,
   filtersToQuery,
 } from '@hyperdx/common-utils/dist/filters';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  isMetricSource,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 
 import {
   Facet,
+  SINGLE_KEY_VALUES_LIMIT,
   useAllFields,
   useColumns,
   useDateTimeColumns,
+  useFilterKeysFetchLimit,
   useGetKeyValues,
   useJsonColumns,
   useMapColumns,
@@ -21,16 +30,43 @@ import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
-import { toQuotedClickHouseKeyExpression } from './utils';
+import {
+  listRequestedFacets,
+  sortLowCardinalityFirst,
+  toQuotedClickHouseKeyExpression,
+} from './utils';
 
 const INITIAL_LOAD_LIMIT = 20;
 
-/* The maximum number of values per filter to load when "Load More" is clicked */
-const LOAD_MORE_LOAD_LIMIT = 10000;
+/**
+ * Decide which table key-value discovery reads from.
+ *
+ * The source stays authoritative whenever we have one, so its metadata
+ * materialized views keep serving discovery. `fallback` — the table connection
+ * a caller passes — is consulted in the two cases the source can't answer:
+ *
+ *  - No source id is provided
+ *  - A metric source, in which case the fallback provides the metric type's table name
+ */
+export function resolveTableConnection(
+  source: TSource | undefined,
+  fallback: TableConnection | undefined,
+): TableConnection {
+  const isFallbackUsable =
+    !!fallback?.databaseName && !!fallback.tableName && !!fallback.connectionId;
+  if (!source) {
+    return isFallbackUsable ? fallback : tcFromSource(undefined);
+  }
+  if (isMetricSource(source) && isFallbackUsable) {
+    return fallback;
+  }
+  return tcFromSource(source);
+}
 
 function useFacets({
   chartConfig,
   sourceId,
+  tableConnection: tableConnectionFallback,
   mode,
   dateRange,
   filterState,
@@ -40,6 +76,11 @@ function useFacets({
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
+  /**
+   * A table where keys and values are discovered. Used when sourceId
+   * is not provided or references a metrics source.
+   */
+  tableConnection?: TableConnection;
   mode: 'all' | 'exact';
   dateRange: [Date, Date];
   filterState?: FilterState;
@@ -50,7 +91,10 @@ function useFacets({
   const { data: source } = useSource({
     id: sourceId,
   });
-  const tableConnection = useMemo(() => tcFromSource(source), [source]);
+  const tableConnection = useMemo(
+    () => resolveTableConnection(source, tableConnectionFallback),
+    [source, tableConnectionFallback],
+  );
   const { data: columns, isLoading: isColumnsLoading } =
     useColumns(tableConnection);
   const dateTimeColumns = useDateTimeColumns(columns);
@@ -80,16 +124,7 @@ function useFacets({
       return [];
     }
 
-    const strings = allFields
-      .sort((a, b) => {
-        // First show low cardinality fields
-        const isLowCardinality = (type: string) =>
-          type.includes('LowCardinality');
-        return (
-          (isLowCardinality(b.type) ? 1 : 0) -
-          (isLowCardinality(a.type) ? 1 : 0)
-        );
-      })
+    const strings = sortLowCardinalityFirst(allFields)
       .filter(
         field => field.jsType && ['string'].includes(field.jsType),
         // todo: add number type with sliders :D
@@ -150,7 +185,12 @@ function useFacets({
     [chartConfig, dateRange, mode],
   );
 
-  const { data: rawFacets, ...rest } = useGetKeyValues(
+  const {
+    data: rawFacets,
+    error: keyValuesError,
+    isLoading: isKeyValuesLoading,
+    isFetching,
+  } = useGetKeyValues(
     {
       chartConfig: facetsChartConfig,
       limit: INITIAL_LOAD_LIMIT,
@@ -160,14 +200,16 @@ function useFacets({
     { enabled: enabled && !disableValues },
   );
 
-  // Map the (escaped) result keys back to the original UI keys.
-  const facets = useMemo<Facet[] | undefined>(
+  const maxKeys = useFilterKeysFetchLimit();
+  const { facets, pendingKeys } = useMemo(
     () =>
-      rawFacets?.map(f => ({
-        ...f,
-        key: sqlKeyToUiKey.get(f.key) ?? f.key,
-      })),
-    [rawFacets, sqlKeyToUiKey],
+      listRequestedFacets({
+        requestedKeys: escapedKeysToFetch.slice(0, maxKeys),
+        arrived: rawFacets,
+        isFetching,
+        toUiKey: sqlKey => sqlKeyToUiKey.get(sqlKey) ?? sqlKey,
+      }),
+    [escapedKeysToFetch, maxKeys, rawFacets, isFetching, sqlKeyToUiKey],
   );
 
   const metadata = useMetadataWithSettings();
@@ -189,7 +231,7 @@ function useFacets({
               ),
             },
             keys: [sqlKey],
-            limit: LOAD_MORE_LOAD_LIMIT,
+            limit: SINGLE_KEY_VALUES_LIMIT,
             disableRowLimit: true,
             source,
           });
@@ -199,18 +241,27 @@ function useFacets({
           };
         }
 
-        if (!source) {
-          throw new Error('loadMoreFacetsForKey: source must be defined');
+        if (
+          !tableConnection.databaseName ||
+          !tableConnection.tableName ||
+          !tableConnection.connectionId
+        ) {
+          throw new Error(
+            'loadMoreFacetsForKey: a source or table connection must be defined',
+          );
         }
         const newKeyVals = await metadata.getAllKeyValues({
-          databaseName: source.from.databaseName,
-          tableName: source.from.tableName,
-          connectionId: source.connection,
+          databaseName: tableConnection.databaseName,
+          tableName: tableConnection.tableName,
+          connectionId: tableConnection.connectionId,
           metadataMVs: tableConnection.metadataMVs,
           keyExpressions: [sqlKey],
-          maxValuesPerKey: LOAD_MORE_LOAD_LIMIT,
+          maxValuesPerKey: SINGLE_KEY_VALUES_LIMIT,
           dateRange,
-          timestampValueExpression: source.timestampValueExpression,
+          timestampValueExpression:
+            source?.timestampValueExpression ??
+            chartConfig.timestampValueExpression ??
+            '',
         });
         return {
           key,
@@ -238,10 +289,15 @@ function useFacets({
   );
 
   return {
-    ...rest,
-    error: allFieldsError ?? rest.error,
-    data: { keys: allFields, keyValues: facets },
-    isLoading: isAllFieldsLoading || rest.isLoading,
+    error: allFieldsError ?? keyValuesError,
+    data: {
+      keys: allFields,
+      keyValues: facets,
+      /** Listed keys whose values haven't arrived yet; their facets are empty. */
+      pendingKeys,
+    },
+    isLoading: isAllFieldsLoading || isKeyValuesLoading,
+    isFetching,
     loadMoreFacetsForKey,
   };
 }
@@ -249,6 +305,7 @@ function useFacets({
 export function useFetchFacets({
   chartConfig,
   sourceId,
+  tableConnection,
   dateRange,
   mode,
   filterState,
@@ -257,6 +314,11 @@ export function useFetchFacets({
 }: {
   chartConfig: BuilderChartConfigWithDateRange;
   sourceId: string | null;
+  /**
+   * A table where keys and values are discovered. Used when sourceId
+   * is not provided or references a metrics source.
+   */
+  tableConnection?: TableConnection;
   dateRange: [Date, Date];
   mode: 'all' | 'exact';
   filterState?: FilterState;
@@ -266,6 +328,7 @@ export function useFetchFacets({
   const facetsQuery = useFacets({
     chartConfig,
     sourceId,
+    tableConnection,
     mode,
     dateRange,
     filterState,
@@ -353,6 +416,9 @@ export function useFetchFacets({
     setExtraFacetKeys(new Set());
   }, [
     sourceId,
+    tableConnection?.databaseName,
+    tableConnection?.tableName,
+    tableConnection?.connectionId,
     dateRange,
     mode,
     filterState,
@@ -362,7 +428,7 @@ export function useFetchFacets({
 
   return {
     ...facetsQuery,
-    data: { keys: facetsQuery.data.keys, keyValues: facets },
+    data: { ...facetsQuery.data, keyValues: facets },
     loadMoreFacetsForKey,
     areExtraFacetsLoading,
     loadMoreLoadingKeys,

@@ -15,7 +15,7 @@ import {
   judgeCredentialsAvailable,
   parseJudgeSpec,
 } from './judgeModel';
-import { runProgrammaticChecks, runTranscriptChecks } from './programmatic';
+import { runAdoptionChecks, runProgrammaticChecks } from './programmatic';
 import { loadScenarioRubric } from './rubric';
 import {
   COMBINED_SCORE_JUDGE_WEIGHT,
@@ -258,11 +258,13 @@ async function gradeOne(args: {
     rubric.programmatic,
   );
 
-  // Transcript-aware (adoption) checks. Reported alongside the outcome score
-  // but intentionally EXCLUDED from combinedScore below — measuring tool
-  // usage must not inflate outcome quality.
-  const adoption = rubric.transcript
-    ? runTranscriptChecks(record.toolCalls, rubric.transcript)
+  // Metric-adoption checks: did any tool call's input args name the
+  // scenario's target metrics? Args-only and tool-name-agnostic, so both
+  // arms are graded identically. Reported alongside the outcome score but
+  // intentionally EXCLUDED from combinedScore below — measuring tool usage
+  // must not inflate outcome quality.
+  const adoption = rubric.adoption
+    ? runAdoptionChecks(record.toolCalls, rubric.adoption)
     : undefined;
 
   const toolErrors = computeToolErrorStats(record);

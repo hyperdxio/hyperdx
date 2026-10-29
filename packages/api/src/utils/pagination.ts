@@ -62,3 +62,31 @@ export function paginationMeta(
   }
   return { total, limit, offset };
 }
+
+/**
+ * Opaque cursor for keyset pagination: base64url JSON, so a cursor survives a
+ * query string unescaped. Opaque by convention only — it is neither signed nor
+ * encrypted, so keep client-visible data in the payload and always validate the
+ * decoded shape with `decodeCursor`.
+ */
+export function encodeCursor(payload: unknown): string {
+  return Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+}
+
+/**
+ * `null` for anything that isn't a cursor the caller's schema recognizes —
+ * truncated, tampered with, or left over from an earlier payload shape. Callers
+ * turn that into a 400 (or start the walk over) rather than leaking a decode
+ * error. Decoding accepts standard base64 as well as base64url, so cursors
+ * issued before this encoding switched remain readable.
+ */
+export function decodeCursor<T>(raw: string, schema: z.ZodType<T>): T | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  const result = schema.safeParse(parsed);
+  return result.success ? result.data : null;
+}

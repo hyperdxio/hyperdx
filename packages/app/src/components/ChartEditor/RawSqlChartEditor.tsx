@@ -9,9 +9,11 @@ import {
   validateRawSqlChartConfig,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { MACRO_SUGGESTIONS } from '@hyperdx/common-utils/dist/macros';
-import { QUERY_PARAMS_BY_DISPLAY_TYPE } from '@hyperdx/common-utils/dist/rawSqlParams';
-import { RawSqlChartConfig } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartVariable,
+  RawSqlChartConfig,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import {
   DisplayType,
   isLogSource,
@@ -29,9 +31,10 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
-import { IconBell, IconHelpCircle } from '@tabler/icons-react';
+import { IconHelpCircle } from '@tabler/icons-react';
 
 import { ConnectionSelectControlled } from '@/components/ConnectionSelect';
+import { AlertPanelButton } from '@/components/DBEditTimeChartForm/AlertPanelButton';
 import { OnClickFormButton } from '@/components/DBEditTimeChartForm/OnClickForm/OnClickFormButton';
 import { TileAlertEditor } from '@/components/DBEditTimeChartForm/TileAlertEditor';
 import SourceSchemaPreview, {
@@ -49,6 +52,7 @@ import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 import { SQL_PLACEHOLDERS } from './constants';
 import { RawSqlChartInstructions } from './RawSqlChartInstructions';
 import { ChartEditorFormState } from './types';
+import { buildRawSqlCompletions } from './utils';
 
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
 
@@ -112,19 +116,31 @@ export function resolveConnectionSourceSync({
 export default function RawSqlChartEditor({
   control,
   setValue,
+  allowedSourceKinds,
   onOpenDisplaySettings,
   onSubmit,
   isDashboardForm,
   alert,
+  additionalWarnings,
+  alertsEnabled,
+  isAlertRequired,
   dashboardId,
+  variables,
 }: {
   control: Control<ChartEditorFormState>;
   setValue: UseFormSetValue<ChartEditorFormState>;
+  allowedSourceKinds: SourceKind[];
   onOpenDisplaySettings: () => void;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   isDashboardForm: boolean;
   alert: ChartEditorFormState['alert'];
+  additionalWarnings?: string[];
+  /** Whether this editor offers an alert (see EditTimeChartForm.enableAlerts). */
+  alertsEnabled?: boolean;
+  /** Hides the alert editor's remove control. */
+  isAlertRequired?: boolean;
   dashboardId?: string;
+  variables?: ChartVariable[];
 }) {
   const { size, startResize } = useResizable(20, 'bottom');
 
@@ -134,6 +150,7 @@ export default function RawSqlChartEditor({
   const connection = useWatch({ control, name: 'connection' });
   const source = useWatch({ control, name: 'source' });
   const sqlTemplate = useWatch({ control, name: 'sqlTemplate' });
+  const chartName = useWatch({ control, name: 'name' });
   const sourceObject = sources?.find(s => s.id === source);
 
   const rawSqlConfig = useMemo(
@@ -148,19 +165,22 @@ export default function RawSqlChartEditor({
             ? sourceObject.metricTables
             : undefined,
         displayType,
+        variables,
       }) satisfies RawSqlChartConfig,
-    [sqlTemplate, connection, sourceObject, displayType],
+    [sqlTemplate, connection, sourceObject, displayType, variables],
   );
 
   const [debouncedRawSqlConfig] = useDebouncedValue(rawSqlConfig, 300);
 
   const { alertErrorMessage, alertWarningMessage } = useMemo(() => {
     const { errors, warnings } = validateRawSqlForAlert(debouncedRawSqlConfig);
+    const allWarnings = [...warnings, ...(additionalWarnings ?? [])];
     return {
       alertErrorMessage: errors.length > 0 ? errors.join(' ') : undefined,
-      alertWarningMessage: warnings.length > 0 ? warnings.join(' ') : undefined,
+      alertWarningMessage:
+        allWarnings.length > 0 ? allWarnings.join(' ') : undefined,
     };
-  }, [debouncedRawSqlConfig]);
+  }, [additionalWarnings, debouncedRawSqlConfig]);
 
   const { chartErrors, chartWarnings, sqlValidationAlertVariant } =
     useMemo(() => {
@@ -196,28 +216,10 @@ export default function RawSqlChartEditor({
 
   const placeholderSQl = SQL_PLACEHOLDERS[displayType ?? DisplayType.Table];
 
-  const additionalCompletions: SQLCompletion[] = useMemo(() => {
-    const effectiveDisplayType = displayType ?? DisplayType.Table;
-    const params = QUERY_PARAMS_BY_DISPLAY_TYPE[effectiveDisplayType];
-
-    const paramCompletions: SQLCompletion[] = params.map(({ name, type }) => ({
-      label: `{${name}:${type}}`,
-      apply: `{${name}:${type}`, // Omit the closing } because the editor will have added it when the user types {
-      detail: 'param',
-      type: 'variable',
-    }));
-
-    const macroCompletions: SQLCompletion[] = MACRO_SUGGESTIONS.map(
-      ({ name, minArgs }) => ({
-        label: `$__${name}`,
-        apply: minArgs > 0 ? `$__${name}(` : `$__${name}`,
-        detail: 'macro',
-        type: 'function',
-      }),
-    );
-
-    return [...paramCompletions, ...macroCompletions];
-  }, [displayType]);
+  const additionalCompletions: SQLCompletion[] = useMemo(
+    () => buildRawSqlCompletions({ displayType, variables }),
+    [displayType, variables],
+  );
 
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
@@ -225,7 +227,7 @@ export default function RawSqlChartEditor({
   const tableConnections: TableConnection[] = useMemo(() => {
     if (!sources) return [];
     return sources
-      .filter(s => s.connection === connection)
+      .filter(s => s.connection === connection && !s.disabled)
       .flatMap(source => {
         const tables: TableConnection[] = getAllMetricTables(source);
 
@@ -255,6 +257,12 @@ export default function RawSqlChartEditor({
       ? 'The threshold will be evaluated against the last numeric column in the first query result'
       : 'The threshold will be evaluated against the last numeric column in each query result';
 
+  const showAlertButton =
+    alert != null ||
+    (displayTypeSupportsRawSqlAlerts(displayType) &&
+      alertsEnabled &&
+      !IS_LOCAL_MODE);
+
   return (
     <Stack gap="xs">
       <Group align="center" gap={0} justify="space-between">
@@ -283,6 +291,8 @@ export default function RawSqlChartEditor({
           <SourceSelectControlled
             control={control}
             name="source"
+            data-testid="source-selector"
+            allowedSourceKinds={allowedSourceKinds}
             connectionId={connection}
             size="xs"
             clearable
@@ -298,22 +308,19 @@ export default function RawSqlChartEditor({
           />
         </Group>
         <Group gap="xs">
-          {displayTypeSupportsRawSqlAlerts(displayType) &&
-            dashboardId &&
-            !alert &&
-            !IS_LOCAL_MODE && (
-              <Button
-                variant="subtle"
-                data-testid="alert-button"
-                size="sm"
-                color={'gray'}
-                onClick={() => setValue('alert', DEFAULT_TILE_ALERT)}
-              >
-                <IconBell size={14} className="me-2" />
-                Add Alert
-              </Button>
-            )}
-
+          {showAlertButton && (
+            <AlertPanelButton
+              hasAlert={alert != null}
+              error={alertErrorMessage}
+              warning={alertWarningMessage}
+              onAddAlert={() =>
+                setValue('alert', {
+                  ...DEFAULT_TILE_ALERT,
+                  ...(chartName && { displayName: chartName }),
+                })
+              }
+            />
+          )}
           <Group>
             {displayType === DisplayType.Table && (
               <OnClickFormButton
@@ -332,7 +339,10 @@ export default function RawSqlChartEditor({
           </Group>
         </Group>
       </Group>
-      <RawSqlChartInstructions displayType={displayType ?? DisplayType.Table} />
+      <RawSqlChartInstructions
+        displayType={displayType ?? DisplayType.Table}
+        variables={variables}
+      />
       <Box style={{ position: 'relative' }}>
         <SQLEditorControlled
           control={control}
@@ -347,7 +357,11 @@ export default function RawSqlChartEditor({
         <div className={resizeStyles.resizeYHandle} onMouseDown={startResize} />
       </Box>
       {(chartErrors.length > 0 || chartWarnings.length > 0) && (
-        <Alert variant={sqlValidationAlertVariant} py="xs">
+        <Alert
+          variant={sqlValidationAlertVariant}
+          py="xs"
+          data-testid="raw-sql-validation"
+        >
           <List size="xs" spacing={2}>
             {chartErrors.map(message => (
               <List.Item key={message}>Error: {message}</List.Item>
@@ -363,7 +377,10 @@ export default function RawSqlChartEditor({
           control={control}
           setValue={setValue}
           alert={alert}
-          onRemove={() => setValue('alert', undefined)}
+          dashboardId={dashboardId}
+          onRemove={
+            isAlertRequired ? undefined : () => setValue('alert', undefined)
+          }
           error={alertErrorMessage}
           warning={alertWarningMessage}
           tooltip={alertTooltip}

@@ -37,6 +37,14 @@ export const withRetry = async <T>(
     } catch (error: any) {
       attempt++;
 
+      // A timeout/abort is ambiguous: the receiver may already have processed
+      // the request even though the response never arrived. Retrying it can
+      // duplicate side effects on a receiver with no idempotency guarantee,
+      // so treat it as non-retryable, same as a redirect or non-429 4xx.
+      if (error?.name === 'AbortError' || error?.name === 'TimeoutError') {
+        throw error;
+      }
+
       if (attempt >= maxRetries) {
         throw error;
       }

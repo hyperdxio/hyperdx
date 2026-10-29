@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
+import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import { denoiseSearchResults } from './denoise';
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import {
@@ -36,8 +38,7 @@ const searchSchema = z.object({
     .optional()
     .default(50)
     .describe(
-      'Maximum number of rows to return (1-200). Default: 50. ' +
-        'Use smaller values to reduce response size.',
+      'Maximum rows to return. Use smaller values to reduce response size.',
     ),
   denoise: z
     .boolean()
@@ -62,10 +63,13 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
     'clickstack_search',
     {
       title: 'Search Events',
+      annotations: READ_ONLY_TOOL,
       description:
         'Browse individual log/event/trace rows. ' +
         'Use this when you need to see raw events, investigate specific log lines, ' +
         'or drill into individual records matching a filter.\n\n' +
+        PREFER_BUILDER_OVER_SQL_NUDGE +
+        '\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
         'For aggregated metrics, use clickstack_table instead. ' +
         'For pattern discovery, use clickstack_event_patterns instead.\n\n' +

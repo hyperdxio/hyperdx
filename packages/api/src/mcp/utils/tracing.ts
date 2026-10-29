@@ -1,9 +1,12 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { McpContext, ToolResult } from '@/mcp/tools/types';
 import type { McpErrorCategory, McpErrorResult } from '@/mcp/utils/errors';
 import { getErrorCategory } from '@/mcp/utils/errors';
 import {
+  getActiveTraceId,
   getCounter,
   getHistogram,
   SpanStatusCode,
@@ -20,6 +23,50 @@ const toolErrorCounter = getCounter('hyperdx.mcp.tool.errors', {
   description:
     'Count of MCP tool invocations that returned an error or threw an exception.',
 });
+
+const toolResponseSizeHistogram = getHistogram(
+  'hyperdx.mcp.tool.response.size_bytes',
+  {
+    description:
+      'UTF-8 size of the text an MCP tool returns to the model, a proxy for the tokens it costs.',
+    unit: 'By',
+  },
+);
+
+/** UTF-8 bytes of a tool result's text blocks: what the model has to read. */
+function getResponseSizeBytes(
+  content: { text?: string }[] | undefined,
+): number {
+  return (content ?? []).reduce(
+    (total, block) => total + Buffer.byteLength(block?.text ?? '', 'utf8'),
+    0,
+  );
+}
+
+/** Keeps a runaway error body from becoming the whole span status message. */
+const MAX_STATUS_MESSAGE_LENGTH = 512;
+
+/**
+ * Flatten a tool result's text blocks into a span status message. Tool errors
+ * carry their explanation in `content`, so without this the span shows
+ * StatusCode=Error with an empty StatusMessage.
+ */
+function toStatusMessage(
+  content: { text?: string }[] | undefined,
+): string | undefined {
+  // Defensive on both counts: tracing must never turn a tool error into a
+  // crash, and handlers reach this through a cast in the SDK's callback type.
+  const text = (content ?? [])
+    .map(block => block?.text ?? '')
+    .join('\n')
+    .trim();
+  if (!text) {
+    return undefined;
+  }
+  return text.length > MAX_STATUS_MESSAGE_LENGTH
+    ? `${text.slice(0, MAX_STATUS_MESSAGE_LENGTH)}...`
+    : text;
+}
 
 /**
  * Wraps an MCP tool handler with tracing, metrics, and structured logging.
@@ -62,8 +109,23 @@ export function withToolTracing<TArgs>(
         logger.info(logContext, `MCP tool invoked: ${toolName}`);
 
         try {
-          const result = await handler(args);
+          // Around the whole handler, so every query the tool makes carries
+          // the tool name and who called it.
+          const result = await withQueryAttribution(
+            {
+              surface: 'mcp',
+              label: toolName,
+              trace: getActiveTraceId(),
+            },
+            async () => handler(args),
+          );
           const durationMs = Date.now() - startTime;
+          const responseBytes = getResponseSizeBytes(result.content);
+          span.setAttribute('mcp.tool.response.size_bytes', responseBytes);
+          toolResponseSizeHistogram.record(responseBytes, {
+            tool: toolName,
+            outcome: result.isError ? 'error' : 'success',
+          });
 
           if (result.isError) {
             // Default to 'server' when category is not set — safe default
@@ -71,7 +133,12 @@ export function withToolTracing<TArgs>(
             const errorCategory: McpErrorCategory =
               getErrorCategory(result as McpErrorResult) ?? 'server';
 
-            span.setStatus({ code: SpanStatusCode.ERROR });
+            const errorMessage = toStatusMessage(result.content);
+
+            span.setStatus({
+              code: SpanStatusCode.ERROR,
+              message: errorMessage,
+            });
             span.setAttribute('mcp.tool.error', true);
             span.setAttribute('mcp.tool.error_category', errorCategory);
             toolErrorCounter.add(1, {
@@ -79,15 +146,23 @@ export function withToolTracing<TArgs>(
               error_category: errorCategory,
             });
             logger.warn(
-              { ...logContext, durationMs, errorCategory },
+              {
+                ...logContext,
+                durationMs,
+                responseBytes,
+                errorCategory,
+                errorMessage,
+              },
               `MCP tool error: ${toolName}`,
             );
           } else {
             span.setStatus({ code: SpanStatusCode.OK });
             logger.info(
-              { ...logContext, durationMs },
+              { ...logContext, durationMs, responseBytes },
               `MCP tool completed: ${toolName}`,
             );
+            // Only reliable signal the user exercised the MCP server.
+            recordOnboardingTaskCompletion(context.userId, 'mcp');
           }
 
           span.setAttribute('mcp.tool.duration_ms', durationMs);

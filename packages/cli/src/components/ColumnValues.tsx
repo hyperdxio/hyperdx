@@ -64,7 +64,6 @@ const ColumnValues = React.memo(function ColumnValues({
       });
   }, [data, searchQuery]);
 
-  const totalEntries = entries.length;
   const visibleEntries =
     maxRows != null
       ? entries.slice(scrollOffset, scrollOffset + maxRows)

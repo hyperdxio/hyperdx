@@ -14,9 +14,11 @@ import {
   getDashboardAlertsByTile,
   getTeamDashboardAlertsByDashboardAndTile,
 } from '@/controllers/alerts';
+import { recordOnboardingTaskCompletion } from '@/controllers/user';
 import type { ObjectId } from '@/models';
 import type { AlertDocument, IAlert } from '@/models/alert';
-import Dashboard from '@/models/dashboard';
+import Dashboard, { IDashboard } from '@/models/dashboard';
+import { resolveAlertDisplayFields } from '@/utils/alerts';
 
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
@@ -25,6 +27,17 @@ function pickAlertsByTile(tiles: Tile[]) {
     }
     return acc;
   }, {});
+}
+
+// Completes only when a dashboard has a tile (an empty shell isn't charting).
+// Shared by every dashboard write path (controllers, external REST v2, MCP).
+export function recordDashboardOnboardingIfHasTiles(
+  userId: string | ObjectId | undefined | null,
+  tiles: { length: number } | null | undefined,
+) {
+  if ((tiles?.length ?? 0) > 0) {
+    recordOnboardingTaskCompletion(userId, 'dashboard');
+  }
 }
 
 /**
@@ -69,12 +82,13 @@ function extractTileAlertData(tiles: TileForAlertSync[]): {
 }
 
 async function syncDashboardAlerts(
-  dashboardId: string,
+  dashboard: Pick<IDashboard, '_id' | 'name' | 'tags' | 'tiles'>,
   teamId: ObjectId,
   oldTiles: TileForAlertSync[],
   newTiles: Tile[],
   userId?: ObjectId,
 ): Promise<void> {
+  const dashboardId = dashboard._id.toString();
   const { tileIds: oldTileIds, tileIdsWithAlerts: oldTileIdsWithAlerts } =
     extractTileAlertData(oldTiles);
 
@@ -89,7 +103,7 @@ async function syncDashboardAlerts(
   const alertsByTile = pickAlertsByTile(newTiles);
   if (Object.keys(alertsByTile).length > 0) {
     await createOrUpdateDashboardAlerts(
-      dashboardId,
+      dashboard,
       teamId,
       alertsByTile,
       userId,
@@ -116,6 +130,23 @@ async function syncDashboardAlerts(
   }
 }
 
+/**
+ * Attach the resolved display name/tags so the chart editor prefills real
+ * values for alerts written before the fields existed.
+ */
+function withResolvedDisplayFields(
+  alert: AlertDocument | undefined,
+  dashboard: Pick<IDashboard, 'name' | 'tags' | 'tiles'>,
+) {
+  if (alert == null) {
+    return undefined;
+  }
+  return {
+    ...alert.toJSON(),
+    ...resolveAlertDisplayFields(alert, { dashboard }),
+  };
+}
+
 export async function getDashboards(teamId: ObjectId) {
   const [_dashboards, alerts] = await Promise.all([
     Dashboard.find({ team: teamId })
@@ -132,7 +163,10 @@ export async function getDashboards(teamId: ObjectId) {
         ...t,
         config: {
           ...t.config,
-          alert: alerts[`${d._id.toString()}:${t.id}`]?.[0],
+          alert: withResolvedDisplayFields(
+            alerts[`${d._id.toString()}:${t.id}`]?.[0],
+            d,
+          ),
         },
       })),
     }))
@@ -149,11 +183,18 @@ export async function getDashboard(dashboardId: string, teamId: ObjectId) {
     getDashboardAlertsByTile(teamId, dashboardId),
   ]);
 
+  if (_dashboard == null) {
+    return null;
+  }
+
   return healLegacyDashboardTileColors({
-    ..._dashboard?.toJSON(),
-    tiles: _dashboard?.tiles.map(t => ({
+    ..._dashboard.toJSON(),
+    tiles: _dashboard.tiles.map(t => ({
       ...t,
-      config: { ...t.config, alert: alerts[t.id]?.[0] },
+      config: {
+        ...t.config,
+        alert: withResolvedDisplayFields(alerts[t.id]?.[0], _dashboard),
+      },
     })),
   });
 }
@@ -171,11 +212,13 @@ export async function createDashboard(
   }).save();
 
   await createOrUpdateDashboardAlerts(
-    newDashboard._id,
+    newDashboard,
     teamId,
     pickAlertsByTile(dashboard.tiles),
     userId,
   );
+
+  recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
 
   return newDashboard;
 }
@@ -220,13 +263,15 @@ export async function updateDashboard(
 
   if (updates.tiles) {
     await syncDashboardAlerts(
-      dashboardId,
+      updatedDashboard,
       teamId,
       oldDashboard?.tiles || [],
       updates.tiles,
       userId,
     );
   }
+
+  recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
   return updatedDashboard;
 }

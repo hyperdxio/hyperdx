@@ -1,4 +1,3 @@
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
@@ -15,6 +14,7 @@ import {
   isTraceSource,
 } from '@hyperdx/common-utils/dist/types';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import type { ExternalDashboardSearchRequestConfig } from '@/utils/zod';
@@ -142,7 +142,6 @@ export async function runSearchConfig({
     dateRange: [startDate, endDate],
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
   const chartConfig: ChartConfigWithDateRange = {
     ...searchBase,
     connection: source.connection.toString(),

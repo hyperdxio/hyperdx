@@ -5,7 +5,10 @@ import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
-import { ChartActionBar } from '@/components/DBEditTimeChartForm/ChartActionBar';
+import {
+  ChartActionBar,
+  DashboardFiltersToggleProps,
+} from '@/components/DBEditTimeChartForm/ChartActionBar';
 
 jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: (props: any) => (
@@ -30,12 +33,12 @@ const defaultTableConnection = {
 };
 
 type WrapperProps = {
-  children: (props: { control: any; handleSubmit: any }) => React.ReactNode;
+  children: (props: { control: any }) => React.ReactNode;
   defaultValues?: Partial<ChartEditorFormState>;
 };
 
 function FormWrapper({ children, defaultValues }: WrapperProps) {
-  const { control, handleSubmit } = useForm<ChartEditorFormState>({
+  const { control } = useForm<ChartEditorFormState>({
     defaultValues: {
       displayType: DisplayType.Line,
       name: 'Test Chart',
@@ -54,33 +57,27 @@ function FormWrapper({ children, defaultValues }: WrapperProps) {
     },
   });
 
-  return <>{children({ control, handleSubmit })}</>;
+  return <>{children({ control })}</>;
 }
 
 const renderActionBar = (
   overrides: Partial<React.ComponentProps<typeof ChartActionBar>> = {},
+  formValues: Partial<ChartEditorFormState> = {},
 ) => {
   const onSubmit = jest.fn();
-  const handleSave = jest.fn();
-  const onSave = jest.fn();
-  const onClose = jest.fn();
   const setSaveToDashboardModalOpen = jest.fn();
 
   const result = renderWithMantine(
-    <FormWrapper>
-      {({ control, handleSubmit }) => (
+    <FormWrapper defaultValues={formValues}>
+      {({ control }) => (
         <ChartActionBar
           control={control}
-          handleSubmit={handleSubmit}
           tableConnection={defaultTableConnection}
           activeTab="time"
           isRawSqlInput={false}
           parentRef={null}
           groupBy=""
           onSubmit={onSubmit}
-          handleSave={handleSave}
-          onSave={onSave}
-          onClose={onClose}
           setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
           {...overrides}
         />
@@ -91,49 +88,68 @@ const renderActionBar = (
   return {
     ...result,
     onSubmit,
-    handleSave,
-    onSave,
-    onClose,
     setSaveToDashboardModalOpen,
   };
 };
+
+const filterSwitch = () =>
+  screen.getByRole('switch', { name: 'Apply filters' });
+
+const queryFilterSwitch = () =>
+  screen.queryByRole('switch', { name: 'Apply filters' });
+
+const toggle = (overrides: Partial<DashboardFiltersToggleProps> = {}) => ({
+  checked: true,
+  onChange: jest.fn(),
+  ...overrides,
+});
 
 describe('ChartActionBar', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it('should render Save button when onSave is provided', () => {
-    renderActionBar();
+  describe('dashboard filter toggle', () => {
+    it('is absent off a dashboard', () => {
+      renderActionBar();
 
-    expect(screen.getByTestId('chart-save-button')).toBeInTheDocument();
-    expect(screen.getByTestId('chart-save-button')).toHaveTextContent('Save');
-  });
+      expect(queryFilterSwitch()).not.toBeInTheDocument();
+    });
 
-  it('should not render Save button when onSave is undefined', () => {
-    renderActionBar({ onSave: undefined });
+    it('is absent for a markdown tile, which queries nothing', () => {
+      renderActionBar({
+        activeTab: 'markdown',
+        filtersToggle: toggle(),
+      });
 
-    expect(screen.queryByTestId('chart-save-button')).not.toBeInTheDocument();
-  });
+      expect(queryFilterSwitch()).not.toBeInTheDocument();
+    });
 
-  it('should render Cancel button when onClose is provided', () => {
-    renderActionBar();
+    it('reports a flip of the switch', async () => {
+      const onChange = jest.fn();
+      renderActionBar({ filtersToggle: toggle({ onChange }) });
 
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
-  });
+      expect(filterSwitch()).toBeChecked();
+      await userEvent.click(filterSwitch());
 
-  it('should not render Cancel button when onClose is undefined', () => {
-    renderActionBar({ onClose: undefined });
+      expect(onChange).toHaveBeenCalledWith(false);
+    });
 
-    expect(screen.queryByText('Cancel')).not.toBeInTheDocument();
-  });
+    it('says why it cannot be changed', async () => {
+      const disabledReason = 'Not while this tile has an alert';
+      renderActionBar({
+        filtersToggle: toggle({ checked: false, disabledReason }),
+      });
 
-  it('should call onClose when Cancel is clicked', async () => {
-    const { onClose } = renderActionBar();
+      expect(filterSwitch()).not.toBeChecked();
+      expect(filterSwitch()).toBeDisabled();
 
-    await userEvent.click(screen.getByText('Cancel'));
+      // Hovering the wrapper, not the control: a disabled Switch emits none of
+      // the pointer events the tooltip opens on.
+      await userEvent.hover(screen.getByTestId('apply-dashboard-filters'));
 
-    expect(onClose).toHaveBeenCalledTimes(1);
+      expect(await screen.findByText(disabledReason)).toBeInTheDocument();
+    });
   });
 
   it('should render Run button for non-markdown tabs', () => {
@@ -161,14 +177,56 @@ describe('ChartActionBar', () => {
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 
-  it('should render granularity picker for time tab', () => {
-    renderActionBar({ activeTab: 'time' });
+  it.each(['time', 'heatmap'])(
+    'should render granularity picker for %s tab',
+    activeTab => {
+      renderActionBar({ activeTab });
+
+      expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
+    },
+  );
+
+  it('should not render granularity picker for non-time tabs', () => {
+    renderActionBar({ activeTab: 'table' });
+
+    expect(screen.queryByTestId('granularity-picker')).not.toBeInTheDocument();
+  });
+
+  it('should render granularity picker for a PromQL tile that ranges', () => {
+    renderActionBar(
+      { activeTab: 'number' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Number,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
 
     expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
   });
 
-  it('should not render granularity picker for non-time tabs', () => {
-    renderActionBar({ activeTab: 'table' });
+  it('should not render granularity picker for an all-instant PromQL tile', () => {
+    renderActionBar(
+      { activeTab: 'number' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Number,
+        promqlExpressions: [{ expression: 'up', queryType: 'instant' }],
+      },
+    );
+
+    expect(screen.queryByTestId('granularity-picker')).not.toBeInTheDocument();
+  });
+
+  it('should not render granularity picker when a PromQL tile switches to a display type without PromQL', () => {
+    renderActionBar(
+      { activeTab: 'markdown' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Markdown,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
 
     expect(screen.queryByTestId('granularity-picker')).not.toBeInTheDocument();
   });
@@ -203,6 +261,19 @@ describe('ChartActionBar', () => {
     expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
   });
 
+  it('should not render ORDER BY editor for a PromQL table', () => {
+    renderActionBar(
+      { activeTab: 'table' },
+      {
+        configType: 'promql',
+        displayType: DisplayType.Table,
+        promqlExpressions: [{ expression: 'up' }],
+      },
+    );
+
+    expect(screen.queryByTestId('sql-editor-order-by')).not.toBeInTheDocument();
+  });
+
   it('should not render ORDER BY editor for time tab', () => {
     renderActionBar({ activeTab: 'time' });
 
@@ -229,18 +300,10 @@ describe('ChartActionBar', () => {
     expect(screen.queryByTestId('time-picker')).not.toBeInTheDocument();
   });
 
-  it('should disable Cancel button when isSaving is true', () => {
-    renderActionBar({ isSaving: true });
-
-    expect(screen.getByText('Cancel').closest('button')).toBeDisabled();
-  });
-
   it('should render action bar controls for raw SQL input mode', () => {
     renderActionBar({ isRawSqlInput: true, activeTab: 'time' });
 
     // The key regression test: action bar renders even for raw SQL
-    expect(screen.getByTestId('chart-save-button')).toBeInTheDocument();
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
     expect(screen.getByTestId('chart-run-query-button')).toBeInTheDocument();
     expect(screen.getByTestId('granularity-picker')).toBeInTheDocument();
   });

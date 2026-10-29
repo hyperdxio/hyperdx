@@ -2,6 +2,7 @@ import { JSX } from 'react';
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
+  isCHIntegerType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -10,7 +11,10 @@ export type SourceFieldKind =
   | 'bodyExpression'
   | 'implicitColumnExpression'
   | 'serviceNameExpression'
+  | 'serviceVersionExpression'
   | 'severityTextExpression'
+  | 'severityNumberExpression'
+  | 'eventNameExpression'
   | 'eventAttributesExpression'
   | 'resourceAttributesExpression'
   | 'traceIdExpression'
@@ -98,6 +102,18 @@ const FIELD_RULES: Record<SourceFieldKind, FieldRule> = {
     typeMatches: isStringy,
     recommendStrategy: 'name-only',
   },
+  // Usually a map lookup rather than a column, so these only hit on schemas
+  // that materialize the version out. No match just leaves the placeholder.
+  serviceVersionExpression: {
+    canonicalNames: [
+      'ServiceVersion',
+      'service.version',
+      'service_version',
+      'version',
+    ],
+    typeMatches: isStringy,
+    recommendStrategy: 'name-only',
+  },
   severityTextExpression: {
     canonicalNames: [
       'SeverityText',
@@ -106,6 +122,16 @@ const FIELD_RULES: Record<SourceFieldKind, FieldRule> = {
       'log_level',
       'loglevel',
     ],
+    typeMatches: isStringy,
+    recommendStrategy: 'name-only',
+  },
+  severityNumberExpression: {
+    canonicalNames: ['SeverityNumber', 'severity_number'],
+    typeMatches: isCHIntegerType,
+    recommendStrategy: 'name-only',
+  },
+  eventNameExpression: {
+    canonicalNames: ['EventName', 'event_name'],
     typeMatches: isStringy,
     recommendStrategy: 'name-only',
   },

@@ -4,11 +4,15 @@ import {
   UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import request from 'supertest';
 
-import { getLoggedInAgent, getServer } from '@/fixtures';
+import {
+  getLoggedInAgent as getFixtureLoggedInAgent,
+  getServer,
+} from '@/fixtures';
 import { appErrorHandler } from '@/middleware/error';
+import Connection from '@/models/connection';
 import { Source } from '@/models/source';
 import sourcesRouter from '@/routers/api/sources';
 
@@ -22,6 +26,58 @@ const MOCK_SOURCE: Omit<Extract<TSource, { kind: 'log' }>, 'id'> = {
   },
   timestampValueExpression: 'timestamp',
   defaultTableSelectExpression: 'body',
+};
+
+const MOCK_METRIC_SOURCE: Omit<Extract<TSource, { kind: 'metric' }>, 'id'> = {
+  kind: SourceKind.Metric,
+  name: 'Test Metric Source',
+  connection: new Types.ObjectId().toString(),
+  from: {
+    databaseName: 'test_db',
+    tableName: '',
+  },
+  timestampValueExpression: 'TimeUnix',
+  resourceAttributesExpression: 'ResourceAttributes',
+  metricTables: {
+    gauge: 'otel_metrics_gauge',
+    histogram: 'otel_metrics_histogram',
+    sum: 'otel_metrics_sum',
+    summary: 'otel_metrics_summary',
+    'exponential histogram': 'otel_metrics_exponential_histogram',
+  },
+};
+
+const MOCK_PROMQL_SOURCE: Omit<Extract<TSource, { kind: 'promql' }>, 'id'> = {
+  kind: SourceKind.Promql,
+  name: 'Test PromQL Source',
+  connection: new Types.ObjectId().toString(),
+  from: {
+    databaseName: 'test_db',
+    tableName: 'metrics_ts',
+  },
+  timestampValueExpression: 'timestamp',
+};
+
+const createTestConnection = (team: Types.ObjectId, id: string) =>
+  Connection.create({
+    _id: id,
+    team,
+    name: 'Test Connection',
+    host: 'http://localhost:8123',
+    username: 'default',
+    password: 'password',
+  });
+
+const getLoggedInAgent = async (server: ReturnType<typeof getServer>) => {
+  const result = await getFixtureLoggedInAgent(server);
+
+  await Promise.all([
+    createTestConnection(result.team._id, MOCK_SOURCE.connection),
+    createTestConnection(result.team._id, MOCK_METRIC_SOURCE.connection),
+    createTestConnection(result.team._id, MOCK_PROMQL_SOURCE.connection),
+  ]);
+
+  return result;
 };
 
 describe('sources router', () => {
@@ -82,6 +138,87 @@ describe('sources router', () => {
     // Verify source was created in database
     const sources = await Source.find({});
     expect(sources).toHaveLength(1);
+  });
+
+  describe('connection validation', () => {
+    it('POST / - returns 400 for a malformed connection id', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, connection: 'not-an-object-id' })
+        .expect(400);
+    });
+
+    it('POST / - returns 400 for a nonexistent connection id', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({
+          ...MOCK_SOURCE,
+          connection: new Types.ObjectId().toString(),
+        })
+        .expect(400);
+    });
+
+    it('POST / - returns 400 for another team connection', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const otherConnection = await createTestConnection(
+        new Types.ObjectId(),
+        new Types.ObjectId().toString(),
+      );
+
+      await agent
+        .post('/sources')
+        .send({
+          ...MOCK_SOURCE,
+          connection: otherConnection._id.toString(),
+        })
+        .expect(400);
+    });
+
+    it('PUT /:id - rejects an inaccessible connection without changing the source', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+      const otherConnection = await createTestConnection(
+        new Types.ObjectId(),
+        new Types.ObjectId().toString(),
+      );
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          connection: otherConnection._id.toString(),
+        })
+        .expect(400);
+
+      const unchanged = await Source.findById(source._id);
+      expect(unchanged?.name).toBe(MOCK_SOURCE.name);
+      expect(unchanged?.connection.toString()).toBe(MOCK_SOURCE.connection);
+    });
+
+    it('PUT /:id - returns 400 for a nonexistent connection id', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          ...MOCK_SOURCE,
+          id: source._id.toString(),
+          connection: new Types.ObjectId().toString(),
+        })
+        .expect(400);
+    });
   });
 
   it('POST / - returns 400 when request body is invalid', async () => {
@@ -265,7 +402,7 @@ describe('sources router', () => {
     const metricSource = await Source.create({
       kind: SourceKind.Metric,
       name: 'Test Metric Source',
-      connection: new Types.ObjectId().toString(),
+      connection: MOCK_METRIC_SOURCE.connection,
       from: {
         databaseName: 'test_db',
         tableName: 'otel_metrics',
@@ -327,7 +464,7 @@ describe('sources router', () => {
     const metricSource = await Source.create({
       kind: SourceKind.Metric,
       name: 'Test Metric Source',
-      connection: new Types.ObjectId().toString(),
+      connection: MOCK_METRIC_SOURCE.connection,
       from: {
         databaseName: 'test_db',
         tableName: 'otel_metrics',
@@ -399,6 +536,398 @@ describe('sources router', () => {
     }
     expect(updatedSource).not.toHaveProperty('metricTables');
     expect(updatedSource.severityTextExpression).toBe('SeverityText');
+  });
+
+  // Regression guard: a field present in the Zod schema but missing from the
+  // Mongoose discriminator is silently dropped on write, with no error. Only a
+  // round-trip through the database catches that.
+  describe('serviceVersionExpression', () => {
+    const VERSION_EXPR = "ResourceAttributes['container.image.tag']";
+
+    /** The single persisted source, narrowed to a kind that carries the field. */
+    const persisted = async (kind: SourceKind.Log | SourceKind.Trace) => {
+      const [source] = await Source.find({}).lean();
+      if (source?.kind !== kind) {
+        throw new Error(`Expected a ${kind} source, got ${source?.kind}`);
+      }
+      return source;
+    };
+
+    it('POST / - persists the expression on a log source', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, serviceVersionExpression: VERSION_EXPR })
+        .expect(200);
+
+      expect((await persisted(SourceKind.Log)).serviceVersionExpression).toBe(
+        VERSION_EXPR,
+      );
+    });
+
+    it('POST / - persists the expression on a trace source', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const traceSource: Omit<Extract<TSource, { kind: 'trace' }>, 'id'> = {
+        kind: SourceKind.Trace,
+        name: 'Test Trace Source',
+        // The suite provisions a real Connection for this id; POST now 400s on
+        // one that doesn't exist for the team.
+        connection: MOCK_SOURCE.connection,
+        from: { databaseName: 'test_db', tableName: 'otel_traces' },
+        timestampValueExpression: 'Timestamp',
+        defaultTableSelectExpression: 'Timestamp, SpanName',
+        durationExpression: 'Duration',
+        durationPrecision: 9,
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+        parentSpanIdExpression: 'ParentSpanId',
+        spanNameExpression: 'SpanName',
+        spanKindExpression: 'SpanKind',
+        serviceVersionExpression: VERSION_EXPR,
+      };
+
+      await agent.post('/sources').send(traceSource).expect(200);
+
+      expect((await persisted(SourceKind.Trace)).serviceVersionExpression).toBe(
+        VERSION_EXPR,
+      );
+    });
+
+    it('GET / - returns the expression', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, serviceVersionExpression: VERSION_EXPR })
+        .expect(200);
+
+      const response = await agent.get('/sources').expect(200);
+
+      expect(response.body[0]).toMatchObject({
+        serviceVersionExpression: VERSION_EXPR,
+      });
+    });
+
+    it('PUT /:id - updates the expression, and clears it when omitted', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      const created = await agent
+        .post('/sources')
+        .send({ ...MOCK_SOURCE, serviceVersionExpression: VERSION_EXPR })
+        .expect(200);
+      const id = created.body.id;
+
+      await agent
+        .put(`/sources/${id}`)
+        .send({ ...MOCK_SOURCE, id, serviceVersionExpression: 'Version' })
+        .expect(200);
+      expect((await persisted(SourceKind.Log)).serviceVersionExpression).toBe(
+        'Version',
+      );
+
+      await agent
+        .put(`/sources/${id}`)
+        .send({ ...MOCK_SOURCE, id })
+        .expect(200);
+      expect(
+        (await persisted(SourceKind.Log)).serviceVersionExpression,
+      ).toBeUndefined();
+    });
+
+    it('POST / - is optional', async () => {
+      const { agent } = await getLoggedInAgent(server);
+      await agent.post('/sources').send(MOCK_SOURCE).expect(200);
+
+      expect(
+        (await persisted(SourceKind.Log)).serviceVersionExpression,
+      ).toBeUndefined();
+    });
+  });
+
+  // Same regression guard as serviceVersionExpression above.
+  it('POST / - round-trips severityNumberExpression on a log source', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    await agent
+      .post('/sources')
+      .send({ ...MOCK_SOURCE, severityNumberExpression: 'SeverityNumber' })
+      .expect(200);
+
+    const response = await agent.get('/sources').expect(200);
+
+    expect(response.body[0]).toMatchObject({
+      severityNumberExpression: 'SeverityNumber',
+    });
+  });
+
+  it('POST / - round-trips eventNameExpression on a log source', async () => {
+    const { agent } = await getLoggedInAgent(server);
+    await agent
+      .post('/sources')
+      .send({ ...MOCK_SOURCE, eventNameExpression: 'EventName' })
+      .expect(200);
+
+    const response = await agent.get('/sources').expect(200);
+
+    expect(response.body[0]).toMatchObject({
+      eventNameExpression: 'EventName',
+    });
+  });
+
+  describe('seriesTable', () => {
+    it('POST / - creates a metric source with seriesTable and it round-trips', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_METRIC_SOURCE,
+          seriesTable: 'otel_metrics_series',
+        })
+        .expect(200);
+
+      expect(response.body.seriesTable).toBe('otel_metrics_series');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const persisted = sources[0];
+      if (persisted?.kind !== SourceKind.Metric) {
+        expect(persisted?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(persisted.seriesTable).toBe('otel_metrics_series');
+    });
+
+    it('PUT /:id - updates seriesTable', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${metricSource._id}`)
+        .send({
+          id: metricSource._id.toString(),
+          ...MOCK_METRIC_SOURCE,
+          seriesTable: 'otel_metrics_series',
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(metricSource._id).lean();
+      if (updatedSource?.kind !== SourceKind.Metric) {
+        expect(updatedSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(updatedSource.seriesTable).toBe('otel_metrics_series');
+    });
+
+    it('PUT /:id - removes seriesTable when omitted from the update payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        seriesTable: 'otel_metrics_series',
+        team: team._id,
+      });
+
+      const createdSource = await Source.findById(metricSource._id).lean();
+      if (createdSource?.kind !== SourceKind.Metric) {
+        expect(createdSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(createdSource.seriesTable).toBe('otel_metrics_series');
+
+      await agent
+        .put(`/sources/${metricSource._id}`)
+        .send({
+          id: metricSource._id.toString(),
+          ...MOCK_METRIC_SOURCE,
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(metricSource._id).lean();
+      if (updatedSource?.kind !== SourceKind.Metric) {
+        expect(updatedSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(updatedSource).not.toHaveProperty('seriesTable');
+    });
+
+    it('a metric source created without seriesTable has no seriesTable field (undefined for existing sources)', async () => {
+      const { team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        team: team._id,
+      });
+
+      const createdSource = await Source.findById(metricSource._id).lean();
+      if (createdSource?.kind !== SourceKind.Metric) {
+        expect(createdSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(createdSource).not.toHaveProperty('seriesTable');
+    });
+  });
+
+  describe('minAutoGranularity', () => {
+    it('POST / - creates a metric source with minAutoGranularity and it round-trips', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_METRIC_SOURCE,
+          minAutoGranularity: '1 minute',
+        })
+        .expect(200);
+
+      expect(response.body.minAutoGranularity).toBe('1 minute');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const persisted = sources[0];
+      if (persisted?.kind !== SourceKind.Metric) {
+        expect(persisted?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(persisted.minAutoGranularity).toBe('1 minute');
+    });
+
+    it("POST / - the form's \"No minimum\" value ('') persists as unset, not as an empty string", async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_METRIC_SOURCE,
+          minAutoGranularity: '',
+        })
+        .expect(200);
+
+      expect(response.body).not.toHaveProperty('minAutoGranularity');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const persisted = sources[0];
+      if (persisted?.kind !== SourceKind.Metric) {
+        expect(persisted?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(persisted).not.toHaveProperty('minAutoGranularity');
+    });
+
+    it('PUT /:id - removes minAutoGranularity when omitted from the update payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const metricSource = await Source.create({
+        ...MOCK_METRIC_SOURCE,
+        minAutoGranularity: '1 minute',
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${metricSource._id}`)
+        .send({
+          id: metricSource._id.toString(),
+          ...MOCK_METRIC_SOURCE,
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(metricSource._id).lean();
+      if (updatedSource?.kind !== SourceKind.Metric) {
+        expect(updatedSource?.kind).toBe(SourceKind.Metric);
+        throw new Error('Source is not a metric');
+      }
+      expect(updatedSource).not.toHaveProperty('minAutoGranularity');
+    });
+  });
+
+  describe('minAutoGranularity on a PromQL source', () => {
+    it('POST / - creates a PromQL source with minAutoGranularity and it round-trips', async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_PROMQL_SOURCE,
+          minAutoGranularity: '1 minute',
+        })
+        .expect(200);
+
+      expect(response.body.minAutoGranularity).toBe('1 minute');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      const persisted = sources[0];
+      if (persisted?.kind !== SourceKind.Promql) {
+        expect(persisted?.kind).toBe(SourceKind.Promql);
+        throw new Error('Source is not a PromQL source');
+      }
+      expect(persisted.minAutoGranularity).toBe('1 minute');
+    });
+
+    it("POST / - the form's \"No minimum\" value ('') persists as unset, not as an empty string", async () => {
+      const { agent } = await getLoggedInAgent(server);
+
+      const response = await agent
+        .post('/sources')
+        .send({
+          ...MOCK_PROMQL_SOURCE,
+          minAutoGranularity: '',
+        })
+        .expect(200);
+
+      expect(response.body).not.toHaveProperty('minAutoGranularity');
+
+      const sources = await Source.find({}).lean();
+      expect(sources).toHaveLength(1);
+      expect(sources[0]).not.toHaveProperty('minAutoGranularity');
+    });
+
+    it('PUT /:id - updates minAutoGranularity', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const promqlSource = await Source.create({
+        ...MOCK_PROMQL_SOURCE,
+        minAutoGranularity: '1 minute',
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${promqlSource._id}`)
+        .send({
+          id: promqlSource._id.toString(),
+          ...MOCK_PROMQL_SOURCE,
+          minAutoGranularity: '5 minute',
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(promqlSource._id).lean();
+      expect(updatedSource).toHaveProperty('minAutoGranularity', '5 minute');
+    });
+
+    it('PUT /:id - removes minAutoGranularity when omitted from the update payload', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const promqlSource = await Source.create({
+        ...MOCK_PROMQL_SOURCE,
+        minAutoGranularity: '1 minute',
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${promqlSource._id}`)
+        .send({
+          id: promqlSource._id.toString(),
+          ...MOCK_PROMQL_SOURCE,
+        })
+        .expect(200);
+
+      const updatedSource = await Source.findById(promqlSource._id).lean();
+      expect(updatedSource).not.toHaveProperty('minAutoGranularity');
+    });
   });
 
   it('DELETE /:id - deletes a source', async () => {
@@ -576,7 +1105,7 @@ describe('sources router', () => {
     it('successfully updates a legacy Session source when timestampValueExpression is provided', async () => {
       const { agent, team } = await getLoggedInAgent(server);
 
-      const connectionId = new Types.ObjectId();
+      const connectionId = new Types.ObjectId(MOCK_SOURCE.connection);
       const result = await Source.collection.insertOne({
         kind: SourceKind.Session,
         name: 'Legacy Session',
@@ -724,6 +1253,10 @@ describe('sources router', () => {
 
     it('POST / - creates a source when team id is a string', async () => {
       const app = getLocalAppModeApp();
+      await createTestConnection(
+        new Types.ObjectId('_local_team_'),
+        MOCK_SOURCE.connection,
+      );
 
       const response = await request(app)
         .post('/sources')
@@ -741,6 +1274,10 @@ describe('sources router', () => {
 
     it('PUT /:id - updates a source when team id is a string', async () => {
       const app = getLocalAppModeApp();
+      await createTestConnection(
+        new Types.ObjectId('_local_team_'),
+        MOCK_SOURCE.connection,
+      );
 
       const source = await Source.create({
         ...MOCK_SOURCE,
@@ -841,6 +1378,92 @@ describe('sources router', () => {
         granularity: '1 hour',
       });
     });
+
+    it('GET / - is stable across requests for a source stored without a nested _id', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      await mongoose.connection.collection('sources').insertOne({
+        ...MOCK_SOURCE,
+        connection: new Types.ObjectId(MOCK_SOURCE.connection),
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'test_table_key_rollup_15m',
+          kvRollupTable: 'test_table_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+      });
+
+      const first = await agent.get('/sources').expect(200);
+      const second = await agent.get('/sources').expect(200);
+
+      expect(first.body[0].metadataMaterializedViews).toEqual({
+        keyRollupTable: 'test_table_key_rollup_15m',
+        kvRollupTable: 'test_table_kv_rollup_15m',
+        granularity: '15 minute',
+      });
+      expect(second.body).toEqual(first.body);
+      expect(second.headers.etag).toBe(first.headers.etag);
+    });
+
+    it('does not persist a nested _id', async () => {
+      const { team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+        metadataMaterializedViews: {
+          keyRollupTable: 'test_table_key_rollup_15m',
+          kvRollupTable: 'test_table_kv_rollup_15m',
+          granularity: '15 minute',
+        },
+      });
+
+      const stored = await mongoose.connection
+        .collection('sources')
+        .findOne({ _id: source._id });
+
+      expect(stored?.metadataMaterializedViews).not.toHaveProperty('_id');
+    });
+
+    it('GET / - is stable across requests after a source kind change', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const source = await Source.create({
+        ...MOCK_SOURCE,
+        team: team._id,
+      });
+
+      await agent
+        .put(`/sources/${source._id}`)
+        .send({
+          id: source._id.toString(),
+          kind: SourceKind.Trace,
+          name: 'Test Trace Source',
+          connection: MOCK_SOURCE.connection,
+          from: { databaseName: 'test_db', tableName: 'otel_traces' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: 'Timestamp, ServiceName',
+          durationExpression: 'Duration',
+          durationPrecision: 9,
+          traceIdExpression: 'TraceId',
+          spanIdExpression: 'SpanId',
+          parentSpanIdExpression: 'ParentSpanId',
+          spanNameExpression: 'SpanName',
+          spanKindExpression: 'SpanKind',
+          metadataMaterializedViews: {
+            keyRollupTable: 'test_table_key_rollup_15m',
+            kvRollupTable: 'test_table_kv_rollup_15m',
+            granularity: '15 minute',
+          },
+        })
+        .expect(200);
+
+      const first = await agent.get('/sources').expect(200);
+      const second = await agent.get('/sources').expect(200);
+
+      expect(second.body).toEqual(first.body);
+      expect(second.headers.etag).toBe(first.headers.etag);
+    });
   });
 
   describe('useTextIndexForImplicitColumn field', () => {
@@ -874,7 +1497,7 @@ describe('sources router', () => {
       const traceSource: Omit<Extract<TSource, { kind: 'trace' }>, 'id'> = {
         kind: SourceKind.Trace,
         name: 'Trace with text index pref',
-        connection: new Types.ObjectId().toString(),
+        connection: MOCK_SOURCE.connection,
         from: { databaseName: 'test_db', tableName: 'otel_traces' },
         timestampValueExpression: 'Timestamp',
         defaultTableSelectExpression: '*',

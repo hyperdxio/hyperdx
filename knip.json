@@ -1,6 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
+    ".": {
+      "entry": ["scripts/__tests__/*.test.mjs"]
+    },
     "packages/app": {
       "entry": ["pages/**/*.{ts,tsx}", "scripts/*.js", "tests/e2e/**/*.ts"],
       "project": ["src/**/*.{ts,tsx}", "pages/**/*.{ts,tsx}"],
@@ -26,7 +29,9 @@
     },
     "packages/common-utils": {
       "entry": ["src/**/*.ts", "!src/__tests__/**", "!src/**/*.test.*"],
-      "project": ["src/**/*.ts"]
+      "project": ["src/**/*.ts"],
+      "ignoreDependencies": ["@stryker-mutator/core"],
+      "ignoreBinaries": ["stryker"]
     },
     "packages/hdx-eval": {
       "project": ["src/**/*.ts"],
@@ -41,12 +46,14 @@
     "docker/hyperdx/**",
     ".claude/**"
   ],
-  "ignoreBinaries": ["make", "migrate"],
+  "ignoreBinaries": ["make", "migrate", "stryker"],
   "ignoreDependencies": [
     "@dotenvx/dotenvx",
     "concurrently",
     "dotenv",
-    "babel-plugin-react-compiler"
+    "babel-plugin-react-compiler",
+    "@stryker-mutator/core",
+    "jscpd"
   ],
   "include": ["nsExports"],
   "exclude": ["enumMembers", "duplicates"]

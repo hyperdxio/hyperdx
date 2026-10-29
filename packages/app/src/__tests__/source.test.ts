@@ -1,4 +1,5 @@
 import { ColumnMetaType } from '@hyperdx/common-utils/dist/clickhouse';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptTimestamp,
   NumberFormat,
@@ -10,12 +11,16 @@ import { notifications } from '@mantine/notifications';
 import { renderHook } from '@testing-library/react';
 
 import {
+  getBuilderValueColumnCount,
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
+  inferTableSourceConfig,
+  pickTimeSeriesTable,
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
   useSources,
+  useUpdateSource,
 } from '@/source';
 
 jest.mock('../api', () => ({ hdxServer: jest.fn() }));
@@ -29,7 +34,7 @@ jest.mock('@tanstack/react-query', () => ({
   useQueryClient: jest.fn(),
 }));
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { hdxServer } from '@/api';
 
@@ -52,6 +57,119 @@ const TRACE_SOURCE: TTraceSource = {
   spanKindExpression: 'SpanKind',
   defaultTableSelectExpression: 'Timestamp, ServiceName',
 } as TTraceSource;
+
+describe('pickTimeSeriesTable', () => {
+  const table = (databaseName: string, tableName: string) => ({
+    databaseName,
+    tableName,
+  });
+
+  it('prefers metrics_ts in the preferred database', () => {
+    const tables = [
+      table('default', 'metrics_ts'),
+      table('otel', 'metrics_ts'),
+    ];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('otel', 'metrics_ts'),
+    );
+  });
+
+  it('prefers prometheus.metrics over metrics_ts', () => {
+    const tables = [
+      table('otel', 'metrics_ts'),
+      table('prometheus', 'metrics'),
+    ];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('prometheus', 'metrics'),
+    );
+  });
+
+  it('only treats metrics in the prometheus database as the docs table', () => {
+    const tables = [table('default', 'metrics'), table('otel', 'metrics_ts')];
+    expect(pickTimeSeriesTable(tables, 'otel')).toEqual(
+      table('otel', 'metrics_ts'),
+    );
+  });
+
+  it('falls back to metrics_ts in any database', () => {
+    const tables = [table('a_db', 'custom_ts'), table('b_db', 'metrics_ts')];
+    expect(pickTimeSeriesTable(tables)).toEqual(table('b_db', 'metrics_ts'));
+  });
+
+  it('picks a sole TimeSeries table without the default name', () => {
+    expect(pickTimeSeriesTable([table('otel', 'prom')])).toEqual(
+      table('otel', 'prom'),
+    );
+  });
+
+  it('picks nothing from several tables without the default name', () => {
+    const tables = [table('otel', 'prom_a'), table('otel', 'prom_b')];
+    expect(pickTimeSeriesTable(tables, 'otel')).toBeUndefined();
+  });
+
+  it('picks nothing from no tables', () => {
+    expect(pickTimeSeriesTable([])).toBeUndefined();
+  });
+});
+
+describe('inferTableSourceConfig', () => {
+  const inferOtelLogConfig = (
+    severityNumberType: string,
+    extraColumns: ColumnMetaType[] = [],
+  ) => {
+    const columns = [
+      'Timestamp',
+      'Body',
+      'SeverityText',
+      'TraceId',
+      'SpanId',
+      'ServiceName',
+      'LogAttributes',
+      'ResourceAttributes',
+    ].map(name => ({ name, type: 'String' }));
+    columns.push({ name: 'SeverityNumber', type: severityNumberType });
+    columns.push(...extraColumns);
+
+    return inferTableSourceConfig({
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId: 'test-connection',
+      kind: SourceKind.Log,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      metadata: {
+        getColumns: async () => columns,
+        getTableMetadata: async () => undefined,
+      } as unknown as Metadata,
+    });
+  };
+
+  it('sets severityNumberExpression only for an integer SeverityNumber column', async () => {
+    for (const type of ['UInt8', 'Int32', 'LowCardinality(Nullable(UInt8))']) {
+      expect(await inferOtelLogConfig(type)).toHaveProperty(
+        'severityNumberExpression',
+        'SeverityNumber',
+      );
+    }
+    expect(await inferOtelLogConfig('String')).not.toHaveProperty(
+      'severityNumberExpression',
+    );
+  });
+
+  it('sets eventNameExpression only for a string EventName column', async () => {
+    for (const type of [
+      'String',
+      'LowCardinality(String)',
+      'Nullable(String)',
+    ]) {
+      expect(
+        await inferOtelLogConfig('UInt8', [{ name: 'EventName', type }]),
+      ).toHaveProperty('eventNameExpression', 'EventName');
+    }
+    expect(
+      await inferOtelLogConfig('UInt8', [{ name: 'EventName', type: 'UInt8' }]),
+    ).not.toHaveProperty('eventNameExpression');
+  });
+});
 
 describe('getEventBody', () => {
   it('returns spanNameExpression for trace kind source when both bodyExpression and spanNameExpression are present', () => {
@@ -175,6 +293,30 @@ describe('getTraceDurationNumberFormat', () => {
   });
 });
 
+describe('useUpdateSource', () => {
+  it("drops the updated source's cached PromQL lookups", () => {
+    const invalidateQueries = jest.fn();
+    // @ts-expect-error return value type
+    jest.mocked(useQueryClient).mockReturnValue({ invalidateQueries });
+    let onSuccess: ((data: unknown, vars: unknown) => void) | undefined;
+    // @ts-expect-error param type
+    jest.mocked(useMutation).mockImplementation(options => {
+      // @ts-expect-error return value type
+      onSuccess = options.onSuccess;
+    });
+
+    useUpdateSource();
+    onSuccess?.(undefined, { source: { id: 'source-promql' } });
+
+    expect(invalidateQueries.mock.calls.map(([arg]) => arg.queryKey)).toEqual([
+      ['sources'],
+      ['promql-metric-names', 'source-promql'],
+      ['promql-label-names', 'source-promql'],
+      ['dashboard-filter-promql-label-values', 'source-promql'],
+    ]);
+  });
+});
+
 describe('useSources validation notifications', () => {
   const mockUseQuery = useQuery as jest.Mock;
   const mockHdxServer = hdxServer as jest.Mock;
@@ -229,6 +371,14 @@ describe('useSources validation notifications', () => {
     );
   });
 });
+
+const METRIC_TABLES = {
+  gauge: 'otel_metrics_gauge',
+  sum: 'otel_metrics_sum',
+  histogram: 'otel_metrics_histogram',
+  summary: 'otel_metrics_summary',
+  'exponential histogram': 'otel_metrics_exponential_histogram',
+};
 
 const DURATION_FORMAT: NumberFormat = { output: 'duration', factor: 1e-9 };
 const CURRENCY_FORMAT: NumberFormat = { output: 'currency' };
@@ -334,6 +484,33 @@ describe('useSingleSeriesNumberFormat', () => {
         ],
       }),
       expected: undefined,
+    },
+    // Metric formula configs display the formula column (number charts hide
+    // the operand series), so the format resolves from the formula — not
+    // from an operand that isn't rendered.
+    {
+      name: 'formula config: prefers the formula numberFormat over select[0]',
+      config: makeBuilderConfig({
+        metricTables: METRIC_TABLES,
+        select: [
+          { valueExpression: 'Value', numberFormat: NUMBER_FORMAT },
+          { valueExpression: 'Value' },
+        ],
+        formulas: [{ expression: 'A / B', numberFormat: PERCENT_FORMAT }],
+        showOperandSeries: false,
+      }),
+      expected: PERCENT_FORMAT,
+    },
+    {
+      name: 'formula config: falls back to config.numberFormat when the formula has none',
+      config: makeBuilderConfig({
+        metricTables: METRIC_TABLES,
+        select: [{ valueExpression: 'Value', numberFormat: NUMBER_FORMAT }],
+        formulas: [{ expression: 'A * 100' }],
+        numberFormat: CURRENCY_FORMAT,
+        showOperandSeries: false,
+      }),
+      expected: CURRENCY_FORMAT,
     },
   ])('$name', ({ config, expected }) => {
     const { result } = renderHook(() => useSingleSeriesNumberFormat(config));
@@ -520,5 +697,119 @@ describe('useChartNumberFormats', () => {
       useChartNumberFormats(config, [META_A]),
     );
     expect(result.current.formatByColumn.size).toBe(0);
+  });
+
+  // --- metric formula configs (HDX-5080) ---
+  // The composed metric query projects operand series columns (unless
+  // showOperandSeries is false) followed by one column per formula.
+
+  const META_FORMULA = { name: 'A / B', type: 'Float64' } as ColumnMetaType;
+
+  const makeFormulaConfig = (
+    overrides: Partial<ChartConfigWithOptTimestamp> = {},
+  ) =>
+    makeBuilderConfig({
+      metricTables: METRIC_TABLES,
+      select: [
+        { valueExpression: 'Value', numberFormat: NUMBER_FORMAT },
+        { valueExpression: 'Value' },
+      ],
+      formulas: [{ expression: 'A / B', numberFormat: PERCENT_FORMAT }],
+      ...overrides,
+    });
+
+  it('formula config: maps operand columns then formula columns positionally', () => {
+    const config = makeFormulaConfig();
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_A, META_B, META_FORMULA]),
+    );
+    expect(Array.from(result.current.formatByColumn.entries())).toEqual([
+      ['col_a', NUMBER_FORMAT],
+      ['A / B', PERCENT_FORMAT],
+    ]);
+  });
+
+  it('formula config: maps only formula columns when operand series are hidden', () => {
+    const config = makeFormulaConfig({ showOperandSeries: false });
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_FORMULA]),
+    );
+    expect(Array.from(result.current.formatByColumn.entries())).toEqual([
+      ['A / B', PERCENT_FORMAT],
+    ]);
+  });
+
+  it('formula config: formula columns fall back to config.numberFormat', () => {
+    const config = makeFormulaConfig({
+      formulas: [{ expression: 'A / B' }],
+      numberFormat: CURRENCY_FORMAT,
+      showOperandSeries: false,
+    });
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_FORMULA]),
+    );
+    expect(result.current.formatByColumn.get('A / B')).toEqual(CURRENCY_FORMAT);
+  });
+
+  it('formula config: formula supersedes ratio mapping when both are set', () => {
+    const config = makeFormulaConfig({ seriesReturnType: 'ratio' });
+    const { result } = renderHook(() =>
+      useChartNumberFormats(config, [META_A, META_B, META_FORMULA]),
+    );
+    // The ratio branch would map only meta[0]; the formula branch maps
+    // operands + formula columns.
+    expect(result.current.formatByColumn.get('A / B')).toEqual(PERCENT_FORMAT);
+  });
+
+  it('formula config: chartFormat prefers formula format when operands are hidden', () => {
+    const config = makeFormulaConfig({ showOperandSeries: false });
+    const { result } = renderHook(() => useChartNumberFormats(config));
+    expect(result.current.chartFormat).toEqual(PERCENT_FORMAT);
+  });
+
+  it('formula config: chartFormat prefers series format when operands are shown', () => {
+    const config = makeFormulaConfig();
+    const { result } = renderHook(() => useChartNumberFormats(config));
+    expect(result.current.chartFormat).toEqual(NUMBER_FORMAT);
+  });
+});
+
+describe('getBuilderValueColumnCount', () => {
+  it('counts one column per select entry by default', () => {
+    const config = makeBuilderConfig({
+      select: [{ valueExpression: 'count()' }, { valueExpression: 'sum(x)' }],
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(2);
+  });
+
+  it('counts one merged column for ratio configs', () => {
+    const config = makeBuilderConfig({
+      seriesReturnType: 'ratio',
+      select: [{ valueExpression: 'count()' }, { valueExpression: 'sum(x)' }],
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(1);
+  });
+
+  it('counts operand and formula columns for metric formula configs', () => {
+    const config = makeBuilderConfig({
+      metricTables: METRIC_TABLES,
+      select: [{ valueExpression: 'Value' }, { valueExpression: 'Value' }],
+      formulas: [{ expression: 'A / B' }],
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(3);
+  });
+
+  it('counts only formula columns when operand series are hidden', () => {
+    const config = makeBuilderConfig({
+      metricTables: METRIC_TABLES,
+      select: [{ valueExpression: 'Value' }, { valueExpression: 'Value' }],
+      formulas: [{ expression: 'A / B' }, { expression: 'A + B' }],
+      showOperandSeries: false,
+    });
+    expect(getBuilderValueColumnCount(config)).toBe(2);
+  });
+
+  it('returns 0 for raw SQL configs', () => {
+    expect(getBuilderValueColumnCount(makeRawSqlConfig({}))).toBe(0);
   });
 });

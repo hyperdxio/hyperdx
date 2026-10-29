@@ -63,7 +63,7 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <ConfirmContext.Provider value={confirm}>
+    <ConfirmContext value={confirm}>
       {children}
       <Modal
         data-testid="confirm-modal"
@@ -94,12 +94,12 @@ export function ConfirmProvider({ children }: { children: React.ReactNode }) {
           </Button>
         </Group>
       </Modal>
-    </ConfirmContext.Provider>
+    </ConfirmContext>
   );
 }
 
 export const useConfirm = () => {
-  const confirm = React.useContext(ConfirmContext);
+  const confirm = React.use(ConfirmContext);
   if (confirm == null) {
     throw new Error('useConfirm must be used within a ConfirmProvider');
   }

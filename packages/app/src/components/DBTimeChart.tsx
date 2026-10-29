@@ -12,6 +12,7 @@ import {
   convertGranularityToSeconds,
   getAlignedDateRange,
 } from '@hyperdx/common-utils/dist/core/utils';
+import type { AdhocConditionEntry } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
@@ -23,7 +24,11 @@ import {
   DisplayType,
 } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
-import { IconChartBar, IconChartLine } from '@tabler/icons-react';
+import {
+  IconChartAreaLine,
+  IconChartBar,
+  IconChartLine,
+} from '@tabler/icons-react';
 
 import api from '@/api';
 import {
@@ -33,17 +38,30 @@ import {
   convertToTimeChartConfig,
   formatResponseForTimeChart,
   getPreviousDateRange,
+  type LineData,
   shouldFillNullsWithZero,
+  tryExpandConfigVariables,
   useTimeChartSettings,
 } from '@/ChartUtils';
 import { ChartAnnotation } from '@/components/charts/chartAnnotations';
-import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
+import {
+  ChartSeriesTooltip,
+  type ChartSeriesTooltipProps,
+} from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
+import {
+  MAX_LOADABLE_TIME_CHART_SERIES,
+  resolveRenderedSeriesCap,
+} from '@/defaults';
 import { type ActiveClickPayload, MemoChart } from '@/HDXMultiSeriesTimeChart';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useResultColumnFilterKeys } from '@/hooks/useResultColumnFilterKeys';
 import { useChartNumberFormats, useSource } from '@/source';
-import type { NumberFormat } from '@/types';
+import type { NumberFormat, TileFilterHandler } from '@/types';
 
 import ChartContainer from './charts/ChartContainer';
 import ChartErrorState, {
@@ -51,7 +69,11 @@ import ChartErrorState, {
 } from './charts/ChartErrorState';
 import DateRangeIndicator from './charts/DateRangeIndicator';
 import DisplaySwitcher from './charts/DisplaySwitcher';
+import HiddenSeriesIndicator from './charts/HiddenSeriesIndicator';
 import MVOptimizationIndicator from './MaterializedViews/MVOptimizationIndicator';
+
+const PROMQL_REDUCE_CARDINALITY_HINT =
+  'Narrow the label matchers, aggregate with sum by (...), or set a series limit to reduce the number of series.';
 
 /** A single group column / value pair decoded from a chart series key. */
 export type SeriesGroupFilter = { column: string; value: string };
@@ -127,6 +149,47 @@ export function decodeSeriesGroupFilters({
   return groupFilters;
 }
 
+/**
+ * The ad hoc filter entries that select one chart series: its PromQL labels,
+ * or a key per group-by column. Undefined when some group column has no key
+ * or can't be filtered on, since filtering on the rest would match more than
+ * the series.
+ */
+export function getSeriesFilterEntries({
+  line,
+  groupColumns,
+  filterKeyByColumn,
+  promqlSeriesLabels,
+}: {
+  line: Pick<LineData, 'groupValues'> | undefined;
+  groupColumns: string[];
+  filterKeyByColumn: ReadonlyMap<string, string>;
+  promqlSeriesLabels?: Record<string, Record<string, string>>;
+}): AdhocConditionEntry[] | undefined {
+  if (!line || groupColumns.length === 0) return undefined;
+  if (promqlSeriesLabels) {
+    // PromQL series are grouped by their name alone.
+    const labels = promqlSeriesLabels[String(line.groupValues[0])];
+    // An ad hoc filter reaches every PromQL query, so a `__name__` condition
+    // would empty those on other metrics.
+    return labels
+      ? Object.entries(labels)
+          .filter(([key]) => key !== '__name__')
+          .map(([key, value]) => ({ key, value }))
+      : undefined;
+  }
+  const entries: AdhocConditionEntry[] = [];
+  for (const [index, column] of groupColumns.entries()) {
+    const key = filterKeyByColumn.get(column);
+    const value = line.groupValues[index];
+    // NULL doesn't match `= ''`, and Map / Array / Tuple / JSON values are
+    // JSON in the series key, which their `toString()` wouldn't match.
+    if (!key || value == null || typeof value === 'object') return undefined;
+    entries.push({ key, value: String(value) });
+  }
+  return entries;
+}
+
 // The interactive PINNED tooltip, rendered over the chart in a body-portaled
 // Mantine Popover anchored at the clicked point. Hover uses the recharts tooltip
 // in MemoChart instead; this is only for the click-locked state.
@@ -135,19 +198,33 @@ function ChartTooltipOverlay({
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  getSeriesFilters,
+  onFilterSeries,
+  onShowAllSeries,
   fallbackNumberFormat,
   numberFormatByKey,
   previousPeriodOffsetSeconds,
-}: {
+  hiddenSeriesCount,
+  onLoadAllSeries,
+  expanded,
+}: Pick<ChartSeriesTooltipProps, 'getSeriesFilters' | 'onFilterSeries'> & {
   payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
   /** Focus a series by its raw series key (dataKey) and display name. */
   onFocusSeries: (payload: { dataKey?: string; name: string }) => void;
+  /** Clear an active series focus; undefined when nothing is focused. */
+  onShowAllSeries?: () => void;
   fallbackNumberFormat?: NumberFormat;
   /** Per-value-column formats, keyed by result column name. */
   numberFormatByKey: Map<string, NumberFormat>;
   previousPeriodOffsetSeconds?: number;
+  /** Series dropped by the chart's render cap (see ChartSeriesTooltip). */
+  hiddenSeriesCount?: number;
+  /** Render every series on the chart, bypassing the cap. */
+  onLoadAllSeries?: () => void;
+  /** "Load all" is active: render every row in the scrollable tooltip body. */
+  expanded?: boolean;
 }) {
   const isOpen =
     payload != null &&
@@ -168,8 +245,8 @@ function ChartTooltipOverlay({
   useEffect(() => {
     if (!isOpen) return;
     const handleScroll = (e: Event) => {
-      const target = e.target as Node | null;
-      if (target != null && dropdownRef.current?.contains(target)) {
+      const target = e.target;
+      if (target instanceof Node && dropdownRef.current?.contains(target)) {
         return;
       }
       onDismiss();
@@ -261,6 +338,12 @@ function ChartTooltipOverlay({
             buildSearchUrl={buildSearchUrl}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
+            getSeriesFilters={getSeriesFilters}
+            onFilterSeries={onFilterSeries}
+            onShowAllSeries={onShowAllSeries}
+            hiddenSeriesCount={hiddenSeriesCount}
+            onLoadAllSeries={onLoadAllSeries}
+            expanded={expanded}
           />
         </Popover.Dropdown>
       </Popover>
@@ -279,6 +362,8 @@ type DBTimeChartComponentProps = {
   onTimeRangeSelect?: (start: Date, end: Date) => void;
   queryKeyPrefix?: string;
   referenceLines?: React.ReactNode;
+  /** Raw numeric value(s) backing referenceLines, for Y-axis domain sizing. */
+  referenceLineValues?: number[];
   /** Event markers (e.g. alert firing/recovery) drawn as dashed lines with labels. */
   annotations?: ChartAnnotation[];
   setDisplayType?: (type: DisplayType) => void;
@@ -302,6 +387,11 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /**
+   * When set, the pinned tooltip offers filter / exclude actions per series,
+   * with the series' group-by expressions (or PromQL labels) and values.
+   */
+  onFilter?: TileFilterHandler;
 };
 
 function DBTimeChartComponent({
@@ -314,6 +404,7 @@ function DBTimeChartComponent({
   onTimeRangeSelect,
   queryKeyPrefix,
   referenceLines,
+  referenceLineValues,
   annotations,
   setDisplayType,
   showDisplaySwitcher = true,
@@ -327,10 +418,26 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  onFilter,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
   );
+
+  // When the render cap hides series, the hidden-series notice lets the user
+  // opt into rendering every series (accepting the memory/perf cost). Store the
+  // query shape the opt-in was enabled at (not a bare boolean) so it can be
+  // gated on the current shape during render — this resets the opt-in the
+  // instant the query changes, with no setState-in-effect and no one-commit
+  // window where a stale opt-in pairs with the new shape. `queryShapeIdentity`
+  // is derived below; `showAllSeries` is defined right after it.
+  const [showAllSeriesShape, setShowAllSeriesShape] = useState<string | null>(
+    null,
+  );
+
+  const handleClearSelectedSeries = useCallback(() => {
+    setSelectedSeriesSet(new Set());
+  }, []);
 
   const handleToggleSeries = useCallback(
     (seriesName: string, isShiftKey?: boolean) => {
@@ -362,27 +469,87 @@ function DBTimeChartComponent({
     [],
   );
 
+  const { data: source } = useSource({
+    id: sourceId || config.source,
+  });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
+  // Both useTimeChartSettings and convertToTimeChartConfig resolve 'auto', so the
+  // minimum has to be in `config` before they run.
+  const configWithFloor = useMemo(
+    () => ({ ...config, minGranularitySeconds }),
+    [config, minGranularitySeconds],
+  );
+
   const originalDateRange = config.dateRange;
   const {
     displayType: displayTypeProp,
     dateRange,
     granularity,
     fillNulls,
-  } = useTimeChartSettings(config);
+  } = useTimeChartSettings(configWithFloor);
 
   const { data: me, isLoading: isLoadingMe } = api.useMe();
 
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(config),
-    [config],
+    () => convertToTimeChartConfig(configWithFloor),
+    [configWithFloor],
   );
 
-  // Determine whether the config can be optimized with an MV, to determine whether
-  // to show the MV optimization indicator and date range indicator in the toolbar
+  // Stable identity for the query's SHAPE, excluding the sliding time window.
+  // `queriedConfig` (and the `config` it derives from) is a fresh object literal
+  // on every render — dashboard tiles rebuild the tile config inline each render
+  // (e.g. on hover) and live ranges tick the dateRange/granularity — so keying
+  // effects on its object reference, or serializing the whole thing, would fire
+  // them on unrelated re-renders / every live tick. Stripping the time fields
+  // yields a value that changes only when the user re-authors the query.
+  const queryShapeIdentity = useMemo(() => {
+    // Serialize every top-level field except the sliding time window.
+    const shape: Record<string, unknown> = { ...queriedConfig };
+    delete shape.dateRange;
+    delete shape.granularity;
+    delete shape.dateRangeEndInclusive;
+    // Builder configs normalize both `0` and null seriesLimit to `undefined`,
+    // which JSON.stringify drops — so a null<->0 edit wouldn't change the shape
+    // and the reset effect below wouldn't fire. Fold in the raw value so the
+    // two states serialize differently.
+    return JSON.stringify({
+      shape,
+      rawSeriesLimit: config.seriesLimit ?? null,
+    });
+  }, [queriedConfig, config.seriesLimit]);
+
+  // "Load all" is active only while the shape it was enabled at still matches.
+  // Deriving it (instead of resetting a boolean in an effect) means a query
+  // change drops the opt-in in the same render, so a stale opt-in can never
+  // pair with the new shape — and there's no setState-in-effect.
+  const showAllSeries = showAllSeriesShape === queryShapeIdentity;
+  const enableShowAllSeries = useCallback(
+    () => setShowAllSeriesShape(queryShapeIdentity),
+    [queryShapeIdentity],
+  );
+  // "Load all" only helps when it actually raises the cap. If the tile's own
+  // seriesLimit already meets or exceeds the load-all bound (or is unlimited),
+  // clicking would render the same set — so don't offer the affordance rather
+  // than flip showAllSeries to a state where onLoadAll goes permanently
+  // undefined for a no-op.
+  const loadAllCanRaiseCap =
+    MAX_LOADABLE_TIME_CHART_SERIES >
+    resolveRenderedSeriesCap(config.seriesLimit);
+  const loadAllHandler =
+    showAllSeries || !loadAllCanRaiseCap ? undefined : enableShowAllSeries;
+
+  // Determine whether the config can be optimized with an MV, to drive the MV
+  // optimization indicator and the MV-derived date-range indicator in the
+  // toolbar. Only those two indicators consume `mvOptimizationData`, so skip
+  // this extra ClickHouse EXPLAIN when both are hidden — which includes the
+  // edit-modal preview (ChartPreviewPanel passes showMVOptimizationIndicator and
+  // showDateRangeIndicator both false), so the EXPLAIN is skipped there too.
   const builderQueriedConfig: BuilderChartConfigWithDateRange | undefined =
     isBuilderChartConfig(queriedConfig) ? queriedConfig : undefined;
-  const { data: mvOptimizationData } =
-    useMVOptimizationExplanation(builderQueriedConfig);
+  const { data: mvOptimizationData } = useMVOptimizationExplanation(
+    builderQueriedConfig,
+    { enabled: showMVOptimizationIndicator || showDateRangeIndicator },
+  );
 
   const { data, isLoading, isError, error, isPlaceholderData, isSuccess } =
     useQueriedChartConfig(queriedConfig, {
@@ -446,10 +613,6 @@ function DBTimeChartComponent({
     (config.compareToPreviousPeriod && !previousPeriodData?.isComplete) ||
     isPlaceholderData;
 
-  const { data: source } = useSource({
-    id: sourceId || config.source,
-  });
-
   const { formatByColumn, chartFormat: axisNumberFormat } =
     useChartNumberFormats(queriedConfig, data?.meta);
 
@@ -461,6 +624,8 @@ function DBTimeChartComponent({
     valueColumns,
     isSingleValueColumn,
     lineData,
+    hiddenSeriesCount,
+    renderedSeriesCount,
   } = useMemo(() => {
     const defaultResponse = {
       error: null,
@@ -470,6 +635,8 @@ function DBTimeChartComponent({
       groupColumns: [],
       valueColumns: [],
       isSingleValueColumn: true,
+      hiddenSeriesCount: 0,
+      renderedSeriesCount: 0,
     };
 
     if (data == null || !isSuccess) {
@@ -488,6 +655,23 @@ function DBTimeChartComponent({
         source,
         hiddenSeries,
         previousPeriodOffsetSeconds,
+        // "Load all" (from the warning / pinned tooltip) overrides everything;
+        // otherwise the per-tile Series Limit drives the cap (null = default,
+        // 0 = unlimited). On builder group-by charts the SQL CTE already trims
+        // to seriesLimit, so this is a no-op there; on raw SQL it's the only
+        // cardinality guard. "Load all" is bounded (not truly unlimited) so a
+        // runaway high-cardinality result can't exhaust browser memory; drawn
+        // lines stay capped at HARD_LINES_LIMIT either way. Take the max of the
+        // bound and the tile's own cap so load-all can only ever RAISE the
+        // rendered count — never reduce it when a tile's seriesLimit already
+        // exceeds the bound. (A `0`/unlimited tile shows no affordance, so the
+        // Infinity case is unreachable here.)
+        maxSeries: showAllSeries
+          ? Math.max(
+              MAX_LOADABLE_TIME_CHART_SERIES,
+              resolveRenderedSeriesCap(config.seriesLimit),
+            )
+          : resolveRenderedSeriesCap(config.seriesLimit),
       });
       return {
         ...defaultResponse,
@@ -508,21 +692,31 @@ function DBTimeChartComponent({
     fillNulls,
     source,
     config.compareToPreviousPeriod,
+    config.seriesLimit,
     previousPeriodData,
     hiddenSeries,
     previousPeriodOffsetSeconds,
+    showAllSeries,
   ]);
 
   // To enable backward compatibility, allow non-controlled usage of displayType
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
 
   const displayType = useMemo(() => {
-    if (setDisplayType) {
+    // Stacking would sum the current and previous periods together.
+    if (config.compareToPreviousPeriod) {
+      return DisplayType.Line;
+    } else if (setDisplayType) {
       return displayTypeProp;
     } else {
       return displayTypeLocal;
     }
-  }, [displayTypeLocal, displayTypeProp, setDisplayType]);
+  }, [
+    config.compareToPreviousPeriod,
+    displayTypeLocal,
+    displayTypeProp,
+    setDisplayType,
+  ]);
 
   const handleSetDisplayType = useCallback(
     (type: DisplayType) => {
@@ -535,18 +729,25 @@ function DBTimeChartComponent({
     [setDisplayType],
   );
 
-  useEffect(() => {
-    if (config.compareToPreviousPeriod) {
-      setDisplayTypeLocal(DisplayType.Line);
-    }
-  }, [config.compareToPreviousPeriod]);
-
   const [activeClickPayload, setActiveClickPayload] = useState<
     ActiveClickPayload | undefined
   >(undefined);
 
   const dismissPinned = useCallback(() => setActiveClickPayload(undefined), []);
   const notifyTooltipPinned = useCrossChartPinDismiss(dismissPinned);
+
+  // Dismiss any open pin when the query shape changes: its frozen snapshot
+  // belongs to the previous query, and the resync effect would otherwise
+  // repaint it with the new query's series at the stale click anchor. (The
+  // "load all" opt-in resets on its own — it's derived from
+  // `showAllSeriesShape === queryShapeIdentity` above — so it isn't touched
+  // here.) Keyed on `queryShapeIdentity` (a stable serialization of the query
+  // shape) rather than the `queriedConfig` object reference — which is new
+  // every render — so unrelated re-renders (tile hover) and live-range ticks
+  // don't dismiss the pin, while re-authoring the query still does.
+  useEffect(() => {
+    dismissPinned();
+  }, [queryShapeIdentity, dismissPinned]);
 
   // Pin the tooltip on click. Not gated on `source`: source-less charts still
   // show values/percent-change, and the drill-down actions hide themselves when
@@ -563,6 +764,20 @@ function DBTimeChartComponent({
       setActiveClickPayload(payload);
     },
     [disableDrillDown, notifyTooltipPinned],
+  );
+
+  // In-place refresh of the already-open pin's frozen snapshot (used by the
+  // chart's resync effect after "load all" / live ticks). Unlike
+  // setPinnedPayload this does NOT broadcast the cross-chart pin-dismiss — it
+  // isn't opening a new pin, just repainting the current one's rows.
+  const refreshPinnedPayload = useCallback(
+    (payload: ActiveClickPayload | undefined) => {
+      if (disableDrillDown) {
+        return;
+      }
+      setActiveClickPayload(payload);
+    },
+    [disableDrillDown],
   );
 
   const clickedActiveLabelDate = useMemo(() => {
@@ -583,6 +798,15 @@ function DBTimeChartComponent({
         return null;
       }
 
+      // The search page has no variable machinery, so the expressions read here
+      // and handed to buildEventsSearchUrl must be final SQL/Lucene.
+      // `whereLanguage` is pinned to buildEventsSearchUrl's default first, since
+      // expansion below leaves nothing for it to expand.
+      const expandedConfig = tryExpandConfigVariables({
+        ...config,
+        whereLanguage: config.whereLanguage || 'lucene',
+      });
+
       // Parse the series key to extract group values
       const seriesKeys = seriesKey?.split(ChartKeyJoiner);
       const groupFilters = decodeSeriesGroupFilters({
@@ -599,16 +823,31 @@ function DBTimeChartComponent({
           }
         | undefined;
 
+      // Metric formula configs with hidden operand series project only the
+      // formula column(s), so value columns no longer map positionally onto
+      // `select` — skip the value-range filter rather than misattributing a
+      // formula value to an operand's expression. (With operands shown, the
+      // operand columns still map by index and formula columns fall past the
+      // `< expandedConfig.select.length` bound below.)
+      const operandsHidden =
+        isBuilderChartConfig(expandedConfig) &&
+        (expandedConfig.formulas?.length ?? 0) > 0 &&
+        expandedConfig.showOperandSeries === false;
+
       if (
         seriesValue &&
-        Array.isArray(config.select) &&
-        config.select.length > 0
+        !operandsHidden &&
+        Array.isArray(expandedConfig.select) &&
+        expandedConfig.select.length > 0
       ) {
         // Determine which value column to filter on
         let valueExpression: string | undefined;
 
-        if ((isSingleValueColumn ?? true) && config.select.length === 1) {
-          const firstSelect = config.select[0];
+        if (
+          (isSingleValueColumn ?? true) &&
+          expandedConfig.select.length === 1
+        ) {
+          const firstSelect = expandedConfig.select[0];
           const aggFn =
             typeof firstSelect === 'string' ? undefined : firstSelect.aggFn;
           // Only add value range filter if the aggregation is attributable
@@ -630,9 +869,9 @@ function DBTimeChartComponent({
           if (
             valueColumnIndex != null &&
             valueColumnIndex >= 0 &&
-            valueColumnIndex < config.select.length
+            valueColumnIndex < expandedConfig.select.length
           ) {
-            const selectItem = config.select[valueColumnIndex];
+            const selectItem = expandedConfig.select[valueColumnIndex];
             const aggFn =
               typeof selectItem === 'string' ? undefined : selectItem.aggFn;
             // Only add value range filter if the aggregation is attributable
@@ -664,7 +903,7 @@ function DBTimeChartComponent({
 
       return buildEventsSearchUrl({
         source,
-        config,
+        config: expandedConfig,
         dateRange: [from, to],
         groupFilters,
         valueRangeFilter,
@@ -702,6 +941,27 @@ function DBTimeChartComponent({
       handleToggleSeries(name);
     },
     [onFocusSeries, groupColumns, isSingleValueColumn, handleToggleSeries],
+  );
+
+  const promqlSeriesLabels = data?.promqlSeriesLabels;
+  const filterKeyByColumn = useResultColumnFilterKeys({
+    config: queriedConfig,
+    meta: data?.meta,
+    enabled: !!onFilter && !promqlSeriesLabels,
+  });
+  const lineDataByKey = useMemo(
+    () => new Map(lineData.map(line => [line.dataKey, line])),
+    [lineData],
+  );
+  const getSeriesFilters = useCallback(
+    (dataKey: string | undefined) =>
+      getSeriesFilterEntries({
+        line: dataKey != null ? lineDataByKey.get(dataKey) : undefined,
+        groupColumns,
+        filterKeyByColumn,
+        promqlSeriesLabels,
+      }),
+    [lineDataByKey, groupColumns, filterKeyByColumn, promqlSeriesLabels],
   );
 
   const toolbarItemsMemo = useMemo(() => {
@@ -754,18 +1014,45 @@ function DBTimeChartComponent({
           options={[
             {
               value: DisplayType.Line,
-              label: 'Display as Line Chart',
+              label: 'Display as line chart',
               icon: <IconChartLine />,
             },
             {
               value: DisplayType.StackedBar,
               label: config.compareToPreviousPeriod
-                ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                : 'Display as Bar Chart',
+                ? 'Stacked bar chart unavailable when comparing to previous period'
+                : 'Display as stacked bar chart',
               icon: <IconChartBar />,
               disabled: config.compareToPreviousPeriod,
             },
+            {
+              value: DisplayType.StackedLine,
+              label: config.compareToPreviousPeriod
+                ? 'Stacked line chart unavailable when comparing to previous period'
+                : 'Display as stacked line chart',
+              icon: <IconChartAreaLine />,
+              disabled: config.compareToPreviousPeriod,
+            },
           ]}
+        />,
+      );
+    }
+
+    if (hiddenSeriesCount > 0) {
+      allToolbarItems.push(
+        <HiddenSeriesIndicator
+          key="db-time-chart-hidden-series-indicator"
+          hiddenSeriesCount={hiddenSeriesCount}
+          renderedSeriesCount={renderedSeriesCount}
+          // Offered only while still capped AND when load-all would actually
+          // raise the cap (loadAllHandler is undefined otherwise), so the
+          // notice never advertises a no-op click.
+          onLoadAll={loadAllHandler}
+          reduceCardinalityHint={
+            isPromqlChartConfig(config)
+              ? PROMQL_REDUCE_CARDINALITY_HINT
+              : undefined
+          }
         />,
       );
     }
@@ -788,6 +1075,9 @@ function DBTimeChartComponent({
     showDateRangeIndicator,
     mvOptimizationData,
     queriedConfig,
+    hiddenSeriesCount,
+    renderedSeriesCount,
+    loadAllHandler,
   ]);
 
   return (
@@ -821,9 +1111,21 @@ function DBTimeChartComponent({
             // re-register its window listener on every re-render.
             onDismiss={dismissPinned}
             onFocusSeries={handleFocusSeries}
+            getSeriesFilters={getSeriesFilters}
+            onFilterSeries={onFilter}
+            onShowAllSeries={
+              selectedSeriesSet.size > 0 ? handleClearSelectedSeries : undefined
+            }
             fallbackNumberFormat={queriedConfig.numberFormat}
             numberFormatByKey={formatByColumn}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
+            // "+N more" in the pinned tooltip loads every series (same escape
+            // hatch as the hidden-series warning). Only offered while capped.
+            hiddenSeriesCount={hiddenSeriesCount}
+            onLoadAllSeries={loadAllHandler}
+            // Once loaded, render the full set in the scrollable tooltip body
+            // (not just the 20-row preview) so "load all" actually shows them.
+            expanded={showAllSeries}
           />
           <MemoChart
             dateRange={dateRange}
@@ -838,16 +1140,20 @@ function DBTimeChartComponent({
             tooltipNumberFormatsByKey={formatByColumn}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={referenceLines}
+            referenceLineValues={referenceLineValues}
             annotations={annotations}
             setIsClickActive={setPinnedPayload}
+            refreshClickActive={refreshPinnedPayload}
             showLegend={showLegend}
             timestampKey={timestampColumn?.name}
             previousPeriodOffsetSeconds={previousPeriodOffsetSeconds}
             selectedSeriesNames={selectedSeriesSet}
             onToggleSeries={handleToggleSeries}
+            onClearSeriesSelection={handleClearSelectedSeries}
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            lineInterpolation={queriedConfig.lineInterpolation}
           />
         </>
       )}

@@ -16,6 +16,8 @@
 import {
   convertDateRangeToGranularityString,
   convertToCategoricalChartConfig,
+  convertToNumberChartConfig as convertToNumberChartConfigShared,
+  convertToTableChartConfig as convertToTableChartConfigShared,
   getAlignedDateRange,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -26,9 +28,7 @@ import {
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import type {
-  BuilderChartConfigWithDateRange,
   ChartConfigWithDateRange,
-  ChartConfigWithOptTimestamp,
   Filter,
   MetricsDataType,
   SavedChartConfig,
@@ -329,52 +329,38 @@ export function convertToTimeChartConfig(
 }
 
 /**
- * @source packages/app/src/ChartUtils.tsx (convertToNumberChartConfig)
+ * Delegates to the shared common-utils transform (which the web imports too,
+ * see packages/app/src/ChartUtils.tsx) so formula-aware behavior — number
+ * tiles with `formulas` hide their operand series — cannot drift. The CLI
+ * keeps only the raw-SQL passthrough guard the web applies at the call site.
  */
 export function convertToNumberChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
   if (!isBuilderChartConfig(config)) return config;
-  const { granularity: _g, groupBy: _gb, ...rest } = config;
-  return rest as ChartConfigWithDateRange;
+  // The shared transform widens timestampValueExpression to optional; the
+  // date range and every other field pass through, so the narrowing is safe.
+  return convertToNumberChartConfigShared(config) as ChartConfigWithDateRange;
 }
 
 /**
- * @source packages/app/src/ChartUtils.tsx (convertToTableChartConfig)
+ * Delegates to the shared common-utils transform (which the web imports too,
+ * see packages/app/src/ChartUtils.tsx): drops granularity, defaults the row
+ * limit, and stabilizes ordering for grouped tables.
  */
 export function convertToTableChartConfig(
   config: ChartConfigWithDateRange,
 ): ChartConfigWithDateRange {
   if (!isBuilderChartConfig(config)) return config;
-
-  const { granularity: _g, ...rest } = config;
-  const convertedConfig = structuredClone(
-    rest,
-  ) as BuilderChartConfigWithDateRange;
-
-  // Set a default limit if not already set
-  if (!convertedConfig.limit) {
-    convertedConfig.limit = { limit: 200 };
-  }
-
-  // Set a default orderBy if groupBy is set but orderBy is not,
-  // so that the set of rows within the limit is stable.
-  if (
-    convertedConfig.groupBy &&
-    typeof convertedConfig.groupBy === 'string' &&
-    !convertedConfig.orderBy
-  ) {
-    convertedConfig.orderBy = convertedConfig.groupBy;
-  }
-
-  return convertedConfig;
+  // Same safe narrowing as convertToNumberChartConfig above.
+  return convertToTableChartConfigShared(config) as ChartConfigWithDateRange;
 }
 
 /**
  * Apply the per-displayType config transform the matching web chart
  * component would apply before querying:
  *
- * - line / stacked_bar → DBTimeChart → convertToTimeChartConfig
+ * - line / stacked_bar / stacked_line → DBTimeChart → convertToTimeChartConfig
  * - number → DBNumberChart → convertToNumberChartConfig
  * - table → DBTableChart → convertToTableChartConfig
  * - pie / bar → CategoricalChart → convertToCategoricalChartConfig
@@ -386,6 +372,7 @@ export function convertTileConfigForQuery(
   switch (config.displayType) {
     case DisplayType.Line:
     case DisplayType.StackedBar:
+    case DisplayType.StackedLine:
       return convertToTimeChartConfig(config, maxTimeBuckets);
     case DisplayType.Number:
       return convertToNumberChartConfig(config);
@@ -409,6 +396,7 @@ export function convertTileConfigForQuery(
 export const CLI_SUPPORTED_DISPLAY_TYPES: ReadonlySet<DisplayType> = new Set([
   DisplayType.Line,
   DisplayType.StackedBar,
+  DisplayType.StackedLine,
   DisplayType.Number,
   DisplayType.Table,
   DisplayType.Pie,

@@ -1,4 +1,7 @@
 import React from 'react';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import { screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import api from '@/api';
 import { ChartKeyJoiner } from '@/ChartUtils';
@@ -6,15 +9,25 @@ import DateRangeIndicator from '@/components/charts/DateRangeIndicator';
 import {
   DBTimeChart,
   decodeSeriesGroupFilters,
+  getSeriesFilterEntries,
 } from '@/components/DBTimeChart';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import { MAX_LOADABLE_TIME_CHART_SERIES } from '@/defaults';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useSource } from '@/source';
 
 // Mock dependencies
 jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
+  getMinGranularitySeconds: jest.fn().mockReturnValue(undefined),
+}));
+
+jest.mock('@/hooks/useResultColumnFilterKeys', () => ({
+  useResultColumnFilterKeys: jest.fn(() => new Map()),
 }));
 
 jest.mock('@/hooks/useMVOptimizationExplanation', () => ({
@@ -177,6 +190,256 @@ describe('DBTimeChart', () => {
     expect(mvOptExplanationConfig).toBe(indicatorConfig);
   });
 
+  it('disables the MV-optimization query when both MV and date-range indicators are hidden', () => {
+    jest.mocked(useSource).mockReturnValue({
+      data: { id: 'test-source', name: 'Test Source' },
+    } as any);
+
+    renderWithMantine(
+      <DBTimeChart
+        config={baseTestConfig}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator={false}
+      />,
+    );
+
+    expect(jest.mocked(useMVOptimizationExplanation)).toHaveBeenCalled();
+    const options = jest.mocked(useMVOptimizationExplanation).mock.calls[0][1];
+    expect(options?.enabled).toBe(false);
+  });
+
+  it('keeps the MV-optimization query enabled when only the date-range indicator is shown', () => {
+    jest.mocked(useSource).mockReturnValue({
+      data: { id: 'test-source', name: 'Test Source' },
+    } as any);
+
+    renderWithMantine(
+      <DBTimeChart
+        config={baseTestConfig}
+        showMVOptimizationIndicator={false}
+        showDateRangeIndicator
+      />,
+    );
+
+    const options = jest.mocked(useMVOptimizationExplanation).mock.calls[0][1];
+    expect(options?.enabled).toBe(true);
+  });
+
+  it.each([
+    ['controlled', jest.fn()],
+    ['uncontrolled', undefined],
+  ])(
+    'renders a stacked chart as lines when comparing to the previous period (%s)',
+    (_, setDisplayType) => {
+      renderWithMantine(
+        <DBTimeChart
+          config={{
+            ...baseTestConfig,
+            displayType: DisplayType.StackedBar,
+            compareToPreviousPeriod: true,
+          }}
+          setDisplayType={setDisplayType}
+        />,
+      );
+
+      expect(
+        screen.getByTestId(`display-switcher-${DisplayType.Line}`),
+      ).toHaveAttribute('data-active', 'true');
+    },
+  );
+
+  describe('load-all series escape hatch', () => {
+    // A high-cardinality group-by response: MAX_RENDERED_TIME_CHART_SERIES (250)
+    // default cap + 50 extra groups, so 50 series are hidden and the
+    // HiddenSeriesIndicator surfaces the load-all affordance.
+    const HIDDEN = 50;
+    const GROUP_COUNT = 250 + HIDDEN;
+
+    const highCardinalityData = Array.from({ length: GROUP_COUNT }, (_, i) => ({
+      timestamp: 1704067200,
+      value: i + 1,
+      group: `g${i}`,
+    }));
+    const highCardinalityMeta = [
+      { name: 'timestamp', type: 'DateTime' },
+      { name: 'value', type: 'UInt64' },
+      { name: 'group', type: 'String' },
+    ];
+
+    const groupByConfig = {
+      ...baseTestConfig,
+      groupBy: 'group',
+    };
+
+    beforeEach(() => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: highCardinalityData,
+          meta: highCardinalityMeta,
+          rows: GROUP_COUNT,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+      });
+    });
+
+    it('surfaces the load-all button when the render cap hides series, then hides it after loading all', async () => {
+      const user = userEvent.setup();
+      renderWithMantine(<DBTimeChart config={groupByConfig} />);
+
+      // 50 series over the default 250 cap => the load-all affordance appears.
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      expect(loadAllButton).toBeInTheDocument();
+
+      await user.click(loadAllButton);
+
+      // After loading all, every series is materialized (bounded, but far above
+      // GROUP_COUNT), so nothing is hidden and the affordance disappears.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
+    });
+
+    it('keeps the load-all opt-in across an unrelated re-render with a fresh-but-equal config', async () => {
+      // Regression for the reset effect firing on every render: dashboard tiles
+      // pass a fresh config object literal each render (e.g. on hover), so a
+      // reset keyed on config/queriedConfig identity would snap showAllSeries
+      // back to false and re-cap the chart. The opt-in must survive a re-render
+      // whose config is a new object with identical query shape.
+      const user = userEvent.setup();
+      const { rerender } = renderWithMantine(
+        <DBTimeChart config={groupByConfig} />,
+      );
+
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      await user.click(loadAllButton);
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      // Re-render with a brand-new object AND a genuinely shifted time window
+      // (a new dateRange, mimicking a live-range tick / zoom). dateRange is
+      // deliberately excluded from the shape identity, so the opt-in must
+      // survive — this also guards against dateRange being reintroduced into
+      // queryShapeIdentity, which would make live-range ticks re-cap the chart.
+      rerender(
+        <TestProviders>
+          <DBTimeChart
+            config={{
+              ...groupByConfig,
+              dateRange: [new Date('2024-02-01'), new Date('2024-02-02')] as [
+                Date,
+                Date,
+              ],
+            }}
+          />
+        </TestProviders>,
+      );
+
+      // The opt-in survives: no series are re-hidden, so the affordance stays
+      // gone. (Before the fix, the reset effect fired here and it reappeared.)
+      expect(
+        screen.queryByRole('button', { name: /load all .* series/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('resets the load-all opt-in when the query shape changes (e.g. seriesLimit re-authored)', async () => {
+      // The reset must still fire for a genuine query change: after loading all,
+      // re-authoring the tile (here, tightening seriesLimit) re-applies the cap.
+      const user = userEvent.setup();
+      const { rerender } = renderWithMantine(
+        <DBTimeChart config={groupByConfig} />,
+      );
+
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      await user.click(loadAllButton);
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
+
+      // Change the query shape (a positive seriesLimit below GROUP_COUNT keeps
+      // series hidden), which should reset the opt-in and re-show the affordance.
+      rerender(
+        <TestProviders>
+          <DBTimeChart config={{ ...groupByConfig, seriesLimit: 5 }} />
+        </TestProviders>,
+      );
+
+      expect(
+        await screen.findByRole('button', { name: /load all .* series/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('does not hide series (no load-all affordance) when seriesLimit is 0 (unlimited)', () => {
+      renderWithMantine(
+        <DBTimeChart config={{ ...groupByConfig, seriesLimit: 0 }} />,
+      );
+
+      // seriesLimit=0 resolves to an unlimited render cap, so no series are
+      // dropped and the load-all affordance never appears.
+      expect(
+        screen.queryByRole('button', { name: /load all .* series/i }),
+      ).not.toBeInTheDocument();
+    });
+
+    it('goes passive (non-clickable) after load-all when the result still exceeds the load-all bound', async () => {
+      // A result larger than MAX_LOADABLE_TIME_CHART_SERIES (5000): after
+      // clicking "load all", the cap is lifted to the bound but series remain
+      // hidden. Clicking again could not reveal more (showAllSeries is already
+      // true), so the indicator must drop its onLoadAll action rather than
+      // render a button that no-ops.
+      const user = userEvent.setup();
+      const BIG_GROUP_COUNT = MAX_LOADABLE_TIME_CHART_SERIES + 100;
+      const bigData = Array.from({ length: BIG_GROUP_COUNT }, (_, i) => ({
+        timestamp: 1704067200,
+        value: i + 1,
+        group: `g${i}`,
+      }));
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: {
+          data: bigData,
+          meta: highCardinalityMeta,
+          rows: BIG_GROUP_COUNT,
+          isComplete: true,
+        },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+        isPlaceholderData: false,
+      });
+
+      renderWithMantine(<DBTimeChart config={groupByConfig} />);
+
+      const loadAllButton = await screen.findByRole('button', {
+        name: /load all .* series/i,
+      });
+      await user.click(loadAllButton);
+
+      // Series are still hidden (result > bound), but the affordance is now a
+      // passive warning icon, not a clickable button.
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('button', { name: /load all .* series/i }),
+        ).not.toBeInTheDocument();
+      });
+    });
+  });
+
   it('renders DateRangeIndicator when MV optimization returns a different date range', () => {
     const originalStartDate = new Date('2024-01-01T00:00:30Z');
     const originalEndDate = new Date('2024-01-01T01:30:45Z');
@@ -269,6 +532,43 @@ describe('DBTimeChart', () => {
       alignedEndDate,
     ]);
     expect(dateRangeIndicatorCall.mvGranularity).toBeUndefined();
+  });
+
+  it("floors 'auto' granularity to the source's minAutoGranularity setting", () => {
+    // A 15-minute range with the default maxBuckets=80 would otherwise infer
+    // '15 second' (ceil(900/80)=12 <= 15) - well under a 60s floor.
+    const config = {
+      ...baseTestConfig,
+      granularity: 'auto',
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T00:15:00Z'),
+      ] as [Date, Date],
+    };
+
+    jest.mocked(getMinGranularitySeconds).mockReturnValueOnce(60);
+
+    renderWithMantine(<DBTimeChart config={config} />);
+
+    const firstCallConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+    expect(firstCallConfig.granularity).toBe('1 minute');
+  });
+
+  it("does not floor 'auto' granularity when the source has no minAutoGranularity set", () => {
+    const config = {
+      ...baseTestConfig,
+      granularity: 'auto',
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-01T00:15:00Z'),
+      ] as [Date, Date],
+    };
+
+    // getMinGranularitySeconds already defaults to undefined per the module mock above.
+    renderWithMantine(<DBTimeChart config={config} />);
+
+    const firstCallConfig = mockUseQueriedChartConfig.mock.calls[0][0];
+    expect(firstCallConfig.granularity).toBe('15 second');
   });
 
   describe('raw SQL line chart', () => {
@@ -373,6 +673,74 @@ describe('DBTimeChart', () => {
       expect(() =>
         renderWithMantine(<DBTimeChart config={rawSqlConfig} />),
       ).not.toThrow();
+    });
+  });
+
+  describe('getSeriesFilterEntries', () => {
+    const filterKeyByColumn = new Map([
+      ['svc', 'ServiceName'],
+      ['SeverityText', 'SeverityText'],
+      ['attrs', 'LogAttributes'],
+    ]);
+    const entries = (groupValues: unknown[], groupColumns: string[]) =>
+      getSeriesFilterEntries({
+        line: { groupValues },
+        groupColumns,
+        filterKeyByColumn,
+      });
+
+    it('keys each group value by its column filter key', () => {
+      expect(entries(['api', 'error'], ['svc', 'SeverityText'])).toEqual([
+        { key: 'ServiceName', value: 'api' },
+        { key: 'SeverityText', value: 'error' },
+      ]);
+    });
+
+    it('stringifies a number group value', () => {
+      expect(entries([200], ['svc'])).toEqual([
+        { key: 'ServiceName', value: '200' },
+      ]);
+    });
+
+    it('returns nothing when a group column has no filter key', () => {
+      expect(entries(['api', 'x'], ['svc', 'unknown'])).toBeUndefined();
+    });
+
+    it('returns nothing for a null group value', () => {
+      expect(entries(['api', null], ['svc', 'SeverityText'])).toBeUndefined();
+    });
+
+    it('returns nothing for an object or array group value', () => {
+      expect(entries([{ a: '1' }], ['attrs'])).toBeUndefined();
+      expect(entries([['a', 1]], ['attrs'])).toBeUndefined();
+    });
+
+    it('returns nothing without a series or group columns', () => {
+      expect(
+        getSeriesFilterEntries({
+          line: undefined,
+          groupColumns: ['svc'],
+          filterKeyByColumn,
+        }),
+      ).toBeUndefined();
+      expect(entries([], [])).toBeUndefined();
+    });
+
+    it('returns the labels of a PromQL series, except __name__', () => {
+      const seriesName = 'up{job="api"}';
+      expect(
+        getSeriesFilterEntries({
+          line: { groupValues: [seriesName] },
+          groupColumns: ['series_name'],
+          filterKeyByColumn: new Map(),
+          promqlSeriesLabels: {
+            [seriesName]: { __name__: 'up', job: 'api', pod: 'a' },
+          },
+        }),
+      ).toEqual([
+        { key: 'job', value: 'api' },
+        { key: 'pod', value: 'a' },
+      ]);
     });
   });
 

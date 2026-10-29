@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
+import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import { parseTimeRange } from './helpers';
 import { runEventPatterns } from './runEventPatterns';
 import {
@@ -27,8 +29,8 @@ const eventPatternsSchema = z.object({
     .optional()
     .default(10_000)
     .describe(
-      'Number of random rows to sample for pattern mining. ' +
-        'Default: 10000. Higher values produce more accurate patterns but take longer.',
+      'Random rows to sample for pattern mining. ' +
+        'Higher values produce more accurate patterns but take longer.',
     ),
   bodyExpression: z
     .string()
@@ -44,7 +46,7 @@ const eventPatternsSchema = z.object({
     .max(100)
     .optional()
     .default(20)
-    .describe('Number of top patterns to return (1-100). Default: 20.'),
+    .describe('Number of most frequent patterns to return.'),
   trendBuckets: z
     .number()
     .min(0)
@@ -52,7 +54,7 @@ const eventPatternsSchema = z.object({
     .optional()
     .default(24)
     .describe(
-      'Number of time buckets for per-pattern trend sparklines (0-60). Default: 24. ' +
+      'Number of time buckets for per-pattern trend sparklines. ' +
         'Compare bucket counts at start vs end to spot patterns that started or stopped mid-window. ' +
         'Set to 0 to disable trend computation (smaller response).',
     ),
@@ -72,6 +74,7 @@ export function registerEventPatterns({
     'clickstack_event_patterns',
     {
       title: 'Event Pattern Mining',
+      annotations: READ_ONLY_TOOL,
       description:
         'Discover the most common log messages and event patterns. ' +
         'Samples random events, clusters them using the Drain algorithm, and returns ' +
@@ -85,6 +88,8 @@ export function registerEventPatterns({
         'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
         'a follow-up clickstack_search call to browse matching raw events.\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
+        PREFER_BUILDER_OVER_SQL_NUDGE +
+        '\n\n' +
         'When to use which tool:\n' +
         '  - clickstack_event_patterns: clustering / recurring shapes / noise analysis\n' +
         '  - clickstack_search: raw individual rows\n' +

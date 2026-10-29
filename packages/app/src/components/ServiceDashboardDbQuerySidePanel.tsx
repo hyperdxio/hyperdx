@@ -12,11 +12,15 @@ import { IconServer } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
 import { INTEGER_NUMBER_FORMAT, MS_NUMBER_FORMAT } from '@/ChartUtils';
-import { ChartBox } from '@/components/ChartBox';
+import { ChartCard } from '@/components/charts/ChartCard';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import SlowestEventsTile from '@/components/ServiceDashboardSlowestEventsTile';
-import { useServiceDashboardExpressions } from '@/serviceDashboard';
+import {
+  inList,
+  makeDbStatementCondition,
+  useServiceDashboardExpressions,
+} from '@/serviceDashboard';
 import { useSource } from '@/source';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
@@ -46,16 +50,23 @@ export default function ServiceDashboardDbQuerySidePanel({
   const drawerZIndex = contextZIndex + 10;
 
   const dbQueryFilters = useMemo(() => {
+    if (!expressions || !dbQuery) {
+      return [];
+    }
+
     const filters: Filter[] = [
       {
         type: 'sql',
-        condition: `${expressions?.dbStatement} IN ('${dbQuery}')`,
+        condition: makeDbStatementCondition({
+          expressions,
+          statement: dbQuery,
+        }),
       },
     ];
     if (service) {
       filters.push({
         type: 'sql',
-        condition: `${expressions?.service} IN ('${service}')`,
+        condition: inList(expressions.service, service),
       });
     }
     return filters;
@@ -79,7 +90,7 @@ export default function ServiceDashboardDbQuerySidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
           <div className={styles.panel}>
             <DrawerHeader
@@ -99,7 +110,7 @@ export default function ServiceDashboardDbQuerySidePanel({
             <DrawerBody>
               <Grid grow={false} w="100%" maw="100%">
                 <Grid.Col span={6}>
-                  <ChartBox style={{ height: 350 }}>
+                  <ChartCard style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
                         title="Total Query Time"
@@ -135,10 +146,10 @@ export default function ServiceDashboardDbQuerySidePanel({
                         }}
                       />
                     )}
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={6}>
-                  <ChartBox style={{ height: 350 }}>
+                  <ChartCard style={{ height: 350 }}>
                     {source && expressions && (
                       <DBTimeChart
                         title="Query Throughput"
@@ -172,7 +183,7 @@ export default function ServiceDashboardDbQuerySidePanel({
                         }}
                       />
                     )}
-                  </ChartBox>
+                  </ChartCard>
                 </Grid.Col>
                 <Grid.Col span={12}>
                   {source && (
@@ -188,7 +199,7 @@ export default function ServiceDashboardDbQuerySidePanel({
             </DrawerBody>
           </div>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
   );
 }

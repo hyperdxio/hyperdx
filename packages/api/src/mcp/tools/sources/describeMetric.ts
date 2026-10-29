@@ -6,26 +6,35 @@ import {
   JSDataType,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import { clickHouseErrorResult } from '@/mcp/tools/query/helpers';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
+import {
+  clickHouseErrorResult,
+  parseTimeRange,
+} from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
-import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import {
+  mcpServerError,
+  mcpUserError,
+  sanitizeFetchError,
+} from '@/mcp/utils/errors';
+import { MCP_TOOL_TIMEOUT_MS, runWithTimeout } from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
-  QUERYABLE_METRIC_KINDS,
-  type QueryableMetricKind,
+  DISCOVERABLE_METRIC_KINDS,
+  type DiscoverableMetricKind,
+  METRIC_DEFAULT_LOOKBACK_MS,
 } from './metricKinds';
 
-const DEFAULT_LOOKBACK_MS = 24 * 60 * 60 * 1000;
-const DESCRIBE_TIMEOUT_MS = 10_000;
+const DESCRIBE_TIMEOUT_MS = MCP_TOOL_TIMEOUT_MS;
 
 // Server-side safety nets for the attribute-keys discovery query.
 // Sample at most N rows that match (MetricName, time range), then
@@ -34,7 +43,10 @@ const DESCRIBE_TIMEOUT_MS = 10_000;
 // wall-clock budget. 100k rows is plenty to surface every unique map
 // key on a healthy OTel metric.
 const METRIC_ATTR_KEYS_SAMPLE_SIZE = 100_000;
-const METRIC_ATTR_KEYS_MAX_EXEC_SECONDS = 8;
+// Attribute keys and value sampling run back to back, so each gets under half
+// the wall-clock budget; with timeout_overflow_mode: 'break' both return
+// partial results before DESCRIBE_TIMEOUT_MS fires.
+const METRIC_ATTR_KEYS_MAX_EXEC_SECONDS = 14;
 
 // Max sampled values per attribute key (when sampleValues is true).
 const MAX_ATTR_VALUES = 10;
@@ -45,7 +57,7 @@ const MAX_ATTR_KEYS_TO_SAMPLE = 12;
 // Per-kind aggregation guidance baked into the response so the agent can
 // build a valid clickstack_timeseries / clickstack_table call without
 // re-reading the schemas.
-const KIND_USAGE: Record<QueryableMetricKind, string> = {
+const KIND_USAGE: Record<DiscoverableMetricKind, string> = {
   gauge:
     'Gauge: use aggFn:"last_value"|"avg"|"min"|"max" on Value. Set isDelta:true for Prometheus-style delta over each bucket.',
   sum: 'Sum (counter): use aggFn:"increase" for the per-bucket counter increase (reset-aware), or aggFn:"sum"/"avg" on the computed rate. increase+groupBy is capped at the top 20 groups.',
@@ -53,6 +65,10 @@ const KIND_USAGE: Record<QueryableMetricKind, string> = {
     'Histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
   'exponential histogram':
     'Exponential histogram: use aggFn:"quantile" with level ∈ {0.5, 0.9, 0.95, 0.99} for percentiles, or aggFn:"count" for the total bucket count.',
+  summary:
+    'Summary: client-precomputed quantiles (e.g. Prometheus summaries). Not supported by ' +
+    'clickstack_timeseries / clickstack_table — query this table with clickstack_sql ' +
+    "using the source's connectionId.",
 };
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -71,9 +87,9 @@ const describeMetricSchema = z.object({
         'Discover via clickstack_list_metrics or clickstack_describe_source.',
     ),
   kind: z
-    .enum(QUERYABLE_METRIC_KINDS)
+    .enum(DISCOVERABLE_METRIC_KINDS)
     .describe(
-      'Metric kind: "gauge" | "sum" | "histogram" | "exponential histogram". Required. ' +
+      'OTel metric kind of metricName, which selects the metric table to read. ' +
         'Discover via clickstack_list_metrics (which returns name + kind per entry) ' +
         'or clickstack_describe_source (which groups metric-name samples by kind). ' +
         'A metric name can legitimately live in more than one kind (e.g. ' +
@@ -95,7 +111,7 @@ const describeMetricSchema = z.object({
     .optional()
     .default(true)
     .describe(
-      'When true (default), sample up to ' +
+      'Sample up to ' +
         `${MAX_ATTR_VALUES} distinct values per attribute key for the top ${MAX_ATTR_KEYS_TO_SAMPLE} attributes. ` +
         'Set false to skip value sampling for faster responses on high-cardinality metrics.',
     ),
@@ -111,7 +127,7 @@ type AttributeValuesMeta = {
 };
 
 type KindDetail = {
-  kind: QueryableMetricKind;
+  kind: DiscoverableMetricKind;
   tableName: string;
   unit?: string;
   description?: string;
@@ -127,34 +143,6 @@ type KindDetail = {
  * need different agent guidance (retry/report vs. widen the window).
  */
 type FetchResult<T> = { ok: true; data: T } | { ok: false; error: string };
-
-/**
- * Compact an error for inclusion in a tool response: single line,
- * capped length, no stack frames.
- */
-function sanitizeFetchError(e: unknown): string {
-  const message = e instanceof Error ? e.message : String(e);
-  return message.replace(/\s+/g, ' ').trim().slice(0, 200);
-}
-
-function parseTimeRange(
-  startTime?: string,
-  endTime?: string,
-): { error: string } | { startDate: Date; endDate: Date } {
-  const endDate = endTime ? new Date(endTime) : new Date();
-  const startDate = startTime
-    ? new Date(startTime)
-    : new Date(endDate.getTime() - DEFAULT_LOOKBACK_MS);
-  if (isNaN(endDate.getTime()) || isNaN(startDate.getTime())) {
-    return {
-      error: 'Invalid startTime or endTime: must be valid ISO 8601 strings',
-    };
-  }
-  if (startDate >= endDate) {
-    return { error: 'endTime must be greater than startTime' };
-  }
-  return { startDate, endDate };
-}
 
 /**
  * Fetch unit and description for a metric name on a single kind table.
@@ -496,7 +484,11 @@ async function describeMetricImpl(
     );
   }
 
-  const timeRange = parseTimeRange(input.startTime, input.endTime);
+  const timeRange = parseTimeRange(
+    input.startTime,
+    input.endTime,
+    METRIC_DEFAULT_LOOKBACK_MS,
+  );
   if ('error' in timeRange) {
     return mcpUserError(timeRange.error);
   }
@@ -641,13 +633,33 @@ async function describeMetricImpl(
     !meta.unit &&
     !meta.description;
 
-  const queryExample = `clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${
-    kind === 'sum'
-      ? '"increase"'
-      : kind === 'histogram' || kind === 'exponential histogram'
-        ? '"quantile", level: 0.95'
-        : '"avg"'
-  }, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
+  const makeNextStepsQuery = () => {
+    if (kind === 'summary') {
+      // Summary metrics have no renderer support, so the next step is
+      // clickstack_sql rather than a builder-tool example.
+      // clickstack_sql runs with no source context, so qualify the table
+      // with the source's database — a bare table name would resolve
+      // against the connection user's default database.
+      const qualifiedTable = databaseName
+        ? `${databaseName}.${tableName}`
+        : tableName;
+      return (
+        'summary metrics cannot be queried with clickstack_timeseries / clickstack_table — ' +
+        `use clickstack_sql against the "${qualifiedTable}" table with this source's connectionId ` +
+        '(see clickstack_list_sources).'
+      );
+    }
+
+    let aggFn = '"avg"';
+
+    if (kind === 'sum') {
+      aggFn = '"increase"';
+    } else if (kind === 'histogram' || kind === 'exponential histogram') {
+      aggFn = '"quantile", level: 0.95';
+    }
+
+    return `Example: clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${aggFn}, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
+  };
 
   const responseObj: Record<string, unknown> = {
     metricName: input.metricName,
@@ -666,7 +678,7 @@ async function describeMetricImpl(
         'confirm the metric name + kind combination exists.',
     }),
     nextSteps: {
-      query: `Example: ${queryExample}`,
+      query: makeNextStepsQuery(),
     },
   };
 
@@ -702,15 +714,20 @@ export function registerDescribeMetric({
     'clickstack_describe_metric',
     {
       title: 'Describe Metric',
+      annotations: READ_ONLY_TOOL,
       description:
         'DRILL-DOWN: Use after clickstack_list_metrics (or after a clickstack_describe_source ' +
         'sample) to get attribute keys, sampled values, unit, and description for a ' +
         'specific (metricName, kind) pair. Attribute keys vary per metric — not per source — ' +
         "so always call this before clickstack_timeseries / clickstack_table for any metric you've never queried.\n\n" +
-        'REQUIRES `kind` — pass the gauge/sum/histogram/exponential histogram value emitted alongside the metric name by ' +
+        'REQUIRES `kind` — pass the gauge/sum/histogram/exponential histogram/summary value emitted alongside the metric name by ' +
         'clickstack_list_metrics or clickstack_describe_source. A metric name can legitimately ' +
         'live in more than one kind (e.g. "container.cpu.usage" appears in both gauge and sum); ' +
         'call this tool once per kind you care about.\n\n' +
+        'kind:"summary" is accepted for discovery (attribute keys, sampled values, unit, ' +
+        'description), but summary metrics cannot be queried with clickstack_timeseries / ' +
+        "clickstack_table — use clickstack_sql against the table in the source's " +
+        'metricTables.summary.\n\n' +
         'attributeValuesMeta on each kind reports sampledKeys (queried for values) and ' +
         'truncatedKeys (skipped by the per-call sampling cap) — a key in truncatedKeys was ' +
         'never queried, so query it directly if you need its values.\n\n' +
@@ -723,40 +740,23 @@ export function registerDescribeMetric({
       // optional-field types into `unknown`, but the parser produces
       // the typed shape we need for downstream calls.
       const input = describeMetricSchema.parse(rawInput);
-      const controller = new AbortController();
-      // Hoist the timer handle so the finally block can cancel it on the
-      // success path — otherwise a stale controller.abort() fires
-      // DESCRIBE_TIMEOUT_MS after every successful call and the
-      // setTimeout closure stays pinned for the same duration.
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(new Error('DESCRIBE_METRIC_TIMEOUT'));
-        }, DESCRIBE_TIMEOUT_MS);
-      });
-      try {
-        return await Promise.race([
-          describeMetricImpl(teamId.toString(), input, controller.signal),
-          timeoutPromise,
-        ]);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'DESCRIBE_METRIC_TIMEOUT') {
-          logger.warn(
-            { teamId, sourceId: input.sourceId, metricName: input.metricName },
-            'clickstack_describe_metric timed out',
-          );
-          return mcpServerError(
-            'Discovery timed out. The metric table may be under load or the ' +
-              'attribute set may be very high-cardinality. Try narrowing ' +
-              'startTime/endTime or setting sampleValues:false to skip the ' +
-              'value-sampling stage.',
-          );
-        }
-        throw e;
-      } finally {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      const outcome = await runWithTimeout(
+        signal => describeMetricImpl(teamId.toString(), input, signal),
+        { timeoutMs: DESCRIBE_TIMEOUT_MS },
+      );
+      if (!outcome.timedOut) {
+        return outcome.value;
       }
+      logger.warn(
+        { teamId, sourceId: input.sourceId, metricName: input.metricName },
+        'clickstack_describe_metric timed out',
+      );
+      return mcpServerError(
+        'Discovery timed out. The metric table may be under load or the ' +
+          'attribute set may be very high-cardinality. Try narrowing ' +
+          'startTime/endTime or setting sampleValues:false to skip the ' +
+          'value-sampling stage.',
+      );
     },
   );
 }

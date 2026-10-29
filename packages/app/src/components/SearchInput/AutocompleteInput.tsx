@@ -3,10 +3,10 @@ import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
+import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
+import type { VariableValidationState } from '@/components/SQLEditor/variableValidation';
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
-
-import InputLanguageSwitch from './InputLanguageSwitch';
 
 import styles from './AutocompleteInput.module.scss';
 
@@ -16,18 +16,20 @@ export default function AutocompleteInput({
   onChange,
   placeholder = 'Search your events for anything...',
   autocompleteOptions,
+  variableOptions,
   isLoadingValues,
   tokenInfo,
   size = 'sm',
   aboveSuggestions,
   belowSuggestions,
+  rightAdornment,
+  validationState,
   showSuggestionsOnEmpty,
   suggestionsHeader = 'Properties',
   zIndex = 999,
-  onLanguageChange,
-  language,
   onSubmit,
   queryHistoryType,
+  allowMultiline = true,
   'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -37,19 +39,24 @@ export default function AutocompleteInput({
   placeholder?: string;
   size?: 'xs' | 'sm' | 'lg';
   autocompleteOptions?: { value: string; label: string }[];
+  variableOptions?: { value: string; label: string; description: string }[];
   isLoadingValues?: boolean;
   tokenInfo?: TokenInfo;
   aboveSuggestions?: React.ReactNode;
   belowSuggestions?: React.ReactNode;
+  /** Rendered at the right edge of the input. */
+  rightAdornment?: React.ReactNode;
+  validationState?: VariableValidationState;
   showSuggestionsOnEmpty?: boolean;
   suggestionsHeader?: string;
   zIndex?: number;
-  onLanguageChange?: (language: 'sql' | 'lucene') => void;
-  language?: 'sql' | 'lucene';
   queryHistoryType?: string;
+  allowMultiline?: boolean;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
+  // Rows the query is shown across before the textarea starts scrolling.
+  const maxVisibleRows = 4;
 
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
@@ -98,6 +105,23 @@ export default function AutocompleteInput({
     [autocompleteOptions],
   );
 
+  /**
+   * The `$var` fragment being typed at the end of the token, if any. A
+   * variable reference is completed within its token rather than replacing it,
+   * so `ServiceName:$sv` can become `ServiceName:$svc` instead of just `$svc`.
+   */
+  const variableFragment = useMemo(
+    () => tokenInfo?.token.match(/\$[A-Za-z0-9_]*$/)?.[0],
+    [tokenInfo],
+  );
+
+  const suggestedVariables = useMemo(() => {
+    if (variableFragment == null || !variableOptions?.length) return [];
+    return variableOptions.filter(option =>
+      option.value.startsWith(variableFragment),
+    );
+  }, [variableFragment, variableOptions]);
+
   const suggestedProperties = useMemo(() => {
     const token = tokenInfo?.token ?? '';
 
@@ -107,6 +131,18 @@ export default function AutocompleteInput({
     return fuse.search(token).map(result => result.item);
   }, [tokenInfo, fuse, autocompleteOptions, showSuggestionsOnEmpty]);
 
+  // While a `$var` fragment is being typed, variables are the only useful
+  // suggestions, since no property name can match a token ending in `$…`.
+  const suggestions: {
+    value: string;
+    label: string;
+    description?: string;
+    isVariable?: boolean;
+  }[] =
+    suggestedVariables.length > 0
+      ? suggestedVariables.map(option => ({ ...option, isVariable: true }))
+      : suggestedProperties;
+
   const onSelectSearchHistory = (query: string) => {
     setSelectedQueryHistoryIndex(-1);
     onChange(query); // update inputText bar
@@ -115,7 +151,7 @@ export default function AutocompleteInput({
     onSubmit?.(); // search
   };
 
-  const onAcceptSuggestion = (suggestion: string) => {
+  const onAcceptSuggestion = (suggestion: string, isVariable = false) => {
     setSelectedAutocompleteIndex(-1);
 
     if (value == null || !tokenInfo) {
@@ -124,9 +160,15 @@ export default function AutocompleteInput({
       return;
     }
 
-    // Replace the token at cursor with the suggestion
+    // Replace the token at cursor with the suggestion — except for a variable,
+    // which replaces only the `$var` fragment so anything the reference is
+    // scoped to (`ServiceName:`) survives.
     const tokens = [...tokenInfo.tokens];
-    tokens[tokenInfo.index] = suggestion;
+    const currentToken = tokens[tokenInfo.index] ?? '';
+    tokens[tokenInfo.index] =
+      isVariable && variableFragment != null
+        ? currentToken.slice(0, -variableFragment.length) + suggestion
+        : suggestion;
     const newValue = tokens.join(' ');
 
     // Place cursor right after the inserted suggestion
@@ -151,16 +193,17 @@ export default function AutocompleteInput({
     if (inputRef.current) {
       setInputWidth(inputRef.current.clientWidth);
     }
-  }, [language, onLanguageChange, inputRef]);
+  }, [rightAdornment, inputRef]);
 
-  // Height including the 2px border from .textarea (1px top + 1px bottom)
-  const baseHeight = size === 'xs' ? 30 : size === 'lg' ? 44 : 38;
+  const baseHeight = EDITOR_INPUT_HEIGHTS[size];
 
   return (
     <div
       className={styles.root}
-      style={{ ['--autocomplete-base-height' as string]: `${baseHeight}px` }}
-      data-expanded={isSearchInputFocused ? 'true' : undefined}
+      style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
+      data-empty={value ? undefined : 'true'}
+      data-single-line={allowMultiline ? undefined : 'true'}
+      data-validation-state={validationState}
     >
       <Popover
         opened={isInputDropdownOpen}
@@ -185,14 +228,13 @@ export default function AutocompleteInput({
             placeholder={placeholder}
             className={cx(
               styles.textarea,
-              !isSearchInputFocused && styles.collapseFade,
               isSearchInputFocused && styles.focused,
             )}
             value={value}
             size={size}
             autosize
             minRows={1}
-            maxRows={isSearchInputFocused ? 4 : 1}
+            maxRows={allowMultiline ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -218,14 +260,13 @@ export default function AutocompleteInput({
               // Autocomplete Navigation/Acceptance Keys
               if (e.key === 'Tab' && e.target instanceof HTMLTextAreaElement) {
                 if (
-                  suggestedProperties.length > 0 &&
-                  selectedAutocompleteIndex < suggestedProperties.length &&
+                  suggestions.length > 0 &&
+                  selectedAutocompleteIndex < suggestions.length &&
                   selectedAutocompleteIndex >= 0
                 ) {
                   e.preventDefault();
-                  onAcceptSuggestion(
-                    suggestedProperties[selectedAutocompleteIndex].value,
-                  );
+                  const selected = suggestions[selectedAutocompleteIndex];
+                  onAcceptSuggestion(selected.value, selected.isVariable);
                 }
               }
               if (
@@ -233,35 +274,33 @@ export default function AutocompleteInput({
                 e.target instanceof HTMLTextAreaElement
               ) {
                 if (
-                  suggestedProperties.length > 0 &&
-                  selectedAutocompleteIndex < suggestedProperties.length &&
+                  suggestions.length > 0 &&
+                  selectedAutocompleteIndex < suggestions.length &&
                   selectedAutocompleteIndex >= 0
                 ) {
                   e.preventDefault();
-                  onAcceptSuggestion(
-                    suggestedProperties[selectedAutocompleteIndex].value,
-                  );
-                } else {
-                  // Allow shift+enter to still create new lines
-                  if (!e.shiftKey) {
-                    e.preventDefault();
-                    if (queryHistoryType && value) {
-                      setQueryHistory(value);
-                    }
-                    onSubmit?.();
+                  const selected = suggestions[selectedAutocompleteIndex];
+                  onAcceptSuggestion(selected.value, selected.isVariable);
+                } else if (!e.shiftKey) {
+                  e.preventDefault();
+                  if (queryHistoryType && value) {
+                    setQueryHistory(value);
                   }
+                  onSubmit?.();
+                } else if (!allowMultiline) {
+                  e.preventDefault();
                 }
               }
               if (
                 e.key === 'ArrowDown' &&
                 e.target instanceof HTMLTextAreaElement
               ) {
-                if (suggestedProperties.length > 0) {
+                if (suggestions.length > 0) {
                   e.preventDefault();
                   setSelectedAutocompleteIndex(
                     Math.min(
                       selectedAutocompleteIndex + 1,
-                      suggestedProperties.length - 1,
+                      suggestions.length - 1,
                       suggestionsLimit - 1,
                     ),
                   );
@@ -271,7 +310,7 @@ export default function AutocompleteInput({
                 e.key === 'ArrowUp' &&
                 e.target instanceof HTMLTextAreaElement
               ) {
-                if (suggestedProperties.length > 0) {
+                if (suggestions.length > 0) {
                   e.preventDefault();
                   setSelectedAutocompleteIndex(
                     Math.max(selectedAutocompleteIndex - 1, 0),
@@ -281,12 +320,9 @@ export default function AutocompleteInput({
             }}
             rightSectionWidth={rightSectionWidth}
             rightSection={
-              language != null && onLanguageChange != null ? (
-                <div ref={ref}>
-                  <InputLanguageSwitch
-                    language={language}
-                    onLanguageChange={onLanguageChange}
-                  />
+              rightAdornment != null ? (
+                <div ref={ref} className={styles.rightSection}>
+                  {rightAdornment}
                 </div>
               ) : undefined
             }
@@ -297,39 +333,47 @@ export default function AutocompleteInput({
             <div className={styles.aboveSuggestions}>{aboveSuggestions}</div>
           )}
           <div>
-            {suggestedProperties.length > 0 && (
+            {suggestions.length > 0 && (
               <div className={styles.suggestionsSection}>
                 <div className={styles.suggestionsHeaderRow}>
                   <div className={styles.suggestionsHeader}>
-                    {suggestionsHeader}
+                    {suggestedVariables.length > 0
+                      ? 'Dashboard variables'
+                      : suggestionsHeader}
                     {isLoadingValues && (
                       <Loader size={12} ml={6} color="var(--color-text)" />
                     )}
                   </div>
-                  {suggestedProperties.length > suggestionsLimit && (
+                  {suggestions.length > suggestionsLimit && (
                     <div className={styles.suggestionsLimit}>
                       (Showing Top {suggestionsLimit})
                     </div>
                   )}
                 </div>
-                {suggestedProperties
+                {suggestions
                   .slice(0, suggestionsLimit)
-                  .map(({ value, label }, i) => (
+                  .map(({ value, label, description, isVariable }, i) => (
                     <div
                       className={cx(
                         styles.suggestionItem,
                         selectedAutocompleteIndex === i && styles.selected,
                       )}
                       role="button"
+                      data-testid="autocomplete-suggestion"
                       key={value}
                       onMouseOver={() => {
                         setSelectedAutocompleteIndex(i);
                       }}
                       onClick={() => {
-                        onAcceptSuggestion(value);
+                        onAcceptSuggestion(value, isVariable);
                       }}
                     >
                       <span className={styles.suggestionLabel}>{label}</span>
+                      {description != null && (
+                        <div className={styles.suggestionDescription}>
+                          {description}
+                        </div>
+                      )}
                     </div>
                   ))}
               </div>

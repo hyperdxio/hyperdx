@@ -4,11 +4,13 @@ import {
   Field,
   parseKeyPath,
   TableConnection,
-  tcFromSource,
 } from '@hyperdx/common-utils/dist/core/metadata';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 
-import { useFetchFacets } from '@/components/DBSearchPageFilters/hooks';
+import {
+  resolveTableConnection,
+  useFetchFacets,
+} from '@/components/DBSearchPageFilters/hooks';
 import { NOW } from '@/config';
 import { deduplicate2dArray } from '@/hooks/useMetadata';
 import { useSource } from '@/source';
@@ -209,7 +211,7 @@ export function useAutoCompleteOptions(
   const chartConfig = useMemo<BuilderChartConfigWithDateRange>(
     () =>
       chartConfigFromTableConnection(
-        tableConnection ? tableConnection : tcFromSource(source),
+        resolveTableConnection(source, tableConnection),
         source?.timestampValueExpression ?? '',
         effectiveDateRange,
       ),
@@ -223,6 +225,7 @@ export function useAutoCompleteOptions(
   } = useFetchFacets({
     chartConfig,
     sourceId: sourceId ?? null,
+    tableConnection,
     dateRange: effectiveDateRange,
     mode: 'all',
     disableValues: true,

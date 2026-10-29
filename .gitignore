@@ -79,6 +79,10 @@ e2e/cypress/results
 # storybook
 **/storybook-static/
 
+# otel smoke tests: OIDC issuer fixtures, regenerated on every run
+# (the matching private.pem is already covered by **/*.pem above)
+smoke-tests/otel-collector/data/oidc-auth/public/
+
 # scripts
 scripts/*.csv
 **/venv
@@ -93,5 +97,17 @@ docker-compose.prod.yml
 # NX
 .nx/
 
+# stryker (mutation testing)
+**/.stryker-tmp/
+
+# generated report output at a package root. Not **/reports/ — packages/hdx-eval
+# has tracked source under src/reports/.
+packages/*/reports/
+
 # webstorm
 .idea
+
+# local agent scratch, never part of a PR
+docs/superpowers/
+.superpowers/
+.playwright-mcp/

@@ -1,4 +1,8 @@
-// @ts-ignore don't install the @types for this package, as it conflicts with mongoose
+import {
+  ONBOARDING_TASK_IDS,
+  type OnboardingData,
+} from '@hyperdx/common-utils/dist/types';
+// @ts-expect-error don't install the @types for this package, as it conflicts with mongoose
 import passportLocalMongoose from '@hyperdx/passport-local-mongoose';
 import mongoose, { Schema } from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
@@ -11,6 +15,8 @@ export interface IUser {
   createdAt: Date;
   email: string;
   name: string;
+  // Optional for docs predating this field; the `me` route defaults it.
+  onboardingData?: OnboardingData;
   team: ObjectId;
 }
 
@@ -29,6 +35,20 @@ const UserSchema = new Schema(
       default: function genUUID() {
         return uuidv4();
       },
+    },
+    onboardingData: {
+      type: new Schema<OnboardingData>(
+        {
+          completedTasks: {
+            type: [String],
+            enum: ONBOARDING_TASK_IDS,
+            default: [],
+          },
+          isDismissed: { type: Boolean, default: false },
+        },
+        { _id: false },
+      ),
+      default: () => ({ completedTasks: [], isDismissed: false }),
     },
   },
   {

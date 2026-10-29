@@ -6,14 +6,17 @@ jest.mock('@/utils/trimToolResponse', () => ({
   trimToolResponse: (data: unknown) => ({ data, isTrimmed: false }),
 }));
 
-import { decodeCursor, encodeCursor } from '@/mcp/tools/sources/listMetrics';
+import {
+  decodeCursor,
+  encodeCursor,
+} from '@/mcp/tools/sources/listMetricsSchema';
 
 describe('listMetrics cursor', () => {
   describe('encodeCursor / decodeCursor round-trip', () => {
     it('round-trips a gauge cursor', () => {
       const payload = { kind: 'gauge' as const, lastName: 'system.cpu.idle' };
       const encoded = encodeCursor(payload);
-      expect(encoded).toMatch(/^[A-Za-z0-9+/]+=*$/); // base64
+      expect(encoded).toMatch(/^[A-Za-z0-9_-]+$/); // base64url, unpadded
       expect(decodeCursor(encoded)).toEqual(payload);
     });
 
@@ -37,6 +40,16 @@ describe('listMetrics cursor', () => {
       const payload = {
         kind: 'exponential histogram' as const,
         lastName: 'http.server.request.duration',
+      };
+      expect(decodeCursor(encodeCursor(payload))).toEqual(payload);
+    });
+
+    it('round-trips a summary cursor', () => {
+      // Summary is discoverable (listed) even though it is not queryable
+      // by the builder tools.
+      const payload = {
+        kind: 'summary' as const,
+        lastName: 'http_request_duration_seconds',
       };
       expect(decodeCursor(encodeCursor(payload))).toEqual(payload);
     });
@@ -67,19 +80,14 @@ describe('listMetrics cursor', () => {
       expect(decodeCursor(malformed)).toBeNull();
     });
 
-    it('returns null when lastName is missing', () => {
-      const malformed = Buffer.from(JSON.stringify({ kind: 'gauge' })).toString(
+    it('accepts a cursor without lastName as the start of that kind', () => {
+      const raw = Buffer.from(JSON.stringify({ kind: 'gauge' })).toString(
         'base64',
       );
-      expect(decodeCursor(malformed)).toBeNull();
+      expect(decodeCursor(raw)).toEqual({ kind: 'gauge' });
     });
 
-    it('returns null when kind is not a queryable metric kind', () => {
-      const summaryCursor = Buffer.from(
-        JSON.stringify({ kind: 'summary', lastName: 'x' }),
-      ).toString('base64');
-      expect(decodeCursor(summaryCursor)).toBeNull();
-
+    it('returns null when kind is not a discoverable metric kind', () => {
       const bogusCursor = Buffer.from(
         JSON.stringify({ kind: 'bogus', lastName: 'x' }),
       ).toString('base64');

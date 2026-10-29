@@ -54,7 +54,7 @@ export class TableComponent {
   }
 
   /**
-   * Click on a specific row
+   * Click on a specific row, which opens it in the side panel.
    */
   async clickRow(index: number) {
     await this.getRow(index).click();
@@ -67,6 +67,168 @@ export class TableComponent {
     await this.firstRow.click();
   }
 
+  async clickRowContaining(text: string) {
+    const row = this.getRows().filter({ hasText: text }).first();
+    // The leading cell is the selection checkbox. Its click toggles selection
+    // and does not open the row. The content button does. An open side panel
+    // covers the right side of the table, so aim at the button's left edge.
+    // On a short viewport with the nav expanded that edge is covered too; the
+    // click still has to reach this button, since it is what switches the row.
+    const button = row.getByRole('button', {
+      name: /^(View details for log entry|Expand log row|Collapse log row)$/,
+    });
+    if (await this.isCoveredBySidePanel(button)) {
+      // A pointer click at these coordinates lands on the drawer, which
+      // covers the row. The button is what switches the open row.
+      await button.evaluate(el => {
+        if (el instanceof HTMLElement) {
+          el.click();
+        }
+      });
+      return;
+    }
+    await button.click({ position: { x: 4, y: 8 } });
+  }
+
+  private async isCoveredBySidePanel(target: Locator): Promise<boolean> {
+    const panel = this.page.getByTestId('row-side-panel');
+    if ((await panel.count()) === 0 || !(await panel.isVisible())) {
+      return false;
+    }
+    const [targetBox, panelBox] = await Promise.all([
+      target.boundingBox(),
+      panel.boundingBox(),
+    ]);
+    if (targetBox == null || panelBox == null) {
+      return false;
+    }
+    return panelBox.x <= targetBox.x + 8;
+  }
+
+  /**
+   * Open a row in the side panel via its hover button. The button only exists
+   * once the `expand` row-click preference is set — without it a plain
+   * {@link clickRow} already opens the panel.
+   */
+  async openRowSidePanel(index: number) {
+    const row = this.getRow(index);
+    await row.hover();
+    await row.getByRole('button', { name: 'Open in side panel' }).click();
+  }
+
+  /**
+   * Open the first row in the side panel via its hover button.
+   */
+  async openFirstRowSidePanel() {
+    await this.openRowSidePanel(0);
+  }
+
+  /**
+   * Expand a row in place via its chevron button, revealing the inline expanded
+   * row underneath it.
+   */
+  async expandRow(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: 'Expand log details' })
+      .click();
+    await this.firstExpandedRow.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+
+  /**
+   * Collapse a row expanded by {@link expandRow}, via the same chevron.
+   */
+  async collapseRow(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: 'Collapse log details' })
+      .click();
+  }
+
+  /**
+   * Click a row's body — the large hit target covering everything but the
+   * chevron. Requires the `expand` row-click preference, under which it toggles
+   * inline expansion, so calling it twice collapses the row.
+   */
+  async clickRowBody(index: number) {
+    await this.getRow(index)
+      .getByRole('button', { name: /^(Expand|Collapse) log row$/ })
+      .click();
+  }
+
+  /**
+   * Expand a row in place by clicking its body rather than the chevron.
+   */
+  async expandRowByBodyClick(index: number) {
+    await this.clickRowBody(index);
+    await this.firstExpandedRow.waitFor({ state: 'visible', timeout: 10_000 });
+  }
+
+  /**
+   * Scroll the virtualized container to an absolute offset.
+   */
+  async scrollTo(top: number) {
+    await this.tableContainer.evaluate(
+      (el, offset) => el.scrollTo({ top: offset }),
+      top,
+    );
+  }
+
+  /**
+   * Layout readings for the virtualized scroll container.
+   *
+   * `visibleGapPx` is the empty space between the bottom of the last rendered
+   * row and the bottom of the viewport. While rows remain below, a healthy
+   * table overfills the viewport and this is negative; it turns positive when
+   * the virtualizer holds stale row heights and stops rendering enough rows to
+   * cover the screen.
+   */
+  async getVirtualizationMetrics() {
+    return this.tableContainer.evaluate(el => {
+      const rows = el.querySelectorAll('[data-testid^="table-row-"]');
+      const last = rows[rows.length - 1];
+      return {
+        renderedRows: rows.length,
+        scrollHeight: el.scrollHeight,
+        clientHeight: el.clientHeight,
+        visibleGapPx: Math.round(
+          el.getBoundingClientRect().bottom -
+            (last ? last.getBoundingClientRect().bottom : 0),
+        ),
+        remainingBelowPx: Math.round(
+          el.scrollHeight - el.scrollTop - el.clientHeight,
+        ),
+      };
+    });
+  }
+
+  /**
+   * All inline expanded rows currently rendered. Each carries
+   * `data-testid="expanded-row-<rowWhere>"`, where rowWhere is a SQL fragment,
+   * so match on the prefix rather than the full id.
+   */
+  get expandedRows() {
+    return this.page.locator('[data-testid^="expanded-row-"]');
+  }
+
+  get firstExpandedRow() {
+    return this.expandedRows.first();
+  }
+
+  /**
+   * The row-level error state rendered inside the first expanded row when its
+   * full row data query fails.
+   */
+  get expandedRowErrorState() {
+    return this.firstExpandedRow.getByTestId('row-error-state');
+  }
+
+  /**
+   * The "Known Columns List" hint rendered inside the first expanded row's error
+   * state (a `SELECT *` failure against a Distributed/Merge table).
+   */
+  get expandedRowKnownColumnsListHint() {
+    return this.firstExpandedRow.getByTestId('known-columns-list-hint');
+  }
+
   /**
    * Get cell value by row index and column name
    * Usage in spec: await expect(table.getCell(0, 'status')).toHaveText('200')
@@ -76,12 +238,44 @@ export class TableComponent {
   }
 
   /**
+   * The multi-select checkbox of a row. Only rendered where row selection is
+   * enabled (the search results table).
+   */
+  getRowCheckbox(index: number) {
+    return this.getRow(index).getByTestId('row-select-checkbox');
+  }
+
+  /**
+   * The cell holding a row's multi-select checkbox. It is the element that
+   * fades the checkbox in and out, so assert visibility on it rather than on
+   * the checkbox itself.
+   */
+  getRowCheckboxCell(index: number) {
+    return this.getRow(index).getByTestId('row-select-cell');
+  }
+
+  async hoverRow(index: number) {
+    await this.getRow(index).hover();
+  }
+
+  /**
    * Select multiple rows by indices
    */
   async selectRows(indices: number[]) {
     for (const index of indices) {
-      await this.getRow(index).locator('[type="checkbox"]').check();
+      await this.getRowCheckbox(index).click();
     }
+  }
+
+  /**
+   * Extend the selection from the last clicked row to this one.
+   */
+  async shiftSelectRow(index: number) {
+    await this.getRowCheckbox(index).click({ modifiers: ['Shift'] });
+  }
+
+  async getSelectedRowCount() {
+    return this.getRows().locator('input:checked').count();
   }
 
   /**
@@ -103,5 +297,23 @@ export class TableComponent {
    */
   async sortByColumn(columnName: string) {
     await this.getHeader(columnName).click();
+  }
+
+  /**
+   * Get the sortable header button for a column in the row table
+   */
+  getSortButton(columnName: string) {
+    return this.page
+      .getByTestId('raw-log-table-sort-button')
+      .filter({ hasText: new RegExp(`^${columnName}$`) });
+  }
+
+  /**
+   * Get the asc/desc arrow shown on a sorted column's header
+   */
+  getSortIndicator(columnName: string) {
+    return this.getSortButton(columnName).getByTestId(
+      'raw-log-table-sort-indicator',
+    );
   }
 }

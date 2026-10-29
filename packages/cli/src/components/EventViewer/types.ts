@@ -5,7 +5,6 @@ import type {
   SavedSearchResponse,
   ProxyClickhouseClient,
 } from '@/api/client';
-import type { TimeRange } from '@/utils/editor';
 
 export interface EventViewerProps {
   clickhouseClient: ProxyClickhouseClient;

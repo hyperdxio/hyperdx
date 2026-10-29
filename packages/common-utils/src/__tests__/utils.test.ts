@@ -2,16 +2,21 @@ import { z } from 'zod';
 
 import {
   aliasMapToWithClauses,
+  convertDateRangeToGranularityString,
   convertToCategoricalChartConfig,
   convertToDashboardDocument,
   convertToDashboardTemplate,
+  convertToNumberChartConfig,
   extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
+  fromWallClock,
   getAlignedDateRange,
   getDistributedTableArgs,
   getFirstOrderingItem,
+  getPercentileAggFnLevel,
   hasNonEmptyOrderBy,
+  hasPositiveSeriesLimit,
   isFirstOrderByAscending,
   isJsonExpression,
   isTimestampExpressionInFirstOrderBy,
@@ -22,8 +27,11 @@ import {
   parseToStartOfFunction,
   pickBucketTimestampColumn,
   replaceJsonExpressions,
+  resolvePercentileAggFn,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
+  toWallClock,
+  UTC_TIME_ZONE,
 } from '@/core/utils';
 import { isBuilderSavedChartConfig } from '@/guards';
 import {
@@ -53,7 +61,7 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '12h',
-          isUTC: true,
+          timeZone: UTC_TIME_ZONE,
         }),
       ).toEqual('Jan 1 12:00:00 PM');
     });
@@ -63,7 +71,7 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '24h',
-          isUTC: true,
+          timeZone: UTC_TIME_ZONE,
           format: 'withMs',
         }),
       ).toEqual('Jan 1 12:00:00.000');
@@ -74,7 +82,6 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '12h',
-          isUTC: false,
         }),
       ).toEqual('Jan 1 12:00:00 PM');
     });
@@ -84,11 +91,66 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '24h',
-          isUTC: false,
           format: 'withMs',
         }),
       ).toEqual('Jan 1 12:00:00.000');
     });
+
+    it('formats in the given time zone', () => {
+      const date = new Date('2021-01-01T12:00:00Z');
+      expect(
+        formatDate(date, { clock: '24h', timeZone: 'Asia/Tokyo' }),
+      ).toEqual('Jan 1 21:00:00');
+    });
+  });
+
+  describe('toWallClock / fromWallClock', () => {
+    it('reads the clock in the given zone into UTC fields', () => {
+      expect(
+        toWallClock(
+          new Date('2026-10-22T15:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-10-22T08:00:00.000Z');
+    });
+
+    it('uses the offset in effect on each side of a DST change', () => {
+      // Los Angeles leaves daylight time (UTC-7) for standard time (UTC-8) on Nov 1 2026.
+      expect(
+        fromWallClock(
+          new Date('2026-10-31T08:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-10-31T15:00:00.000Z');
+      expect(
+        fromWallClock(
+          new Date('2026-11-02T08:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-11-02T16:00:00.000Z');
+    });
+
+    it('reads the clock correctly in the hours around a DST change', () => {
+      // New York goes from UTC-4 to UTC-5 at 06:00 UTC on Nov 1 2026.
+      const read = (iso: string) =>
+        toWallClock(new Date(iso), 'America/New_York').toISOString();
+      expect(read('2026-11-01T03:30:00Z')).toBe('2026-10-31T23:30:00.000Z');
+      expect(read('2026-11-01T05:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      expect(read('2026-11-01T06:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      // And from UTC-5 to UTC-4 at 07:00 UTC on Mar 8 2026.
+      expect(read('2026-03-08T06:30:00Z')).toBe('2026-03-08T01:30:00.000Z');
+      expect(read('2026-03-08T07:30:00Z')).toBe('2026-03-08T03:30:00.000Z');
+    });
+
+    it.each(['Etc/UTC', 'Asia/Kolkata', 'America/Los_Angeles'])(
+      'round-trips through %s',
+      timeZone => {
+        const date = new Date('2026-03-08T10:30:15.250Z');
+        expect(fromWallClock(toWallClock(date, timeZone), timeZone)).toEqual(
+          date,
+        );
+      },
+    );
   });
 
   describe('splitAndTrimCSV', () => {
@@ -206,6 +268,30 @@ describe('utils', () => {
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
     });
 
+    it('should keep commas inside single-quoted strings with backslash-escaped quotes', () => {
+      const input = "'it\\'s,ok' AS label, count()";
+      const expected = ["'it\\'s,ok' AS label", 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should keep commas inside double-quoted identifiers with escaped quotes', () => {
+      const input = '"foo\\"bar,baz" AS label, count()';
+      const expected = ['"foo\\"bar,baz" AS label', 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should keep commas inside single-quoted strings with doubled quotes', () => {
+      const input = "'it''s,ok' AS label, count()";
+      const expected = ["'it''s,ok' AS label", 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should close strings after an even number of backslashes', () => {
+      const input = "'path\\\\', count()";
+      const expected = ["'path\\\\'", 'count()'];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
     it('should handle mixed quotes with commas', () => {
       const input = `col1, "double, quoted", col2, 'single, quoted', col3`;
       const expected = [
@@ -263,6 +349,23 @@ describe('utils', () => {
         'ServiceName DESC',
       ];
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+  });
+
+  describe('hasPositiveSeriesLimit', () => {
+    it('is true only for positive integers', () => {
+      expect(hasPositiveSeriesLimit(1)).toBe(true);
+      expect(hasPositiveSeriesLimit(250)).toBe(true);
+    });
+
+    it('is false for 0 (unlimited) and null/undefined (unset)', () => {
+      expect(hasPositiveSeriesLimit(0)).toBe(false);
+      expect(hasPositiveSeriesLimit(null)).toBe(false);
+      expect(hasPositiveSeriesLimit(undefined)).toBe(false);
+    });
+
+    it('is false for negative values', () => {
+      expect(hasPositiveSeriesLimit(-5)).toBe(false);
     });
   });
 
@@ -466,6 +569,59 @@ describe('utils', () => {
       expect(config.select[0]).not.toHaveProperty('alias');
       expect(config.orderBy).toBeUndefined();
       expect(config.limit).toBeUndefined();
+    });
+  });
+
+  describe('convertToNumberChartConfig', () => {
+    const dateRange: [Date, Date] = [
+      new Date('2025-11-26T00:00:00Z'),
+      new Date('2025-11-27T00:00:00Z'),
+    ];
+
+    it('drops granularity and groupBy', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        granularity: '5 minute',
+        groupBy: 'ServiceName',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      const converted = convertToNumberChartConfig(config);
+
+      expect(converted.granularity).toBeUndefined();
+      expect(converted.groupBy).toBeUndefined();
+    });
+
+    it('leaves showOperandSeries untouched without formulas', () => {
+      const config = {
+        select: [{ aggFn: 'count', valueExpression: '' }],
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(
+        undefined,
+      );
+    });
+
+    it('always hides operand series for formula configs (HDX-5080)', () => {
+      // A number chart displays the first value column of the result, so the
+      // formula column must be the only projection — even when the stored
+      // config shows operand series on other display types.
+      const config = {
+        select: [
+          { aggFn: 'max', valueExpression: 'Value' },
+          { aggFn: 'max', valueExpression: 'Value' },
+        ],
+        formulas: [{ expression: 'A / B * 100' }],
+        granularity: '5 minute',
+        dateRange,
+      } as BuilderChartConfigWithDateRange;
+
+      expect(convertToNumberChartConfig(config).showOperandSeries).toBe(false);
+      expect(
+        convertToNumberChartConfig({ ...config, showOperandSeries: true })
+          .showOperandSeries,
+      ).toBe(false);
     });
   });
 
@@ -1171,8 +1327,262 @@ describe('utils', () => {
           source: 'Logs',
         },
       ]);
-      expect(template.filters?.[2].appliesToSourceIds).toBeUndefined();
-      expect(template.filters?.[3].appliesToSourceIds).toBeUndefined();
+      // Explicitly absent rather than an empty array, which the import would
+      // read as "matches no tiles". Both are queried filters, pinned above.
+      for (const index of [2, 3]) {
+        const filter = template.filters![index];
+        expect(filter.type).toBe('QUERY_EXPRESSION');
+        expect(
+          filter.type === 'QUERY_EXPRESSION' && filter.appliesToSourceIds,
+        ).toBeUndefined();
+      }
+    });
+
+    it('should remap ad hoc filter sources and applies-to sources from IDs to names', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+        {
+          id: 'source2',
+          name: 'Traces',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'traces_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Ad hoc Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-scoped',
+            type: 'ADHOC',
+            name: 'Scoped',
+            sourceType: 'sql',
+            sources: ['source1', 'source2'],
+            appliesToSourceIds: ['source2', 'deleted-source-id'],
+            isVariableEnabled: true,
+            variableName: 'scoped',
+          },
+          {
+            id: 'filter-unresolved',
+            type: 'ADHOC',
+            name: 'Unresolved',
+            sourceType: 'sql',
+            sources: ['source1'],
+            appliesToSourceIds: ['deleted-source-id'],
+            isVariableEnabled: true,
+            variableName: 'unresolved',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-scoped',
+          type: 'ADHOC',
+          name: 'Scoped',
+          sourceType: 'sql',
+          sources: ['Logs', 'Traces'],
+          appliesToSourceIds: ['Traces'],
+          isVariableEnabled: true,
+          variableName: 'scoped',
+        },
+        {
+          id: 'filter-unresolved',
+          type: 'ADHOC',
+          name: 'Unresolved',
+          sourceType: 'sql',
+          sources: ['Logs'],
+          isVariableEnabled: true,
+          variableName: 'unresolved',
+        },
+      ]);
+      expect(() => DashboardTemplateSchema.parse(template)).not.toThrow();
+    });
+
+    // Variable settings are dashboard-local — unlike `source` and
+    // `appliesToSourceIds` they reference nothing in the workspace, so they need
+    // no name↔ID remapping and must survive export verbatim.
+    it('should export filter variable settings unchanged while still remapping sources', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Variables Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-variable',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service Name',
+            expression: 'ServiceName',
+            source: 'source1',
+            appliesToSourceIds: ['source1'],
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'Service_Name',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-variable',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service Name',
+          expression: 'ServiceName',
+          source: 'Logs',
+          appliesToSourceIds: ['Logs'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'Service_Name',
+        },
+      ]);
+    });
+
+    it('should export a promql-label filter with its source id remapped to a name', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Prom',
+          connection: 'connection1',
+          kind: SourceKind.Promql,
+          from: { databaseName: 'db1', tableName: 'timeseries_table' },
+          timestampValueExpression: 'Timestamp',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'PromQL Filter Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-promql',
+            type: 'PROMETHEUS_LABEL',
+            name: 'Pod',
+            source: 'source1',
+            label: 'pod',
+            isBroadcastEnabled: false,
+            isVariableEnabled: true,
+            variableName: 'pod',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-promql',
+          type: 'PROMETHEUS_LABEL',
+          name: 'Pod',
+          source: 'Prom',
+          label: 'pod',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+          variableName: 'pod',
+        },
+      ]);
+      // Only queried filters broadcast, so no applies-to key is stamped on.
+      expect('appliesToSourceIds' in template.filters![0]).toBe(false);
+    });
+
+    // A `STATIC_LIST` filter references nothing in the workspace at all, so it
+    // must survive export untouched — in particular `source` must stay absent
+    // rather than being stamped with the empty string the name lookup returns
+    // for an unresolvable id, which the re-import would then reject.
+    it('should export a static-list filter with no source', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const staticFilter = {
+        id: 'filter-static',
+        type: 'STATIC_LIST' as const,
+        name: 'Environment',
+        options: ['prod', 'staging', 'dev'],
+        isBroadcastEnabled: false as const,
+        isVariableEnabled: true as const,
+        variableName: 'env',
+      };
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Static Filter Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          staticFilter,
+          {
+            id: 'filter-queried',
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            source: 'source1',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        staticFilter,
+        {
+          id: 'filter-queried',
+          type: 'QUERY_EXPRESSION',
+          name: 'Service',
+          expression: 'ServiceName',
+          source: 'Logs',
+        },
+      ]);
+      // No `source` key at all, rather than one holding the empty string the
+      // name lookup returns for an unresolvable id.
+      expect('source' in template.filters![0]).toBe(false);
+
+      // And back: the import path carries the filter through verbatim, so a
+      // round-trip through the template format is lossless.
+      expect(
+        convertToDashboardDocument({ ...template, filters: template.filters })
+          .filters?.[0],
+      ).toEqual(staticFilter);
     });
 
     it('should convert a dashboard without filters to a dashboard template', () => {
@@ -2492,6 +2902,85 @@ describe('utils', () => {
         // This test case illustrates that subsequent clauses will also be extracted.
         settingsClause: 'SETTINGS opt = 1, cast = 1 FORMAT json',
       },
+      {
+        label: 'settings inside an identifier',
+        sql: 'SELECT * FROM table WHERE AppSettings = 1 SETTINGS opt = 1',
+        withoutSettingsClause: 'SELECT * FROM table WHERE AppSettings = 1',
+        settingsClause: 'SETTINGS opt = 1',
+      },
+      {
+        label: 'settings inside a string literal',
+        sql: "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE MetricName = 'app.settings.reloads'",
+        settingsClause: undefined,
+      },
+      {
+        label: 'settings as a dotted path or map column',
+        sql: "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE LogAttributes.settings = 'x' AND settings['k'] = 'y'",
+        settingsClause: undefined,
+      },
+      {
+        label: 'apostrophe in a comment before SETTINGS',
+        sql: "SELECT * FROM table -- don't count retries\nWHERE a = 1 SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table -- don't count retries\nWHERE a = 1",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'apostrophe in a block comment before SETTINGS',
+        sql: "SELECT * FROM table /* don't count retries */ WHERE a = 1 SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table /* don't count retries */ WHERE a = 1",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings inside a comment',
+        sql: 'SELECT * FROM table -- SETTINGS in a comment\nWHERE a = 1',
+        withoutSettingsClause:
+          'SELECT * FROM table -- SETTINGS in a comment\nWHERE a = 1',
+        settingsClause: undefined,
+      },
+      {
+        label: 'escaped quote in a string literal before settings',
+        sql: "SELECT * FROM table WHERE a = 'it\\'s settings' SETTINGS max_threads = 1",
+        withoutSettingsClause:
+          "SELECT * FROM table WHERE a = 'it\\'s settings'",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'doubled quote in a string literal before settings',
+        sql: "SELECT * FROM table WHERE a = 'it''s settings' SETTINGS max_threads = 1",
+        withoutSettingsClause: "SELECT * FROM table WHERE a = 'it''s settings'",
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings as a quoted identifier',
+        sql: 'SELECT `settings`, "settings" FROM table SETTINGS max_threads = 1',
+        withoutSettingsClause: 'SELECT `settings`, "settings" FROM table',
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'settings as a table name',
+        sql: 'SELECT name FROM system.settings WHERE changed SETTINGS max_threads = 1',
+        withoutSettingsClause: 'SELECT name FROM system.settings WHERE changed',
+        settingsClause: 'SETTINGS max_threads = 1',
+      },
+      {
+        label: 'lowercase keyword followed by a newline',
+        sql: 'SELECT * FROM table WHERE a = 1 settings\n  max_threads = 1',
+        withoutSettingsClause: 'SELECT * FROM table WHERE a = 1',
+        settingsClause: 'settings\n  max_threads = 1',
+      },
+      {
+        label: 'string value inside the SETTINGS clause',
+        sql: "SELECT * FROM table SETTINGS short_circuit_function_evaluation = 'force_enable'",
+        withoutSettingsClause: 'SELECT * FROM table',
+        settingsClause:
+          "SETTINGS short_circuit_function_evaluation = 'force_enable'",
+      },
     ])(
       'Extracts SETTINGS clause from: "$label" query',
       ({ sql, settingsClause, withoutSettingsClause }) => {
@@ -2974,6 +3463,34 @@ describe('utils', () => {
       ).toBe('EventTime');
     });
 
+    it('DateTime with an explicit timezone still classifies as DateTime', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        EventTime: "DateTime('UTC')",
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventTime');
+    });
+
+    it('Nullable(DateTime) with an explicit timezone still classifies as DateTime', async () => {
+      const metadata = makeMetadata({
+        EventDate: 'Date',
+        EventTime: "Nullable(DateTime('Europe/Berlin'))",
+      });
+      expect(
+        await pickBucketTimestampColumn({
+          timestampValueExpression: 'EventDate, EventTime',
+          metadata,
+          ...opts,
+        }),
+      ).toBe('EventTime');
+    });
+
     it('higher DateTime64 precision wins over lower', async () => {
       const metadata = makeMetadata({
         TsMs: 'DateTime64(3)',
@@ -3000,6 +3517,86 @@ describe('utils', () => {
           ...opts,
         }),
       ).toBe('EventTime');
+    });
+  });
+
+  describe('convertDateRangeToGranularityString', () => {
+    const range = (seconds: number): [Date, Date] => [
+      new Date(0),
+      new Date(seconds * 1000),
+    ];
+
+    it('infers 30 second buckets for a short range with no minimum', () => {
+      // 60 buckets max -> a 30-minute range infers 30 second buckets
+      expect(convertDateRangeToGranularityString(range(30 * 60))).toBe(
+        '30 second',
+      );
+    });
+
+    it('floors a short range up to the given minimum', () => {
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 60),
+      ).toBe('1 minute');
+    });
+
+    it('is a no-op when the inferred bucket is already above the minimum', () => {
+      // 5-hour range infers 5 minute buckets, well above a 1-minute floor
+      expect(
+        convertDateRangeToGranularityString(range(5 * 3600), undefined, 60),
+      ).toBe('5 minute');
+    });
+
+    it('rounds a minimum that falls between two granularities up to the next one', () => {
+      // a 90-second minimum has no exact match; 5 minute is the next granularity up
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 90),
+      ).toBe('5 minute');
+    });
+
+    it('treats an unset minimum the same as 0 (no flooring)', () => {
+      expect(
+        convertDateRangeToGranularityString(range(30 * 60), undefined, 0),
+      ).toBe('30 second');
+    });
+  });
+
+  describe('getPercentileAggFnLevel', () => {
+    it.each([
+      ['p50', 0.5],
+      ['p90', 0.9],
+      ['p95', 0.95],
+      ['p99', 0.99],
+    ])('returns the level of %s', (aggFn, level) => {
+      expect(getPercentileAggFnLevel(aggFn)).toBe(level);
+    });
+
+    it.each(['quantile', 'avg', 'p75', 'toString', undefined])(
+      'returns undefined for %s',
+      aggFn => {
+        expect(getPercentileAggFnLevel(aggFn)).toBeUndefined();
+      },
+    );
+  });
+
+  describe('resolvePercentileAggFn', () => {
+    it('rewrites a percentile shorthand as quantile with its level', () => {
+      expect(
+        resolvePercentileAggFn({
+          aggFn: 'p95',
+          valueExpression: 'Duration',
+          aggCondition: "ServiceName = 'api'",
+        }),
+      ).toEqual({
+        aggFn: 'quantile',
+        level: 0.95,
+        valueExpression: 'Duration',
+        aggCondition: "ServiceName = 'api'",
+      });
+    });
+
+    it('returns other select items unchanged', () => {
+      const select = { aggFn: 'quantile', level: 0.5, valueExpression: 'x' };
+      expect(resolvePercentileAggFn(select)).toBe(select);
     });
   });
 });

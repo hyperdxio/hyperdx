@@ -76,6 +76,32 @@ export class SessionsPage {
   }
 
   /**
+   * The page-level WHERE input and its language switch. Both are scoped to the
+   * search form so they can't match the replay drawer's own event filter,
+   * which renders the same component with the same placeholder.
+   */
+  get whereLanguageSwitch() {
+    return this.searchForm.getByTestId('where-language-switch');
+  }
+
+  get whereInput() {
+    return this.searchForm.getByPlaceholder(
+      'Search your events w/ Lucene ex. column:foo',
+    );
+  }
+
+  /** The replay drawer's event-list filter and its language switch. */
+  get eventsWhereLanguageSwitch() {
+    return this.sessionSidePanel.getByTestId('where-language-switch');
+  }
+
+  get eventsWhereInput() {
+    return this.sessionSidePanel.getByPlaceholder(
+      'Search your events w/ Lucene ex. column:foo',
+    );
+  }
+
+  /**
    * Get all session event rows inside the replay drawer
    */
   getSessionEventRows() {

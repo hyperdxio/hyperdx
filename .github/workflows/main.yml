@@ -14,6 +14,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          # Full history so `nx affected` can diff against the PR base ref.
+          # Blobless, not treeless: `nx affected` runs `git diff --name-only`,
+          # which needs the trees. `tree:0` makes that diff pay a lazy fetch
+          # round trip and comes out slower than the bytes it saves.
+          fetch-depth: 0
+          filter: blob:none
       - name: Setup node
         uses: actions/setup-node@v6
         with:
@@ -21,13 +28,57 @@ jobs:
           cache-dependency-path: 'yarn.lock'
           cache: 'yarn'
       - name: Install root dependencies
-        run: yarn install
-      - name: Build dependencies
-        run: make ci-build
+        run: yarn install --immutable
       - name: Install core libs
         run: sudo apt-get install --yes curl bc
-      - name: Run lint + type check
-        run: make ci-lint
+      # Restore-only on PRs: a PR-scoped cache entry can't be read by any other
+      # branch, so saving one buys nothing and just evicts other entries out of
+      # the repo's shared 10GB budget (including the integration job's buildx
+      # layer cache). Only push runs write, and PRs read main's entry.
+      - name: Restore nx computation cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-
+      # Upstream `ci:build` runs automatically via the `dependsOn` wiring in
+      # nx.json, so unchanged projects are served from the nx cache.
+      - name: Run lint + type check (affected)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: npx nx affected -t ci:lint --base="origin/${BASE_REF}"
+      - name: Run lint + type check (full)
+        if: github.event_name != 'pull_request'
+        run: npx nx run-many -t ci:lint
+      # Whole-repo escape-hatch ratchet — runs unconditionally (not via `nx
+      # affected`, and not via `make ci-lint`, which this job no longer calls),
+      # so the gate can't be silently skipped for a PR that touches few projects.
+      - name: Escape-hatch ratchet tests
+        run: node --test scripts/ci/__tests__/ratchet.test.mjs
+      # Also unconditional, and against the PR's own tree. claude-code-review.yml
+      # runs this file too, but from a base-branch checkout, so a PR that breaks
+      # what it pins (the AGENTS.md heading every review footer links to) passes
+      # there and would fail every later PR's review job instead of its own.
+      - name: Review helper tests
+        run:
+          node --test
+          .github/scripts/code-review/__tests__/review-comments.test.mjs
+      - name: Escape-hatch ratchet
+        run: node scripts/ci/ratchet.mjs
+      # Also unconditional: the api's own `ci:lint` regenerates the spec but
+      # never asserts on it, and nx can skip or cache-replay that task.
+      - name: Check openapi.json is in sync with its sources
+        run: scripts/ci/check-openapi-sync.sh
+      # Runs even when lint fails, so a red main still refreshes the cache that
+      # PR runs restore from.
+      - name: Save nx computation cache
+        if: always() && github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ github.sha }}
   unit:
     timeout-minutes: 8
     runs-on: ubuntu-24.04
@@ -77,8 +128,12 @@ jobs:
       # MongoDB/ClickHouse database, so they must stay serial (--runInBand)
       # within a runner. We shard ACROSS runners instead: each shard is its own
       # VM with its own Docker stack, and jest's --shard splits the test files
-      # so the shards run in parallel. --shard is forwarded through nx (args
-      # after `--` reach the underlying jest invocations).
+      # so the shards run in parallel.
+      #
+      # Jest is invoked per package rather than through `nx run-many`: nx's
+      # streamed output prefixes every pipe chunk as its own line, splitting
+      # Jest's stack traces and ANSI codes mid-line. Both packages always run
+      # so one failure doesn't hide the other.
       #
       # Runs inline (not `make ci-int`) so the compose project stays `hdx-ci`
       # (matching the bake step above); make ci-int's `-p int-<slot>` is local
@@ -89,7 +144,10 @@ jobs:
       - name: Run integration tests
         run: |
           docker compose -f ./docker-compose.ci.yml up -d --quiet-pull
-          npx nx run-many -t ci:int --parallel=false --output-style=stream -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+          status=0
+          yarn workspace @hyperdx/common-utils ci:int --shard=${{ matrix.shard }}/${{ strategy.job-total }} || status=1
+          yarn workspace @hyperdx/api ci:int --shard=${{ matrix.shard }}/${{ strategy.job-total }} || status=1
+          exit $status
   # Stable aggregator context: `integration` is green only when all four shards
   # pass. Merge-queue / required-status checks target this single context, since
   # the per-shard contexts (Integration - Shard N) are not stable check names.
@@ -136,9 +194,17 @@ jobs:
         id: changed-files
         uses: tj-actions/changed-files@v47.0.6
         with:
+          # The ClickHouse config is mounted into both ch-server (via
+          # docker-compose.ci.yml) and ch-server-compat, which pins an older
+          # ClickHouse -- a config feature the old server rejects takes the
+          # whole suite down, so changes to it run these tests.
           files: |
             docker/otel-collector/**
             smoke-tests/otel-collector/**
+            packages/otel-collector/builder-config.yaml
+            docker/clickhouse/local/config.xml
+            docker/clickhouse/local/users.xml
+            docker-compose.ci.yml
       - name: Install required tooling
         if: steps.changed-files.outputs.any_changed == 'true'
         env:

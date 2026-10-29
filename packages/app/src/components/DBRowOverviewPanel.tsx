@@ -1,4 +1,4 @@
-import { useCallback, useContext, useMemo } from 'react';
+import { use, useCallback, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
 import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
@@ -7,6 +7,9 @@ import { Accordion, Box, Flex, Text } from '@mantine/core';
 import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
+import { getRequestPanelTitle } from '@/utils/rpcSpanAttributes';
+import { isSet } from '@/utils/spanAttributeReaders';
 
 import {
   getJSONColumnNames,
@@ -18,15 +21,24 @@ import { RowSidePanelContext } from './DBRowSidePanel';
 import DBRowSidePanelHeader from './DBRowSidePanelHeader';
 import EventTag from './EventTag';
 import { ExceptionSubpanel } from './ExceptionSubpanel';
+import { useLinkedSpanDetails, useReverseSpanLinks } from './linkedSpans';
 import { NetworkPropertySubpanel } from './NetworkPropertyPanel';
 import { SpanEventsSubpanel } from './SpanEventsSubpanel';
+import { SpanLinkedFromSubpanel } from './SpanLinkedFromSubpanel';
 import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
+const EXCEPTION_ATTRIBUTE_KEYS = [
+  'exception.type',
+  'exception.message',
+  'exception.stacktrace',
+];
+
 export function RowOverviewPanel({
   source,
   rowId,
   aliasWith,
+  dateRange,
   hideHeader = false,
   flush = false,
   'data-testid': dataTestId,
@@ -34,6 +46,7 @@ export function RowOverviewPanel({
   source: TSource;
   rowId: string | undefined | null;
   aliasWith?: WithClause[];
+  dateRange?: [Date, Date];
   hideHeader?: boolean;
   // When true, drop the horizontal padding so content aligns flush with
   // surrounding chrome (e.g. the tab bar in the trace span detail panel).
@@ -41,9 +54,9 @@ export function RowOverviewPanel({
   'data-testid'?: string;
 }) {
   const contentPx = flush ? 0 : 'md';
-  const { data } = useRowData({ source, rowId, aliasWith });
+  const { data } = useRowData({ source, rowId, aliasWith, dateRange });
   const { onPropertyAddClick, generateSearchUrl, onOpenLinkedTrace } =
-    useContext(RowSidePanelContext);
+    use(RowSidePanelContext);
 
   const highlightedAttributeValues = useMemo(() => {
     const attributeExpressions =
@@ -129,36 +142,35 @@ export function RowOverviewPanel({
     [generateSearchUrl],
   );
 
-  const isHttpRequest = useMemo(() => {
-    const attributes =
-      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
-    return attributes?.['http.url'] != null;
-  }, [dataAttributes, eventAttributesExpr]);
+  const requestPanelTitle = useMemo(
+    () => getRequestPanelTitle(flattenedEventAttributes),
+    [flattenedEventAttributes],
+  );
 
-  const filteredEventAttributes = useMemo(() => {
-    if (!eventAttributesExpr) return dataAttributes;
-
-    const attributes = dataAttributes?.[eventAttributesExpr];
-    return isHttpRequest && attributes
-      ? {
-          [eventAttributesExpr]: pickBy(
-            attributes,
-            (_, key) => !key.startsWith('http.'),
-          ),
-        }
-      : dataAttributes;
-  }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
+  const exceptionAttributes = useMemo(() => {
+    const spanEventAttributes = firstRow?.__hdx_events_exception_attributes;
+    if (
+      spanEventAttributes != null &&
+      Object.keys(spanEventAttributes).length > 0
+    ) {
+      return spanEventAttributes;
+    }
+    return EXCEPTION_ATTRIBUTE_KEYS.some(key =>
+      isSet(flattenedEventAttributes[key]),
+    )
+      ? flattenedEventAttributes
+      : undefined;
+  }, [firstRow?.__hdx_events_exception_attributes, flattenedEventAttributes]);
 
   const exceptionValues = useMemo(() => {
-    const parsedEvents =
-      firstRow?.__hdx_events_exception_attributes ?? EMPTY_OBJ;
+    const parsedEvents = exceptionAttributes ?? EMPTY_OBJ;
     const stacktrace =
       parsedEvents?.['exception.stacktrace'] ||
       parsedEvents?.['exception.parsed_stacktrace'];
 
     let parsedStacktrace = stacktrace ?? '[]';
     try {
-      parsedStacktrace = JSON.parse(stacktrace);
+      parsedStacktrace = JSON.parse(parsedStacktrace);
     } catch {
       // do nothing
     }
@@ -174,13 +186,9 @@ export function RowOverviewPanel({
         mechanism: parsedEvents?.['exception.mechanism'],
       },
     ];
-  }, [firstRow]);
+  }, [exceptionAttributes]);
 
-  const hasException = useMemo(() => {
-    return (
-      Object.keys(firstRow?.__hdx_events_exception_attributes ?? {}).length > 0
-    );
-  }, [firstRow?.__hdx_events_exception_attributes]);
+  const hasException = exceptionAttributes != null;
 
   const hasSpanEvents = useMemo(() => {
     return (
@@ -189,9 +197,37 @@ export function RowOverviewPanel({
     );
   }, [firstRow?.__hdx_span_events]);
 
-  const hasSpanLinks = useMemo(() => {
-    return getValidSpanLinks(firstRow?.__hdx_span_links).length > 0;
+  const validSpanLinks = useMemo(() => {
+    return getValidSpanLinks(firstRow?.__hdx_span_links);
   }, [firstRow?.__hdx_span_links]);
+  const hasSpanLinks = validSpanLinks.length > 0;
+
+  const rowMeta = data?.meta;
+  const linkAnchorDate = useMemo(
+    () =>
+      resolveRowTimestampAnchor({
+        timestampValueExpression: source.timestampValueExpression,
+        row: firstRow,
+        meta: rowMeta,
+      }),
+    [source.timestampValueExpression, firstRow, rowMeta],
+  );
+
+  const rowTraceId = firstRow?.__hdx_trace_id;
+  const rowSpanId = firstRow?.__hdx_span_id;
+
+  const { links: reverseSpanLinks } = useReverseSpanLinks({
+    source,
+    traceId: typeof rowTraceId === 'string' ? rowTraceId : undefined,
+    spanId: typeof rowSpanId === 'string' ? rowSpanId : undefined,
+    anchorDate: linkAnchorDate,
+  });
+
+  const { details: linkedSpanDetails } = useLinkedSpanDetails({
+    source,
+    links: validSpanLinks,
+    anchorDate: linkAnchorDate,
+  });
 
   const mainContentColumn = getEventBody(source);
   const mainContent = isString(firstRow?.['__hdx_body'])
@@ -224,6 +260,7 @@ export function RowOverviewPanel({
           'exception',
           'spanEvents',
           'spanLinks',
+          'linkedFrom',
           'network',
           'resourceAttributes',
           'eventAttributes',
@@ -232,23 +269,6 @@ export function RowOverviewPanel({
         multiple
         variant="noPadding"
       >
-        {isHttpRequest && (
-          <Accordion.Item value="network">
-            <Accordion.Control>
-              <Text size="sm" ps={contentPx}>
-                HTTP Request
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px={contentPx}>
-                <NetworkPropertySubpanel
-                  eventAttributes={flattenedEventAttributes}
-                />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
         {hasException && (
           <Accordion.Item value="exception">
             <Accordion.Control>
@@ -260,7 +280,6 @@ export function RowOverviewPanel({
               <Box px={contentPx}>
                 <ExceptionSubpanel
                   exceptionValues={exceptionValues}
-                  breadcrumbs={[]}
                   logData={{
                     timestamp: firstRow?.__hdx_timestamp,
                   }}
@@ -270,16 +289,19 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {hasSpanEvents && (
-          <Accordion.Item value="spanEvents">
+        {requestPanelTitle != null && (
+          <Accordion.Item value="network">
             <Accordion.Control>
               <Text size="sm" ps={contentPx}>
-                Span Events
+                {requestPanelTitle}
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
               <Box px={contentPx}>
-                <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
+                <NetworkPropertySubpanel
+                  eventAttributes={flattenedEventAttributes}
+                  spanKind={firstRow?.__hdx_span_kind}
+                />
               </Box>
             </Accordion.Panel>
           </Accordion.Item>
@@ -304,7 +326,7 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {Object.keys(filteredEventAttributes).length > 0 && (
+        {Object.keys(dataAttributes).length > 0 && (
           <Accordion.Item value="eventAttributes">
             <Accordion.Control>
               <Text size="sm" ps={contentPx}>
@@ -314,7 +336,7 @@ export function RowOverviewPanel({
             <Accordion.Panel>
               <Box px={contentPx}>
                 <DBRowJsonViewer
-                  data={filteredEventAttributes}
+                  data={dataAttributes}
                   jsonColumns={jsonColumns}
                   mapColumns={mapColumns}
                 />
@@ -326,12 +348,12 @@ export function RowOverviewPanel({
         {hasSpanEvents && (
           <Accordion.Item value="spanEvents">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Span Events
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box ps={contentPx}>
                 <SpanEventsSubpanel spanEvents={firstRow?.__hdx_span_events} />
               </Box>
             </Accordion.Panel>
@@ -341,14 +363,33 @@ export function RowOverviewPanel({
         {hasSpanLinks && (
           <Accordion.Item value="spanLinks">
             <Accordion.Control>
-              <Text size="sm" ps="md">
+              <Text size="sm" ps={contentPx}>
                 Span Links
               </Text>
             </Accordion.Control>
             <Accordion.Panel>
-              <Box px="md">
+              <Box ps={contentPx}>
                 <SpanLinksSubpanel
                   spanLinks={firstRow?.__hdx_span_links}
+                  linkedSpanDetails={linkedSpanDetails}
+                  onOpenTrace={onOpenLinkedTrace}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {reverseSpanLinks.length > 0 && (
+          <Accordion.Item value="linkedFrom">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Linked from
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box ps={contentPx}>
+                <SpanLinkedFromSubpanel
+                  links={reverseSpanLinks}
                   onOpenTrace={onOpenLinkedTrace}
                 />
               </Box>

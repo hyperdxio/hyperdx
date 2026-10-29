@@ -1,10 +1,10 @@
 import * as React from 'react';
 import { parseAsString, useQueryState } from 'nuqs';
+import { Badge } from '@clickhouse/click-ui';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
 import { TLogSource, TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Badge,
   Card,
   Drawer,
   Flex,
@@ -24,7 +24,6 @@ import { DrawerBody, DrawerHeader } from '@/components/DrawerUtils';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { InfraPodsStatusTable } from '@/KubernetesDashboardPage';
 import { getEventBody } from '@/source';
-import { parseTimeQuery, useTimeQuery } from '@/timeQuery';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -33,7 +32,6 @@ import { useGetKeyValues, useTableMetadata } from './hooks/useMetadata';
 import styles from '@styles/LogSidePanel.module.scss';
 
 const CHART_HEIGHT = 300;
-const defaultTimeRange = parseTimeQuery('Past 1h', false);
 
 const PodDetailsProperty = React.memo(
   ({ label, value }: { label: string; value?: React.ReactNode }) => {
@@ -105,25 +103,9 @@ const NamespaceDetails = ({
             label="Status"
             value={
               properties.ready === 1 ? (
-                <Badge
-                  variant="light"
-                  color="green"
-                  fw="normal"
-                  tt="none"
-                  size="md"
-                >
-                  Ready
-                </Badge>
+                <Badge text="Ready" state="success" />
               ) : (
-                <Badge
-                  variant="light"
-                  color="red"
-                  fw="normal"
-                  tt="none"
-                  size="md"
-                >
-                  Not Ready
-                </Badge>
+                <Badge text="Not Ready" state="danger" />
               )
             }
           />
@@ -221,32 +203,25 @@ function NamespaceLogs({
   );
 }
 
-export default function NamespaceDetailsSidePanel({
+function NamespaceDetailsSidePanelInner({
   metricSource,
   logSource,
+  dateRange,
+  namespaceName,
+  setNamespaceName,
 }: {
   metricSource: TMetricSource;
   logSource: TLogSource;
+  dateRange: [Date, Date];
+  namespaceName: string;
+  setNamespaceName: (value: string | null) => void;
 }) {
-  const [namespaceName, setNamespaceName] = useQueryState(
-    'namespaceName',
-    parseAsString.withDefault(''),
-  );
-
   const contextZIndex = useZIndex();
   const drawerZIndex = contextZIndex + 10;
 
   const metricsWhere = React.useMemo(() => {
     return `${metricSource?.resourceAttributesExpression}.k8s.namespace.name:"${namespaceName}"`;
   }, [namespaceName, metricSource]);
-
-  const { searchedTimeRange: dateRange } = useTimeQuery({
-    defaultValue: 'Past 1h',
-    defaultTimeRange: [
-      defaultTimeRange?.[0]?.getTime() ?? -1,
-      defaultTimeRange?.[1]?.getTime() ?? -1,
-    ],
-  });
 
   const { data: logsTableMetadata } = useTableMetadata(tcFromSource(logSource));
 
@@ -337,7 +312,7 @@ export default function NamespaceDetailsSidePanel({
         },
       }}
     >
-      <ZIndexContext.Provider value={drawerZIndex}>
+      <ZIndexContext value={drawerZIndex}>
         <IsolatedChartSyncProvider>
           <div className={styles.panel}>
             <DrawerHeader
@@ -438,7 +413,27 @@ export default function NamespaceDetailsSidePanel({
             </DrawerBody>
           </div>
         </IsolatedChartSyncProvider>
-      </ZIndexContext.Provider>
+      </ZIndexContext>
     </Drawer>
+  );
+}
+
+export default function NamespaceDetailsSidePanel(props: {
+  metricSource: TMetricSource;
+  logSource: TLogSource;
+  dateRange: [Date, Date];
+}) {
+  const [namespaceName, setNamespaceName] = useQueryState(
+    'namespaceName',
+    parseAsString.withDefault(''),
+  );
+
+  return (
+    <NamespaceDetailsSidePanelInner
+      {...props}
+      key={namespaceName || 'empty'}
+      namespaceName={namespaceName}
+      setNamespaceName={setNamespaceName}
+    />
   );
 }

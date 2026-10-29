@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import { sub } from 'date-fns';
@@ -39,14 +46,15 @@ import { PageLayout } from '@/components/PageLayout';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { TimePicker } from '@/components/TimePicker';
 import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
-import { parseTimeQuery, useNewTimeQuery } from '@/timeQuery';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
+import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
-import { useBrandDisplayName } from './theme/ThemeProvider';
-import { withAppNav } from './layout';
+import { useBrandDisplayName, usePageTitle } from './theme/ThemeProvider';
+import { withAppNavForSurface } from './layout';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';
 import { useSource, useSources } from './source';
@@ -218,9 +226,6 @@ function SessionCardList({
 // Clicks inside the session list keep the session side panel open (so users can
 // scroll or pick a different session); clicks anywhere else dismiss it.
 const SESSION_LIST_KEEP_OPEN_SELECTOR = '[data-testid="session-card-list"]';
-
-// TODO: This is a hack to set the default time range
-const defaultTimeRange = parseTimeQuery('Past 1h', false) as [Date, Date];
 const selectedSessionQueryStateMap = {
   sid: parseAsString,
   sfrom: parseAsFloat,
@@ -231,23 +236,35 @@ const appliedConfigMap = {
   where: parseAsString.withDefault(''),
   whereLanguage: parseAsStringEnum<'sql' | 'lucene'>(['sql', 'lucene']),
 };
+const DEFAULT_INTERVAL = 'Past 1h';
+
 function SessionsPage() {
-  const brandName = useBrandDisplayName();
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
+  const title = usePageTitle('Client Sessions');
   const [appliedConfig, setAppliedConfig] = useQueryStates(appliedConfigMap);
+  // `?sessionSource=` accepts a source name as well as a source ID. The form
+  // holds the resolved ID, so nothing downstream ever sees a name.
+  const { source: paramSource } = useResolvedSourceParam(
+    appliedConfig.sessionSource,
+    { kinds: [SourceKind.Session] },
+  );
 
   const { control, setValue, handleSubmit } = useForm({
     values: {
       where: appliedConfig.where,
       whereLanguage:
         appliedConfig.whereLanguage ?? getStoredLanguage() ?? 'lucene',
-      source: appliedConfig.sessionSource,
+      source: paramSource?.id ?? null,
     },
   });
 
   const where = useWatch({ control, name: 'where' });
   const whereLanguage = useWatch({ control, name: 'whereLanguage' });
   const sourceId = useWatch({ control, name: 'source' });
-  const { data: sessionSource, isPending: isSessionSourceLoading } = useSource({
+  // `isLoading` rather than `isPending`: with no source selected the query is
+  // disabled, and a disabled query is pending forever — which would render the
+  // spinner in place of the setup instructions.
+  const { data: sessionSource, isLoading: isSessionSourceLoading } = useSource({
     id: sourceId,
     kinds: [SourceKind.Session],
   });
@@ -260,11 +277,16 @@ function SessionsPage() {
   // Get all sources and select the first session type source by default
   const { data: sources } = useSources();
 
-  useEffect(() => {
-    if (sourceId && !appliedConfig.sessionSource) {
-      setAppliedConfig({ sessionSource: sourceId });
+  // Push the selected source into the param when it isn't there yet, and
+  // canonicalize a source name URL Param to the ID it resolved to.
+  const syncSourceParam = useEffectEvent((formSource: string | null) => {
+    if (formSource && formSource !== appliedConfig.sessionSource) {
+      setAppliedConfig({ sessionSource: formSource });
     }
-  }, [appliedConfig.sessionSource, setAppliedConfig, sourceId]);
+  });
+  useEffect(() => {
+    syncSourceParam(sourceId);
+  }, [sourceId]);
 
   // Auto-select the first session source when the page loads
   useEffect(() => {
@@ -280,7 +302,6 @@ function SessionsPage() {
     }
   }, [sources, appliedConfig.sessionSource, setValue]);
 
-  const DEFAULT_INTERVAL = 'Past 1h';
   const [displayedTimeInputValue, setDisplayedTimeInputValue] =
     useState(DEFAULT_INTERVAL);
 
@@ -304,12 +325,19 @@ function SessionsPage() {
     })();
   }, [handleSubmit, setAppliedConfig, onSearch, displayedTimeInputValue]);
 
-  // Auto submit when service or source changes
-  useEffect(() => {
-    if (sourceId !== appliedConfig.sessionSource) {
+  // Auto submit when the source changes. Compared against the *resolved* param
+  // only: while `?sessionSource=` is still resolving — or when it names no
+  // source at all — there is nothing for the form to have diverged from, and
+  // submitting would write the empty form source over the param (losing both the
+  // link and the "Source not found" warning) and reset the searched time range.
+  const submitOnSourceChange = useEffectEvent(() => {
+    if (sourceId !== (paramSource?.id ?? null)) {
       onSubmit();
     }
-  }, [sourceId, appliedConfig.sessionSource, onSubmit]);
+  });
+  useEffect(() => {
+    submitOnSourceChange();
+  }, [sourceId]);
 
   const [selectedSessionQuery, setSelectedSessionQuery] = useQueryStates(
     selectedSessionQueryStateMap,
@@ -369,7 +397,7 @@ function SessionsPage() {
   return (
     <>
       <Head>
-        <title>Client Sessions - {brandName}</title>
+        <title>{title}</title>
       </Head>
       <OnboardingModal />
       {selectedSession != null &&
@@ -406,12 +434,13 @@ function SessionsPage() {
         <PageLayout
           data-testid="sessions-page"
           header={
-            <PageHeader>
+            <PageHeader growing>
               <Group
                 justify="space-between"
                 gap="xs"
                 wrap="nowrap"
                 w="100%"
+                align="flex-start"
                 className={styles.toolbar}
               >
                 <SourceSelectControlled
@@ -421,6 +450,9 @@ function SessionsPage() {
                 />
                 <SearchWhereInput
                   tableConnection={tcFromSource(traceTrace)}
+                  // The WHERE runs against the trace source
+                  sourceId={traceTrace?.id}
+                  dateRange={searchedTimeRange}
                   control={control}
                   name="where"
                   onSubmit={onSubmit}
@@ -507,7 +539,7 @@ const SessionsPageDynamic = dynamic(async () => SessionsPage, {
 });
 
 // @ts-expect-error for getLayout
-SessionsPageDynamic.getLayout = withAppNav;
+SessionsPageDynamic.getLayout = withAppNavForSurface('session-replay');
 
 export default SessionsPageDynamic;
 

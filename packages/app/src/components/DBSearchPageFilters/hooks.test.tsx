@@ -2,11 +2,15 @@
 import React from 'react';
 import { enableMapSet } from 'immer';
 import { FilterState } from '@hyperdx/common-utils/dist/filters';
-import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  BuilderChartConfigWithDateRange,
+  SourceKind,
+} from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 import api from '@/api';
+import type { Facet } from '@/hooks/useMetadata';
 import * as useMetadataModule from '@/hooks/useMetadata';
 import * as searchFiltersModule from '@/searchFilters';
 import * as sourceModule from '@/source';
@@ -65,6 +69,7 @@ jest.mock('@/hooks/useMetadata', () => ({
   useMapColumns: jest.fn(),
   useAllFields: jest.fn(),
   useGetKeyValues: jest.fn(),
+  useFilterKeysFetchLimit: jest.fn(),
 }));
 
 const useMe = jest.mocked(api.useMe);
@@ -79,6 +84,9 @@ const useJsonColumns = jest.mocked(useMetadataModule.useJsonColumns);
 const useMapColumns = jest.mocked(useMetadataModule.useMapColumns);
 const useAllFields = jest.mocked(useMetadataModule.useAllFields);
 const useGetKeyValues = jest.mocked(useMetadataModule.useGetKeyValues);
+const useFilterKeysFetchLimit = jest.mocked(
+  useMetadataModule.useFilterKeysFetchLimit,
+);
 
 const CHART_CONFIG: BuilderChartConfigWithDateRange = {
   connection: 'conn1',
@@ -115,6 +123,19 @@ const makeLogSource = (opts: { withMVs: boolean }) => ({
       }
     : {}),
 });
+
+type SourceQueryResult = ReturnType<typeof sourceModule.useSource>;
+type AllFieldsResult = ReturnType<typeof useMetadataModule.useAllFields>;
+type KeyValuesResult = ReturnType<typeof useMetadataModule.useGetKeyValues>;
+type MetadataWithSettings = ReturnType<
+  typeof useMetadataModule.useMetadataWithSettings
+>;
+
+const mockSourceQuery = (data: SourceQueryResult['data']) =>
+  useSource.mockReturnValue({ data, isLoading: false } as SourceQueryResult);
+
+const mockMetadata = (metadata: Partial<MetadataWithSettings>) =>
+  useMetadataWithSettings.mockReturnValue(metadata as MetadataWithSettings);
 
 function makeWrapper() {
   const queryClient = new QueryClient({
@@ -177,6 +198,8 @@ function setupDefaultMocks({ withMVs }: { withMVs: boolean }) {
     isFetching: false,
     error: null,
   } as any);
+
+  useFilterKeysFetchLimit.mockReturnValue(100);
 }
 
 describe('useFetchFacets', () => {
@@ -435,6 +458,114 @@ describe('useFetchFacets', () => {
       // independent of the values query; it stays defined once metadata
       // loads. Only `keyValues` is gated on the active pipeline query.
       expect(result.current.data.keyValues).toBeUndefined();
+    });
+  });
+
+  describe('errors', () => {
+    it('surfaces a field lookup error so the filter panel can report it', () => {
+      setupDefaultMocks({ withMVs: false });
+      const fieldsError = new Error('DESCRIBE failed');
+      useAllFields.mockReturnValue({
+        data: [],
+        error: fieldsError,
+        isLoading: false,
+      } as unknown as AllFieldsResult);
+      const { wrapper } = makeWrapper();
+
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'exact',
+          }),
+        { wrapper },
+      );
+
+      expect(result.current.error).toBe(fieldsError);
+    });
+  });
+
+  describe('pending keys', () => {
+    const TWO_FIELDS = [
+      {
+        path: ['ServiceName'],
+        type: 'LowCardinality(String)',
+        jsType: 'string',
+      },
+      {
+        path: ['SeverityText'],
+        type: 'LowCardinality(String)',
+        jsType: 'string',
+      },
+    ];
+
+    const mockKeyValues = (data: Facet[] | undefined, isFetching: boolean) =>
+      useGetKeyValues.mockReturnValue({
+        data,
+        isLoading: false,
+        isFetching,
+        error: null,
+      } as unknown as KeyValuesResult);
+
+    const renderAllMode = () =>
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper: makeWrapper().wrapper },
+      );
+
+    it('lists keys whose values have not arrived yet as empty, pending facets', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
+      mockKeyValues([{ key: 'SeverityText', value: ['info'] }], true);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: [] },
+        { key: 'SeverityText', value: ['info'] },
+      ]);
+      expect(result.current.data.pendingKeys).toEqual(new Set(['ServiceName']));
+    });
+
+    it('drops keys without values once the values query finishes', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
+      mockKeyValues([{ key: 'SeverityText', value: ['info'] }], false);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'SeverityText', value: ['info'] },
+      ]);
+      expect(result.current.data.pendingKeys.size).toBe(0);
+    });
+
+    it('does not list keys past the team key fetch limit', () => {
+      setupDefaultMocks({ withMVs: false });
+      useAllFields.mockReturnValue({
+        data: TWO_FIELDS,
+      } as unknown as AllFieldsResult);
+      useFilterKeysFetchLimit.mockReturnValue(1);
+      mockKeyValues(undefined, true);
+
+      const { result } = renderAllMode();
+
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: [] },
+      ]);
+      expect(result.current.data.pendingKeys).toEqual(new Set(['ServiceName']));
     });
   });
 
@@ -910,6 +1041,223 @@ describe('useFetchFacets', () => {
       expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
 
       rerender({ mode: 'all' });
+
+      expect(result.current.extraFacetKeys.size).toBe(0);
+    });
+  });
+
+  /**
+   * `tableConnection` is a fallback, not an override: whenever a source is
+   * available it wins, so its metadata materialized views keep serving key and
+   * value discovery. Only two cases reach the fallback.
+   *
+   *  1. No source id. The dashboard-wide WHERE spans every tile, so no single
+   *     source names its table. Deriving discovery from the source id alone
+   *     left `tcFromSource(undefined)` returning an all-empty connection and
+   *     `useAllFields`'s enabled guard rejecting it, so that input offered zero
+   *     suggestions.
+   *  2. A metric source, whose rows live in per-type tables its `from` doesn't
+   *     name — KubernetesFilters always, and the tile editor and dashboard
+   *     filters whenever a metric source is selected.
+   *
+   * Every other input passes a source id and never consults the fallback, even
+   * though it still passes a connection.
+   */
+  describe('tableConnection fallback', () => {
+    const FALLBACK_TC = {
+      databaseName: 'other_db',
+      tableName: 'other_table',
+      connectionId: 'conn2',
+    };
+
+    const SOURCE_TC = expect.objectContaining({
+      databaseName: 'db',
+      tableName: 'logs',
+      connectionId: 'conn1',
+    });
+
+    it('discovers fields from the connection when there is no sourceId', () => {
+      setupDefaultMocks({ withMVs: false });
+      mockSourceQuery(undefined);
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: null,
+            tableConnection: FALLBACK_TC,
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            disableValues: true,
+          }),
+        { wrapper },
+      );
+
+      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(FALLBACK_TC);
+      expect(useColumns.mock.calls.at(-1)?.[0]).toEqual(FALLBACK_TC);
+    });
+
+    it('prefers the source over the connection, keeping its materialized views', () => {
+      // Losing the source here would drop `metadataMVs`, sending Map-key
+      // discovery to a raw table scan.
+      setupDefaultMocks({ withMVs: true });
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            tableConnection: FALLBACK_TC,
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper },
+      );
+
+      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(SOURCE_TC);
+      expect(useAllFields.mock.calls.at(-1)?.[0]?.metadataMVs).toBeDefined();
+    });
+
+    it('uses the connection for a metric source, whose from does not name a table', () => {
+      // Metric rows live in per-type tables (gauge/sum/...). Only the caller
+      // knows which one — and which metric — is in play.
+      setupDefaultMocks({ withMVs: false });
+      mockSourceQuery({
+        id: 'source1',
+        kind: SourceKind.Metric,
+        name: 'metrics',
+        connection: 'conn1',
+        from: { databaseName: 'db', tableName: '' },
+        timestampValueExpression: 'TimeUnix',
+        metricTables: {
+          gauge: 'otel_metrics_gauge',
+          histogram: 'otel_metrics_histogram',
+          sum: 'otel_metrics_sum',
+          summary: 'otel_metrics_summary',
+          'exponential histogram': 'otel_metrics_exponential_histogram',
+        },
+        resourceAttributesExpression: 'ResourceAttributes',
+      });
+      const { wrapper } = makeWrapper();
+
+      const metricTc = { ...FALLBACK_TC, metricName: 'k8s.pod.cpu' };
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            tableConnection: metricTc,
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper },
+      );
+
+      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(metricTc);
+    });
+
+    it('ignores an incomplete connection', () => {
+      // What a `tcFromSource` of a not-yet-loaded source looks like — using it
+      // would disable the queries outright.
+      setupDefaultMocks({ withMVs: false });
+      const { wrapper } = makeWrapper();
+
+      renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: 'source1',
+            tableConnection: {
+              databaseName: '',
+              tableName: '',
+              connectionId: '',
+            },
+            dateRange: DATE_RANGE,
+            mode: 'all',
+          }),
+        { wrapper },
+      );
+
+      expect(useAllFields.mock.calls.at(-1)?.[0]).toEqual(SOURCE_TC);
+    });
+
+    it('loads more values from the connection when there is no source', async () => {
+      setupDefaultMocks({ withMVs: false });
+      mockSourceQuery(undefined);
+      const getAllKeyValues = jest
+        .fn()
+        .mockResolvedValue([{ key: 'ServiceName', value: ['api'] }]);
+      mockMetadata({
+        getKeyValuesWithMVs: jest.fn(),
+        getAllKeyValues,
+      });
+
+      const { wrapper } = makeWrapper();
+      const { result } = renderHook(
+        () =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: null,
+            tableConnection: FALLBACK_TC,
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            disableValues: true,
+          }),
+        { wrapper },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey('ServiceName');
+      });
+
+      expect(getAllKeyValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          databaseName: 'other_db',
+          tableName: 'other_table',
+          connectionId: 'conn2',
+          keyExpressions: ['ServiceName'],
+        }),
+      );
+      expect(result.current.data.keyValues).toEqual([
+        { key: 'ServiceName', value: ['api'] },
+      ]);
+    });
+
+    it('clears extraFacets when the connection changes', async () => {
+      setupDefaultMocks({ withMVs: false });
+      mockSourceQuery(undefined);
+      mockMetadata({
+        getKeyValuesWithMVs: jest.fn(),
+        getAllKeyValues: jest
+          .fn()
+          .mockResolvedValue([{ key: 'NewKey', value: ['n1'] }]),
+      });
+
+      const { wrapper } = makeWrapper();
+      const { result, rerender } = renderHook(
+        (props: { tableConnection: typeof FALLBACK_TC }) =>
+          useFetchFacets({
+            chartConfig: CHART_CONFIG,
+            sourceId: null,
+            tableConnection: props.tableConnection,
+            dateRange: DATE_RANGE,
+            mode: 'all',
+            disableValues: true,
+          }),
+        { wrapper, initialProps: { tableConnection: FALLBACK_TC } },
+      );
+
+      await act(async () => {
+        await result.current.loadMoreFacetsForKey('NewKey');
+      });
+
+      expect(result.current.extraFacetKeys.has('NewKey')).toBe(true);
+
+      rerender({
+        tableConnection: { ...FALLBACK_TC, tableName: 'yet_another_table' },
+      });
 
       expect(result.current.extraFacetKeys.size).toBe(0);
     });

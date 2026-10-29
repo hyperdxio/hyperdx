@@ -1,11 +1,15 @@
 import React from 'react';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  MAX_LEGEND_TEMPLATE_LENGTH,
+} from '@hyperdx/common-utils/dist/types';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
+import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
 
 // FormatTime depends on useUserPreferences (jotai + localStorage); mock it
 // so the drawer renders in isolation.
@@ -24,6 +28,78 @@ describe('ChartDisplaySettingsDrawer', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  describe('heatmap y axis scale', () => {
+    it('shows the scale only for distribution heatmaps', () => {
+      const { unmount } = renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          heatmapMode="series"
+        />,
+      );
+      expect(
+        screen.queryByTestId('heatmap-scale-control'),
+      ).not.toBeInTheDocument();
+      unmount();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          heatmapMode="distribution"
+        />,
+      );
+      expect(screen.getByTestId('heatmap-scale-control')).toBeInTheDocument();
+    });
+
+    it('applies the chosen scale', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="builder"
+          displayType={DisplayType.Heatmap}
+          heatmapMode="distribution"
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByText('Linear'));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        heatmapScaleType: 'linear',
+      });
+    });
+
+    it.each(['linear', 'log'] as const)(
+      'selects the %s default scale when the tile has none',
+      async scale => {
+        const onChange = jest.fn();
+        const user = userEvent.setup();
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={DisplayType.Heatmap}
+            heatmapMode="distribution"
+            defaultHeatmapScaleType={scale}
+            onChange={onChange}
+          />,
+        );
+
+        await user.click(screen.getByRole('button', { name: /apply/i }));
+
+        expect(onChange.mock.calls[0][0]).toMatchObject({
+          heatmapScaleType: scale,
+        });
+      },
+    );
   });
 
   describe('color picker section', () => {
@@ -176,6 +252,76 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('line interpolation setting', () => {
+    it.each([
+      [DisplayType.Line, 'Smooth'],
+      [DisplayType.StackedLine, 'Linear'],
+    ])(
+      'selects the %s default when the tile has none',
+      (displayType, label) => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(screen.getByRole('radio', { name: label })).toBeChecked();
+      },
+    );
+
+    it.each([DisplayType.StackedBar, DisplayType.Table])(
+      'does not show the control for %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.queryByTestId('line-interpolation-control'),
+        ).not.toBeInTheDocument();
+      },
+    );
+
+    it('leaves lineInterpolation unset when untouched', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0].lineInterpolation).toBeUndefined();
+    });
+
+    it('applies the chosen interpolation', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.StackedLine}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('radio', { name: 'Step' }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        lineInterpolation: 'step',
+      });
+    });
+  });
+
   describe('series limit setting', () => {
     const builderProps = { ...baseProps, configType: 'builder' as const };
 
@@ -192,7 +338,7 @@ describe('ChartDisplaySettingsDrawer', () => {
       ).toBeInTheDocument();
     });
 
-    it('does not show the Series Limit input for raw SQL line charts', () => {
+    it('shows the Series Limit input for raw SQL line charts (client render cap)', () => {
       renderWithMantine(
         <ChartDisplaySettingsDrawer
           {...baseProps}
@@ -200,9 +346,12 @@ describe('ChartDisplaySettingsDrawer', () => {
         />,
       );
 
-      expect(
-        screen.queryByRole('textbox', { name: /series limit/i }),
-      ).not.toBeInTheDocument();
+      const input = screen.getByRole('textbox', { name: /series limit/i });
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveAttribute(
+        'placeholder',
+        `Default (${MAX_RENDERED_TIME_CHART_SERIES})`,
+      );
     });
 
     it('does not show the Series Limit input for table charts', () => {
@@ -216,6 +365,80 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(
         screen.queryByRole('textbox', { name: /series limit/i }),
       ).not.toBeInTheDocument();
+    });
+
+    describe('PromQL (client render cap)', () => {
+      const promqlProps = { ...baseProps, configType: 'promql' as const };
+
+      it.each([DisplayType.Line, DisplayType.StackedBar])(
+        'shows the Series Limit input for PromQL %s charts',
+        displayType => {
+          renderWithMantine(
+            <ChartDisplaySettingsDrawer
+              {...promqlProps}
+              displayType={displayType}
+            />,
+          );
+
+          const input = screen.getByRole('textbox', { name: /series limit/i });
+          expect(input).toHaveAttribute(
+            'placeholder',
+            `Default (${MAX_RENDERED_TIME_CHART_SERIES})`,
+          );
+        },
+      );
+
+      it('describes the limit as a render cap, not a fetch cap', () => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Line}
+          />,
+        );
+
+        expect(
+          screen.getByText(/maximum number of series rendered/i),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(/fetched/i)).not.toBeInTheDocument();
+      });
+
+      it.each([DisplayType.Number, DisplayType.Table])(
+        'does not show the Series Limit input for PromQL %s charts',
+        displayType => {
+          renderWithMantine(
+            <ChartDisplaySettingsDrawer
+              {...promqlProps}
+              displayType={displayType}
+            />,
+          );
+
+          expect(
+            screen.queryByRole('textbox', { name: /series limit/i }),
+          ).not.toBeInTheDocument();
+        },
+      );
+
+      it('calls onChange with the entered seriesLimit when applied', async () => {
+        const onChange = jest.fn();
+        const user = userEvent.setup();
+
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Line}
+            onChange={onChange}
+          />,
+        );
+
+        await user.type(
+          screen.getByRole('textbox', { name: /series limit/i }),
+          '5',
+        );
+        await user.click(screen.getByRole('button', { name: /apply/i }));
+
+        expect(onChange).toHaveBeenCalledTimes(1);
+        expect(onChange.mock.calls[0][0]).toMatchObject({ seriesLimit: 5 });
+      });
     });
 
     it('calls onChange with the entered seriesLimit when applied', async () => {
@@ -280,6 +503,23 @@ describe('ChartDisplaySettingsDrawer', () => {
         expect(
           screen.getByRole('textbox', { name: /series limit/i }),
         ).toBeInTheDocument();
+      },
+    );
+
+    it.each([DisplayType.Pie, DisplayType.Bar])(
+      'shows the Series Limit input for PromQL %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.getByRole('textbox', { name: /series limit/i }),
+        ).toHaveAttribute('placeholder', 'Disabled (e.g. 10)');
       },
     );
 
@@ -479,6 +719,24 @@ describe('ChartDisplaySettingsDrawer', () => {
     });
   });
 
+  describe('display group by columns on left setting (PromQL)', () => {
+    it('does not show the toggle for PromQL table charts', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          configType="promql"
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByRole('checkbox', {
+          name: /display group by columns on left/i,
+        }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
   describe('number format persistence', () => {
     // A duration number tile (e.g. p95 Duration from a trace source) auto-detects
     // a duration format from the datasource; the drawer receives it as
@@ -561,6 +819,116 @@ describe('ChartDisplaySettingsDrawer', () => {
         color: 'chart-blue',
         numberFormat: { output: 'currency' },
       });
+    });
+  });
+
+  describe('legend template', () => {
+    const promqlProps = {
+      ...baseProps,
+      configType: 'promql' as const,
+      displayType: DisplayType.Line,
+    };
+
+    it('is offered on a PromQL time series chart', () => {
+      renderWithMantine(<ChartDisplaySettingsDrawer {...promqlProps} />);
+
+      expect(screen.getByTestId('legend-template-input')).toBeInTheDocument();
+    });
+
+    it('is hidden on a PromQL table chart', () => {
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          displayType={DisplayType.Table}
+        />,
+      );
+
+      expect(
+        screen.queryByTestId('legend-template-input'),
+      ).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['hidden', 'distribution', false],
+      ['hidden', 'histogram', false],
+      ['offered', 'series', true],
+    ] as const)(
+      'is %s on a PromQL %s heatmap',
+      (_label, heatmapMode, isShown) => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Heatmap}
+            heatmapMode={heatmapMode}
+          />,
+        );
+
+        expect(screen.queryByTestId('legend-template-input') != null).toBe(
+          isShown,
+        );
+      },
+    );
+
+    it('blocks Apply when the template exceeds the persisted length cap', async () => {
+      const onChange = jest.fn();
+      const onClose = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...promqlProps}
+          onChange={onChange}
+          onClose={onClose}
+        />,
+      );
+
+      const tooLong = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(tooLong);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(
+        screen.getByText(
+          `Template is too long (${MAX_LEGEND_TEMPLATE_LENGTH + 1} characters, max ${MAX_LEGEND_TEMPLATE_LENGTH})`,
+        ),
+      ).toBeInTheDocument();
+      expect(onChange).not.toHaveBeenCalled();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('accepts a template exactly at the cap', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const atCap = 'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH);
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(atCap);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        legendTemplate: atCap,
+      });
+    });
+
+    it('measures the trimmed value, matching what gets persisted', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer {...promqlProps} onChange={onChange} />,
+      );
+
+      const padded = `  ${'a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH)}  `;
+      await user.click(screen.getByTestId('legend-template-input'));
+      await user.paste(padded);
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange).toHaveBeenCalledTimes(1);
     });
   });
 });

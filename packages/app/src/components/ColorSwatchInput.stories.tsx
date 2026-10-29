@@ -11,7 +11,7 @@ import {
 import { ColorSwatchInput } from './ColorSwatchInput';
 
 const meta = {
-  title: 'ColorSwatchInput',
+  title: 'Components/ColorSwatchInput',
   component: ColorSwatchInput,
 } satisfies Meta<typeof ColorSwatchInput>;
 

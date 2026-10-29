@@ -1,45 +1,56 @@
 import {
-  chSql,
-  concatChSql,
   convertCHDataTypeToJSType,
   filterColumnMetaByType,
   JSDataType,
-  tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
+import { trace } from '@opentelemetry/api';
 import SqlString from 'sqlstring';
 import { z } from 'zod';
 
+import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { ToolRegistrar } from '@/mcp/tools/types';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
+import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import {
+  MCP_QUERY_MAX_EXECUTION_SEC,
+  MCP_TIMEOUT_GRACE_MS,
+  MCP_TOOL_TIMEOUT_MS,
+  runWithTimeout,
+  type TimeoutOutcome,
+} from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
+  DISCOVERABLE_METRIC_KINDS,
   QUERYABLE_METRIC_KINDS,
   type QueryableMetricKind,
   sanitizeMetricTables,
 } from './metricKinds';
+import {
+  type MetricNameSample,
+  sampleMetricNamesWithLookback,
+} from './metricNames';
 import { extractSourceConfig } from './schemas';
 
 // How far back to look when querying the rollup tables for value samples.
 const VALUE_SAMPLE_LOOKBACK_MS = 24 * 60 * 60 * 1000; // 24 hours
 
-// Hard timeout for the entire describe operation (ms).
-const DESCRIBE_TIMEOUT_MS = 10_000;
+// When discovery's signal is aborted; it then returns what it has so far.
+export const DESCRIBE_TIMEOUT_MS = MCP_TOOL_TIMEOUT_MS;
+
+// Extra time after the abort before the handler stops waiting, in case a
+// ClickHouse call ignores the signal.
+export const DESCRIBE_BACKSTOP_MS = MCP_TIMEOUT_GRACE_MS;
 
 // Max sampled values per low-cardinality column / map attribute key.
 const MAX_LC_VALUES = 20;
 const MAX_MAP_KEY_VALUES = 5;
 const MAX_MAP_KEYS_TO_SAMPLE = 10;
-
-// Max MetricName values returned per metric kind by the starter sample.
-// clickstack_list_metrics provides paginated discovery beyond this cap.
-const MAX_METRIC_NAMES_PER_KIND = 20;
 
 /**
  * Pick the representative metric table to use as the starting point for
@@ -60,186 +71,27 @@ function pickRepresentativeMetricTable(
   return undefined;
 }
 
-type MetricNameSample = {
-  name: string;
-  unit?: string;
-  description?: string;
+type DescribeProgress = {
+  /**
+   * Set once the column schema has loaded. Renders everything gathered so far,
+   * with unfinished stages listed in skippedStages, so the handler can still
+   * answer if discovery is stuck past the backstop.
+   */
+  snapshot?: () => ToolResult;
+  /** Set on the final result: whether any stage was cut short. */
+  partial?: boolean;
 };
 
 /**
- * Sample distinct MetricName values for a single metric kind. Optionally
- * enriches each name with MetricUnit / MetricDescription when those
- * columns are present on the table (the OTel Collector default schema
- * includes them; custom schemas may not).
- */
-async function sampleMetricNamesForKind({
-  metadata,
-  clickhouseClient,
-  databaseName,
-  tableName,
-  connectionId,
-  dateRange,
-  timestampValueExpression,
-  signal,
-  cachedColumns,
-}: {
-  metadata: ReturnType<typeof getMetadata>;
-  clickhouseClient: ClickhouseClient;
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-  dateRange: [Date, Date];
-  timestampValueExpression: string;
-  signal: AbortSignal;
-  cachedColumns?: { name: string }[];
-}): Promise<MetricNameSample[]> {
-  // Defensive column presence check for MetricUnit / MetricDescription.
-  const kindColumns =
-    cachedColumns ??
-    (await metadata.getColumns({ databaseName, tableName, connectionId }));
-  const columnNames = new Set(kindColumns.map(c => c.name));
-  const hasUnit = columnNames.has('MetricUnit');
-  const hasDescription = columnNames.has('MetricDescription');
-
-  // First fetch the distinct metric names; this is the only step that
-  // strictly needs to succeed for the kind to appear in the response.
-  // Pass timestampValueExpression so the no-rollup fallback path scopes
-  // its scan to dateRange instead of going unbounded against the raw
-  // metric table on cold cache.
-  const nameResults = await metadata.getAllKeyValues({
-    databaseName,
-    tableName,
-    keyExpressions: ['MetricName'],
-    maxValuesPerKey: MAX_METRIC_NAMES_PER_KIND,
-    connectionId,
-    dateRange,
-    timestampValueExpression,
-    signal,
-  });
-  const names = nameResults[0]?.value.map(v => v.toString()) ?? [];
-  if (names.length === 0) return [];
-
-  // Best-effort enrichment with unit + description. One small query
-  // returns one row per metric name with the most-recent unit / desc.
-  let enrichments: Record<string, { unit?: string; description?: string }> = {};
-  if ((hasUnit || hasDescription) && !signal.aborted) {
-    try {
-      enrichments = await fetchMetricNameEnrichments({
-        clickhouseClient,
-        databaseName,
-        tableName,
-        connectionId,
-        names,
-        dateRange,
-        hasUnit,
-        hasDescription,
-        signal,
-      });
-    } catch (e) {
-      logger.warn(
-        { databaseName, tableName, error: e },
-        'Failed to enrich metric names with unit/description',
-      );
-    }
-  }
-
-  return names.map(name => {
-    const enrichment = enrichments[name] ?? {};
-    const sample: MetricNameSample = { name };
-    if (enrichment.unit) sample.unit = enrichment.unit;
-    if (enrichment.description) sample.description = enrichment.description;
-    return sample;
-  });
-}
-
-/**
- * Fetch MetricUnit and MetricDescription for a batch of metric names.
- * Uses `anyLast` so the most-recent value wins when a metric has changed
- * unit/description over time.
- */
-async function fetchMetricNameEnrichments({
-  clickhouseClient,
-  databaseName,
-  tableName,
-  connectionId,
-  names,
-  dateRange,
-  hasUnit,
-  hasDescription,
-  signal,
-}: {
-  clickhouseClient: ClickhouseClient;
-  databaseName: string;
-  tableName: string;
-  connectionId: string;
-  names: string[];
-  dateRange: [Date, Date];
-  hasUnit: boolean;
-  hasDescription: boolean;
-  signal: AbortSignal;
-}): Promise<Record<string, { unit?: string; description?: string }>> {
-  // Build the projection fragments via the parameterised chSql DSL so
-  // identifiers are quoted and the unit/description columns only appear
-  // when present on the source table.
-  const projections = [
-    chSql`MetricName`,
-    ...(hasUnit
-      ? [chSql`anyLast(${{ Identifier: 'MetricUnit' }}) AS MetricUnit`]
-      : []),
-    ...(hasDescription
-      ? [
-          chSql`anyLast(${{ Identifier: 'MetricDescription' }}) AS MetricDescription`,
-        ]
-      : []),
-  ];
-  const namePlaceholders = concatChSql(
-    ',',
-    names.map(name => chSql`${{ String: name }}`),
-  );
-  const sql = chSql`
-    SELECT ${concatChSql(', ', projections)}
-    FROM ${tableExpr({ database: databaseName, table: tableName })}
-    WHERE MetricName IN (${namePlaceholders})
-      AND TimeUnix >= fromUnixTimestamp64Milli(${{ Int64: dateRange[0].getTime() }})
-      AND TimeUnix <= fromUnixTimestamp64Milli(${{ Int64: dateRange[1].getTime() }})
-    GROUP BY MetricName
-  `;
-
-  type EnrichmentRow = {
-    MetricName: string;
-    MetricUnit?: string;
-    MetricDescription?: string;
-  };
-
-  const response = await clickhouseClient.query<'JSON'>({
-    query: sql.sql,
-    query_params: sql.params,
-    format: 'JSON',
-    connectionId,
-    abort_signal: signal,
-  });
-  const result = (await response.json()) as { data: EnrichmentRow[] };
-
-  const enrichments: Record<string, { unit?: string; description?: string }> =
-    {};
-  for (const row of result.data) {
-    enrichments[row.MetricName] = {
-      ...(row.MetricUnit ? { unit: row.MetricUnit } : {}),
-      ...(row.MetricDescription ? { description: row.MetricDescription } : {}),
-    };
-  }
-  return enrichments;
-}
-
-/**
- * Core schema-discovery logic. Extracted so the caller can wrap it in
- * Promise.race for wall-clock timeout enforcement.
+ * Core schema-discovery logic. Stages after the column schema stop when
+ * `signal` aborts, and the result is flagged partial.
  */
 async function describeSourceSchema(
   teamId: string,
   sourceId: string,
   signal: AbortSignal,
-) {
+  progress: DescribeProgress,
+): Promise<ToolResult> {
   const source = await getSource(teamId, sourceId);
   if (!source) {
     return mcpUserError(
@@ -294,6 +146,8 @@ async function describeSourceSchema(
       body: source.bodyExpression,
       serviceName: source.serviceNameExpression,
       severityText: source.severityTextExpression,
+      severityNumber: source.severityNumberExpression,
+      eventName: source.eventNameExpression,
       traceId: source.traceIdExpression,
     };
   } else if (source.kind === SourceKind.Metric) {
@@ -387,6 +241,44 @@ async function describeSourceSchema(
     jsType: convertCHDataTypeToJSType(c.type),
   }));
 
+  const isMetricSource = source.kind === SourceKind.Metric;
+  const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
+  const lcColumns = columns.filter(c => {
+    const normalized = c.type.replace(/\s/g, '');
+    return (
+      normalized.startsWith('LowCardinality(') &&
+      (normalized.includes('String') || normalized.includes('string'))
+    );
+  });
+  const metricKinds =
+    source.kind === SourceKind.Metric
+      ? DISCOVERABLE_METRIC_KINDS.flatMap(kind => {
+          const kindTableName = source.metricTables[kind];
+          return kindTableName ? [{ kind, kindTableName }] : [];
+        })
+      : [];
+  // Stages with nothing to sample can't be skipped, so the snapshot must not
+  // report them as missing.
+  const optionalStages = [
+    ...(mapColumns.length > 0 ? ['mapAttributeKeys'] : []),
+    ...(lcColumns.length > 0 ? ['lowCardinalityValues'] : []),
+    ...(mapColumns.length > 0 ? ['mapAttributeValues'] : []),
+    ...(metricKinds.length > 0 ? ['metricNames'] : []),
+  ];
+  const finishedStages = new Set<string>();
+  progress.snapshot = () =>
+    formatDescribeResult({
+      sourceId,
+      meta,
+      isMetricSource,
+      skippedStages: [
+        ...skippedStages,
+        ...optionalStages.filter(
+          s => !finishedStages.has(s) && !skippedStages.includes(s),
+        ),
+      ],
+    });
+
   // ── 2. Map attribute keys ─────────────────────────────────────────────
   // timestampValueExpression is threaded into getMapKeys / getAllKeyValues /
   // sampleMetricNamesForKind below so the no-rollup fallback path (i.e.
@@ -394,12 +286,11 @@ async function describeSourceSchema(
   // can scope its scan to dateRange instead of going unbounded against
   // the raw metric table on cold cache.
   const timestampValueExpression = source.timestampValueExpression;
-  const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]);
   const mapKeysResults: Record<string, string[]> = {};
 
   if (!signal.aborted) {
     await Promise.all(
-      (mapColumns ?? []).map(async col => {
+      mapColumns.map(async col => {
         try {
           const keys = await metadata.getMapKeys({
             databaseName,
@@ -413,6 +304,8 @@ async function describeSourceSchema(
             signal,
           });
           mapKeysResults[col.name] = keys;
+          // Visible to the backstop snapshot before the other columns finish.
+          meta.mapAttributeKeys = mapKeysResults;
         } catch (e) {
           logger.warn(
             { sourceId, column: col.name, error: e },
@@ -423,22 +316,24 @@ async function describeSourceSchema(
     );
   }
 
-  if (signal.aborted && Object.keys(mapKeysResults).length === 0) {
+  // Any column still missing at the abort means the key list is incomplete.
+  if (
+    signal.aborted &&
+    Object.keys(mapKeysResults).length < mapColumns.length
+  ) {
     skippedStages.push('mapAttributeKeys');
   }
-  if (Object.keys(mapKeysResults).length > 0) {
-    meta.mapAttributeKeys = mapKeysResults;
+  finishedStages.add('mapAttributeKeys');
+  // No keys and no abort means stage 4 has nothing to sample. No keys because
+  // of the abort means it was never sampled, matching the backstop snapshot.
+  if (Object.keys(mapKeysResults).length === 0) {
+    if (signal.aborted && mapColumns.length > 0) {
+      skippedStages.push('mapAttributeValues');
+    }
+    finishedStages.add('mapAttributeValues');
   }
 
   // ── 3. Low-cardinality column value sampling ──────────────────────────
-  const lcColumns = columns.filter(c => {
-    const normalized = c.type.replace(/\s/g, '');
-    return (
-      normalized.startsWith('LowCardinality(') &&
-      (normalized.includes('String') || normalized.includes('string'))
-    );
-  });
-
   const lowCardinalityValues: Record<string, string[]> = {};
 
   if (lcColumns.length > 0 && !signal.aborted) {
@@ -464,12 +359,15 @@ async function describeSourceSchema(
     }
   }
 
-  if (signal.aborted && Object.keys(lowCardinalityValues).length === 0) {
+  // getAllKeyValues drops aborted chunks instead of throwing, so any result
+  // returned after the abort may be missing keys.
+  if (lcColumns.length > 0 && signal.aborted) {
     skippedStages.push('lowCardinalityValues');
   }
   if (Object.keys(lowCardinalityValues).length > 0) {
     meta.lowCardinalityValues = lowCardinalityValues;
   }
+  finishedStages.add('lowCardinalityValues');
 
   // ── 4. Map attribute value sampling (best-effort) ─────────────────────
   if (Object.keys(mapKeysResults).length > 0 && !signal.aborted) {
@@ -507,7 +405,7 @@ async function describeSourceSchema(
       // Best-effort; skip on failure
     }
 
-    if (signal.aborted && Object.keys(mapAttributeValues).length === 0) {
+    if (signal.aborted) {
       skippedStages.push('mapAttributeValues');
     }
     if (Object.keys(mapAttributeValues).length > 0) {
@@ -517,39 +415,39 @@ async function describeSourceSchema(
     // Signal was already aborted before we started this stage
     skippedStages.push('mapAttributeValues');
   }
+  finishedStages.add('mapAttributeValues');
 
   // ── 5. Metric name + unit + description sampling ──────────────────────
-  // For metric sources, sample distinct MetricName values per queryable
-  // kind so the agent has a starter list without needing a follow-up call
-  // to clickstack_list_metrics for the common case (<= 20 metrics/kind).
+  // For metric sources, sample distinct MetricName values per discoverable
+  // kind (including the non-queryable summary kind, so agents know those
+  // metrics exist) so the agent has a starter list without needing a
+  // follow-up call to clickstack_list_metrics for the common case
+  // (<= 20 metrics/kind).
   // Defensively check for MetricUnit / MetricDescription columns: they
   // exist on the standard OTel Collector schema but a custom metric table
   // may not declare them.
-  if (source.kind === SourceKind.Metric && !signal.aborted) {
+  if (metricKinds.length > 0 && !signal.aborted) {
     const metricNames: Record<string, MetricNameSample[]> = {};
+    let sampledKinds = 0;
     await Promise.all(
-      QUERYABLE_METRIC_KINDS.map(async kind => {
-        const kindTableName = source.metricTables[kind];
-        if (!kindTableName) return;
+      metricKinds.map(async ({ kind, kindTableName }) => {
         try {
-          const samples = await sampleMetricNamesForKind({
+          const samples = await sampleMetricNamesWithLookback({
             metadata,
             clickhouseClient,
             databaseName,
             tableName: kindTableName,
             connectionId,
-            dateRange,
+            now,
             timestampValueExpression,
             signal,
-            // Reuse representative columns when the kind matches the
-            // representative table to avoid a second getColumns round-trip.
-            cachedColumns:
-              representativeMetric?.tableName === kindTableName
-                ? columns
-                : undefined,
           });
+          // The sampler returns [] rather than throwing when aborted, so an
+          // empty result after the abort may just be a cut-short lookback.
+          if (samples.length > 0 || !signal.aborted) sampledKinds++;
           if (samples.length > 0) {
             metricNames[kind] = samples;
+            meta.metricNames = metricNames;
           }
         } catch (e) {
           logger.warn(
@@ -559,19 +457,39 @@ async function describeSourceSchema(
         }
       }),
     );
-    if (signal.aborted && Object.keys(metricNames).length === 0) {
+    if (signal.aborted && sampledKinds < metricKinds.length) {
       skippedStages.push('metricNames');
     }
-    if (Object.keys(metricNames).length > 0) {
-      meta.metricNames = metricNames;
-    }
+  } else if (metricKinds.length > 0) {
+    skippedStages.push('metricNames');
   }
+  finishedStages.add('metricNames');
 
-  // Flag partial results so the LLM knows value samples may be incomplete
-  if (skippedStages.length > 0) {
-    meta.partial = true;
-    meta.skippedStages = skippedStages;
-  }
+  progress.partial = skippedStages.length > 0;
+  return formatDescribeResult({
+    sourceId,
+    meta,
+    isMetricSource,
+    skippedStages,
+  });
+}
+
+function formatDescribeResult({
+  sourceId,
+  meta,
+  isMetricSource,
+  skippedStages,
+}: {
+  sourceId: string;
+  meta: Record<string, unknown>;
+  isMetricSource: boolean;
+  skippedStages: string[];
+}): ToolResult {
+  // Flag partial results so the LLM knows value samples may be incomplete.
+  // Copy rather than mutate: the backstop snapshot renders `meta` while
+  // discovery may still be writing to it.
+  const source =
+    skippedStages.length > 0 ? { ...meta, partial: true, skippedStages } : meta;
 
   const lcValuesHint =
     skippedStages.length > 0
@@ -580,16 +498,17 @@ async function describeSourceSchema(
       : 'These are the REAL values in your data — use them in filters instead of guessing. ' +
         'Example: where: "SeverityText:error" (if \'error\' appears in the sampled values above).';
 
-  const isMetricSource = source.kind === SourceKind.Metric;
   const queryNextStep = isMetricSource
-    ? `Use clickstack_timeseries or clickstack_table with sourceId "${sourceId}" and metricType/metricName from above.`
+    ? `Use clickstack_timeseries or clickstack_table with sourceId "${sourceId}" and metricType/metricName from above. ` +
+      'Summary metrics (metricTables.summary) are not supported by those tools — ' +
+      "query the summary table with clickstack_sql using this source's connectionId."
     : `Use clickstack_timeseries, clickstack_table, or clickstack_search with sourceId "${sourceId}" and the columns/attributes above.`;
   const discoveryNextStep = isMetricSource
     ? `For more metric names than the sample above, call clickstack_list_metrics with sourceId "${sourceId}". For per-metric attribute keys + sampled values, call clickstack_describe_metric with sourceId and metricName.`
     : undefined;
 
   const { data: output, isTrimmed } = trimToolResponse({
-    source: meta,
+    source,
     usage: {
       topLevelColumns:
         'Use directly in valueExpression/groupBy with PascalCase: Duration, StatusCode, SpanName',
@@ -598,8 +517,10 @@ async function describeSourceSchema(
       lowCardinalityValues: lcValuesHint,
       ...(isMetricSource && {
         metricNames:
-          'Each entry maps a metric kind (gauge/sum/histogram/exponential histogram) to a sample of metric names ' +
-          'available on that table. Pass metricType + metricName on each select item.',
+          'Each entry maps a metric kind (gauge/sum/histogram/exponential histogram/summary) to a sample of metric names ' +
+          'available on that table. Pass metricType + metricName on each select item. ' +
+          'EXCEPTION: summary metrics cannot be charted — query them with clickstack_sql ' +
+          "against the table in metricTables.summary using this source's connectionId.",
       }),
     },
     nextSteps: {
@@ -637,6 +558,7 @@ export function registerDescribeSource({
     'clickstack_describe_source',
     {
       title: 'Describe Source Schema',
+      annotations: READ_ONLY_TOOL,
       description:
         'CALL THIS BEFORE WRITING QUERIES — prevents unknown-column errors.\n\n' +
         'Returns the full column schema, map-attribute keys, and sampled low-cardinality ' +
@@ -650,6 +572,8 @@ export function registerDescribeSource({
         '(SeverityText, StatusCode, ServiceName, etc.) — use these in filters instead of guessing\n' +
         '- mapAttributeValues: sampled top values for the most common map attribute keys ' +
         "(e.g. ResourceAttributes['service.name'] top values) — requires rollup tables\n\n" +
+        `Value sampling stops after ${MCP_QUERY_MAX_EXECUTION_SEC} seconds. If it is cut short, the result still includes ` +
+        'the columns and sets partial: true with skippedStages listing what is missing.\n\n' +
         'Cost: one describe call prevents 3–5 exploratory queries against non-existent columns.',
       inputSchema: z.object({
         sourceId: z
@@ -660,46 +584,58 @@ export function registerDescribeSource({
       }),
     },
     async ({ sourceId }) => {
-      const controller = new AbortController();
+      const progress: DescribeProgress = {};
 
-      // Promise.race enforces wall-clock timeout regardless of whether
-      // internal ClickHouse calls honour the AbortSignal. Hoist the
-      // timer handle so the finally block can cancel it on the success
-      // path — otherwise a stale controller.abort() fires
-      // DESCRIBE_TIMEOUT_MS after every successful call and the
-      // setTimeout closure stays pinned for the same duration.
-      let timeoutId: ReturnType<typeof setTimeout> | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort();
-          reject(new Error('DESCRIBE_TIMEOUT'));
-        }, DESCRIBE_TIMEOUT_MS);
-      });
-
-      try {
-        return await Promise.race([
-          describeSourceSchema(teamId.toString(), sourceId, controller.signal),
-          timeoutPromise,
-        ]);
-      } catch (e) {
-        if (e instanceof Error && e.message === 'DESCRIBE_TIMEOUT') {
+      const span = trace.getActiveSpan();
+      const recordOutcome = (
+        outcome: 'complete' | 'partial' | 'timeout' | 'error',
+      ) => {
+        span?.setAttribute('mcp.describe_source.outcome', outcome);
+        if (outcome === 'partial' || outcome === 'timeout') {
           logger.warn(
-            { teamId, sourceId },
-            'clickstack_describe_source timed out',
-          );
-          return mcpServerError(
-            'Schema discovery timed out. The ClickHouse server may be under load. ' +
-              'Try again, or use clickstack_list_sources for basic source info without schema details.',
+            { teamId, sourceId, outcome },
+            'clickstack_describe_source hit its deadline',
           );
         }
+      };
+      const timedOutResult = () => {
+        if (progress.snapshot) {
+          recordOutcome('partial');
+          return progress.snapshot();
+        }
+        recordOutcome('timeout');
+        return mcpServerError(
+          'Schema discovery timed out before the column schema loaded. ' +
+            'The ClickHouse server may be under load. Try again, or use ' +
+            'clickstack_list_sources for basic source info without schema details.',
+        );
+      };
+
+      // At the deadline, discovery skips its remaining stages and returns
+      // what it has. The grace window covers ClickHouse calls that ignore
+      // the signal: past it we answer from the latest snapshot instead.
+      let outcome: TimeoutOutcome<ToolResult>;
+      try {
+        outcome = await runWithTimeout(
+          signal =>
+            describeSourceSchema(teamId.toString(), sourceId, signal, progress),
+          { timeoutMs: DESCRIBE_TIMEOUT_MS, graceMs: DESCRIBE_BACKSTOP_MS },
+        );
+      } catch (e) {
         logger.warn(
           { teamId, sourceId, error: e },
           'Failed to describe source schema',
         );
         throw e;
-      } finally {
-        if (timeoutId !== undefined) clearTimeout(timeoutId);
       }
+      if (outcome.timedOut) {
+        return timedOutResult();
+      }
+      const result = outcome.value;
+      recordOutcome(
+        result.isError ? 'error' : progress.partial ? 'partial' : 'complete',
+      );
+      return result;
     },
   );
 }

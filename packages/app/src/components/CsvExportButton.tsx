@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react';
-import Papa from 'papaparse';
+
+import { downloadCsv } from '@/utils/csv';
 
 interface CsvExportButtonProps {
   data: Record<string, any>[];
@@ -33,25 +34,7 @@ export const CsvExportButton: React.FC<CsvExportButtonProps> = ({
 
       onExportStart?.();
 
-      const csv = Papa.unparse(data, {
-        quotes: true,
-        quoteChar: '"',
-        escapeChar: '"',
-        delimiter: ',',
-        header: true,
-      });
-      const blob = new Blob([`\ufeff${csv}`], {
-        type: 'text/csv;charset=utf-8;',
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download =
-        typeof filename === 'string' ? `${filename}.csv` : `${filename()}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      downloadCsv(data, typeof filename === 'string' ? filename : filename());
 
       onExportComplete?.();
     } catch (error) {

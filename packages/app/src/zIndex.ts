@@ -1,8 +1,8 @@
-import { createContext, useContext } from 'react';
+import { createContext, use } from 'react';
 
 export const ZIndexContext = createContext(0);
 
 export function useZIndex() {
-  const zIndex = useContext(ZIndexContext);
+  const zIndex = use(ZIndexContext);
   return zIndex;
 }

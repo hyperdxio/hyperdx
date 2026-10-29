@@ -360,6 +360,13 @@ export default function SessionSubpanel({
     ] as DateRange['dateRange'];
   }, [playerStartTs, playerEndTs]);
 
+  // The window the events query itself uses, so autocomplete discovers the
+  // same fields and values the event list can actually match on.
+  const eventsDateRange = useMemo(
+    () => [start, end] as DateRange['dateRange'],
+    [start, end],
+  );
+
   const { getFieldExpression: getSessionSourceFieldExpression } =
     useFieldExpressionGenerator(sessionSource);
 
@@ -451,10 +458,11 @@ export default function SessionSubpanel({
           >
             <SearchWhereInput
               tableConnection={tcFromSource(traceSource)}
+              sourceId={traceSource.id}
+              dateRange={eventsDateRange}
               control={control}
               name="where"
               size="xs"
-              showLabel={false}
               enableHotkey
               onSubmit={handleSubmit(handleWhereSubmit)}
               onLanguageChange={onLanguageChange}

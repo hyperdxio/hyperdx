@@ -289,7 +289,6 @@ export default function RowOverview({
 
   // ---- render with scrolling ---------------------------------------
 
-  const totalRows = allRows.length;
   const visibleRows =
     maxRows != null
       ? allRows.slice(scrollOffset, scrollOffset + maxRows)

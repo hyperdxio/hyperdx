@@ -90,10 +90,10 @@ export function asTaskArgs(argv: any): TaskArgs {
  * Interface for HyperDX task implementations.
  * All tasks must implement execute and asyncDispose methods.
  */
-export interface HdxTask<T extends TaskArgs> {
+export interface HdxTask {
   /**
-   * Executes the main task logic with validated arguments.
-   * @param args - Validated command line arguments
+   * Executes the main task logic. Validated arguments are injected via the
+   * implementing class's constructor rather than passed to execute().
    */
   execute(): Promise<void>;
 

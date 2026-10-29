@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { HTTPError } from 'ky';
 import CopyToClipboard from 'react-copy-to-clipboard';
+import { Badge } from '@clickhouse/click-ui';
 import {
-  Badge,
   Box,
   Button,
   Card,
@@ -131,6 +131,18 @@ export default function TeamMembersSection() {
           },
           onError: e => {
             if (e instanceof HTTPError) {
+              // The delete is team-scoped, so an invite that is already gone
+              // comes back 404 with no body. From the user's side that is a
+              // no-op, not something worth the contact-support message.
+              if (e.response.status === 404) {
+                notifications.show({
+                  color: 'yellow',
+                  message: 'That invite has already been removed',
+                  autoClose: 5000,
+                });
+                refetchInvitations();
+                return;
+              }
               e.response
                 .json()
                 .then(res => {
@@ -231,9 +243,14 @@ export default function TeamMembersSection() {
                     <Table.Td>
                       <div>
                         {member.isCurrentUser && (
-                          <Badge variant="light" mr="xs" tt="none">
-                            You
-                          </Badge>
+                          <Badge
+                            size="sm"
+                            text="You"
+                            state="info"
+                            style={{
+                              marginRight: 'var(--mantine-spacing-xs)',
+                            }}
+                          />
                         )}
                         <span className="text-white fw-bold fs-7">
                           {member.name}
@@ -251,13 +268,10 @@ export default function TeamMembersSection() {
                     <Table.Td>
                       {member.groupName && (
                         <Badge
-                          variant="light"
-                          color="green"
-                          fw="normal"
-                          tt="none"
-                        >
-                          {member.groupName}
-                        </Badge>
+                          size="sm"
+                          text={member.groupName}
+                          state="success"
+                        />
                       )}
                     </Table.Td>
                     <Table.Td style={{ textAlign: 'right' }}>
@@ -291,9 +305,13 @@ export default function TeamMembersSection() {
                       </span>
                     </Table.Td>
                     <Table.Td>
-                      <Badge variant="dot" color="gray" fw="normal" tt="none">
-                        Pending Invite
-                      </Badge>
+                      <Badge
+                        size="sm"
+                        text="Pending invite"
+                        state="neutral"
+                        icon="dot"
+                        iconDir="start"
+                      />
                       <CopyToClipboard text={invitation.url}>
                         <Button size="compact-xs" variant="secondary" ml="xs">
                           📋 Copy URL

@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { Badge } from '@clickhouse/click-ui';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -30,8 +30,8 @@ import {
 import { IS_LOCAL_MODE } from '@/config';
 import { useConnections } from '@/connection';
 import { useSources } from '@/source';
-import { capitalizeFirstLetter } from '@/utils';
 
+import { SOURCE_KIND_LABELS } from './SourceForm/constants';
 import { TableSourceForm } from './SourceForm';
 
 import styles from './Sources.module.scss';
@@ -206,14 +206,12 @@ export function SourcesList({
                     {s.name}
                   </Text>
                   {s.disabled && (
-                    <Badge size="xs" variant="light" color="gray">
-                      Disabled
-                    </Badge>
+                    <Badge size="sm" text="Disabled" state="neutral" />
                   )}
                 </Group>
                 <Text size={subtextSize} c="dimmed" mt={4}>
                   <Group gap="xs">
-                    {capitalizeFirstLetter(s.kind)}
+                    {SOURCE_KIND_LABELS[s.kind]}
                     {s.section && (
                       <Group gap={4}>
                         <IconFolder size={iconSize} />

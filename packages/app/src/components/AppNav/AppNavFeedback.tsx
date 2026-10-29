@@ -45,7 +45,7 @@ export const AppNavFeedback = () => (
 );
 
 const AppNavFeedbackInner = () => {
-  const { isCollapsed } = React.useContext(AppNavContext);
+  const { isCollapsed } = React.use(AppNavContext);
   const [forceEnabled] = useLocalStorage<boolean>({
     key: FORCE_ENABLE_KEY,
     defaultValue: false,

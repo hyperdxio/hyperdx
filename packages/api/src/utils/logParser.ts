@@ -4,11 +4,6 @@ import type { Json, JSONBlob } from './common';
 import { tryJSONStringify } from './common';
 export type KeyPath = string[];
 
-enum AggregationTemporality {
-  Delta = 1,
-  Cumulative = 2,
-}
-
 export enum LogType {
   Log = 'log',
   Metric = 'metric',
@@ -211,79 +206,3 @@ export type VectorMetric = {
   u: string; // unit
   v: number; // value
 };
-
-abstract class ParsingInterface<T, S> {
-  abstract _parse(log: T, ...args: any[]): S;
-
-  parse(logs: T[], ...args: any[]) {
-    const parsedLogs: S[] = [];
-    for (const log of logs) {
-      try {
-        parsedLogs.push(this._parse(log, ...args));
-      } catch (e) {
-        // continue if parser fails to parse single log
-        console.warn(e);
-      }
-    }
-    return parsedLogs;
-  }
-}
-
-class VectorLogParser extends ParsingInterface<VectorLog, LogStreamModel> {
-  getType(log: VectorLog): LogType {
-    if (log.hdx_platform === LogPlatform.OtelTraces) {
-      return LogType.Span;
-    } else if (log.hdx_platform === LogPlatform.OtelMetrics) {
-      return LogType.Metric;
-    }
-    return LogType.Log;
-  }
-
-  _parse(log: VectorLog): LogStreamModel {
-    return {
-      ...mapObjectToKeyValuePairs(log.b),
-      _platform: log.hdx_platform,
-      _service: log.sv,
-      _source: log.r,
-      observed_timestamp: log.tso,
-      timestamp: log.ts,
-      type: this.getType(log),
-      // Log
-      _host: log.h,
-      severity_text: log.st,
-      severity_number: log.sn,
-      // Span
-      end_timestamp: log.et,
-      span_name: log.s_n,
-      parent_span_id: log.p_id,
-      span_id: log.s_id,
-      trace_id: log.t_id,
-    };
-  }
-}
-
-class VectorMetricParser extends ParsingInterface<VectorMetric, MetricModel> {
-  _parse(metric: VectorMetric): MetricModel {
-    return {
-      _string_attributes: metric.b as any, // TODO: fix conversion of metric.b to proper string map
-      data_type: metric.dt,
-      is_delta: metric.at === AggregationTemporality.Delta,
-      is_monotonic: metric.im,
-      name: metric.n,
-      timestamp: metric.ts,
-      unit: metric.u,
-      value: metric.v,
-    };
-  }
-}
-
-class VectorRrwebParser extends ParsingInterface<VectorLog, RrwebEventModel> {
-  _parse(log: VectorLog): RrwebEventModel {
-    return {
-      ...mapObjectToKeyValuePairs(log.b),
-      _service: log.sv,
-      _source: log.r,
-      timestamp: log.ts,
-    };
-  }
-}

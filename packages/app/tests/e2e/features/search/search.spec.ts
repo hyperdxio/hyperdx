@@ -1,5 +1,9 @@
 import { SearchPage } from '../../page-objects/SearchPage';
 import { expect, test } from '../../utils/base-test';
+import {
+  expectFieldSuggestion,
+  switchWhereToLucene,
+} from '../../utils/lucene-autocomplete';
 
 test.describe('Search', { tag: '@search' }, () => {
   let searchPage: SearchPage;
@@ -60,6 +64,91 @@ test.describe('Search', { tag: '@search' }, () => {
           await searchPage.sidePanel.clickTab(tabName);
           await expect(searchPage.sidePanel.getTab(tabName)).toBeVisible();
         }
+      });
+
+      await test.step("Lucene autocomplete works in Surrounding Context's custom filter", async () => {
+        await searchPage.sidePanel.clickTab('context');
+        await searchPage.sidePanel.setContextBy('Custom');
+
+        const whereInput = searchPage.sidePanel.contextTab.getByPlaceholder(
+          'Search your events w/ Lucene ex. column:foo',
+        );
+        await switchWhereToLucene(
+          searchPage.sidePanel.contextTab.getByTestId('where-language-switch'),
+        );
+
+        // This input's date range is the narrow window around the selected row,
+        // so it only ever suggested anything once it was given both that range
+        // and the source id.
+        await expectFieldSuggestion(whereInput, {
+          prefix: 'Servi',
+          field: 'ServiceName',
+        });
+      });
+    });
+
+    // The search table persists column widths under a tableId, which once
+    // dropped the table's sort state: every header click re-sorted ascending.
+    test('should toggle sort direction when a column header is clicked', async ({
+      page,
+    }) => {
+      await searchPage.submitEmptySearch();
+      await expect(searchPage.table.firstRow).toBeVisible();
+
+      const sortButton = searchPage.table.getSortButton('ServiceName');
+      const indicator = searchPage.table.getSortIndicator('ServiceName');
+
+      await sortButton.click();
+      await expect(indicator).toHaveClass('sorted-asc');
+      await expect(page).toHaveURL(/orderBy=ServiceName%2520ASC/);
+
+      await sortButton.click();
+      await expect(indicator).toHaveClass('sorted-desc');
+      await expect(page).toHaveURL(/orderBy=ServiceName%2520DESC/);
+
+      await page.reload();
+      await expect(searchPage.table.firstRow).toBeVisible();
+      await expect(indicator).toHaveClass('sorted-desc');
+    });
+  });
+
+  // A row click opens the side panel by default; inline expansion is opt-in.
+  test.describe('Row click set to expand inline', () => {
+    test.beforeEach(async ({ page }) => {
+      await page.addInitScript(() => {
+        window.localStorage.setItem(
+          'hdx-user-preferences',
+          // `colorMode` is what marks stored preferences as already migrated.
+          JSON.stringify({ colorMode: 'dark', rowClickAction: 'expand' }),
+        );
+      });
+      searchPage = new SearchPage(page);
+      await searchPage.goto();
+    });
+
+    test('should expand a result row inline when its body is clicked', async () => {
+      await test.step('Perform search', async () => {
+        await searchPage.submitEmptySearch();
+        await expect(searchPage.table.firstRow).toBeVisible();
+      });
+
+      await test.step('Clicking the row body expands it in place', async () => {
+        await searchPage.table.expandRowByBodyClick(0);
+
+        await expect(searchPage.table.firstExpandedRow).toBeVisible();
+        await expect(searchPage.sidePanel.container).toBeHidden();
+      });
+
+      await test.step('Clicking it again collapses the row', async () => {
+        await searchPage.table.clickRowBody(0);
+
+        await expect(searchPage.table.expandedRows).toHaveCount(0);
+      });
+
+      await test.step('The row hover button opens the side panel', async () => {
+        await searchPage.table.openFirstRowSidePanel();
+
+        await expect(searchPage.sidePanel.container).toBeVisible();
       });
     });
   });

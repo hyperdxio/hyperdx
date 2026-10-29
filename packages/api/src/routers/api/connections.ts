@@ -34,8 +34,18 @@ router.post(
     try {
       const { teamId } = getNonNullUserWithTeam(req);
 
+      // `platformProvisioned` records how a connection came to exist and
+      // decides whether IaC export treats it as safe to `terraform import`, so
+      // it is server-owned. `validateRequest` only validates — it does not
+      // replace `req.body` — so a client-supplied value would otherwise reach
+      // the model. Re-parsing rather than omitting the one key by name: zod
+      // strips every unknown key, so this holds for the next server-owned
+      // field too, and lodash's `omit` types its key as `keyof any` rather
+      // than `keyof T`, so a typo in the name would compile silently.
+      const body = ConnectionSchema.omit({ id: true }).parse(req.body);
+
       const connection = await createConnection(teamId.toString(), {
-        ...req.body,
+        ...body,
         password: req.body.password ?? '',
         team: teamId,
         hyperdxSettingPrefix: req.body.hyperdxSettingPrefix ?? undefined,
@@ -71,7 +81,10 @@ router.put(
         req.body.hyperdxSettingPrefix === null ||
         req.body.hyperdxSettingPrefix === '';
 
-      const { hyperdxSettingPrefix, ...restBody } = req.body;
+      // `platformProvisioned` is server-owned — see the POST handler above.
+      const { hyperdxSettingPrefix, ...restBody } = ConnectionSchema.parse(
+        req.body,
+      );
 
       const newConnection = {
         ...restBody,

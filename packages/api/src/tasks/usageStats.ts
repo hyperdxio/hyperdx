@@ -1,15 +1,11 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/node';
-import {
-  MetricsDataType,
-  SourceKind,
-  TMetricSource,
-} from '@hyperdx/common-utils/dist/types';
+import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
 import * as HyperDX from '@hyperdx/node-opentelemetry';
 import ms from 'ms';
 import os from 'os';
 import pino from 'pino';
 
+import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
 import Connection from '@/models/connection';
 import { Source, SourceDocument } from '@/models/source';
@@ -100,6 +96,8 @@ const getClickhouseTableSize = async () => {
         host: connection.host,
         username: connection.username,
         password: connection.password,
+        // This client is only used by this job.
+        attribution: { surface: 'api', label: 'usage-stats' },
       });
       const _rows = await clickhouseClient.query({
         query: `
@@ -124,7 +122,7 @@ const getClickhouseTableSize = async () => {
       });
       const res = await _rows.json<ResponseJSON<any>>();
       results.push(...res.data);
-    } catch (error) {
+    } catch {
       // ignore
     }
   }
@@ -178,7 +176,7 @@ async function getUsageStats() {
       },
       'track-hyperdx-oss-usage-stats',
     );
-  } catch (err) {
+  } catch {
     // ignore
   }
 }

@@ -1,6 +1,7 @@
 import React from 'react';
 /* Polyfills for browser APIs in Node.js test environment */
 import { TextDecoder, TextEncoder } from 'util';
+import { ClickUIProvider } from '@clickhouse/click-ui';
 import { MantineProvider } from '@mantine/core';
 import { Notifications } from '@mantine/notifications';
 import { render } from '@testing-library/react';
@@ -17,6 +18,12 @@ class ResizeObserver {
   disconnect() {}
 }
 window.ResizeObserver = ResizeObserver;
+// jsdom has no scrollIntoView, and Mantine's Combobox calls it on the active
+// option when a dropdown opens — from a setTimeout, so the resulting TypeError
+// surfaces as an unrelated async test failure.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => undefined;
+}
 Object.defineProperty(window, 'matchMedia', {
   value: () => ({
     matches: false,
@@ -27,13 +34,17 @@ Object.defineProperty(window, 'matchMedia', {
   }),
 });
 
-global.renderWithMantine = (ui: React.ReactElement) => {
-  return render(
-    <MantineProvider>
+global.TestProviders = ({ children }: { children: React.ReactNode }) => (
+  <MantineProvider>
+    <ClickUIProvider theme="dark" persistTheme={false}>
       <Notifications />
-      {ui}
-    </MantineProvider>,
-  );
+      {children}
+    </ClickUIProvider>
+  </MantineProvider>
+);
+
+global.renderWithMantine = (ui: React.ReactElement) => {
+  return render(<TestProviders>{ui}</TestProviders>);
 };
 
 if (!globalThis.structuredClone) {
@@ -43,4 +54,6 @@ if (!globalThis.structuredClone) {
 
 declare global {
   function renderWithMantine(ui: React.ReactElement): ReturnType<typeof render>;
+  // `var`, not `const`, so the global assignment above passes type-check
+  var TestProviders: React.FC<{ children: React.ReactNode }>;
 }

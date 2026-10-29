@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_gauge
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
-TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+TTL toDateTime(TimeUnix) + ${METRICS_TTL}
 SETTINGS ttl_only_drop_parts = 1;
 
 -- +goose StatementBegin
@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_sum
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
-TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+TTL toDateTime(TimeUnix) + ${METRICS_TTL}
 SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_histogram
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
-TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+TTL toDateTime(TimeUnix) + ${METRICS_TTL}
 SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 
@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_exponential_histogram
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
-TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+TTL toDateTime(TimeUnix) + ${METRICS_TTL}
 SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 
@@ -204,7 +204,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_summary
 ENGINE = MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
-TTL toDateTime(TimeUnix) + ${TABLES_TTL}
+TTL toDateTime(TimeUnix) + ${METRICS_TTL}
 SETTINGS ttl_only_drop_parts = 1;
 -- +goose StatementEnd
 

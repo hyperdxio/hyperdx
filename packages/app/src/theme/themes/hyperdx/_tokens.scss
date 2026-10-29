@@ -51,8 +51,8 @@
   --color-bg-field-highlighted: var(--mantine-color-dark-6);
   --color-bg-field-addon: var(--mantine-color-dark-6);
   --color-bg-neutral: var(--mantine-color-dark-4);
-  --color-bg-brand: var(--mantine-color-green-4);
-  --color-bg-brand-hover: var(--mantine-color-green-3);
+  --color-bg-brand: var(--mantine-color-green-3);
+  --color-bg-brand-hover: var(--mantine-color-green-2);
   --color-bg-success: var(--mantine-color-green-5);
   --color-bg-danger: var(--mantine-color-red-4);
   --color-bg-warning: var(--mantine-color-orange-5);
@@ -71,9 +71,9 @@
   --color-bg-info-subtle-hover: #0c3256;
 
   /* Primary Button - uses brand green colors */
-  --color-primary-button-bg: var(--mantine-color-green-light);
-  --color-primary-button-bg-hover: var(--mantine-color-green-light-hover);
-  --color-primary-button-text: var(--mantine-color-green-light-color);
+  --color-primary-button-bg: var(--color-bg-brand);
+  --color-primary-button-bg-hover: var(--color-bg-brand-hover);
+  --color-primary-button-text: var(--mantine-color-black);
 
   /* Borders & Dividers */
   --color-border: var(--mantine-color-dark-6);
@@ -120,7 +120,7 @@
   --color-slider-dot-active: var(--mantine-color-green-8);
 
   /* Code / Misc UI */
-  --color-bg-code: var(--mantine-color-dark-8);
+  --color-bg-code: var(--mantine-color-dark-7);
   --color-border-code: var(--mantine-color-dark-6);
   --color-bg-kbd: var(--mantine-color-dark-9);
 
@@ -180,8 +180,8 @@
   --color-bg-field-highlighted: var(--mantine-color-white);
   --color-bg-field-addon: var(--mantine-color-white);
   --color-bg-neutral: var(--mantine-color-gray-5);
-  --color-bg-brand: var(--mantine-color-green-8);
-  --color-bg-brand-hover: var(--mantine-color-green-9);
+  --color-bg-brand: var(--mantine-color-green-7);
+  --color-bg-brand-hover: var(--mantine-color-green-8);
   --color-bg-success: var(--mantine-color-green-8);
   --color-bg-danger: var(--mantine-color-red-8);
   --color-bg-warning: var(--mantine-color-yellow-8);
@@ -199,9 +199,9 @@
   --color-bg-info-subtle-hover: var(--mantine-color-blue-1);
 
   /* Primary Button - uses brand green colors */
-  --color-primary-button-bg: var(--mantine-color-green-light);
-  --color-primary-button-bg-hover: var(--mantine-color-green-light-hover);
-  --color-primary-button-text: var(--mantine-color-green-light-color);
+  --color-primary-button-bg: var(--color-bg-brand);
+  --color-primary-button-bg-hover: var(--color-bg-brand-hover);
+  --color-primary-button-text: var(--mantine-color-white);
 
   /* Borders & Dividers - inverted */
   --color-border: var(--mantine-color-gray-1);
@@ -260,7 +260,7 @@
   --color-slider-dot-active: var(--mantine-color-gray-1);
 
   /* Code / Misc UI - inverted */
-  --color-bg-code: var(--mantine-color-dark-1);
+  --color-bg-code: var(--mantine-color-gray-0);
   --color-border-code: var(--mantine-color-dark-3);
   --color-bg-kbd: var(--mantine-color-dark-0);
 

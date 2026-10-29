@@ -9,6 +9,7 @@ import {
   AlertThresholdType,
   DisplayType,
   MetricsDataType,
+  PromqlReducer,
   SourceKind,
 } from '@hyperdx/common-utils/dist/types';
 
@@ -17,6 +18,8 @@ import {
   convertFormStateToChartConfig,
   convertFormStateToSavedChartConfig,
   convertSavedChartConfigToFormState,
+  getAllowedSourceKinds,
+  promqlExpressionPlaceholder,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
 
@@ -70,6 +73,25 @@ const traceSource: TSource = {
   durationPrecision: 9,
 };
 
+const sessionSource: TSource = {
+  id: 'source-session',
+  name: 'Session Source',
+  kind: SourceKind.Session,
+  connection: 'conn-1',
+  from: { databaseName: 'db', tableName: 'sessions' },
+  timestampValueExpression: 'Timestamp',
+  traceSourceId: 'source-trace',
+};
+
+const promqlSource: TSource = {
+  id: 'source-promql',
+  name: 'PromQL Source',
+  kind: SourceKind.Promql,
+  connection: 'conn-1',
+  from: { databaseName: 'db', tableName: 'prom' },
+  timestampValueExpression: 'Timestamp',
+};
+
 const seriesItem = {
   aggFn: 'count' as const,
   valueExpression: '*',
@@ -118,6 +140,46 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
+  it.each(['sql', 'promql'] as const)(
+    'persists description for a %s config',
+    configType => {
+      const form: ChartEditorFormState = {
+        configType,
+        displayType: DisplayType.Table,
+        sqlTemplate: 'SELECT 1',
+        promqlExpression: 'up',
+        connection: 'conn-1',
+        description: 'What this tile shows.',
+        series: [],
+      };
+      const result = convertFormStateToSavedChartConfig(form, undefined);
+      expect(result).toMatchObject({ description: 'What this tile shows.' });
+    },
+  );
+
+  it('persists description for a builder config', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Line,
+      description: 'What this tile shows.',
+      series: [seriesItem],
+    };
+    const result = convertFormStateToSavedChartConfig(form, logSource);
+    expect(result).toMatchObject({ description: 'What this tile shows.' });
+  });
+
+  it('persists backgroundChart for a promql+number config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      backgroundChart: { type: 'area' },
+      series: [],
+    };
+    const result = convertFormStateToSavedChartConfig(form, undefined);
+    expect(result).toMatchObject({ backgroundChart: { type: 'area' } });
+  });
+
   it('persists alternateRowBackground for a promql+table config', () => {
     const form: ChartEditorFormState = {
       configType: 'promql',
@@ -129,6 +191,36 @@ describe('convertFormStateToSavedChartConfig', () => {
     };
     const result = convertFormStateToSavedChartConfig(form, undefined);
     expect(result).toMatchObject({ alternateRowBackground: true });
+  });
+
+  it.each([0, 5])(
+    'persists seriesLimit=%s for a promql+line config',
+    seriesLimit => {
+      const form: ChartEditorFormState = {
+        configType: 'promql',
+        displayType: DisplayType.Line,
+        promqlExpression: 'up',
+        connection: 'conn-1',
+        seriesLimit,
+        series: [],
+      };
+      const result = convertFormStateToSavedChartConfig(form, undefined);
+      expect(result).toMatchObject({ seriesLimit });
+    },
+  );
+
+  it('carries seriesLimit into the queried config for a promql+line config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Line,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      seriesLimit: 5,
+      series: [],
+    };
+    const dateRange: [Date, Date] = [new Date(0), new Date(1000)];
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toMatchObject({ configType: 'promql', seriesLimit: 5 });
   });
 
   it('returns a raw SQL config for Line displayType', () => {
@@ -188,6 +280,16 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(result.select).toEqual([seriesItem]);
     expect('series' in result).toBe(false);
     expect(result.source).toBe('source-log');
+  });
+
+  it('drops the PromQL-only legendTemplate from builder configs', () => {
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Line,
+      series: [seriesItem],
+      legendTemplate: '{{pod}}',
+    };
+    const result = convertFormStateToSavedChartConfig(form, logSource);
+    expect(result).not.toHaveProperty('legendTemplate');
   });
 
   it('uses form.select string for Search displayType', () => {
@@ -388,6 +490,21 @@ describe('convertFormStateToChartConfig', () => {
     expect(result).toMatchObject({ alternateRowBackground: true });
   });
 
+  // The sparkline only renders if the rendered config carries this, and the
+  // promql branch builds its config from an explicit pick list.
+  it('threads backgroundChart into the rendered promql+number config', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      backgroundChart: { type: 'area' },
+      series: [],
+    };
+    const result = convertFormStateToChartConfig(form, dateRange, undefined);
+    expect(result).toMatchObject({ backgroundChart: { type: 'area' } });
+  });
+
   it('threads alternateRowBackground into the rendered promql+table config', () => {
     const form: ChartEditorFormState = {
       configType: 'promql',
@@ -483,6 +600,38 @@ describe('convertSavedChartConfigToFormState', () => {
     expect(result.configType).toBe('builder');
   });
 
+  // Clearing the legacy singular `channel` on load is what stops a stale value
+  // being submitted alongside an edited channels list, which the API rejects.
+  it('normalises a legacy channel-only tile alert onto channels', () => {
+    const config: BuilderSavedChartConfig = {
+      source: 'source-1',
+      displayType: DisplayType.Line,
+      select: [seriesItem],
+      where: '',
+      alert: {
+        threshold: 1,
+        thresholdType: AlertThresholdType.ABOVE,
+        interval: '5m',
+        channel: { type: 'webhook', webhookId: 'w1' },
+      },
+    };
+    const result = convertSavedChartConfigToFormState(config);
+    expect(result.alert?.channel).toBeUndefined();
+    expect(result.alert?.channels).toEqual([
+      { type: 'webhook', webhookId: 'w1' },
+    ]);
+  });
+
+  it('leaves a config without an alert untouched', () => {
+    const config: BuilderSavedChartConfig = {
+      source: 'source-1',
+      displayType: DisplayType.Line,
+      select: [seriesItem],
+      where: '',
+    };
+    expect(convertSavedChartConfigToFormState(config).alert).toBeUndefined();
+  });
+
   it('maps array select to series with aggConditionLanguage defaulted', () => {
     const selectItem = {
       aggFn: 'count' as const,
@@ -531,6 +680,311 @@ describe('convertSavedChartConfigToFormState', () => {
     expect(result.name).toBe('My Chart');
     expect(result.displayType).toBe(DisplayType.Table);
     expect(result.where).toBe('status = 200');
+  });
+});
+
+describe('PromQL expressions', () => {
+  const promqlForm = (
+    promqlExpressions: ChartEditorFormState['promqlExpressions'],
+    displayType: DisplayType = DisplayType.Line,
+  ): ChartEditorFormState => ({
+    configType: 'promql',
+    displayType,
+    connection: 'conn-1',
+    source: 'source-promql',
+    promqlExpressions,
+    series: [],
+  });
+
+  it('saves a heatmap with only its first expression queried and its heatmap settings', () => {
+    const result = convertFormStateToSavedChartConfig(
+      {
+        ...promqlForm([{ expression: 'up' }], DisplayType.Heatmap),
+        legendTemplate: '{{pod}}',
+        heatmap: { mode: 'distribution', scaleType: 'log' },
+        granularity: '5 minute',
+      },
+      undefined,
+    );
+    expect(result).toMatchObject({
+      configType: 'promql',
+      displayType: DisplayType.Heatmap,
+      promqlExpression: [{ expression: 'up' }],
+      legendTemplate: '{{pod}}',
+      granularity: '5 minute',
+      heatmap: { mode: 'distribution', scaleType: 'log' },
+    });
+  });
+
+  it('saves a histogram heatmap', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        {
+          ...promqlForm(
+            [{ expression: 'sum by (le) (x_bucket)' }],
+            DisplayType.Heatmap,
+          ),
+          heatmap: { mode: 'histogram' },
+        },
+        undefined,
+      ),
+    ).toMatchObject({ heatmap: { mode: 'histogram' } });
+  });
+
+  it('queries a heatmap with its heatmap settings', () => {
+    const result = convertFormStateToChartConfig(
+      {
+        ...promqlForm([{ expression: 'up' }], DisplayType.Heatmap),
+        heatmap: { mode: 'series' },
+      },
+      [new Date(0), new Date(1000)],
+      undefined,
+    );
+    expect(result).toMatchObject({ heatmap: { mode: 'series' } });
+  });
+
+  it('drops heatmap settings from PromQL tiles that are not heatmaps', () => {
+    const form = {
+      ...promqlForm([{ expression: 'up' }], DisplayType.Line),
+      heatmap: { mode: 'series' as const },
+    };
+    expect(
+      convertFormStateToSavedChartConfig(form, undefined),
+    ).not.toHaveProperty('heatmap', expect.anything());
+    expect(
+      convertFormStateToChartConfig(
+        form,
+        [new Date(0), new Date(1000)],
+        undefined,
+      ),
+    ).not.toHaveProperty('heatmap', expect.anything());
+  });
+
+  it('carries the PromQL source on the saved and queried configs', () => {
+    const form = promqlForm([{ expression: 'up' }]);
+    expect(
+      convertFormStateToSavedChartConfig(form, promqlSource),
+    ).toMatchObject({ source: 'source-promql' });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, promqlSource),
+    ).toMatchObject({ source: 'source-promql' });
+  });
+
+  it('saves the form rows as the expression list', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([
+          { expression: 'up', alias: 'up' },
+          { expression: 'rate(errors[5m])' },
+        ]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', alias: 'up' },
+        { expression: 'rate(errors[5m])' },
+      ],
+    });
+  });
+
+  it('trims aliases, dropping blank ones', () => {
+    const result = convertFormStateToSavedChartConfig(
+      promqlForm([{ expression: 'up', alias: '  up  ' }]),
+      undefined,
+    );
+    expect(result).toMatchObject({
+      promqlExpression: [{ expression: 'up', alias: 'up' }],
+    });
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([{ expression: 'up', alias: '   ' }]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [{ expression: 'up', alias: undefined }],
+    });
+  });
+
+  // The submitted config round-trips through the URL back into the form on the
+  // chart explorer, so a row dropped here vanishes from the editor.
+  it('keeps unfinished rows, and gives an empty form one row', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: '  ' }]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [{ expression: 'up' }, { expression: '  ' }],
+    });
+    expect(
+      convertFormStateToSavedChartConfig(promqlForm([]), undefined),
+    ).toMatchObject({ promqlExpression: [{ expression: '' }] });
+  });
+
+  it('keeps the query type and reducer a single-value chart supports', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm(
+          [
+            {
+              expression: 'up',
+              queryType: 'range',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+          DisplayType.Number,
+        ),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: 'range', reducer: PromqlReducer.Max },
+      ],
+    });
+  });
+
+  it('keeps the query type but drops the reducer on a table chart', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm(
+          [
+            {
+              expression: 'up',
+              queryType: 'instant',
+              reducer: PromqlReducer.Max,
+            },
+          ],
+          DisplayType.Table,
+        ),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: 'instant', reducer: undefined },
+      ],
+    });
+  });
+
+  // A stale `instant` on a time series tile would hide its granularity picker,
+  // and a reducer it never applies is dead weight in the saved config.
+  it('drops the query type and reducer a time series chart cannot offer', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        promqlForm([
+          {
+            expression: 'up',
+            queryType: 'instant',
+            reducer: PromqlReducer.Max,
+          },
+        ]),
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: undefined, reducer: undefined },
+      ],
+    });
+  });
+
+  it('drops them from the queried config too', () => {
+    expect(
+      convertFormStateToChartConfig(
+        promqlForm([
+          {
+            expression: 'up',
+            queryType: 'instant',
+            reducer: PromqlReducer.Max,
+          },
+        ]),
+        dateRange,
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up', queryType: undefined, reducer: undefined },
+      ],
+    });
+  });
+
+  it('keeps unfinished rows in the queried config too', () => {
+    expect(
+      convertFormStateToChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: '' }]),
+        dateRange,
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [{ expression: 'up' }, { expression: '' }],
+    });
+  });
+
+  it('threads the expression list into the rendered config', () => {
+    expect(
+      convertFormStateToChartConfig(
+        promqlForm([{ expression: 'up' }, { expression: 'rate(errors[5m])' }]),
+        dateRange,
+        undefined,
+      ),
+    ).toMatchObject({
+      promqlExpression: [
+        { expression: 'up' },
+        { expression: 'rate(errors[5m])' },
+      ],
+    });
+  });
+
+  it('loads a legacy single-expression config into one row', () => {
+    const result = convertSavedChartConfigToFormState({
+      configType: 'promql',
+      displayType: DisplayType.Line,
+      promqlExpression: 'up',
+      source: 'source-promql',
+      legendTemplate: '{{pod}}',
+    });
+    expect(result.configType).toBe('promql');
+    // Blank rather than absent: an undefined value would leave the alias
+    // input uncontrolled until the first keystroke.
+    expect(result.promqlExpressions).toEqual([{ expression: 'up', alias: '' }]);
+    // The chart-level default stays chart-level.
+    expect(result.legendTemplate).toBe('{{pod}}');
+  });
+
+  it('gives a config with no expressions an empty row to edit', () => {
+    expect(
+      convertSavedChartConfigToFormState({
+        configType: 'promql',
+        displayType: DisplayType.Line,
+        source: 'source-promql',
+        promqlExpression: [],
+      }).promqlExpressions,
+    ).toEqual([{ expression: '', alias: '' }]);
+  });
+
+  // Switching a builder tile into PromQL mode edits this same form state, so
+  // the row has to exist before the config is a PromQL one.
+  it('gives a builder config an empty row too', () => {
+    expect(
+      convertSavedChartConfigToFormState({
+        source: 'source-1',
+        displayType: DisplayType.Line,
+        select: [seriesItem],
+        where: '',
+      }).promqlExpressions,
+    ).toEqual([{ expression: '', alias: '' }]);
+  });
+
+  it('drops the expression fields from builder configs', () => {
+    const result = convertFormStateToSavedChartConfig(
+      {
+        displayType: DisplayType.Line,
+        series: [seriesItem],
+        promqlExpression: 'up',
+        promqlExpressions: [{ expression: 'up' }],
+      },
+      logSource,
+    );
+    expect(result).not.toHaveProperty('promqlExpression');
+    expect(result).not.toHaveProperty('promqlExpressions');
   });
 });
 
@@ -902,6 +1356,55 @@ describe('validateChartForm', () => {
       setError,
     );
     expect(errors.filter(e => e.path === 'source')).toHaveLength(0);
+  });
+
+  describe('PromQL charts', () => {
+    const promqlChartForm = (overrides: Partial<ChartEditorFormState>) =>
+      makeForm({
+        configType: 'promql',
+        promqlExpressions: [{ expression: 'up' }],
+        series: [],
+        ...overrides,
+      });
+
+    it('returns no errors with a PromQL source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: 'source-promql' }),
+        promqlSource,
+        jest.fn(),
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('errors without a source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: undefined }),
+        undefined,
+        jest.fn(),
+      );
+      expect(errors).toContainEqual(
+        expect.objectContaining({
+          path: 'source',
+          message: 'Source is required',
+        }),
+      );
+    });
+
+    // The editor resolves the selection against the kinds PromQL mode allows,
+    // so a leftover builder source arrives here as no source at all.
+    it('errors when the selected source is not a PromQL source', () => {
+      const errors = validateChartForm(
+        promqlChartForm({ source: 'source-log' }),
+        undefined,
+        jest.fn(),
+      );
+      expect(errors).toContainEqual(
+        expect.objectContaining({
+          path: 'source',
+          message: 'Source is required',
+        }),
+      );
+    });
   });
 
   // ── Series valueExpression validation ────────────────────────────────
@@ -1498,6 +2001,21 @@ describe('validateChartForm', () => {
     expect(errors).toContainEqual(expect.objectContaining({ path: 'series' }));
   });
 
+  it('does not require a value expression on a PromQL heatmap', () => {
+    const errors = validateChartForm(
+      makeForm({
+        configType: 'promql',
+        displayType: DisplayType.Heatmap,
+        source: 'source-promql',
+        promqlExpressions: [{ expression: 'up' }],
+        series: [{ ...seriesItem, valueExpression: '' }],
+      }),
+      promqlSource,
+      jest.fn(),
+    );
+    expect(errors).toHaveLength(0);
+  });
+
   it('rejects heatmap chart without a value expression', () => {
     const setError = jest.fn();
     const errors = validateChartForm(
@@ -1508,6 +2026,22 @@ describe('validateChartForm', () => {
       }),
       traceSource,
       setError,
+    );
+    expect(errors).toContainEqual(
+      expect.objectContaining({ path: 'series.0.valueExpression' }),
+    );
+  });
+
+  it('requires a value expression on a builder heatmap left in histogram mode', () => {
+    const errors = validateChartForm(
+      makeForm({
+        displayType: DisplayType.Heatmap,
+        source: 'source-trace',
+        heatmap: { mode: 'histogram' },
+        series: [{ ...seriesItem, valueExpression: '' }],
+      }),
+      traceSource,
+      jest.fn(),
     );
     expect(errors).toContainEqual(
       expect.objectContaining({ path: 'series.0.valueExpression' }),
@@ -1575,6 +2109,52 @@ describe('color round-trip (sql/promql Number tile)', () => {
     expect((result as any).color).toBe('chart-error');
   });
 
+  it('preserves colorRules through both conversions for sql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'sql',
+      displayType: DisplayType.Number,
+      sqlTemplate: 'SELECT count() FROM logs',
+      connection: 'conn-1',
+      colorRules: [
+        { operator: 'lt', value: 4, color: 'chart-error' },
+        { operator: 'gte', value: 4, color: 'chart-success' },
+      ],
+      series: [],
+    };
+
+    expect(convertFormStateToSavedChartConfig(form, undefined)).toMatchObject({
+      colorRules: form.colorRules,
+    });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, undefined),
+    ).toMatchObject({
+      colorRules: form.colorRules,
+    });
+  });
+
+  it('preserves colorRules through both conversions for promql Number tile', () => {
+    const form: ChartEditorFormState = {
+      configType: 'promql',
+      displayType: DisplayType.Number,
+      promqlExpression: 'up',
+      connection: 'conn-1',
+      colorRules: [
+        { operator: 'lt', value: 1, color: 'chart-error' },
+        { operator: 'gte', value: 1, color: 'chart-success' },
+      ],
+      series: [],
+    };
+
+    expect(convertFormStateToSavedChartConfig(form, undefined)).toMatchObject({
+      colorRules: form.colorRules,
+    });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, undefined),
+    ).toMatchObject({
+      colorRules: form.colorRules,
+    });
+  });
+
   it('omits color when not set on sql Number tile', () => {
     const form: ChartEditorFormState = {
       configType: 'sql',
@@ -1589,6 +2169,31 @@ describe('color round-trip (sql/promql Number tile)', () => {
     ) as RawSqlSavedChartConfig;
     expect(result).toBeDefined();
     expect(result.color).toBeUndefined();
+  });
+});
+
+describe('lineInterpolation round-trip (sql/promql line tile)', () => {
+  it.each([
+    {
+      configType: 'sql' as const,
+      sqlTemplate: 'SELECT count() FROM logs',
+    },
+    { configType: 'promql' as const, promqlExpression: 'up' },
+  ])('preserves lineInterpolation for $configType tiles', fields => {
+    const form: ChartEditorFormState = {
+      ...fields,
+      displayType: DisplayType.Line,
+      connection: 'conn-1',
+      lineInterpolation: 'step',
+      series: [],
+    };
+
+    expect(convertFormStateToSavedChartConfig(form, undefined)).toMatchObject({
+      lineInterpolation: 'step',
+    });
+    expect(
+      convertFormStateToChartConfig(form, dateRange, undefined),
+    ).toMatchObject({ lineInterpolation: 'step' });
   });
 });
 
@@ -1616,6 +2221,487 @@ describe('heatmap round-trip', () => {
         countExpression: 'count()',
         heatmapScaleType: 'linear',
       }),
+    );
+  });
+});
+
+describe('builder heatmap settings', () => {
+  const form: ChartEditorFormState = {
+    displayType: DisplayType.Heatmap,
+    source: 'source-trace',
+    where: '',
+    series: [{ ...seriesItem, valueExpression: 'Duration' }],
+  };
+
+  it('fall back to distribution mode from PromQL-only histogram mode', () => {
+    const histogramForm: ChartEditorFormState = {
+      ...form,
+      heatmap: { mode: 'histogram', scaleType: 'log' },
+    };
+    expect(
+      convertFormStateToSavedChartConfig(histogramForm, traceSource),
+    ).toHaveProperty('heatmap', { mode: undefined });
+    expect(
+      convertFormStateToChartConfig(
+        histogramForm,
+        [new Date(0), new Date(1000)],
+        traceSource,
+      ),
+    ).toHaveProperty('heatmap', { mode: undefined });
+  });
+
+  it('keep series mode, without PromQL-only settings', () => {
+    expect(
+      convertFormStateToSavedChartConfig(
+        { ...form, heatmap: { mode: 'series', scaleType: 'log' } },
+        traceSource,
+      ),
+    ).toHaveProperty('heatmap', { mode: 'series' });
+  });
+});
+
+describe('metric formulas (HDX-5080)', () => {
+  const metricSeriesItem = {
+    aggFn: 'avg' as const,
+    valueExpression: 'Value',
+    aggCondition: '',
+    aggConditionLanguage: 'lucene' as const,
+    metricType: MetricsDataType.Gauge,
+    metricName: 'cpu.usage',
+  };
+
+  const makeMetricForm = (
+    overrides: Partial<ChartEditorFormState>,
+  ): ChartEditorFormState => ({
+    displayType: DisplayType.Line,
+    source: 'source-metric',
+    where: '',
+    series: [
+      metricSeriesItem,
+      { ...metricSeriesItem, metricName: 'cpu.limit' },
+    ],
+    ...overrides,
+  });
+
+  describe('validateChartForm', () => {
+    it('accepts a valid formula referencing existing series', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          formulas: [{ expression: 'A / (A + B) * 100' }],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+      expect(setError).not.toHaveBeenCalled();
+    });
+
+    it('reports a malformed formula expression at its field path', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({ formulas: [{ expression: 'A +' }] }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.0.expression' }),
+      ]);
+      expect(setError).toHaveBeenCalledWith(
+        'formulas.0.expression',
+        expect.objectContaining({ type: 'manual' }),
+      );
+    });
+
+    it('reports an unknown series reference', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({ formulas: [{ expression: 'A + C' }] }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({
+          path: 'formulas.0.expression',
+          message: expect.stringContaining('Unknown series "C"'),
+        }),
+      ]);
+    });
+
+    it('reports an empty formula expression', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({ formulas: [{ expression: '' }] }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.0.expression' }),
+      ]);
+    });
+
+    it('validates each formula independently', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          formulas: [{ expression: 'A + B' }, { expression: 'A *' }],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.1.expression' }),
+      ]);
+    });
+
+    it('validates formulas for log event sources', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-log',
+          series: [seriesItem],
+          formulas: [{ expression: 'A +' }],
+        }),
+        logSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({ path: 'formulas.0.expression' }),
+      ]);
+    });
+
+    it('accepts a valid formula on a trace source', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-trace',
+          series: [seriesItem, seriesItem],
+          formulas: [{ expression: 'A / B * 100' }],
+        }),
+        traceSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('skips formula validation for formula-incapable source kinds (formulas are stripped on save)', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          source: 'source-session',
+          series: [seriesItem],
+          formulas: [{ expression: 'A +' }],
+        }),
+        sessionSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('skips formula validation for non-formula display types (formulas are stripped on save)', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Pie,
+          series: [metricSeriesItem],
+          formulas: [{ expression: 'A +' }],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('rejects multiple formulas on a Number chart', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          formulas: [{ expression: 'A + B' }, { expression: 'A / B' }],
+          showOperandSeries: false,
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([
+        expect.objectContaining({
+          path: 'formulas',
+          message: 'Number charts support a single formula',
+        }),
+      ]);
+    });
+
+    it('allows a single formula on a Number chart and multiple elsewhere', () => {
+      const setError = jest.fn();
+      expect(
+        validateChartForm(
+          makeMetricForm({
+            displayType: DisplayType.Number,
+            formulas: [{ expression: 'A + B' }],
+            showOperandSeries: false,
+          }),
+          metricSource,
+          setError,
+        ),
+      ).toHaveLength(0);
+      expect(
+        validateChartForm(
+          makeMetricForm({
+            formulas: [{ expression: 'A + B' }, { expression: 'A / B' }],
+          }),
+          metricSource,
+          setError,
+        ),
+      ).toHaveLength(0);
+    });
+
+    it('lifts the Number chart series cap when formulas are present', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          series: [metricSeriesItem, metricSeriesItem, metricSeriesItem],
+          formulas: [{ expression: 'A / (A + B + C) * 100' }],
+          showOperandSeries: false,
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toHaveLength(0);
+    });
+
+    it('keeps the Number chart series cap without formulas', () => {
+      const setError = jest.fn();
+      const errors = validateChartForm(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          series: [metricSeriesItem, metricSeriesItem, metricSeriesItem],
+        }),
+        metricSource,
+        setError,
+      );
+      expect(errors).toEqual([expect.objectContaining({ path: 'series' })]);
+    });
+  });
+
+  describe('normalization (convertFormStateToSavedChartConfig)', () => {
+    // Narrow the SavedChartConfig union without an unsafe assertion — every
+    // form here is a builder config, so anything else is a test failure.
+    const savedBuilderConfig = (
+      form: ChartEditorFormState,
+      source: TSource,
+    ): BuilderSavedChartConfig => {
+      const saved = convertFormStateToSavedChartConfig(form, source);
+      if (!saved || 'configType' in saved) {
+        throw new Error('expected a builder saved chart config');
+      }
+      return saved;
+    };
+
+    it('retains formulas and showOperandSeries for a metric time series chart', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          formulas: [{ expression: 'A / B', alias: 'Ratio' }],
+          showOperandSeries: false,
+        }),
+        metricSource,
+      );
+      expect(saved.formulas).toEqual([{ expression: 'A / B', alias: 'Ratio' }]);
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('always persists hidden operand series for Number charts with a formula', () => {
+      // A Number chart displays the first value column, so the formula must
+      // be the only projection — even when the tile showed its operand
+      // series on another display type before the switch.
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          displayType: DisplayType.Number,
+          formulas: [{ expression: 'A / B' }],
+          // Unset (operands shown) — e.g. a Line chart switched to Number.
+        }),
+        metricSource,
+      );
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('keeps the tile showOperandSeries choice on non-Number display types', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          formulas: [{ expression: 'A / B' }],
+        }),
+        metricSource,
+      );
+      expect(saved.showOperandSeries).toBeUndefined();
+    });
+
+    it('retains formulas for a log event source', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          source: 'source-log',
+          series: [seriesItem],
+          formulas: [{ expression: 'A * 100' }],
+          showOperandSeries: false,
+        }),
+        logSource,
+      );
+      expect(saved.formulas).toEqual([{ expression: 'A * 100' }]);
+      expect(saved.showOperandSeries).toBe(false);
+    });
+
+    it('strips formulas for formula-incapable source kinds', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          source: 'source-session',
+          series: [seriesItem],
+          formulas: [{ expression: 'A * 100' }],
+          showOperandSeries: false,
+        }),
+        sessionSource,
+      );
+      expect(saved.formulas).toBeUndefined();
+      expect(saved.showOperandSeries).toBeUndefined();
+    });
+
+    it('strips formulas for display types the composed metric query does not render', () => {
+      const saved = savedBuilderConfig(
+        makeMetricForm({
+          displayType: DisplayType.Pie,
+          series: [metricSeriesItem],
+          formulas: [{ expression: 'A * 100' }],
+        }),
+        metricSource,
+      );
+      expect(saved.formulas).toBeUndefined();
+      expect(saved.showOperandSeries).toBeUndefined();
+    });
+
+    it('round-trips formulas through saved config and form state', () => {
+      const saved = convertFormStateToSavedChartConfig(
+        makeMetricForm({
+          formulas: [
+            {
+              expression: 'A / (A + B) * 100',
+              alias: 'Error rate',
+              numberFormat: { output: 'percent' },
+            },
+          ],
+        }),
+        metricSource,
+      );
+      expect(saved).toBeDefined();
+      const restored = convertSavedChartConfigToFormState(saved!);
+      expect(restored.formulas).toEqual([
+        {
+          expression: 'A / (A + B) * 100',
+          alias: 'Error rate',
+          numberFormat: { output: 'percent' },
+        },
+      ]);
+    });
+  });
+});
+
+describe('getAllowedSourceKinds', () => {
+  it('offers only PromQL sources in PromQL mode', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'promql',
+        displayType: DisplayType.Line,
+      }),
+    ).toEqual([SourceKind.Promql]);
+  });
+
+  it.each(['builder', 'sql'] as const)(
+    'excludes PromQL sources in %s mode',
+    configType => {
+      const kinds = getAllowedSourceKinds({
+        configType,
+        displayType: DisplayType.Line,
+      });
+      expect(kinds).not.toContain(SourceKind.Promql);
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          SourceKind.Log,
+          SourceKind.Trace,
+          SourceKind.Session,
+          SourceKind.Metric,
+        ]),
+      );
+    },
+  );
+
+  it.each([DisplayType.Search, DisplayType.EventPatterns])(
+    'excludes PromQL sources on %s tiles, which PromQL cannot render',
+    displayType => {
+      expect(
+        getAllowedSourceKinds({ configType: 'promql', displayType }),
+      ).not.toContain(SourceKind.Promql);
+    },
+  );
+
+  it.each([DisplayType.Search, DisplayType.EventPatterns])(
+    'excludes metric sources on %s tiles, which have no rows to list',
+    displayType => {
+      const kinds = getAllowedSourceKinds({
+        configType: 'builder',
+        displayType,
+      });
+      expect(kinds).not.toContain(SourceKind.Metric);
+      expect(kinds).toEqual(
+        expect.arrayContaining([
+          SourceKind.Log,
+          SourceKind.Trace,
+          SourceKind.Session,
+        ]),
+      );
+    },
+  );
+
+  it('narrows to traces on builder heatmap tiles', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'builder',
+        displayType: DisplayType.Heatmap,
+      }),
+    ).toEqual([SourceKind.Trace]);
+  });
+
+  it('treats a leftover histogram mode on a builder heatmap as distribution', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'builder',
+        displayType: DisplayType.Heatmap,
+        heatmapMode: 'histogram',
+      }),
+    ).toEqual([SourceKind.Trace]);
+  });
+
+  it('offers only PromQL sources on PromQL heatmap tiles', () => {
+    expect(
+      getAllowedSourceKinds({
+        configType: 'promql',
+        displayType: DisplayType.Heatmap,
+        heatmapMode: 'distribution',
+      }),
+    ).toEqual([SourceKind.Promql]);
+  });
+});
+
+describe('promqlExpressionPlaceholder', () => {
+  it.each([
+    ['distribution', /_sum\[5m\]\) \/ rate\(.*_count/],
+    ['series', /^sum by \(service\)/],
+    ['histogram', /^sum by \(le\) \(rate\(.*_bucket/],
+  ] as const)('suggests a %s heatmap expression', (mode, pattern) => {
+    expect(promqlExpressionPlaceholder(DisplayType.Heatmap, mode)).toMatch(
+      pattern,
+    );
+  });
+
+  it('suggests the same expression on every non-heatmap chart', () => {
+    expect(promqlExpressionPlaceholder(DisplayType.Line, 'histogram')).toBe(
+      promqlExpressionPlaceholder(DisplayType.Number, 'distribution'),
     );
   });
 });

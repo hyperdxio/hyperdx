@@ -76,6 +76,7 @@ type CollectorConfig = {
         scrape_configs: Array<{
           job_name: string;
           scrape_interval: string;
+          scheme?: string;
           static_configs: Array<{
             targets: string[];
           }>;
@@ -149,7 +150,7 @@ type CollectorConfig = {
     prometheusremotewrite?: {
       endpoint: string;
       tls: {
-        insecure: boolean;
+        insecure: string;
       };
       resource_to_telemetry_conversion: {
         enabled: boolean;
@@ -167,6 +168,13 @@ type CollectorConfig = {
     };
   };
 };
+
+// The bearertokenauth extension matches the full Authorization header value
+// exactly, so every accepted form must be listed: the bare token plus the
+// `Bearer `-prefixed form that RFC 6750 clients send, in the scheme casings
+// seen in practice.
+export const bearerTokenVariants = (keys: string[]): string[] =>
+  keys.flatMap(key => [key, `Bearer ${key}`, `bearer ${key}`, `BEARER ${key}`]);
 
 export const buildOtelCollectorConfig = (
   teams: Pick<ITeam, 'apiKey' | 'collectorAuthenticationEnforced'>[],
@@ -209,12 +217,19 @@ export const buildOtelCollectorConfig = (
             {
               job_name: 'otelcol',
               scrape_interval: '30s',
+              static_configs: [{ targets: ['0.0.0.0:8888'] }],
+            },
+            // Separate job because the collector's own endpoint is always
+            // plain HTTP, while ClickHouse may be served over https. The
+            // default keeps collector images that predate
+            // HYPERDX_PROMETHEUS_SCHEME on http.
+            {
+              job_name: 'clickhouse',
+              scrape_interval: '30s',
+              scheme: '${env:HYPERDX_PROMETHEUS_SCHEME:-http}',
               static_configs: [
                 {
-                  targets: [
-                    '0.0.0.0:8888',
-                    '${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}',
-                  ],
+                  targets: ['${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}'],
                 },
               ],
             },
@@ -253,7 +268,7 @@ export const buildOtelCollectorConfig = (
         password: '${env:CLICKHOUSE_PASSWORD}',
         ttl: '${env:HYPERDX_OTEL_EXPORTER_TABLES_TTL:-720h}',
         logs_table_name: 'hyperdx_sessions',
-        timeout: '5s',
+        timeout: '${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}',
         create_schema:
           '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
         json: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}',
@@ -270,7 +285,7 @@ export const buildOtelCollectorConfig = (
         username: '${env:CLICKHOUSE_USER}',
         password: '${env:CLICKHOUSE_PASSWORD}',
         ttl: '${env:HYPERDX_OTEL_EXPORTER_TABLES_TTL:-720h}',
-        timeout: '5s',
+        timeout: '${env:HYPERDX_OTEL_EXPORTER_TIMEOUT:-5s}',
         create_schema:
           '${env:HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA:-false}',
         json: '${env:HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE:-false}',
@@ -329,10 +344,14 @@ export const buildOtelCollectorConfig = (
     );
 
     if (config.IS_PROMQL_ENABLED && otelCollectorConfig.exporters) {
+      // The collector's entrypoint.sh derives the scheme and TLS mode from
+      // CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT. The defaults keep plain HTTP
+      // for collector images that predate it.
       otelCollectorConfig.exporters.prometheusremotewrite = {
-        endpoint: 'http://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        endpoint:
+          '${env:HYPERDX_PROMETHEUS_SCHEME:-http}://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
         tls: {
-          insecure: true,
+          insecure: '${env:HYPERDX_PROMETHEUS_TLS_INSECURE:-true}',
         },
         resource_to_telemetry_conversion: {
           enabled: true,
@@ -353,7 +372,7 @@ export const buildOtelCollectorConfig = (
 
       otelCollectorConfig.extensions['bearertokenauth/hyperdx'] = {
         scheme: '',
-        tokens: apiKeys,
+        tokens: bearerTokenVariants(apiKeys),
       };
       otelCollectorConfig.receivers['otlp/hyperdx'].protocols.grpc.auth = {
         authenticator: 'bearertokenauth/hyperdx',

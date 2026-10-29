@@ -23,10 +23,10 @@ Before using the TUI, authenticate with your HyperDX instance:
 
 ```bash
 # Interactive login (opens email/password prompts)
-yarn dev auth login -s http://localhost:8000
+yarn dev auth login -a http://localhost:8080
 
 # Non-interactive login (for scripting/CI)
-yarn dev auth login -s http://localhost:8000 -e user@example.com -p password
+yarn dev auth login -a http://localhost:8080 -e user@example.com -p password
 
 # Verify auth status
 yarn dev auth status
@@ -34,8 +34,8 @@ yarn dev auth status
 # Session is saved to ~/.config/hyperdx/cli/session.json
 ```
 
-Once authenticated, the `-s` flag is optional — the CLI reads the server URL
-from the saved session.
+Once authenticated, the `-a` flag is optional — the CLI reads the app URL from
+the saved session.
 
 ### Running in Dev Mode
 
@@ -45,8 +45,8 @@ from the saved session.
 # Interactive TUI
 yarn dev tui
 
-# With explicit server URL
-yarn dev tui -s http://localhost:8000
+# With explicit app URL
+yarn dev tui -a http://localhost:8080
 
 # Skip source picker
 yarn dev tui --source "Logs"
@@ -54,12 +54,11 @@ yarn dev tui --source "Logs"
 # Start with a search query + follow mode
 yarn dev tui -q "level:error" -f
 
-# Non-interactive streaming
-yarn dev stream --source "Logs"
+# Raw SQL query (NDJSON to stdout)
+yarn dev query --connection-id <id> --sql "SELECT 1"
 
 # List available sources
 yarn dev sources
-
 ```
 
 ## Building & Compiling
@@ -87,7 +86,9 @@ The compiled binary is a single file at `dist/hdx` (or `dist/hdx-<platform>`).
 ```
 src/
 ├── cli.tsx                # Entry point — Commander CLI commands
-│                          # (tui, stream, sources, auth login/logout/status)
+│                          # (tui, sources, connections, dashboards, chart,
+│                          # query, auth login/logout/status, team,
+│                          # upload-sourcemaps)
 │                          # Also contains LoginPrompt component
 ├── App.tsx                # Ink app shell — state machine:
 │                          # loading → login → pick-source → EventViewer
@@ -164,13 +165,13 @@ User switches to Trace tab
 - Injects session cookies + `x-hyperdx-connection-id` header
 - Forces `content-type: text/plain` to prevent Express body parser issues
 
-### Server URL Resolution
+### App URL Resolution
 
-The `-s` flag is optional on most commands. Resolution order:
+The `-a, --app-url` flag is optional on most commands. Resolution order:
 
-1. Explicit `-s <url>` flag
-2. Saved session's `apiUrl` from `~/.config/hyperdx/cli/session.json`
-3. Error: "No server specified"
+1. Explicit `-a <url>` flag
+2. Saved session's `appUrl` from `~/.config/hyperdx/cli/session.json`
+3. Prompt for login (interactive) or error
 
 ## Key Patterns
 
@@ -263,7 +264,7 @@ When updating these files, check the original source in `packages/app` first.
 ### Adding a New CLI Command
 
 1. Add the command in `cli.tsx` using Commander
-2. Use `resolveServer(opts.server)` for server URL resolution
+2. Use `resolveServer(opts.appUrl)` (or `ensureSession`) for app URL resolution
 3. Use `withVerbose()` if the command needs `--verbose` support
 4. Update `README.md` and `AGENTS.md` with the new command
 
@@ -279,7 +280,7 @@ When updating these files, check the original source in `packages/app` first.
 
 ### "Not logged in" error
 
-Run `yarn dev auth login -s <url>` to authenticate. The session may have expired
+Run `yarn dev auth login -a <url>` to authenticate. The session may have expired
 or the server URL may have changed.
 
 ### HTML response instead of JSON

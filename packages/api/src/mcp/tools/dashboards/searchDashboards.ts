@@ -1,6 +1,7 @@
 import { escapeRegExp } from 'lodash';
 
 import * as config from '@/config';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -21,6 +22,7 @@ export function registerSearchDashboards({
     'clickstack_search_dashboards',
     {
       title: 'Search Dashboards',
+      annotations: READ_ONLY_TOOL,
       description:
         'Search dashboards by name and/or tags. Returns matching dashboards with ' +
         'their IDs, names, and tags. More targeted than clickstack_get_dashboard (which ' +

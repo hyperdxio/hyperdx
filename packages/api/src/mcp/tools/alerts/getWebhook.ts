@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import Webhook from '@/models/webhook';
 
@@ -13,6 +14,7 @@ export function registerGetWebhook({
     'clickstack_get_webhook',
     {
       title: 'List Webhooks',
+      annotations: READ_ONLY_TOOL,
       description:
         'List available webhook destinations (id, name, service type). ' +
         'Use the returned id as the webhookId when creating alerts with ' +

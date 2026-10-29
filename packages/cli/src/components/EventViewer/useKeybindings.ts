@@ -118,7 +118,6 @@ export function useKeybindings(params: KeybindingParams): void {
     patternScrollOffset,
     patternCount,
     expandedPattern,
-    sampleSelectedRow,
     sampleScrollOffset,
     sampleCount,
     isFollowing,

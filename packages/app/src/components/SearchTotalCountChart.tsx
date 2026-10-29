@@ -10,7 +10,11 @@ import { keepPreviousData } from '@tanstack/react-query';
 
 import api from '@/api';
 import { convertToTimeChartConfig } from '@/ChartUtils';
-import { useQueriedChartConfig } from '@/hooks/useChartConfig';
+import {
+  getMinGranularitySeconds,
+  useQueriedChartConfig,
+} from '@/hooks/useChartConfig';
+import { useSource } from '@/source';
 
 function inferCountColumn(meta: ResponseJSON['meta'] | undefined): string {
   if (!meta) return 'count()';
@@ -36,11 +40,15 @@ export function useSearchTotalCount(
   } = {},
 ) {
   const { data: me, isLoading: isLoadingMe } = api.useMe();
+  // convertToTimeChartConfig below resolves 'auto', so the minimum has to
+  // be applied before that happens.
+  const { data: source } = useSource({ id: config.source });
+  const minGranularitySeconds = getMinGranularitySeconds(source);
 
   // queriedConfig, queryKey, and enableQueryChunking match DBTimeChart so that react query can de-dupe these queries.
   const queriedConfig = useMemo(
-    () => convertToTimeChartConfig(config),
-    [config],
+    () => convertToTimeChartConfig({ ...config, minGranularitySeconds }),
+    [config, minGranularitySeconds],
   );
   const {
     data: totalCountData,

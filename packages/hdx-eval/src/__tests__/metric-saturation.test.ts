@@ -306,14 +306,19 @@ describe('metric-saturation scenario', () => {
     expect(twinMax).toBeLessThan(100); // the twin never develops a tail
   });
 
-  it('summary — neighbor db.client latency is a stable, unrelated decoy', () => {
+  it('summary — db.client latency stays flat (exonerates the database)', () => {
     const sm = m.summary!.filter(
       s => s.metricName === 'db.client.operation.duration',
     );
     expect(sm.length).toBeGreaterThan(0);
-    // It lives on a DIFFERENT service than the incident.
-    for (const s of sm) expect(s.serviceName).toBe('inventory-service');
-    // p99 is flat across the whole window (not correlated with the incident).
+    // Emitted by a healthy client of the shared database, not the subject.
+    for (const s of sm) {
+      expect(s.serviceName).toBe('inventory-service');
+      // Linkage to the database the misleading timeout logs blame.
+      expect(s.attributes?.['db.name']).toBe('product_catalog');
+    }
+    // p99 is flat across the whole window — the timeouts logged by the
+    // subject are client-side artifacts, not database slowness.
     const p99 = sm.map(s => s.quantiles[2].value);
     expect(Math.max(...p99) - Math.min(...p99)).toBeLessThan(20);
   });
@@ -417,6 +422,23 @@ describe('metric-saturation scenario', () => {
         ),
       );
       expect(restartLines.length).toBeGreaterThan(0);
+    });
+
+    it('plants misleading client-side DB-timeout lines during pressure windows', () => {
+      const timeoutLines = result.logs.filter(l =>
+        /feature-store query timed out/i.test(l.body),
+      );
+      // Enough volume to dominate a WARN-level log-pattern query.
+      expect(timeoutLines.length).toBeGreaterThan(5);
+      for (const l of timeoutLines) {
+        // On the subject (client side), not the database's owner.
+        expect(l.serviceName).toBe(SUBJECT);
+        // Only after the leak begins — they are GC-stall artifacts.
+        expect(l.timestampMs).toBeGreaterThanOrEqual(LEAK_START_MS);
+        // They blame the shared database by name, never the real cause.
+        expect(l.body).toContain('product_catalog');
+        expect(/heap|memory|\bgc\b|jvm/i.test(l.body)).toBe(false);
+      }
     });
   });
 });

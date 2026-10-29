@@ -1,7 +1,7 @@
-import { FilterState } from '@hyperdx/common-utils/dist/filters';
+import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  ConditionFilter,
   DashboardFilter,
-  Filter,
   PresetDashboard,
   PresetDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
@@ -51,14 +51,19 @@ describe('usePresetDashboardFilters', () => {
     },
   ];
 
-  const mockFilterValues: FilterState = {
-    environment: {
-      included: new Set(['production']),
-      excluded: new Set(),
-    },
-  };
+  const mockSelectionByFilterId: ReadonlyMap<string, FilterSelection> = new Map(
+    [
+      [
+        'filter-1',
+        {
+          included: new Set<string | boolean>(['production']),
+          excluded: new Set<string | boolean>(),
+        },
+      ],
+    ],
+  );
 
-  const mockFilterQueries: Filter[] = [
+  const mockFilterQueries: ConditionFilter[] = [
     {
       type: 'sql',
       condition: "environment = 'production'",
@@ -104,12 +109,19 @@ describe('usePresetDashboardFilters', () => {
 
     // Mock useDashboardFilters
     jest.mocked(useDashboardFilters).mockReturnValue({
-      filterValues: mockFilterValues,
+      selectionByFilterId: mockSelectionByFilterId,
       setFilterValue: mockSetFilterValue,
-      filterQueries: mockFilterQueries,
-      setFilterQueries: jest.fn(),
+      adhocConditionsByFilterId: new Map(),
+      setAdhocConditions: jest.fn(),
+      applyAdhocAction: jest.fn(),
+      broadcastedFilters: mockFilterQueries,
+      setFilterValueEntries: jest.fn(),
+      filterValueEntries: null,
       ignoredFilterExpressions: [],
+      ignoredVariableNames: [],
       getFilterQueriesForSource: jest.fn().mockReturnValue(mockFilterQueries),
+      variables: [],
+      unsatisfiedRequiredFilters: [],
     });
   });
 
@@ -227,7 +239,7 @@ describe('usePresetDashboardFilters', () => {
       }),
     );
 
-    expect(result.current.filterValues).toEqual(mockFilterValues);
+    expect(result.current.selectionByFilterId).toEqual(mockSelectionByFilterId);
     expect(result.current.filterQueries).toEqual(mockFilterQueries);
     expect(result.current.setFilterValue).toBe(mockSetFilterValue);
   });

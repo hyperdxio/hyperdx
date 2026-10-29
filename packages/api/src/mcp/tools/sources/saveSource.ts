@@ -2,14 +2,15 @@ import { SourceSchemaNoId } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
 import * as config from '@/config';
+import { validateConnectionId } from '@/controllers/connection';
 import { createSource, getSource, updateSource } from '@/controllers/sources';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
-import { validateConnectionId } from '@/routers/external-api/v2/sources';
 import { isDuplicateKeyError } from '@/utils/errors';
 
 import { buildSourceInput, mcpSaveSourceSchema } from './schemas';
@@ -25,10 +26,13 @@ export function registerSaveSource({
     'clickstack_save_source',
     {
       title: 'Create or Update Source',
+      annotations: UPSERT_TOOL,
       description:
         'Create a new data source (omit id) or update an existing one ' +
         '(provide id) so shipped telemetry becomes queryable. Update is a ' +
-        'full replace of the source definition. Required for all kinds: kind, ' +
+        'full replace of the source definition: start from the `config` ' +
+        'returned by clickstack_describe_source and change only what you need. ' +
+        'Required for all kinds: kind, ' +
         'name, connection, databaseName, tableName, timestampValueExpression. ' +
         'Kind-specific requirements: log & trace need ' +
         'defaultTableSelectExpression; trace also needs durationExpression, ' +

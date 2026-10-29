@@ -1,16 +1,21 @@
-import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ReactNode,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useQueryState } from 'nuqs';
 import { useForm, useWatch } from 'react-hook-form';
-import { z } from 'zod';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
   SourceKind,
   TSource,
-  WithClauseSchema,
 } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
@@ -31,42 +36,25 @@ import {
 import { DBTraceWaterfallChartContainer } from '@/components/DBTraceWaterfallChart';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import useResizable from '@/hooks/useResizable';
+import { RowHighlightHint } from '@/hooks/useRowHighlightHint';
 import { WithClause } from '@/hooks/useRowWhere';
 import { useSource, useUpdateSource } from '@/source';
 import TabBar from '@/TabBar';
-import { parseAsJsonEncoded } from '@/utils/queryParsers';
 
 import DBInfraPanel from './DBInfraPanel';
 import { RowDataPanel, rowHasK8sContext, useRowData } from './DBRowDataPanel';
 import { RowOverviewPanel } from './DBRowOverviewPanel';
+import {
+  deriveRowSidePanelContextForSource,
+  RowSidePanelContext,
+} from './DBRowSidePanel';
+import { eventRowWhereParser } from './eventRowWhere';
 import SourceSchemaPreview, {
   isSourceSchemaPreviewEnabled,
 } from './SourceSchemaPreview';
 import { SourceSelectControlled } from './SourceSelect';
 
 import resizeStyles from '@/../styles/ResizablePanel.module.scss';
-
-type EventRowWhere = {
-  id: string;
-  type: string;
-  aliasWith: WithClause[];
-  // The trace this span selection was made in. Used to gate a selection left in
-  // the URL from a previous trace so it can't render against a different one.
-  traceId?: string;
-};
-
-// Validate the persisted span selection so a stale / hand-edited `eventRowWhere`
-// (valid JSON but wrong shape) resolves to null instead of feeding a malformed
-// row id into the span detail query.
-const eventRowWhereSchema = z.object({
-  id: z.string(),
-  type: z.string(),
-  aliasWith: z.array(WithClauseSchema),
-  traceId: z.string().optional(),
-});
-const eventRowWhereParser = parseAsJsonEncoded<EventRowWhere>(
-  eventRowWhereSchema.parse,
-);
 
 enum SpanDetailTab {
   Overview = 'overview',
@@ -109,6 +97,16 @@ function SpanDetailPanel({
   const { data: rowData } = useRowData({ source, rowId, aliasWith });
   const normalizedRow = rowData?.data?.[0];
 
+  // The selected event may come from a different source than the search this
+  // panel was opened from (e.g. a log event on a trace opened in the Traces
+  // view). Rebind search-url generation to the event's own source and drop
+  // filter/column actions that only make sense against the searched source
+  const parentContext = use(RowSidePanelContext);
+  const rowSidePanelContextValue = useMemo(
+    () => deriveRowSidePanelContextForSource(parentContext, source),
+    [parentContext, source],
+  );
+
   const hasK8sContext = useMemo(
     () => rowHasK8sContext(source, normalizedRow),
     [source, normalizedRow],
@@ -123,7 +121,7 @@ function SpanDetailPanel({
       : displayedTab;
 
   return (
-    <>
+    <RowSidePanelContext value={rowSidePanelContextValue}>
       <div style={{ position: 'relative' }}>
         <TabBar
           className="fs-8"
@@ -212,7 +210,7 @@ function SpanDetailPanel({
           <DBInfraPanel source={source} rowData={normalizedRow} />
         </Box>
       )}
-    </>
+    </RowSidePanelContext>
   );
 }
 
@@ -234,11 +232,7 @@ export default function DBTracePanel({
   // Passed in from side panel to try to identify which
   // span in the chart to highlight first without constructing
   // a full row where clause
-  initialRowHighlightHint?: {
-    timestamp: string;
-    spanId: string;
-    body: string;
-  };
+  initialRowHighlightHint?: RowHighlightHint;
   emptyState?: ReactNode;
   'data-testid'?: string;
 }) {
@@ -376,7 +370,7 @@ export default function DBTracePanel({
       {!traceId && parentSourceId != null && (
         <Stack gap="xs" mb="sm">
           <Text size="xs">Trace ID Expression</Text>
-          <Flex align="center">
+          <Flex align="flex-start">
             <SQLInlineEditorControlled
               tableConnection={tcFromSource(parentSourceData)}
               name="traceIdExpression"

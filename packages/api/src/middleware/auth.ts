@@ -1,3 +1,4 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { Connection } from '@hyperdx/common-utils/dist/types';
 import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
@@ -6,16 +7,19 @@ import * as config from '@/config';
 import { findUserByAccessKey } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import {
+  getActiveTraceId,
   getStaticFeatureFlags,
   setBusinessContext,
 } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 declare global {
+  // Express type augmentation requires `namespace` + interface merging; there is
+  // no non-namespace / non-empty-interface equivalent for extending these types.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
     interface User extends UserDocument {}
-  }
-  namespace Express {
     interface Request {
       _hdx_connection?: Connection;
     }
@@ -77,16 +81,16 @@ export function handleAuthError(
   res.redirect(303, `${config.FRONTEND_REDIRECT_BASE}/login?err=${returnErr}`);
 }
 
+export function getAccessKeyFromRequest(req: Request): string | undefined {
+  return req.headers.authorization?.split('Bearer ')[1];
+}
+
 export async function validateUserAccessKey(
   req: Request,
   res: Response,
   next: NextFunction,
 ) {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.sendStatus(401);
-  }
-  const key = authHeader.split('Bearer ')[1];
+  const key = getAccessKeyFromRequest(req);
   if (!key) {
     return res.sendStatus(401);
   }
@@ -107,7 +111,23 @@ export async function validateUserAccessKey(
     ...getStaticFeatureFlags(),
   });
 
-  next();
+  nextWithQueryAttribution(req, next);
+}
+
+/**
+ * Continue the request with its route recorded on any ClickHouse queries it
+ * makes. Here because every authenticated route passes through this point.
+ */
+function nextWithQueryAttribution(req: Request, next: NextFunction): void {
+  withQueryAttribution(
+    {
+      surface: 'api',
+      // Mount path, not the full URL, to keep request ids out of the log.
+      label: req.baseUrl || undefined,
+      trace: getActiveTraceId(),
+    },
+    () => next(),
+  );
 }
 
 export function isUserAuthenticated(
@@ -119,10 +139,10 @@ export function isUserAuthenticated(
     // If local app mode is enabled, skip authentication
     logger.warn('Skipping authentication in local app mode');
     req.user = {
-      // @ts-ignore
+      // @ts-expect-error local app mode uses a synthetic string id, not an ObjectId
       _id: '_local_user_',
       email: 'local-user@hyperdx.io',
-      // @ts-ignore
+      // @ts-expect-error local app mode uses a synthetic string team, not an ObjectId
       team: '_local_team_',
     };
     setBusinessContext({
@@ -131,7 +151,7 @@ export function isUserAuthenticated(
       'hyperdx.local_mode': true,
       ...getStaticFeatureFlags(),
     });
-    return next();
+    return nextWithQueryAttribution(req, next);
   }
 
   if (req.isAuthenticated()) {
@@ -143,7 +163,7 @@ export function isUserAuthenticated(
       ...getStaticFeatureFlags(),
     });
 
-    return next();
+    return nextWithQueryAttribution(req, next);
   }
   res.sendStatus(401);
 }

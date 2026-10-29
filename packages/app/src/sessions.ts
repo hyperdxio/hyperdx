@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import produce from 'immer';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
-import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
+import {
+  chSql,
+  streamToAsyncIterator,
+} from '@hyperdx/common-utils/dist/clickhouse';
+import type { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   DateRange,
+  Filter,
   pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
@@ -13,6 +20,7 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
+import { useQueryAttribution } from '@/queryAttribution';
 import { usePrevious } from '@/utils';
 
 import useFieldExpressionGenerator, {
@@ -36,6 +44,96 @@ export type Session = {
   userEmail: string;
   userName: string;
 };
+
+// Recording rows are written throughout a session, so the range only needs
+// padding for skew between recording and span timestamps.
+const SERVICE_SCOPE_PADDING_MS = 60 * 60 * 1000;
+
+// Trace tables sorted by ServiceName first can't prune on time alone, so the
+// sessions query is scoped to the services in the session table. Returns []
+// (unscoped) when that isn't possible or the lookup fails.
+export async function fetchServiceScopeFilters({
+  traceSource,
+  sessionSource,
+  dateRange,
+  metadata,
+  clickhouseClient,
+}: {
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
+  dateRange: [Date, Date];
+  metadata: Metadata;
+  clickhouseClient: ClickhouseClient;
+}): Promise<Filter[]> {
+  if (!traceSource.serviceNameExpression) {
+    return [];
+  }
+  try {
+    const columns = await metadata.getColumns({
+      databaseName: sessionSource.from.databaseName,
+      tableName: sessionSource.from.tableName,
+      connectionId: sessionSource.connection,
+    });
+    if (!columns.some(c => c.name === 'ServiceName')) {
+      return [];
+    }
+    const query = await renderChartConfig(
+      {
+        select: [
+          { valueExpression: 'DISTINCT ServiceName', alias: 'serviceName' },
+        ],
+        from: sessionSource.from,
+        dateRange: [
+          new Date(dateRange[0].getTime() - SERVICE_SCOPE_PADDING_MS),
+          new Date(dateRange[1].getTime() + SERVICE_SCOPE_PADDING_MS),
+        ],
+        where: '',
+        timestampValueExpression: sessionSource.timestampValueExpression,
+        connection: sessionSource.connection,
+      },
+      metadata,
+      sessionSource.querySettings,
+    );
+    const json = await clickhouseClient
+      .query({
+        query: query.sql,
+        query_params: query.params,
+        connectionId: sessionSource.connection,
+        format: 'JSON',
+      })
+      .then(res => res.json<{ serviceName: string }>());
+    const serviceNames = (json.data ?? [])
+      .map(row => row.serviceName)
+      .filter(name => name != null);
+    return filtersToQuery({
+      [traceSource.serviceNameExpression]: {
+        included: new Set(serviceNames),
+        excluded: new Set(),
+      },
+    });
+  } catch (e) {
+    console.warn('Sessions service scope lookup failed', e);
+    return [];
+  }
+}
+
+export function buildSessionsQueryFilters(
+  serviceScopeFilters: Filter[],
+  where: SearchCondition | undefined,
+  whereLanguage: SearchConditionLanguage | undefined,
+): Filter[] {
+  return [
+    ...serviceScopeFilters,
+    ...(where
+      ? [
+          {
+            type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+            condition: where,
+          } satisfies Filter,
+        ]
+      : []),
+  ];
+}
 
 export function useSessions(
   {
@@ -91,6 +189,20 @@ export function useSessions(
       const traceSessionIdExpression = getTraceSourceFieldExpression(
         traceSource.resourceAttributesExpression ?? 'ResourceAttributes',
         'rum.sessionId',
+      );
+
+      const serviceScopeFilters = await fetchServiceScopeFilters({
+        traceSource,
+        sessionSource,
+        dateRange,
+        metadata,
+        clickhouseClient,
+      });
+
+      const sessionsQueryFilters = buildSessionsQueryFilters(
+        serviceScopeFilters,
+        where,
+        whereLanguage,
       );
 
       const [
@@ -153,15 +265,8 @@ export function useSessions(
             dateRange,
             where: `${traceSource.resourceAttributesExpression}.rum.sessionId:*`,
             whereLanguage: 'lucene',
-            ...(where && {
-              filters: [
-                {
-                  type:
-                    (whereLanguage === 'promql' ? 'lucene' : whereLanguage) ??
-                    'lucene',
-                  condition: where,
-                },
-              ],
+            ...(sessionsQueryFilters.length > 0 && {
+              filters: sessionsQueryFilters,
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -282,19 +387,14 @@ export function useSessions(
 // we want to use clickhouse-proxy instead
 class TimeoutError extends Error {}
 
-async function* streamToAsyncIterator<T = any>(
-  stream: ReadableStream<T>,
-): AsyncIterableIterator<T> {
-  const reader = stream.getReader();
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) return;
-      yield value;
-    }
-  } finally {
-    reader.releaseLock();
-  }
+/**
+ * Whether an error is the expected rejection of an aborted request —
+ * replaced or unmounted rrweb event streams are cancelled on purpose.
+ */
+function isAbortError(e: unknown): boolean {
+  return (
+    e instanceof Error && (e.name === 'AbortError' || /abort/i.test(e.message))
+  );
 }
 
 // OPTIMIZATION STRATEGY
@@ -303,6 +403,87 @@ async function* streamToAsyncIterator<T = any>(
 // 2. When slider advances, use the timestamp to determine which chunk you are in
 // 3. Fetch data associated with that chunk
 // 4. Probably do some prefetching for future times
+/**
+ * Builds the chart config used to stream rrweb events for a session replay.
+ *
+ * Large rrweb events are split by the recorder into multiple log records
+ * ("chunks") that all share the same event timestamp, so ordering by the
+ * timestamp alone lets ClickHouse return chunks of one event in arbitrary
+ * order, scrambling reassembly. `rr-web.offset` is a monotonically increasing
+ * counter stamped on every record, and `rr-web.chunk` is the 1-based chunk
+ * index within an event — ordering by both (numerically — the attributes are
+ * stored as strings) makes the stream order deterministic.
+ * https://github.com/hyperdxio/hyperdx/issues/2569
+ */
+export function buildRRWebStreamChartConfig({
+  source,
+  serviceName,
+  sessionId,
+  startDate,
+  endDate,
+  limit,
+  offset,
+  getSessionSourceFieldExpression,
+}: {
+  source: {
+    from: TSessionSource['from'];
+    timestampValueExpression: string;
+    connection: string;
+  };
+  serviceName: string;
+  sessionId: string;
+  startDate: Date;
+  endDate: Date;
+  limit: number;
+  offset: number;
+  getSessionSourceFieldExpression: FieldExpressionGenerator;
+}) {
+  const eventAttributeExpression = (key: string) =>
+    getSessionSourceFieldExpression(
+      SESSION_TABLE_EXPRESSIONS.eventAttributesExpression,
+      key,
+    );
+
+  return {
+    // FIXME: add mappings to session source
+    select: [
+      {
+        valueExpression: SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
+        alias: 'b',
+      },
+      {
+        valueExpression: `simpleJSONExtractInt(${SESSION_TABLE_EXPRESSIONS.implicitColumnExpression}, 'type')`,
+        alias: 't',
+      },
+      {
+        valueExpression: `${eventAttributeExpression('rr-web.chunk')}`,
+        alias: 'ck',
+      },
+      {
+        valueExpression: `${eventAttributeExpression('rr-web.total-chunks')}`,
+        alias: 'tcks',
+      },
+      {
+        valueExpression: `${eventAttributeExpression('rr-web.event')}`,
+        alias: 'ev',
+      },
+    ],
+    dateRange: [startDate, endDate] as [Date, Date],
+    from: source.from,
+    whereLanguage: 'lucene' as const,
+    where: `ServiceName:"${serviceName}" AND ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
+    timestampValueExpression: source.timestampValueExpression,
+    implicitColumnExpression:
+      SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
+    connection: source.connection,
+    orderBy: `${source.timestampValueExpression} ASC, toUInt64OrZero(${eventAttributeExpression('rr-web.offset')}) ASC, toUInt64OrZero(${eventAttributeExpression('rr-web.chunk')}) ASC`,
+    limit: {
+      limit,
+      offset,
+    },
+  };
+}
+
 export function useRRWebEventStream(
   {
     serviceName,
@@ -343,11 +524,12 @@ export function useRRWebEventStream(
   const [isFetching, setIsFetching] = useState<boolean>(true);
   const [hasNextPage, setHasNextPage] = useState<boolean>(true);
 
-  const lastAbortController = useRef<AbortController | null>(null);
+  const lastAbortControllerRef = useRef<AbortController | null>(null);
   const [_fetchStatus, setFetchStatus] = useState<'fetching' | 'idle'>('idle');
   const lastFetchStatusRef = useRef<'fetching' | 'idle' | undefined>(undefined);
 
   const { data: source } = useSource({ id: sourceId });
+  const attribution = useQueryAttribution();
 
   const fetchResults = useCallback(
     async ({
@@ -367,7 +549,7 @@ export function useRRWebEventStream(
       const offset = pageParam.toString();
 
       const ctrl = new AbortController();
-      lastAbortController.current = ctrl;
+      lastAbortControllerRef.current = ctrl;
 
       setIsFetching(true);
       setFetchStatus('fetching');
@@ -376,56 +558,33 @@ export function useRRWebEventStream(
       const MAX_LIMIT = 1e6;
 
       const query = await renderChartConfig(
-        {
-          // FIXME: add mappings to session source
-          select: [
-            {
-              valueExpression:
-                SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
-              alias: 'b',
-            },
-            {
-              valueExpression: `simpleJSONExtractInt(${SESSION_TABLE_EXPRESSIONS.implicitColumnExpression}, 'type')`,
-              alias: 't',
-            },
-            {
-              valueExpression: `${getSessionSourceFieldExpression(SESSION_TABLE_EXPRESSIONS.eventAttributesExpression, 'rr-web.chunk')}`,
-              alias: 'ck',
-            },
-            {
-              valueExpression: `${getSessionSourceFieldExpression(SESSION_TABLE_EXPRESSIONS.eventAttributesExpression, 'rr-web.total-chunks')}`,
-              alias: 'tcks',
-            },
-          ],
-          dateRange: [
-            new Date(parseInt(startTime)),
-            new Date(parseInt(endTime)),
-          ],
-          from: source.from,
-          whereLanguage: 'lucene',
-          where: `ServiceName:"${serviceName}" AND ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
-          timestampValueExpression: source.timestampValueExpression,
-          implicitColumnExpression:
-            SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
-          connection: source.connection,
-          orderBy: `${source.timestampValueExpression} ASC`,
-          limit: {
-            limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
-            offset: parseInt(offset),
-          },
-        },
+        buildRRWebStreamChartConfig({
+          source,
+          serviceName,
+          sessionId,
+          startDate: new Date(parseInt(startTime)),
+          endDate: new Date(parseInt(endTime)),
+          limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
+          offset: parseInt(offset),
+          getSessionSourceFieldExpression,
+        }),
         metadata,
         source.querySettings,
       );
 
       const format = 'JSONEachRow';
       const fetchPromise = (async () => {
-        const clickhouseClient = getClickhouseClient();
+        const clickhouseClient = getClickhouseClient({ attribution });
         const resultSet = await clickhouseClient.query({
           query: query.sql,
           query_params: query.params,
           format,
           connectionId: source.connection,
+          // Cancels the request when the stream is replaced (query key
+          // change), times out, or the consumer unmounts — otherwise a
+          // replaced stream keeps downloading and delivering rows to its
+          // callbacks until completion.
+          abort_signal: ctrl.signal,
         });
 
         let forFunc: (data: any) => void;
@@ -486,6 +645,10 @@ export function useRRWebEventStream(
           ctrl.abort();
           console.warn('Closing event source due to timeout');
           onEnd?.(new TimeoutError());
+        } else if (isAbortError(e)) {
+          // Expected: the stream was cancelled because it was replaced or
+          // its consumer unmounted. Not an error, and onEnd must not fire —
+          // the aborted stream did not finish.
         } else {
           console.error(e);
         }
@@ -510,6 +673,7 @@ export function useRRWebEventStream(
       resultsKey,
       metadata,
       getSessionSourceFieldExpression,
+      attribution,
     ],
   );
 
@@ -528,7 +692,7 @@ export function useRRWebEventStream(
           shouldAbortPendingRequest &&
           lastFetchStatusRef.current === 'fetching'
         ) {
-          lastAbortController.current?.abort();
+          lastAbortControllerRef.current?.abort();
         }
 
         // Clean up previous results if we shouldn't keep them
@@ -569,7 +733,7 @@ export function useRRWebEventStream(
   );
 
   const abort = useCallback(() => {
-    lastAbortController.current?.abort();
+    lastAbortControllerRef.current?.abort();
   }, []);
 
   return {

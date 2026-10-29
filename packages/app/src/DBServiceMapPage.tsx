@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react';
 import dynamic from 'next/dynamic';
 import Head from 'next/head';
 import {
@@ -30,7 +36,9 @@ import SearchWhereInput, {
 } from '@/components/SearchInput/SearchWhereInput';
 import { IS_LOCAL_MODE } from '@/config';
 import { useGetKeyValues } from '@/hooks/useMetadata';
-import { withAppNav } from '@/layout';
+import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
+import { withAppNavForSurface } from '@/layout';
+import { useLocalStorage } from '@/utils';
 import { parseAsStringEncoded } from '@/utils/queryParsers';
 
 import OnboardingModal from './components/OnboardingModal';
@@ -41,9 +49,9 @@ import SourceSchemaPreview, {
 } from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import { useSources } from './source';
-import { parseTimeQuery, useNewTimeQuery } from './timeQuery';
+import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 
 // The % of requests sampled is 1 / sampling factor
 const SAMPLING_FACTORS = [
@@ -69,11 +77,10 @@ const SAMPLING_FACTORS = [
   },
 ];
 
+const DEFAULT_SAMPLING_FACTOR = 10;
+const SAMPLING_FACTOR_STORAGE_KEY = 'hdx-service-map-sampling-factor';
+
 const DEFAULT_INTERVAL = 'Past 1h';
-const defaultTimeRange = parseTimeQuery(DEFAULT_INTERVAL, false) as [
-  Date,
-  Date,
-];
 
 const searchQueryStateMap = {
   where: parseAsStringEncoded,
@@ -82,10 +89,15 @@ const searchQueryStateMap = {
 };
 
 function DBServiceMapPage() {
-  const brandName = useBrandDisplayName();
+  const defaultTimeRange = useDefaultTimeRange(DEFAULT_INTERVAL);
+  const title = usePageTitle('Service Map');
 
   const { data: sources } = useSources();
-  const [sourceId, setSourceId] = useQueryState('source');
+  // `?source=` accepts a source name as well as a source ID.
+  const [sourceIdParam, setSourceId] = useQueryState('source');
+  const { source: paramSource } = useResolvedSourceParam(sourceIdParam, {
+    kinds: [SourceKind.Trace],
+  });
   const [isCreateSourceModalOpen, setIsCreateSourceModalOpen] = useState(false);
 
   const [searchedConfig, setSearchedConfig] =
@@ -101,15 +113,13 @@ function DBServiceMapPage() {
   });
 
   const defaultSource = sources?.find(
-    (source): source is TTraceSource => source.kind === SourceKind.Trace,
+    (source): source is TTraceSource =>
+      source.kind === SourceKind.Trace && !source.disabled,
   );
-  const source =
-    sourceId && sources
-      ? (sources.find(
-          (source): source is TTraceSource =>
-            source.id === sourceId && source.kind === SourceKind.Trace,
-        ) ?? defaultSource)
-      : defaultSource;
+
+  // A param that matches no trace source falls back to the default.
+  // useResolvedSourceParam will show a notification to the user.
+  const source = paramSource ?? defaultSource;
 
   const { control, handleSubmit, setValue } = useForm({
     values: {
@@ -124,11 +134,18 @@ function DBServiceMapPage() {
   const [isSourceSchemaPreviewOpen, setIsSourceSchemaPreviewOpen] =
     useState(false);
 
-  useEffect(() => {
-    if (watchedSource !== sourceId) {
-      setSourceId(watchedSource ?? null);
+  // Keep the param in step with the selected source, which also canonicalizes a
+  // source name to its ID. Only write a real source: on a cold load the form
+  // value is undefined until the source list arrives, and writing that would
+  // wipe the `?source=` the user arrived with.
+  const syncSourceParam = useEffectEvent((formSource: string | undefined) => {
+    if (formSource && formSource !== sourceIdParam) {
+      setSourceId(formSource);
     }
-  }, [watchedSource, sourceId, setSourceId]);
+  });
+  useEffect(() => {
+    syncSourceParam(watchedSource);
+  }, [watchedSource]);
 
   const sourceTableConnection = useMemo(() => tcFromSource(source), [source]);
 
@@ -197,9 +214,28 @@ function DBServiceMapPage() {
     })();
   }, [handleSubmit, setSearchedConfig, displayedTimeInputValue, onSearch]);
 
-  const [samplingFactor, setSamplingFactor] = useQueryState(
+  // The URL param wins so shared links reproduce the sender's view, but only
+  // slider changes are remembered: opening a link must not overwrite the
+  // viewer's saved preference.
+  const [samplingFactorParam, setSamplingFactorParam] = useQueryState(
     'samplingFactor',
-    parseAsInteger.withDefault(10),
+    parseAsInteger,
+  );
+  const [storedSamplingFactor, setStoredSamplingFactor] = useLocalStorage(
+    SAMPLING_FACTOR_STORAGE_KEY,
+    DEFAULT_SAMPLING_FACTOR,
+  );
+  const samplingFactor =
+    samplingFactorParam ??
+    (SAMPLING_FACTORS.some(factor => factor.value === storedSamplingFactor)
+      ? storedSamplingFactor
+      : DEFAULT_SAMPLING_FACTOR);
+  const setSamplingFactor = useCallback(
+    (value: number) => {
+      setStoredSamplingFactor(value);
+      setSamplingFactorParam(value);
+    },
+    [setStoredSamplingFactor, setSamplingFactorParam],
   );
   const { label: samplingLabel = '' } =
     SAMPLING_FACTORS.find(factor => factor.value === samplingFactor) ?? {};
@@ -211,12 +247,12 @@ function DBServiceMapPage() {
     () => (
       <>
         <Head>
-          <title>Service Map - {brandName}</title>
+          <title>{title}</title>
         </Head>
         <OnboardingModal />
       </>
     ),
-    [brandName],
+    [title],
   );
 
   const sourceSelect = source ? (
@@ -240,7 +276,7 @@ function DBServiceMapPage() {
 
   const headerActions = (
     <Group gap="sm" wrap="nowrap">
-      <Text bg="inherit" size="sm">
+      <Text bg="inherit" size="sm" data-testid="service-map-sampling-label">
         Sampling {samplingLabel}
       </Text>
       <div style={{ minWidth: '200px' }}>
@@ -253,6 +289,7 @@ function DBServiceMapPage() {
           )}
           onChange={v => setSamplingFactor(SAMPLING_FACTORS[v].value)}
           showLabelOnHover={false}
+          data-testid="service-map-sampling-slider"
         />
       </div>
       <TimePicker
@@ -396,7 +433,10 @@ const DBServiceMapPageDynamic = dynamic(async () => DBServiceMapPage, {
   ssr: false,
 });
 
-// @ts-ignore
-DBServiceMapPageDynamic.getLayout = withAppNav;
+// @ts-expect-error next/dynamic component type does not include the getLayout static
+DBServiceMapPageDynamic.getLayout = withAppNavForSurface(
+  'service-dashboard',
+  'service-map',
+);
 
 export default DBServiceMapPageDynamic;

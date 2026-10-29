@@ -1,5 +1,15 @@
 import { createParser } from 'nuqs';
+import {
+  DashboardFilterValue,
+  DashboardFilterValueSchema,
+} from '@hyperdx/common-utils/dist/types';
 import { SortingState } from '@tanstack/react-table';
+
+import {
+  decodeUrlParamValue,
+  encodeJsonUrlParamValue,
+  encodeUrlParamValue,
+} from './urlParamEncoding';
 
 /**
  * Problem: nuqs serializes spaces as '+' (form-encoding). When
@@ -21,25 +31,17 @@ import { SortingState } from '@tanstack/react-table';
  * as %0A automatically).
  */
 export const parseAsStringEncoded = createParser<string>({
-  parse: value => {
-    try {
-      return decodeURIComponent(value);
-    } catch {
-      // Malformed URI sequence – return as-is for robustness.
-      return value;
-    }
-  },
-  serialize: value => encodeURIComponent(value),
+  parse: decodeUrlParamValue,
+  serialize: encodeUrlParamValue,
 });
 
 /**
  * Same double-encoding protection as parseAsStringEncoded, but wraps
  * JSON.stringify / JSON.parse around the value.
  *
- * Backward compatible: old URLs where nuqs wrote raw JSON (with '+' for
- * spaces, unencoded '[', ']', etc.) are handled via a fallback to plain
- * JSON.parse after the decodeURIComponent step naturally resolves '%22' →
- * '"', '+' → ' ', etc. via URLSearchParams.get().
+ * Backward compatible: old URLs where nuqs wrote raw JSON are parsed before
+ * URI decoding, so literal '%XX' text inside JSON strings is preserved. New
+ * URLs are decoded before JSON.parse so their encoded structure still works.
  *
  * Optional `validate`: a guard that either returns the (narrowed) value or
  * throws / returns `null` for a shape mismatch. A stale, hand-edited, or
@@ -49,7 +51,9 @@ export const parseAsStringEncoded = createParser<string>({
  * the safe default rather than a value that throws downstream during render.
  * Zod schemas satisfy this signature via `schema.parse`.
  */
-export function parseAsJsonEncoded<T>(validate?: (value: unknown) => T) {
+export function parseAsJsonEncoded<T>(
+  validate?: (value: unknown) => T | null | undefined,
+) {
   const finalize = (parsed: unknown): T | null => {
     if (!validate) {
       // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -67,41 +71,57 @@ export function parseAsJsonEncoded<T>(validate?: (value: unknown) => T) {
 
   return createParser<T>({
     parse: value => {
-      let decoded: string;
       try {
-        decoded = decodeURIComponent(value);
+        return finalize(JSON.parse(value));
       } catch {
-        // Malformed URI sequence — value is likely old-format plain JSON.
-        try {
-          return finalize(JSON.parse(value));
-        } catch {
-          return null;
-        }
+        // New-format values are percent-encoded, so they cannot be parsed as
+        // raw JSON. Fall through to the decoded representation.
       }
-      // URI decoded successfully; parse the decoded string as JSON.
-      // This handles both new-format (double-encoded) and old-format URLs,
-      // since decodeURIComponent is a no-op on plain JSON strings.
+
       try {
-        return finalize(JSON.parse(decoded));
+        return finalize(JSON.parse(decodeUrlParamValue(value)));
       } catch {
         return null;
       }
     },
-    serialize: value => encodeURIComponent(JSON.stringify(value)),
+    serialize: encodeJsonUrlParamValue,
   });
 }
+
+/**
+ * The dashboard `filters=` param: an array of filter-value entries, each either
+ * expression-keyed (`{type:'sql'}`) or variable-keyed (`{type:'variable'}`).
+ *
+ * Lenient by design — an unrecognized entry is dropped and the rest of the
+ * array survives.
+ */
+export const dashboardFilterValuesParser = parseAsJsonEncoded<
+  DashboardFilterValue[]
+>(value =>
+  Array.isArray(value)
+    ? value.flatMap(entry => {
+        const parsed = DashboardFilterValueSchema.safeParse(entry);
+        return parsed.success ? [parsed.data] : [];
+      })
+    : null,
+);
 
 export const parseAsSortingStateString = createParser<SortingState[number]>({
   parse: value => {
     if (!value) {
       return null;
     }
-    const keys = value.split(' ');
-    const direction = keys.pop();
-    const key = keys.join(' ');
+    // Column ids are select expressions and may contain spaces, so everything
+    // before a trailing ASC/DESC is the id. Without an explicit direction (e.g.
+    // "(TimestampTime, Timestamp)" or "x DESC NULLS LAST") return null so
+    // DBSqlRowTable leaves the raw ORDER BY string untouched.
+    const match = value.trim().match(/^(.+?)\s+(asc|desc)$/i);
+    if (!match) {
+      return null;
+    }
     return {
-      id: key,
-      desc: direction === 'DESC',
+      id: match[1],
+      desc: match[2].toUpperCase() === 'DESC',
     };
   },
   serialize: value => {

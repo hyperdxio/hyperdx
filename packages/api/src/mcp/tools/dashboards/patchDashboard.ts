@@ -1,6 +1,8 @@
 import { uniq } from 'lodash';
 
 import * as config from '@/config';
+import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
+import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import Dashboard from '@/models/dashboard';
@@ -12,28 +14,35 @@ import {
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
+import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
 import { mcpPatchDashboardSchema } from './schemas';
 import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
+  getTileVariableWarnings,
 } from './validation';
 
 export function registerPatchDashboard({
   context,
   registerTool,
 }: ToolRegistrar): void {
-  const { teamId } = context;
+  const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
 
   registerTool(
     'clickstack_patch_dashboard',
     {
       title: 'Patch Dashboard',
+      annotations: IDEMPOTENT_DESTRUCTIVE_TOOL,
       description:
         'Make targeted updates to a dashboard without resubmitting the full object. ' +
         'You can update dashboard-level fields (name, tags) and/or replace a single ' +
         'tile by tileId \u2014 all in one call. Unmentioned tiles and fields are preserved. ' +
+        "Replacing a tile overwrites its whole config; the old config's fields are not merged in. " +
+        'If the new config cannot carry alerts (anything other than a line, ' +
+        'stacked_line, stacked_bar, or number tile), alerts attached to that ' +
+        'tile are permanently deleted. ' +
         'Use clickstack_get_dashboard_tile to inspect a tile before patching it. ' +
         'IMPORTANT: After patching a tile, run clickstack_query_tile to confirm the query still works.',
       inputSchema: mcpPatchDashboardSchema,
@@ -95,8 +104,12 @@ export function registerPatchDashboard({
         if (existingIdx === -1) {
           // Build a human-readable list of available tile IDs.
           // Convert only for the error message (read-only, no write-back).
-          const externalDashboard =
-            convertToExternalDashboard(existingDashboard);
+          const externalDashboard = convertToExternalDashboard(
+            existingDashboard,
+            {
+              hidePromqlTiles: true,
+            },
+          );
           return mcpUserError(
             `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => `${t.id} (${t.name})`).join(', ')}`,
           );
@@ -141,6 +154,22 @@ export function registerPatchDashboard({
           // The config comes from the incoming tile (validated by Zod).
           config: incoming.config,
         } as ExternalDashboardTileWithId;
+
+        // Re-validate the merged tile through the external tile schema —
+        // the same one the save_dashboard body schemas route every tile
+        // through. The MCP input schema only checks field shapes; the
+        // cross-field refinements (formula expression validation, the
+        // asRatio/two-select rule, the number-tile single-select rule)
+        // live on the external schema's superRefine, so skipping this
+        // parse would let a patch persist a config that an equivalent
+        // create or full update rejects.
+        const tileParse =
+          externalDashboardTileSchemaWithId.safeParse(mergedTile);
+        if (!tileParse.success) {
+          return mcpUserError(
+            `Validation error: ${JSON.stringify(tileParse.error.errors)}`,
+          );
+        }
 
         // Error on raw SQL tiles that have no source defined but which use
         // macros which require a source to be set
@@ -213,6 +242,8 @@ export function registerPatchDashboard({
         });
       }
 
+      recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
+
       // Return a lightweight response: the patched tile (if any) plus
       // updated dashboard metadata, without the full tile array.
       const output: Record<string, unknown> = {
@@ -227,7 +258,10 @@ export function registerPatchDashboard({
         output.patchedTile = patchedTile;
         output.hint =
           'Use clickstack_query_tile to test the patched tile query.';
-        const macroWarnings = getRawSqlTileMacroWarnings([patchedTile]);
+        const macroWarnings = [
+          ...getRawSqlTileMacroWarnings([patchedTile]),
+          ...getTileVariableWarnings([patchedTile], existingDashboard.filters),
+        ];
         if (macroWarnings.length > 0) {
           output.warnings = macroWarnings;
         }

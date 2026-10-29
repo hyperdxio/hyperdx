@@ -1,7 +1,10 @@
 import { Completion, CompletionContext } from '@codemirror/autocomplete';
 import { EditorState } from '@codemirror/state';
 
-import { createIdentifierCompletionSource } from '@/components/SQLEditor/utils';
+import {
+  createCodeMirrorStyleTheme,
+  createIdentifierCompletionSource,
+} from '@/components/SQLEditor/utils';
 
 const TEST_COMPLETIONS: Completion[] = [
   { label: 'column1', type: 'variable' },
@@ -145,6 +148,18 @@ describe('Auto-Complete source', () => {
       ({ doc, pos, expectedRange }) => {
         expect(getReplacementRange(doc, pos)).toEqual(expectedRange);
       },
+    );
+  });
+});
+
+describe('createCodeMirrorStyleTheme', () => {
+  it('returns the same theme for the same height', () => {
+    expect(createCodeMirrorStyleTheme('150px')).toBe(
+      createCodeMirrorStyleTheme('150px'),
+    );
+    expect(createCodeMirrorStyleTheme()).toBe(createCodeMirrorStyleTheme());
+    expect(createCodeMirrorStyleTheme('150px')).not.toBe(
+      createCodeMirrorStyleTheme(),
     );
   });
 });

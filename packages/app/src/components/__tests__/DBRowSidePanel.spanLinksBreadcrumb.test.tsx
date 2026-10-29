@@ -38,7 +38,7 @@ const LINKED_SPAN_NAME = 'consume order.created';
 const mockUseRowData = jest.fn();
 jest.mock('../DBRowDataPanel', () => ({
   __esModule: true,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useRowData: (args: unknown) => mockUseRowData(args),
   ROW_DATA_ALIASES: {
     DURATION_MS: '__hdx_duration',
@@ -62,14 +62,14 @@ const TRACE_SOURCE = {
 jest.mock('@/source', () => ({
   __esModule: true,
   getEventBody: () => undefined,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useSource: ({ id }: { id: string | null }) =>
     id === 'trace-src' ? { data: TRACE_SOURCE } : { data: undefined },
 }));
 
 jest.mock('../DBSessionPanel', () => ({
   __esModule: true,
-  // eslint-disable-next-line @eslint-react/no-unnecessary-use-prefix
+
   useSessionId: () => ({ rumSessionId: undefined, rumServiceName: undefined }),
   DBSessionPanel: () => null,
 }));
@@ -104,6 +104,23 @@ jest.mock('../ServiceMap/ServiceMapSidePanel', () => ({
 jest.mock('../TimelineChart/utils', () => ({
   __esModule: true,
   renderMs: () => '',
+}));
+// The linked-span lookups issue real queries through useQueriedChartConfig,
+// whose providers this harness doesn't set up.
+jest.mock('../linkedSpans', () => ({
+  __esModule: true,
+  useReverseSpanLinks: () => ({ links: [], isLoading: false, error: null }),
+  useLinkedSpanDetails: () => ({
+    details: new Map(),
+    isLoading: false,
+    error: null,
+  }),
+  linkedSpanKey: (traceId: string, spanId: string) => `${traceId}:${spanId}`,
+  LinkedSpanMetaLine: () => null,
+}));
+jest.mock('../SpanLinkedFromSubpanel', () => ({
+  __esModule: true,
+  SpanLinkedFromSubpanel: () => null,
 }));
 jest.mock('../DrawerUtils', () => ({
   __esModule: true,

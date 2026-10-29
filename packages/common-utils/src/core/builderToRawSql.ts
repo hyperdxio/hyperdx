@@ -6,6 +6,7 @@ import {
   convertToCategoricalChartConfig,
   convertToNumberChartConfig,
   convertToTableChartConfig,
+  isTimeSeriesDisplayType,
 } from '@/core/utils';
 import { isBuilderChartConfig } from '@/guards';
 import { format } from '@/sqlFormatter';
@@ -20,6 +21,7 @@ const RAW_SQL_DISPLAY_TYPES = new Set<DisplayType>([
   DisplayType.Table,
   DisplayType.Line,
   DisplayType.StackedBar,
+  DisplayType.StackedLine,
   DisplayType.Pie,
   DisplayType.Bar,
   DisplayType.Number,
@@ -73,9 +75,9 @@ export type RenderedSqlTemplate =
  *
  * On success returns `{ sql }`. When the config can't be represented as a
  * single raw-SQL chart it returns `{ error }` with a user-facing reason —
- * non-builder configs, multi-series or non-time-series metric charts, string
- * selects (Search / EventPatterns), display types without raw-SQL support, or
- * a missing source — so callers can surface the message without re-deriving it.
+ * non-builder configs, non-time-series metric charts, string selects
+ * (Search / EventPatterns), display types without raw-SQL support, or a
+ * missing source — so callers can surface the message without re-deriving it.
  */
 export async function renderBuilderConfigAsSqlTemplate(
   config: ChartConfigWithOptDateRange,
@@ -88,19 +90,14 @@ export async function renderBuilderConfigAsSqlTemplate(
     };
   }
 
-  // Metric charts render one query per series (see splitChartConfigs), so only
-  // single-series metric charts can be converted to a single raw-SQL query.
-  const isMetric = config.metricTables != null;
-  if (isMetric && Array.isArray(config.select) && config.select.length > 1) {
-    return {
-      isError: true,
-      error: 'Multi-series metric charts cannot be auto-converted to SQL.',
-    };
-  }
-
   // A concrete source table is required for non-metric charts; metric charts
   // resolve their table from metricTables via the $__sourceTable(metricType)
-  // macro, so they only need the database.
+  // macro, so they only need the database. Multi-series (and formula/ratio)
+  // metric charts render as one composed UNION ALL + pivot statement (see
+  // renderMultiSeriesMetricChartConfig) whose branches each emit their own
+  // $__sourceTable(metricType) macro, so they convert like any other metric
+  // chart.
+  const isMetric = config.metricTables != null;
   if (!config.from?.databaseName || (!isMetric && !config.from?.tableName)) {
     return {
       isError: true,
@@ -119,8 +116,7 @@ export async function renderBuilderConfigAsSqlTemplate(
   // The intervalSeconds param behind $__timeInterval is only bound for
   // time-series display types (QUERY_PARAMS_BY_DISPLAY_TYPE), so only those
   // keep a granularity; its concrete value is resolved at query time.
-  const isTimeSeries =
-    displayType === DisplayType.Line || displayType === DisplayType.StackedBar;
+  const isTimeSeries = isTimeSeriesDisplayType(displayType);
 
   // Metric queries time-bucket inside their CTEs and therefore need the
   // interval macros that only time-series display types bind, so metric

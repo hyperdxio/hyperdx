@@ -34,7 +34,7 @@ export default [
     rules: {
       ...nodePlugin.configs.recommended.rules,
       ...securityPlugin.configs['recommended-legacy'].rules,
-      '@typescript-eslint/ban-ts-comment': 'warn',
+      '@typescript-eslint/ban-ts-comment': 'error',
       '@typescript-eslint/no-empty-interface': 'off',
       '@typescript-eslint/no-empty-object-type': 'warn',
       '@typescript-eslint/no-explicit-any': 'off',
@@ -42,7 +42,7 @@ export default [
       '@typescript-eslint/no-unsafe-type-assertion': 'error',
       '@typescript-eslint/no-namespace': 'warn',
       '@typescript-eslint/no-unused-vars': [
-        'warn',
+        'error',
         {
           argsIgnorePattern: '^_',
           varsIgnorePattern: '^_',

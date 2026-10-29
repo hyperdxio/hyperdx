@@ -1,4 +1,22 @@
-import { sanitizeMetricTables } from '@/mcp/tools/sources/metricKinds';
+import {
+  DISCOVERABLE_METRIC_KINDS,
+  QUERYABLE_METRIC_KINDS,
+  sanitizeMetricTables,
+} from '@/mcp/tools/sources/metricKinds';
+
+describe('DISCOVERABLE_METRIC_KINDS', () => {
+  it('is the queryable kinds plus summary, with summary last', () => {
+    // Discovery tools list summary metrics, but the query renderer cannot
+    // translate them — the query/dashboard schemas must stay on the
+    // queryable list. Summary is last so paginated scans hit it after
+    // every queryable kind.
+    expect(DISCOVERABLE_METRIC_KINDS).toEqual([
+      ...QUERYABLE_METRIC_KINDS,
+      'summary',
+    ]);
+    expect(QUERYABLE_METRIC_KINDS).not.toContain('summary');
+  });
+});
 
 describe('sanitizeMetricTables', () => {
   it('returns undefined for null / undefined input', () => {

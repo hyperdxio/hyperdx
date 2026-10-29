@@ -19,6 +19,7 @@ export class DashboardsListPage {
   private readonly emptyCreateDashboardButton: Locator;
   private readonly emptyImportDashboardButton: Locator;
   private readonly confirmConfirmButton: Locator;
+  private readonly confirmCancelButton: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -40,6 +41,7 @@ export class DashboardsListPage {
       'empty-import-dashboard-button',
     );
     this.confirmConfirmButton = page.getByTestId('confirm-confirm-button');
+    this.confirmCancelButton = page.getByTestId('confirm-cancel-button');
   }
 
   async goto() {
@@ -91,11 +93,44 @@ export class DashboardsListPage {
     await this.page.waitForURL('**/dashboards/**');
   }
 
-  async deleteDashboardFromCard(name: string) {
+  /**
+   * Open the delete confirmation dialog for a dashboard card without
+   * confirming. Use together with `cancelDeleteDashboard` or
+   * `confirmDeleteDashboard` to test the full modal flow.
+   */
+  async openDeleteDashboardDialogFromCard(name: string) {
     const card = this.getDashboardCard(name);
     await card.locator('[data-variant="secondary"]').click();
     await this.page.getByRole('menuitem', { name: 'Delete' }).click();
+  }
+
+  /**
+   * Cancel the open delete confirmation dialog.
+   */
+  async cancelDeleteDashboard() {
+    await this.confirmCancelButton.click();
+  }
+
+  /**
+   * Confirm the open delete confirmation dialog.
+   */
+  async confirmDeleteDashboard() {
     await this.confirmConfirmButton.click();
+  }
+
+  /**
+   * The shared confirm modal used for dashboard deletion. Exposed so specs
+   * can assert it is visible/hidden.
+   */
+  get deleteConfirmModal(): Locator {
+    return this.page
+      .getByRole('dialog')
+      .filter({ has: this.confirmConfirmButton });
+  }
+
+  async deleteDashboardFromCard(name: string) {
+    await this.openDeleteDashboardDialogFromCard(name);
+    await this.confirmDeleteDashboard();
   }
 
   async deleteDashboardFromRow(name: string) {
@@ -109,19 +144,41 @@ export class DashboardsListPage {
     return this.pageContainer.locator('a').filter({ hasText: name });
   }
 
-  getTagFilterSelect() {
-    return this.page.getByPlaceholder('Filter by tag');
+  getTab(tab: 'all' | 'favorites' | 'mine') {
+    return this.page.getByTestId(`dashboards-tab-${tab}`);
   }
 
+  async selectTab(tab: 'all' | 'favorites' | 'mine') {
+    await this.getTab(tab).click();
+  }
+
+  getSortSelect() {
+    return this.page.getByTestId('dashboards-sort-select');
+  }
+
+  async selectSort(label: string) {
+    await this.getSortSelect().click();
+    await this.page.getByRole('option', { name: label, exact: true }).click();
+  }
+
+  getTagFilterSelect() {
+    return this.page.getByTestId('dashboards-tag-filter');
+  }
+
+  /**
+   * Tick one tag in the filter popover, then close it. Call again to tick
+   * another tag.
+   */
   async selectTagFilter(tag: string) {
     await this.getTagFilterSelect().click();
-    await this.page.getByRole('option', { name: tag, exact: true }).click();
+    await this.page.getByRole('checkbox', { name: tag }).check();
+    await this.page.keyboard.press('Escape');
   }
 
   async clearTagFilter() {
-    // The Mantine Select clear button is a sibling button next to the textbox
-    const select = this.getTagFilterSelect();
-    await select.locator('..').locator('button').click();
+    await this.getTagFilterSelect().click();
+    await this.page.getByRole('button', { name: 'Clear all' }).click();
+    await this.page.keyboard.press('Escape');
   }
 
   getEmptyState() {
@@ -132,10 +189,6 @@ export class DashboardsListPage {
     return this.pageContainer.getByText('No matching dashboards yet');
   }
 
-  getFavoritesSection() {
-    return this.page.getByTestId('favorite-dashboards-section');
-  }
-
   async toggleFavoriteOnCard(name: string) {
     const card = this.getDashboardCard(name);
     await card.getByTestId('favorite-button').click();
@@ -144,15 +197,6 @@ export class DashboardsListPage {
   async toggleFavoriteOnRow(name: string) {
     const row = this.getDashboardRow(name);
     await row.getByTestId('favorite-button').click();
-  }
-
-  getFavoritedDashboardCard(name: string) {
-    return this.getFavoritesSection().locator('a').filter({ hasText: name });
-  }
-
-  async toggleFavoriteOnFavoritedCard(name: string) {
-    const card = this.getFavoritedDashboardCard(name);
-    await card.getByTestId('favorite-button').click();
   }
 
   getAlertStatusIcon(name: string) {

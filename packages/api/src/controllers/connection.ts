@@ -1,4 +1,39 @@
+import type { ObjectId } from '@/models';
 import Connection, { IConnection } from '@/models/connection';
+import { objectIdSchema } from '@/utils/zod';
+
+export type ConnectionValidation =
+  | { ok: true }
+  | { ok: false; status: 400 | 403; message: string };
+
+export async function validateConnectionId(
+  connection: unknown,
+  teamId: string | ObjectId | undefined,
+): Promise<ConnectionValidation> {
+  const parsed = objectIdSchema.safeParse(connection);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'connection must be a valid connection id',
+    };
+  }
+  if (teamId == null) {
+    return { ok: false, status: 403, message: 'Forbidden' };
+  }
+  const connectionExists = await Connection.exists({
+    _id: parsed.data,
+    team: teamId,
+  });
+  if (connectionExists == null) {
+    return {
+      ok: false,
+      status: 400,
+      message: 'connection must be an existing connection id',
+    };
+  }
+  return { ok: true };
+}
 
 // Returns all connections across all teams. Only intended for instance-level
 // operations (e.g. startup auto-provisioning); user-facing routes must use

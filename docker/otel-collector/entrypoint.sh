@@ -24,6 +24,43 @@ if [ "$HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE" = "true" ]; then
   export HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA=true
 fi
 
+# CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT accepts a bare host:port (plain HTTP,
+# the original format) or an http:// or https:// URL. Both the standalone
+# config and the OpAMP-managed config (opampController.ts) need it as
+# host:port, because it is also a Prometheus scrape target, so the scheme is
+# split off here and handed to the prometheusremotewrite exporter through
+# HYPERDX_PROMETHEUS_SCHEME and HYPERDX_PROMETHEUS_TLS_INSECURE. Runs before
+# migrations so a bad value fails fast without touching ClickHouse.
+prometheus_endpoint_error() {
+  echo "ERROR: CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT $1. Use host:port, http://host:port or https://host:port." >&2
+  exit 1
+}
+
+if [ -n "$CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT" ]; then
+  HYPERDX_PROMETHEUS_SCHEME=http
+  HYPERDX_PROMETHEUS_TLS_INSECURE=true
+  case "$CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT" in
+    https://*)
+      HYPERDX_PROMETHEUS_SCHEME=https
+      HYPERDX_PROMETHEUS_TLS_INSECURE=false
+      ;;
+    http://*) ;;
+    # Only the scheme is echoed back: the rest of the URL may carry credentials.
+    *://*) prometheus_endpoint_error "has an unsupported scheme '${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT%%://*}'" ;;
+  esac
+
+  PROMETHEUS_HOST_PORT="${CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT#*://}"
+  PROMETHEUS_HOST_PORT="${PROMETHEUS_HOST_PORT%/}"
+  case "$PROMETHEUS_HOST_PORT" in
+    "") prometheus_endpoint_error "has no host" ;;
+    */*) prometheus_endpoint_error "must not include a path (/write is appended automatically)" ;;
+  esac
+
+  export CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT="$PROMETHEUS_HOST_PORT"
+  export HYPERDX_PROMETHEUS_SCHEME HYPERDX_PROMETHEUS_TLS_INSECURE
+  echo "CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT scheme: $HYPERDX_PROMETHEUS_SCHEME"
+fi
+
 # Run ClickHouse schema migrations if not using legacy schema creation
 if [ "$HYPERDX_OTEL_EXPORTER_CREATE_LEGACY_SCHEMA" != "true" ]; then
   # Run Go-based migrate tool with TLS support
@@ -45,8 +82,24 @@ if [ -z "$OPAMP_SERVER_URL" ]; then
   # Build collector arguments with multiple config files
   COLLECTOR_ARGS="--config /etc/otelcol-contrib/config.yaml --config /etc/otelcol-contrib/standalone-config.yaml"
 
-  # Add bearer token auth config if OTLP_AUTH_TOKEN is specified (only used in standalone mode)
-  if [ -n "$OTLP_AUTH_TOKEN" ]; then
+  # Add OIDC-based bearer token auth config if OIDC_ISSUER_URL is specified,
+  # otherwise fall back to static bearer token auth if OTLP_AUTH_TOKEN is
+  # specified (only used in standalone mode). These are mutually exclusive:
+  # both configure the same receiver's auth.authenticator, so enabling both
+  # would just make whichever config file is loaded last win.
+  if [ -n "$OIDC_ISSUER_URL" ]; then
+    # oidcauthextension requires a non-empty audience unless ignore_audience
+    # is set (which we don't expose here, since silently skipping the
+    # audience check would weaken the auth rather than just fail loudly).
+    # Fail fast with a clear message instead of letting the collector crash
+    # on the extension's own less obvious "no audience provided" error.
+    if [ -z "$OIDC_AUDIENCE" ]; then
+      echo "ERROR: OIDC_ISSUER_URL is set but OIDC_AUDIENCE is not. Both are required to enable OIDC authentication." >&2
+      exit 1
+    fi
+    echo "OIDC_ISSUER_URL is configured, enabling OIDC-based bearer token authentication"
+    COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-oidc-config.yaml"
+  elif [ -n "$OTLP_AUTH_TOKEN" ]; then
     echo "OTLP_AUTH_TOKEN is configured, enabling bearer token authentication"
     COLLECTOR_ARGS="$COLLECTOR_ARGS --config /etc/otelcol-contrib/standalone-auth-config.yaml"
   fi
@@ -77,20 +130,10 @@ else
   # Supervisor mode - run with OpAMP supervisor
   echo "Running in supervisor mode (OPAMP_SERVER_URL: $OPAMP_SERVER_URL)"
 
-  if [ "$OTEL_SUPERVISOR_LOGS" = "true" ]; then
-   # Start log tailer process in background for agent.log
-    # Arguments: log_file_path [check_interval_seconds]
-    /log-tailer.sh /etc/otel/supervisor-data/agent.log 1 &
-
-    # Create a agent log file for the supervisor and collector child process. Normally
-    # this file would be created as a standard file but we just want a FIFO pipe that
-    # will pass data over to the tail process in the entrypoint script. This avoids
-    # the need to the supervisor to store and forward the logs in its memory while also
-    # eliminating the need for volume based storage.
-    if [ ! -e /etc/otel/supervisor-data/agent.log ]; then
-      mkfifo /etc/otel/supervisor-data/agent.log || echo "Failed to create FIFO" >&2
-    fi
-  fi
+  # OTEL_SUPERVISOR_LOGS=true is consumed by supervisor.yaml.tmpl, which sets
+  # the supervisor's native `agent::passthrough_logs`. With this the supervisor
+  # forwards the collector's stdout/stderr through its own logger, keeping a
+  # single writer on the container's stdout.
 
   # Render the supervisor config template using gomplate
   # Write to supervisor-data directory which has proper permissions for otel user

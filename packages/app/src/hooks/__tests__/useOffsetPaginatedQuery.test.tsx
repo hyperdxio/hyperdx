@@ -1,6 +1,9 @@
 import React, { act } from 'react';
 import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
-import { ChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
+import {
+  ChartConfigWithDateRange,
+  PromqlConfigWithDateRange,
+} from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
   QueryClientProvider,
@@ -58,6 +61,10 @@ jest.mock('@hyperdx/common-utils/dist/core/renderChartConfig', () => ({
   renderChartConfig: jest.fn(),
 }));
 
+jest.mock('@/utils/promqlChartQuery', () => ({
+  queryPromqlChartConfig: jest.fn(),
+}));
+
 // Import mocked modules after jest.mock calls
 import { getClickhouseClient } from '@hyperdx/app/src/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
@@ -68,6 +75,7 @@ import {
   MVOptimizationExplanationResult,
   useMVOptimizationExplanation,
 } from '@/hooks/useMVOptimizationExplanation';
+import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
 
 // Create a mock ChartConfig based on the Zod schema
 const createMockChartConfig = (
@@ -535,6 +543,37 @@ describe('useOffsetPaginatedQuery', () => {
   });
 
   describe('Data Flattening and Aggregation', () => {
+    it('should preserve all data rows if headers span multiple stream chunks', async () => {
+      const config = createMockChartConfig();
+
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [{ json: () => ['timestamp', 'message'] }],
+        })
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['DateTime', 'String'] },
+            { json: () => ['2024-01-01T01:00:00Z', 'first log'] },
+            { json: () => ['2024-01-01T02:00:00Z', 'second log'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(result.current.data?.data).toHaveLength(2);
+      expect(result.current.data?.data).toEqual([
+        { timestamp: '2024-01-01T01:00:00Z', message: 'first log' },
+        { timestamp: '2024-01-01T02:00:00Z', message: 'second log' },
+      ]);
+    });
+
     it('should flatten data from multiple windows correctly', async () => {
       const config = createMockChartConfig({
         dateRange: [
@@ -719,6 +758,182 @@ describe('useOffsetPaginatedQuery', () => {
       // Live mode should have more aggressive garbage collection
       // This is tested through the maxPages and gcTime configuration
       expect(result.current.data).toBeDefined();
+    });
+  });
+
+  describe('Refetching for a new date range', () => {
+    // A single, non-windowed page so each query is one read of the stream
+    const rangeA = createMockChartConfig({ orderBy: 'ServiceName' });
+    const rangeB = createMockChartConfig({
+      orderBy: 'ServiceName',
+      dateRange: [
+        new Date('2024-01-01T00:05:00Z'),
+        new Date('2024-01-02T00:05:00Z'),
+      ] as [Date, Date],
+    });
+
+    const page = (service: string) => ({
+      done: false,
+      value: [
+        { json: () => ['ServiceName'] },
+        { json: () => ['String'] },
+        { json: () => [service] },
+      ],
+    });
+
+    // Loads rangeA, then switches to rangeB and holds its response until
+    // the returned `finish` is called, so the refetch can be inspected.
+    const loadThenRefetch = async (options: { keepPreviousData?: boolean }) => {
+      let releaseRangeB!: (value: unknown) => void;
+      mockReader.read
+        .mockResolvedValueOnce(page('from-range-a'))
+        .mockResolvedValueOnce({ done: true })
+        .mockReturnValueOnce(
+          new Promise(resolve => {
+            releaseRangeB = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({ done: true });
+
+      const { result, rerender } = renderHook(
+        ({ config }) => useOffsetPaginatedQuery(config, options),
+        { wrapper, initialProps: { config: rangeA } },
+      );
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a'),
+      );
+
+      rerender({ config: rangeB });
+      await waitFor(() =>
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2),
+      );
+
+      return {
+        result,
+        finish: () => act(async () => releaseRangeB(page('from-range-b'))),
+      };
+    };
+
+    it('keeps the previous rows as placeholder data when keepPreviousData is set', async () => {
+      const { result, finish } = await loadThenRefetch({
+        keepPreviousData: true,
+      });
+
+      expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a');
+      expect(result.current.isPlaceholderData).toBe(true);
+      expect(result.current.isFetching).toBe(true);
+
+      await finish();
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-b'),
+      );
+      expect(result.current.isPlaceholderData).toBe(false);
+    });
+
+    it('clears the previous rows by default', async () => {
+      const { result, finish } = await loadThenRefetch({});
+
+      expect(result.current.data).toBeNull();
+      expect(result.current.isPlaceholderData).toBe(false);
+      expect(result.current.isLoading).toBe(true);
+
+      await finish();
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-b'),
+      );
+    });
+
+    it('clears the previous rows when more than the date range changes', async () => {
+      // e.g. a tile edit: rows from the old query would otherwise be rendered
+      // with the new config's columns, formats and colours
+      const edited = { ...rangeB, where: "ServiceName = 'api'" };
+
+      let releaseQuery!: () => void;
+      mockClickhouseClient.query
+        .mockImplementationOnce(() =>
+          Promise.resolve({ stream: () => mockStream }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise(resolve => {
+              releaseQuery = () => resolve({ stream: () => mockStream });
+            }),
+        );
+      mockReader.read
+        .mockResolvedValueOnce(page('from-range-a'))
+        .mockResolvedValueOnce({ done: true })
+        .mockResolvedValueOnce(page('edited'))
+        .mockResolvedValueOnce({ done: true });
+
+      const { result, rerender } = renderHook(
+        ({ config }) =>
+          useOffsetPaginatedQuery(config, { keepPreviousData: true }),
+        { wrapper, initialProps: { config: rangeA } },
+      );
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a'),
+      );
+
+      rerender({ config: edited });
+      await waitFor(() =>
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2),
+      );
+
+      expect(result.current.data).toBeNull();
+      expect(result.current.isPlaceholderData).toBe(false);
+
+      await act(async () => releaseQuery());
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('edited'),
+      );
+    });
+
+    it('does not offer more pages while showing placeholder rows', async () => {
+      // Ordered by timestamp, so each range is paged through time windows
+      const windowedA = createMockChartConfig();
+      const windowedB = createMockChartConfig({
+        dateRange: rangeB.dateRange,
+      });
+
+      let releaseRangeB!: (value: unknown) => void;
+      mockReader.read
+        .mockResolvedValueOnce(page('from-range-a'))
+        .mockResolvedValueOnce({ done: true })
+        .mockReturnValueOnce(
+          new Promise(resolve => {
+            releaseRangeB = resolve;
+          }),
+        )
+        .mockResolvedValueOnce({ done: true });
+
+      const { result, rerender } = renderHook(
+        ({ config }) =>
+          useOffsetPaginatedQuery(config, { keepPreviousData: true }),
+        { wrapper, initialProps: { config: windowedA } },
+      );
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a'),
+      );
+      // Range A has later time windows left to load
+      expect(result.current.hasNextPage).toBe(true);
+
+      rerender({ config: windowedB });
+      await waitFor(() =>
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2),
+      );
+
+      // The old rows stay, but the "load more" trigger must not fire for them
+      expect(result.current.isPlaceholderData).toBe(true);
+      expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-a');
+      expect(result.current.hasNextPage).toBe(false);
+
+      await act(async () => releaseRangeB(page('from-range-b')));
+      await waitFor(() =>
+        expect(result.current.data?.data[0]?.ServiceName).toBe('from-range-b'),
+      );
+      expect(result.current.isPlaceholderData).toBe(false);
+      // Paging resumes against the new range
+      expect(result.current.hasNextPage).toBe(true);
     });
   });
 
@@ -972,6 +1187,51 @@ describe('useOffsetPaginatedQuery', () => {
 
       // getSetting should not be called for builder configs
       expect(mockMetadata.getSetting).not.toHaveBeenCalled();
+    });
+  });
+
+  // PromQL never reaches ClickHouse: the Prometheus API route answers in one
+  // page, which is also why getNextPageParam refuses to paginate it.
+  describe('PromQL configs', () => {
+    const promqlConfig: PromqlConfigWithDateRange = {
+      configType: 'promql',
+      connection: 'foo',
+      source: 'source-promql',
+      promqlExpression: [{ expression: 'up' }],
+      dateRange: [
+        new Date('2024-01-01T00:00:00Z'),
+        new Date('2024-01-02T00:00:00Z'),
+      ],
+    };
+
+    it('queries Prometheus instead of rendering SQL', async () => {
+      jest.mocked(queryPromqlChartConfig).mockResolvedValue({
+        data: [{ service: 'web', Value: 1 }],
+        meta: [
+          { name: 'service', type: 'String' },
+          { name: 'Value', type: 'Float64' },
+        ],
+        rows: 1,
+        isComplete: true,
+      });
+
+      const { result } = renderHook(
+        () => useOffsetPaginatedQuery(promqlConfig),
+        { wrapper },
+      );
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+
+      expect(queryPromqlChartConfig).toHaveBeenCalledWith(
+        promqlConfig,
+        promqlConfig.dateRange,
+        expect.anything(),
+        {},
+      );
+      expect(renderChartConfig).not.toHaveBeenCalled();
+      expect(mockClickhouseClient.query).not.toHaveBeenCalled();
+      expect(result.current.data?.data).toEqual([{ service: 'web', Value: 1 }]);
+      expect(result.current.hasNextPage).toBe(false);
     });
   });
 
