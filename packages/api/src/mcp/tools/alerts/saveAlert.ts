@@ -112,6 +112,7 @@ export function registerSaveAlert({
         thresholdMax: input.thresholdMax,
         scheduleOffsetMinutes: input.scheduleOffsetMinutes,
         scheduleStartAt: input.scheduleStartAt,
+        renotifyIntervalMinutes: input.renotifyIntervalMinutes,
         name: input.name,
         message: input.message,
         displayName: input.displayName,

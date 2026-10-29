@@ -233,6 +233,16 @@ export const mcpSaveAlertSchema = z.object({
         'boundary. Must be less than the interval. Ignored when ' +
         'scheduleStartAt is set.',
     ),
+  renotifyIntervalMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .optional()
+    .describe(
+      'Minutes between repeat notifications while the alert stays firing. ' +
+        'Omit to notify only on the OK to ALERT transition; 0 notifies on ' +
+        'every evaluation.',
+    ),
   scheduleStartAt: z
     .string()
     .datetime()
