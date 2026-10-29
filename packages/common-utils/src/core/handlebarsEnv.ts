@@ -70,7 +70,7 @@ const KNOWN_HELPERS = {
 function parseAndCompile(
   template: string,
   strict: boolean,
-): HandlebarsTemplateDelegate {
+): Handlebars.TemplateDelegate {
   // hb.compile() defers parsing until the first render, which would push
   // syntax errors out to every render call. Parse up front and hand compile()
   // the AST instead, so a malformed template fails here, once.
@@ -83,7 +83,7 @@ function parseAndCompile(
 }
 
 type CompileResult =
-  | { delegate: HandlebarsTemplateDelegate }
+  | { delegate: Handlebars.TemplateDelegate }
   | { error: unknown };
 
 const strictCache = new Map<string, CompileResult>();
@@ -93,7 +93,7 @@ function compileCached(
   cache: Map<string, CompileResult>,
   template: string,
   strict: boolean,
-): HandlebarsTemplateDelegate {
+): Handlebars.TemplateDelegate {
   let result = cache.get(template);
   if (!result) {
     try {
@@ -111,7 +111,7 @@ function compileCached(
  * Compile a template whose render throws if it references a key that isn't in
  * the context.
  */
-export function compileStrict(template: string): HandlebarsTemplateDelegate {
+export function compileStrict(template: string): Handlebars.TemplateDelegate {
   return compileCached(strictCache, template, true);
 }
 
@@ -119,7 +119,7 @@ export function compileStrict(template: string): HandlebarsTemplateDelegate {
  * Compile a template whose render leaves missing keys empty. Throws on invalid
  * syntax.
  */
-export function compileLenient(template: string): HandlebarsTemplateDelegate {
+export function compileLenient(template: string): Handlebars.TemplateDelegate {
   return compileCached(lenientCache, template, false);
 }
 
