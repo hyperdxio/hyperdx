@@ -11628,6 +11628,72 @@ describe('checkAlerts', () => {
         // Second ALERT is a fresh transition after resolving, so it notifies.
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
       });
+      it('tracks notifications per group for group-by alerts', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockResolvedValue({ text: 'ok' });
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+            groupBy: 'ServiceName',
+          },
+          { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+        );
+
+        // api breaches in every window; web starts two windows later.
+        await insertSustainedBreach();
+        await bulkInsertLogs(
+          ['00:15:00', '00:20:00'].map(time => ({
+            ServiceName: 'web',
+            Timestamp: new Date(`2024-01-01T${time}Z`),
+            SeverityText: 'error',
+            Body: 'err',
+          })),
+        );
+
+        const notificationCounts: number[] = [];
+        for (const now of EVALUATION_TIMES) {
+          await processAlertAtTime(
+            now,
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+          notificationCounts.push(
+            jest.mocked(slack.postMessageToWebhook).mock.calls.length,
+          );
+        }
+
+        // Each group notifies once, on its own OK->ALERT transition.
+        expect(notificationCounts).toEqual([1, 1, 2, 2]);
+        const webHistories = await AlertHistory.find({
+          alert: details.alert.id,
+          group: 'ServiceName:web',
+        }).sort({ createdAt: 1 });
+        expect(webHistories.map(h => h.lastNotifiedAt?.toISOString())).toEqual(
+          Array(2).fill('2024-01-01T00:20:00.000Z'),
+        );
+      });
     });
   });
 
