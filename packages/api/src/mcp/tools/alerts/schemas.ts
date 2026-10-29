@@ -237,11 +237,12 @@ export const mcpSaveAlertSchema = z.object({
     .number()
     .int()
     .min(0)
-    .optional()
+    .nullish()
     .describe(
-      'Minutes between repeat notifications while the alert stays firing. ' +
-        'Omit to notify only on the OK to ALERT transition; 0 notifies on ' +
-        'every evaluation.',
+      'How often to repeat the notification while the alert keeps firing. ' +
+        'Omit or send null to notify only once on the OK to ALERT ' +
+        'transition, 0 to notify on every evaluation, or N to re-notify at ' +
+        'most once every N minutes. A resolve notification is always sent.',
     ),
   scheduleStartAt: z
     .string()

@@ -975,11 +975,8 @@ export const alertQueryAttribution = (
     : {}),
 });
 
-/**
- * Whether the group already has a notification that was sent and has not been
- * resolved yet. `fired` is absent on histories written before it was
- * introduced, so only an explicit `false` counts as "never notified".
- */
+// `fired` is missing on histories written before it existed, so only an
+// explicit `false` means "never notified".
 const hasUnresolvedNotification = (
   previousHistory: AggregatedAlertHistory | undefined,
 ): boolean =>
@@ -1295,6 +1292,10 @@ export const processAlert = async (
 
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
+    // A catch-up run can go OK then ALERT again: that's a new incident, not a
+    // continuation of the previous run's notification.
+    const resolvedInRun = new Set<string>();
+    const reAlertedInRun = new Set<string>();
     const latestAlertContext = new Map<
       string,
       { value: number; attributes: Record<string, string>; startTime: Date }
@@ -1434,9 +1435,9 @@ export const processAlert = async (
           );
           executionErrors.push(makeNotificationAlertError(failure));
         }
-        // Delivered if any target got it; when every target failed, report
-        // not-notified so renotify gating retries on the next evaluation.
-        return timings.some(t => t.ok);
+        // Retry on any failed target; a duplicate beats a channel missing the
+        // whole incident.
+        return failures.length === 0;
       } catch (e) {
         // Render-level failures (title/link building, template compile) —
         // nothing was dispatched.
@@ -1449,7 +1450,6 @@ export const processAlert = async (
       }
     };
 
-    // Gates re-notification of an already-firing group by renotifyIntervalMinutes.
     const shouldNotifyWhileFiring = (
       previousHistory: AggregatedAlertHistory | undefined,
     ): boolean => {
@@ -1546,8 +1546,8 @@ export const processAlert = async (
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
       const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
-      // Carry only within an unresolved incident, so a failed or silenced first
-      // notification of a later incident is retried instead of suppressed.
+      // Carry only within an unresolved incident, so a later incident's failed
+      // first send is retried.
       history.lastNotifiedAt = hasUnresolvedNotification(previous)
         ? previous?.lastNotifiedAt
         : undefined;
@@ -1667,6 +1667,9 @@ export const processAlert = async (
           // we will handle creating a history as part of auto-resolve later
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
+          if (!hasGroupBy) {
+            resolvedInRun.add('');
+          }
         }
 
         continue;
@@ -1711,6 +1714,9 @@ export const processAlert = async (
           if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
             history.state = AlertState.ALERT;
             history.fired = true;
+            if (resolvedInRun.has(groupKey)) {
+              reAlertedInRun.add(groupKey);
+            }
             latestAlertContext.set(groupKey, {
               value: evaluation.value,
               attributes: evaluation.attributes,
@@ -1729,6 +1735,7 @@ export const processAlert = async (
           // a subsequent OK window correctly resolves it before the notification phase.
           history.state = AlertState.OK;
           history.counts = 0;
+          resolvedInRun.add(groupKey);
         }
         history.lastValues.push({
           count: evaluation.value,
@@ -1772,7 +1779,9 @@ export const processAlert = async (
     // Check for state transitions and send notifications
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      let groupPrevious = previousMap.get(previousKey);
+      let groupPrevious = reAlertedInRun.has(groupKey)
+        ? undefined
+        : previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
       history.lastNotifiedAt = hasUnresolvedNotification(groupPrevious)

@@ -2726,6 +2726,37 @@ describe('External API Alerts', () => {
       expect(getResponse.body.data.numConsecutiveWindows).toBeNull();
     });
   });
+  describe('Re-notification interval (renotifyIntervalMinutes)', () => {
+    it('should create an alert with renotifyIntervalMinutes and return it on GET', async () => {
+      const { alert } = await createTestAlert({ renotifyIntervalMinutes: 60 });
+      expect(alert.renotifyIntervalMinutes).toBe(60);
+
+      const getResponse = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+      expect(getResponse.body.data.renotifyIntervalMinutes).toBe(60);
+    });
+
+    it('should update an alert to set and then clear renotifyIntervalMinutes', async () => {
+      const { alert, alertInput } = await createTestAlert();
+      expect(alert.renotifyIntervalMinutes).toBeNull();
+
+      const getRenotify = async () =>
+        (await authRequest('get', `${ALERTS_BASE_URL}/${alert.id}`).expect(200))
+          .body.data.renotifyIntervalMinutes;
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({ ...alertInput, renotifyIntervalMinutes: 0 })
+        .expect(200);
+      expect(await getRenotify()).toBe(0);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({ ...alertInput, renotifyIntervalMinutes: null })
+        .expect(200);
+      expect(await getRenotify()).toBeNull();
+    });
+  });
   describe('Multiple notification channels', () => {
     const makeWebhookNamed = async (name: string) =>
       await Webhook.findOneAndUpdate(

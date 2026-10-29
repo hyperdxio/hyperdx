@@ -183,6 +183,8 @@ export function AlertScheduleFields<T extends FieldValues>({
                       field.onChange(typeof v === 'number' ? v : undefined)
                     }
                     min={0}
+                    allowDecimal={false}
+                    allowNegative={false}
                     placeholder="Never"
                     size="xs"
                     w={90}

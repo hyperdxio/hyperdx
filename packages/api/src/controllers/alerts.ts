@@ -319,8 +319,6 @@ export const makeAlert = (
 
     // Multi-window alerting
     numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
-
-    // Re-notification while firing
     renotifyIntervalMinutes: alert.renotifyIntervalMinutes ?? null,
   };
 };
