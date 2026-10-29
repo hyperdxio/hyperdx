@@ -1292,10 +1292,9 @@ export const processAlert = async (
 
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
-    // A catch-up run can go OK then ALERT again: that's a new incident, not a
-    // continuation of the previous run's notification.
-    const resolvedInRun = new Set<string>();
-    const reAlertedInRun = new Set<string>();
+    // Latest OK/ALERT bucket per group; OK before ALERT means a new incident.
+    const lastOkBucket = new Map<string, number>();
+    const lastAlertBucket = new Map<string, number>();
     const latestAlertContext = new Map<
       string,
       { value: number; attributes: Record<string, string>; startTime: Date }
@@ -1357,7 +1356,7 @@ export const processAlert = async (
       group: string;
       startTime?: Date;
       attributes?: Record<string, string>;
-    }) => {
+    }): Promise<boolean> => {
       // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
       // the task is queued via AlertProvider, not when it processes. If a user
       // silences an alert after it's queued but before it processes, this
@@ -1435,9 +1434,8 @@ export const processAlert = async (
           );
           executionErrors.push(makeNotificationAlertError(failure));
         }
-        // Retry on any failed target; a duplicate beats a channel missing the
-        // whole incident.
-        return failures.length === 0;
+        // Only failed dispatches retry; unresolvable targets would retry forever.
+        return timings.every(t => t.ok);
       } catch (e) {
         // Render-level failures (title/link building, template compile) —
         // nothing was dispatched.
@@ -1621,7 +1619,18 @@ export const processAlert = async (
       checkDataByBucket.get(bucketStart.getTime())!.push(checkData);
     }
 
-    for (const bucketStart of expectedBuckets) {
+    // An absent group is OK unless a zero value breaches.
+    const previousGroups = Array.from(previousMap.keys(), key =>
+      extractGroupKeyFromMapKey(key, alert.id),
+    );
+    const markAbsentGroupsOk = (bucketIndex: number, present: Set<string>) => {
+      if (!hasGroupBy || doesExceedThreshold(alert, 0)) return;
+      for (const groupKey of [...previousGroups, ...histories.keys()]) {
+        if (!present.has(groupKey)) lastOkBucket.set(groupKey, bucketIndex);
+      }
+    };
+
+    for (const [bucketIndex, bucketStart] of expectedBuckets.entries()) {
       const dataForBucket = checkDataByBucket.get(bucketStart.getTime());
 
       // Handle case where no data is available for this bucket
@@ -1650,6 +1659,7 @@ export const processAlert = async (
           if (shouldFireBasedOnConsecutiveWindows()) {
             history.state = AlertState.ALERT;
             history.fired = true;
+            lastAlertBucket.set('', bucketIndex);
             latestAlertContext.set('', {
               value: 0,
               attributes: {},
@@ -1667,8 +1677,12 @@ export const processAlert = async (
           // we will handle creating a history as part of auto-resolve later
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
-          if (!hasGroupBy) {
-            resolvedInRun.add('');
+        }
+        if (!zeroValueIsAlert) {
+          if (hasGroupBy) {
+            markAbsentGroupsOk(bucketIndex, new Set());
+          } else {
+            lastOkBucket.set('', bucketIndex);
           }
         }
 
@@ -1682,8 +1696,14 @@ export const processAlert = async (
         string,
         { value: number; attributes: Record<string, string>; exceeds: boolean }
       >();
+      const bucketGroups = new Set<string>();
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
+
+        const groupKey = hasGroupBy
+          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
+          : '';
+        bucketGroups.add(groupKey);
 
         // NULL means no data: a metric series with no row at this bucket, or
         // a ratio with a missing/zero denominator. Skip the row instead of
@@ -1692,9 +1712,6 @@ export const processAlert = async (
           continue;
         }
 
-        const groupKey = hasGroupBy
-          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
-          : '';
         const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
         groupAttributes.set(groupKey, attributes);
 
@@ -1706,6 +1723,8 @@ export const processAlert = async (
         }
       }
 
+      markAbsentGroupsOk(bucketIndex, bucketGroups);
+
       for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
         const history = getOrCreateHistory(groupKey);
 
@@ -1714,9 +1733,7 @@ export const processAlert = async (
           if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
             history.state = AlertState.ALERT;
             history.fired = true;
-            if (resolvedInRun.has(groupKey)) {
-              reAlertedInRun.add(groupKey);
-            }
+            lastAlertBucket.set(groupKey, bucketIndex);
             latestAlertContext.set(groupKey, {
               value: evaluation.value,
               attributes: evaluation.attributes,
@@ -1735,7 +1752,7 @@ export const processAlert = async (
           // a subsequent OK window correctly resolves it before the notification phase.
           history.state = AlertState.OK;
           history.counts = 0;
-          resolvedInRun.add(groupKey);
+          lastOkBucket.set(groupKey, bucketIndex);
         }
         history.lastValues.push({
           count: evaluation.value,
@@ -1779,7 +1796,10 @@ export const processAlert = async (
     // Check for state transitions and send notifications
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      let groupPrevious = reAlertedInRun.has(groupKey)
+      const isNewIncidentInRun =
+        (lastOkBucket.get(groupKey) ?? Infinity) <
+        (lastAlertBucket.get(groupKey) ?? -Infinity);
+      let groupPrevious = isNewIncidentInRun
         ? undefined
         : previousMap.get(previousKey);
 
