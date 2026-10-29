@@ -251,17 +251,27 @@ const renderJsonStringSubcolumn = (
 };
 
 export class MetadataCache {
-  private cache = new Map<string, any>();
+  private cache = new Map<string, { value: any; expiresAt?: number }>();
   private pendingQueries = new Map<string, Promise<any>>();
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
-    return this.cache.get(key);
+    const entry = this.cache.get(key);
+    if (entry?.expiresAt != null && Date.now() >= entry.expiresAt) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry?.value;
   }
 
-  async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
+  /** Entries stored without `ttlMs` are kept for the life of the cache. */
+  async getOrFetch<T>(
+    key: string,
+    query: () => Promise<T>,
+    { ttlMs }: { ttlMs?: number } = {},
+  ): Promise<T> {
     // Check if value exists in cache
-    const cachedValue: T | undefined = this.cache.get(key);
+    const cachedValue: T | undefined = this.get(key);
     if (cachedValue != null) {
       return cachedValue;
     }
@@ -279,7 +289,7 @@ export class MetadataCache {
 
     try {
       const result = await queryPromise;
-      this.cache.set(key, result);
+      this.set(key, result, ttlMs);
       return result;
     } finally {
       // Clean up the pending query map
@@ -287,8 +297,11 @@ export class MetadataCache {
     }
   }
 
-  set<T>(key: string, value: T) {
-    return this.cache.set(key, value);
+  set<T>(key: string, value: T, ttlMs?: number) {
+    this.cache.set(key, {
+      value,
+      expiresAt: ttlMs == null ? undefined : Date.now() + ttlMs,
+    });
   }
 
   // TODO: This needs to be async, and use tanstack query on frontend for cache
@@ -352,6 +365,11 @@ export type SkipIndexMetadata = {
 };
 
 const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+// The API keeps one cache for the life of the process, so without a TTL a
+// column added by ALTER TABLE (such as a MATERIALIZED one) is only seen after a
+// restart. #3475
+export const COLUMNS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // Hour-aligned so a range-keyed cache rotates hourly instead of every call.
 export function defaultFieldMetadataDateRange(): [Date, Date] {
@@ -619,6 +637,7 @@ export class Metadata {
           .then(d => d.data);
         return columns;
       },
+      { ttlMs: COLUMNS_CACHE_TTL_MS },
     );
   }
 
