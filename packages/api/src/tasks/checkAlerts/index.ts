@@ -1434,6 +1434,9 @@ export const processAlert = async (
           );
           executionErrors.push(makeNotificationAlertError(failure));
         }
+        // Delivered if any target got it; when every target failed, report
+        // not-notified so renotify gating retries on the next evaluation.
+        return timings.some(t => t.ok);
       } catch (e) {
         // Render-level failures (title/link building, template compile) —
         // nothing was dispatched.
@@ -1444,7 +1447,6 @@ export const processAlert = async (
         executionErrors.push(makeWebhookAlertError(e));
         return false;
       }
-      return true;
     };
 
     // Gates re-notification of an already-firing group by renotifyIntervalMinutes.
@@ -1544,7 +1546,11 @@ export const processAlert = async (
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
       const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
-      history.lastNotifiedAt = previous?.lastNotifiedAt;
+      // Carry only within an unresolved incident, so a failed or silenced first
+      // notification of a later incident is retried instead of suppressed.
+      history.lastNotifiedAt = hasUnresolvedNotification(previous)
+        ? previous?.lastNotifiedAt
+        : undefined;
       if (doesExceedThreshold(alert, value)) {
         history.counts += 1;
         if (shouldFireBasedOnConsecutiveWindows()) {
@@ -1769,7 +1775,9 @@ export const processAlert = async (
       let groupPrevious = previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
-      history.lastNotifiedAt = groupPrevious?.lastNotifiedAt;
+      history.lastNotifiedAt = hasUnresolvedNotification(groupPrevious)
+        ? groupPrevious?.lastNotifiedAt
+        : undefined;
 
       // If it hit ALERT during this run, send the notification
       if (hitAlertThisRun) {

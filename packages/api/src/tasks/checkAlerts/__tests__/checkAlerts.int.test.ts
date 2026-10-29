@@ -11628,6 +11628,70 @@ describe('checkAlerts', () => {
         // Second ALERT is a fresh transition after resolving, so it notifies.
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
       });
+
+      it('retries a failed first notification of a later incident', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        // ALERT ok, resolve ok, second incident's ALERT fails, then ok.
+        // mockReset drops the Once value queued by the shared beforeEach.
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockReset()
+          .mockResolvedValueOnce({ text: 'ok' })
+          .mockResolvedValueOnce({ text: 'ok' })
+          .mockRejectedValueOnce(new Error('webhook down'))
+          .mockResolvedValue({ text: 'ok' });
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 1,
+            savedSearchId: savedSearch.id,
+          },
+          { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+        );
+
+        await bulkInsertLogs(
+          ['00:05:00', '00:15:00', '00:20:00'].map(time => ({
+            ServiceName: 'api',
+            Timestamp: new Date(`2024-01-01T${time}Z`),
+            SeverityText: 'error',
+            Body: 'err',
+          })),
+        );
+
+        for (const now of EVALUATION_TIMES) {
+          await processAlertAtTime(
+            now,
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+        }
+
+        expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(4);
+        const histories = await AlertHistory.find({
+          alert: details.alert.id,
+        }).sort({ createdAt: 1 });
+        expect(histories.at(-1)?.lastNotifiedAt?.toISOString()).toBe(
+          '2024-01-01T00:25:00.000Z',
+        );
+      });
       it('tracks notifications per group for group-by alerts', async () => {
         const {
           team,
