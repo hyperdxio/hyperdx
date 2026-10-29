@@ -66,6 +66,7 @@ const describeTemplateVariable = (
   endTimeISO: 'Window end, ISO-8601',
   teamId: 'Team the alert belongs to',
   note: "Alert's note, commonly a runbook link",
+  tags: "Alert's tags, comma-separated; iterate with {{#each tags}}",
 });
 
 export const getWebhookTemplateVariables = (
