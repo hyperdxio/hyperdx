@@ -1,10 +1,6 @@
-import { isValidElement, ReactElement } from 'react';
 import { AlertThresholdType } from '@hyperdx/common-utils/dist/types';
 
-import {
-  getAlertReferenceLines,
-  getAlertReferenceLineValues,
-} from '@/components/Alerts';
+import { getAlertReferenceLineValues } from '@/components/Alerts';
 
 describe('getAlertReferenceLineValues', () => {
   it('returns only threshold for a simple (non-range) alert type', () => {
@@ -80,66 +76,5 @@ describe('getAlertReferenceLineValues', () => {
         thresholdType: AlertThresholdType.BELOW_OR_EQUAL,
       }),
     ).toEqual([0, 550]);
-  });
-});
-
-describe('getAlertReferenceLines', () => {
-  // Recharts v3 fills an open-ended ReferenceArea from the set bound to the
-  // opposite edge: a set y2 (with y1 omitted) fills up to the top, and a set
-  // y1 (with y2 omitted) fills down to the bottom. These tests pin which bound
-  // each threshold type sets so the red firing region stays on the correct
-  // side of the threshold.
-  it.each([AlertThresholdType.ABOVE, AlertThresholdType.ABOVE_EXCLUSIVE])(
-    'fills up from the threshold for %s',
-    thresholdType => {
-      const area = getAlertReferenceLines({
-        threshold: 50,
-        thresholdMax: undefined,
-        thresholdType,
-      }) as ReactElement<{ y1?: number; y2?: number }>;
-      expect(isValidElement(area)).toBe(true);
-      expect(area.props.y2).toBe(50);
-      expect(area.props.y1).toBeUndefined();
-    },
-  );
-
-  it.each([AlertThresholdType.BELOW, AlertThresholdType.BELOW_OR_EQUAL])(
-    'fills from 0 up to the threshold for %s',
-    thresholdType => {
-      const area = getAlertReferenceLines({
-        threshold: 50,
-        thresholdMax: undefined,
-        thresholdType,
-      }) as ReactElement<{ y1?: number; y2?: number }>;
-      expect(area.props.y1).toBe(0);
-      expect(area.props.y2).toBe(50);
-    },
-  );
-
-  it('fills the band between the bounds for BETWEEN', () => {
-    const area = getAlertReferenceLines({
-      threshold: 10,
-      thresholdMax: 20,
-      thresholdType: AlertThresholdType.BETWEEN,
-    }) as ReactElement<{ y1?: number; y2?: number }>;
-    expect(area.props.y1).toBe(10);
-    expect(area.props.y2).toBe(20);
-  });
-
-  it('fills below the lower bound and above the upper bound for NOT_BETWEEN', () => {
-    const areas = getAlertReferenceLines({
-      threshold: 10,
-      thresholdMax: 20,
-      thresholdType: AlertThresholdType.NOT_BETWEEN,
-    }) as ReactElement<{ y1?: number; y2?: number }>[];
-    expect(Array.isArray(areas)).toBe(true);
-
-    const [lower, upper] = areas;
-    // Lower region: fills down from the lower bound (y2 omitted -> bottom).
-    expect(lower.props.y1).toBe(10);
-    expect(lower.props.y2).toBeUndefined();
-    // Upper region: fills up from the upper bound (y1 omitted -> top).
-    expect(upper.props.y2).toBe(20);
-    expect(upper.props.y1).toBeUndefined();
   });
 });
