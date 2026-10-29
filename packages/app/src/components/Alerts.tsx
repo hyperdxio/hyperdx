@@ -191,10 +191,16 @@ export const getAlertReferenceLines = ({
     thresholdType === AlertThresholdType.NOT_BETWEEN &&
     thresholdMax != null
   ) {
+    // Recharts v3 flipped the default edge for an open-ended ReferenceArea:
+    // on the Y axis a missing y1 now snaps to the top (highest value) and a
+    // missing y2 to the bottom (lowest value) - the reverse of v2. So the
+    // open end must be the prop we omit: omit y2 to fill down from `threshold`
+    // (values below the lower bound) and omit y1 to fill up from `thresholdMax`
+    // (values above the upper bound).
     return [
       <ReferenceArea
         key="not-between-lower"
-        y2={threshold}
+        y1={threshold}
         ifOverflow="extendDomain"
         fill="red"
         strokeWidth={0}
@@ -202,7 +208,7 @@ export const getAlertReferenceLines = ({
       />,
       <ReferenceArea
         key="not-between-upper"
-        y1={thresholdMax}
+        y2={thresholdMax}
         ifOverflow="extendDomain"
         fill="red"
         strokeWidth={0}
@@ -229,9 +235,13 @@ export const getAlertReferenceLines = ({
     thresholdType === AlertThresholdType.ABOVE ||
     thresholdType === AlertThresholdType.ABOVE_EXCLUSIVE
   ) {
+    // Omit y1 so the area fills up from `threshold` to the top edge. In
+    // Recharts v3 a missing y1 snaps to the top of the Y axis (highest value);
+    // setting y1={threshold} instead would fill downward and wrongly highlight
+    // the region below the threshold.
     return (
       <ReferenceArea
-        y1={threshold}
+        y2={threshold}
         ifOverflow="extendDomain"
         fill="red"
         strokeWidth={0}
