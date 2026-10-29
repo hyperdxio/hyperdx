@@ -28,6 +28,7 @@ export interface Message {
   sourceQuery?: string; // the search expr / SQL that defines the alert
   teamId?: string;
   note?: string; // freeform alert note (markdown); commonly holds a runbook link
+  tags?: string[];
 }
 
 export type WebhookChannel = Extract<
