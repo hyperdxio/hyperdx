@@ -19,15 +19,24 @@ export async function describePromqlSource({
   source,
   meta,
   signal,
+  progress,
 }: {
   teamId: string;
   source: Parameters<typeof getPromqlLabelCatalog>[0]['source'];
   meta: Record<string, unknown>;
   signal: AbortSignal;
+  /** Same contract as describe_source's: snapshot answers a stuck lookup. */
+  progress: { snapshot?: () => ToolResult; partial?: boolean };
 }): Promise<ToolResult> {
+  const partialResult = (error: string) =>
+    toResult({ source: meta, partial: true, error });
+
+  // The lookup may outlive the tool's deadline (the tags-table column check
+  // ignores the signal), so the config is answerable from the start.
+  progress.snapshot = () =>
+    partialResult('Listing labels timed out before it finished.');
+
   const endMs = Date.now();
-  let output: Record<string, unknown>;
-  let sqlUsage: string | undefined;
   try {
     const catalog = await getPromqlLabelCatalog({
       teamId,
@@ -44,33 +53,39 @@ export async function describePromqlSource({
       catalog.backend === 'clickhouse'
         ? `${quoteIdentifierIfNeeded(source.from.databaseName)}.${quoteIdentifierIfNeeded(source.from.tableName)}`
         : undefined;
-    sqlUsage = table && timeSeriesSqlUsage(table);
-    output = {
-      source: {
-        ...meta,
-        backend: catalog.backend,
-        ...(table ? { table } : {}),
+    return toResult(
+      {
+        source: {
+          ...meta,
+          backend: catalog.backend,
+          ...(table ? { table } : {}),
+        },
+        labelNames: catalog.labelNames.slice(0, MAX_LABEL_NAMES),
+        metricNames: catalog.metricNames.slice(0, MAX_METRIC_NAMES),
+        ...(truncated
+          ? {
+              note: `Lists are capped at ${MAX_LABEL_NAMES} label names and ${MAX_METRIC_NAMES} metric names.`,
+            }
+          : {}),
       },
-      labelNames: catalog.labelNames.slice(0, MAX_LABEL_NAMES),
-      metricNames: catalog.metricNames.slice(0, MAX_METRIC_NAMES),
-      ...(truncated
-        ? {
-            note: `Lists are capped at ${MAX_LABEL_NAMES} label names and ${MAX_METRIC_NAMES} metric names.`,
-          }
-        : {}),
-    };
+      table && timeSeriesSqlUsage(table),
+    );
   } catch (e) {
     logger.warn(
       { teamId, error: e },
       'Failed to list labels for a PromQL source',
     );
-    output = {
-      source: meta,
-      partial: true,
-      error: `Could not list labels: ${e instanceof Error ? e.message : String(e)}`,
-    };
+    progress.partial = true;
+    return partialResult(
+      `Could not list labels: ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
+}
 
+function toResult(
+  output: Record<string, unknown>,
+  sqlUsage?: string,
+): ToolResult {
   return {
     content: [
       {

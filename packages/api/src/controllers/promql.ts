@@ -46,6 +46,20 @@ export function joinPrometheusUpstreamUrl(
   return url;
 }
 
+/**
+ * Removes `user:pass@` from `url` and returns it as a Basic auth header. fetch
+ * rejects a URL that carries credentials, so they cannot stay in the host.
+ */
+function takeBasicAuthHeader(url: URL): Record<string, string> {
+  if (!url.username && !url.password) return {};
+  const credentials = `${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`;
+  url.username = '';
+  url.password = '';
+  return {
+    Authorization: `Basic ${Buffer.from(credentials).toString('base64')}`,
+  };
+}
+
 const prometheusBodySchema = z.object({
   status: z.string(),
   data: z.unknown(),
@@ -77,6 +91,7 @@ async function fetchPrometheusData<T extends z.ZodTypeAny>(
   let resp: Response;
   try {
     resp = await fetch(url, {
+      headers: takeBasicAuthHeader(url),
       signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     });
   } catch (err) {
@@ -181,6 +196,7 @@ export async function getPromqlLabelCatalog({
     startMs,
     endMs,
     limit: limit + 1,
+    signal,
   };
   const [labelNames, metricNames] = await Promise.all([
     queryLabelNames(args),

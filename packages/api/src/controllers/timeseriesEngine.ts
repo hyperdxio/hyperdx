@@ -28,6 +28,8 @@ export type TimeSeriesTagsQueryArgs = {
   endMs?: number;
   limit?: number;
   match?: string[];
+  /** Cancels the DISTINCT query; the tags-table column lookup is not cancellable. */
+  signal?: AbortSignal;
 };
 
 /**
@@ -177,6 +179,7 @@ async function queryDistinctTagsValues({
   value,
   conditions,
   limit,
+  signal,
 }: {
   client: ClickhouseClient;
   databaseName: string;
@@ -184,6 +187,7 @@ async function queryDistinctTagsValues({
   value: ChSql;
   conditions: ChSql[];
   limit?: number;
+  signal?: AbortSignal;
 }): Promise<string[]> {
   const where = conditions.length
     ? chSql`WHERE ${concatChSql(' AND ', ...conditions)}`
@@ -203,6 +207,7 @@ async function queryDistinctTagsValues({
     query: query.sql,
     query_params: query.params,
     format: 'JSON',
+    abort_signal: signal,
     clickhouse_settings: {
       allow_experimental_time_series_table: 1,
       max_execution_time: PROMETHEUS_MAX_EXECUTION_SEC,
