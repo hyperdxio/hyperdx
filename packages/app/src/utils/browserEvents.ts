@@ -16,6 +16,7 @@ export const BROWSER_EVENT_NAMES = {
   NAVIGATION: 'browser.navigation',
   CONSOLE: 'browser.console',
   EXCEPTION: 'exception',
+  RESOURCE_TIMING: 'browser.resource_timing',
 } as const;
 
 export const CONSOLE_METHOD_ATTRIBUTE = 'browser.console.method';

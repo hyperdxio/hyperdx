@@ -81,6 +81,7 @@ export const TimelineSpanEventMarker = memo(function ({
       }}
     >
       <div
+        data-testid="span-event-marker"
         style={{
           position: 'absolute',
           left: `${markerPosition.toFixed(6)}%`,
