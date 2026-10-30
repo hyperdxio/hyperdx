@@ -18,6 +18,10 @@ import z from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
+import {
+  joinPrometheusUpstreamUrl,
+  takeBasicAuthHeader,
+} from '@/controllers/promql';
 import { getSource } from '@/controllers/sources';
 import {
   connectionSupportsPrometheusHttpApi,
@@ -217,41 +221,6 @@ export function isClientDisconnect(err: unknown): boolean {
   );
 }
 
-/**
- * Join a Connection host with an absolute Prometheus API path.
- *
- * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
- * discards `/select/0/prometheus` because an absolute path replaces the base
- * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
- * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
- * hash are left untouched.
- *
- * `path` must be an absolute path (every call site passes a literal starting
- * with `/`) -- this is not a general-purpose URL joiner.
- *
- * @see https://github.com/hyperdxio/hyperdx/issues/3046
- */
-export function joinPrometheusUpstreamUrl(
-  upstreamHost: string,
-  path: string,
-): URL {
-  const url = new URL(upstreamHost);
-  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
-  // scheme). The pathname setter is a no-op there, so without this guard the
-  // helper would return the host unchanged, `fetch` would fail, and the proxy
-  // would 502 / increment query_errors for a user misconfiguration. Same check
-  // as clickhouseProxy.ts.
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new TypeError('Connection host must be http(s)');
-  }
-  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
-  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
-  // in the joined path, which most servers treat as a distinct (404) path.
-  const basePath = url.pathname.replace(/\/+$/, '');
-  url.pathname = `${basePath}${path}`;
-  return url;
-}
-
 // Only real Prometheus API params are ever caller-settable in
 // proxyToPrometheus's query merge below. `params` there is built upstream by
 // spreading the *entire* `req.query`/`req.body` with no allowlist (see
@@ -380,7 +349,10 @@ async function clickhouseServesPrometheusHttpApi(
     );
     url.searchParams.set('query', 'up');
     const resp = await fetch(url, {
-      headers: clickhouseAuthHeaders(connection),
+      headers: {
+        ...takeBasicAuthHeader(url),
+        ...clickhouseAuthHeaders(connection),
+      },
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     return typeof JSON.parse(await resp.text())?.status === 'string';
@@ -458,6 +430,9 @@ async function proxyToPrometheus(
       url.searchParams.set(k, v);
     }
   }
+  // fetch rejects a URL that carries credentials, so `user:pw@` in the host
+  // becomes a Basic auth header instead.
+  const authHeader = takeBasicAuthHeader(url);
   const target = url.toString();
 
   // A connection host may carry basic-auth credentials (`http://user:pw@host`)
@@ -467,14 +442,13 @@ async function proxyToPrometheus(
   // the browser. `url.origin` never includes userinfo (WHATWG URL spec), and
   // dropping the query/hash entirely -- rather than trying to redact only the
   // secret-shaped parts of it -- means there's no query key to ever miss.
-  // `target` itself is unaffected and still carries everything needed to
-  // authenticate.
+  // `target` still carries the query string, and `authHeader` the userinfo.
   const redactedTarget = `${url.origin}${url.pathname}`;
 
   let upstreamResp: Response;
   try {
     upstreamResp = await fetch(target, {
-      headers,
+      headers: { ...authHeader, ...headers },
       signal: AbortSignal.timeout(PROMETHEUS_PROXY_TIMEOUT_MS),
     });
   } catch (err) {

@@ -13,6 +13,9 @@ jest.mock('@/clickhouse', () => ({ ClickhouseClient: jest.fn() }));
 jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
   getMetadata: () => mockMetadata,
 }));
+jest.mock('@/controllers/promql', () => ({
+  getPromqlLabelCatalog: jest.fn(),
+}));
 jest.mock('@/mcp/tools/sources/metricNames', () => ({
   sampleMetricNamesWithLookback: jest.fn(),
 }));
@@ -23,6 +26,7 @@ jest.mock('@/utils/trimToolResponse', () => ({
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import { getConnectionById } from '@/controllers/connection';
+import { getPromqlLabelCatalog } from '@/controllers/promql';
 import { getSource } from '@/controllers/sources';
 import {
   DESCRIBE_BACKSTOP_MS,
@@ -58,6 +62,13 @@ const metricSource = {
   metricTables: { gauge: 'otel_metrics_gauge', sum: 'otel_metrics_sum' },
 };
 
+const promqlSource = {
+  ...traceSource,
+  kind: SourceKind.Promql,
+  timestampValueExpression: 'timestamp',
+  from: { databaseName: 'default', tableName: 'metrics_ts' },
+};
+
 const never = () => new Promise<never>(() => {});
 
 const rejectOnAbort = (signal: AbortSignal) =>
@@ -70,7 +81,7 @@ function getHandler() {
     null;
   registerDescribeSource({
     server: {},
-    context: { teamId: 'team-1', userId: 'user-1' },
+    context: { teamId: 'team-1', userId: 'user-1', promqlEnabled: true },
     registerTool: (_name: string, _config: unknown, h: typeof handler) => {
       handler = h;
     },
@@ -351,6 +362,42 @@ describe('clickstack_describe_source deadline', () => {
 
       expect(source.partial).toBe(true);
       expect(source.skippedStages).toEqual(['metricNames']);
+    });
+  });
+
+  describe('PromQL sources', () => {
+    beforeEach(() => {
+      jest
+        .mocked(getSource)
+        // @ts-expect-error mock source only has the fields describe_source reads
+        .mockResolvedValue(promqlSource);
+    });
+
+    it('aborts the label lookup at the deadline', async () => {
+      jest
+        .mocked(getPromqlLabelCatalog)
+        .mockImplementation(({ signal }) => rejectOnAbort(signal!));
+
+      const result = await runWithClock(DESCRIBE_TIMEOUT_MS);
+
+      expect(result.isError).toBeFalsy();
+      const output = parse(result);
+      expect(output.partial).toBe(true);
+      expect(output.source.config).toMatchObject({ kind: SourceKind.Promql });
+    });
+
+    it('returns the source config at the backstop when the lookup hangs', async () => {
+      jest.mocked(getPromqlLabelCatalog).mockImplementation(never);
+
+      const result = await runWithClock(
+        DESCRIBE_TIMEOUT_MS + DESCRIBE_BACKSTOP_MS,
+      );
+
+      expect(result.isError).toBeFalsy();
+      const output = parse(result);
+      expect(output.partial).toBe(true);
+      expect(output.error).toContain('timed out');
+      expect(output.source.config).toMatchObject({ kind: SourceKind.Promql });
     });
   });
 });
