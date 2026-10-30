@@ -6600,6 +6600,173 @@
         }
       }
     },
+    "/api/v2/alerts/{id}/silenced": {
+      "post": {
+        "summary": "Silence Alert",
+        "description": "Silences an alert until the given time. Notifications are suppressed while the alert is silenced.",
+        "operationId": "silenceAlert",
+        "tags": [
+          "Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alert ID",
+            "example": "65f5e4a3b9e77c001a123456"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mutedUntil"
+                ],
+                "properties": {
+                  "mutedUntil": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "ISO 8601 timestamp, in the future, until which the alert is silenced.",
+                    "example": "2026-01-01T00:00:00.000Z"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successfully silenced alert",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, such as a mutedUntil in the past",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Alert not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "summary": "Unsilence Alert",
+        "description": "Clears the silence on an alert so notifications resume",
+        "operationId": "unsilenceAlert",
+        "tags": [
+          "Alerts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Alert ID",
+            "example": "65f5e4a3b9e77c001a123456"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successfully unsilenced alert",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlertResponseEnvelope"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, such as a malformed alert ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Alert not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v2/charts/series": {
       "post": {
         "summary": "Query Chart Series Data",

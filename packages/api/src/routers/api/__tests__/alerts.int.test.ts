@@ -981,6 +981,34 @@ describe('alerts router', () => {
     );
   });
 
+  it('accepts a silence time with a UTC offset', async () => {
+    const dashboard = await agent
+      .post('/dashboards')
+      .send(MOCK_DASHBOARD)
+      .expect(200);
+    const alert = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: dashboard.body.tiles[0].id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(200);
+
+    const until = new Date(Date.now() + 3 * 3600000);
+    await agent
+      .post(`/alerts/${alert.body.data._id}/silenced`)
+      .send({ mutedUntil: until.toISOString().replace('Z', '+02:00') })
+      .expect(200);
+
+    const alertFromDb = await Alert.findById(alert.body.data._id);
+    expect(alertFromDb!.silenced!.until.getTime()).toBe(
+      until.getTime() - 2 * 3600000,
+    );
+  });
+
   it('can unsilence an alert', async () => {
     const dashboard = await agent
       .post('/dashboards')

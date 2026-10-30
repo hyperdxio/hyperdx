@@ -23,6 +23,8 @@ import {
   deleteAlert,
   getAlertById,
   getAlertEnhanced,
+  silenceAlert,
+  unsilenceAlert,
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
@@ -32,7 +34,11 @@ import { IAlertHistory } from '@/models/alertHistory';
 import { resolveAlertDisplayFields } from '@/utils/alerts';
 import { setBusinessContext } from '@/utils/instrumentation';
 import { PreSerialized, sendJson } from '@/utils/serialization';
-import { internalAlertSchema, objectIdSchema } from '@/utils/zod';
+import {
+  internalAlertSchema,
+  mutedUntilSchema,
+  objectIdSchema,
+} from '@/utils/zod';
 
 const router = express.Router();
 
@@ -398,12 +404,7 @@ router.post(
   '/:id/silenced',
   validateRequest({
     body: z.object({
-      mutedUntil: z
-        .string()
-        .datetime()
-        .refine(val => new Date(val) > new Date(), {
-          message: 'mutedUntil must be in the future',
-        }),
+      mutedUntil: mutedUntilSchema,
     }),
     params: z.object({
       id: objectIdSchema,
@@ -416,16 +417,15 @@ router.post(
         return res.sendStatus(403);
       }
 
-      const alert = await getAlertById(req.params.id, teamId);
+      const alert = await silenceAlert(
+        req.params.id,
+        teamId,
+        req.user._id,
+        new Date(req.body.mutedUntil),
+      );
       if (!alert) {
         return res.status(404).json({ error: 'Alert not found' });
       }
-      alert.silenced = {
-        by: req.user._id,
-        at: new Date(),
-        until: new Date(req.body.mutedUntil),
-      };
-      await alert.save();
 
       res.sendStatus(200);
     } catch (e) {
@@ -448,12 +448,10 @@ router.delete(
         return res.sendStatus(403);
       }
 
-      const alert = await getAlertById(req.params.id, teamId);
+      const alert = await unsilenceAlert(req.params.id, teamId);
       if (!alert) {
         return res.status(404).json({ error: 'Alert not found' });
       }
-      alert.silenced = undefined;
-      await alert.save();
 
       res.sendStatus(200);
     } catch (e) {
