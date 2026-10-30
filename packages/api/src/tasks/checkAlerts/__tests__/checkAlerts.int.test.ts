@@ -11866,6 +11866,67 @@ describe('checkAlerts', () => {
         expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
       });
 
+      it('notifies a fresh incident that also resolves within a catch-up run', async () => {
+        const {
+          team,
+          webhook,
+          connection,
+          source,
+          savedSearch,
+          teamWebhooksById,
+          clickhouseClient,
+        } = await setupSavedSearchAlertTest();
+
+        jest
+          .spyOn(slack, 'postMessageToWebhook')
+          .mockResolvedValue({ text: 'ok' });
+
+        const details = await createAlertDetails(
+          team,
+          source,
+          {
+            source: AlertSource.SAVED_SEARCH,
+            channel: { type: 'webhook', webhookId: webhook._id.toString() },
+            interval: '5m',
+            thresholdType: AlertThresholdType.ABOVE,
+            threshold: 2,
+            savedSearchId: savedSearch.id,
+          },
+          { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+        );
+
+        // Breach at 00:05, then OK / breach / OK at 00:10, 00:15, 00:20.
+        await bulkInsertLogs(
+          [
+            '00:05:00',
+            '00:05:00',
+            '00:10:00',
+            '00:15:00',
+            '00:15:00',
+            '00:20:00',
+          ].map(time => ({
+            ServiceName: 'api',
+            Timestamp: new Date(`2024-01-01T${time}Z`),
+            SeverityText: 'error',
+            Body: 'err',
+          })),
+        );
+
+        for (const now of [EVALUATION_TIMES[0], EVALUATION_TIMES[3]]) {
+          await processAlertAtTime(
+            now,
+            details,
+            clickhouseClient,
+            connection,
+            alertProvider,
+            teamWebhooksById,
+          );
+        }
+
+        // First ALERT, then the catch-up run's ALERT and its resolve.
+        expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(3);
+      });
+
       it('notifies a group-by incident when the group was absent mid catch-up run', async () => {
         const {
           team,

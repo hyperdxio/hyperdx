@@ -1292,8 +1292,12 @@ export const processAlert = async (
 
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
-    // Latest OK/ALERT bucket per group; OK before ALERT means a new incident.
-    const lastOkBucket = new Map<string, number>();
+    // First OK and latest ALERT bucket per group; OK before ALERT means a new incident.
+    const firstOkBucket = new Map<string, number>();
+    const markOk = (groupKey: string, bucketIndex: number) => {
+      if (!firstOkBucket.has(groupKey))
+        firstOkBucket.set(groupKey, bucketIndex);
+    };
     const lastAlertBucket = new Map<string, number>();
     const latestAlertContext = new Map<
       string,
@@ -1626,7 +1630,7 @@ export const processAlert = async (
     const markAbsentGroupsOk = (bucketIndex: number, present: Set<string>) => {
       if (!hasGroupBy || doesExceedThreshold(alert, 0)) return;
       for (const groupKey of [...previousGroups, ...histories.keys()]) {
-        if (!present.has(groupKey)) lastOkBucket.set(groupKey, bucketIndex);
+        if (!present.has(groupKey)) markOk(groupKey, bucketIndex);
       }
     };
 
@@ -1682,7 +1686,7 @@ export const processAlert = async (
           if (hasGroupBy) {
             markAbsentGroupsOk(bucketIndex, new Set());
           } else {
-            lastOkBucket.set('', bucketIndex);
+            markOk('', bucketIndex);
           }
         }
 
@@ -1752,7 +1756,7 @@ export const processAlert = async (
           // a subsequent OK window correctly resolves it before the notification phase.
           history.state = AlertState.OK;
           history.counts = 0;
-          lastOkBucket.set(groupKey, bucketIndex);
+          markOk(groupKey, bucketIndex);
         }
         history.lastValues.push({
           count: evaluation.value,
@@ -1797,7 +1801,7 @@ export const processAlert = async (
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
       const isNewIncidentInRun =
-        (lastOkBucket.get(groupKey) ?? Infinity) <
+        (firstOkBucket.get(groupKey) ?? Infinity) <
         (lastAlertBucket.get(groupKey) ?? -Infinity);
       let groupPrevious = isNewIncidentInRun
         ? undefined
