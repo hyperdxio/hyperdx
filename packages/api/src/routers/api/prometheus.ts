@@ -18,7 +18,10 @@ import z from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
-import { joinPrometheusUpstreamUrl } from '@/controllers/promql';
+import {
+  joinPrometheusUpstreamUrl,
+  takeBasicAuthHeader,
+} from '@/controllers/promql';
 import { getSource } from '@/controllers/sources';
 import {
   connectionSupportsPrometheusHttpApi,
@@ -346,7 +349,10 @@ async function clickhouseServesPrometheusHttpApi(
     );
     url.searchParams.set('query', 'up');
     const resp = await fetch(url, {
-      headers: clickhouseAuthHeaders(connection),
+      headers: {
+        ...takeBasicAuthHeader(url),
+        ...clickhouseAuthHeaders(connection),
+      },
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     return typeof JSON.parse(await resp.text())?.status === 'string';
@@ -424,6 +430,9 @@ async function proxyToPrometheus(
       url.searchParams.set(k, v);
     }
   }
+  // fetch rejects a URL that carries credentials, so `user:pw@` in the host
+  // becomes a Basic auth header instead.
+  const authHeader = takeBasicAuthHeader(url);
   const target = url.toString();
 
   // A connection host may carry basic-auth credentials (`http://user:pw@host`)
@@ -433,14 +442,13 @@ async function proxyToPrometheus(
   // the browser. `url.origin` never includes userinfo (WHATWG URL spec), and
   // dropping the query/hash entirely -- rather than trying to redact only the
   // secret-shaped parts of it -- means there's no query key to ever miss.
-  // `target` itself is unaffected and still carries everything needed to
-  // authenticate.
+  // `target` still carries the query string, and `authHeader` the userinfo.
   const redactedTarget = `${url.origin}${url.pathname}`;
 
   let upstreamResp: Response;
   try {
     upstreamResp = await fetch(target, {
-      headers,
+      headers: { ...authHeader, ...headers },
       signal: AbortSignal.timeout(PROMETHEUS_PROXY_TIMEOUT_MS),
     });
   } catch (err) {

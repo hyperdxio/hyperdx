@@ -50,7 +50,7 @@ export function joinPrometheusUpstreamUrl(
  * Removes `user:pass@` from `url` and returns it as a Basic auth header. fetch
  * rejects a URL that carries credentials, so they cannot stay in the host.
  */
-function takeBasicAuthHeader(url: URL): Record<string, string> {
+export function takeBasicAuthHeader(url: URL): Record<string, string> {
   if (!url.username && !url.password) return {};
   const credentials = `${decodeURIComponent(url.username)}:${decodeURIComponent(url.password)}`;
   url.username = '';
