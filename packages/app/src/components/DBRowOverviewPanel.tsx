@@ -100,6 +100,7 @@ export function RowOverviewPanel({
   // assume OTel column names for now
   const topLevelAttributeKeys = [
     'ServiceName',
+    'EventName',
     'SpanName',
     'Duration',
     'SeverityText',
