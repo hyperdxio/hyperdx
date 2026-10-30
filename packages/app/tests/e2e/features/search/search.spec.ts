@@ -314,10 +314,7 @@ test.describe('Search', { tag: '@search' }, () => {
         expect(url, 'URL should contain select parameter').toContain('select=');
         expect(url, 'URL should contain alias "message"').toContain('message');
 
-        // Verify SELECT editor content using page object
-        const selectEditor = searchPage.getSELECTEditor();
-        await expect(selectEditor).toBeVisible();
-        const selectValue = await selectEditor.textContent();
+        const selectValue = await searchPage.getSelectValue();
 
         expect(selectValue, 'SELECT should contain alias').toContain(
           'Body as message',
