@@ -12,7 +12,7 @@ import {
   DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
 } from '../utils/constants';
-import { runMongoshScript } from '../utils/db-helpers';
+import { ObjectId, withE2eDb } from '../utils/db-helpers';
 import { getSqlEditor } from '../utils/locators';
 
 test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
@@ -1172,17 +1172,16 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Written straight to Mongo: the API and the form both refuse this
         // state now, so the only way to hold it is to predate that rule.
         const dashboardId = dashboardPage.getCurrentDashboardId();
-        const out = runMongoshScript(
-          [
-            "use('hyperdx-e2e');",
-            'print(JSON.stringify(db.dashboards.updateOne(',
-            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
-            '  { $set: { "filters.0.isVariableEnabled": false } }',
-            ')));',
-          ].join('\n'),
+        const out = await withE2eDb(db =>
+          db
+            .collection('dashboards')
+            .updateOne(
+              { _id: new ObjectId(dashboardId) },
+              { $set: { 'filters.0.isVariableEnabled': false } },
+            ),
         );
-        expect(out).toContain('"matchedCount":1');
-        expect(out).toContain('"modifiedCount":1');
+        expect(out.matchedCount).toBe(1);
+        expect(out.modifiedCount).toBe(1);
 
         await dashboardPage.gotoDashboard(dashboardId);
 
@@ -3450,19 +3449,18 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
       await test.step('Mark it provisioned', async () => {
         // ProvisionDashboardsTask is the only thing that sets this in normal
         // operation, so write it directly rather than running that job.
-        const out = runMongoshScript(
-          [
-            "use('hyperdx-e2e');",
-            'print(JSON.stringify(db.dashboards.updateOne(',
-            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
-            '  { $set: { provisioned: true } }',
-            ')));',
-          ].join('\n'),
+        const out = await withE2eDb(db =>
+          db
+            .collection('dashboards')
+            .updateOne(
+              { _id: new ObjectId(dashboardId) },
+              { $set: { provisioned: true } },
+            ),
         );
         // A zero-match write would make the assertion below pass for a reason
         // that has nothing to do with the gate.
-        expect(out).toContain('"matchedCount":1');
-        expect(out).toContain('"modifiedCount":1');
+        expect(out.matchedCount).toBe(1);
+        expect(out.modifiedCount).toBe(1);
       });
 
       await test.step('Verify it is withheld after reload', async () => {
@@ -3506,19 +3504,33 @@ test.describe('Dashboard', { tag: ['@dashboard'] }, () => {
         // Written directly rather than built in the chart editor: the editor
         // flow for a PromQL tile is long and this test is about the gate, not
         // the editor.
-        const out = runMongoshScript(
-          [
-            "use('hyperdx-e2e');",
-            'print(JSON.stringify(db.dashboards.updateOne(',
-            `  { _id: ObjectId(${JSON.stringify(dashboardId)}) },`,
-            "  { $set: { tiles: [{ id: 'promql-1', x: 0, y: 0, w: 4, h: 2,",
-            "      config: { configType: 'promql', promqlExpression: 'up',",
-            "                connection: 'c1', source: 's1', displayType: 'line' } }] } }",
-            ')));',
-          ].join('\n'),
+        const out = await withE2eDb(db =>
+          db.collection('dashboards').updateOne(
+            { _id: new ObjectId(dashboardId) },
+            {
+              $set: {
+                tiles: [
+                  {
+                    id: 'promql-1',
+                    x: 0,
+                    y: 0,
+                    w: 4,
+                    h: 2,
+                    config: {
+                      configType: 'promql',
+                      promqlExpression: 'up',
+                      connection: 'c1',
+                      source: 's1',
+                      displayType: 'line',
+                    },
+                  },
+                ],
+              },
+            },
+          ),
         );
-        expect(out).toContain('"matchedCount":1');
-        expect(out).toContain('"modifiedCount":1');
+        expect(out.matchedCount).toBe(1);
+        expect(out.modifiedCount).toBe(1);
       });
 
       await test.step('Verify it is withheld after reload', async () => {

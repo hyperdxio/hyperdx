@@ -35,10 +35,13 @@ services:
     networks:
       - internal
   db:
-    image: mongo:5.0.32-focal
-    command: --port 29999
+    image: hyperdx/documentdb:local
+    build: ./docker/documentdb
+    environment:
+      DOCDB_USER: hyperdx
+      DOCDB_PASSWORD: hyperdx
     ports:
-      - '${HDX_CI_MONGO_PORT:-39999}:29999'
+      - '${HDX_CI_MONGO_PORT:-39999}:10260'
     networks:
       - internal
 networks:

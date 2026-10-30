@@ -7,13 +7,17 @@ services:
   db:
     labels:
       <<: *hdx-labels
-      hdx.dev.service: mongodb
+      hdx.dev.service: documentdb
       hdx.dev.port: '${HDX_DEV_MONGO_PORT:-27017}'
-    image: mongo:5.0.32-focal
+    image: hyperdx/documentdb:local
+    build: ./docker/documentdb
+    environment:
+      DOCDB_USER: hyperdx
+      DOCDB_PASSWORD: hyperdx
     volumes:
-      - .volumes/db_dev_${HDX_DEV_SLOT:-0}:/data/db
+      - .volumes/docdb_dev_${HDX_DEV_SLOT:-0}:/data/docdb
     ports:
-      - '${HDX_DEV_MONGO_PORT:-27017}:27017'
+      - '${HDX_DEV_MONGO_PORT:-27017}:10260'
     networks:
       - internal
   otel-collector:
