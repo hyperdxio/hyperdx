@@ -7,6 +7,7 @@ import pino from 'pino';
 
 import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
+import { NOT_SERVICE_ACCOUNT } from '@/controllers/user';
 import Connection from '@/models/connection';
 import { Source, SourceDocument } from '@/models/source';
 import Team from '@/models/team';
@@ -133,7 +134,7 @@ async function getUsageStats() {
   try {
     const nowInMs = Date.now();
     const [userCounts, team, chTables] = await Promise.all([
-      User.countDocuments(),
+      User.countDocuments(NOT_SERVICE_ACCOUNT),
       Team.find(
         {},
         {

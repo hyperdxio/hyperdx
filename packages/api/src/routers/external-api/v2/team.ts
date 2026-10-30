@@ -6,6 +6,7 @@ import { validateRequest } from 'zod-express-middleware';
 import { getTeam, getTeamInviteUrl } from '@/controllers/team';
 import {
   deleteTeamMember,
+  deleteTeamMemberKeepingOne,
   findUserByEmail,
   findUsersByTeam,
 } from '@/controllers/user';
@@ -269,7 +270,7 @@ router.delete(
  *       '200':
  *         description: Successfully removed the member
  *       '400':
- *         description: Cannot remove yourself from the team
+ *         description: Cannot remove yourself or the last team member
  *       '404':
  *         description: Member not found
  */
@@ -288,6 +289,24 @@ router.delete(
         return res.status(400).json({
           message: 'You cannot remove yourself from the team',
         });
+      }
+
+      // People can't remove themselves, so only a key can empty the team.
+      if (req.user?.isServiceAccount) {
+        const result = await deleteTeamMemberKeepingOne(
+          teamId.toString(),
+          req.params.id,
+          requestingUserId,
+        );
+        if (result === 'not_found') {
+          return res.sendStatus(404);
+        }
+        if (result === 'last_member') {
+          return res
+            .status(400)
+            .json({ message: 'Cannot remove the last team member' });
+        }
+        return res.json({ data: { success: true } });
       }
 
       const deletedUser = await deleteTeamMember(

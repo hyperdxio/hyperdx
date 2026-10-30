@@ -3392,6 +3392,56 @@ export type RotateAccessKeyApiResponse = z.infer<
   typeof RotateAccessKeyApiResponseSchema
 >;
 
+// Team-owned bearer keys for external API v2 and MCP. They outlive the admin
+// who created them; the plaintext `key` is only returned on create.
+export const OrgApiKeyExpirySchema = z.enum(['30d', '1y', 'never']);
+export type OrgApiKeyExpiry = z.infer<typeof OrgApiKeyExpirySchema>;
+
+const OrgApiKeyDescriptionSchema = z.string().trim().min(1).max(100);
+
+export const CreateOrgApiKeyRequestSchema = z.object({
+  description: OrgApiKeyDescriptionSchema,
+  expiry: OrgApiKeyExpirySchema,
+});
+export type CreateOrgApiKeyRequest = z.infer<
+  typeof CreateOrgApiKeyRequestSchema
+>;
+
+export const UpdateOrgApiKeyRequestSchema = z.object({
+  description: OrgApiKeyDescriptionSchema,
+});
+export type UpdateOrgApiKeyRequest = z.infer<
+  typeof UpdateOrgApiKeyRequestSchema
+>;
+
+export const OrgApiKeyApiResponseSchema = z.object({
+  id: z.string(),
+  description: z.string(),
+  createdAt: z.string(),
+  expiresAt: z.string().nullable(),
+  lastUsedAt: z.string().nullable(),
+  // Null once the creating user has been removed from the team.
+  createdBy: z
+    .object({
+      id: z.string(),
+      name: z.string().optional(),
+      email: z.string(),
+    })
+    .nullable(),
+});
+export type OrgApiKeyApiResponse = z.infer<typeof OrgApiKeyApiResponseSchema>;
+
+export const OrgApiKeysApiResponseSchema = z.object({
+  data: z.array(OrgApiKeyApiResponseSchema),
+});
+export type OrgApiKeysApiResponse = z.infer<typeof OrgApiKeysApiResponseSchema>;
+
+export const CreateOrgApiKeyApiResponseSchema =
+  OrgApiKeyApiResponseSchema.extend({ key: z.string() });
+export type CreateOrgApiKeyApiResponse = z.infer<
+  typeof CreateOrgApiKeyApiResponseSchema
+>;
+
 // IaC (Terraform) export
 //
 // Shared so `GET /iac/import-manifest` and the generators in

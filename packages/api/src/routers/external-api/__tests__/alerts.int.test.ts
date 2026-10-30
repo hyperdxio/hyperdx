@@ -3,6 +3,7 @@ import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import request from 'supertest';
 
+import { createOrgApiKey } from '@/controllers/orgApiKey';
 import {
   getLoggedInAgent,
   getServer,
@@ -189,6 +190,34 @@ describe('External API Alerts', () => {
       ...overrides,
     });
   };
+
+  describe('org API keys', () => {
+    it('attributes the alert to the key service account', async () => {
+      const { doc, key } = await createOrgApiKey(team._id, user._id, {
+        description: 'terraform',
+        expiry: 'never',
+      });
+      const dashboard = await createTestDashboard();
+      const webhook = await createTestWebhook();
+
+      const response = await agent
+        .post(ALERTS_BASE_URL)
+        .set('Authorization', `Bearer ${key}`)
+        .send({
+          dashboardId: dashboard._id.toString(),
+          tileId: dashboard.tiles[0].id,
+          threshold: 100,
+          interval: '1h',
+          source: AlertSource.TILE,
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+        })
+        .expect(200);
+
+      const stored = await Alert.findById(response.body.data.id).lean();
+      expect(stored?.createdBy).toEqual(doc.serviceAccount);
+    });
+  });
 
   // The readers behind these routes project the referenced dashboard down to
   // the handful of fields the derivation needs, rather than pulling every

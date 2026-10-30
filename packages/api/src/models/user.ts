@@ -17,6 +17,8 @@ export interface IUser {
   name: string;
   // Optional for docs predating this field; the `me` route defaults it.
   onboardingData?: OnboardingData;
+  // The user behind an org API key: no sign-in, not listed as a team member.
+  isServiceAccount?: boolean;
   team: ObjectId;
 }
 
@@ -30,6 +32,7 @@ const UserSchema = new Schema(
       required: true,
     },
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+    isServiceAccount: { type: Boolean, default: false },
     accessKey: {
       type: String,
       default: function genUUID() {

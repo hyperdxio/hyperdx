@@ -4,10 +4,16 @@ import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
+import {
+  findActiveOrgApiKey,
+  ORG_API_KEY_PREFIX,
+  touchOrgApiKeyLastUsed,
+} from '@/controllers/orgApiKey';
 import { findUserByAccessKey } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import {
   getActiveTraceId,
+  getCounter,
   getStaticFeatureFlags,
   setBusinessContext,
 } from '@/utils/instrumentation';
@@ -95,19 +101,59 @@ export async function validateUserAccessKey(
     return res.sendStatus(401);
   }
 
-  const user = await findUserByAccessKey(key);
-  if (!user) {
+  // Express 4 drops rejected promises from middleware, which would leave the
+  // request hanging on a database error.
+  try {
+    const user = await findUserByAccessKey(key);
+    if (!user) {
+      return await authenticateOrgApiKey(key, req, res, next);
+    }
+
+    req.user = user;
+
+    // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
+    // with team/user context so their traces are searchable during incidents.
+    setBusinessContext({
+      teamId: user.team?.toString(),
+      userId: user._id?.toString(),
+      email: user.email,
+      ...getStaticFeatureFlags(),
+    });
+  } catch (err) {
+    return next(err);
+  }
+
+  nextWithQueryAttribution(req, next);
+}
+
+const orgApiKeyAuthFailures = getCounter('hyperdx.org_api_key.auth_failures', {
+  description:
+    'Bearer requests with an org API key that is unknown, revoked, or expired.',
+});
+
+async function authenticateOrgApiKey(
+  key: string,
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const found = await findActiveOrgApiKey(key);
+  if (!found) {
+    if (key.startsWith(ORG_API_KEY_PREFIX)) {
+      orgApiKeyAuthFailures.add(1);
+    }
     return res.sendStatus(401);
   }
 
-  req.user = user;
+  const { orgApiKey, serviceAccount } = found;
+  req.user = serviceAccount;
+  touchOrgApiKeyLastUsed(orgApiKey);
 
-  // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
-  // with team/user context so their traces are searchable during incidents.
   setBusinessContext({
-    teamId: user.team?.toString(),
-    userId: user._id?.toString(),
-    email: user.email,
+    teamId: orgApiKey.team.toString(),
+    userId: serviceAccount._id.toString(),
+    'hyperdx.service_account': true,
+    'hyperdx.org_api_key.id': orgApiKey._id.toString(),
     ...getStaticFeatureFlags(),
   });
 
