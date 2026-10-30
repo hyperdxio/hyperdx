@@ -1276,6 +1276,7 @@ const baseWebhookSchema = {
   name: z.string(),
   url: z.string().optional(),
   description: z.string().optional(),
+  titleEmoji: z.boolean().optional(),
   updatedAt: z.string(),
   createdAt: z.string(),
 };
@@ -1379,6 +1380,7 @@ export const externalWebhookCreateSchema = z
     service: z.nativeEnum(WebhookService),
     url: z.string().url().max(MAX_WEBHOOK_URL_LENGTH),
     description: z.string().max(MAX_WEBHOOK_DESCRIPTION_LENGTH).optional(),
+    titleEmoji: z.boolean().optional(),
     queryParams: z
       .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
       .refine(m => Object.keys(m).length <= MAX_WEBHOOK_QUERY_PARAMS, {

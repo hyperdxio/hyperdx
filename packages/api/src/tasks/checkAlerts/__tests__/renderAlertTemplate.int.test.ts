@@ -773,7 +773,6 @@ describe('buildAlertMessageTemplateTitle', () => {
               threshold,
               value: alertValue,
             }),
-            state: AlertState.ALERT,
           });
           expect(result).toMatchSnapshot();
         },
@@ -786,7 +785,6 @@ describe('buildAlertMessageTemplateTitle', () => {
         ({ thresholdType, threshold, okValue }) => {
           const result = buildAlertMessageTemplateTitle({
             view: makeSearchView({ thresholdType, threshold, value: okValue }),
-            state: AlertState.OK,
           });
           expect(result).toMatchSnapshot();
         },
@@ -806,7 +804,6 @@ describe('buildAlertMessageTemplateTitle', () => {
               thresholdMax,
               value: alertValue,
             }),
-            state: AlertState.ALERT,
           });
           expect(result).toMatchSnapshot();
         },
@@ -819,7 +816,6 @@ describe('buildAlertMessageTemplateTitle', () => {
             threshold: 1.5,
             value: 10.123,
           }),
-          state: AlertState.ALERT,
         });
         expect(result).toMatchSnapshot();
       });
@@ -831,7 +827,6 @@ describe('buildAlertMessageTemplateTitle', () => {
             threshold: 5,
             value: 10.789,
           }),
-          state: AlertState.ALERT,
         });
         expect(result).toMatchSnapshot();
       });
@@ -848,7 +843,6 @@ describe('buildAlertMessageTemplateTitle', () => {
               thresholdMax,
               value: okValue,
             }),
-            state: AlertState.OK,
           });
           expect(result).toMatchSnapshot();
         },
@@ -864,10 +858,9 @@ describe('buildAlertMessageTemplateTitle', () => {
 
       const result = buildAlertMessageTemplateTitle({
         view: { ...view, alert: { ...view.alert, name: 'Custom title' } },
-        state: AlertState.ALERT,
       });
 
-      expect(result).toBe('🚨 Custom title');
+      expect(result).toBe('Custom title');
     });
 
     it('renders Handlebars against the view', () => {
@@ -878,10 +871,9 @@ describe('buildAlertMessageTemplateTitle', () => {
           ...view,
           alert: { ...view.alert, name: '{{value}} over {{alert.threshold}}' },
         },
-        state: AlertState.ALERT,
       });
 
-      expect(result).toBe('🚨 10 over 5');
+      expect(result).toBe('10 over 5');
     });
 
     it('uses a malformed template verbatim instead of failing', () => {
@@ -889,10 +881,9 @@ describe('buildAlertMessageTemplateTitle', () => {
 
       const result = buildAlertMessageTemplateTitle({
         view: { ...view, alert: { ...view.alert, name: 'Errors {{spike' } },
-        state: AlertState.ALERT,
       });
 
-      expect(result).toBe('🚨 Errors {{spike');
+      expect(result).toBe('Errors {{spike');
     });
   });
 
@@ -905,10 +896,9 @@ describe('buildAlertMessageTemplateTitle', () => {
           ...view,
           alert: { ...view.alert, displayName: 'Checkout errors' },
         },
-        state: AlertState.ALERT,
       });
 
-      expect(result).toBe('🚨 Alert for "Checkout errors" - 10 lines found');
+      expect(result).toBe('Alert for "Checkout errors" - 10 lines found');
     });
 
     it('names a tile alert', () => {
@@ -919,7 +909,6 @@ describe('buildAlertMessageTemplateTitle', () => {
           ...view,
           alert: { ...view.alert, displayName: 'Error rate' },
         },
-        state: AlertState.ALERT,
       });
 
       expect(result).toContain('Alert for "Error rate" -');
@@ -931,7 +920,6 @@ describe('buildAlertMessageTemplateTitle', () => {
 
       const result = buildAlertMessageTemplateTitle({
         view: { ...view, alert: { ...view.alert, displayName: 'p99 latency' } },
-        state: AlertState.ALERT,
       });
 
       expect(result).toContain('Alert for "p99 latency"');
@@ -948,12 +936,9 @@ describe('buildAlertMessageTemplateTitle', () => {
           where: 'level:error',
           chartName: 'Inline Chart',
         }),
-        state: AlertState.ALERT,
       });
 
-      expect(result).toBe(
-        '🚨 Alert for "Inline Chart" - 10 meets or exceeds 5',
-      );
+      expect(result).toBe('Alert for "Inline Chart" - 10 meets or exceeds 5');
     });
 
     it('falls back when an inline chart config has no name', () => {
@@ -967,10 +952,9 @@ describe('buildAlertMessageTemplateTitle', () => {
             chartConfig: { ...view.alert.chartConfig!, name: undefined },
           },
         },
-        state: AlertState.ALERT,
       });
 
-      expect(result).toBe('🚨 Alert for "Alert" - 10 meets or exceeds 5');
+      expect(result).toBe('Alert for "Alert" - 10 meets or exceeds 5');
     });
   });
 });

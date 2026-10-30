@@ -167,6 +167,7 @@ router.post(
     body: z.object({
       body: z.string().optional(),
       description: z.string().optional(),
+      titleEmoji: z.boolean().optional(),
       headers: z
         .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
@@ -188,8 +189,16 @@ router.post(
       if (teamId == null) {
         return res.sendStatus(403);
       }
-      const { name, service, url, description, queryParams, headers, body } =
-        req.body;
+      const {
+        name,
+        service,
+        url,
+        description,
+        titleEmoji,
+        queryParams,
+        headers,
+        body,
+      } = req.body;
       // The unique index is on (team, service, name), so the pre-flight check
       // must query the same fields — otherwise a name+service collision slips
       // past this guard and surfaces as an uncaught duplicate-key 500 below.
@@ -203,6 +212,7 @@ router.post(
         service,
         url,
         description,
+        titleEmoji,
         queryParams,
         headers,
         body,
@@ -233,6 +243,7 @@ router.put(
     body: z.object({
       body: z.string().optional(),
       description: z.string().optional(),
+      titleEmoji: z.boolean().optional(),
       headers: z
         .record(webhookHeaderNameSchema, webhookHeaderValueSchema)
         .optional(),
@@ -254,8 +265,16 @@ router.put(
       if (teamId == null) {
         return res.sendStatus(403);
       }
-      const { name, service, url, description, queryParams, headers, body } =
-        req.body;
+      const {
+        name,
+        service,
+        url,
+        description,
+        titleEmoji,
+        queryParams,
+        headers,
+        body,
+      } = req.body;
       const { id } = req.params;
 
       const existingWebhook = await Webhook.findOne({
@@ -323,6 +342,7 @@ router.put(
         service,
         url: resolvedUrl,
         description,
+        titleEmoji,
         body,
       };
       const $unset: Record<string, 1> = {};

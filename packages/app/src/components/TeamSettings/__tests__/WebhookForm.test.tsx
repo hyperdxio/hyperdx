@@ -130,6 +130,47 @@ describe('WebhookForm', () => {
     );
   });
 
+  it('saves titleEmoji false when the emoji checkbox is cleared', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.type(screen.getByTestId('webhook-name-input'), 'ops');
+    await user.type(
+      screen.getByTestId('webhook-url-input'),
+      'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXX',
+    );
+    await user.click(screen.getByTestId('webhook-title-emoji-checkbox'));
+    await user.click(screen.getByTestId('add-webhook-button'));
+
+    expect(mockSaveWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ titleEmoji: false }),
+    );
+  });
+
+  it('shows an existing titleEmoji false webhook unchecked and keeps it on save', async () => {
+    const user = userEvent.setup();
+    renderForm({
+      _id: 'wh-1',
+      name: 'oncall',
+      url: 'https://example.com/****',
+      service: WebhookService.Generic,
+      body: DEFAULT_GENERIC_WEBHOOK_BODY,
+      titleEmoji: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    } as React.ComponentProps<typeof WebhookForm>['webhook']);
+
+    expect(
+      screen.getByTestId('webhook-title-emoji-checkbox'),
+    ).not.toBeChecked();
+
+    await user.click(screen.getByTestId('add-webhook-button'));
+
+    expect(mockUpdateWebhook).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'wh-1', titleEmoji: false }),
+    );
+  });
+
   it('does not show the template variables for a slack webhook', () => {
     renderForm();
 
