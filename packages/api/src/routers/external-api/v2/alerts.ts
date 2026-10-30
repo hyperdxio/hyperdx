@@ -11,6 +11,7 @@ import {
   updateAlert,
   validateAlertInput,
 } from '@/controllers/alerts';
+import { alertsFilterShape, buildAlertsFilter } from '@/controllers/alertsPage';
 import { AlertSource } from '@/models/alert';
 import {
   convertExternalAlertChartConfigToInternal,
@@ -550,6 +551,8 @@ router.get(
  *       capped at `limit` (default and maximum 1000). When more records exist
  *       than are returned, `meta.total` exceeds `data.length`; clients with
  *       large collections must page with `limit`/`offset` to retrieve them all.
+ *       Optional filters narrow the result set, and `meta.total` counts only
+ *       the matching alerts.
  *     operationId: listAlerts
  *     tags: [Alerts]
  *     parameters:
@@ -570,6 +573,52 @@ router.get(
  *           minimum: 0
  *           default: 0
  *         description: Number of alerts to skip before returning results.
+ *       - name: tag
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *             maxLength: 32
+ *           maxItems: 50
+ *         description: >-
+ *           Only return alerts that have any of the given tags. Repeat the
+ *           parameter to pass several tags. Matches the tags stored on the
+ *           alert, not tags inherited from the linked dashboard or saved
+ *           search.
+ *       - name: search
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: string
+ *           maxLength: 512
+ *         description: >-
+ *           Only return alerts whose display name contains this text
+ *           (case-insensitive). Matches the display name stored on the alert,
+ *           not a name derived from the linked dashboard or saved search.
+ *       - name: source
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [saved_search, tile, inline]
+ *         description: >-
+ *           Only return alerts of any of the given sources. Repeat the
+ *           parameter to pass several sources.
+ *       - name: state
+ *         in: query
+ *         required: false
+ *         schema:
+ *           type: array
+ *           items:
+ *             type: string
+ *             enum: [ALERT, DISABLED, ERROR, INSUFFICIENT_DATA, OK, PENDING]
+ *         description: >-
+ *           Only return alerts in any of the given states. Repeat the
+ *           parameter to pass several states.
  *     responses:
  *       '200':
  *         description: Successfully retrieved alerts
@@ -619,7 +668,9 @@ router.get(
  */
 router.get(
   '/',
-  processRequest({ query: paginationQuerySchema }),
+  processRequest({
+    query: paginationQuerySchema.extend(alertsFilterShape),
+  }),
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
@@ -628,9 +679,13 @@ router.get(
       }
 
       const { limit, offset } = getPagination(req.query);
+      const filter = buildAlertsFilter(
+        teamId,
+        z.object(alertsFilterShape).parse(req.query ?? {}),
+      );
       const [alerts, total] = await Promise.all([
-        getAlertsWithDisplayRefs(teamId, { limit, offset }),
-        countAlerts(teamId),
+        getAlertsWithDisplayRefs(teamId, { limit, offset }, filter),
+        countAlerts(teamId, filter),
       ]);
 
       // Surface the full count at the HTTP layer too, so a client that reads

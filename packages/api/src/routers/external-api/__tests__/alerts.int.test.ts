@@ -9,7 +9,7 @@ import {
   RAW_SQL_ALERT_TEMPLATE,
   RAW_SQL_NUMBER_ALERT_TEMPLATE,
 } from '@/fixtures';
-import { AlertSource, AlertThresholdType } from '@/models/alert';
+import { AlertSource, AlertState, AlertThresholdType } from '@/models/alert';
 import Alert from '@/models/alert';
 import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
@@ -826,6 +826,121 @@ describe('External API Alerts', () => {
       await authRequest('get', `${ALERTS_BASE_URL}?offset=-1`).expect(400);
       await authRequest('get', `${ALERTS_BASE_URL}?limit=abc`).expect(400);
       await authRequest('get', `${ALERTS_BASE_URL}?limit=1.5`).expect(400);
+    });
+
+    describe('filters', () => {
+      beforeEach(async () => {
+        await createTestAlertDirectly({
+          displayName: 'Checkout errors',
+          tags: ['checkout', 'p1'],
+        });
+        await createTestAlertDirectly({
+          displayName: 'Checkout latency',
+          tags: ['checkout'],
+          state: AlertState.ALERT,
+        });
+        await createTestAlertDirectly({
+          displayName: 'Login failures',
+          tags: ['auth'],
+          source: AlertSource.INLINE,
+        });
+      });
+
+      const listNames = async (query: string) => {
+        const response = await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}?${query}`,
+        ).expect(200);
+        return {
+          names: response.body.data.map(a => a.displayName),
+          meta: response.body.meta,
+          header: response.headers['x-total-count'],
+        };
+      };
+
+      it('should return every alert when no filter is given', async () => {
+        const { names, meta } = await listNames('');
+        expect(names).toHaveLength(3);
+        expect(meta.total).toBe(3);
+      });
+
+      it('should filter by a single tag', async () => {
+        const { names, meta } = await listNames('tag=p1');
+        expect(names).toEqual(['Checkout errors']);
+        expect(meta.total).toBe(1);
+      });
+
+      it('should match any of several tags', async () => {
+        const { names } = await listNames('tag=p1&tag=auth');
+        expect(names.sort()).toEqual(['Checkout errors', 'Login failures']);
+      });
+
+      it('should match tags exactly, not by prefix', async () => {
+        const { names } = await listNames('tag=check');
+        expect(names).toEqual([]);
+      });
+
+      it('should search display names case-insensitively', async () => {
+        const { names } = await listNames('search=CHECKOUT');
+        expect(names.sort()).toEqual(['Checkout errors', 'Checkout latency']);
+      });
+
+      it('should treat the search text literally', async () => {
+        const { names } = await listNames('search=.*');
+        expect(names).toEqual([]);
+      });
+
+      it('should filter by state and source', async () => {
+        expect((await listNames('state=ALERT')).names).toEqual([
+          'Checkout latency',
+        ]);
+        expect((await listNames('source=inline')).names).toEqual([
+          'Login failures',
+        ]);
+      });
+
+      it('should combine filters with AND', async () => {
+        const { names } = await listNames('tag=checkout&search=latency');
+        expect(names).toEqual(['Checkout latency']);
+      });
+
+      it('should report the filtered total and page within the filtered set', async () => {
+        const page1 = await listNames('tag=checkout&limit=1&offset=0');
+        expect(page1.names).toHaveLength(1);
+        expect(page1.meta).toEqual({ total: 2, limit: 1, offset: 0 });
+        expect(page1.header).toBe('2');
+
+        const page2 = await listNames('tag=checkout&limit=1&offset=1');
+        expect(page2.names).toHaveLength(1);
+        expect(page2.names[0]).not.toBe(page1.names[0]);
+        expect(page2.meta.total).toBe(2);
+      });
+
+      it('should reject an unknown state or source', async () => {
+        await authRequest('get', `${ALERTS_BASE_URL}?state=BOGUS`).expect(400);
+        await authRequest('get', `${ALERTS_BASE_URL}?source=BOGUS`).expect(400);
+      });
+
+      it('should treat a legacy alert without state or tags as OK and untagged', async () => {
+        await Alert.collection.insertOne({
+          team: team._id,
+          displayName: 'Legacy alert',
+          threshold: 100,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: new ObjectId().toString(),
+          },
+        });
+
+        const ok = await listNames('state=OK');
+        expect(ok.names).toContain('Legacy alert');
+        const alerting = await listNames('state=ALERT');
+        expect(alerting.names).not.toContain('Legacy alert');
+        const tagged = await listNames('tag=checkout');
+        expect(tagged.names).not.toContain('Legacy alert');
+      });
     });
   });
 

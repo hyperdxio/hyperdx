@@ -19,6 +19,24 @@ const alertsPageCursorSchema = z.object({
 
 type AlertsPageCursor = z.infer<typeof alertsPageCursorSchema>;
 
+/** Filter parameters shared by the internal alerts page and the v2 list endpoint. */
+export const alertsFilterShape = {
+  /** A list of tags to filter alerts by. Returns alerts that have any of the specified tags */
+  tag: stringListQueryParam.pipe(tagsSchema).optional(),
+  /** A list of alert sources to filter by. Returns alerts that match any of the specified sources */
+  source: stringListQueryParam
+    .pipe(z.array(z.nativeEnum(AlertSource)).optional())
+    .optional(),
+  /** A list of alert states to filter by. Returns alerts that match any of the specified states */
+  state: stringListQueryParam
+    .pipe(z.array(z.nativeEnum(AlertState)).optional())
+    .optional(),
+  /** A search string to filter alerts by their display name. Substring, case-insensitive match */
+  search: z.string().trim().max(MAX_ALERT_DISPLAY_NAME_LENGTH).optional(),
+};
+
+export type AlertsFilterParams = z.infer<z.ZodObject<typeof alertsFilterShape>>;
+
 /** Query parameters schema for the list alerts endpoint. */
 export const alertsPageQuerySchema = z
   .object({
@@ -28,18 +46,7 @@ export const alertsPageQuerySchema = z
     cursor: z.string().optional(),
     /** A user ID, to filter for alerts created by a specific user */
     createdBy: objectIdSchema.optional(),
-    /** A list of tags to filter alerts by. Returns alerts that have any of the specified tags */
-    tag: stringListQueryParam.pipe(tagsSchema).optional(),
-    /** A list of alert sources to filter by. Returns alerts that match any of the specified sources */
-    source: stringListQueryParam
-      .pipe(z.array(z.nativeEnum(AlertSource)).optional())
-      .optional(),
-    /** A list of alert states to filter by. Returns alerts that match any of the specified states */
-    state: stringListQueryParam
-      .pipe(z.array(z.nativeEnum(AlertState)).optional())
-      .optional(),
-    /** A search string to filter alerts by their display name. Substring, case-insensitive match */
-    search: z.string().trim().max(MAX_ALERT_DISPLAY_NAME_LENGTH).optional(),
+    ...alertsFilterShape,
   })
   .superRefine((query, ctx) => {
     if (query.cursor == null) {
@@ -64,18 +71,12 @@ export const alertsPageQuerySchema = z
 
 export type AlertsPageParams = z.infer<typeof alertsPageQuerySchema>;
 
-/**
- * Mongo filters for a single page.
- */
-export function buildAlertsPageFilter(
+/** Mongo filter for the shared filter parameters, scoped to the team. */
+export function buildAlertsFilter(
   teamId: ObjectId | string,
-  params: AlertsPageParams,
+  params: AlertsFilterParams,
 ): FilterQuery<IAlert> {
   const filter: FilterQuery<IAlert> = { team: teamId };
-
-  if (params.createdBy != null) {
-    filter.createdBy = params.createdBy;
-  }
 
   if (params.tag != null) {
     filter.tags = { $in: params.tag };
@@ -99,6 +100,22 @@ export function buildAlertsPageFilter(
       $regex: escapeRegExp(params.search),
       $options: 'i',
     };
+  }
+
+  return filter;
+}
+
+/**
+ * Mongo filters for a single page.
+ */
+export function buildAlertsPageFilter(
+  teamId: ObjectId | string,
+  params: AlertsPageParams,
+): FilterQuery<IAlert> {
+  const filter = buildAlertsFilter(teamId, params);
+
+  if (params.createdBy != null) {
+    filter.createdBy = params.createdBy;
   }
 
   const cursor = params.cursor
