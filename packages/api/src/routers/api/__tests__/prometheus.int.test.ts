@@ -517,10 +517,9 @@ describe('prometheus router', () => {
     });
 
     // Every other userinfo test asserts what's redacted for *display* (the
-    // error bodies below). The actual outgoing `fetch` target must still
-    // carry real credentials, or authenticated Prometheus connections would
-    // silently stop authenticating.
-    it('still sends real credentials to the actual upstream fetch call', async () => {
+    // error bodies below). The outgoing request must still carry the real
+    // credentials, as a header: fetch rejects a URL that includes them.
+    it('sends host credentials to the upstream as a Basic auth header', async () => {
       const { agent, team } = await getLoggedInAgent(server);
       const source = await seedPrometheusSource(
         team._id,
@@ -545,7 +544,11 @@ describe('prometheus router', () => {
         })
         .expect(200);
 
-      expect(mockFetch.mock.calls[0][0] as string).toContain('user:pw@');
+      const [target, init] = mockFetch.mock.calls[0];
+      expect(new URL(String(target)).username).toBe('');
+      expect(init?.headers).toEqual({
+        Authorization: `Basic ${Buffer.from('user:pw').toString('base64')}`,
+      });
     });
 
     it('leaves a host-pinned param untouched when the request never references it', async () => {
