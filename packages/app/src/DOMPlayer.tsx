@@ -35,6 +35,7 @@ import {
   createRrwebChunkAssembler,
   RRWebStreamRow,
 } from '@/utils/rrwebChunkAssembler';
+import type { SessionIdKey } from '@/utils/sessionId';
 
 import { FieldExpressionGenerator } from './hooks/useFieldExpressionGenerator';
 
@@ -101,7 +102,7 @@ const URLHoverCard = memo(({ url }: { url: string }) => {
 });
 
 export default function DOMPlayer({
-  config: { dateRange, serviceName, sessionId, sourceId },
+  config: { dateRange, serviceName, sessionId, sessionIdKey, sourceId },
   focus,
   setPlayerTime,
   playerState,
@@ -119,6 +120,7 @@ export default function DOMPlayer({
     dateRange: [Date, Date];
     serviceName: string;
     sessionId: string;
+    sessionIdKey?: SessionIdKey;
     sourceId: string;
   };
   focus: { ts: number; setBy: string } | undefined;
@@ -247,6 +249,7 @@ export default function DOMPlayer({
     {
       serviceName,
       sessionId,
+      sessionIdKey,
       sourceId,
       startDate: dateRange[0],
       endDate: dateRange[1],
