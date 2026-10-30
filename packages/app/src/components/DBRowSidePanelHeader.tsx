@@ -24,12 +24,15 @@ export default function DBRowSidePanelHeader({
   // source has neither body nor implicit column configured), the body
   // paper is suppressed entirely; the highlighted attributes still render.
   bodyConfigured = true,
+  // Rows that never carry a body, such as browser events, skip the empty state.
+  hideEmptyBody = false,
   severityText,
   rowData,
 }: {
   mainContent?: string;
   mainContentHeader?: string;
   bodyConfigured?: boolean;
+  hideEmptyBody?: boolean;
   attributes?: HighlightedAttribute[];
   severityText?: string;
   rowData?: Record<string, any>;
@@ -85,7 +88,8 @@ export default function DBRowSidePanelHeader({
 
   return (
     <>
-      {!bodyConfigured ? null : mainContent ? (
+      {!bodyConfigured ||
+      (hideEmptyBody && !mainContent) ? null : mainContent ? (
         <Paper
           p="xs"
           mt="sm"
