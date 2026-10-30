@@ -161,7 +161,7 @@ services:
   # Older ClickHouse (< 26.2) to test the compatibility schema (bloom filters
   # instead of full text indexes)
   ch-server-compat:
-    image: clickhouse/clickhouse-server:25.12-alpine
+    image: clickhouse/clickhouse-server:26.8-alpine
     environment:
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
     volumes:
