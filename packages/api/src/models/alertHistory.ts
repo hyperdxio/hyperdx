@@ -32,6 +32,25 @@ export interface IAlertHistoryAnalytics {
   notificationTargets?: AlertNotificationTargetTiming[];
 }
 
+/** One group-by column and its value, stored as a pair. */
+export type GroupValue = { key: string; value: string };
+
+export const attributesToGroupValues = (
+  attributes: Record<string, string>,
+): GroupValue[] | undefined => {
+  const entries = Object.entries(attributes);
+  return entries.length > 0
+    ? entries.map(([key, value]) => ({ key, value }))
+    : undefined;
+};
+
+export const groupValuesToAttributes = (
+  groupValues: GroupValue[] | null | undefined,
+): Record<string, string> | undefined =>
+  groupValues?.length
+    ? Object.fromEntries(groupValues.map(v => [v.key, v.value]))
+    : undefined;
+
 export interface IAlertHistory {
   alert: ObjectId;
   counts: number;
@@ -46,7 +65,7 @@ export interface IAlertHistory {
    * `group` string cannot be parsed back into. Stored as pairs because column
    * names may contain dots, which Mongo would read as nested paths in a key.
    */
-  groupValues?: { key: string; value: string }[];
+  groupValues?: GroupValue[];
   /**
    * Errors recorded for this evaluation window. Present on ERROR-state rows
    * (query/processing failures where no normal history is written) and on
