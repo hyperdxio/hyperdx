@@ -16,10 +16,10 @@ jest.mock('@/useDisplayTimeZone', () => ({
   useDisplayTimeZone: () => mockDisplayTimeZone,
 }));
 
-const renderPicker = () => {
+const renderPicker = (inputValue = 'Oct 22 14:00:00 - Oct 22 15:00:00') => {
   renderWithMantine(
     <TimePicker
-      inputValue="Oct 22 14:00:00 - Oct 22 15:00:00"
+      inputValue={inputValue}
       setInputValue={jest.fn()}
       onSearch={jest.fn()}
     />,
@@ -47,6 +47,22 @@ describe('TimePicker time zone override', () => {
 
     expect(screen.getByTestId('time-picker-time-zone')).toHaveTextContent(
       'UTC+9',
+    );
+  });
+
+  it.each([
+    ['Jan 15 2026 10:00:00 - Jan 15 2026 11:00:00', 'UTC-8'],
+    ['Oct 31 2026 10:00:00 - Nov 2 2026 10:00:00', 'UTC-7/-8'],
+  ])('shows the offset during the range %s', (inputValue, label) => {
+    mockOverride = {
+      timeZone: 'America/Los_Angeles',
+      setTimeZone: jest.fn(),
+    };
+    mockDisplayTimeZone = 'America/Los_Angeles';
+    renderPicker(inputValue);
+
+    expect(screen.getByTestId('time-picker-time-zone')).toHaveTextContent(
+      label,
     );
   });
 

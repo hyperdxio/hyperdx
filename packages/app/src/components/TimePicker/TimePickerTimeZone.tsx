@@ -1,19 +1,50 @@
+import { useMemo } from 'react';
 import { ComboboxProps, Group, Stack, Text } from '@mantine/core';
 
 import { TimeZoneSelect, TimeZoneShortcuts } from '@/components/TimeZoneSelect';
-import { getLocalTimeZone, getTimeZoneShortName } from '@/timeZone';
+import {
+  getLocalTimeZone,
+  getTimeZoneRangeShortName,
+  getTimeZoneShortName,
+} from '@/timeZone';
 import { useTimeZoneOverride } from '@/timeZoneOverride';
 import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { useUserPreferences } from '@/useUserPreferences';
 
 /**
- * Short name of the zone the picker reads and shows times in, highlighted
- * when it isn't the browser's.
+ * Offset of the zone the picker reads and shows times in, during `range`
+ * (now if it didn't parse), and whether it is the browser's zone.
  */
-export function TimePickerTimeZoneBadge() {
+export function useTimePickerTimeZoneLabel(
+  range: readonly [Date | null, Date | null],
+): { label: string; isLocal: boolean } {
   const localTimeZone = getLocalTimeZone();
   const timeZone = useDisplayTimeZone() ?? localTimeZone;
-  const isLocal = timeZone === localTimeZone;
+  const startMs = range[0]?.getTime();
+  const endMs = range[1]?.getTime();
+  return useMemo(
+    () => ({
+      label:
+        startMs != null && endMs != null
+          ? getTimeZoneRangeShortName(timeZone, [
+              new Date(startMs),
+              new Date(endMs),
+            ])
+          : getTimeZoneShortName(timeZone),
+      isLocal: timeZone === localTimeZone,
+    }),
+    [timeZone, localTimeZone, startMs, endMs],
+  );
+}
+
+/** The zone's offset, highlighted when it isn't the browser's zone. */
+export function TimePickerTimeZoneBadge({
+  label,
+  isLocal,
+}: {
+  label: string;
+  isLocal: boolean;
+}) {
   return (
     <Text
       data-testid="time-picker-time-zone"
@@ -23,7 +54,7 @@ export function TimePickerTimeZoneBadge() {
       variant={isLocal ? undefined : 'warning'}
       c={isLocal ? 'dimmed' : undefined}
     >
-      {getTimeZoneShortName(timeZone)}
+      {label}
     </Text>
   );
 }

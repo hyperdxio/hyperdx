@@ -87,3 +87,21 @@ export function getTimeZoneShortName(
   const label = gmtToUtc(offset);
   return label === 'UTC+0' ? 'UTC' : label;
 }
+
+/**
+ * Short offset of `timeZone` over `range`. A range across a DST change shows
+ * both offsets, e.g. "UTC-8/-7"; London's "UTC+0/+1".
+ */
+export function getTimeZoneRangeShortName(
+  timeZone: string,
+  [start, end]: readonly [Date, Date],
+): string {
+  const startName = getTimeZoneShortName(timeZone, start);
+  const endName = getTimeZoneShortName(timeZone, end);
+  if (startName === endName) {
+    return startName;
+  }
+  const offsetOf = (name: string) =>
+    name === 'UTC' ? '+0' : name.replace(/^UTC/, '');
+  return `UTC${offsetOf(startName)}/${offsetOf(endName)}`;
+}

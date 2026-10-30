@@ -2,6 +2,7 @@ import {
   formatTimeZoneName,
   getSupportedTimeZones,
   getTimeZonePreferenceLabel,
+  getTimeZoneRangeShortName,
   getTimeZoneShortName,
   isTimeZonePreference,
   isValidTimeZone,
@@ -80,5 +81,40 @@ describe('getTimeZoneShortName', () => {
     expect(getTimeZoneShortName('Europe/London', new Date('2026-07-15Z'))).toBe(
       'UTC+1',
     );
+  });
+});
+
+describe('getTimeZoneRangeShortName', () => {
+  it('uses the offset during the range, not today', () => {
+    expect(
+      getTimeZoneRangeShortName('America/Los_Angeles', [
+        new Date('2026-01-15T10:00:00Z'),
+        new Date('2026-01-15T11:00:00Z'),
+      ]),
+    ).toBe('UTC-8');
+  });
+
+  it('shows both offsets for a range across a DST change', () => {
+    expect(
+      getTimeZoneRangeShortName('America/Los_Angeles', [
+        new Date('2026-10-31T12:00:00Z'),
+        new Date('2026-11-02T12:00:00Z'),
+      ]),
+    ).toBe('UTC-7/-8');
+    expect(
+      getTimeZoneRangeShortName('Europe/London', [
+        new Date('2026-03-28T12:00:00Z'),
+        new Date('2026-03-30T12:00:00Z'),
+      ]),
+    ).toBe('UTC+0/+1');
+  });
+
+  it('shows one offset for a zone without DST', () => {
+    expect(
+      getTimeZoneRangeShortName('Etc/UTC', [
+        new Date('2026-01-15Z'),
+        new Date('2026-07-15Z'),
+      ]),
+    ).toBe('UTC');
   });
 });

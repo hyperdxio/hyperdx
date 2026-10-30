@@ -32,6 +32,7 @@ import { useUserPreferences } from '@/useUserPreferences';
 import {
   TimePickerTimeZoneBadge,
   TimePickerTimeZoneSelect,
+  useTimePickerTimeZoneLabel,
 } from './TimePickerTimeZone';
 import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
@@ -173,6 +174,7 @@ const TimePickerComponent = ({
   const dateRange = React.useMemo(() => {
     return parseTimeRangeInput(value, timeZone);
   }, [value, timeZone]);
+  const timeZoneLabel = useTimePickerTimeZoneLabel(dateRange);
 
   React.useEffect(() => {
     // Only update form values from external dateRange when popover is closed
@@ -314,11 +316,16 @@ const TimePickerComponent = ({
                 : 'var(--color-text)',
             },
           }}
-          rightSectionWidth={showTimeZone ? 84 : undefined}
+          // Sized to the label: offsets like "UTC-3:30/-2:30" run long.
+          rightSectionWidth={
+            showTimeZone
+              ? `calc(${timeZoneLabel.label.length}ch + ${opened ? 40 : 16}px)`
+              : undefined
+          }
           rightSectionPointerEvents="none"
           rightSection={
             <Group gap={6} wrap="nowrap" justify="flex-end" w="100%" pr={8}>
-              {showTimeZone && <TimePickerTimeZoneBadge />}
+              {showTimeZone && <TimePickerTimeZoneBadge {...timeZoneLabel} />}
               {opened && (
                 <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
                   d
