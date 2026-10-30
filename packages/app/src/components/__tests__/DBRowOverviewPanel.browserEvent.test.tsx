@@ -17,7 +17,10 @@ jest.mock('../NetworkPropertyPanel', () => ({
 
 jest.mock('../ExceptionSubpanel', () => ({ ExceptionSubpanel: () => null }));
 
-jest.mock('../DBRowJsonViewer', () => ({ DBRowJsonViewer: () => null }));
+const mockJsonViewer = jest.fn((_props: { data: unknown }) => null);
+jest.mock('../DBRowJsonViewer', () => ({
+  DBRowJsonViewer: (props: { data: unknown }) => mockJsonViewer(props),
+}));
 
 jest.mock('../linkedSpans', () => ({
   useReverseSpanLinks: () => ({ links: [] }),
@@ -160,5 +163,30 @@ describe('RowOverviewPanel browser event section', () => {
     expect(
       screen.queryByTestId('browser-event-section'),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe('RowOverviewPanel top level attributes', () => {
+  const topLevelData = () =>
+    mockJsonViewer.mock.calls.map(([props]) => props.data);
+
+  beforeEach(() => mockJsonViewer.mockClear());
+
+  it('lists the EventName column', () => {
+    renderRow(CLICK_ATTRIBUTES, {
+      ServiceName: 'web',
+      EventName: 'browser.user_action.click',
+    });
+
+    expect(topLevelData()).toContainEqual({
+      ServiceName: 'web',
+      EventName: 'browser.user_action.click',
+    });
+  });
+
+  it('leaves out an empty EventName', () => {
+    renderRow({}, { ServiceName: 'api', EventName: '' });
+
+    expect(topLevelData()).toContainEqual({ ServiceName: 'api' });
   });
 });
