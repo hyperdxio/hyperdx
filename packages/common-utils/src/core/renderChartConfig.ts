@@ -1533,7 +1533,9 @@ async function renderGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
-  // Note: per-column splitting for string groupBy happens in renderGroupByColumns.
+  // The outer GROUP BY keeps a comma-separated string groupBy intact as a
+  // single expression; per-column splitting for tuple(...)/IN contexts is
+  // handled separately by renderGroupByColumns.
   return concatChSql(
     ',',
     isUsingGroupBy(chartConfig)
@@ -1557,14 +1559,14 @@ async function renderGroupBy(
 
 async function renderGroupByColumns(
   groupBy: NonNullable<BuilderChartConfigWithOptDateRangeEx['groupBy']>,
-  config: BuilderChartConfigWithOptDateRangeEx,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql[]> {
   // One ChSql per group-by column (groupBy may be an array or a comma-separated
   // string). The string branch emits raw SQL per split column and does not
-  // consult `config` or `metadata`; only the array branch resolves columns via
-  // `renderSelectList(config, metadata)`. splitAndTrimWithBracket respects
-  // []/()/quotes so it won't split inside Map['a,b'].
+  // consult `chartConfig` or `metadata`; only the array branch resolves columns
+  // via `renderSelectList(chartConfig, metadata)`. splitAndTrimWithBracket
+  // respects []/()/quotes so it won't split inside Map['a,b'].
   if (typeof groupBy === 'string') {
     return splitAndTrimWithBracket(groupBy).map(
       col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
@@ -1574,7 +1576,7 @@ async function renderGroupByColumns(
   // `AS "alias"` suffix is a syntax error (unlike the outer GROUP BY).
   const rendered = await renderSelectList(
     groupBy.map(col => ({ ...col, alias: undefined })),
-    config,
+    chartConfig,
     metadata,
     { mergeRatio: false },
   );
