@@ -204,6 +204,13 @@ describe('MCP PromQL sources', () => {
         '/api/v1/labels',
       ]);
       expect(urls[0].searchParams.get('start')).toBeTruthy();
+      // fetch rejects a URL with credentials, so they travel as a header.
+      for (const [input, init] of mockFetch.mock.calls) {
+        expect(new URL(String(input)).username).toBe('');
+        expect(init?.headers).toEqual({
+          Authorization: `Basic ${Buffer.from('user:secret').toString('base64')}`,
+        });
+      }
     });
 
     it('still returns the source config when the label lookup fails', async () => {

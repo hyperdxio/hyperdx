@@ -118,7 +118,7 @@ async function describeSourceSchema(
   }
 
   if (source.kind === SourceKind.Promql) {
-    return describePromqlSource({ teamId, source, meta, signal });
+    return describePromqlSource({ teamId, source, meta, signal, progress });
   }
 
   if (
