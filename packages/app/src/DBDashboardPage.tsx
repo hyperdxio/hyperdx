@@ -236,6 +236,7 @@ import {
   parseRelativeTimeQuery,
   useDefaultTimeRange,
   useNewTimeQuery,
+  useTimeRangeInputText,
 } from './timeQuery';
 import {
   TimeZoneOverrideProvider,
@@ -545,9 +546,8 @@ const Tile = ({
   // changing them does not propagate up to the dashboard.
   const [fullscreenDateRange, setFullscreenDateRange] =
     useState<[Date, Date]>(dateRange);
-  const [fullscreenInputValue, setFullscreenInputValue] = useState<string>(() =>
-    dateRangeToString(dateRange, timeZone),
-  );
+  const [fullscreenInputValue, setFullscreenInputValue] =
+    useTimeRangeInputText(fullscreenDateRange);
   const [fullscreenGranularity, setFullscreenGranularity] = useState<
     Granularity | 'auto' | undefined
   >(() => (granularity as Granularity | undefined) ?? 'auto');
@@ -561,7 +561,7 @@ const Tile = ({
       (granularity as Granularity | undefined) ?? 'auto',
     );
     setIsFullscreen(true);
-  }, [dateRange, granularity, timeZone]);
+  }, [dateRange, granularity, timeZone, setFullscreenInputValue]);
 
   const handleFullscreenSearch = useCallback(
     (value: string) => {
