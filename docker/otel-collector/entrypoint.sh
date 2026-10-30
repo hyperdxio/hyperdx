@@ -1,6 +1,14 @@
 #!/bin/sh
 set -e
 
+# Go 1.24+ opens Multipath TCP listeners by default; turn that off for the
+# collector, supervisor and migrate to mitigate CVE-2026-98432. Appended so
+# other GODEBUG settings survive; an explicit multipathtcp= value wins.
+case "$GODEBUG" in
+  *multipathtcp=*) ;;
+  *) export GODEBUG="${GODEBUG:+$GODEBUG,}multipathtcp=0" ;;
+esac
+
 # DEPRECATED: The clickhouse.json feature gate has been removed upstream.
 # When OTEL_AGENT_FEATURE_GATE_ARG contains clickhouse.json, strip it and
 # map it to HYPERDX_OTEL_EXPORTER_CLICKHOUSE_JSON_ENABLE instead. Other feature gates
