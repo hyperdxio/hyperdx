@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
+import { renderLegend } from '@/termchart/ansi';
 import {
   niceTicks,
   renderLineChart,
@@ -296,5 +297,112 @@ describe('renderStackedBarChart', () => {
     const topRow = output.split('\n')[0];
     expect(topRow).toContain('█');
     expect(topRow).toContain('100');
+  });
+
+  it('leaves series too small to draw out of the legend', () => {
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({
+          big: [1000, 1000, 1000],
+          mid: [400, 400, 400],
+          tiny: [0.001, 0.001, 0.001],
+          none: [0, 0, 0],
+        }),
+        width: 60,
+        height: 14,
+      }),
+    );
+    const legend = output.split('\n').at(-1);
+    expect(legend).toContain('● big');
+    expect(legend).toContain('● mid');
+    expect(legend).not.toContain('tiny');
+    expect(legend).toContain('+2 not shown');
+  });
+
+  it('credits a partial top cell to the series filling most of it, not a sliver on top', () => {
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({
+          base: [1000, 1000],
+          sliver: [60, 60],
+          crumb: [1, 1],
+        }),
+        width: 60,
+        height: 14,
+      }),
+    );
+    const legend = output.split('\n').at(-1);
+    expect(legend).toContain('● sliver');
+    expect(legend).not.toContain('crumb');
+  });
+
+  it('gives a partial cell to the series covering most of it', () => {
+    // Top cell holds ~0.26 rows of b, 0.22 of c and 0.12 of d.
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({ a: [1000], b: [13], c: [11], d: [6] }),
+        width: 60,
+        height: 28,
+      }),
+    );
+    const legend = output.split('\n').at(-1);
+    expect(legend).toContain('● b');
+    expect(legend).not.toContain('● c');
+  });
+
+  it('keeps the legend and its hidden count within the width', () => {
+    const name = (c: string) => c.repeat(25);
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({
+          [name('a')]: [1000, 1000],
+          [name('b')]: [900, 900],
+          [name('c')]: [0.001, 0.001],
+        }),
+        width: 60,
+        height: 14,
+      }),
+    );
+    const legendLines = output.split('\n').slice(-2);
+    for (const line of legendLines) expect(line.length).toBeLessThanOrEqual(60);
+    // Both drawn series stay listed; the count moves to the spare legend row.
+    expect(legendLines[0]).toContain(name('a'));
+    expect(legendLines[0]).toContain(name('b'));
+    expect(legendLines[1]).toBe('+1 not shown');
+  });
+
+  it('separates wide bars with a gap column', () => {
+    const output = stripAnsi(
+      renderStackedBarChart({
+        data: makeTimeChartData({ events: [5, 5, 5] }),
+        width: 42,
+        height: 8,
+        showLegend: false,
+      }),
+    );
+    const bottomRow = output.split('\n').at(-2)!;
+    const bars = bottomRow.slice(bottomRow.indexOf('┤') + 1);
+    expect(bars.trimEnd().split(/ +/)).toHaveLength(3);
+  });
+});
+
+describe('renderLegend', () => {
+  const series = Array.from({ length: 8 }, (_, i) => ({
+    displayName: `service-${i}-${'x'.repeat(12)}`,
+    color: 'blue',
+  }));
+
+  it('fits a "+K more" overflow within the width on the last allowed line', () => {
+    const lines = stripAnsi(renderLegend(series, 60, 2)).split('\n');
+    expect(lines).toHaveLength(2);
+    for (const line of lines) expect(line.length).toBeLessThanOrEqual(60);
+    const listed = (lines.join(' ').match(/●/g) ?? []).length;
+    expect(lines[1]).toMatch(new RegExp(`\\+${series.length - listed} more$`));
+  });
+
+  it('counts hidden series in a "+N not shown" tail, even with one line', () => {
+    const line = stripAnsi(renderLegend(series.slice(0, 2), 60, 1, 3));
+    expect(line.length).toBeLessThanOrEqual(60);
+    expect(line).toMatch(/\+\d+ not shown$/);
   });
 });
