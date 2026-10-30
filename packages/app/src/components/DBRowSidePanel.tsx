@@ -57,6 +57,7 @@ import {
   getRowLookupWindow,
   resolveRowTimestampAnchor,
 } from '@/utils/rowTimestamps';
+import type { SessionEventNavigate } from '@/utils/sessionLogEvents';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -618,19 +619,37 @@ export const DBRowSidePanelInner = ({
     return clauses.length > 0 ? clauses.join(' AND ') : undefined;
   }, [traceIdExpression, traceId, spanIdExpression, spanId]);
 
-  const handleSessionEventNavigate = useCallback(
-    (rowId: string, aliasWith: WithClause[]) => {
-      if (traceSourceData) {
+  const handleSessionEventNavigate = useCallback<SessionEventNavigate>(
+    (rowId, aliasWith, target) => {
+      const label = mainContent || 'Session Replay';
+      if (target?.sourceId === source.id) {
+        handleNavigateToRow(rowId, aliasWith, label, SourceKind.Log);
+      } else if (target != null) {
+        handleSourceStackPush({
+          sourceId: target.sourceId,
+          rowId,
+          aliasWith,
+          label,
+          sourceKind: SourceKind.Log,
+          focusTimestamp: target.focusTimestamp,
+        });
+      } else if (traceSourceData) {
         handleSourceStackPush({
           sourceId: traceSourceData.id,
           rowId,
           aliasWith,
-          label: mainContent || 'Session Replay',
+          label,
           sourceKind: traceSourceData.kind as SourceKind,
         });
       }
     },
-    [traceSourceData, handleSourceStackPush, mainContent],
+    [
+      traceSourceData,
+      source.id,
+      handleNavigateToRow,
+      handleSourceStackPush,
+      mainContent,
+    ],
   );
 
   const handleTraceLogNavigate = useCallback(
