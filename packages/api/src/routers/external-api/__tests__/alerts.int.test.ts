@@ -15,6 +15,8 @@ import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
+import Team from '@/models/team';
+import User from '@/models/user';
 import Webhook, { WebhookService } from '@/models/webhook';
 
 // Constants
@@ -1127,6 +1129,44 @@ describe('External API Alerts', () => {
       await authRequest('post', `${ALERTS_BASE_URL}/not-an-id/silenced`)
         .send({ mutedUntil: futureDate().toISOString() })
         .expect(400);
+    });
+
+    it('should return 404 and leave the alert unchanged for another team', async () => {
+      const { alert } = await createTestAlert({ name: 'Cross Team Alert' });
+      const mutedUntil = futureDate().toISOString();
+      await authRequest('post', `${ALERTS_BASE_URL}/${alert.id}/silenced`)
+        .send({ mutedUntil })
+        .expect(200);
+
+      const otherTeam = await Team.create({ name: 'Other Team' });
+      const otherUser = await User.create({
+        email: 'other-team@deploysentinel.com',
+        team: otherTeam._id,
+      });
+      const otherRequest = (method: 'post' | 'delete') =>
+        request(server.getHttpServer())
+          [method](`${ALERTS_BASE_URL}/${alert.id}/silenced`)
+          .set('Authorization', `Bearer ${otherUser.accessKey}`);
+
+      const silenceResponse = await otherRequest('post')
+        .send({ mutedUntil: futureDate().toISOString() })
+        .expect(404);
+      expect(silenceResponse.body).toEqual({ message: 'Alert not found' });
+
+      const unsilenceResponse = await otherRequest('delete').expect(404);
+      expect(unsilenceResponse.body).toEqual({ message: 'Alert not found' });
+
+      const stored = await Alert.findById(alert.id);
+      expect(stored?.silenced?.until.toISOString()).toBe(mutedUntil);
+      expect(stored?.silenced?.by?.toString()).toBe(user._id.toString());
+    });
+
+    it('should reject an invalid alert id when unsilencing', async () => {
+      const response = await authRequest(
+        'delete',
+        `${ALERTS_BASE_URL}/not-an-id/silenced`,
+      ).expect(400);
+      expect(response.body).toEqual({ message: expect.any(String) });
     });
   });
 
