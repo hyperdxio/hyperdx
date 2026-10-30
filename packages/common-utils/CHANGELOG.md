@@ -1,5 +1,16 @@
 # @hyperdx/common-utils
 
+## 0.33.0
+
+### Minor Changes
+
+- 0212c7bd3: feat: Expose alert tags to Generic and incident.io webhook bodies as `{{tags}}` (comma-separated, or iterate with `{{#each tags}}`), and include them in the default incident.io body's `metadata.tags`, so one shared webhook can route alerts by owning team
+
+### Patch Changes
+
+- e88f71695: fix: keep backtick-quoted column names that contain a comma intact when toggling search columns or editing group by
+- e5ba5dfde: fix: Keep string literals as written when rewriting `Map['key'] = 'value'` filters to the key-value items index, so values containing quotes or backslashes match instead of returning no rows
+
 ## 0.32.0
 
 ### Minor Changes

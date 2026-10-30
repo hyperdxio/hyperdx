@@ -6,6 +6,77 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.43.0 — 2026-10-30
+
+<!-- hyperdx-release-notes version=2.43.0 inputs=c36a45573378 -->
+
+**Alert tags in webhooks and OTel session replay**
+
+Alerts now carry their tags into webhook notifications: Generic and incident.io
+webhook bodies can read `{{tags}}` as a comma-separated list or iterate them
+with `{{#each tags}}`, so one shared webhook can route alerts to the team that
+owns them. Session replay also reaches beyond the HyperDX browser SDK — sessions
+recorded by an OpenTelemetry browser SDK that sends `session.id` are now listed
+and play back alongside the rest, with the clicks, navigations, console output
+and exceptions those SDKs record shown next to the replay. Filters on map
+columns such as `LogAttributes` now match values containing quotes or
+backslashes, instead of quietly coming back with no rows at all. The alert
+preview chart also shades the correct side of the threshold line again for
+"above" and "not between" alerts, so the highlighted region matches the
+condition the alert actually fires on.
+
+### ✨ New Features
+
+- **Alert tags in webhook bodies**: Generic and incident.io webhook templates can
+  now read an alert's tags as `{{tags}}` for a comma-separated list, or iterate
+  them with `{{#each tags}}`, and the default incident.io body includes them in
+  `metadata.tags`. One shared webhook can now route alerts by their owning team
+  rather than needing a webhook per team.
+- **Session replay from OpenTelemetry browser SDKs**: sessions recorded by an
+  OpenTelemetry browser SDK that sends `session.id` now appear in the session
+  list and play back in session replay, so replays from those SDKs are no longer
+  missing.
+- **Browser events alongside those replays**: clicks, navigations, console
+  output and exceptions captured by an OpenTelemetry browser SDK now show up in
+  the replay's event list, so you can follow what the user did and what the page
+  logged without leaving the player.
+
+### 🔧 Improvements
+
+- **Sentence case across the sidebar and menus**: navigation labels, menu items
+  and tooltips now read in sentence case rather than a mix of styles, so the
+  interface is consistent wherever you look.
+
+### 🐛 Bug Fixes
+
+- **Map filters match values containing quotes or backslashes**: a filter like
+  `LogAttributes['key'] = 'value'` returned no rows when the value contained a
+  quote or a backslash. Those values are now compared exactly as you wrote them.
+- **The alert preview shades the right side of the threshold**: "above" and "not
+  between" alerts highlighted the region below the threshold line in the preview
+  chart. The shaded region now shows the range that will trigger the alert.
+- **Column names containing a comma survive editing**: a backtick-quoted column
+  name with a comma in it was split in two when you toggled a column in the
+  search results or edited a chart's group by. Such names are now kept intact.
+
+### 📦 Build / Packaging
+
+- **Bundled ClickHouse pinned to 26.8.36.3**: the all-in-one image and the Docker
+  Compose files now use `clickhouse/clickhouse-server:26.8.36.3-alpine` in place
+  of the floating `26.8-alpine` tag, so a deployment picks up the ClickHouse
+  security fix and stays on a known version.
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.42.0 → 2.43.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2430)
+- `@hyperdx/app` 2.42.0 → 2.43.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2430)
+- `@hyperdx/common-utils` 0.32.0 → 0.33.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0330)
+- `@hyperdx/otel-collector` 2.42.0 → 2.43.0 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2430)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.42.0 — 2026-10-23
 
 <!-- hyperdx-release-notes version=2.42.0 inputs=dd8269fc0d9b -->
