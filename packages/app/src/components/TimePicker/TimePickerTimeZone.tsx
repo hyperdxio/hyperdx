@@ -11,16 +11,19 @@ import { useUserPreferences } from '@/useUserPreferences';
  * when it isn't the browser's.
  */
 export function TimePickerTimeZoneBadge() {
-  const timeZone = useDisplayTimeZone();
+  const localTimeZone = getLocalTimeZone();
+  const timeZone = useDisplayTimeZone() ?? localTimeZone;
+  const isLocal = timeZone === localTimeZone;
   return (
     <Text
       data-testid="time-picker-time-zone"
+      data-local={isLocal}
       size="xxs"
       fw={600}
-      variant={timeZone ? 'warning' : undefined}
-      c={timeZone ? undefined : 'dimmed'}
+      variant={isLocal ? undefined : 'warning'}
+      c={isLocal ? 'dimmed' : undefined}
     >
-      {getTimeZoneShortName(timeZone ?? getLocalTimeZone())}
+      {getTimeZoneShortName(timeZone)}
     </Text>
   );
 }

@@ -50,6 +50,23 @@ describe('TimePicker time zone override', () => {
     );
   });
 
+  // Tests run with TZ=America/New_York.
+  it.each([
+    [undefined, true],
+    ['America/New_York', true],
+    ['Asia/Tokyo', false],
+  ])(
+    'highlights the zone %s only when it is not local',
+    (timeZone, isLocal) => {
+      mockOverride = { timeZone: timeZone ?? null, setTimeZone: jest.fn() };
+      mockDisplayTimeZone = timeZone;
+      renderPicker();
+
+      const badge = screen.getByTestId('time-picker-time-zone');
+      expect(badge).toHaveAttribute('data-local', String(isLocal));
+    },
+  );
+
   async function pickTimeZone(option: RegExp) {
     fireEvent.click(screen.getByTestId('time-picker-input'));
     await userEvent.click(
