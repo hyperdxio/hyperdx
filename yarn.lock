@@ -4818,7 +4818,7 @@ __metadata:
     tsconfig-paths: "npm:^4.2.0"
     typescript: "npm:^6.0.3"
     uuid: "npm:^8.3.2"
-    zod: "npm:3.25"
+    zod: "npm:4.6"
     zod-express-middleware: "npm:^1.4.0"
   languageName: unknown
   linkType: soft
@@ -4951,7 +4951,7 @@ __metadata:
     typescript: "npm:^6.0.3"
     uplot: "npm:^1.6.31"
     uplot-react: "npm:^1.2.2"
-    zod: "npm:3.25"
+    zod: "npm:4.6"
   languageName: unknown
   linkType: soft
 
@@ -5031,7 +5031,7 @@ __metadata:
     tsc-alias: "npm:^1.8.8"
     tsup: "npm:^8.4.0"
     typescript: "npm:^6.0.3"
-    zod: "npm:3.25"
+    zod: "npm:4.6"
   languageName: unknown
   linkType: soft
 
@@ -5055,7 +5055,7 @@ __metadata:
     tsc-alias: "npm:^1.8.8"
     tsx: "npm:^4.19.0"
     typescript: "npm:^6.0.3"
-    zod: "npm:3.25"
+    zod: "npm:4.6"
   bin:
     hdx-eval: ./dist/cli.js
   languageName: unknown
@@ -32204,10 +32204,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:3.25":
-  version: 3.25.76
-  resolution: "zod@npm:3.25.76"
-  checksum: 10c0/5718ec35e3c40b600316c5b4c5e4976f7fee68151bc8f8d90ec18a469be9571f072e1bbaace10f1e85cf8892ea12d90821b200e980ab46916a6166a4260a983c
+"zod@npm:4.6":
+  version: 4.6.6
+  resolution: "zod@npm:4.6.6"
+  checksum: 10c0/447a3113bb743c54ab839213ff95e9e8c197cc1206f65270c18aac35aa70c47a5c8cab753be911b574df9a8a9801ea74ed6be776575232cae0084e51dab3e970
   languageName: node
   linkType: hard
 
