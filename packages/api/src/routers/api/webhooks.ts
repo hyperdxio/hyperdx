@@ -495,6 +495,7 @@ router.post(
         sourceQuery: 'SeverityText: "error"',
         teamId: teamId.toString(),
         note: 'Test webhook — no runbook',
+        tags: ['test-tag'],
       };
 
       const testChannel = { type: 'webhook' as const, channel: testWebhook };

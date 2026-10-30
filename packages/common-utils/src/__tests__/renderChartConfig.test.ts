@@ -1878,6 +1878,21 @@ describe('renderChartConfig', () => {
       expect(sql).not.toContain("LogAttributes['service.name'] = 'api'");
     });
 
+    it('keeps escaped quotes in a SQL `where` value as written', async () => {
+      stubKvItemsMetadata();
+      const literal = String.raw`'[\"x\"] it\'s'`;
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          buildWhereConfig(`LogAttributes['error.message'] = ${literal}`),
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        `has(\`LogAttributeItems\`, concat('error.message', '=', ${literal}))`,
+      );
+    });
+
     it('rewrites `Map[key] IN (many)` in a SQL `where` to hasAny() on ClickHouse >= 26.5', async () => {
       stubKvItemsMetadata();
       const sql = parameterizedQueryToSql(

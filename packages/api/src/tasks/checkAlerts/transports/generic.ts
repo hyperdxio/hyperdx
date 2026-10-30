@@ -101,13 +101,15 @@ export const buildWebhookTemplateVariables = (message: Message) =>
     note: escapeJsonString(message.note ?? ''),
     sourceQuery: escapeJsonString(message.sourceQuery ?? ''),
     status: escapeJsonString(message.status ?? ''),
+    // An array so `{{tags}}` renders comma-joined and `{{#each tags}}` works.
+    tags: (message.tags ?? []).map(escapeJsonString),
     teamId: escapeJsonString(message.teamId ?? ''),
     threshold: message.threshold,
     thresholdMax: message.thresholdMax,
     value: message.value,
   }) satisfies Record<
     WebhookTemplateVariable,
-    string | number | undefined | Record<string, string>
+    string | number | undefined | string[] | Record<string, string>
   >;
 
 /**
