@@ -12006,6 +12006,101 @@ describe('checkAlerts', () => {
         new Date('2025-01-01T00:15:00Z'),
       );
     });
+
+    it('returns the newest non-ERROR row per group, including groups that stopped reporting and rows without a group', async () => {
+      const alertId = new mongoose.Types.ObjectId();
+      // Recent dates, so the 30-day TTL index can't remove rows mid-test.
+      const base = Date.now() - 60 * 60_000;
+      const at = (minute: number) => new Date(base + minute * 60_000);
+      const rows = [
+        // group a: reports every minute, newest row OK
+        ...[1, 2, 3].map(m => ({
+          group: 'a',
+          createdAt: at(m),
+          state: AlertState.ALERT,
+        })),
+        { group: 'a', createdAt: at(4), state: AlertState.OK },
+        // group b: newest row is ERROR, so the row before it counts
+        { group: 'b', createdAt: at(3), state: AlertState.ALERT, fired: true },
+        { group: 'b', createdAt: at(4), state: AlertState.ERROR },
+        // group c: stopped reporting while in ALERT
+        { group: 'c', createdAt: at(1), state: AlertState.ALERT, fired: true },
+        // no group (as non-grouped alerts write them): OK, then a newer ERROR
+        { createdAt: at(2), state: AlertState.OK },
+        { createdAt: at(4), state: AlertState.ERROR },
+        // only ERROR rows: no previous history for this group
+        { group: 'd', createdAt: at(4), state: AlertState.ERROR },
+      ];
+      await AlertHistory.insertMany(rows.map(r => ({ alert: alertId, ...r })));
+
+      const result = await getPreviousAlertHistories(
+        [alertId.toString()],
+        at(5),
+      );
+
+      const id = alertId.toString();
+      expect(new Set(result.keys())).toEqual(
+        new Set([`${id}||a`, `${id}||b`, `${id}||c`, id]),
+      );
+      expect(result.get(`${id}||a`)).toMatchObject({
+        createdAt: at(4),
+        state: AlertState.OK,
+        group: 'a',
+      });
+      expect(result.get(`${id}||b`)).toMatchObject({
+        createdAt: at(3),
+        state: AlertState.ALERT,
+        fired: true,
+        group: 'b',
+      });
+      expect(result.get(`${id}||c`)).toMatchObject({
+        createdAt: at(1),
+        state: AlertState.ALERT,
+        fired: true,
+      });
+      expect(result.get(id)).toMatchObject({
+        createdAt: at(2),
+        state: AlertState.OK,
+      });
+      for (const history of result.values()) {
+        expect(history._id.toString()).toBe(id);
+      }
+    });
+
+    it('reads one row per group, not every row in the lookback window', async () => {
+      await AlertHistory.createIndexes();
+      const alertId = new mongoose.Types.ObjectId();
+      // Recent dates, so the 30-day TTL index can't remove rows mid-test.
+      const now = new Date();
+      const groups = 20;
+      const evaluations = 200;
+      await AlertHistory.insertMany(
+        Array.from({ length: groups * evaluations }, (_, i) => ({
+          alert: alertId,
+          group: `g${i % groups}`,
+          createdAt: new Date(
+            now.getTime() - (Math.floor(i / groups) + 1) * 60_000,
+          ),
+          state: AlertState.OK,
+        })),
+      );
+
+      const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
+      const result = await getPreviousAlertHistories([alertId.toString()], now);
+      expect(result.size).toBe(groups);
+
+      const pipeline = aggregateSpy.mock.calls[0][0] as any[];
+      const explain: any = await AlertHistory.collection
+        .aggregate(pipeline)
+        .explain('executionStats');
+      const cursor = explain.stages?.[0]?.$cursor ?? explain;
+      expect(JSON.stringify(cursor.queryPlanner.winningPlan)).toContain(
+        'DISTINCT_SCAN',
+      );
+      expect(cursor.executionStats.totalDocsExamined).toBeLessThanOrEqual(
+        groups + 1,
+      );
+    });
   });
 
   describe('getConsecutiveWindowHistories', () => {
