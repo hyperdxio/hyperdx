@@ -628,6 +628,7 @@ const api = {
         url: string;
         name: string;
         description: string;
+        titleEmoji?: boolean;
         queryParams?: Record<string, string>;
         headers?: Record<string, string>;
         body?: string;
@@ -638,6 +639,7 @@ const api = {
         url,
         name,
         description,
+        titleEmoji,
         queryParams,
         headers,
         body,
@@ -649,6 +651,7 @@ const api = {
             service,
             url,
             description,
+            titleEmoji,
             queryParams: queryParams || {},
             headers: headers || {},
             body,
@@ -670,6 +673,7 @@ const api = {
         url: string;
         name: string;
         description: string;
+        titleEmoji?: boolean;
         queryParams?: Record<string, string>;
         headers?: Record<string, string>;
         body?: string;
@@ -681,6 +685,7 @@ const api = {
         url,
         name,
         description,
+        titleEmoji,
         queryParams,
         headers,
         body,
@@ -692,6 +697,7 @@ const api = {
             service,
             url,
             description,
+            titleEmoji,
             queryParams: queryParams || {},
             headers: headers || {},
             body,

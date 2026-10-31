@@ -11,6 +11,7 @@ export interface WebhookInput {
   service: WebhookService;
   url: string;
   description?: string;
+  titleEmoji?: boolean;
   queryParams?: Record<string, string>;
   headers?: Record<string, string>;
   body?: string;
@@ -22,7 +23,16 @@ export interface WebhookInput {
  */
 export async function createWebhook(
   team: ObjectId | string,
-  { name, service, url, description, queryParams, headers, body }: WebhookInput,
+  {
+    name,
+    service,
+    url,
+    description,
+    titleEmoji,
+    queryParams,
+    headers,
+    body,
+  }: WebhookInput,
 ) {
   validateWebhookConfig({ service, url, body });
 
@@ -32,6 +42,7 @@ export async function createWebhook(
     service,
     url,
     description,
+    titleEmoji,
     queryParams,
     headers,
     body,
@@ -53,7 +64,16 @@ export type UpdateWebhookResult =
 export async function updateWebhook(
   team: ObjectId | string,
   webhookId: string,
-  { name, service, url, description, queryParams, headers, body }: WebhookInput,
+  {
+    name,
+    service,
+    url,
+    description,
+    titleEmoji,
+    queryParams,
+    headers,
+    body,
+  }: WebhookInput,
 ): Promise<UpdateWebhookResult> {
   const existing = await Webhook.findOne({ _id: webhookId, team });
   if (existing == null) {
@@ -70,6 +90,9 @@ export async function updateWebhook(
 
   if (description === undefined) unsetFields.description = 1;
   else setFields.description = description;
+
+  if (titleEmoji === undefined) unsetFields.titleEmoji = 1;
+  else setFields.titleEmoji = titleEmoji;
 
   if (body === undefined) unsetFields.body = 1;
   else setFields.body = body;

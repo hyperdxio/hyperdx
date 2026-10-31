@@ -331,6 +331,27 @@ describe('External API v2 Webhooks', () => {
         .expect(401);
     });
 
+    it('should round-trip titleEmoji through create and list', async () => {
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({ ...MOCK_SLACK_WEBHOOK, titleEmoji: false })
+        .expect(200);
+      expect(response.body.data.titleEmoji).toBe(false);
+
+      const stored = await Webhook.findById(response.body.data.id).lean();
+      expect(stored?.titleEmoji).toBe(false);
+
+      const list = await authRequest('get', WEBHOOKS_BASE_URL).expect(200);
+      expect(list.body.data[0].titleEmoji).toBe(false);
+    });
+
+    it('should leave titleEmoji unset when not provided', async () => {
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(200);
+
+      expect(response.body.data).not.toHaveProperty('titleEmoji');
+    });
+
     it('should create a Slack webhook and never return sensitive fields', async () => {
       const response = await authRequest('post', WEBHOOKS_BASE_URL)
         .send(MOCK_GENERIC_WEBHOOK)
@@ -633,6 +654,36 @@ describe('External API v2 Webhooks', () => {
       // readable fields omitted => cleared (full replace)
       expect(stored?.body).toBeUndefined();
       expect(stored?.description).toBeUndefined();
+    });
+
+    it('should set titleEmoji on update and clear it when omitted', async () => {
+      const created = await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        team: team._id,
+      });
+      const base = {
+        name: MOCK_SLACK_WEBHOOK.name,
+        service: WebhookService.Slack,
+        url: MOCK_SLACK_WEBHOOK.url,
+      };
+
+      const set = await authRequest(
+        'put',
+        `${WEBHOOKS_BASE_URL}/${created._id}`,
+      )
+        .send({ ...base, titleEmoji: false })
+        .expect(200);
+      expect(set.body.data.titleEmoji).toBe(false);
+      expect((await Webhook.findById(created._id).lean())?.titleEmoji).toBe(
+        false,
+      );
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send(base)
+        .expect(200);
+      expect(
+        (await Webhook.findById(created._id).lean())?.titleEmoji,
+      ).toBeUndefined();
     });
 
     it('should preserve omitted queryParams when the destination is unchanged', async () => {

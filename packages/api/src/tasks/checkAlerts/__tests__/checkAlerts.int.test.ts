@@ -1488,13 +1488,13 @@ describe('checkAlerts', () => {
         buildAlertMessageTemplateTitle({
           view: defaultSearchView,
         }),
-      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
+      ).toMatchInlineSnapshot(`"Alert for "My Search" - 10 lines found"`);
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
+        `"Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
       );
       // Inline alerts default to the chart config's name
       expect(
@@ -1502,41 +1502,7 @@ describe('checkAlerts', () => {
           view: defaultInlineAlertView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
-      );
-    });
-
-    it('buildAlertMessageTemplateTitle with state parameter', () => {
-      // Test ALERT state (should have 🚨 emoji)
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultSearchView,
-          state: AlertState.ALERT,
-        }),
-      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultChartView,
-          state: AlertState.ALERT,
-        }),
-      ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
-      );
-
-      // Test OK state (should have ✅ emoji)
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultSearchView,
-          state: AlertState.OK,
-        }),
-      ).toMatchInlineSnapshot(`"✅ Alert for "My Search" - 10 lines found"`);
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultChartView,
-          state: AlertState.OK,
-        }),
-      ).toMatchInlineSnapshot(
-        `"✅ Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
+        `"Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -1556,7 +1522,7 @@ describe('checkAlerts', () => {
           view: decimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 1111.1 meets or exceeds 1.5"`,
+        `"Alert for "My Dashboard - Test Chart" - 1111.1 meets or exceeds 1.5"`,
       );
 
       // Test with multiple decimal places
@@ -1574,7 +1540,7 @@ describe('checkAlerts', () => {
           view: multiDecimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 1.1235 meets or exceeds 0.1234"`,
+        `"Alert for "My Dashboard - Test Chart" - 1.1235 meets or exceeds 0.1234"`,
       );
 
       // Test with integer value and decimal threshold
@@ -1592,7 +1558,7 @@ describe('checkAlerts', () => {
           view: integerValueView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 10.00 meets or exceeds 0.12"`,
+        `"Alert for "My Dashboard - Test Chart" - 10.00 meets or exceeds 0.12"`,
       );
     });
 
@@ -1728,7 +1694,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -1789,7 +1755,7 @@ describe('checkAlerts', () => {
             webhookName: 'My_Webhook',
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -1875,7 +1841,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById,
       });
@@ -1900,7 +1866,7 @@ describe('checkAlerts', () => {
             host: 'web2',
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById,
       });
@@ -1990,7 +1956,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '✅ Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -2475,6 +2441,103 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    it('SAVED_SEARCH alert - titleEmoji is applied per webhook on fired and resolved titles', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+      webhook.titleEmoji = false;
+      await webhook.save();
+      const emojiWebhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/456',
+        name: 'Emoji_Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+        [emojiWebhook._id.toString(), emojiWebhook],
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          message: '@webhook-Emoji_Webhook',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:20:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const textsFor = (url: string) =>
+        jest
+          .mocked(slack.postMessageToWebhook)
+          .mock.calls.filter(([calledUrl]) => calledUrl === url)
+          .map(([, payload]) => payload.text);
+
+      const [plainFired, plainResolved] = textsFor(
+        'https://hooks.slack.com/services/123',
+      );
+      expect(plainFired).toBe('Alert for "My Search" - 2 lines found');
+      expect(plainResolved).toMatch(/^Alert for "My Search"/);
+
+      const [emojiFired, emojiResolved] = textsFor(
+        'https://hooks.slack.com/services/456',
+      );
+      expect(emojiFired).toBe('🚨 Alert for "My Search" - 2 lines found');
+      expect(emojiResolved).toMatch(/^✅ Alert for "My Search"/);
     });
 
     // The scheduled alert task and the app search page both go through
