@@ -1888,33 +1888,37 @@ export const getPreviousAlertHistories = async (
             project,
           ]);
 
-        return Promise.all(
-          latestPerGroup.map(async latest => {
-            if (latest.state !== AlertState.ERROR) {
-              return latest;
-            }
-            // ERROR rows record failed evaluations; they must not count as
-            // "window evaluated" or the failed window would never be
-            // retried/backfilled. Take the group's newest non-ERROR row
-            // instead. ERROR rows are written without a group, so this is at
-            // most one indexed lookup per alert, over its group-less rows.
-            const [previous] =
-              await AlertHistory.aggregate<AggregatedAlertHistory>([
-                {
-                  $match: {
-                    alert: id,
-                    group: latest.group ?? null,
-                    createdAt,
-                    state: { $ne: AlertState.ERROR },
-                  },
+        // One at a time, inside the queue slot this alert already holds, so
+        // the follow-ups never add concurrency. (Queuing them on the same
+        // queue could deadlock when it's full.)
+        const histories: (AggregatedAlertHistory | undefined)[] = [];
+        for (const latest of latestPerGroup) {
+          if (latest.state !== AlertState.ERROR) {
+            histories.push(latest);
+            continue;
+          }
+          // ERROR rows record failed evaluations; they must not count as
+          // "window evaluated" or the failed window would never be
+          // retried/backfilled. Take the group's newest non-ERROR row
+          // instead. ERROR rows are written without a group, so this is at
+          // most one indexed lookup per alert, over its group-less rows.
+          const [previous] =
+            await AlertHistory.aggregate<AggregatedAlertHistory>([
+              {
+                $match: {
+                  alert: id,
+                  group: latest.group ?? null,
+                  createdAt,
+                  state: { $ne: AlertState.ERROR },
                 },
-                { $sort: { createdAt: -1 } },
-                { $limit: 1 },
-                project,
-              ]);
-            return previous;
-          }),
-        );
+              },
+              { $sort: { createdAt: -1 } },
+              { $limit: 1 },
+              project,
+            ]);
+          histories.push(previous);
+        }
+        return histories;
       }),
     ),
   );

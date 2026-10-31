@@ -12094,9 +12094,8 @@ describe('checkAlerts', () => {
         .aggregate(pipeline)
         .explain('executionStats');
       const cursor = explain.stages?.[0]?.$cursor ?? explain;
-      expect(JSON.stringify(cursor.queryPlanner.winningPlan)).toContain(
-        'DISTINCT_SCAN',
-      );
+      // MongoDB 5.0-8.0 answer this with a DISTINCT_SCAN; the property that
+      // matters is one row read per group, not every row in the window.
       expect(cursor.executionStats.totalDocsExamined).toBeLessThanOrEqual(
         groups + 1,
       );
