@@ -620,15 +620,15 @@ describe('renderChartConfig', () => {
     );
     const actual = parameterizedQueryToSql(generatedSql);
     expect(actual).toMatch(
-      /tuple\(\s*Attributes\['destination_service_name'\]\s*,\s*Attributes\['a,b'\]\s*\)/,
+      /tuple\(\s*Attributes\['destination_service_name'\]\s*,\s*Attributes\['a,b'\]\s*\)\s+IN\s+\(SELECT\s+`group`\s+FROM\s+TopGroups\)/,
     );
-    expect(actual).toContain('TopGroups');
     expect(actual).toMatch(
       /Attributes\['destination_service_name'\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\['destination_service_name'\]\)\s*!=\s*''/,
     );
     expect(actual).toMatch(
       /Attributes\['a,b'\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\['a,b'\]\)\s*!=\s*''/,
     );
+    expect(actual).not.toMatch(/toString\([^)]*\],\s*Attributes\[/);
   });
 
   it('should not emit a rank CTE when aggFn=increase has no groupBy', async () => {

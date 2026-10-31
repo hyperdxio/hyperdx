@@ -2359,23 +2359,24 @@ async function translateMetricChartConfig(
         } as BuilderChartConfigWithOptDateRangeEx,
         metadata,
       );
-      const groupBySql = concatChSql(',', groupByCols);
+      if (groupByCols.length > 0) {
+        const groupBySql = concatChSql(',', groupByCols);
 
-      // Exclude rows where any groupBy column is NULL/empty so they don't
-      // collapse into a single dominating '-' series.
-      const groupByEmptyFilter = concatChSql(
-        ' AND ',
-        groupByCols.map(
-          g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
-        ),
-      );
+        // Exclude rows where any groupBy column is NULL/empty so they don't
+        // collapse into a single dominating '-' series.
+        const groupByEmptyFilter = concatChSql(
+          ' AND ',
+          groupByCols.map(
+            g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
+          ),
+        );
 
-      // Rank by max-per-bucket summed Rate so a group that spikes in one
-      // bucket still makes the top N. tuple() wraps multi-column groupBys
-      // into a single comparable column.
-      sumWith.push({
-        name: 'TopGroups',
-        sql: chSql`
+        // Rank by max-per-bucket summed Rate so a group that spikes in one
+        // bucket still makes the top N. tuple() wraps multi-column groupBys
+        // into a single comparable column.
+        sumWith.push({
+          name: 'TopGroups',
+          sql: chSql`
             SELECT \`group\`
             FROM (
               SELECT
@@ -2389,18 +2390,19 @@ async function translateMetricChartConfig(
             ORDER BY max(\`bucket_value\`) DESC, \`group\`
             LIMIT ${{ Int32: INCREASE_MAX_NUM_GROUPS }}
           `,
-      });
+        });
 
-      // Safety: groupBySql is built from metric groupBy expressions which are
-      // always simple column references (UNSAFE_RAW_SQL). Verify no parameterized
-      // values leaked through — if they did, .sql would contain param placeholders
-      // but the string-based outer WHERE would lose the param bindings.
-      if (Object.keys(groupBySql.params).length > 0) {
-        throw new Error(
-          'increase + groupBy: unexpected parameterized groupBy expressions',
-        );
+        // Safety: groupBySql is built from metric groupBy expressions which are
+        // always simple column references (UNSAFE_RAW_SQL). Verify no parameterized
+        // values leaked through — if they did, .sql would contain param placeholders
+        // but the string-based outer WHERE would lose the param bindings.
+        if (Object.keys(groupBySql.params).length > 0) {
+          throw new Error(
+            'increase + groupBy: unexpected parameterized groupBy expressions',
+          );
+        }
+        outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
       }
-      outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
     }
 
     return {
