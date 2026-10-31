@@ -975,6 +975,15 @@ export const alertQueryAttribution = (
     : {}),
 });
 
+// `fired` is missing on histories written before it existed, so only an
+// explicit `false` means "never notified".
+const hasUnresolvedNotification = (
+  previousHistory: AggregatedAlertHistory | undefined,
+): boolean =>
+  (previousHistory?.state === AlertState.ALERT ||
+    previousHistory?.state === AlertState.PENDING) &&
+  previousHistory.fired !== false;
+
 export const processAlert = async (
   now: Date,
   details: AlertDetails,
@@ -1283,6 +1292,13 @@ export const processAlert = async (
 
     // Track state per group (or one history if no groupBy)
     const histories = new Map<string, IAlertHistory>();
+    // First OK and latest ALERT bucket per group; OK before ALERT means a new incident.
+    const firstOkBucket = new Map<string, number>();
+    const markOk = (groupKey: string, bucketIndex: number) => {
+      if (!firstOkBucket.has(groupKey))
+        firstOkBucket.set(groupKey, bucketIndex);
+    };
+    const lastAlertBucket = new Map<string, number>();
     const latestAlertContext = new Map<
       string,
       { value: number; attributes: Record<string, string>; startTime: Date }
@@ -1344,7 +1360,7 @@ export const processAlert = async (
       group: string;
       startTime?: Date;
       attributes?: Record<string, string>;
-    }) => {
+    }): Promise<boolean> => {
       // KNOWN LIMITATION: Alert data (including silenced state) is fetched when
       // the task is queued via AlertProvider, not when it processes. If a user
       // silences an alert after it's queued but before it processes, this
@@ -1360,7 +1376,7 @@ export const processAlert = async (
           },
           'Skipped firing alert due to silence',
         );
-        return;
+        return false;
       }
 
       alertEvaluationsCounter.add(1, {
@@ -1422,6 +1438,8 @@ export const processAlert = async (
           );
           executionErrors.push(makeNotificationAlertError(failure));
         }
+        // Only failed dispatches retry; unresolvable targets would retry forever.
+        return timings.every(t => t.ok);
       } catch (e) {
         // Render-level failures (title/link building, template compile) —
         // nothing was dispatched.
@@ -1430,7 +1448,37 @@ export const processAlert = async (
           'Failed to fire channel event',
         );
         executionErrors.push(makeWebhookAlertError(e));
+        return false;
       }
+    };
+
+    const shouldNotifyWhileFiring = (
+      previousHistory: AggregatedAlertHistory | undefined,
+    ): boolean => {
+      if (!hasUnresolvedNotification(previousHistory)) {
+        return true;
+      }
+      const { renotifyIntervalMinutes } = alert;
+      const lastNotifiedAt = previousHistory?.lastNotifiedAt;
+      const shouldNotify =
+        lastNotifiedAt == null ||
+        (renotifyIntervalMinutes != null &&
+          (renotifyIntervalMinutes <= 0 ||
+            nowInMinsRoundDown.getTime() - lastNotifiedAt.getTime() >=
+              renotifyIntervalMinutes * 60_000));
+
+      if (!shouldNotify) {
+        alertEvaluationsCounter.add(1, { outcome: 'skipped_renotify' });
+        logger.debug(
+          {
+            alertId: alert.id,
+            lastNotifiedAt,
+            renotifyIntervalMinutes,
+          },
+          'Skipped re-notifying an already-notified alert',
+        );
+      }
+      return shouldNotify;
     };
 
     const numWindowsToLookBack = alert.numConsecutiveWindows ?? 1;
@@ -1462,9 +1510,7 @@ export const processAlert = async (
       groupKey: string,
     ) => {
       if (
-        (previousHistory?.state === AlertState.ALERT ||
-          previousHistory?.state === AlertState.PENDING) &&
-        previousHistory?.fired !== false &&
+        hasUnresolvedNotification(previousHistory) &&
         currentHistory.state === AlertState.OK
       ) {
         const lastValue =
@@ -1502,17 +1548,27 @@ export const processAlert = async (
 
       history.lastValues.push({ count: value, startTime: alertTimestamp });
       const previous = previousMap.get(computeHistoryMapKey(alert.id, ''));
+      // Carry only within an unresolved incident, so a later incident's failed
+      // first send is retried.
+      history.lastNotifiedAt = hasUnresolvedNotification(previous)
+        ? previous?.lastNotifiedAt
+        : undefined;
       if (doesExceedThreshold(alert, value)) {
         history.counts += 1;
         if (shouldFireBasedOnConsecutiveWindows()) {
           history.state = AlertState.ALERT;
           history.fired = true;
-          await trySendNotification({
-            state: AlertState.ALERT,
-            group: '',
-            totalCount: value,
-            startTime: alertTimestamp,
-          });
+          if (
+            shouldNotifyWhileFiring(previous) &&
+            (await trySendNotification({
+              state: AlertState.ALERT,
+              group: '',
+              totalCount: value,
+              startTime: alertTimestamp,
+            }))
+          ) {
+            history.lastNotifiedAt = nowInMinsRoundDown;
+          }
         } else {
           history.state = AlertState.PENDING;
           // Carry forward fired=true if a notification was previously sent and not yet resolved.
@@ -1567,7 +1623,18 @@ export const processAlert = async (
       checkDataByBucket.get(bucketStart.getTime())!.push(checkData);
     }
 
-    for (const bucketStart of expectedBuckets) {
+    // An absent group is OK unless a zero value breaches.
+    const previousGroups = Array.from(previousMap.keys(), key =>
+      extractGroupKeyFromMapKey(key, alert.id),
+    );
+    const markAbsentGroupsOk = (bucketIndex: number, present: Set<string>) => {
+      if (!hasGroupBy || doesExceedThreshold(alert, 0)) return;
+      for (const groupKey of [...previousGroups, ...histories.keys()]) {
+        if (!present.has(groupKey)) markOk(groupKey, bucketIndex);
+      }
+    };
+
+    for (const [bucketIndex, bucketStart] of expectedBuckets.entries()) {
       const dataForBucket = checkDataByBucket.get(bucketStart.getTime());
 
       // Handle case where no data is available for this bucket
@@ -1596,6 +1663,7 @@ export const processAlert = async (
           if (shouldFireBasedOnConsecutiveWindows()) {
             history.state = AlertState.ALERT;
             history.fired = true;
+            lastAlertBucket.set('', bucketIndex);
             latestAlertContext.set('', {
               value: 0,
               attributes: {},
@@ -1614,6 +1682,13 @@ export const processAlert = async (
           const history = getOrCreateHistory('');
           history.lastValues.push({ count: 0, startTime: bucketStart });
         }
+        if (!zeroValueIsAlert) {
+          if (hasGroupBy) {
+            markAbsentGroupsOk(bucketIndex, new Set());
+          } else {
+            markOk('', bucketIndex);
+          }
+        }
 
         continue;
       }
@@ -1625,8 +1700,14 @@ export const processAlert = async (
         string,
         { value: number; attributes: Record<string, string>; exceeds: boolean }
       >();
+      const bucketGroups = new Set<string>();
       for (const checkData of dataForBucket) {
         const { value, extraFields } = parseAlertData(checkData, meta);
+
+        const groupKey = hasGroupBy
+          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
+          : '';
+        bucketGroups.add(groupKey);
 
         // NULL means no data: a metric series with no row at this bucket, or
         // a ratio with a missing/zero denominator. Skip the row instead of
@@ -1635,9 +1716,6 @@ export const processAlert = async (
           continue;
         }
 
-        const groupKey = hasGroupBy
-          ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
-          : '';
         const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
         groupAttributes.set(groupKey, attributes);
 
@@ -1649,6 +1727,8 @@ export const processAlert = async (
         }
       }
 
+      markAbsentGroupsOk(bucketIndex, bucketGroups);
+
       for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
         const history = getOrCreateHistory(groupKey);
 
@@ -1657,6 +1737,7 @@ export const processAlert = async (
           if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
             history.state = AlertState.ALERT;
             history.fired = true;
+            lastAlertBucket.set(groupKey, bucketIndex);
             latestAlertContext.set(groupKey, {
               value: evaluation.value,
               attributes: evaluation.attributes,
@@ -1675,6 +1756,7 @@ export const processAlert = async (
           // a subsequent OK window correctly resolves it before the notification phase.
           history.state = AlertState.OK;
           history.counts = 0;
+          markOk(groupKey, bucketIndex);
         }
         history.lastValues.push({
           count: evaluation.value,
@@ -1718,21 +1800,33 @@ export const processAlert = async (
     // Check for state transitions and send notifications
     for (const [groupKey, history] of histories.entries()) {
       const previousKey = computeHistoryMapKey(alert.id, groupKey);
-      let groupPrevious = previousMap.get(previousKey);
+      const isNewIncidentInRun =
+        (firstOkBucket.get(groupKey) ?? Infinity) <
+        (lastAlertBucket.get(groupKey) ?? -Infinity);
+      let groupPrevious = isNewIncidentInRun
+        ? undefined
+        : previousMap.get(previousKey);
 
       const hitAlertThisRun = latestAlertContext.has(groupKey);
+      history.lastNotifiedAt = hasUnresolvedNotification(groupPrevious)
+        ? groupPrevious?.lastNotifiedAt
+        : undefined;
 
-      // If it hit ALERT during this run, send the notification (re-notifying every tick if it continuously breaches)
+      // If it hit ALERT during this run, send the notification
       if (hitAlertThisRun) {
         const context = latestAlertContext.get(groupKey);
-        if (context) {
-          await trySendNotification({
-            state: AlertState.ALERT,
-            group: groupKey,
-            totalCount: context.value,
-            startTime: context.startTime,
-            attributes: context.attributes,
-          });
+        if (context && shouldNotifyWhileFiring(groupPrevious)) {
+          if (
+            await trySendNotification({
+              state: AlertState.ALERT,
+              group: groupKey,
+              totalCount: context.value,
+              startTime: context.startTime,
+              attributes: context.attributes,
+            })
+          ) {
+            history.lastNotifiedAt = nowInMinsRoundDown;
+          }
 
           // Inject a mock previous history so the resolve check below catches it
           // if the final state for this group is OK (i.e. it breached then resolved).
@@ -1822,6 +1916,7 @@ export interface AggregatedAlertHistory {
   state: AlertState;
   group?: string;
   fired?: boolean;
+  lastNotifiedAt?: Date;
 }
 
 /**
@@ -1883,6 +1978,7 @@ export const getPreviousAlertHistories = async (
               createdAt: { $first: '$createdAt' },
               state: { $first: '$state' },
               fired: { $first: '$fired' },
+              lastNotifiedAt: { $first: '$lastNotifiedAt' },
             },
           },
           {
@@ -1892,6 +1988,7 @@ export const getPreviousAlertHistories = async (
               state: 1,
               group: '$_id.group',
               fired: 1,
+              lastNotifiedAt: 1,
             },
           },
         ]);

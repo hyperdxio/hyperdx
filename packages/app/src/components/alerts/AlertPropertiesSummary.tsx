@@ -204,6 +204,16 @@ export function AlertPropertiesSummary({
                 </span>
               </>
             )}
+          {alert.renotifyIntervalMinutes != null && (
+            <>
+              <span>&middot;</span>
+              <span className={styles.propertySegment}>
+                {alert.renotifyIntervalMinutes === 0
+                  ? 'Notifies on every evaluation'
+                  : `Re-notifies every ${alert.renotifyIntervalMinutes} min while firing`}
+              </span>
+            </>
+          )}
         </>
       )}
       <span>&middot;</span>

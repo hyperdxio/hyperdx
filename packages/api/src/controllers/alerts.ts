@@ -319,6 +319,7 @@ export const makeAlert = (
 
     // Multi-window alerting
     numConsecutiveWindows: alert.numConsecutiveWindows ?? null,
+    renotifyIntervalMinutes: alert.renotifyIntervalMinutes ?? null,
   };
 };
 

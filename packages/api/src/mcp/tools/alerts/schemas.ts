@@ -233,6 +233,17 @@ export const mcpSaveAlertSchema = z.object({
         'boundary. Must be less than the interval. Ignored when ' +
         'scheduleStartAt is set.',
     ),
+  renotifyIntervalMinutes: z
+    .number()
+    .int()
+    .min(0)
+    .nullish()
+    .describe(
+      'How often to repeat the notification while the alert keeps firing. ' +
+        'Omit or send null to notify only once on the OK to ALERT ' +
+        'transition, 0 to notify on every evaluation, or N to re-notify at ' +
+        'most once every N minutes. A resolve notification is always sent.',
+    ),
   scheduleStartAt: z
     .string()
     .datetime()
