@@ -1,5 +1,19 @@
 # @hyperdx/api
 
+## 2.43.2
+
+### Patch Changes
+
+- 442d6dfd9: fix: refresh cached table columns after 5 minutes
+
+  The shared metadata cache kept each table's `DESCRIBE` result for the life of
+  the process, so the API did not see columns added with `ALTER TABLE`, such as
+  new MATERIALIZED columns, until it restarted. Cached columns now expire after 5
+  minutes. Other cached metadata is unchanged.
+
+- Updated dependencies [442d6dfd9]
+  - @hyperdx/common-utils@0.33.1
+
 ## 2.43.1
 
 ## 2.43.0
