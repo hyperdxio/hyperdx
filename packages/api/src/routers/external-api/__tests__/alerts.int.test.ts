@@ -15,6 +15,8 @@ import Connection from '@/models/connection';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { Source } from '@/models/source';
+import Team from '@/models/team';
+import User from '@/models/user';
 import Webhook, { WebhookService } from '@/models/webhook';
 
 // Constants
@@ -932,6 +934,239 @@ describe('External API Alerts', () => {
         `${ALERTS_BASE_URL}/${nonExistentId}`,
       ).expect(404);
       expect(response.body).toEqual({ message: 'Alert not found' });
+    });
+  });
+
+  describe('Silencing alerts', () => {
+    const futureDate = () => new Date(Date.now() + 60 * 60 * 1000);
+
+    it('should silence an alert and return it with the silenced state', async () => {
+      const { alert } = await createTestAlert({ name: 'Silence Test Alert' });
+      const mutedUntil = futureDate().toISOString();
+
+      const response = await authRequest(
+        'post',
+        `${ALERTS_BASE_URL}/${alert.id}/silenced`,
+      )
+        .send({ mutedUntil })
+        .expect(200);
+
+      expect(response.body.data.id).toBe(alert.id);
+      expect(response.body.data.silenced).toMatchObject({
+        by: user._id.toString(),
+        until: mutedUntil,
+      });
+
+      const stored = await Alert.findById(alert.id);
+      expect(stored?.silenced?.until.toISOString()).toBe(mutedUntil);
+      expect(stored?.silenced?.by?.toString()).toBe(user._id.toString());
+    });
+
+    it('should unsilence a silenced alert', async () => {
+      const { alert } = await createTestAlert({ name: 'Unsilence Test Alert' });
+      await authRequest('post', `${ALERTS_BASE_URL}/${alert.id}/silenced`)
+        .send({ mutedUntil: futureDate().toISOString() })
+        .expect(200);
+
+      const response = await authRequest(
+        'delete',
+        `${ALERTS_BASE_URL}/${alert.id}/silenced`,
+      ).expect(200);
+
+      expect(response.body.data.id).toBe(alert.id);
+      expect(response.body.data.silenced).toBeUndefined();
+      const stored = await Alert.findById(alert.id);
+      expect(stored?.silenced).toBeUndefined();
+    });
+
+    it('should return inherited displayName and tags from the silence routes', async () => {
+      const dashboard = await createTestDashboard({ name: 'Inherited' });
+      await Dashboard.updateOne(
+        { _id: dashboard._id },
+        { tags: ['inherited-tag'] },
+      );
+      const alert = await createTestAlertDirectly({
+        dashboard: dashboard._id,
+        tileId: dashboard.tiles[0].id,
+      });
+      const url = `${ALERTS_BASE_URL}/${alert.id}`;
+
+      const fetched = await authRequest('get', url).expect(200);
+      expect(fetched.body.data).toMatchObject({
+        displayName: 'Inherited - Tile',
+        tags: ['inherited-tag'],
+      });
+
+      const silenced = await authRequest('post', `${url}/silenced`)
+        .send({ mutedUntil: futureDate().toISOString() })
+        .expect(200);
+      expect(silenced.body.data).toMatchObject({
+        displayName: fetched.body.data.displayName,
+        tags: fetched.body.data.tags,
+      });
+
+      const unsilenced = await authRequest('delete', `${url}/silenced`).expect(
+        200,
+      );
+      expect(unsilenced.body.data).toMatchObject({
+        displayName: fetched.body.data.displayName,
+        tags: fetched.body.data.tags,
+      });
+    });
+
+    it('should return 404 with a JSON body when silencing a non-existent alert', async () => {
+      const response = await authRequest(
+        'post',
+        `${ALERTS_BASE_URL}/${new ObjectId().toString()}/silenced`,
+      )
+        .send({ mutedUntil: futureDate().toISOString() })
+        .expect(404);
+      expect(response.body).toEqual({ message: 'Alert not found' });
+    });
+
+    it('should return 404 with a JSON body when unsilencing a non-existent alert', async () => {
+      const response = await authRequest(
+        'delete',
+        `${ALERTS_BASE_URL}/${new ObjectId().toString()}/silenced`,
+      ).expect(404);
+      expect(response.body).toEqual({ message: 'Alert not found' });
+    });
+
+    it('should reject a mutedUntil in the past', async () => {
+      const { alert } = await createTestAlert({ name: 'Past Silence Alert' });
+
+      await authRequest('post', `${ALERTS_BASE_URL}/${alert.id}/silenced`)
+        .send({ mutedUntil: new Date(Date.now() - 60 * 1000).toISOString() })
+        .expect(400);
+
+      const stored = await Alert.findById(alert.id);
+      expect(stored?.silenced).toBeUndefined();
+    });
+
+    it('should accept an ISO 8601 timestamp with a UTC offset', async () => {
+      const { alert } = await createTestAlert({ name: 'Offset Silence Alert' });
+      const until = new Date(Date.now() + 2 * 60 * 60 * 1000);
+      const offsetTs = new Date(until.getTime() + 2 * 60 * 60 * 1000)
+        .toISOString()
+        .replace(/\.\d{3}Z$/, '+02:00');
+
+      await authRequest('post', `${ALERTS_BASE_URL}/${alert.id}/silenced`)
+        .send({ mutedUntil: offsetTs })
+        .expect(200);
+      const stored = await Alert.findById(alert.id);
+      expect(stored?.silenced?.until.getTime()).toBe(
+        Math.floor(until.getTime() / 1000) * 1000,
+      );
+    });
+
+    it('should expose the silenced state on GET and list reads', async () => {
+      const { alert } = await createTestAlert({ name: 'Read Silence Alert' });
+      const mutedUntil = futureDate().toISOString();
+      await authRequest('post', `${ALERTS_BASE_URL}/${alert.id}/silenced`)
+        .send({ mutedUntil })
+        .expect(200);
+
+      const expected = {
+        by: user._id.toString(),
+        until: mutedUntil,
+        at: expect.any(String),
+      };
+      const single = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+      expect(single.body.data.silenced).toMatchObject(expected);
+
+      const list = await authRequest('get', ALERTS_BASE_URL).expect(200);
+      const listed = list.body.data.find(
+        (a: { id: string }) => a.id === alert.id,
+      );
+      expect(listed.silenced).toMatchObject(expected);
+    });
+
+    it('should keep an existing silence when the alert is updated', async () => {
+      const { alert } = await createTestAlert({ name: 'Update Silence Alert' });
+      const mutedUntil = futureDate().toISOString();
+      await authRequest('post', `${ALERTS_BASE_URL}/${alert.id}/silenced`)
+        .send({ mutedUntil })
+        .expect(200);
+      const current = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+
+      await authRequest('put', `${ALERTS_BASE_URL}/${alert.id}`)
+        .send({
+          threshold: 500,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          source: AlertSource.TILE,
+          dashboardId: current.body.data.dashboardId,
+          tileId: current.body.data.tileId,
+          channel: current.body.data.channel,
+        })
+        .expect(200);
+
+      const after = await authRequest(
+        'get',
+        `${ALERTS_BASE_URL}/${alert.id}`,
+      ).expect(200);
+      expect(after.body.data.threshold).toBe(500);
+      expect(after.body.data.silenced).toMatchObject({ until: mutedUntil });
+    });
+
+    it('should reject a missing or malformed mutedUntil', async () => {
+      const { alert } = await createTestAlert({ name: 'Bad Silence Alert' });
+      const url = `${ALERTS_BASE_URL}/${alert.id}/silenced`;
+
+      await authRequest('post', url).send({}).expect(400);
+      await authRequest('post', url)
+        .send({ mutedUntil: 'tomorrow' })
+        .expect(400);
+    });
+
+    it('should reject an invalid alert id', async () => {
+      await authRequest('post', `${ALERTS_BASE_URL}/not-an-id/silenced`)
+        .send({ mutedUntil: futureDate().toISOString() })
+        .expect(400);
+    });
+
+    it('should return 404 and leave the alert unchanged for another team', async () => {
+      const { alert } = await createTestAlert({ name: 'Cross Team Alert' });
+      const mutedUntil = futureDate().toISOString();
+      await authRequest('post', `${ALERTS_BASE_URL}/${alert.id}/silenced`)
+        .send({ mutedUntil })
+        .expect(200);
+
+      const otherTeam = await Team.create({ name: 'Other Team' });
+      const otherUser = await User.create({
+        email: 'other-team@deploysentinel.com',
+        team: otherTeam._id,
+      });
+      const otherRequest = (method: 'post' | 'delete') =>
+        request(server.getHttpServer())
+          [method](`${ALERTS_BASE_URL}/${alert.id}/silenced`)
+          .set('Authorization', `Bearer ${otherUser.accessKey}`);
+
+      const silenceResponse = await otherRequest('post')
+        .send({ mutedUntil: futureDate().toISOString() })
+        .expect(404);
+      expect(silenceResponse.body).toEqual({ message: 'Alert not found' });
+
+      const unsilenceResponse = await otherRequest('delete').expect(404);
+      expect(unsilenceResponse.body).toEqual({ message: 'Alert not found' });
+
+      const stored = await Alert.findById(alert.id);
+      expect(stored?.silenced?.until.toISOString()).toBe(mutedUntil);
+      expect(stored?.silenced?.by?.toString()).toBe(user._id.toString());
+    });
+
+    it('should reject an invalid alert id when unsilencing', async () => {
+      const response = await authRequest(
+        'delete',
+        `${ALERTS_BASE_URL}/not-an-id/silenced`,
+      ).expect(400);
+      expect(response.body).toEqual({ message: expect.any(String) });
     });
   });
 
