@@ -25,9 +25,15 @@ import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
 import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
+import { useTimeZoneOverride } from '@/timeZoneOverride';
 import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { useUserPreferences } from '@/useUserPreferences';
 
+import {
+  TimePickerTimeZoneBadge,
+  TimePickerTimeZoneSelect,
+  useTimePickerTimeZoneLabel,
+} from './TimePickerTimeZone';
 import { TimePickerMode } from './types';
 import { useTimePickerForm } from './useTimePickerForm';
 import {
@@ -143,6 +149,8 @@ const TimePickerComponent = ({
     userPreferences: { timeFormat },
   } = useUserPreferences();
   const timeZone = useDisplayTimeZone();
+  // Pages that can override the time zone show it in the picker.
+  const showTimeZone = useTimeZoneOverride() != null;
 
   const [opened, { close, toggle }] = useDisclosure(false);
 
@@ -166,6 +174,7 @@ const TimePickerComponent = ({
   const dateRange = React.useMemo(() => {
     return parseTimeRangeInput(value, timeZone);
   }, [value, timeZone]);
+  const timeZoneLabel = useTimePickerTimeZoneLabel(dateRange);
 
   React.useEffect(() => {
     // Only update form values from external dateRange when popover is closed
@@ -307,12 +316,22 @@ const TimePickerComponent = ({
                 : 'var(--color-text)',
             },
           }}
+          // Sized to the label: offsets like "UTC-3:30/-2:30" run long.
+          rightSectionWidth={
+            showTimeZone
+              ? `calc(${timeZoneLabel.label.length}ch + ${opened ? 40 : 16}px)`
+              : undefined
+          }
+          rightSectionPointerEvents="none"
           rightSection={
-            opened && (
-              <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
-                d
-              </Text>
-            )
+            <Group gap={6} wrap="nowrap" justify="flex-end" w="100%" pr={8}>
+              {showTimeZone && <TimePickerTimeZoneBadge {...timeZoneLabel} />}
+              {opened && (
+                <Text size="xxs" bg="var(--color-bg-neutral)" px={4} c="white">
+                  d
+                </Text>
+              )}
+            </Group>
           }
           value={value}
           onChange={event => onChange(event.currentTarget.value)}
@@ -555,6 +574,7 @@ const TimePickerComponent = ({
             </Group>
           </Card>
         </Group>
+        <TimePickerTimeZoneSelect comboboxProps={dateComponentPopoverProps} />
       </Popover.Dropdown>
     </Popover>
   );

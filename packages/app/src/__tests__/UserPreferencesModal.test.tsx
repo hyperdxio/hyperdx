@@ -44,6 +44,25 @@ describe('UserPreferencesModal', () => {
 
       expect(readStoredPreferences().timeZone).toBe('Etc/UTC');
     });
+
+    it.each([
+      ['time-zone-utc', 'Asia/Tokyo', 'Etc/UTC'],
+      ['time-zone-local', 'Etc/UTC', 'local'],
+    ])(
+      'stores the zone from the %s shortcut',
+      async (testId, stored, expected) => {
+        renderModal({ timeZone: stored });
+
+        await userEvent.click(screen.getByTestId(testId));
+
+        expect(readStoredPreferences().timeZone).toBe(expected);
+      },
+    );
+
+    it('has no Default shortcut, since this is the default', () => {
+      renderModal();
+      expect(screen.queryByTestId('time-zone-default')).toBeNull();
+    });
   });
 
   describe('Row click', () => {

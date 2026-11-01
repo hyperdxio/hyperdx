@@ -139,6 +139,7 @@ import {
   useDefaultTimeRange,
   useNewTimeQuery,
 } from '@/timeQuery';
+import { TimeZoneOverrideProvider } from '@/timeZoneOverride';
 import {
   formatDurationMs,
   orderByAfterRemovingSelectItem,
@@ -1048,7 +1049,9 @@ export function DBSearchPage() {
         search: getSavedSearchIdFromPath() ?? undefined,
       }}
     >
-      <DBSearchPageContent />
+      <TimeZoneOverrideProvider>
+        <DBSearchPageContent />
+      </TimeZoneOverrideProvider>
     </QueryAttributionProvider>
   );
 }
