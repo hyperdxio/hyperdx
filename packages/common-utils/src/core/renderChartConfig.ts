@@ -1519,6 +1519,9 @@ async function renderGroupBy(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
 ): Promise<ChSql | undefined> {
+  // The outer GROUP BY keeps a comma-separated string groupBy intact as a
+  // single expression; per-column splitting for tuple(...)/IN contexts is
+  // handled separately by renderGroupByColumns.
   return concatChSql(
     ',',
     isUsingGroupBy(chartConfig)
@@ -1538,6 +1541,32 @@ async function renderGroupBy(
         })
       : [],
   );
+}
+
+async function renderGroupByColumns(
+  groupBy: NonNullable<BuilderChartConfigWithOptDateRangeEx['groupBy']>,
+  chartConfig: BuilderChartConfigWithOptDateRangeEx,
+  metadata: Metadata,
+): Promise<ChSql[]> {
+  // One ChSql per group-by column (groupBy may be an array or a comma-separated
+  // string). The string branch emits raw SQL per split column and does not
+  // consult `chartConfig` or `metadata`; only the array branch resolves columns
+  // via `renderSelectList(chartConfig, metadata)`. splitAndTrimWithBracket
+  // respects []/()/quotes so it won't split inside Map['a,b'].
+  if (typeof groupBy === 'string') {
+    return splitAndTrimWithBracket(groupBy).map(
+      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
+    );
+  }
+  // Strip aliases: these go inside tuple(...)/`IS NOT NULL`, where an
+  // `AS "alias"` suffix is a syntax error (unlike the outer GROUP BY).
+  const rendered = await renderSelectList(
+    groupBy.map(col => ({ ...col, alias: undefined })),
+    chartConfig,
+    metadata,
+    { mergeRatio: false },
+  );
+  return Array.isArray(rendered) ? rendered : [rendered];
 }
 
 async function renderSeriesLimitCte(
@@ -1589,25 +1618,11 @@ async function renderSeriesLimitCte(
       ])
     : [];
 
-  // One ChSql per group-by column (groupBy may be an array or a comma-separated
-  // string). splitAndTrimWithBracket respects []/()/quotes so it won't split
-  // inside Map['a,b']; the per-column null filter below needs them separated.
-  let groupByCols: ChSql[];
-  if (typeof chartConfig.groupBy === 'string') {
-    groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
-      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
-    );
-  } else {
-    // Strip aliases: these go inside tuple(...)/`IS NOT NULL`, where an
-    // `AS "alias"` suffix is a syntax error (unlike the outer GROUP BY).
-    const rendered = await renderSelectList(
-      chartConfig.groupBy.map(col => ({ ...col, alias: undefined })),
-      chartConfig,
-      metadata,
-      { mergeRatio: false },
-    );
-    groupByCols = Array.isArray(rendered) ? rendered : [rendered];
-  }
+  const groupByCols = await renderGroupByColumns(
+    chartConfig.groupBy,
+    chartConfig,
+    metadata,
+  );
   const groupByTuple = concatChSql(',', groupByCols);
 
   // Rank by the value the chart actually plots, so "top N" means top N by what
@@ -2319,40 +2334,35 @@ async function translateMetricChartConfig(
     let outerWhere: string = '';
 
     if (shouldApplyIncreaseGroupLimit) {
-      // Render the user's groupBy against the Bucketed CTE so column
-      // references resolve to the CTE's projection. Aliases are stripped:
-      // these expressions go inside tuple(...) in the ranking CTE and the
-      // outer IN predicate, where an `AS "alias"` suffix is a syntax error
-      // (mirrors the strip in renderSeriesLimitCte).
-      const groupByForRank = await renderSelectList(
-        typeof chartConfig.groupBy === 'string'
-          ? chartConfig.groupBy
-          : chartConfig.groupBy!.map(col => ({ ...col, alias: undefined })),
+      // For array groupBy, resolve column references against the Bucketed CTE
+      // projection; string groupBy is split directly into per-column SQL.
+      const groupByCols = await renderGroupByColumns(
+        chartConfig.groupBy!,
         {
           ...chartConfig,
           from: { databaseName: '', tableName: 'Bucketed' },
           with: sumWith,
         } as BuilderChartConfigWithOptDateRangeEx,
         metadata,
-        { mergeRatio: false },
       );
-      const groupBySql = concatChSql(',', groupByForRank);
+      if (groupByCols.length > 0) {
+        const groupBySql = concatChSql(',', groupByCols);
 
-      // Exclude rows where any groupBy column is NULL/empty so they don't
-      // collapse into a single dominating '-' series.
-      const groupByEmptyFilter = concatChSql(
-        ' AND ',
-        (Array.isArray(groupByForRank) ? groupByForRank : [groupByForRank]).map(
-          g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
-        ),
-      );
+        // Exclude rows where any groupBy column is NULL/empty so they don't
+        // collapse into a single dominating '-' series.
+        const groupByEmptyFilter = concatChSql(
+          ' AND ',
+          groupByCols.map(
+            g => chSql`(${g} IS NOT NULL AND toString(${g}) != '')`,
+          ),
+        );
 
-      // Rank by max-per-bucket summed Rate so a group that spikes in one
-      // bucket still makes the top N. tuple() wraps multi-column groupBys
-      // into a single comparable column.
-      sumWith.push({
-        name: 'TopGroups',
-        sql: chSql`
+        // Rank by max-per-bucket summed Rate so a group that spikes in one
+        // bucket still makes the top N. tuple() wraps multi-column groupBys
+        // into a single comparable column.
+        sumWith.push({
+          name: 'TopGroups',
+          sql: chSql`
             SELECT \`group\`
             FROM (
               SELECT
@@ -2366,18 +2376,19 @@ async function translateMetricChartConfig(
             ORDER BY max(\`bucket_value\`) DESC, \`group\`
             LIMIT ${{ Int32: INCREASE_MAX_NUM_GROUPS }}
           `,
-      });
+        });
 
-      // Safety: groupBySql is built from metric groupBy expressions which are
-      // always simple column references (UNSAFE_RAW_SQL). Verify no parameterized
-      // values leaked through — if they did, .sql would contain param placeholders
-      // but the string-based outer WHERE would lose the param bindings.
-      if (Object.keys(groupBySql.params).length > 0) {
-        throw new Error(
-          'increase + groupBy: unexpected parameterized groupBy expressions',
-        );
+        // Safety: groupBySql is built from metric groupBy expressions which are
+        // always simple column references (UNSAFE_RAW_SQL). Verify no parameterized
+        // values leaked through — if they did, .sql would contain param placeholders
+        // but the string-based outer WHERE would lose the param bindings.
+        if (Object.keys(groupBySql.params).length > 0) {
+          throw new Error(
+            'increase + groupBy: unexpected parameterized groupBy expressions',
+          );
+        }
+        outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
       }
-      outerWhere = `tuple(${groupBySql.sql}) IN (SELECT \`group\` FROM TopGroups)`;
     }
 
     return {

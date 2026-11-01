@@ -575,6 +575,60 @@ describe('renderChartConfig', () => {
     expect(actual).toMatch(
       /Attributes\[['"]env['"]\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\[['"]env['"]\]\)\s*!=\s*''/,
     );
+    expect(actual).not.toMatch(/toString\([^)]*,/);
+  });
+
+  it('should handle aggFn=increase with comma-separated string groupBy', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'istio_requests_total',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      groupBy:
+        "Attributes['destination_service_name'], Attributes['a,b']",
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 100000 },
+    };
+
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).toMatch(
+      /tuple\(\s*Attributes\['destination_service_name'\]\s*,\s*Attributes\['a,b'\]\s*\)\s+IN\s+\(SELECT\s+`group`\s+FROM\s+TopGroups\)/,
+    );
+    expect(actual).toMatch(
+      /Attributes\['destination_service_name'\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\['destination_service_name'\]\)\s*!=\s*''/,
+    );
+    expect(actual).toMatch(
+      /Attributes\['a,b'\]\s+IS\s+NOT\s+NULL\s+AND\s+toString\(Attributes\['a,b'\]\)\s*!=\s*''/,
+    );
+    expect(actual).not.toMatch(/toString\([^)]*\],\s*Attributes\[/);
   });
 
   it('should not emit a rank CTE when aggFn=increase has no groupBy', async () => {
