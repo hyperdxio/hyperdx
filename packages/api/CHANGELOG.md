@@ -1,5 +1,26 @@
 # @hyperdx/api
 
+## 2.43.1
+
+## 2.43.0
+
+### Minor Changes
+
+- 0212c7bd3: feat: Expose alert tags to Generic and incident.io webhook bodies as `{{tags}}` (comma-separated, or iterate with `{{#each tags}}`), and include them in the default incident.io body's `metadata.tags`, so one shared webhook can route alerts by owning team
+
+### Patch Changes
+
+- f2b898684: fix: pin bundled ClickHouse to 26.8.36.3 for a security fix
+
+  The all-in-one image and the Docker Compose files now use
+  `clickhouse/clickhouse-server:26.8.36.3-alpine` instead of the floating
+  `26.8-alpine` tag.
+
+- Updated dependencies [e88f71695]
+- Updated dependencies [e5ba5dfde]
+- Updated dependencies [0212c7bd3]
+  - @hyperdx/common-utils@0.33.0
+
 ## 2.42.0
 
 ### Minor Changes

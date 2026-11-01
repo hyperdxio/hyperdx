@@ -25,6 +25,7 @@ a HyperDX alert without parsing the human-readable message body.
 | `{{sourceQuery}}` | string | The condition behind the alert — search expression or SQL (see below). |
 | `{{teamId}}` | string | Team the alert belongs to. |
 | `{{note}}` | string | The alert's freeform note — commonly a runbook link. |
+| `{{tags}}` | list of strings | The alert's tags. `{{tags}}` renders them comma-separated (`team-payments,prod`); iterate with `{{#each tags}}` to emit a JSON array (see below). Empty when the alert has no tags. |
 
 Strings are JSON-escaped, so they are safe to drop into a quoted slot.
 Numbers (`startTime`, `endTime`, `threshold`, `thresholdMax`, `value`) are
@@ -53,6 +54,16 @@ nothing in the variable set says which dialect you got, and the parts of a
 builder condition can each be Lucene or SQL, so the joined string is not
 necessarily valid in either. It is truncated at 2000 characters. PromQL charts
 do not support alerts, so no webhook carries a PromQL expression.
+
+Tags let one shared webhook route alerts by owner: tag each alert with its
+team and read the tag in the receiver. To send them as a JSON array rather
+than one comma-separated string:
+
+```
+{
+  "tags": [{{#each tags}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}]
+}
+```
 
 An empty string is not valid JSON in an unquoted numeric slot, so guard any
 number that may be absent. Compare against `undefined` rather than using
@@ -86,8 +97,8 @@ which is what the guard above is for.
 
 incident.io accepts only `firing` or `resolved` in `status`, so the default
 body maps HyperDX's state onto those two and carries `{{status}}` in
-`metadata.hyperdx_status`, alongside the alert id, condition and evaluation
-window. Only a firing and a resolve are delivered today, so that key reads
+`metadata.hyperdx_status`, alongside the alert id, condition, evaluation
+window and the alert's tags (comma-separated, in `metadata.tags`). Only a firing and a resolve are delivered today, so that key reads
 `firing` or `resolved` as well. `metadata` is free-form, but incident.io only
 surfaces the keys its alert source is configured to parse.
 
