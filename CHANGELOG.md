@@ -6,6 +6,37 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.43.2 — 2026-11-01
+
+<!-- hyperdx-release-notes version=2.43.2 inputs=3bb9e2c4ce5e -->
+
+**New table columns picked up without a restart**
+
+Columns added to a ClickHouse table after HyperDX starts — a new MATERIALIZED
+column, say — are now visible within five minutes, with no restart needed. The
+shared metadata cache previously held each table's column list for the life of
+the process, so a schema change made with `ALTER TABLE` stayed invisible to the
+API indefinitely. Other cached metadata is unchanged.
+
+### 🐛 Bug Fixes
+
+- **Cached table columns refresh after 5 minutes**: the metadata cache kept each
+  table's `DESCRIBE` result for the life of the process, so columns added with
+  `ALTER TABLE`, such as new MATERIALIZED columns, were not picked up until the
+  API restarted. Cached columns now expire after 5 minutes; other cached
+  metadata is unchanged.
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.43.1 → 2.43.2 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2432)
+- `@hyperdx/app` 2.43.1 → 2.43.2 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2432)
+- `@hyperdx/common-utils` 0.33.0 → 0.33.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/common-utils/CHANGELOG.md#0331)
+- `@hyperdx/otel-collector` 2.43.1 → 2.43.2 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2432)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.43.1 — 2026-10-31
 
 <!-- hyperdx-release-notes version=2.43.1 inputs=b9b44254f52c -->
