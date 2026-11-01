@@ -6,13 +6,21 @@ import {
   walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import fs from 'fs';
+import { Types } from 'mongoose';
 import path from 'path';
 
 import { connectDB, mongooseConnection } from '@/models';
 import Dashboard from '@/models/dashboard';
 import Team from '@/models/team';
+import {
+  deleteOrphanedProvisionedAlerts,
+  prepareProvisionedTiles,
+  syncProvisionedAlerts,
+} from '@/tasks/provisionDashboards/alerts';
+import { encodeWebhookNames } from '@/tasks/provisionDashboards/webhookNames';
 import type { HdxTask } from '@/tasks/types';
 import { ProvisionDashboardsTaskArgs } from '@/tasks/types';
+import { setBusinessContext } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 
 // Heal legacy `chart-1`..`chart-10` tile colors from #2265 before the
@@ -34,20 +42,32 @@ const provisionedDashboardSchema = DashboardWithoutIdSchema.superRefine(
     validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx),
 );
 
-export function readDashboardFiles(dir: string): DashboardWithoutId[] {
+// `complete` is false when the directory or any file in it could not be read
+// or validated, so the caller cannot tell which dashboards the files declare.
+function readDashboardDir(dir: string): {
+  dashboards: DashboardWithoutId[];
+  complete: boolean;
+} {
   let files: string[];
   try {
-    files = fs.readdirSync(dir).filter(f => f.endsWith('.json'));
+    files = fs
+      .readdirSync(dir)
+      .filter(f => f.endsWith('.json'))
+      .sort();
   } catch (err) {
     logger.error({ err, dir }, 'Failed to read dashboard directory');
-    return [];
+    return { dashboards: [], complete: false };
   }
 
   const dashboards: DashboardWithoutId[] = [];
+  const names = new Set<string>();
+  let complete = true;
   for (const file of files) {
     try {
-      const raw = migrateLegacyDashboardTileColorsRaw(
-        JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')),
+      const raw = encodeWebhookNames(
+        migrateLegacyDashboardTileColorsRaw(
+          JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8')),
+        ),
       ) as Record<string, unknown> | null | undefined;
       const parsed = provisionedDashboardSchema.safeParse({
         tags: [],
@@ -58,18 +78,37 @@ export function readDashboardFiles(dir: string): DashboardWithoutId[] {
           { file, errors: parsed.error.issues },
           'Skipping invalid dashboard file',
         );
+        complete = false;
         continue;
       }
+      if (names.has(parsed.data.name)) {
+        logger.warn(
+          { file, name: parsed.data.name },
+          'Skipping dashboard file whose name another file already uses',
+        );
+        complete = false;
+        continue;
+      }
+      names.add(parsed.data.name);
       dashboards.push(parsed.data);
     } catch (err) {
       logger.error({ err, file }, 'Failed to parse dashboard file');
+      complete = false;
     }
   }
-  return dashboards;
+  return { dashboards, complete };
+}
+
+export function readDashboardFiles(dir: string): DashboardWithoutId[] {
+  return readDashboardDir(dir).dashboards;
 }
 
 export async function syncDashboards(teamId: string, dir: string) {
-  const dashboards = readDashboardFiles(dir);
+  setBusinessContext({ teamId });
+  const { dashboards, complete: allRead } = readDashboardDir(dir);
+  let complete = allRead;
+  // An empty directory is more likely a failed mount than an intent to drop
+  // every provisioned alert, so orphan cleanup needs at least one file.
   if (dashboards.length === 0) return;
 
   for (const dashboard of dashboards) {
@@ -86,11 +125,23 @@ export async function syncDashboards(teamId: string, dir: string) {
         );
       }
 
-      const result = await Dashboard.findOneAndUpdate(
+      const existing = await Dashboard.findOne(
+        { name: dashboard.name, team: teamId, provisioned: true },
+        { _id: 1, tiles: 1 },
+      ).lean();
+      const dashboardId = existing?._id ?? new Types.ObjectId();
+      const { tiles, alertsByTile } = await prepareProvisionedTiles(
+        teamId,
+        dashboardId,
+        dashboard.tiles || [],
+        existing?.tiles ?? [],
+      );
+
+      const saved = await Dashboard.findOneAndUpdate(
         { name: dashboard.name, team: teamId, provisioned: true },
         {
           $set: {
-            tiles: dashboard.tiles || [],
+            tiles,
             tags: dashboard.tags || [],
             filters: dashboard.filters || [],
             savedQuery: dashboard.savedQuery ?? null,
@@ -99,23 +150,50 @@ export async function syncDashboards(teamId: string, dir: string) {
             containers: dashboard.containers || [],
           },
           $setOnInsert: {
+            _id: dashboardId,
             name: dashboard.name,
             team: teamId,
             provisioned: true,
           },
         },
-        { upsert: true, new: false },
+        { upsert: true, new: true },
       );
 
-      if (result === null) {
+      if (existing == null) {
         logger.info({ name: dashboard.name }, 'Created provisioned dashboard');
       }
+
+      try {
+        await syncProvisionedAlerts(saved, teamId, alertsByTile);
+      } catch (err) {
+        complete = false;
+        logger.error(
+          { err, name: dashboard.name },
+          'Failed to provision dashboard alerts',
+        );
+      }
     } catch (err) {
+      complete = false;
       logger.error(
         { err, name: dashboard.name },
         'Failed to provision dashboard',
       );
     }
+  }
+
+  if (!complete) {
+    logger.warn(
+      'Some dashboard files could not be read or synced, skipping cleanup of orphaned provisioned alerts',
+    );
+    return;
+  }
+  try {
+    await deleteOrphanedProvisionedAlerts(
+      teamId,
+      dashboards.map(d => d.name),
+    );
+  } catch (err) {
+    logger.error({ err }, 'Failed to clean up orphaned provisioned alerts');
   }
 }
 
@@ -180,7 +258,11 @@ export default class ProvisionDashboardsTask implements HdxTask {
     }
 
     for (const id of teamIds) {
-      await syncDashboards(id, dir);
+      try {
+        await syncDashboards(id, dir);
+      } catch (err) {
+        logger.error({ err, teamId: id }, 'Failed to provision dashboards');
+      }
     }
   }
 

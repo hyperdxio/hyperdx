@@ -166,22 +166,22 @@ to manage these values.
 ## Dashboard Provisioning
 
 HyperDX supports file-based dashboard provisioning, similar to Grafana's
-provisioning system. A scheduled task reads `.json` files from a directory
-and upserts dashboards into MongoDB, matched by name for idempotency.
-The task runs on the same schedule as other HyperDX tasks (every minute
-when using the built-in scheduler, or on your own schedule when running
-tasks externally).
+provisioning system. A scheduled task reads `.json` files from a directory and
+upserts dashboards into MongoDB, matched by name for idempotency. The task runs
+on the same schedule as other HyperDX tasks (every minute when using the
+built-in scheduler, or on your own schedule when running tasks externally).
 
 ### Environment Variables
 
-| Variable                            | Required | Default | Description                                                     |
-| ----------------------------------- | -------- | ------- | --------------------------------------------------------------- |
-| `DASHBOARD_PROVISIONER_DIR`         | Yes      |         | Directory to watch for `.json` dashboard files                  |
-| `DASHBOARD_PROVISIONER_TEAM_ID`     | No\*     |         | Scope provisioning to a specific team ID                        |
-| `DASHBOARD_PROVISIONER_ALL_TEAMS`   | No\*     | `false` | Set to `true` to provision dashboards to all teams              |
+| Variable                          | Required | Default | Description                                        |
+| --------------------------------- | -------- | ------- | -------------------------------------------------- |
+| `DASHBOARD_PROVISIONER_DIR`       | Yes      |         | Directory to watch for `.json` dashboard files     |
+| `DASHBOARD_PROVISIONER_TEAM_ID`   | No\*     |         | Scope provisioning to a specific team ID           |
+| `DASHBOARD_PROVISIONER_ALL_TEAMS` | No\*     | `false` | Set to `true` to provision dashboards to all teams |
 
-\*One of `DASHBOARD_PROVISIONER_TEAM_ID` or `DASHBOARD_PROVISIONER_ALL_TEAMS=true`
-is required when `DASHBOARD_PROVISIONER_DIR` is set.
+\*One of `DASHBOARD_PROVISIONER_TEAM_ID` or
+`DASHBOARD_PROVISIONER_ALL_TEAMS=true` is required when
+`DASHBOARD_PROVISIONER_DIR` is set.
 
 ### Dashboard JSON Format
 
@@ -220,6 +220,68 @@ with at minimum a `name` and `tiles` array:
 - Files are validated against the `DashboardWithoutIdSchema` Zod schema; invalid
   files are skipped with a warning
 
+### Tile Alerts
+
+A tile can declare an alert in `config.alert`, in the same shape the dashboards
+API accepts. The provisioner creates or updates that tile alert on every sync:
+
+```json
+{
+  "id": "error-rate",
+  "x": 0,
+  "y": 0,
+  "w": 12,
+  "h": 4,
+  "config": {
+    "name": "Error rate",
+    "source": "<source ObjectId>",
+    "displayType": "line",
+    "select": [
+      {
+        "aggFn": "count",
+        "aggCondition": "SeverityText:error",
+        "aggConditionLanguage": "lucene",
+        "valueExpression": ""
+      }
+    ],
+    "where": "",
+    "whereLanguage": "lucene",
+    "alert": {
+      "interval": "5m",
+      "threshold": 100,
+      "thresholdType": "above",
+      "channel": { "type": "webhook", "webhookName": "On-call" }
+    }
+  }
+}
+```
+
+- Each alert gets the checks the alerts API applies, plus the ones the alert
+  task needs to evaluate it: a Line, Stacked Bar or Number display type, no
+  PromQL, a valid raw SQL alert query, and a source, connection and webhooks
+  that exist in the team. `source` is the source's ObjectId, so with
+  `DASHBOARD_PROVISIONER_ALL_TEAMS=true` an alert is only created in the team
+  that owns its source
+- A channel can name its webhook with `webhookName`, looked up among the team's
+  webhooks on every sync, instead of a `webhookId` that only exists in one
+  install. A name that matches no webhook, or more than one, fails validation
+- Provisioned alerts are flagged with `provisioned: true`. Removing an alert
+  from its tile, or the tile from the file, deletes it on the next sync. Keep
+  tile ids stable: changing one replaces the alert and loses its history
+- Removing a dashboard's file, or renaming the dashboard, deletes the
+  provisioned alerts of the dashboard it leaves behind. The dashboard itself is
+  kept, as above. This cleanup only runs when every file in the directory was
+  read, validated and synced, and never when the directory has no valid files,
+  so a broken file, a failed sync or an empty mount does not remove alerts
+- An alert that fails validation is skipped with a warning. Its tile keeps the
+  version from the last sync, query and alert together, so an old alert never
+  evaluates a new query; a new tile is added without its alert
+- Alerts created in the app are never changed or deleted. A file that declares
+  an alert on a tile that already has one from the app is skipped with a warning
+- Like the dashboard, a provisioned alert edited or deleted in the app is
+  restored from its file on the next sync
+- Files that share a dashboard name are skipped with a warning, except the first
+  in file name order
 
 ## Note on Security
 
