@@ -122,6 +122,7 @@ with:
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | `clickstack_list_sources`        | List all data sources and connections as a lightweight catalog (IDs, names, kinds)            |
 | `clickstack_describe_source`     | Full column schema, attribute keys, sampled low-cardinality values, and a round-trippable `config` block (the exact shape `clickstack_save_source` accepts, incl. correlation IDs) for a single source; for metric sources also returns a per-kind metric-name sample |
+| `clickstack_describe_table`      | Inspect a ClickHouse table that is not a registered source: columns, keys, engine, skipping indices, approximate size, and an optional row sample. Without a table, lists the tables in a database (paginated) |
 | `clickstack_save_source`         | Create (omit id) or update (provide id) a data source (log, trace, session, metric, or promql) so shipped telemetry becomes queryable. To clone a source, read its `config` from `clickstack_describe_source`, drop `id`, and pass it here |
 | `clickstack_delete_source`       | Permanently delete a data source by ID                                                        |
 | `clickstack_list_metrics`        | Paginated catalog of metric names on a metric source with optional kind / namePattern / time-window filters |

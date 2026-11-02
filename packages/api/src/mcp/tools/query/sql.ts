@@ -94,7 +94,9 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         'fall back to SQL if it cannot express what you need.\n\n' +
         'Requires connectionId — call clickstack_list_sources to find connections. Pass sourceId ' +
         'too when querying a source, so $__sourceTable resolves to its table. ' +
-        'Call clickstack_describe_source to discover column names before writing SQL.\n\n' +
+        'Call clickstack_describe_source to discover column names before writing SQL. ' +
+        'For tables that are not sources, call clickstack_describe_table instead of ' +
+        'querying system.columns / system.tables directly.\n\n' +
         'Results are always returned as table rows — for time-series semantics, ' +
         'include a time column and ORDER BY it in your SQL.',
       inputSchema: sqlSchema,
