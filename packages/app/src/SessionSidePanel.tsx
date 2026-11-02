@@ -26,7 +26,6 @@ import { notifications } from '@mantine/notifications';
 import { IconLink, IconX } from '@tabler/icons-react';
 
 import {
-  DBRowSidePanelInner,
   RowSidePanelContext,
   SidePanelErrorFallback,
 } from '@/components/DBRowSidePanel';
@@ -46,9 +45,11 @@ import {
   copyTextToClipboard,
 } from '@/utils/clipboard';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
+import type { SessionEventNavigate } from '@/utils/sessionLogEvents';
 import { ZIndexContext } from '@/zIndex';
 
 import useSidePanelStack from './hooks/useSidePanelStack';
+import SessionEventSourcePanel from './SessionEventSourcePanel';
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
@@ -59,12 +60,15 @@ type SelectedEvent = {
   rowId: string;
   aliasWith: WithClause[];
   sessionId: string;
+  /** Set for log events; spans live on the trace source. */
+  sourceId?: string;
 };
 
 const sessionEventSchema = z.object({
   rowId: z.string(),
   aliasWith: z.array(WithClauseSchema),
   sessionId: z.string(),
+  sourceId: z.string().optional(),
 });
 
 const sessionEventParser = parseAsJsonEncoded<SelectedEvent>(
@@ -137,11 +141,16 @@ export default function SessionSidePanel({
     sidePanelStack.clearTrail();
   }, [setSelectedEvent, sidePanelStack]);
 
-  const handleEventNavigate = useCallback(
-    (rowId: string, aliasWith: WithClause[]) => {
+  const handleEventNavigate = useCallback<SessionEventNavigate>(
+    (rowId, aliasWith, target) => {
       clearSpanSelection();
       sidePanelStack.clearTrail();
-      setSelectedEvent({ rowId, aliasWith, sessionId });
+      setSelectedEvent({
+        rowId,
+        aliasWith,
+        sessionId,
+        sourceId: target?.sourceId,
+      });
     },
     [clearSpanSelection, setSelectedEvent, sidePanelStack, sessionId],
   );
@@ -229,7 +238,8 @@ export default function SessionSidePanel({
                   />
                 )}
               >
-                <DBRowSidePanelInner
+                <SessionEventSourcePanel
+                  sourceId={selectedEvent.sourceId}
                   source={traceSource}
                   rowId={selectedEvent.rowId}
                   aliasWith={selectedEvent.aliasWith}

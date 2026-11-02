@@ -768,6 +768,7 @@ export const renderAlertTemplate = async ({
         ),
         teamId,
         note: alert.note ?? '',
+        tags: alert.tags ?? [],
       },
     });
     return true;

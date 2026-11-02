@@ -1,6 +1,6 @@
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { findBalancedParens } from '@hyperdx/common-utils/dist/variables';
 
-import { splitClauseList } from '@/utils';
 import { parseAsSortingStateString } from '@/utils/queryParsers';
 
 export type SortKey = { id: string; desc: boolean };
@@ -35,7 +35,7 @@ export function parseSortKeys(orderBy: string): SortKey[] | null {
     expr.startsWith('(') &&
     findBalancedParens(expr, 0) === expr.length - 1
   ) {
-    const ids = splitClauseList(expr.slice(1, -1));
+    const ids = splitAndTrimWithBracket(expr.slice(1, -1));
     if (ids.length > 1 && ids.every(id => id.length > 0)) {
       const desc = direction[2].toUpperCase() === 'DESC';
       return ids.map(id => ({ id, desc }));
@@ -43,7 +43,7 @@ export function parseSortKeys(orderBy: string): SortKey[] | null {
   }
 
   const keys: SortKey[] = [];
-  for (const part of splitClauseList(trimmed)) {
+  for (const part of splitAndTrimWithBracket(trimmed)) {
     const parsed = parseAsSortingStateString.parse(part);
     if (parsed == null || parsed.id.length === 0) return null;
     keys.push({ id: parsed.id, desc: parsed.desc });

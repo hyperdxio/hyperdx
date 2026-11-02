@@ -134,11 +134,28 @@ export function splitAndTrimWithBracket(input: string): string[] {
   let squareCount: number = 0;
   let inSingleQuote: boolean = false;
   let inDoubleQuote: boolean = false;
+  let inBacktick: boolean = false;
 
   const res: string[] = [];
   let cur: string = '';
   for (let i = 0; i <= input.length; i++) {
     const c = i === input.length ? ',' : input[i];
+
+    if (
+      c === '`' &&
+      !inSingleQuote &&
+      !inDoubleQuote &&
+      !isQuoteEscapedByBackslash(input, i)
+    ) {
+      inBacktick = !inBacktick;
+      cur += c;
+      continue;
+    }
+
+    if (inBacktick) {
+      cur += c;
+      continue;
+    }
 
     if (c === '"' && !inSingleQuote && !isQuoteEscapedByBackslash(input, i)) {
       inDoubleQuote = !inDoubleQuote;
@@ -177,6 +194,12 @@ export function splitAndTrimWithBracket(input: string): string[] {
     } else {
       cur += c;
     }
+  }
+  // An unclosed quote swallows the closing ','; keep its text so a half-typed
+  // name survives. Unclosed brackets still drop it, as parseToStartOfFunction expects.
+  if (inBacktick || inSingleQuote || inDoubleQuote) {
+    const rest = cur.slice(0, -1).trim();
+    if (rest) res.push(rest);
   }
   return res;
 }

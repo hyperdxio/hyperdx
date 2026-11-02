@@ -8,11 +8,7 @@ import {
   TableConnection,
   unquoteIdentifier,
 } from '@hyperdx/common-utils/dist/core/metadata';
-import {
-  replaceBacktickedIdentifiers,
-  restoreReplacements,
-  splitAndTrimWithBracket,
-} from '@hyperdx/common-utils/dist/core/utils';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   CATEGORICAL_PALETTE_TOKENS,
   ChartPaletteToken,
@@ -1327,19 +1323,6 @@ export const withMapKeyAlias = (
 };
 
 /**
- * Split a SELECT or ORDER BY list. A comma inside a backtick-quoted name is
- * not a separator. Those names are tokenized first so a later join cannot
- * insert a space inside one. The shared splitter stays unaware of backticks.
- */
-export function splitClauseList(input: string): string[] {
-  const { sqlWithReplacements, replacements } =
-    replaceBacktickedIdentifiers(input);
-  return splitAndTrimWithBracket(sqlWithReplacements).map(part =>
-    restoreReplacements(part, replacements.quotedText),
-  );
-}
-
-/**
  * The sort to keep once a SELECT item is removed. Sorting on an aliased column
  * from the table header orders by the alias itself (`"service.name" DESC`),
  * which stops resolving once the item is gone. Each top-level key that sorts
@@ -1355,7 +1338,7 @@ export const orderByAfterRemovingSelectItem = (
     return orderBy;
   }
   const quoted = `"${alias}"`;
-  const keys = splitClauseList(orderBy);
+  const keys = splitAndTrimWithBracket(orderBy);
   const kept = keys.filter(
     key => key.replace(/\s+(ASC|DESC)$/i, '') !== quoted,
   );

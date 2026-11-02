@@ -426,6 +426,88 @@ describe('rewriteSqlFilterWithKvItems', () => {
     });
   });
 
+  describe('string literal escaping', () => {
+    // node-sql-parser keeps escape sequences undecoded in `.value`, so the
+    // rewrite must emit the original literal rather than re-escape it.
+    it.each([
+      ['backslash-escaped double quotes', String.raw`'[\"x\"]'`],
+      ['backslash-escaped single quote', String.raw`'it\'s'`],
+      ['doubled single quote', `'it''s'`],
+      ['escaped backslash', String.raw`'a\\b'`],
+    ])('keeps %s in the value as written', (_, literal) => {
+      expect(
+        rewriteSqlFilterWithKvItems(
+          `LogAttributes['k'] = ${literal}`,
+          defaultLookup,
+        ),
+      ).toBe(`has(\`LogAttributeItems\`, concat('k', '=', ${literal}))`);
+    });
+
+    it('keeps escaped characters in the map key as written', () => {
+      expect(
+        rewriteSqlFilterWithKvItems(
+          String.raw`LogAttributes['k\'y'] = 'v'`,
+          defaultLookup,
+        ),
+      ).toBe(
+        String.raw`has(` +
+          '`LogAttributeItems`' +
+          String.raw`, concat('k\'y', '=', 'v'))`,
+      );
+    });
+
+    it('keeps escaped values in a hasAny IN rewrite', () => {
+      expect(
+        rewriteSqlFilterWithKvItems(
+          String.raw`LogAttributes['k'] IN ('a\"b', 'c''d')`,
+          defaultLookup,
+        ),
+      ).toBe(
+        'hasAny(`LogAttributeItems`, array(' +
+          String.raw`concat('k', '=', 'a\"b'), concat('k', '=', 'c''d')))`,
+      );
+    });
+
+    it('keeps escaped values in the legacy has OR has IN rewrite', () => {
+      expect(
+        rewriteSqlFilterWithKvItems(
+          String.raw`LogAttributes['k'] IN ('a\"b', 'c\\d')`,
+          legacyLookup,
+        ),
+      ).toBe(
+        '(has(`LogAttributeItems`, ' +
+          String.raw`concat('k', '=', 'a\"b')) OR ` +
+          'has(`LogAttributeItems`, ' +
+          String.raw`concat('k', '=', 'c\\d')))`,
+      );
+    });
+
+    it('rewrites a side panel rowWhere with JSON in an attribute value', () => {
+      const lookup = makeLookup([
+        [
+          'SpanAttributes',
+          { columnName: 'SpanAttributeItems', separator: '=' },
+        ],
+      ]);
+      const message = String.raw`'[\"useMetadata.useTableMetadata\",{\"connectionId\":\"6a0c3937cc01bdc90179f030\"}] data is undefined'`;
+      const result = rewriteSqlFilterWithKvItems(
+        "Timestamp=parseDateTime64BestEffort('2026-10-28T13:50:49.762000000Z', 9) " +
+          "AND ServiceName='chc-hdx-app-prod' " +
+          "AND SpanAttributes['error.object']='Error' " +
+          `AND SpanAttributes['error.message']=${message} ` +
+          "AND SpanName='console.error'",
+        lookup,
+      );
+      expect(result).toContain(
+        `has(\`SpanAttributeItems\`, concat('error.message', '=', ${message}))`,
+      );
+      expect(result).toContain(
+        "has(`SpanAttributeItems`, concat('error.object', '=', 'Error'))",
+      );
+      expect(result).not.toContain('\\\\');
+    });
+  });
+
   describe('indexHint', () => {
     // The LLM dashboard gates pair a value term with indexHint(a OR b), which
     // is the first caller to put a bare boolean OR in an argument position.
