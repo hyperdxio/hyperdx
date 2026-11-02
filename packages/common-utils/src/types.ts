@@ -508,10 +508,35 @@ export const SortSpecificationSchema = z.intersection(
 export const SortSpecificationListSchema = z
   .array(SortSpecificationSchema)
   .or(z.string());
-export const LimitSchema = z.object({
-  limit: z.number().optional(),
-  offset: z.number().optional(),
-});
+export function hasLimitAfterUntil(limit?: {
+  after?: string;
+  until?: string;
+} | null): boolean {
+  return (
+    (limit?.after != null && limit.after.trim() !== '') ||
+    (limit?.until != null && limit.until.trim() !== '')
+  );
+}
+
+export const LimitSchema = z
+  .object({
+    limit: z.number().optional(),
+    offset: z.number().optional(),
+    // ClickHouse `LIMIT [n] AFTER start_expr [ALL] [UNTIL end_expr]`.
+    // Mutually exclusive with `offset` — OFFSET and AFTER/UNTIL cannot be
+    // combined in one LIMIT clause.
+    after: z.string().optional(),
+    until: z.string().optional(),
+    all: z.boolean().optional(),
+  })
+  .superRefine((val, ctx) => {
+    if (val.offset != null && hasLimitAfterUntil(val)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'offset cannot be combined with after or until',
+      });
+    }
+  });
 
 export const ChSqlSchema = z.object({
   sql: z.string(),
@@ -561,7 +586,7 @@ export type SelectList = z.infer<typeof SelectListSchema>;
 
 export type SortSpecificationList = z.infer<typeof SortSpecificationListSchema>;
 
-type Limit = { limit?: number; offset?: number };
+export type Limit = z.infer<typeof LimitSchema>;
 
 export type SelectSQLStatement = {
   select: SelectList;
@@ -1392,6 +1417,8 @@ export const SavedSearchSchema = z.object({
   source: z.string(),
   tags: z.array(z.string()),
   orderBy: z.string().optional(),
+  limitAfter: z.string().optional(),
+  limitUntil: z.string().optional(),
   filters: z.array(FilterSchema).optional(),
   alerts: z.array(AlertSchema).optional(),
 });

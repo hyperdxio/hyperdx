@@ -177,6 +177,10 @@ export default function SQLInlineEditor({
   const compartmentRef = useRef<Compartment>(new Compartment());
 
   const hasNonEmptyValue = value.trim().length > 0;
+  // Empty WHERE uses query history; empty SELECT/ORDER BY/AFTER/UNTIL
+  // (no queryHistoryType) still need column completions, same as SELECT.
+  const showColumnAutocomplete =
+    hasNonEmptyValue || queryHistoryType == null;
 
   const updateAutocompleteColumns = useCallback(
     (viewRef: EditorView) => {
@@ -205,7 +209,7 @@ export default function SQLInlineEditor({
       });
       viewRef.dispatch({
         effects: compartmentRef.current.reconfigure(
-          hasNonEmptyValue ? auto : queryHistoryList,
+          showColumnAutocomplete ? auto : queryHistoryList,
         ),
       });
     },
@@ -215,7 +219,7 @@ export default function SQLInlineEditor({
       variableCompletions,
       disableKeywordAutocomplete,
       createHistoryList,
-      hasNonEmptyValue,
+      showColumnAutocomplete,
     ],
   );
 

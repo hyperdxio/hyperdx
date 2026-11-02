@@ -949,6 +949,7 @@ export type BuilderVariableFields = {
   havingLanguage?: SearchConditionLanguage;
   groupBy?: SelectList;
   orderBy?: SortSpecificationList;
+  limit?: { after?: string; until?: string };
 };
 
 /**
@@ -1015,6 +1016,19 @@ export function mapBuilderVariableTemplates<T extends BuilderVariableFields>(
       : {}),
     ...(config.orderBy != null
       ? { orderBy: mapSortList(config.orderBy, map) }
+      : {}),
+    ...(config.limit != null
+      ? {
+          limit: {
+            ...config.limit,
+            ...(config.limit.after
+              ? { after: map(config.limit.after, 'sql') }
+              : {}),
+            ...(config.limit.until
+              ? { until: map(config.limit.until, 'sql') }
+              : {}),
+          },
+        }
       : {}),
   };
 }

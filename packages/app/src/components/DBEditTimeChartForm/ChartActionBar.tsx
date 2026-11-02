@@ -149,6 +149,42 @@ export function ChartActionBar({
               />
             </div>
           )}
+        {(activeTab === 'table' || activeTab === 'search') &&
+          !isRawSqlInput &&
+          configType !== 'promql' && (
+            <Flex gap="xs" style={{ width: 480, flexShrink: 0 }}>
+              <div style={{ flex: '1 1 0%', minWidth: 0 }} data-testid="limit-after-input">
+                <SQLInlineEditorControlled
+                  parentRef={parentRef}
+                  tableConnection={tableConnection}
+                  sourceId={sourceId}
+                  dateRange={dateRange}
+                  placeholder="start_expr"
+                  control={control}
+                  name="limit.after"
+                  disableKeywordAutocomplete
+                  onSubmit={onSubmit}
+                  label="AFTER"
+                  enableVariables
+                />
+              </div>
+              <div style={{ flex: '1 1 0%', minWidth: 0 }} data-testid="limit-until-input">
+                <SQLInlineEditorControlled
+                  parentRef={parentRef}
+                  tableConnection={tableConnection}
+                  sourceId={sourceId}
+                  dateRange={dateRange}
+                  placeholder="end_expr"
+                  control={control}
+                  name="limit.until"
+                  disableKeywordAutocomplete
+                  onSubmit={onSubmit}
+                  label="UNTIL"
+                  enableVariables
+                />
+              </div>
+            </Flex>
+          )}
         {tabQueriesData(activeTab) &&
           setDisplayedTimeInputValue != null &&
           displayedTimeInputValue != null &&

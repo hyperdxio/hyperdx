@@ -52,6 +52,8 @@ export type SearchConfig = {
   whereLanguage?: BuilderChartConfig['whereLanguage'] | null;
   filters?: Filter[] | null;
   orderBy?: string | null;
+  limitAfter?: string | null;
+  limitUntil?: string | null;
 };
 
 export type StacktraceFrame = {

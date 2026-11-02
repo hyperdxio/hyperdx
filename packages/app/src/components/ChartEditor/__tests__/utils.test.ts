@@ -400,6 +400,37 @@ describe('convertFormStateToSavedChartConfig', () => {
     expect(lineResult.orderBy).toBeUndefined();
   });
 
+  it('preserves LIMIT AFTER / UNTIL only for Table and Search displayTypes', () => {
+    const limit = { limit: 10, after: 'service_id >= 3', until: 'service_id >= 8' };
+    const form: ChartEditorFormState = {
+      displayType: DisplayType.Table,
+      series: [seriesItem],
+      limit,
+    };
+    const tableResult = convertFormStateToSavedChartConfig(
+      form,
+      logSource,
+    ) as BuilderSavedChartConfig;
+    expect(tableResult.limit).toEqual(limit);
+
+    const searchResult = convertFormStateToSavedChartConfig(
+      {
+        ...form,
+        displayType: DisplayType.Search,
+        select: 'Timestamp, Body',
+        series: [seriesItem],
+      },
+      logSource,
+    ) as BuilderSavedChartConfig;
+    expect(searchResult.limit).toEqual(limit);
+
+    const lineResult = convertFormStateToSavedChartConfig(
+      { ...form, displayType: DisplayType.Line },
+      logSource,
+    ) as BuilderSavedChartConfig;
+    expect(lineResult.limit).toEqual({ limit: 10 });
+  });
+
   it('defaults where to empty string when undefined', () => {
     const form: ChartEditorFormState = {
       displayType: DisplayType.Line,

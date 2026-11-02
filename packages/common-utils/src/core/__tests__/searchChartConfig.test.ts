@@ -424,6 +424,29 @@ describe('buildSearchChartConfig', () => {
 
       expect(config.displayType).toBe(DisplayType.Search);
     });
+
+    it('maps limitAfter/limitUntil onto ChartConfig.limit', () => {
+      const config = buildSearchChartConfig(makeLogSource(), {
+        where: '',
+        limitAfter: 'Timestamp >= now() - INTERVAL 1 HOUR',
+        limitUntil: 'Timestamp >= now()',
+      });
+
+      expect(config.limit).toEqual({
+        after: 'Timestamp >= now() - INTERVAL 1 HOUR',
+        until: 'Timestamp >= now()',
+      });
+    });
+
+    it('omits limit when after/until are empty', () => {
+      const config = buildSearchChartConfig(makeLogSource(), {
+        where: '',
+        limitAfter: '  ',
+        limitUntil: '',
+      });
+
+      expect(config.limit).toBeUndefined();
+    });
   });
 
   describe('end-to-end shape parity with DBSearchPage', () => {

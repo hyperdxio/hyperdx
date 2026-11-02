@@ -98,6 +98,8 @@ const savedSearchRequestSchema = z.object({
     .default(''),
   whereLanguage: z.enum(['lucene', 'sql']).optional().default('lucene'),
   orderBy: z.string().max(1024).optional().default(''),
+  limitAfter: z.string().max(4096).optional().default(''),
+  limitUntil: z.string().max(4096).optional().default(''),
   tags: tagsSchema.default([]),
   filters: z
     .array(savedSearchFilterSchema)

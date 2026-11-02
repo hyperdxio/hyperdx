@@ -78,6 +78,16 @@ export const mcpSaveSavedSearchSchema = z.object({
     .string()
     .optional()
     .describe('Sort expression. Example: "Timestamp DESC"'),
+  limitAfter: z
+    .string()
+    .optional()
+    .describe(
+      'ClickHouse LIMIT AFTER start expression. Mutually exclusive with OFFSET pagination.',
+    ),
+  limitUntil: z
+    .string()
+    .optional()
+    .describe('ClickHouse LIMIT UNTIL end expression. Used with LIMIT AFTER.'),
   sourceId: objectIdSchema.describe(
     'Source ID — call clickstack_list_sources to find available sources.',
   ),

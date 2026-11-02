@@ -1755,9 +1755,17 @@ function DBSqlRowTableComponent({
   }, [initialSortBy, prevInitialSortBy]);
 
   const mergedConfigObj = useMemo(() => {
+    const defaults = searchChartConfigDefaults(me?.team);
     const base = {
-      ...searchChartConfigDefaults(me?.team),
+      ...defaults,
       ...config,
+      // Keep the search row-limit cap and user LIMIT AFTER/UNTIL together.
+      // Spreading `config` alone would replace `{ limit: N }` with
+      // `{ after, until }` and drop the cap.
+      limit: {
+        ...defaults.limit,
+        ...config.limit,
+      },
     };
     if (orderByArray.length) {
       base.orderBy = orderByArray.map(o => {
