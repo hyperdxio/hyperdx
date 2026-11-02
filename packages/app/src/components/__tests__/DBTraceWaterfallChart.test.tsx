@@ -25,6 +25,7 @@ import { TRACE_WATERFALL_ROW_LIMIT } from '@/components/traceWaterfallLimits';
 import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
+import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 // Mock setup
 jest.mock('@/components/traceWaterfallLimits', () => ({
@@ -338,6 +339,42 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(MockTimelineChart.latestProps.rows[1]).toBeTruthy(); // Log row
   });
 
+  it.each([
+    ['whose span was never exported', 'unsent-span'],
+    ['without a span id', ''],
+  ])('renders a log %s at the root', async (_, SpanId) => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: { ...mockLogData, data: [{ ...mockLogData.data[0], SpanId }] },
+    });
+
+    renderComponent();
+    await waitForLoading();
+
+    expect(MockTimelineChart.latestProps.rows.length).toBe(2);
+  });
+
+  it.each([
+    ['error', () => getChartColorError()],
+    ['warn', () => getChartColorSuccess()],
+  ])('colors a %s log bar', async (SeverityText, expectedColor) => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: {
+        ...mockLogData,
+        data: [{ ...mockLogData.data[0], SeverityText }],
+      },
+    });
+
+    renderComponent();
+    await waitForLoading();
+
+    const logRow = MockTimelineChart.latestProps.rows.find(
+      (row: { type?: string }) => row.type === SourceKind.Log,
+    );
+    expect(logRow.events[0].backgroundColor).toBe(expectedColor());
+  });
+
   it('renders total duration computed from all fetched spans', async () => {
     setupQueryMocks({ traceData: mockTraceData });
     renderComponent(null); // No log table source
@@ -468,17 +505,11 @@ describe('DBTraceWaterfallChartContainer', () => {
   });
 
   it('does not render the total duration stat when there are no spans', async () => {
-    // A log with no matching span never becomes a visible node (correlated
-    // logs attach to a span), so this renders the existing empty state --
-    // just confirms the new stat doesn't render in that case either.
     setupQueryMocks({ logData: mockLogData });
     renderComponent();
+    await waitForLoading();
 
-    await waitFor(() => {
-      expect(
-        screen.getByText('No matching spans or logs found'),
-      ).toBeInTheDocument();
-    });
+    expect(MockTimelineChart.latestProps.rows.length).toBe(1);
     expect(screen.queryByTestId('trace-total-stats')).not.toBeInTheDocument();
   });
 

@@ -4,8 +4,10 @@ import objectHash from 'object-hash';
 import {
   ColumnMeta,
   ColumnMetaType,
+  convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
+  isCHIntegerType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { inferGranularityFromMVSelect } from '@hyperdx/common-utils/dist/core/materializedViews';
@@ -410,6 +412,18 @@ export async function inferTableSourceConfig({
   // Check if span Links column is available
   const hasSpanLinks = columns.some(col => col.name === 'Links.TraceId');
 
+  // Old exporter tables store SeverityNumber as Int32, current ones as UInt8.
+  // A String column of that name is not the OTel number.
+  const hasSeverityNumber = columns.some(
+    col => col.name === 'SeverityNumber' && isCHIntegerType(col.type),
+  );
+
+  const hasEventName = columns.some(
+    col =>
+      col.name === 'EventName' &&
+      convertCHDataTypeToJSType(col.type) === JSDataType.String,
+  );
+
   // Check if metadata rollup tables exist and, if so, infer the bucketing
   // granularity from the key-rollup view's `as_select`
   const rollupMeta =
@@ -461,6 +475,10 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
 
           severityTextExpression: 'SeverityText',
+          ...(hasSeverityNumber
+            ? { severityNumberExpression: 'SeverityNumber' }
+            : {}),
+          ...(hasEventName ? { eventNameExpression: 'EventName' } : {}),
           ...metadataMVsConfig,
         }
       : {}),
@@ -538,20 +556,6 @@ export function getDurationMsExpression(source: TTraceSource) {
 
 export function getDurationSecondsExpression(source: TTraceSource) {
   return `(${source.durationExpression})/1e${source.durationPrecision ?? 9}`;
-}
-
-/**
- * The single definition of an errored span, as a SQL predicate over a span
- * status-code expression. Matches both the short OTel status ('Error'/'ERROR')
- * and the legacy collector form ('STATUS_CODE_ERROR'), which some collectors
- * write instead.
- *
- * Span status only. Log severity text is a different vocabulary (its error
- * values are 'fatal', 'crit' and friends, never 'status_code_error'), so log
- * callers keep their own predicate rather than reusing this one.
- */
-export function errorStatusPredicateSql(statusCodeExpression: string): string {
-  return `lower(${statusCodeExpression}) IN ('error', 'status_code_error')`;
 }
 
 // Aggregate functions whose output preserves the unit of the input value.

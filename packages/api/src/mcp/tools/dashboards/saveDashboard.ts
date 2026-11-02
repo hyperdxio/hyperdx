@@ -1,3 +1,4 @@
+import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
@@ -208,7 +209,9 @@ async function createDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(newDashboard);
+  const externalDashboard = convertToExternalDashboard(newDashboard, {
+    hidePromqlTiles: true,
+  });
   return {
     content: [
       {
@@ -316,10 +319,21 @@ async function updateDashboard({
     (existingDashboard.filters ?? []).map((f: { id: string }) => f.id),
   );
 
-  const internalTiles = convertExternalTilesToInternal(
+  const requestTiles = convertExternalTilesToInternal(
     tilesWithId,
     existingTileIds,
   );
+  // MCP reads hide PromQL tiles, so the agent's tile list never contains them.
+  // Keep them rather than delete tiles it could not see. A request tile that
+  // reuses a hidden tile's id replaces it. Remove with HDX-5302.
+  const requestTileIds = new Set(requestTiles.map(tile => tile.id));
+  const internalTiles = [
+    ...requestTiles,
+    ...(existingDashboard.tiles ?? []).filter(
+      tile =>
+        isPromqlSavedChartConfig(tile.config) && !requestTileIds.has(tile.id),
+    ),
+  ];
 
   // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
   // misnamed or wrong-shape fields fail at compile time, mirroring the
@@ -373,7 +387,9 @@ async function updateDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(updatedDashboard);
+  const externalDashboard = convertToExternalDashboard(updatedDashboard, {
+    hidePromqlTiles: true,
+  });
   return {
     content: [
       {

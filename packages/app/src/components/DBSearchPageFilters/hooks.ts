@@ -30,7 +30,11 @@ import { escapeFilterStateKeys, usePinnedFilters } from '@/searchFilters';
 import { useSource } from '@/source';
 import { mergePath } from '@/utils';
 
-import { listRequestedFacets, toQuotedClickHouseKeyExpression } from './utils';
+import {
+  listRequestedFacets,
+  sortLowCardinalityFirst,
+  toQuotedClickHouseKeyExpression,
+} from './utils';
 
 const INITIAL_LOAD_LIMIT = 20;
 
@@ -120,16 +124,7 @@ function useFacets({
       return [];
     }
 
-    const strings = allFields
-      .sort((a, b) => {
-        // First show low cardinality fields
-        const isLowCardinality = (type: string) =>
-          type.includes('LowCardinality');
-        return (
-          (isLowCardinality(b.type) ? 1 : 0) -
-          (isLowCardinality(a.type) ? 1 : 0)
-        );
-      })
+    const strings = sortLowCardinalityFirst(allFields)
       .filter(
         field => field.jsType && ['string'].includes(field.jsType),
         // todo: add number type with sliders :D

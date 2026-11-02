@@ -1,11 +1,4 @@
-import {
-  ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
@@ -59,6 +52,10 @@ import {
 } from '@/components/traceWaterfallLimits';
 import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import {
+  RowHighlightHint,
+  useRowHighlightHint,
+} from '@/hooks/useRowHighlightHint';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -115,8 +112,8 @@ type TimestampedRow = {
   Timestamp: string;
 };
 
-// Bar background color. Correlated log rows are always green (success), error
-// spans are always red, and every other span takes its per-service color.
+// Bar background color. Error spans and logs are red, other correlated log rows
+// are green (success), and every other span takes its per-service color.
 function barColor(condition: {
   isHighlighted: boolean;
   isError?: boolean;
@@ -125,7 +122,7 @@ function barColor(condition: {
 }) {
   const { isHighlighted, isError, type, serviceColor } = condition;
 
-  if (type === SourceKind.Log) {
+  if (type === SourceKind.Log && !isError) {
     return isHighlighted
       ? getChartColorSuccessHighlight()
       : getChartColorSuccess();
@@ -161,7 +158,7 @@ function getRowSeverity(
 }
 
 // Per-service span palette: the full categorical palette minus the two hues we
-// reserve for semantics — green (correlated log rows) and red (error spans) —
+// reserve for semantics — green (correlated log rows) and red (errors) —
 // so a service color is never confused with a log or an error. Index-aligned
 // with CATEGORICAL_PALETTE_TOKENS, so filtering by token survives reordering.
 const SERVICE_COLORS = COLORS.filter(
@@ -686,11 +683,7 @@ export function DBTraceWaterfallChartContainer({
     aliasWith: WithClause[];
   }) => void;
   highlightedRowWhere?: string | null;
-  initialRowHighlightHint?: {
-    timestamp: string;
-    spanId: string;
-    body: string;
-  };
+  initialRowHighlightHint?: RowHighlightHint;
   emptyState?: ReactNode;
   /** Extra controls rendered in the waterfall controls bar (e.g. the correlated logs source selector). */
   controlsExtra?: ReactNode;
@@ -967,53 +960,13 @@ export function DBTraceWaterfallChartContainer({
     logRowsMeta,
   ]);
 
-  // Auto-select the originating span once when the panel opens — but only if
-  // nothing is already selected. Two cases must NOT trigger a (re-)select:
-  //   - the user explicitly cleared the selection (closing the span detail), and
-  //   - a selection was restored from the URL on load (deep link / reload).
-  // We mark the hint applied as soon as a selection exists or we apply it
-  // ourselves, so it never fires twice for the same hint; it re-fires only when
-  // the hint genuinely changes (different originating span / trace).
-  const appliedHighlightHintRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    appliedHighlightHintRef.current = null;
-  }, [traceId]);
-
-  useEffect(() => {
-    if (!initialRowHighlightHint || !onClick) {
-      return;
-    }
-
-    const hintKey = `${initialRowHighlightHint.timestamp}|${initialRowHighlightHint.spanId}|${initialRowHighlightHint.body}`;
-    if (appliedHighlightHintRef.current === hintKey) {
-      return;
-    }
-
-    // A selection already exists (restored from the URL, or user-chosen). Honor
-    // it and record the hint so we never override it — now or later.
-    if (highlightedRowWhere != null) {
-      appliedHighlightHintRef.current = hintKey;
-      return;
-    }
-
-    const initialRowHighlightIndex = rows.findIndex(row => {
-      return (
-        row.Timestamp === initialRowHighlightHint.timestamp &&
-        row.SpanId === initialRowHighlightHint.spanId &&
-        row.Body === initialRowHighlightHint.body
-      );
-    });
-
-    if (initialRowHighlightIndex !== -1) {
-      appliedHighlightHintRef.current = hintKey;
-      onClick({
-        id: rows[initialRowHighlightIndex].id,
-        type: rows[initialRowHighlightIndex].type ?? '',
-        aliasWith: rows[initialRowHighlightIndex].aliasWith,
-      });
-    }
-  }, [initialRowHighlightHint, rows, onClick, highlightedRowWhere]);
+  useRowHighlightHint({
+    traceId,
+    initialRowHighlightHint,
+    highlightedRowWhere,
+    rows,
+    onClick,
+  });
 
   // 3 Edge-cases
   // 1. No spans, just logs (ex. sampling)
@@ -1040,8 +993,9 @@ export function DBTraceWaterfallChartContainer({
 
     for (const result of rows ?? []) {
       const { type, SpanId, ParentSpanId } = result;
-      // ignore everything without spanId
-      if (!SpanId) continue;
+      // A span without an id can't be placed; a log without one still belongs
+      // to the trace.
+      if (!SpanId && type !== SourceKind.Log) continue;
 
       // log have duplicate span id, tag it with -log
       const nodeSpanId = type === SourceKind.Log ? `${SpanId}-log` : SpanId; // prevent log spanId overwrite trace spanId
@@ -1073,10 +1027,10 @@ export function DBTraceWaterfallChartContainer({
         nodesMap.set(result.id, curNode);
       }
 
-      // root if: is trace event, and (has no parent or parent id is not valid)
+      // Root when the parent isn't a span in this trace, including a log whose
+      // span was never exported (e.g. the process crashed before ending it).
       const isRootNode =
-        type === SourceKind.Trace &&
-        (!nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId));
+        !nodeParentSpanId || !validSpanIDs.has(nodeParentSpanId);
 
       if (isRootNode) {
         rootNodes.push(curNode);
@@ -1243,11 +1197,15 @@ export function DBTraceWaterfallChartContainer({
         // Process span events into markers (only if showSpanEvents is enabled)
         const markers =
           showSpanEvents && result.SpanEvents
-            ? result.SpanEvents.map(spanEvent => ({
-                timestamp: parseTimestampToMs(spanEvent.Timestamp) - minOffset,
-                name: spanEvent.Name,
-                attributes: spanEvent.Attributes || {},
-              }))
+            ? result.SpanEvents.map(spanEvent => {
+                const epochMs = parseTimestampToMs(spanEvent.Timestamp);
+                return {
+                  timestamp: epochMs - minOffset,
+                  epochMs,
+                  name: spanEvent.Name,
+                  attributes: spanEvent.Attributes || {},
+                };
+              })
             : [];
 
         // Extract status logic
@@ -1261,7 +1219,9 @@ export function DBTraceWaterfallChartContainer({
 
         const barBackgroundColor =
           type === SourceKind.Log
-            ? getChartColorSuccess()
+            ? isError
+              ? getChartColorError()
+              : getChartColorSuccess()
             : serviceName
               ? (serviceColorMap.get(serviceName) ?? '#6A7077')
               : '#6A7077';

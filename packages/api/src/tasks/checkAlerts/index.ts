@@ -553,15 +553,13 @@ const fireChannelEvent = async ({
     clickhouseClient,
     metadata,
     state,
-    title: buildAlertMessageTemplateTitle({
-      view: templateView,
-      state,
-    }),
+    title: buildAlertMessageTemplateTitle({ view: templateView }),
     template: alert.message,
     view: templateView,
     teamId,
     teamWebhooksById,
     sampleLines,
+    groupValues: attributes,
   });
   return { failures, timings, dispatchDurationMs };
 };
@@ -1286,6 +1284,8 @@ export const processAlert = async (
       string,
       { value: number; attributes: Record<string, string>; startTime: Date }
     >();
+    // ponytail: a group that vanished from the data resolves without its values.
+    const groupAttributes = new Map<string, Record<string, string>>();
 
     // Helper to get or create history for a group
     const getOrCreateHistory = (groupKey: string): IAlertHistory => {
@@ -1471,6 +1471,7 @@ export const processAlert = async (
           group: groupKey,
           totalCount: lastValue?.count || 0,
           startTime: lastValue?.startTime || nowInMinsRoundDown,
+          attributes: groupAttributes.get(groupKey),
         });
       }
     };
@@ -1635,6 +1636,7 @@ export const processAlert = async (
           ? extraFields.map(([k, v]) => `${k}:${v}`).join(', ')
           : '';
         const attributes = hasGroupBy ? Object.fromEntries(extraFields) : {};
+        groupAttributes.set(groupKey, attributes);
 
         const exceeds = doesExceedThreshold(alert, value);
 

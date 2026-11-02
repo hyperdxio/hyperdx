@@ -1,6 +1,6 @@
 // Port from ChartUtils + source.ts
 import { add as fnsAdd, format as fnsFormat } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, zonedTimeToUtc } from 'date-fns-tz';
 import { omit } from 'lodash';
 import { z } from 'zod';
 
@@ -11,7 +11,11 @@ import {
   isQueryExpressionFilter,
   isStaticListFilter,
 } from '@/filters';
-import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import {
+  isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
@@ -134,11 +138,28 @@ export function splitAndTrimWithBracket(input: string): string[] {
   let squareCount: number = 0;
   let inSingleQuote: boolean = false;
   let inDoubleQuote: boolean = false;
+  let inBacktick: boolean = false;
 
   const res: string[] = [];
   let cur: string = '';
   for (let i = 0; i <= input.length; i++) {
     const c = i === input.length ? ',' : input[i];
+
+    if (
+      c === '`' &&
+      !inSingleQuote &&
+      !inDoubleQuote &&
+      !isQuoteEscapedByBackslash(input, i)
+    ) {
+      inBacktick = !inBacktick;
+      cur += c;
+      continue;
+    }
+
+    if (inBacktick) {
+      cur += c;
+      continue;
+    }
 
     if (c === '"' && !inSingleQuote && !isQuoteEscapedByBackslash(input, i)) {
       inDoubleQuote = !inDoubleQuote;
@@ -177,6 +198,12 @@ export function splitAndTrimWithBracket(input: string): string[] {
     } else {
       cur += c;
     }
+  }
+  // An unclosed quote swallows the closing ','; keep its text so a half-typed
+  // name survives. Unclosed brackets still drop it, as parseToStartOfFunction expects.
+  if (inBacktick || inSingleQuote || inDoubleQuote) {
+    const rest = cur.slice(0, -1).trim();
+    if (rest) res.push(rest);
   }
   return res;
 }
@@ -760,24 +787,49 @@ const TIME_TOKENS = {
   },
 };
 
+export const UTC_TIME_ZONE = 'Etc/UTC';
+
+/** Formats `date` in `timeZone` (an IANA name), or the local zone if unset. */
 export const formatDate = (
   date: Date,
   {
-    isUTC = false,
+    timeZone,
     format = 'normal',
     clock = '12h',
   }: {
-    isUTC?: boolean;
+    timeZone?: string;
     format?: 'normal' | 'short' | 'withMs' | 'time' | 'withYear';
     clock?: '12h' | '24h';
   },
 ) => {
   const formatStr = TIME_TOKENS[format][clock];
 
-  return isUTC
-    ? formatInTimeZone(date, 'Etc/UTC', formatStr)
+  return timeZone
+    ? formatInTimeZone(date, timeZone, formatStr)
     : fnsFormat(date, formatStr);
 };
+
+/**
+ * The clock reading of `date` in `timeZone`, as a Date whose UTC fields hold
+ * that reading. Lets date maths and parsing run in a zone other than the
+ * runtime's own, using the UTC getters and setters.
+ */
+export function toWallClock(date: Date, timeZone: string): Date {
+  // Not getTimezoneOffset: it takes a clock reading, so for instants near a
+  // DST change it returns the offset from the other side of the change.
+  return new Date(
+    formatInTimeZone(date, timeZone, "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"),
+  );
+}
+
+/**
+ * Inverse of `toWallClock`, using the zone's offset on that date. A reading in
+ * the hour repeated when clocks go back maps to its first occurrence.
+ */
+export function fromWallClock(wallClock: Date, timeZone: string): Date {
+  // An ISO string without an offset is read as a clock reading in `timeZone`.
+  return zonedTimeToUtc(wallClock.toISOString().slice(0, 23), timeZone);
+}
 
 type Dashboard = z.infer<typeof DashboardSchema>;
 type DashboardTemplate = z.infer<typeof DashboardTemplateSchema>;
@@ -1625,6 +1677,22 @@ export function displayTypeSupportsPromQLAlerts(
   // TODO: Support alerts for PromQL (HDX-4636)
   // This looks funky, just doing it to satisfy knip
   return displayType ? false : false;
+}
+
+/**
+ * Whether the alert checker can evaluate an alert on a tile with this config.
+ * Shared by every save path so alerts are never stored where they cannot run.
+ */
+export function savedChartConfigSupportsAlerts(
+  config: SavedChartConfig,
+): boolean {
+  if (isPromqlSavedChartConfig(config)) {
+    return displayTypeSupportsPromQLAlerts(config.displayType);
+  }
+  if (isRawSqlSavedChartConfig(config)) {
+    return displayTypeSupportsRawSqlAlerts(config.displayType);
+  }
+  return displayTypeSupportsBuilderAlerts(config.displayType);
 }
 
 /** Expand the chart's macros, returning failures instead of throwing. */

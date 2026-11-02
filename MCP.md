@@ -126,6 +126,7 @@ with:
 | `clickstack_delete_source`       | Permanently delete a data source by ID                                                        |
 | `clickstack_list_metrics`        | Paginated catalog of metric names on a metric source with optional kind / namePattern / time-window filters |
 | `clickstack_describe_metric`     | Per-metric drill-down: kind(s), unit, description, attribute keys per map column, and sampled values |
+| `clickstack_service_health`      | One-call service health on a trace source: throughput, error rate, p50/p95 and top errors per service, compared with yesterday and ranked worst first |
 | `clickstack_timeseries`          | Plot metrics over time as a line or stacked bar chart (works on log, trace, and metric sources)        |
 | `clickstack_table`               | Compute aggregated metrics as a table, single number, or pie chart (works on log, trace, and metric sources) |
 | `clickstack_search`              | Browse individual log, event, or trace rows                                                  |

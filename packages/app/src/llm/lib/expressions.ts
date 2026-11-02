@@ -1,6 +1,5 @@
+import { errorStatusPredicateSql } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
-
-import { errorStatusPredicateSql } from '@/source';
 
 import { generateCostSqlExpression } from './cost';
 import { buildAnyKeyExistsSql, buildLLMSpanSqlPredicate } from './detect';

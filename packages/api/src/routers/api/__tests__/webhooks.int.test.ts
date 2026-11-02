@@ -121,6 +121,44 @@ describe('webhooks router', () => {
     expect(webhooks[0].url).toBe(MOCK_WEBHOOK.url);
   });
 
+  it('POST / - stores titleEmoji false and GET / returns it', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const response = await agent
+      .post('/webhooks')
+      .send({ ...MOCK_WEBHOOK, titleEmoji: false })
+      .expect(200);
+
+    expect(response.body.data.titleEmoji).toBe(false);
+
+    const webhooks = await Webhook.find({});
+    expect(webhooks).toHaveLength(1);
+    expect(webhooks[0].titleEmoji).toBe(false);
+
+    const listResponse = await agent
+      .get('/webhooks')
+      .query({ service: WebhookService.Slack })
+      .expect(200);
+
+    expect(listResponse.body.data).toHaveLength(1);
+    expect(listResponse.body.data[0].titleEmoji).toBe(false);
+  });
+
+  it('POST / - leaves titleEmoji unset when not provided', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const response = await agent
+      .post('/webhooks')
+      .send(MOCK_WEBHOOK)
+      .expect(200);
+
+    expect(response.body.data).not.toHaveProperty('titleEmoji');
+
+    const webhooks = await Webhook.find({});
+    expect(webhooks).toHaveLength(1);
+    expect(webhooks[0].titleEmoji).toBeUndefined();
+  });
+
   it('POST / - returns 400 when webhook with same URL already exists', async () => {
     const { agent, team } = await getLoggedInAgent(server);
 
@@ -787,6 +825,25 @@ describe('webhooks router', () => {
       });
     });
 
+    it('sets titleEmoji on an existing webhook', async () => {
+      const { agent, team } = await getLoggedInAgent(server);
+
+      const webhook = await Webhook.create({
+        ...MOCK_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await agent
+        .put(`/webhooks/${webhook._id}`)
+        .send({ ...MOCK_WEBHOOK, titleEmoji: false })
+        .expect(200);
+
+      expect(response.body.data.titleEmoji).toBe(false);
+
+      const updatedWebhook = await Webhook.findById(webhook._id);
+      expect(updatedWebhook?.titleEmoji).toBe(false);
+    });
+
     it('returns 404 when webhook does not exist', async () => {
       const { agent } = await getLoggedInAgent(server);
 
@@ -1383,6 +1440,7 @@ describe('webhooks router', () => {
         thresholdMax: 10,
         value: 7,
         groupKey: 'test-group',
+        groupValues: { group: 'test-group' },
         sourceQuery: 'SeverityText: "error"',
         note: 'Test webhook — no runbook',
         teamId: expect.any(String),

@@ -648,9 +648,11 @@ export const WEBHOOK_TEMPLATE_VARIABLES = [
   'thresholdMax',
   'value',
   'groupKey',
+  'var',
   'sourceQuery',
   'teamId',
   'note',
+  'tags',
 ] as const;
 
 export type WebhookTemplateVariable =
@@ -691,6 +693,7 @@ export const WebhookSchema = z.object({
       'Internal API returns masked value (<origin>/****). PUT accepts the masked form to preserve the stored URL.',
     ),
   description: z.string().optional(),
+  titleEmoji: z.boolean().optional(),
   queryParams: z
     .record(z.string(), z.string())
     .optional()
@@ -777,7 +780,8 @@ export const DEFAULT_INCIDENT_IO_WEBHOOK_BODY = `{
     "value": "{{value}}",
     "group_key": "{{groupKey}}",
     "window_start": "{{startTimeISO}}",
-    "window_end": "{{endTimeISO}}"
+    "window_end": "{{endTimeISO}}",
+    "tags": "{{tags}}"
   }
 }`;
 
@@ -2707,7 +2711,17 @@ export const LogSourceSchema = BaseSourceSchema.extend({
    */
   serviceVersionExpression: z.string().optional(),
   severityTextExpression: z.string().optional(),
+  /**
+   * Expression for the numeric OpenTelemetry SeverityNumber (1-24). No default:
+   * many log tables have no such column, so unset must stay distinguishable.
+   */
+  severityNumberExpression: z.string().optional(),
   bodyExpression: z.string().optional(),
+  /**
+   * Expression for the OpenTelemetry log EventName (e.g. browser.web_vital).
+   * No default: older and non-OTel log tables have no such column.
+   */
+  eventNameExpression: z.string().optional(),
   eventAttributesExpression: z.string().optional(),
   resourceAttributesExpression: z.string().optional(),
   displayedTimestampValueExpression: z.string().optional(),

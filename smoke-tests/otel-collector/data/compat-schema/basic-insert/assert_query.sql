@@ -1,1 +1,0 @@
-SELECT SeverityText, SeverityNumber, Body FROM otel_logs WHERE ResourceAttributes['suite-id'] = 'compat-schema' AND ResourceAttributes['test-id'] = 'basic-insert' ORDER BY (toStartOfFiveMinutes(Timestamp), Timestamp) FORMAT CSV

@@ -104,6 +104,19 @@ export function useStreamingQuery<TItem>({
         queryClient.setQueryData<TItem[]>(queryKey, [...accumulated]);
       };
 
+      // Since React Query 5.85, a cancelled fetch reverts to its last
+      // `setQueryData` write instead of its pre-fetch state, which would cache
+      // a superseded stream's partial result as complete.
+      const cachedQuery = queryClient
+        .getQueryCache()
+        .find({ queryKey, exact: true });
+      const stateBeforeStream = cachedQuery?.state;
+      signal.addEventListener('abort', () => {
+        if (stateBeforeStream && lastFlushedAt > -Infinity) {
+          cachedQuery?.setState({ ...stateBeforeStream, fetchStatus: 'idle' });
+        }
+      });
+
       try {
         for await (const chunk of streamFactory({ signal })) {
           if (signal.aborted) break;

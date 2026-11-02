@@ -285,6 +285,55 @@ describe('External API v2 Sources CRUD', () => {
     });
   });
 
+  describe('PromQL sources with PromQL disabled', () => {
+    const promqlSourceBody = () => ({
+      kind: SourceKind.Promql,
+      name: 'Prometheus Metrics',
+      from: { databaseName: 'default', tableName: 'default' },
+      timestampValueExpression: 'timestamp',
+      connection: connection._id.toString(),
+    });
+
+    beforeEach(() => {
+      jest.replaceProperty(config, 'IS_PROMQL_ENABLED', false);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('rejects creating a PromQL source', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send(promqlSourceBody())
+        .expect(400);
+
+      expect(response.body.message).toBe(
+        'PromQL is not enabled on this deployment',
+      );
+      expect(await Source.findOne({ team: team._id })).toBeNull();
+    });
+
+    it('rejects updating a source to PromQL', async () => {
+      const logSource = await LogSource.create({
+        ...logSourceBody(),
+        team: team._id,
+      });
+
+      const response = await authRequest('put', `${BASE_URL}/${logSource._id}`)
+        .send(promqlSourceBody())
+        .expect(400);
+
+      expect(response.body.message).toBe(
+        'PromQL is not enabled on this deployment',
+      );
+      expect((await Source.findById(logSource._id))!.kind).toBe(SourceKind.Log);
+    });
+
+    it('still creates other source kinds', async () => {
+      await authRequest('post', BASE_URL).send(logSourceBody()).expect(200);
+    });
+  });
+
   describe('PUT /api/v2/sources/:id', () => {
     it('should return 401 when user is not authenticated', async () => {
       await request(server.getHttpServer())

@@ -194,7 +194,7 @@ export const getAlertReferenceLines = ({
     return [
       <ReferenceArea
         key="not-between-lower"
-        y2={threshold}
+        y1={threshold}
         ifOverflow="extendDomain"
         fill="red"
         strokeWidth={0}
@@ -202,7 +202,7 @@ export const getAlertReferenceLines = ({
       />,
       <ReferenceArea
         key="not-between-upper"
-        y1={thresholdMax}
+        y2={thresholdMax}
         ifOverflow="extendDomain"
         fill="red"
         strokeWidth={0}
@@ -231,7 +231,7 @@ export const getAlertReferenceLines = ({
   ) {
     return (
       <ReferenceArea
-        y1={threshold}
+        y2={threshold}
         ifOverflow="extendDomain"
         fill="red"
         strokeWidth={0}

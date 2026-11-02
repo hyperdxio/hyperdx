@@ -26,7 +26,6 @@ import { notifications } from '@mantine/notifications';
 import { IconLink, IconX } from '@tabler/icons-react';
 
 import {
-  DBRowSidePanelInner,
   RowSidePanelContext,
   SidePanelErrorFallback,
 } from '@/components/DBRowSidePanel';
@@ -38,6 +37,7 @@ import SidePanelBreadcrumbs, {
   BreadcrumbItem,
 } from '@/components/SidePanelBreadcrumbs';
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
+import { useClearSpanSelection } from '@/hooks/useOpenedRowSpanSelection';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
@@ -45,9 +45,11 @@ import {
   copyTextToClipboard,
 } from '@/utils/clipboard';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
+import type { SessionEventNavigate } from '@/utils/sessionLogEvents';
 import { ZIndexContext } from '@/zIndex';
 
 import useSidePanelStack from './hooks/useSidePanelStack';
+import SessionEventSourcePanel from './SessionEventSourcePanel';
 import { Session } from './sessions';
 import SessionSubpanel from './SessionSubpanel';
 import { formatDistanceToNowStrictShort } from './utils';
@@ -58,12 +60,15 @@ type SelectedEvent = {
   rowId: string;
   aliasWith: WithClause[];
   sessionId: string;
+  /** Set for log events; spans live on the trace source. */
+  sourceId?: string;
 };
 
 const sessionEventSchema = z.object({
   rowId: z.string(),
   aliasWith: z.array(WithClauseSchema),
   sessionId: z.string(),
+  sourceId: z.string().optional(),
 });
 
 const sessionEventParser = parseAsJsonEncoded<SelectedEvent>(
@@ -129,25 +134,34 @@ export default function SessionSidePanel({
     initialRowId: selectedEvent?.rowId,
   });
 
+  const clearSpanSelection = useClearSpanSelection();
+
   const handleBackToSession = useCallback(() => {
     setSelectedEvent(null);
     sidePanelStack.clearTrail();
   }, [setSelectedEvent, sidePanelStack]);
 
-  const handleEventNavigate = useCallback(
-    (rowId: string, aliasWith: WithClause[]) => {
+  const handleEventNavigate = useCallback<SessionEventNavigate>(
+    (rowId, aliasWith, target) => {
+      clearSpanSelection();
       sidePanelStack.clearTrail();
-      setSelectedEvent({ rowId, aliasWith, sessionId });
+      setSelectedEvent({
+        rowId,
+        aliasWith,
+        sessionId,
+        sourceId: target?.sourceId,
+      });
     },
-    [setSelectedEvent, sidePanelStack, sessionId],
+    [clearSpanSelection, setSelectedEvent, sidePanelStack, sessionId],
   );
 
   // X / Esc-at-root closes the whole panel and clears the session-panel params.
   const handleClose = useCallback(() => {
+    clearSpanSelection();
     setSelectedEvent(null);
     sidePanelStack.clearTrail();
     onClose();
-  }, [setSelectedEvent, sidePanelStack, onClose]);
+  }, [clearSpanSelection, setSelectedEvent, sidePanelStack, onClose]);
 
   useHotkeys(['esc'], handleClose, { enabled: !selectedEvent });
 
@@ -224,7 +238,8 @@ export default function SessionSidePanel({
                   />
                 )}
               >
-                <DBRowSidePanelInner
+                <SessionEventSourcePanel
+                  sourceId={selectedEvent.sourceId}
                   source={traceSource}
                   rowId={selectedEvent.rowId}
                   aliasWith={selectedEvent.aliasWith}
