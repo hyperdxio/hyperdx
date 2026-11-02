@@ -2,6 +2,7 @@ import {
   ClickHouseError,
   type ClickHouseSettings,
 } from '@clickhouse/client-common';
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
@@ -38,6 +39,7 @@ import {
   MCP_TIMEOUT_GRACE_MS,
   MCP_TOOL_TIMEOUT_MS,
 } from '@/mcp/utils/timeout';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 import {
   convertToInternalTileConfig,
   isConfigTile,
@@ -476,6 +478,7 @@ export async function runConfigTile(
         `Source not found: ${builderConfig.source}. Call clickstack_list_sources to discover available source IDs.`,
       );
     }
+    recordMcpSource(source);
 
     // Reject metric-style select against a non-metric source (and vice
     // versa) before the renderer composes SQL against the wrong table.
@@ -606,15 +609,19 @@ export async function runConfigTile(
 
     const metadata = getMetadata(clickhouseClient);
     try {
-      const result = await clickhouseClient.queryChartConfig({
-        config: renderConfig,
-        metadata,
-        querySettings: source.querySettings,
-        opts: {
-          clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
-          abort_signal: options?.abortSignal,
-        },
-      });
+      const result = await withQueryAttribution(
+        { source: source._id.toString() },
+        () =>
+          clickhouseClient.queryChartConfig({
+            config: renderConfig,
+            metadata,
+            querySettings: source.querySettings,
+            opts: {
+              clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+              abort_signal: options?.abortSignal,
+            },
+          }),
+      );
       return formatQueryResult(result);
     } catch (e) {
       return clickHouseErrorResult(e);
@@ -633,9 +640,12 @@ export async function runConfigTile(
     useTextIndexForImplicitColumn?: UseTextIndex;
     metricTables?: MetricTable;
   } = {};
+  let resolvedSourceId: string | undefined;
   if (savedConfig.source) {
     const source = await getSource(teamId, savedConfig.source);
     if (source) {
+      recordMcpSource(source);
+      resolvedSourceId = source._id.toString();
       sourceFields = {
         from: source.from,
         implicitColumnExpression:
@@ -681,15 +691,20 @@ export async function runConfigTile(
 
   const metadata = getMetadata(clickhouseClient);
   try {
-    const result = await clickhouseClient.queryChartConfig({
-      config: chartConfig,
-      metadata,
-      querySettings: undefined,
-      opts: {
-        clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
-        abort_signal: options?.abortSignal,
-      },
-    });
+    // An unset source leaves the outer attribution as is.
+    const result = await withQueryAttribution(
+      { source: resolvedSourceId },
+      () =>
+        clickhouseClient.queryChartConfig({
+          config: chartConfig,
+          metadata,
+          querySettings: undefined,
+          opts: {
+            clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+            abort_signal: options?.abortSignal,
+          },
+        }),
+    );
     return formatQueryResult(result);
   } catch (e) {
     return clickHouseErrorResult(e, { rawSql: true });

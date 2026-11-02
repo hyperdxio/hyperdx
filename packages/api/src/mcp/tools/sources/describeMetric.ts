@@ -6,6 +6,7 @@ import {
   JSDataType,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -25,6 +26,7 @@ import {
   sanitizeFetchError,
 } from '@/mcp/utils/errors';
 import { MCP_TOOL_TIMEOUT_MS, runWithTimeout } from '@/mcp/utils/timeout';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -478,6 +480,7 @@ async function describeMetricImpl(
       `Source "${input.sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
     );
   }
+  recordMcpSource(source);
   if (source.kind !== SourceKind.Metric) {
     return mcpUserError(
       `Source "${input.sourceId}" is a "${source.kind}" source, not a metric source. clickstack_describe_metric only works on metric sources.`,
@@ -494,212 +497,218 @@ async function describeMetricImpl(
   }
   const { startDate, endDate } = timeRange;
 
-  const connection = await getConnectionById(
-    teamId,
-    source.connection.toString(),
-    true,
-  );
-  if (!connection) {
-    return mcpUserError(`Connection not found for source "${input.sourceId}".`);
-  }
-
-  const clickhouseClient = new ClickhouseClient({
-    host: connection.host,
-    username: connection.username,
-    password: connection.password,
-  });
-  const metadata = getMetadata(clickhouseClient);
-  const databaseName = source.from.databaseName;
-  const connectionId = source.connection.toString();
-
-  // Validate the requested kind has a populated table on this source.
-  // The schema requires `kind`, so we always have an exact target.
-  const kind = input.kind;
-  const tableName = source.metricTables[kind];
-  if (!tableName) {
-    return mcpUserError(
-      `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
+  return withQueryAttribution({ source: source._id.toString() }, async () => {
+    const connection = await getConnectionById(
+      teamId,
+      source.connection.toString(),
+      true,
     );
-  }
-
-  // Defensive column-presence check before referencing MetricUnit /
-  // MetricDescription on this kind's table.
-  let columns: { name: string; type: string }[];
-  try {
-    columns = await metadata.getColumns({
-      databaseName,
-      tableName,
-      connectionId,
-    });
-  } catch (e) {
-    logger.warn(
-      { kind, error: e instanceof Error ? e.message : String(e) },
-      'describeMetric: getColumns failed',
-    );
-    return clickHouseErrorResult(e, {
-      prefix: `Failed to load columns for "${tableName}"`,
-      suffix: 'The metric table may be missing or unreachable.',
-    });
-  }
-  const columnNames = new Set(columns.map(c => c.name));
-  const hasUnit = columnNames.has('MetricUnit');
-  const hasDescription = columnNames.has('MetricDescription');
-
-  const [meta, attributeKeysResult] = await Promise.all([
-    fetchUnitAndDescription({
-      clickhouseClient,
-      databaseName,
-      tableName,
-      connectionId,
-      metricName: input.metricName,
-      startDate,
-      endDate,
-      hasUnit,
-      hasDescription,
-      signal,
-    }),
-    fetchAttributeKeys({
-      clickhouseClient,
-      databaseName,
-      tableName,
-      connectionId,
-      metricName: input.metricName,
-      columns,
-      startDate,
-      endDate,
-      signal,
-    }),
-  ]);
-
-  // Track discovery sub-queries that failed so the agent can distinguish
-  // "fetch failed" (retry / report) from "genuinely empty" (widen the
-  // window). Without this, transient ClickHouse errors surfaced as the
-  // misleading "No data found" hint.
-  const partialFailure: { stage: string; error: string }[] = [];
-  const attributeKeys = attributeKeysResult.ok ? attributeKeysResult.data : {};
-  if (!attributeKeysResult.ok) {
-    partialFailure.push({
-      stage: 'attributeKeys',
-      error: attributeKeysResult.error,
-    });
-  }
-
-  const kindDetail: KindDetail = {
-    kind,
-    tableName,
-    ...(meta.unit ? { unit: meta.unit } : {}),
-    ...(meta.description ? { description: meta.description } : {}),
-    attributeKeys,
-    usage: KIND_USAGE[kind],
-  };
-
-  if (input.sampleValues && Object.keys(attributeKeys).length > 0) {
-    const valuesResult = await sampleAttributeValues({
-      clickhouseClient,
-      databaseName,
-      tableName,
-      connectionId,
-      metricName: input.metricName,
-      attributeKeys,
-      startDate,
-      endDate,
-      signal,
-    });
-    if (valuesResult.ok) {
-      kindDetail.attributeValues = valuesResult.data.values;
-      // sampledKeys / truncatedKeys let the agent tell "key absent
-      // because we never queried it" (truncated) apart from "queried
-      // but empty in the window" (in sampledKeys, missing from values).
-      kindDetail.attributeValuesMeta = valuesResult.data.meta;
-    } else {
-      partialFailure.push({
-        stage: 'attributeValues',
-        error: valuesResult.error,
-      });
-    }
-  }
-
-  const kindDetails: KindDetail[] = [kindDetail];
-
-  // Heuristic "no data in this kind" hint: when neither attribute keys,
-  // unit, nor description came back, the (metric, kind) pair likely has
-  // no data in the requested window. The agent's recourse is to widen
-  // startTime/endTime or double-check the kind via clickstack_list_metrics.
-  // Suppressed when any discovery stage failed — an empty attributeKeys
-  // can't be trusted as "no data" then.
-  const noSignal =
-    partialFailure.length === 0 &&
-    Object.keys(attributeKeys).length === 0 &&
-    !meta.unit &&
-    !meta.description;
-
-  const makeNextStepsQuery = () => {
-    if (kind === 'summary') {
-      // Summary metrics have no renderer support, so the next step is
-      // clickstack_sql rather than a builder-tool example.
-      // clickstack_sql runs with no source context, so qualify the table
-      // with the source's database — a bare table name would resolve
-      // against the connection user's default database.
-      const qualifiedTable = databaseName
-        ? `${databaseName}.${tableName}`
-        : tableName;
-      return (
-        'summary metrics cannot be queried with clickstack_timeseries / clickstack_table — ' +
-        `use clickstack_sql against the "${qualifiedTable}" table with this source's connectionId ` +
-        '(see clickstack_list_sources).'
+    if (!connection) {
+      return mcpUserError(
+        `Connection not found for source "${input.sourceId}".`,
       );
     }
 
-    let aggFn = '"avg"';
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+    const metadata = getMetadata(clickhouseClient);
+    const databaseName = source.from.databaseName;
+    const connectionId = source.connection.toString();
 
-    if (kind === 'sum') {
-      aggFn = '"increase"';
-    } else if (kind === 'histogram' || kind === 'exponential histogram') {
-      aggFn = '"quantile", level: 0.95';
+    // Validate the requested kind has a populated table on this source.
+    // The schema requires `kind`, so we always have an exact target.
+    const kind = input.kind;
+    const tableName = source.metricTables[kind];
+    if (!tableName) {
+      return mcpUserError(
+        `Source "${input.sourceId}" has no "${kind}" metric table populated. Populated kinds: ${Object.keys(source.metricTables).join(', ')}.`,
+      );
     }
 
-    return `Example: clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${aggFn}, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
-  };
+    // Defensive column-presence check before referencing MetricUnit /
+    // MetricDescription on this kind's table.
+    let columns: { name: string; type: string }[];
+    try {
+      columns = await metadata.getColumns({
+        databaseName,
+        tableName,
+        connectionId,
+      });
+    } catch (e) {
+      logger.warn(
+        { kind, error: e instanceof Error ? e.message : String(e) },
+        'describeMetric: getColumns failed',
+      );
+      return clickHouseErrorResult(e, {
+        prefix: `Failed to load columns for "${tableName}"`,
+        suffix: 'The metric table may be missing or unreachable.',
+      });
+    }
+    const columnNames = new Set(columns.map(c => c.name));
+    const hasUnit = columnNames.has('MetricUnit');
+    const hasDescription = columnNames.has('MetricDescription');
 
-  const responseObj: Record<string, unknown> = {
-    metricName: input.metricName,
-    kinds: kindDetails,
-    ...(partialFailure.length > 0 && {
-      partialFailure,
-      hint:
-        'Some discovery queries failed — the fields above may be incomplete. ' +
-        'Retry the call; if the failure persists, narrow startTime/endTime or set sampleValues:false.',
-    }),
-    ...(noSignal && {
-      hint:
-        `No data found for MetricName "${input.metricName}" with kind "${kind}" ` +
-        `between ${startDate.toISOString()} and ${endDate.toISOString()}. ` +
-        'Try widening startTime/endTime, or call clickstack_list_metrics to ' +
-        'confirm the metric name + kind combination exists.',
-    }),
-    nextSteps: {
-      query: makeNextStepsQuery(),
-    },
-  };
+    const [meta, attributeKeysResult] = await Promise.all([
+      fetchUnitAndDescription({
+        clickhouseClient,
+        databaseName,
+        tableName,
+        connectionId,
+        metricName: input.metricName,
+        startDate,
+        endDate,
+        hasUnit,
+        hasDescription,
+        signal,
+      }),
+      fetchAttributeKeys({
+        clickhouseClient,
+        databaseName,
+        tableName,
+        connectionId,
+        metricName: input.metricName,
+        columns,
+        startDate,
+        endDate,
+        signal,
+      }),
+    ]);
 
-  const { data: trimmed, isTrimmed } = trimToolResponse(responseObj);
-  return {
-    content: [
-      {
-        type: 'text' as const,
-        text: JSON.stringify(
-          isTrimmed
-            ? {
-                ...trimmed,
-                note: 'Result was trimmed for context size. Set sampleValues:false or narrow startTime/endTime.',
-              }
-            : trimmed,
-          null,
-          2,
-        ),
+    // Track discovery sub-queries that failed so the agent can distinguish
+    // "fetch failed" (retry / report) from "genuinely empty" (widen the
+    // window). Without this, transient ClickHouse errors surfaced as the
+    // misleading "No data found" hint.
+    const partialFailure: { stage: string; error: string }[] = [];
+    const attributeKeys = attributeKeysResult.ok
+      ? attributeKeysResult.data
+      : {};
+    if (!attributeKeysResult.ok) {
+      partialFailure.push({
+        stage: 'attributeKeys',
+        error: attributeKeysResult.error,
+      });
+    }
+
+    const kindDetail: KindDetail = {
+      kind,
+      tableName,
+      ...(meta.unit ? { unit: meta.unit } : {}),
+      ...(meta.description ? { description: meta.description } : {}),
+      attributeKeys,
+      usage: KIND_USAGE[kind],
+    };
+
+    if (input.sampleValues && Object.keys(attributeKeys).length > 0) {
+      const valuesResult = await sampleAttributeValues({
+        clickhouseClient,
+        databaseName,
+        tableName,
+        connectionId,
+        metricName: input.metricName,
+        attributeKeys,
+        startDate,
+        endDate,
+        signal,
+      });
+      if (valuesResult.ok) {
+        kindDetail.attributeValues = valuesResult.data.values;
+        // sampledKeys / truncatedKeys let the agent tell "key absent
+        // because we never queried it" (truncated) apart from "queried
+        // but empty in the window" (in sampledKeys, missing from values).
+        kindDetail.attributeValuesMeta = valuesResult.data.meta;
+      } else {
+        partialFailure.push({
+          stage: 'attributeValues',
+          error: valuesResult.error,
+        });
+      }
+    }
+
+    const kindDetails: KindDetail[] = [kindDetail];
+
+    // Heuristic "no data in this kind" hint: when neither attribute keys,
+    // unit, nor description came back, the (metric, kind) pair likely has
+    // no data in the requested window. The agent's recourse is to widen
+    // startTime/endTime or double-check the kind via clickstack_list_metrics.
+    // Suppressed when any discovery stage failed — an empty attributeKeys
+    // can't be trusted as "no data" then.
+    const noSignal =
+      partialFailure.length === 0 &&
+      Object.keys(attributeKeys).length === 0 &&
+      !meta.unit &&
+      !meta.description;
+
+    const makeNextStepsQuery = () => {
+      if (kind === 'summary') {
+        // Summary metrics have no renderer support, so the next step is
+        // clickstack_sql rather than a builder-tool example.
+        // clickstack_sql runs with no source context, so qualify the table
+        // with the source's database — a bare table name would resolve
+        // against the connection user's default database.
+        const qualifiedTable = databaseName
+          ? `${databaseName}.${tableName}`
+          : tableName;
+        return (
+          'summary metrics cannot be queried with clickstack_timeseries / clickstack_table — ' +
+          `use clickstack_sql against the "${qualifiedTable}" table with this source's connectionId ` +
+          '(see clickstack_list_sources).'
+        );
+      }
+
+      let aggFn = '"avg"';
+
+      if (kind === 'sum') {
+        aggFn = '"increase"';
+      } else if (kind === 'histogram' || kind === 'exponential histogram') {
+        aggFn = '"quantile", level: 0.95';
+      }
+
+      return `Example: clickstack_timeseries({ sourceId: "${input.sourceId}", select: [{ aggFn: ${aggFn}, metricType: "${kind}", metricName: "${input.metricName}" }] })`;
+    };
+
+    const responseObj: Record<string, unknown> = {
+      metricName: input.metricName,
+      kinds: kindDetails,
+      ...(partialFailure.length > 0 && {
+        partialFailure,
+        hint:
+          'Some discovery queries failed — the fields above may be incomplete. ' +
+          'Retry the call; if the failure persists, narrow startTime/endTime or set sampleValues:false.',
+      }),
+      ...(noSignal && {
+        hint:
+          `No data found for MetricName "${input.metricName}" with kind "${kind}" ` +
+          `between ${startDate.toISOString()} and ${endDate.toISOString()}. ` +
+          'Try widening startTime/endTime, or call clickstack_list_metrics to ' +
+          'confirm the metric name + kind combination exists.',
+      }),
+      nextSteps: {
+        query: makeNextStepsQuery(),
       },
-    ],
-  };
+    };
+
+    const { data: trimmed, isTrimmed } = trimToolResponse(responseObj);
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text: JSON.stringify(
+            isTrimmed
+              ? {
+                  ...trimmed,
+                  note: 'Result was trimmed for context size. Set sampleValues:false or narrow startTime/endTime.',
+                }
+              : trimmed,
+            null,
+            2,
+          ),
+        },
+      ],
+    };
+  });
 }
 
 // ─── Tool registration ───────────────────────────────────────────────────────

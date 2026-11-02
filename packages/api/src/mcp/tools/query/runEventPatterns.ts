@@ -1,3 +1,4 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   getFirstTimestampValueExpression,
@@ -19,6 +20,7 @@ import {
   mcpUserError,
 } from '@/mcp/utils/errors';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
@@ -72,6 +74,7 @@ export async function mineWindowPatterns(
       ),
     };
   }
+  recordMcpSource(source);
   const connection = await getConnectionById(
     teamId,
     source.connection.toString(),
@@ -181,30 +184,34 @@ export async function mineWindowPatterns(
   // (emerging_signals opens two per invocation).
   let sampleResult, countResult;
   try {
-    [sampleResult, countResult] = await Promise.all([
-      clickhouseClient.queryChartConfig({
-        config: sampleConfig,
-        metadata,
-        querySettings: source.querySettings,
-        opts: {
-          clickhouse_settings: {
-            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
-          },
-          abort_signal: options?.abortSignal,
-        },
-      }),
-      clickhouseClient.queryChartConfig({
-        config: countConfig,
-        metadata,
-        querySettings: source.querySettings,
-        opts: {
-          clickhouse_settings: {
-            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
-          },
-          abort_signal: options?.abortSignal,
-        },
-      }),
-    ]);
+    [sampleResult, countResult] = await withQueryAttribution(
+      { source: source._id.toString() },
+      () =>
+        Promise.all([
+          clickhouseClient.queryChartConfig({
+            config: sampleConfig,
+            metadata,
+            querySettings: source.querySettings,
+            opts: {
+              clickhouse_settings: {
+                max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+              },
+              abort_signal: options?.abortSignal,
+            },
+          }),
+          clickhouseClient.queryChartConfig({
+            config: countConfig,
+            metadata,
+            querySettings: source.querySettings,
+            opts: {
+              clickhouse_settings: {
+                max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+              },
+              abort_signal: options?.abortSignal,
+            },
+          }),
+        ]),
+    );
   } catch (err) {
     return { error: clickHouseErrorResult(err) };
   } finally {

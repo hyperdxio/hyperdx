@@ -1,3 +1,4 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import {
   getStableSampleExpression,
   rankProperties,
@@ -18,6 +19,7 @@ import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
@@ -245,6 +247,8 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
           `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
         );
       }
+      recordMcpSource(source);
+      const sourceAttribution = { source: source._id.toString() };
       if (source.kind !== SourceKind.Trace && source.kind !== SourceKind.Log) {
         return mcpUserError(
           `Source ${input.sourceId} is kind="${source.kind}". clickstack_event_deltas requires a trace or log source.`,
@@ -318,17 +322,20 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
       let columnMeta: { name: string; type: string }[] = [];
       let columnMetaUnavailable = false;
       try {
-        const [targetResult, baselineResult, colsResult] = await Promise.all([
-          renderChartConfig(targetConfig, metadata, source.querySettings),
-          renderChartConfig(baselineConfig, metadata, source.querySettings),
-          metadata
-            .getColumns({
-              databaseName: source.from.databaseName,
-              tableName: source.from.tableName,
-              connectionId: source.connection.toString(),
-            })
-            .catch(() => null),
-        ]);
+        const [targetResult, baselineResult, colsResult] =
+          await withQueryAttribution(sourceAttribution, () =>
+            Promise.all([
+              renderChartConfig(targetConfig, metadata, source.querySettings),
+              renderChartConfig(baselineConfig, metadata, source.querySettings),
+              metadata
+                .getColumns({
+                  databaseName: source.from.databaseName,
+                  tableName: source.from.tableName,
+                  connectionId: source.connection.toString(),
+                })
+                .catch(() => null),
+            ]),
+          );
         targetSql = targetResult;
         baselineSql = baselineResult;
         if (colsResult) {
@@ -350,28 +357,32 @@ export function registerEventDeltas({ context, registerTool }: ToolRegistrar) {
       let baselineRows: Record<string, any>[];
       const abortController = new AbortController();
       try {
-        const [targetRes, baselineRes] = await Promise.all([
-          clickhouseClient.query({
-            query: targetSql.sql,
-            query_params: targetSql.params,
-            format: 'JSON',
-            connectionId: source.connection.toString(),
-            clickhouse_settings: {
-              max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
-            },
-            abort_signal: abortController.signal,
-          }),
-          clickhouseClient.query({
-            query: baselineSql.sql,
-            query_params: baselineSql.params,
-            format: 'JSON',
-            connectionId: source.connection.toString(),
-            clickhouse_settings: {
-              max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
-            },
-            abort_signal: abortController.signal,
-          }),
-        ]);
+        const [targetRes, baselineRes] = await withQueryAttribution(
+          sourceAttribution,
+          () =>
+            Promise.all([
+              clickhouseClient.query({
+                query: targetSql.sql,
+                query_params: targetSql.params,
+                format: 'JSON',
+                connectionId: source.connection.toString(),
+                clickhouse_settings: {
+                  max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+                },
+                abort_signal: abortController.signal,
+              }),
+              clickhouseClient.query({
+                query: baselineSql.sql,
+                query_params: baselineSql.params,
+                format: 'JSON',
+                connectionId: source.connection.toString(),
+                clickhouse_settings: {
+                  max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+                },
+                abort_signal: abortController.signal,
+              }),
+            ]),
+        );
         const targetJson = (await (
           targetRes as { json: () => Promise<{ data: any[] }> }
         ).json()) ?? { data: [] };

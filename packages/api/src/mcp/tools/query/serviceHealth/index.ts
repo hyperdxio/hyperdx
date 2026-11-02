@@ -1,3 +1,4 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import { trace } from '@opentelemetry/api';
@@ -90,119 +91,121 @@ export function registerServiceHealth({
 
       const source = await loadHealthSource(teamId, input.sourceId, TOOL_NAME);
       if ('isError' in source) return source;
-      const client = await getMcpClickhouseClient(teamId, source.connection);
-      if (!client) {
-        return mcpUserError(
-          `Connection not found for source: ${input.sourceId}`,
-        );
-      }
-      const groupExprs = errorGroupExpressions(
-        source,
-        input.errorGroupBy,
-        splitAndTrimWithBracket,
-      );
-
-      const abort = new AbortController();
-      const ctx: QueryContext = {
-        client,
-        metadata: getMetadata(client),
-        source,
-        input,
-        signal: abort.signal,
-      };
-
-      try {
-        const [cur, requestedCmp] = await Promise.all([
-          fetchServiceStats(ctx, current),
-          requested ? fetchServiceStats(ctx, requested) : null,
-        ]);
-        const { comparison, cmp, comparisonMode, comparisonNote } =
-          await resolveComparison(ctx, {
-            current,
-            requested,
-            requestedMode: input.comparison,
-            curHasData: cur.stats.size > 0,
-            requestedCmp,
-          });
-        const ranked = rankServices(
-          cur.stats,
-          cmp?.stats ?? null,
-          input.minRequests,
+      return withQueryAttribution({ source: source.id }, async () => {
+        const client = await getMcpClickhouseClient(teamId, source.connection);
+        if (!client) {
+          return mcpUserError(
+            `Connection not found for source: ${input.sourceId}`,
+          );
+        }
+        const groupExprs = errorGroupExpressions(
+          source,
+          input.errorGroupBy,
+          splitAndTrimWithBracket,
         );
 
-        const {
-          currentErrors,
-          comparisonErrorCounts,
-          newOperations,
-          coverageNote,
-        } = await collectErrors(ctx, {
-          current,
-          comparison,
-          // Novelty can lift a service into the top N, so assess errors
-          // beyond it rather than only for services already ranked there.
-          shown: ranked.slice(0, MAX_ERROR_SERVICES),
-          perService: input.topErrorsPerService,
-          groupExprs,
-          minRequests: input.minRequests,
-          totalServices: ranked.length,
-        });
-
-        const report = buildReport({
-          ranked,
-          current,
-          comparison,
-          comparisonMode,
-          comparisonNote,
-          coverageNote,
-          spanKind: input.spanKind,
-          topN: input.topN,
-          errorGroupBy: groupExprs,
-          currentErrors,
-          comparisonErrorCounts,
-          newOperations,
-          spanNameKey: source.spanNameExpression,
-          metricSourceId: source.metricSourceId,
-        });
-
-        trace.getActiveSpan()?.setAttributes({
-          'hyperdx.source.id': source.id,
-          'mcp.service_health.comparison': input.comparison,
-          'mcp.service_health.comparison_used': comparisonMode,
-          'mcp.service_health.span_kind': input.spanKind,
-          'mcp.service_health.window_ms':
-            current.end.getTime() - current.start.getTime(),
-          'mcp.service_health.services_assessed': ranked.length,
-          'mcp.service_health.critical_count':
-            report.summary.statusCounts.critical,
-          'mcp.service_health.degraded_count':
-            report.summary.statusCounts.degraded,
-        });
-
-        const { data, isTrimmed } = trimToolResponse(report);
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(
-                isTrimmed
-                  ? {
-                      ...data,
-                      note: 'Trimmed for context size. Lower topN or topErrorsPerService.',
-                    }
-                  : data,
-                null,
-                2,
-              ),
-            },
-          ],
+        const abort = new AbortController();
+        const ctx: QueryContext = {
+          client,
+          metadata: getMetadata(client),
+          source,
+          input,
+          signal: abort.signal,
         };
-      } catch (e) {
-        abort.abort();
-        return clickHouseErrorResult(e, {
-          prefix: 'Failed to compute service health',
-          suffix: isQueryOutOfTime(e) ? TIMEOUT_SUFFIX : undefined,
-        });
-      }
+
+        try {
+          const [cur, requestedCmp] = await Promise.all([
+            fetchServiceStats(ctx, current),
+            requested ? fetchServiceStats(ctx, requested) : null,
+          ]);
+          const { comparison, cmp, comparisonMode, comparisonNote } =
+            await resolveComparison(ctx, {
+              current,
+              requested,
+              requestedMode: input.comparison,
+              curHasData: cur.stats.size > 0,
+              requestedCmp,
+            });
+          const ranked = rankServices(
+            cur.stats,
+            cmp?.stats ?? null,
+            input.minRequests,
+          );
+
+          const {
+            currentErrors,
+            comparisonErrorCounts,
+            newOperations,
+            coverageNote,
+          } = await collectErrors(ctx, {
+            current,
+            comparison,
+            // Novelty can lift a service into the top N, so assess errors
+            // beyond it rather than only for services already ranked there.
+            shown: ranked.slice(0, MAX_ERROR_SERVICES),
+            perService: input.topErrorsPerService,
+            groupExprs,
+            minRequests: input.minRequests,
+            totalServices: ranked.length,
+          });
+
+          const report = buildReport({
+            ranked,
+            current,
+            comparison,
+            comparisonMode,
+            comparisonNote,
+            coverageNote,
+            spanKind: input.spanKind,
+            topN: input.topN,
+            errorGroupBy: groupExprs,
+            currentErrors,
+            comparisonErrorCounts,
+            newOperations,
+            spanNameKey: source.spanNameExpression,
+            metricSourceId: source.metricSourceId,
+          });
+
+          trace.getActiveSpan()?.setAttributes({
+            'hyperdx.source.id': source.id,
+            'mcp.service_health.comparison': input.comparison,
+            'mcp.service_health.comparison_used': comparisonMode,
+            'mcp.service_health.span_kind': input.spanKind,
+            'mcp.service_health.window_ms':
+              current.end.getTime() - current.start.getTime(),
+            'mcp.service_health.services_assessed': ranked.length,
+            'mcp.service_health.critical_count':
+              report.summary.statusCounts.critical,
+            'mcp.service_health.degraded_count':
+              report.summary.statusCounts.degraded,
+          });
+
+          const { data, isTrimmed } = trimToolResponse(report);
+          return {
+            content: [
+              {
+                type: 'text' as const,
+                text: JSON.stringify(
+                  isTrimmed
+                    ? {
+                        ...data,
+                        note: 'Trimmed for context size. Lower topN or topErrorsPerService.',
+                      }
+                    : data,
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        } catch (e) {
+          abort.abort();
+          return clickHouseErrorResult(e, {
+            prefix: 'Failed to compute service health',
+            suffix: isQueryOutOfTime(e) ? TIMEOUT_SUFFIX : undefined,
+          });
+        }
+      });
     },
   );
 }

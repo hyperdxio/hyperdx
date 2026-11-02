@@ -3,6 +3,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { getSource, getSources } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 
 import type { HealthSource } from './queries';
 
@@ -56,6 +57,7 @@ export async function loadHealthSource(
 ): Promise<HealthSource | McpErrorResult> {
   const doc = await getSource(teamId, sourceId);
   if (!doc) return sourceNotFound(teamId, sourceId, toolName);
+  recordMcpSource(doc);
   if (doc.kind !== SourceKind.Trace) {
     return mcpUserError(
       `Source ${sourceId} is kind="${doc.kind}". ${toolName} requires a source of kind="trace".`,

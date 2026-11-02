@@ -1,4 +1,7 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
 import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
+import type { SourceKind } from '@hyperdx/common-utils/dist/types';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { recordOnboardingTaskCompletion } from '@/controllers/user';
@@ -9,6 +12,7 @@ import {
   getActiveTraceId,
   getCounter,
   getHistogram,
+  type Span,
   SpanStatusCode,
   withSpan,
 } from '@/utils/instrumentation';
@@ -32,6 +36,41 @@ const toolResponseSizeHistogram = getHistogram(
     unit: 'By',
   },
 );
+
+type ToolSourceScope = {
+  span: Span;
+  /** Insertion-ordered, so the first source resolved stays the primary one. */
+  sources: Map<string, SourceKind>;
+};
+
+const toolSourceScope = new AsyncLocalStorage<ToolSourceScope>();
+
+/**
+ * Records a source the current MCP tool reads on its tool span, for analytics
+ * on MCP usage. The tool span is taken from the tool's own scope rather than
+ * the active span, which may be a nested child span by the time a source is
+ * resolved. A no-op outside a tool invocation.
+ */
+export function recordMcpSource(source: {
+  _id: { toString(): string };
+  kind: SourceKind;
+}): void {
+  const scope = toolSourceScope.getStore();
+  if (!scope) return;
+  const id = source._id.toString();
+  if (scope.sources.has(id)) return;
+  scope.sources.set(id, source.kind);
+  if (scope.sources.size === 1) {
+    scope.span.setAttribute('mcp.source.id', id);
+    scope.span.setAttribute('mcp.source.kind', source.kind);
+  }
+  scope.span.setAttribute('mcp.source.ids', [...scope.sources.keys()]);
+}
+
+/** Metric attribute value: the primary source's kind, never its id. */
+function getSourceKindLabel(scope: ToolSourceScope): SourceKind | 'none' {
+  return scope.sources.values().next().value ?? 'none';
+}
 
 /** UTF-8 bytes of a tool result's text blocks: what the model has to read. */
 function getResponseSizeBytes(
@@ -96,6 +135,7 @@ export function withToolTracing<TArgs>(
       `mcp.tool.${toolName}`,
       async span => {
         const startTime = Date.now();
+        const sourceScope: ToolSourceScope = { span, sources: new Map() };
         span.setAttribute('mcp.tool.name', toolName);
         span.setAttribute('mcp.team.id', context.teamId);
         span.setAttribute('mcp.user.id', context.userId);
@@ -117,9 +157,10 @@ export function withToolTracing<TArgs>(
               label: toolName,
               trace: getActiveTraceId(),
             },
-            async () => handler(args),
+            async () => toolSourceScope.run(sourceScope, () => handler(args)),
           );
           const durationMs = Date.now() - startTime;
+          const sourceKind = getSourceKindLabel(sourceScope);
           const responseBytes = getResponseSizeBytes(result.content);
           span.setAttribute('mcp.tool.response.size_bytes', responseBytes);
           toolResponseSizeHistogram.record(responseBytes, {
@@ -144,6 +185,7 @@ export function withToolTracing<TArgs>(
             toolErrorCounter.add(1, {
               tool: toolName,
               error_category: errorCategory,
+              source_kind: sourceKind,
             });
             logger.warn(
               {
@@ -166,16 +208,24 @@ export function withToolTracing<TArgs>(
           }
 
           span.setAttribute('mcp.tool.duration_ms', durationMs);
-          toolDurationHistogram.record(durationMs, { tool: toolName });
+          toolDurationHistogram.record(durationMs, {
+            tool: toolName,
+            source_kind: sourceKind,
+          });
           return result;
         } catch (err) {
           const durationMs = Date.now() - startTime;
+          const sourceKind = getSourceKindLabel(sourceScope);
           span.setAttribute('mcp.tool.duration_ms', durationMs);
           span.setAttribute('mcp.tool.error_category', 'server');
-          toolDurationHistogram.record(durationMs, { tool: toolName });
+          toolDurationHistogram.record(durationMs, {
+            tool: toolName,
+            source_kind: sourceKind,
+          });
           toolErrorCounter.add(1, {
             tool: toolName,
             error_category: 'server',
+            source_kind: sourceKind,
           });
 
           logger.error(

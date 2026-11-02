@@ -1,3 +1,4 @@
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -15,6 +16,7 @@ import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 
 import { resolveBodyExpression } from './helpers';
 
@@ -67,6 +69,7 @@ export async function denoiseSearchResults(
   if (!source) {
     return { rows, removedPatterns: [], skipped: 'source_not_found' };
   }
+  recordMcpSource(source);
 
   const bodyColumn = resolveBodyExpression(source);
   if (!bodyColumn) {
@@ -147,28 +150,32 @@ export async function denoiseSearchResults(
     ReturnType<typeof clickhouseClient.queryChartConfig>
   >;
   try {
-    [sampleResult, countResult] = await Promise.all([
-      clickhouseClient.queryChartConfig({
-        config: sampleConfig,
-        metadata,
-        querySettings: source.querySettings,
-        opts: {
-          clickhouse_settings: {
-            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
-          },
-        },
-      }),
-      clickhouseClient.queryChartConfig({
-        config: countConfig,
-        metadata,
-        querySettings: source.querySettings,
-        opts: {
-          clickhouse_settings: {
-            max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
-          },
-        },
-      }),
-    ]);
+    [sampleResult, countResult] = await withQueryAttribution(
+      { source: source._id.toString() },
+      () =>
+        Promise.all([
+          clickhouseClient.queryChartConfig({
+            config: sampleConfig,
+            metadata,
+            querySettings: source.querySettings,
+            opts: {
+              clickhouse_settings: {
+                max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+              },
+            },
+          }),
+          clickhouseClient.queryChartConfig({
+            config: countConfig,
+            metadata,
+            querySettings: source.querySettings,
+            opts: {
+              clickhouse_settings: {
+                max_execution_time: MCP_QUERY_MAX_EXECUTION_SEC,
+              },
+            },
+          }),
+        ]),
+    );
   } catch {
     // If sampling fails, return rows unmodified rather than failing the search
     return { rows, removedPatterns: [], skipped: 'sampling_failed' };

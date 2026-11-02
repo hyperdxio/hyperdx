@@ -6,6 +6,7 @@ import { getSource } from '@/controllers/sources';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 
 import { BUILDER_TOOLS_LIST, SQL_FALLBACK_CRITERIA } from './builderCatalog';
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
@@ -126,6 +127,7 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
             `Source not found: ${input.sourceId}. Call clickstack_list_sources to discover available source IDs.`,
           );
         }
+        recordMcpSource(source);
         // $__sourceTable expands to the source's table, so a mismatch would run
         // the query against a table on another server.
         const sourceConnectionId = source.connection.toString();

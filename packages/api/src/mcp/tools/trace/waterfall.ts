@@ -1,4 +1,5 @@
 import type { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { pickBucketTimestampColumn } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -27,6 +28,7 @@ import {
 } from '@/mcp/tools/trace/shared';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 import logger from '@/utils/logger';
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
@@ -349,209 +351,215 @@ export function registerTraceWaterfall({
           `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
         );
       }
+      recordMcpSource(source);
       if (source.kind !== SourceKind.Trace) {
         return mcpUserError(
           `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_waterfall requires a source of kind="trace".`,
         );
       }
 
-      const clickhouseClient = await getMcpClickhouseClient(
-        teamId.toString(),
-        source.connection.toString(),
-      );
-      if (!clickhouseClient) {
-        return mcpUserError(
-          `Connection not found for source: ${input.sourceId}`,
-        );
-      }
-      const metadata = getMetadata(clickhouseClient);
-
-      const traceIdExpr = source.traceIdExpression;
-      const spanIdExpr = source.spanIdExpression;
-      const parentSpanIdExpr = source.parentSpanIdExpression;
-      const spanNameExpr = source.spanNameExpression;
-      const spanKindExpr = source.spanKindExpression;
-      const durationExpr = source.durationExpression;
-      const tsExpr = source.timestampValueExpression;
-      const ts = await resolveTimestampExprs({
-        timestampValueExpression: tsExpr,
-        metadata,
-        databaseName: source.from.databaseName,
-        tableName: source.from.tableName,
-        connectionId: source.connection.toString(),
-      });
-      const serviceNameExpr = source.serviceNameExpression ?? "''";
-      const statusCodeExpr = source.statusCodeExpression ?? "''";
-      const statusMessageExpr = source.statusMessageExpression ?? "''";
-      const attrsExpr = source.eventAttributesExpression ?? 'map()';
-      const divisor = durationDivisor(source.durationPrecision);
-
-      let pickedTraceId = input.traceId;
-      if (!pickedTraceId) {
-        // Compose pickFilter with the pickBy-specific filter when needed.
-        let effectiveFilter = input.pickFilter;
-        let effectiveLanguage = input.pickFilterLanguage;
-        if (input.pickBy === 'first_error') {
-          // Statuses are typically stored as enum strings. Use SQL so we don't
-          // depend on lucene mapping the raw column name.
-          const errFilter = `${statusCodeExpr} = 'STATUS_CODE_ERROR'`;
-          if (effectiveFilter && effectiveLanguage === 'sql') {
-            effectiveFilter = `(${effectiveFilter}) AND (${errFilter})`;
-          } else if (effectiveFilter && effectiveLanguage === 'lucene') {
-            // Run lucene filter inside parens, AND with raw SQL.
-            // Easiest: convert to sql by AND-joining a fresh sql-only condition
-            // means we'd have to render lucene first. Compromise: tell user
-            // to express the error filter in pickFilter directly.
-            effectiveFilter = `(${effectiveFilter}) AND StatusCode:STATUS_CODE_ERROR`;
-            effectiveLanguage = 'lucene';
-          } else {
-            effectiveFilter = errFilter;
-            effectiveLanguage = 'sql';
-          }
-        }
-
-        const orderBy =
-          input.pickBy === 'slowest'
-            ? `max(${durationExpr}) DESC`
-            : input.pickBy === 'first_error'
-              ? `min(${ts.eventTs}) ASC`
-              : `max(${ts.eventTs}) DESC`;
-
-        const pickConfig: BuilderChartConfigWithDateRange = {
-          displayType: DisplayType.Table,
-          select: [
-            {
-              aggFn: 'count' as const,
-              valueExpression: '',
-              alias: 'span_count',
-              aggCondition: '',
-              aggConditionLanguage: 'sql' as const,
-            },
-          ],
-          from: source.from,
-          where: effectiveFilter,
-          whereLanguage: effectiveLanguage,
-          connection: source.connection.toString(),
-          timestampValueExpression: tsExpr,
-          implicitColumnExpression: source.implicitColumnExpression,
-          groupBy: traceIdExpr,
-          orderBy,
-          limit: { limit: 1 },
-          dateRange: [startDate, endDate],
-        };
-
-        let pickResult: { data?: Array<Record<string, unknown>> } = {};
-        try {
-          pickResult = (await clickhouseClient.queryChartConfig({
-            config: pickConfig as ChartConfigWithDateRange,
-            metadata,
-            querySettings: source.querySettings,
-            opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
-          })) as { data?: Array<Record<string, unknown>> };
-        } catch (e) {
-          return clickHouseErrorResult(e, 'Failed to pick a trace');
-        }
-
-        const firstRow = pickResult.data?.[0];
-        if (!firstRow) {
-          return {
-            content: [
-              {
-                type: 'text' as const,
-                text: JSON.stringify(
-                  {
-                    result: null,
-                    hint:
-                      'No traces matched. Widen the time range, relax pickFilter, or ' +
-                      'pass a specific traceId.',
-                    pickFilter: effectiveFilter,
-                    pickBy: input.pickBy,
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
-        }
-        // The grouped traceId column is rendered into the result with the
-        // expression text as its alias. Locate it by stripping non-data keys.
-        const candidate = Object.entries(firstRow).find(
-          ([k]) => k !== 'span_count' && k !== '__hdx_time_bucket',
-        );
-        if (!candidate || candidate[1] == null) {
-          return mcpUserError(
-            `Picker returned a row but no TraceId column was found. Row keys: ${Object.keys(firstRow).join(', ')}`,
+      return withQueryAttribution(
+        { source: source._id.toString() },
+        async () => {
+          const clickhouseClient = await getMcpClickhouseClient(
+            teamId.toString(),
+            source.connection.toString(),
           );
-        }
-        pickedTraceId = String(candidate[1]);
-      }
+          if (!clickhouseClient) {
+            return mcpUserError(
+              `Connection not found for source: ${input.sourceId}`,
+            );
+          }
+          const metadata = getMetadata(clickhouseClient);
 
-      // The fetch must be time-bounded so ClickHouse prunes partitions, but the
-      // [startDate, endDate] window is often too narrow to bound it safely:
-      //   - an explicit traceId with the default window may be for an older
-      //     trace outside it;
-      //   - in auto-pick mode startTime is the *pick* window ("find a slow
-      //     trace from the last hour"), not a fetch bound — the picked trace is
-      //     only guaranteed one span inside it, so its root/tail can lie outside
-      //     and the fetch would return a partial tree.
-      // Probe the trace's real [min, max] extent in both cases. The only time
-      // we honor the window verbatim is an explicit traceId WITH an explicit
-      // startTime, where the caller has deliberately set a fetch bound.
-      let fetchStart = startDate;
-      let fetchEnd = endDate;
-      let probeFailed = false;
-      let windowClamped = false;
-      const isAutoPick = input.traceId == null;
-      const usedDefaultWindow = input.startTime == null;
-      if (isAutoPick || usedDefaultWindow) {
-        const [probeStart, probeEnd] = isAutoPick
-          ? [
-              new Date(startDate.getTime() - TRACE_PROBE_AUTOPICK_MARGIN_MS),
-              new Date(endDate.getTime() + TRACE_PROBE_AUTOPICK_MARGIN_MS),
-            ]
-          : [
-              new Date(endDate.getTime() - TRACE_PROBE_MAX_LOOKBACK_MS),
-              endDate,
-            ];
-        try {
-          const probed = await probeTraceWindow(clickhouseClient, {
+          const traceIdExpr = source.traceIdExpression;
+          const spanIdExpr = source.spanIdExpression;
+          const parentSpanIdExpr = source.parentSpanIdExpression;
+          const spanNameExpr = source.spanNameExpression;
+          const spanKindExpr = source.spanKindExpression;
+          const durationExpr = source.durationExpression;
+          const tsExpr = source.timestampValueExpression;
+          const ts = await resolveTimestampExprs({
+            timestampValueExpression: tsExpr,
+            metadata,
             databaseName: source.from.databaseName,
             tableName: source.from.tableName,
             connectionId: source.connection.toString(),
-            traceIdExpr,
-            ts,
-            traceId: pickedTraceId,
-            startDate: probeStart,
-            endDate: probeEnd,
-            querySettings: source.querySettings,
           });
-          if (probed) {
-            fetchStart = probed.start;
-            fetchEnd = probed.end;
-            windowClamped = probed.clamped;
-          }
-        } catch (e) {
-          // probeTraceWindow returns null (not throws) for the empty case, so a
-          // throw means the probe genuinely didn't complete. The fallback window
-          // will likely also come back empty, so flag it for an accurate hint.
-          logger.warn(
-            {
-              error: e,
-              teamId,
-              traceId: pickedTraceId,
-              sourceId: input.sourceId,
-            },
-            'trace waterfall extent probe failed',
-          );
-          probeFailed = true;
-        }
-      }
+          const serviceNameExpr = source.serviceNameExpression ?? "''";
+          const statusCodeExpr = source.statusCodeExpression ?? "''";
+          const statusMessageExpr = source.statusMessageExpression ?? "''";
+          const attrsExpr = source.eventAttributesExpression ?? 'map()';
+          const divisor = durationDivisor(source.durationPrecision);
 
-      let rows: SpanRow[];
-      try {
-        const timeFilter = await ts.timeFilter(fetchStart, fetchEnd);
-        const treeQuery = `
+          let pickedTraceId = input.traceId;
+          if (!pickedTraceId) {
+            // Compose pickFilter with the pickBy-specific filter when needed.
+            let effectiveFilter = input.pickFilter;
+            let effectiveLanguage = input.pickFilterLanguage;
+            if (input.pickBy === 'first_error') {
+              // Statuses are typically stored as enum strings. Use SQL so we don't
+              // depend on lucene mapping the raw column name.
+              const errFilter = `${statusCodeExpr} = 'STATUS_CODE_ERROR'`;
+              if (effectiveFilter && effectiveLanguage === 'sql') {
+                effectiveFilter = `(${effectiveFilter}) AND (${errFilter})`;
+              } else if (effectiveFilter && effectiveLanguage === 'lucene') {
+                // Run lucene filter inside parens, AND with raw SQL.
+                // Easiest: convert to sql by AND-joining a fresh sql-only condition
+                // means we'd have to render lucene first. Compromise: tell user
+                // to express the error filter in pickFilter directly.
+                effectiveFilter = `(${effectiveFilter}) AND StatusCode:STATUS_CODE_ERROR`;
+                effectiveLanguage = 'lucene';
+              } else {
+                effectiveFilter = errFilter;
+                effectiveLanguage = 'sql';
+              }
+            }
+
+            const orderBy =
+              input.pickBy === 'slowest'
+                ? `max(${durationExpr}) DESC`
+                : input.pickBy === 'first_error'
+                  ? `min(${ts.eventTs}) ASC`
+                  : `max(${ts.eventTs}) DESC`;
+
+            const pickConfig: BuilderChartConfigWithDateRange = {
+              displayType: DisplayType.Table,
+              select: [
+                {
+                  aggFn: 'count' as const,
+                  valueExpression: '',
+                  alias: 'span_count',
+                  aggCondition: '',
+                  aggConditionLanguage: 'sql' as const,
+                },
+              ],
+              from: source.from,
+              where: effectiveFilter,
+              whereLanguage: effectiveLanguage,
+              connection: source.connection.toString(),
+              timestampValueExpression: tsExpr,
+              implicitColumnExpression: source.implicitColumnExpression,
+              groupBy: traceIdExpr,
+              orderBy,
+              limit: { limit: 1 },
+              dateRange: [startDate, endDate],
+            };
+
+            let pickResult: { data?: Array<Record<string, unknown>> } = {};
+            try {
+              pickResult = (await clickhouseClient.queryChartConfig({
+                config: pickConfig as ChartConfigWithDateRange,
+                metadata,
+                querySettings: source.querySettings,
+                opts: { clickhouse_settings: MCP_CLICKHOUSE_SETTINGS },
+              })) as { data?: Array<Record<string, unknown>> };
+            } catch (e) {
+              return clickHouseErrorResult(e, 'Failed to pick a trace');
+            }
+
+            const firstRow = pickResult.data?.[0];
+            if (!firstRow) {
+              return {
+                content: [
+                  {
+                    type: 'text' as const,
+                    text: JSON.stringify(
+                      {
+                        result: null,
+                        hint:
+                          'No traces matched. Widen the time range, relax pickFilter, or ' +
+                          'pass a specific traceId.',
+                        pickFilter: effectiveFilter,
+                        pickBy: input.pickBy,
+                      },
+                      null,
+                      2,
+                    ),
+                  },
+                ],
+              };
+            }
+            // The grouped traceId column is rendered into the result with the
+            // expression text as its alias. Locate it by stripping non-data keys.
+            const candidate = Object.entries(firstRow).find(
+              ([k]) => k !== 'span_count' && k !== '__hdx_time_bucket',
+            );
+            if (!candidate || candidate[1] == null) {
+              return mcpUserError(
+                `Picker returned a row but no TraceId column was found. Row keys: ${Object.keys(firstRow).join(', ')}`,
+              );
+            }
+            pickedTraceId = String(candidate[1]);
+          }
+
+          // The fetch must be time-bounded so ClickHouse prunes partitions, but the
+          // [startDate, endDate] window is often too narrow to bound it safely:
+          //   - an explicit traceId with the default window may be for an older
+          //     trace outside it;
+          //   - in auto-pick mode startTime is the *pick* window ("find a slow
+          //     trace from the last hour"), not a fetch bound — the picked trace is
+          //     only guaranteed one span inside it, so its root/tail can lie outside
+          //     and the fetch would return a partial tree.
+          // Probe the trace's real [min, max] extent in both cases. The only time
+          // we honor the window verbatim is an explicit traceId WITH an explicit
+          // startTime, where the caller has deliberately set a fetch bound.
+          let fetchStart = startDate;
+          let fetchEnd = endDate;
+          let probeFailed = false;
+          let windowClamped = false;
+          const isAutoPick = input.traceId == null;
+          const usedDefaultWindow = input.startTime == null;
+          if (isAutoPick || usedDefaultWindow) {
+            const [probeStart, probeEnd] = isAutoPick
+              ? [
+                  new Date(
+                    startDate.getTime() - TRACE_PROBE_AUTOPICK_MARGIN_MS,
+                  ),
+                  new Date(endDate.getTime() + TRACE_PROBE_AUTOPICK_MARGIN_MS),
+                ]
+              : [
+                  new Date(endDate.getTime() - TRACE_PROBE_MAX_LOOKBACK_MS),
+                  endDate,
+                ];
+            try {
+              const probed = await probeTraceWindow(clickhouseClient, {
+                databaseName: source.from.databaseName,
+                tableName: source.from.tableName,
+                connectionId: source.connection.toString(),
+                traceIdExpr,
+                ts,
+                traceId: pickedTraceId,
+                startDate: probeStart,
+                endDate: probeEnd,
+                querySettings: source.querySettings,
+              });
+              if (probed) {
+                fetchStart = probed.start;
+                fetchEnd = probed.end;
+                windowClamped = probed.clamped;
+              }
+            } catch (e) {
+              // probeTraceWindow returns null (not throws) for the empty case, so a
+              // throw means the probe genuinely didn't complete. The fallback window
+              // will likely also come back empty, so flag it for an accurate hint.
+              logger.warn(
+                {
+                  error: e,
+                  teamId,
+                  traceId: pickedTraceId,
+                  sourceId: input.sourceId,
+                },
+                'trace waterfall extent probe failed',
+              );
+              probeFailed = true;
+            }
+          }
+
+          let rows: SpanRow[];
+          try {
+            const timeFilter = await ts.timeFilter(fetchStart, fetchEnd);
+            const treeQuery = `
           SELECT
             ${spanIdExpr} AS spanId,
             ${parentSpanIdExpr} AS parentSpanId,
@@ -569,149 +577,155 @@ export function registerTraceWaterfall({
           ORDER BY ${ts.eventTs} ASC
           LIMIT {n:UInt32}
         `;
-        const result = await clickhouseClient.query({
-          query: treeQuery,
-          query_params: {
-            ...timeFilter.params,
-            db: source.from.databaseName,
-            tbl: source.from.tableName,
-            tid: pickedTraceId,
-            n: input.maxSpans + 1, // +1 to detect truncation
-            divisor,
-          },
-          format: 'JSONEachRow',
-          connectionId: source.connection.toString(),
-          clickhouse_settings: mcpQuerySettings(source.querySettings),
-        });
-        rows =
-          (await (result as { json: () => Promise<SpanRow[]> }).json()) ?? [];
-      } catch (e) {
-        return clickHouseErrorResult(
-          e,
-          `Failed to fetch trace ${pickedTraceId}`,
-        );
-      }
-
-      const truncated = rows.length > input.maxSpans;
-      const spans = truncated ? rows.slice(0, input.maxSpans) : rows;
-
-      if (spans.length === 0) {
-        // The window was often chosen by the probe, not the caller, so the hint
-        // must reflect what actually ran rather than tell the user to widen a
-        // window they never set.
-        let hint: string;
-        if (probeFailed) {
-          hint =
-            'TraceId picked, but the timestamp probe failed (likely a query ' +
-            'timeout) and no spans were found in the fallback window. Retry, ' +
-            'or pass an explicit startTime/endTime around when the trace ran.';
-        } else if (input.traceId && usedDefaultWindow) {
-          hint =
-            'No spans found for this traceId within the last 90 days (the ' +
-            'probe ceiling). If the trace is older, pass an explicit startTime ' +
-            '(ISO 8601) covering when it ran.';
-        } else {
-          hint =
-            'TraceId picked, but no spans exist in the time window. The trace ' +
-            'may have spans outside startTime/endTime — widen the window.';
-        }
-        return {
-          content: [
-            {
-              type: 'text' as const,
-              text: JSON.stringify(
-                {
-                  result: null,
-                  traceId: pickedTraceId,
-                  hint,
-                },
-                null,
-                2,
-              ),
-            },
-          ],
-        };
-      }
-
-      const tree = buildPreOrderTree(spans);
-      const root = tree.find(s => s.depth === 0) ?? tree[0];
-      const totalDuration = Math.max(...spans.map(s => s.durationMs));
-
-      // When the extent probe failed we fell back to the default window, which
-      // may not cover the whole trace — so spans that came back could be a
-      // partial tree with a false root. Warn rather than present it as complete.
-      const probeNote = probeFailed
-        ? 'The span-extent probe failed (likely a query timeout), so the fetch ' +
-          'used the default window and this tree may be incomplete. Retry, or ' +
-          'pass an explicit startTime/endTime around when the trace ran.'
-        : undefined;
-
-      // The fetch window is capped so a wide-spread trace can't scan the world;
-      // that cap can drop the earliest spans of a trace that ran longer than
-      // the cap. Say so rather than promising the whole tree.
-      const windowNote = windowClamped
-        ? 'This trace spans longer than the fetch-window cap, so the earliest ' +
-          'spans may be missing. Pass an explicit startTime covering the ' +
-          "trace's start to see the full tree."
-        : undefined;
-
-      type LogRow = {
-        timestamp: string;
-        severityText: string;
-        body: string;
-        serviceName: string;
-        spanId: string;
-      };
-      let correlatedLogs: LogRow[] | undefined;
-      let logsTruncated = false;
-      let logsNote: string | undefined;
-      if (input.includeLogs && source.logSourceId) {
-        const logSource = await getSource(
-          teamId.toString(),
-          source.logSourceId,
-        );
-        if (!logSource) {
-          logsNote = `logSourceId ${source.logSourceId} configured but source not found`;
-        } else if (logSource.kind !== SourceKind.Log) {
-          logsNote = `logSourceId ${source.logSourceId} is kind="${logSource.kind}", not "log"`;
-        } else {
-          const logTraceIdExpr = logSource.traceIdExpression ?? 'TraceId';
-          const logSpanIdExpr = logSource.spanIdExpression ?? "''";
-          const logBodyExpr = logSource.bodyExpression ?? "''";
-          const logSevExpr = logSource.severityTextExpression ?? "''";
-          const logSvcExpr = logSource.serviceNameExpression ?? "''";
-
-          // Reuse the same connection only when the log source lives there.
-          let logClient: ClickhouseClient | null = clickhouseClient;
-          if (
-            logSource.connection.toString() !== source.connection.toString()
-          ) {
-            logClient = await getMcpClickhouseClient(
-              teamId.toString(),
-              logSource.connection.toString(),
+            const result = await clickhouseClient.query({
+              query: treeQuery,
+              query_params: {
+                ...timeFilter.params,
+                db: source.from.databaseName,
+                tbl: source.from.tableName,
+                tid: pickedTraceId,
+                n: input.maxSpans + 1, // +1 to detect truncation
+                divisor,
+              },
+              format: 'JSONEachRow',
+              connectionId: source.connection.toString(),
+              clickhouse_settings: mcpQuerySettings(source.querySettings),
+            });
+            rows =
+              (await (result as { json: () => Promise<SpanRow[]> }).json()) ??
+              [];
+          } catch (e) {
+            return clickHouseErrorResult(
+              e,
+              `Failed to fetch trace ${pickedTraceId}`,
             );
           }
-          if (!logClient) {
-            logsNote = `connection for log source ${source.logSourceId} not found`;
+
+          const truncated = rows.length > input.maxSpans;
+          const spans = truncated ? rows.slice(0, input.maxSpans) : rows;
+
+          if (spans.length === 0) {
+            // The window was often chosen by the probe, not the caller, so the hint
+            // must reflect what actually ran rather than tell the user to widen a
+            // window they never set.
+            let hint: string;
+            if (probeFailed) {
+              hint =
+                'TraceId picked, but the timestamp probe failed (likely a query ' +
+                'timeout) and no spans were found in the fallback window. Retry, ' +
+                'or pass an explicit startTime/endTime around when the trace ran.';
+            } else if (input.traceId && usedDefaultWindow) {
+              hint =
+                'No spans found for this traceId within the last 90 days (the ' +
+                'probe ceiling). If the trace is older, pass an explicit startTime ' +
+                '(ISO 8601) covering when it ran.';
+            } else {
+              hint =
+                'TraceId picked, but no spans exist in the time window. The trace ' +
+                'may have spans outside startTime/endTime — widen the window.';
+            }
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: JSON.stringify(
+                    {
+                      result: null,
+                      traceId: pickedTraceId,
+                      hint,
+                    },
+                    null,
+                    2,
+                  ),
+                },
+              ],
+            };
           }
 
-          if (logClient && !logsNote) {
-            try {
-              const logTs = await resolveTimestampExprs({
-                timestampValueExpression: logSource.timestampValueExpression,
-                metadata:
-                  logClient === clickhouseClient
-                    ? metadata
-                    : getMetadata(logClient),
-                databaseName: logSource.from.databaseName,
-                tableName: logSource.from.tableName,
-                connectionId: logSource.connection.toString(),
-              });
-              const logTimeFilter = await logTs.timeFilter(
-                fetchStart,
-                fetchEnd,
-              );
-              const logsQuery = `
+          const tree = buildPreOrderTree(spans);
+          const root = tree.find(s => s.depth === 0) ?? tree[0];
+          const totalDuration = Math.max(...spans.map(s => s.durationMs));
+
+          // When the extent probe failed we fell back to the default window, which
+          // may not cover the whole trace — so spans that came back could be a
+          // partial tree with a false root. Warn rather than present it as complete.
+          const probeNote = probeFailed
+            ? 'The span-extent probe failed (likely a query timeout), so the fetch ' +
+              'used the default window and this tree may be incomplete. Retry, or ' +
+              'pass an explicit startTime/endTime around when the trace ran.'
+            : undefined;
+
+          // The fetch window is capped so a wide-spread trace can't scan the world;
+          // that cap can drop the earliest spans of a trace that ran longer than
+          // the cap. Say so rather than promising the whole tree.
+          const windowNote = windowClamped
+            ? 'This trace spans longer than the fetch-window cap, so the earliest ' +
+              'spans may be missing. Pass an explicit startTime covering the ' +
+              "trace's start to see the full tree."
+            : undefined;
+
+          type LogRow = {
+            timestamp: string;
+            severityText: string;
+            body: string;
+            serviceName: string;
+            spanId: string;
+          };
+          let correlatedLogs: LogRow[] | undefined;
+          let logsTruncated = false;
+          let logsNote: string | undefined;
+          if (input.includeLogs && source.logSourceId) {
+            const logSource = await getSource(
+              teamId.toString(),
+              source.logSourceId,
+            );
+            if (!logSource) {
+              logsNote = `logSourceId ${source.logSourceId} configured but source not found`;
+            } else if (logSource.kind !== SourceKind.Log) {
+              logsNote = `logSourceId ${source.logSourceId} is kind="${logSource.kind}", not "log"`;
+            } else {
+              recordMcpSource(logSource);
+              const logTraceIdExpr = logSource.traceIdExpression ?? 'TraceId';
+              const logSpanIdExpr = logSource.spanIdExpression ?? "''";
+              const logBodyExpr = logSource.bodyExpression ?? "''";
+              const logSevExpr = logSource.severityTextExpression ?? "''";
+              const logSvcExpr = logSource.serviceNameExpression ?? "''";
+
+              // Reuse the same connection only when the log source lives there.
+              let logClient: ClickhouseClient | null = clickhouseClient;
+              if (
+                logSource.connection.toString() !== source.connection.toString()
+              ) {
+                logClient = await getMcpClickhouseClient(
+                  teamId.toString(),
+                  logSource.connection.toString(),
+                );
+              }
+              if (!logClient) {
+                logsNote = `connection for log source ${source.logSourceId} not found`;
+              }
+
+              if (logClient && !logsNote) {
+                try {
+                  await withQueryAttribution(
+                    { source: logSource._id.toString() },
+                    async () => {
+                      const logTs = await resolveTimestampExprs({
+                        timestampValueExpression:
+                          logSource.timestampValueExpression,
+                        metadata:
+                          logClient === clickhouseClient
+                            ? metadata
+                            : getMetadata(logClient),
+                        databaseName: logSource.from.databaseName,
+                        tableName: logSource.from.tableName,
+                        connectionId: logSource.connection.toString(),
+                      });
+                      const logTimeFilter = await logTs.timeFilter(
+                        fetchStart,
+                        fetchEnd,
+                      );
+                      const logsQuery = `
                 SELECT
                   ${logTs.eventTs} AS timestamp,
                   ${logSevExpr} AS severityText,
@@ -724,72 +738,78 @@ export function registerTraceWaterfall({
                 ORDER BY ${logTs.eventTs} ASC
                 LIMIT {n:UInt32}
               `;
-              const logResult = await logClient.query({
-                query: logsQuery,
-                query_params: {
-                  ...logTimeFilter.params,
-                  db: logSource.from.databaseName,
-                  tbl: logSource.from.tableName,
-                  tid: pickedTraceId,
-                  n: input.maxLogs + 1, // +1 to detect truncation
-                },
-                format: 'JSONEachRow',
-                connectionId: logSource.connection.toString(),
-                clickhouse_settings: mcpQuerySettings(logSource.querySettings),
-              });
-              const allLogs =
-                (await (
-                  logResult as { json: () => Promise<LogRow[]> }
-                ).json()) ?? [];
-              logsTruncated = allLogs.length > input.maxLogs;
-              correlatedLogs = logsTruncated
-                ? allLogs.slice(0, input.maxLogs)
-                : allLogs;
-            } catch (e) {
-              logsNote = `Failed to fetch correlated logs: ${e instanceof Error ? e.message : String(e)}`;
+                      const logResult = await logClient.query({
+                        query: logsQuery,
+                        query_params: {
+                          ...logTimeFilter.params,
+                          db: logSource.from.databaseName,
+                          tbl: logSource.from.tableName,
+                          tid: pickedTraceId,
+                          n: input.maxLogs + 1, // +1 to detect truncation
+                        },
+                        format: 'JSONEachRow',
+                        connectionId: logSource.connection.toString(),
+                        clickhouse_settings: mcpQuerySettings(
+                          logSource.querySettings,
+                        ),
+                      });
+                      const allLogs =
+                        (await (
+                          logResult as { json: () => Promise<LogRow[]> }
+                        ).json()) ?? [];
+                      logsTruncated = allLogs.length > input.maxLogs;
+                      correlatedLogs = logsTruncated
+                        ? allLogs.slice(0, input.maxLogs)
+                        : allLogs;
+                    },
+                  );
+                } catch (e) {
+                  logsNote = `Failed to fetch correlated logs: ${e instanceof Error ? e.message : String(e)}`;
+                }
+              }
             }
           }
-        }
-      }
 
-      const output = {
-        traceId: pickedTraceId,
-        spanCount: spans.length,
-        totalDurationMs: totalDuration,
-        rootSpan: {
-          spanId: root.spanId,
-          serviceName: root.serviceName,
-          spanName: root.spanName,
-          durationMs: root.durationMs,
-          statusCode: root.statusCode,
+          const output = {
+            traceId: pickedTraceId,
+            spanCount: spans.length,
+            totalDurationMs: totalDuration,
+            rootSpan: {
+              spanId: root.spanId,
+              serviceName: root.serviceName,
+              spanName: root.spanName,
+              durationMs: root.durationMs,
+              statusCode: root.statusCode,
+            },
+            spans: tree,
+            ...(correlatedLogs
+              ? {
+                  logs: correlatedLogs,
+                  logsCount: correlatedLogs.length,
+                  ...(logsTruncated
+                    ? {
+                        logsNote: `Logs truncated to ${input.maxLogs}. Increase maxLogs (max 1000) if needed.`,
+                      }
+                    : {}),
+                }
+              : {}),
+            ...(logsNote ? { logsNote } : {}),
+            ...(probeNote ? { probeNote } : {}),
+            ...(windowNote ? { windowNote } : {}),
+            ...(truncated
+              ? {
+                  note: `Result truncated to ${input.maxSpans} spans. Increase maxSpans (max 2000) or narrow the trace if needed.`,
+                }
+              : {}),
+          };
+
+          return {
+            content: [
+              { type: 'text' as const, text: JSON.stringify(output, null, 2) },
+            ],
+          };
         },
-        spans: tree,
-        ...(correlatedLogs
-          ? {
-              logs: correlatedLogs,
-              logsCount: correlatedLogs.length,
-              ...(logsTruncated
-                ? {
-                    logsNote: `Logs truncated to ${input.maxLogs}. Increase maxLogs (max 1000) if needed.`,
-                  }
-                : {}),
-            }
-          : {}),
-        ...(logsNote ? { logsNote } : {}),
-        ...(probeNote ? { probeNote } : {}),
-        ...(windowNote ? { windowNote } : {}),
-        ...(truncated
-          ? {
-              note: `Result truncated to ${input.maxSpans} spans. Increase maxSpans (max 2000) or narrow the trace if needed.`,
-            }
-          : {}),
-      };
-
-      return {
-        content: [
-          { type: 'text' as const, text: JSON.stringify(output, null, 2) },
-        ],
-      };
+      );
     },
   );
 }

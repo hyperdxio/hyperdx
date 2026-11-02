@@ -90,6 +90,11 @@ Key, rate-limited to 600 req/min.
 - **Response size**: each tool call records the UTF-8 bytes it returns
   (`mcp.tool.response.size_bytes` span attribute,
   `hyperdx.mcp.tool.response.size_bytes` histogram)
+- **Source**: a tool that resolves a source calls `recordMcpSource` (in
+  `utils/tracing.ts`), which sets `mcp.source.id`, `mcp.source.kind` and
+  `mcp.source.ids` on the tool span and `source_kind` on the tool metrics
+  (`none` when no source applies). Wrap the queries that read the source in
+  `withQueryAttribution({ source })` so `log_comment` carries it too
 
 See `MCP.md` in the repo root for user-facing setup instructions.
 

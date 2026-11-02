@@ -3,6 +3,7 @@ import {
   filterColumnMetaByType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { type MetricTable, SourceKind } from '@hyperdx/common-utils/dist/types';
 import { trace } from '@opentelemetry/api';
@@ -22,6 +23,7 @@ import {
   runWithTimeout,
   type TimeoutOutcome,
 } from '@/mcp/utils/timeout';
+import { recordMcpSource } from '@/mcp/utils/tracing';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -98,6 +100,7 @@ async function describeSourceSchema(
       `Source "${sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
     );
   }
+  recordMcpSource(source);
 
   const meta: Record<string, unknown> = {
     id: source._id.toString(),
@@ -193,284 +196,286 @@ async function describeSourceSchema(
     };
   }
 
-  const connection = await getConnectionById(
-    teamId,
-    source.connection.toString(),
-    true,
-  );
-  if (!connection) {
-    return mcpUserError(`Connection not found for source "${sourceId}".`);
-  }
-
-  const clickhouseClient = new ClickhouseClient({
-    host: connection.host,
-    username: connection.username,
-    password: connection.password,
-  });
-  const metadata = getMetadata(clickhouseClient);
-  const databaseName = source.from.databaseName;
-  const tableName = discoveryTableName;
-  const connectionId = source.connection.toString();
-
-  // Track which sampling stages were skipped due to timeout
-  const skippedStages: string[] = [];
-
-  // Shared by stages 2–4 so map-key discovery can use rollup tables
-  // instead of falling back to expensive main-table scans.
-  const metadataMVs =
-    'metadataMaterializedViews' in source
-      ? source.metadataMaterializedViews
-      : undefined;
-
-  const now = new Date();
-  const dateRange: [Date, Date] = [
-    new Date(now.getTime() - VALUE_SAMPLE_LOOKBACK_MS),
-    now,
-  ];
-
-  // ── 1. Column schema ──────────────────────────────────────────────────
-  const columns = await metadata.getColumns({
-    databaseName,
-    tableName,
-    connectionId,
-  });
-
-  meta.columns = columns.map(c => ({
-    name: c.name,
-    type: c.type,
-    jsType: convertCHDataTypeToJSType(c.type),
-  }));
-
-  const isMetricSource = source.kind === SourceKind.Metric;
-  const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
-  const lcColumns = columns.filter(c => {
-    const normalized = c.type.replace(/\s/g, '');
-    return (
-      normalized.startsWith('LowCardinality(') &&
-      (normalized.includes('String') || normalized.includes('string'))
+  return withQueryAttribution({ source: source._id.toString() }, async () => {
+    const connection = await getConnectionById(
+      teamId,
+      source.connection.toString(),
+      true,
     );
-  });
-  const metricKinds =
-    source.kind === SourceKind.Metric
-      ? DISCOVERABLE_METRIC_KINDS.flatMap(kind => {
-          const kindTableName = source.metricTables[kind];
-          return kindTableName ? [{ kind, kindTableName }] : [];
-        })
-      : [];
-  // Stages with nothing to sample can't be skipped, so the snapshot must not
-  // report them as missing.
-  const optionalStages = [
-    ...(mapColumns.length > 0 ? ['mapAttributeKeys'] : []),
-    ...(lcColumns.length > 0 ? ['lowCardinalityValues'] : []),
-    ...(mapColumns.length > 0 ? ['mapAttributeValues'] : []),
-    ...(metricKinds.length > 0 ? ['metricNames'] : []),
-  ];
-  const finishedStages = new Set<string>();
-  progress.snapshot = () =>
-    formatDescribeResult({
-      sourceId,
-      meta,
-      isMetricSource,
-      skippedStages: [
-        ...skippedStages,
-        ...optionalStages.filter(
-          s => !finishedStages.has(s) && !skippedStages.includes(s),
-        ),
-      ],
+    if (!connection) {
+      return mcpUserError(`Connection not found for source "${sourceId}".`);
+    }
+
+    const clickhouseClient = new ClickhouseClient({
+      host: connection.host,
+      username: connection.username,
+      password: connection.password,
+    });
+    const metadata = getMetadata(clickhouseClient);
+    const databaseName = source.from.databaseName;
+    const tableName = discoveryTableName;
+    const connectionId = source.connection.toString();
+
+    // Track which sampling stages were skipped due to timeout
+    const skippedStages: string[] = [];
+
+    // Shared by stages 2–4 so map-key discovery can use rollup tables
+    // instead of falling back to expensive main-table scans.
+    const metadataMVs =
+      'metadataMaterializedViews' in source
+        ? source.metadataMaterializedViews
+        : undefined;
+
+    const now = new Date();
+    const dateRange: [Date, Date] = [
+      new Date(now.getTime() - VALUE_SAMPLE_LOOKBACK_MS),
+      now,
+    ];
+
+    // ── 1. Column schema ──────────────────────────────────────────────────
+    const columns = await metadata.getColumns({
+      databaseName,
+      tableName,
+      connectionId,
     });
 
-  // ── 2. Map attribute keys ─────────────────────────────────────────────
-  // timestampValueExpression is threaded into getMapKeys / getAllKeyValues /
-  // sampleMetricNamesForKind below so the no-rollup fallback path (i.e.
-  // metric sources, which don't have metadataMaterializedViews configured)
-  // can scope its scan to dateRange instead of going unbounded against
-  // the raw metric table on cold cache.
-  const timestampValueExpression = source.timestampValueExpression;
-  const mapKeysResults: Record<string, string[]> = {};
+    meta.columns = columns.map(c => ({
+      name: c.name,
+      type: c.type,
+      jsType: convertCHDataTypeToJSType(c.type),
+    }));
 
-  if (!signal.aborted) {
-    await Promise.all(
-      mapColumns.map(async col => {
-        try {
-          const keys = await metadata.getMapKeys({
-            databaseName,
-            tableName,
-            column: col.name,
-            maxKeys: 50,
-            connectionId,
-            metadataMVs,
-            dateRange,
-            timestampValueExpression,
-            signal,
-          });
-          mapKeysResults[col.name] = keys;
-          // Visible to the backstop snapshot before the other columns finish.
-          meta.mapAttributeKeys = mapKeysResults;
-        } catch (e) {
-          logger.warn(
-            { sourceId, column: col.name, error: e },
-            'Failed to fetch map keys for column',
-          );
+    const isMetricSource = source.kind === SourceKind.Metric;
+    const mapColumns = filterColumnMetaByType(columns, [JSDataType.Map]) ?? [];
+    const lcColumns = columns.filter(c => {
+      const normalized = c.type.replace(/\s/g, '');
+      return (
+        normalized.startsWith('LowCardinality(') &&
+        (normalized.includes('String') || normalized.includes('string'))
+      );
+    });
+    const metricKinds =
+      source.kind === SourceKind.Metric
+        ? DISCOVERABLE_METRIC_KINDS.flatMap(kind => {
+            const kindTableName = source.metricTables[kind];
+            return kindTableName ? [{ kind, kindTableName }] : [];
+          })
+        : [];
+    // Stages with nothing to sample can't be skipped, so the snapshot must not
+    // report them as missing.
+    const optionalStages = [
+      ...(mapColumns.length > 0 ? ['mapAttributeKeys'] : []),
+      ...(lcColumns.length > 0 ? ['lowCardinalityValues'] : []),
+      ...(mapColumns.length > 0 ? ['mapAttributeValues'] : []),
+      ...(metricKinds.length > 0 ? ['metricNames'] : []),
+    ];
+    const finishedStages = new Set<string>();
+    progress.snapshot = () =>
+      formatDescribeResult({
+        sourceId,
+        meta,
+        isMetricSource,
+        skippedStages: [
+          ...skippedStages,
+          ...optionalStages.filter(
+            s => !finishedStages.has(s) && !skippedStages.includes(s),
+          ),
+        ],
+      });
+
+    // ── 2. Map attribute keys ─────────────────────────────────────────────
+    // timestampValueExpression is threaded into getMapKeys / getAllKeyValues /
+    // sampleMetricNamesForKind below so the no-rollup fallback path (i.e.
+    // metric sources, which don't have metadataMaterializedViews configured)
+    // can scope its scan to dateRange instead of going unbounded against
+    // the raw metric table on cold cache.
+    const timestampValueExpression = source.timestampValueExpression;
+    const mapKeysResults: Record<string, string[]> = {};
+
+    if (!signal.aborted) {
+      await Promise.all(
+        mapColumns.map(async col => {
+          try {
+            const keys = await metadata.getMapKeys({
+              databaseName,
+              tableName,
+              column: col.name,
+              maxKeys: 50,
+              connectionId,
+              metadataMVs,
+              dateRange,
+              timestampValueExpression,
+              signal,
+            });
+            mapKeysResults[col.name] = keys;
+            // Visible to the backstop snapshot before the other columns finish.
+            meta.mapAttributeKeys = mapKeysResults;
+          } catch (e) {
+            logger.warn(
+              { sourceId, column: col.name, error: e },
+              'Failed to fetch map keys for column',
+            );
+          }
+        }),
+      );
+    }
+
+    // Any column still missing at the abort means the key list is incomplete.
+    if (
+      signal.aborted &&
+      Object.keys(mapKeysResults).length < mapColumns.length
+    ) {
+      skippedStages.push('mapAttributeKeys');
+    }
+    finishedStages.add('mapAttributeKeys');
+    // No keys and no abort means stage 4 has nothing to sample. No keys because
+    // of the abort means it was never sampled, matching the backstop snapshot.
+    if (Object.keys(mapKeysResults).length === 0) {
+      if (signal.aborted && mapColumns.length > 0) {
+        skippedStages.push('mapAttributeValues');
+      }
+      finishedStages.add('mapAttributeValues');
+    }
+
+    // ── 3. Low-cardinality column value sampling ──────────────────────────
+    const lowCardinalityValues: Record<string, string[]> = {};
+
+    if (lcColumns.length > 0 && !signal.aborted) {
+      try {
+        const results = await metadata.getAllKeyValues({
+          databaseName,
+          tableName,
+          keyExpressions: lcColumns.map(col => col.name),
+          maxValuesPerKey: MAX_LC_VALUES,
+          connectionId,
+          metadataMVs,
+          dateRange,
+          timestampValueExpression,
+          signal,
+        });
+        for (const { key, value } of results) {
+          if (value.length > 0) {
+            lowCardinalityValues[key] = value.map(v => v.toString());
+          }
         }
-      }),
-    );
-  }
+      } catch {
+        // Skip columns where value sampling fails
+      }
+    }
 
-  // Any column still missing at the abort means the key list is incomplete.
-  if (
-    signal.aborted &&
-    Object.keys(mapKeysResults).length < mapColumns.length
-  ) {
-    skippedStages.push('mapAttributeKeys');
-  }
-  finishedStages.add('mapAttributeKeys');
-  // No keys and no abort means stage 4 has nothing to sample. No keys because
-  // of the abort means it was never sampled, matching the backstop snapshot.
-  if (Object.keys(mapKeysResults).length === 0) {
-    if (signal.aborted && mapColumns.length > 0) {
+    // getAllKeyValues drops aborted chunks instead of throwing, so any result
+    // returned after the abort may be missing keys.
+    if (lcColumns.length > 0 && signal.aborted) {
+      skippedStages.push('lowCardinalityValues');
+    }
+    if (Object.keys(lowCardinalityValues).length > 0) {
+      meta.lowCardinalityValues = lowCardinalityValues;
+    }
+    finishedStages.add('lowCardinalityValues');
+
+    // ── 4. Map attribute value sampling (best-effort) ─────────────────────
+    if (Object.keys(mapKeysResults).length > 0 && !signal.aborted) {
+      const mapAttributeValues: Record<string, string[]> = {};
+
+      const keyExprs: string[] = [];
+      for (const [colName, keys] of Object.entries(mapKeysResults)) {
+        for (const key of keys.slice(0, MAX_MAP_KEYS_TO_SAMPLE)) {
+          // Map keys come from ClickHouse data (customer telemetry) so they can
+          // contain arbitrary characters, including single quotes. Escape as a
+          // SQL string literal — `SqlString.escape` returns a fully-quoted,
+          // safely-escaped value — before embedding in the key expression.
+          keyExprs.push(`${colName}[${SqlString.escape(key)}]`);
+        }
+      }
+
+      try {
+        const results = await metadata.getAllKeyValues({
+          databaseName,
+          tableName,
+          keyExpressions: keyExprs,
+          maxValuesPerKey: MAX_MAP_KEY_VALUES,
+          connectionId,
+          metadataMVs,
+          dateRange,
+          timestampValueExpression,
+          signal,
+        });
+        for (const { key, value } of results) {
+          if (value.length > 0) {
+            mapAttributeValues[key] = value.map(v => v.toString());
+          }
+        }
+      } catch {
+        // Best-effort; skip on failure
+      }
+
+      if (signal.aborted) {
+        skippedStages.push('mapAttributeValues');
+      }
+      if (Object.keys(mapAttributeValues).length > 0) {
+        meta.mapAttributeValues = mapAttributeValues;
+      }
+    } else if (Object.keys(mapKeysResults).length > 0) {
+      // Signal was already aborted before we started this stage
       skippedStages.push('mapAttributeValues');
     }
     finishedStages.add('mapAttributeValues');
-  }
 
-  // ── 3. Low-cardinality column value sampling ──────────────────────────
-  const lowCardinalityValues: Record<string, string[]> = {};
-
-  if (lcColumns.length > 0 && !signal.aborted) {
-    try {
-      const results = await metadata.getAllKeyValues({
-        databaseName,
-        tableName,
-        keyExpressions: lcColumns.map(col => col.name),
-        maxValuesPerKey: MAX_LC_VALUES,
-        connectionId,
-        metadataMVs,
-        dateRange,
-        timestampValueExpression,
-        signal,
-      });
-      for (const { key, value } of results) {
-        if (value.length > 0) {
-          lowCardinalityValues[key] = value.map(v => v.toString());
-        }
-      }
-    } catch {
-      // Skip columns where value sampling fails
-    }
-  }
-
-  // getAllKeyValues drops aborted chunks instead of throwing, so any result
-  // returned after the abort may be missing keys.
-  if (lcColumns.length > 0 && signal.aborted) {
-    skippedStages.push('lowCardinalityValues');
-  }
-  if (Object.keys(lowCardinalityValues).length > 0) {
-    meta.lowCardinalityValues = lowCardinalityValues;
-  }
-  finishedStages.add('lowCardinalityValues');
-
-  // ── 4. Map attribute value sampling (best-effort) ─────────────────────
-  if (Object.keys(mapKeysResults).length > 0 && !signal.aborted) {
-    const mapAttributeValues: Record<string, string[]> = {};
-
-    const keyExprs: string[] = [];
-    for (const [colName, keys] of Object.entries(mapKeysResults)) {
-      for (const key of keys.slice(0, MAX_MAP_KEYS_TO_SAMPLE)) {
-        // Map keys come from ClickHouse data (customer telemetry) so they can
-        // contain arbitrary characters, including single quotes. Escape as a
-        // SQL string literal — `SqlString.escape` returns a fully-quoted,
-        // safely-escaped value — before embedding in the key expression.
-        keyExprs.push(`${colName}[${SqlString.escape(key)}]`);
-      }
-    }
-
-    try {
-      const results = await metadata.getAllKeyValues({
-        databaseName,
-        tableName,
-        keyExpressions: keyExprs,
-        maxValuesPerKey: MAX_MAP_KEY_VALUES,
-        connectionId,
-        metadataMVs,
-        dateRange,
-        timestampValueExpression,
-        signal,
-      });
-      for (const { key, value } of results) {
-        if (value.length > 0) {
-          mapAttributeValues[key] = value.map(v => v.toString());
-        }
-      }
-    } catch {
-      // Best-effort; skip on failure
-    }
-
-    if (signal.aborted) {
-      skippedStages.push('mapAttributeValues');
-    }
-    if (Object.keys(mapAttributeValues).length > 0) {
-      meta.mapAttributeValues = mapAttributeValues;
-    }
-  } else if (Object.keys(mapKeysResults).length > 0) {
-    // Signal was already aborted before we started this stage
-    skippedStages.push('mapAttributeValues');
-  }
-  finishedStages.add('mapAttributeValues');
-
-  // ── 5. Metric name + unit + description sampling ──────────────────────
-  // For metric sources, sample distinct MetricName values per discoverable
-  // kind (including the non-queryable summary kind, so agents know those
-  // metrics exist) so the agent has a starter list without needing a
-  // follow-up call to clickstack_list_metrics for the common case
-  // (<= 20 metrics/kind).
-  // Defensively check for MetricUnit / MetricDescription columns: they
-  // exist on the standard OTel Collector schema but a custom metric table
-  // may not declare them.
-  if (metricKinds.length > 0 && !signal.aborted) {
-    const metricNames: Record<string, MetricNameSample[]> = {};
-    let sampledKinds = 0;
-    await Promise.all(
-      metricKinds.map(async ({ kind, kindTableName }) => {
-        try {
-          const samples = await sampleMetricNamesWithLookback({
-            metadata,
-            clickhouseClient,
-            databaseName,
-            tableName: kindTableName,
-            connectionId,
-            now,
-            timestampValueExpression,
-            signal,
-          });
-          // The sampler returns [] rather than throwing when aborted, so an
-          // empty result after the abort may just be a cut-short lookback.
-          if (samples.length > 0 || !signal.aborted) sampledKinds++;
-          if (samples.length > 0) {
-            metricNames[kind] = samples;
-            meta.metricNames = metricNames;
+    // ── 5. Metric name + unit + description sampling ──────────────────────
+    // For metric sources, sample distinct MetricName values per discoverable
+    // kind (including the non-queryable summary kind, so agents know those
+    // metrics exist) so the agent has a starter list without needing a
+    // follow-up call to clickstack_list_metrics for the common case
+    // (<= 20 metrics/kind).
+    // Defensively check for MetricUnit / MetricDescription columns: they
+    // exist on the standard OTel Collector schema but a custom metric table
+    // may not declare them.
+    if (metricKinds.length > 0 && !signal.aborted) {
+      const metricNames: Record<string, MetricNameSample[]> = {};
+      let sampledKinds = 0;
+      await Promise.all(
+        metricKinds.map(async ({ kind, kindTableName }) => {
+          try {
+            const samples = await sampleMetricNamesWithLookback({
+              metadata,
+              clickhouseClient,
+              databaseName,
+              tableName: kindTableName,
+              connectionId,
+              now,
+              timestampValueExpression,
+              signal,
+            });
+            // The sampler returns [] rather than throwing when aborted, so an
+            // empty result after the abort may just be a cut-short lookback.
+            if (samples.length > 0 || !signal.aborted) sampledKinds++;
+            if (samples.length > 0) {
+              metricNames[kind] = samples;
+              meta.metricNames = metricNames;
+            }
+          } catch (e) {
+            logger.warn(
+              { sourceId, kind, error: e },
+              'Failed to sample metric names for kind',
+            );
           }
-        } catch (e) {
-          logger.warn(
-            { sourceId, kind, error: e },
-            'Failed to sample metric names for kind',
-          );
-        }
-      }),
-    );
-    if (signal.aborted && sampledKinds < metricKinds.length) {
+        }),
+      );
+      if (signal.aborted && sampledKinds < metricKinds.length) {
+        skippedStages.push('metricNames');
+      }
+    } else if (metricKinds.length > 0) {
       skippedStages.push('metricNames');
     }
-  } else if (metricKinds.length > 0) {
-    skippedStages.push('metricNames');
-  }
-  finishedStages.add('metricNames');
+    finishedStages.add('metricNames');
 
-  progress.partial = skippedStages.length > 0;
-  return formatDescribeResult({
-    sourceId,
-    meta,
-    isMetricSource,
-    skippedStages,
+    progress.partial = skippedStages.length > 0;
+    return formatDescribeResult({
+      sourceId,
+      meta,
+      isMetricSource,
+      skippedStages,
+    });
   });
 }
 

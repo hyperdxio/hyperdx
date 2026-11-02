@@ -9,16 +9,26 @@ const mockSpan = {
   end: jest.fn(),
 };
 
+// Any span other than the tool span, so tests can tell where an attribute
+// landed.
+const mockChildSpan = {
+  setAttribute: jest.fn(),
+  setAttributes: jest.fn(),
+  setStatus: jest.fn(),
+  recordException: jest.fn(),
+  end: jest.fn(),
+};
+
 const mockTracer = {
   startActiveSpan: (
-    _name: string,
+    name: string,
     _optionsOrFn: unknown,
     maybeFn?: (span: typeof mockSpan) => Promise<unknown>,
   ) => {
     const fn = (
       typeof _optionsOrFn === 'function' ? _optionsOrFn : maybeFn
     ) as (span: typeof mockSpan) => Promise<unknown>;
-    return fn(mockSpan);
+    return fn(name.startsWith('mcp.tool.') ? mockSpan : mockChildSpan);
   },
 };
 
@@ -77,10 +87,13 @@ jest.mock('@/utils/logger', () => ({
   },
 }));
 
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
+
 import type { McpContext } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
 import type { McpClientInfo } from '@/mcp/utils/mcpClient';
-import { withToolTracing } from '@/mcp/utils/tracing';
+import { recordMcpSource, withToolTracing } from '@/mcp/utils/tracing';
+import { withSpan } from '@/utils/instrumentation';
 
 // Build a context whose mcpClient resolves to the given identity. The actual
 // clientInfo/User-Agent resolution logic is covered in mcpClient.test.ts.
@@ -336,6 +349,7 @@ describe('withToolTracing', () => {
       expect.any(Number),
       {
         tool: 'my_tool',
+        source_kind: 'none',
       },
     );
     expect(mockCounter.add).not.toHaveBeenCalled();
@@ -386,6 +400,7 @@ describe('withToolTracing', () => {
     expect(mockCounter.add).toHaveBeenCalledWith(1, {
       tool: 'my_tool',
       error_category: 'server',
+      source_kind: 'none',
     });
   });
 
@@ -399,11 +414,13 @@ describe('withToolTracing', () => {
     expect(mockCounter.add).toHaveBeenCalledWith(1, {
       tool: 'my_tool',
       error_category: 'server',
+      source_kind: 'none',
     });
     expect(mockDurationHistogram.record).toHaveBeenCalledWith(
       expect.any(Number),
       {
         tool: 'my_tool',
+        source_kind: 'none',
       },
     );
   });
@@ -438,6 +455,7 @@ describe('withToolTracing', () => {
     expect(mockCounter.add).toHaveBeenCalledWith(1, {
       tool: 'my_tool',
       error_category: 'user',
+      source_kind: 'none',
     });
   });
 
@@ -456,6 +474,7 @@ describe('withToolTracing', () => {
     expect(mockCounter.add).toHaveBeenCalledWith(1, {
       tool: 'my_tool',
       error_category: 'server',
+      source_kind: 'none',
     });
   });
 
@@ -484,5 +503,157 @@ describe('withToolTracing', () => {
       content: [{ type: 'text', text: 'bad input' }],
     });
     expect(result).not.toHaveProperty('_errorCategory');
+  });
+
+  describe('source attribution', () => {
+    const logSource = { _id: 'source-log', kind: SourceKind.Log };
+    const traceSource = { _id: 'source-trace', kind: SourceKind.Trace };
+    const ok = { content: [{ type: 'text' as const, text: 'ok' }] };
+
+    it('records the source id, kind and ids on the tool span', async () => {
+      const traced = withToolTracing('my_tool', context, async () => {
+        recordMcpSource(logSource);
+        return ok;
+      });
+      await traced({});
+
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        'mcp.source.id',
+        'source-log',
+      );
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        'mcp.source.kind',
+        'log',
+      );
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith('mcp.source.ids', [
+        'source-log',
+      ]);
+    });
+
+    it('lands on the tool span when a nested child span is active', async () => {
+      const traced = withToolTracing('my_tool', context, () =>
+        withSpan('mcp.child.work', async () => {
+          recordMcpSource(logSource);
+          return ok;
+        }),
+      );
+      await traced({});
+
+      expect(mockSpan.setAttribute).toHaveBeenCalledWith(
+        'mcp.source.id',
+        'source-log',
+      );
+      expect(mockChildSpan.setAttribute).not.toHaveBeenCalled();
+      expect(mockChildSpan.setAttributes).not.toHaveBeenCalled();
+    });
+
+    it('keeps the first source as primary and lists every distinct source', async () => {
+      const traced = withToolTracing('my_tool', context, async () => {
+        recordMcpSource(traceSource);
+        recordMcpSource(logSource);
+        recordMcpSource(traceSource);
+        return ok;
+      });
+      await traced({});
+
+      const calls = mockSpan.setAttribute.mock.calls;
+      const valuesOf = (key: string) =>
+        calls.filter(([k]) => k === key).map(([, v]) => v);
+      expect(valuesOf('mcp.source.id')).toEqual(['source-trace']);
+      expect(valuesOf('mcp.source.kind')).toEqual(['trace']);
+      expect(valuesOf('mcp.source.ids').at(-1)).toEqual([
+        'source-trace',
+        'source-log',
+      ]);
+    });
+
+    it('does not set source attributes when no source is resolved', async () => {
+      const traced = withToolTracing('my_tool', context, async () => ok);
+      await traced({});
+
+      for (const key of [
+        'mcp.source.id',
+        'mcp.source.kind',
+        'mcp.source.ids',
+      ]) {
+        expect(mockSpan.setAttribute).not.toHaveBeenCalledWith(
+          key,
+          expect.anything(),
+        );
+      }
+    });
+
+    it('is a no-op outside a tool invocation', () => {
+      recordMcpSource(logSource);
+      expect(mockSpan.setAttribute).not.toHaveBeenCalled();
+      expect(mockChildSpan.setAttribute).not.toHaveBeenCalled();
+    });
+
+    it('records the source kind, never the id, on the duration metric', async () => {
+      const traced = withToolTracing('my_tool', context, async () => {
+        recordMcpSource(traceSource);
+        return ok;
+      });
+      await traced({});
+
+      expect(mockDurationHistogram.record).toHaveBeenCalledWith(
+        expect.any(Number),
+        { tool: 'my_tool', source_kind: 'trace' },
+      );
+    });
+
+    it('records the source kind on the error counter for error results', async () => {
+      const traced = withToolTracing('my_tool', context, async () => {
+        recordMcpSource(logSource);
+        return mcpUserError('bad input');
+      });
+      await traced({});
+
+      expect(mockCounter.add).toHaveBeenCalledWith(1, {
+        tool: 'my_tool',
+        error_category: 'user',
+        source_kind: 'log',
+      });
+    });
+
+    it('records the source kind on both metrics when the handler throws', async () => {
+      const traced = withToolTracing('my_tool', context, async () => {
+        recordMcpSource(logSource);
+        throw new Error('boom');
+      });
+      await expect(traced({})).rejects.toThrow('boom');
+
+      expect(mockCounter.add).toHaveBeenCalledWith(1, {
+        tool: 'my_tool',
+        error_category: 'server',
+        source_kind: 'log',
+      });
+      expect(mockDurationHistogram.record).toHaveBeenCalledWith(
+        expect.any(Number),
+        { tool: 'my_tool', source_kind: 'log' },
+      );
+    });
+
+    it('keeps concurrent tool invocations apart', async () => {
+      const a = withToolTracing('tool_a', context, async () => {
+        await new Promise(resolve => setTimeout(resolve, 5));
+        recordMcpSource(logSource);
+        return ok;
+      });
+      const b = withToolTracing('tool_b', context, async () => {
+        recordMcpSource(traceSource);
+        return ok;
+      });
+      await Promise.all([a({}), b({})]);
+
+      expect(mockDurationHistogram.record).toHaveBeenCalledWith(
+        expect.any(Number),
+        { tool: 'tool_a', source_kind: 'log' },
+      );
+      expect(mockDurationHistogram.record).toHaveBeenCalledWith(
+        expect.any(Number),
+        { tool: 'tool_b', source_kind: 'trace' },
+      );
+    });
   });
 });
