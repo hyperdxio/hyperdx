@@ -24,7 +24,7 @@ const NOT_IN_APP_FILENAME_PATTERNS = [
   /\/(webpack-runtime|runtime[~-]main)[^/]*\.js/,
 ];
 
-export type JavaScriptCause = {
+type JavaScriptCause = {
   type: string;
   value: string;
   frames: StacktraceFrame[];
