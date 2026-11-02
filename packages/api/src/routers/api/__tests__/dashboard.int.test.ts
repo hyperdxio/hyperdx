@@ -1,5 +1,6 @@
 import {
   AlertThresholdType,
+  DisplayType,
   MetricsDataType,
   PresetDashboard,
   SourceKind,
@@ -33,6 +34,15 @@ const makeMockAlert = (webhookId: string) => ({
   interval: '12h' as const,
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
+});
+
+const makePromqlConfig = (alert?: ReturnType<typeof makeMockAlert>) => ({
+  configType: 'promql' as const,
+  name: 'Up',
+  displayType: DisplayType.Line,
+  source: 'test-source',
+  promqlExpression: [{ expression: 'up' }],
+  alert,
 });
 
 describe('dashboard router', () => {
@@ -506,6 +516,49 @@ describe('dashboard router', () => {
 
     const alerts = await agent.get(`/alerts`).expect(200);
     expect(alerts.body.data).toEqual([]);
+  });
+
+  it('does not create alerts on PromQL tiles when creating a dashboard', async () => {
+    await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [
+          {
+            ...makeTile(),
+            config: makePromqlConfig(makeMockAlert(webhook._id.toString())),
+          },
+        ],
+        tags: [],
+      })
+      .expect(200);
+
+    expect(await Alert.countDocuments({ team: team._id })).toBe(0);
+  });
+
+  it('deletes the alert when a tile is switched to PromQL', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: [],
+      })
+      .expect(200);
+    expect(await Alert.countDocuments({ team: team._id })).toBe(1);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          { ...dashboard.body.tiles[0], config: makePromqlConfig(mockAlert) },
+        ],
+      })
+      .expect(200);
+
+    expect(await Alert.countDocuments({ team: team._id })).toBe(0);
   });
 
   it('alerts are updated when updating dashboard (updating tile alert settings)', async () => {
