@@ -396,6 +396,25 @@ describe('MCP Dashboard Tools - PromQL tiles and label filters', () => {
       expect(stored?.filters?.[1]).toMatchObject(storedLabelFilter());
     });
 
+    it('rejects a filter whose variable name a hidden label filter already uses', async () => {
+      const dashboard = await createStoredDashboard();
+
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        id: dashboard._id.toString(),
+        name: 'PromQL dashboard',
+        tiles: [],
+        filters: [{ type: 'STATIC_LIST', name: 'Job', options: ['checkout'] }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(getFirstText(result)).toContain('"$Job" is already used');
+      const stored = await Dashboard.findById(dashboard._id).lean();
+      expect(stored?.filters).toEqual([
+        expect.objectContaining(storedLabelFilter()),
+      ]);
+      expect(stored?.tiles).toHaveLength(2);
+    });
+
     it('rejects a PromQL tile', async () => {
       const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
         name: 'PromQL off',

@@ -1,4 +1,8 @@
-import { isPrometheusLabelFilter } from '@hyperdx/common-utils/dist/filters';
+import {
+  getFilterVariableName,
+  isFilterVariableEnabled,
+  isPrometheusLabelFilter,
+} from '@hyperdx/common-utils/dist/filters';
 import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { uniq } from 'lodash';
@@ -368,16 +372,30 @@ async function updateDashboard({
       existingFilterIds,
     );
     const requestFilterIds = new Set(requestFilters.map(filter => filter.id));
-    setPayload.filters = promqlEnabled
-      ? requestFilters
-      : [
-          ...requestFilters,
-          ...(existingDashboard.filters ?? []).filter(
-            filter =>
-              isPrometheusLabelFilter(filter) &&
-              !requestFilterIds.has(filter.id),
-          ),
-        ];
+    const hiddenFilters = promqlEnabled
+      ? []
+      : (existingDashboard.filters ?? []).filter(
+          filter =>
+            isPrometheusLabelFilter(filter) && !requestFilterIds.has(filter.id),
+        );
+
+    // The body schema checks that variable names are unique only across the
+    // request, so check the hidden filters added back here.
+    const requestVariableNames = new Set(
+      requestFilters.filter(isFilterVariableEnabled).map(getFilterVariableName),
+    );
+    const clashingName = hiddenFilters
+      .filter(isFilterVariableEnabled)
+      .map(getFilterVariableName)
+      .find(name => name !== undefined && requestVariableNames.has(name));
+    if (clashingName !== undefined) {
+      return mcpUserError(
+        `Variable name "$${clashingName}" is already used by a filter this ` +
+          'tool cannot show. Choose a different variableName.',
+      );
+    }
+
+    setPayload.filters = [...requestFilters, ...hiddenFilters];
   }
 
   const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
