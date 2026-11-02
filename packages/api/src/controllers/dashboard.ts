@@ -1,3 +1,4 @@
+import { savedChartConfigSupportsAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DashboardWithoutIdSchema,
   resolveChartPaletteToken,
@@ -20,10 +21,19 @@ import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { resolveAlertDisplayFields } from '@/utils/alerts';
 
+// Drop alerts on tiles the alert checker cannot evaluate (e.g. PromQL), so
+// they are never stored and any existing ones are deleted on save.
+function getSupportedTileAlert(tile: Tile) {
+  return savedChartConfigSupportsAlerts(tile.config)
+    ? tile.config.alert
+    : undefined;
+}
+
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
-    if (tile.config.alert) {
-      acc[tile.id] = tile.config.alert;
+    const alert = getSupportedTileAlert(tile);
+    if (alert) {
+      acc[tile.id] = alert;
     }
     return acc;
   }, {});
@@ -94,7 +104,7 @@ async function syncDashboardAlerts(
 
   const newTilesForAlertSync: TileForAlertSync[] = newTiles.map(t => ({
     id: t.id,
-    config: { alert: t.config.alert },
+    config: { alert: getSupportedTileAlert(t) },
   }));
   const { tileIds: newTileIds, tileIdsWithAlerts: newTileIdsWithAlerts } =
     extractTileAlertData(newTilesForAlertSync);
