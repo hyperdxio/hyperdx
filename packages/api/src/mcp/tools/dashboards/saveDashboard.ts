@@ -1,3 +1,4 @@
+import { isPrometheusLabelFilter } from '@hyperdx/common-utils/dist/filters';
 import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { uniq } from 'lodash';
@@ -9,6 +10,7 @@ import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
+import { isPromqlEnabled } from '@/mcp/utils/promql';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -24,7 +26,11 @@ import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
 import type { McpDashboardFilter } from './schemas';
-import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
+import {
+  buildMcpFiltersParam,
+  buildMcpTilesParam,
+  mcpContainersParam,
+} from './schemas';
 import {
   getFilterVariableWarnings,
   getRawSqlMissingSourceError,
@@ -39,6 +45,7 @@ export function registerSaveDashboard({
 }: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
+  const promqlEnabled = isPromqlEnabled(context);
 
   registerTool(
     'clickstack_save_dashboard',
@@ -60,12 +67,12 @@ export function registerSaveDashboard({
             'Dashboard ID. Omit to create a new dashboard, provide to update an existing one.',
           ),
         name: z.string().describe('Dashboard name'),
-        tiles: mcpTilesParam,
+        tiles: buildMcpTilesParam(promqlEnabled),
         tags: tagsSchema.describe(
           'Labels for organizing the dashboard; clickstack_search_dashboards can filter by them.',
         ),
         containers: mcpContainersParam.optional(),
-        filters: mcpFiltersParam.optional(),
+        filters: buildMcpFiltersParam(promqlEnabled).optional(),
       }),
     },
     async ({
@@ -81,6 +88,7 @@ export function registerSaveDashboard({
           teamId,
           userId,
           frontendUrl,
+          promqlEnabled,
           name,
           inputTiles,
           tags,
@@ -92,6 +100,7 @@ export function registerSaveDashboard({
         teamId,
         userId,
         frontendUrl,
+        promqlEnabled,
         dashboardId,
         name,
         inputTiles,
@@ -138,6 +147,7 @@ async function createDashboard({
   teamId,
   userId,
   frontendUrl,
+  promqlEnabled,
   name,
   inputTiles,
   tags,
@@ -147,6 +157,7 @@ async function createDashboard({
   teamId: string;
   userId: string | undefined;
   frontendUrl: string | undefined;
+  promqlEnabled: boolean;
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
@@ -210,7 +221,7 @@ async function createDashboard({
   recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
 
   const externalDashboard = convertToExternalDashboard(newDashboard, {
-    hidePromqlTiles: true,
+    hidePromql: !promqlEnabled,
   });
   return {
     content: [
@@ -242,6 +253,7 @@ async function updateDashboard({
   teamId,
   userId,
   frontendUrl,
+  promqlEnabled,
   dashboardId,
   name,
   inputTiles,
@@ -252,6 +264,7 @@ async function updateDashboard({
   teamId: string;
   userId: string | undefined;
   frontendUrl: string | undefined;
+  promqlEnabled: boolean;
   dashboardId: string;
   name: string;
   inputTiles: unknown[];
@@ -323,17 +336,21 @@ async function updateDashboard({
     tilesWithId,
     existingTileIds,
   );
-  // MCP reads hide PromQL tiles, so the agent's tile list never contains them.
-  // Keep them rather than delete tiles it could not see. A request tile that
-  // reuses a hidden tile's id replaces it. Remove with HDX-5302.
+  // With PromQL disabled, reads hide PromQL tiles and PROMETHEUS_LABEL
+  // filters, so the agent's lists never contain them. Keep them rather than
+  // delete what it could not see. A request tile that reuses a hidden tile's
+  // id replaces it.
   const requestTileIds = new Set(requestTiles.map(tile => tile.id));
-  const internalTiles = [
-    ...requestTiles,
-    ...(existingDashboard.tiles ?? []).filter(
-      tile =>
-        isPromqlSavedChartConfig(tile.config) && !requestTileIds.has(tile.id),
-    ),
-  ];
+  const internalTiles = promqlEnabled
+    ? requestTiles
+    : [
+        ...requestTiles,
+        ...(existingDashboard.tiles ?? []).filter(
+          tile =>
+            isPromqlSavedChartConfig(tile.config) &&
+            !requestTileIds.has(tile.id),
+        ),
+      ];
 
   // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
   // misnamed or wrong-shape fields fail at compile time, mirroring the
@@ -346,10 +363,21 @@ async function updateDashboard({
   };
 
   if (filters !== undefined) {
-    setPayload.filters = convertExternalFiltersToInternal(
+    const requestFilters = convertExternalFiltersToInternal(
       filters,
       existingFilterIds,
     );
+    const requestFilterIds = new Set(requestFilters.map(filter => filter.id));
+    setPayload.filters = promqlEnabled
+      ? requestFilters
+      : [
+          ...requestFilters,
+          ...(existingDashboard.filters ?? []).filter(
+            filter =>
+              isPrometheusLabelFilter(filter) &&
+              !requestFilterIds.has(filter.id),
+          ),
+        ];
   }
 
   const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
@@ -388,7 +416,7 @@ async function updateDashboard({
   recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
   const externalDashboard = convertToExternalDashboard(updatedDashboard, {
-    hidePromqlTiles: true,
+    hidePromql: !promqlEnabled,
   });
   return {
     content: [
