@@ -37,8 +37,8 @@ export const alertsFilterShape = {
     .pipe(
       z
         .array(z.nativeEnum(AlertSource))
-        .max(Object.values(AlertSource).length)
-        .optional(),
+        .optional()
+        .transform(v => v && [...new Set(v)]),
     )
     .optional(),
   /** A list of alert states to filter by. Returns alerts that match any of the specified states */
@@ -46,8 +46,8 @@ export const alertsFilterShape = {
     .pipe(
       z
         .array(z.enum(ALERT_FILTER_STATES))
-        .max(ALERT_FILTER_STATES.length)
-        .optional(),
+        .optional()
+        .transform(v => v && [...new Set(v)]),
     )
     .optional(),
   /** A search string to filter alerts by their display name. Substring, case-insensitive match */

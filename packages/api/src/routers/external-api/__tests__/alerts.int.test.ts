@@ -961,6 +961,11 @@ describe('External API Alerts', () => {
         await authRequest('get', `${ALERTS_BASE_URL}?state=ERROR`).expect(400);
       });
 
+      it('should accept a repeated filter value', async () => {
+        const { names } = await listNames(`${'state=OK&'.repeat(6)}limit=10`);
+        expect(names.sort()).toEqual(['Checkout errors', 'Login failures']);
+      });
+
       it('should reject oversized filter values', async () => {
         await authRequest(
           'get',

@@ -22,11 +22,7 @@ import {
   validateRequestWithEnhancedErrors as validateRequest,
 } from '@/utils/enhancedErrors';
 import { translateAlertDocumentToExternalAlert } from '@/utils/externalApi';
-import {
-  getPagination,
-  paginationMeta,
-  paginationQuerySchema,
-} from '@/utils/pagination';
+import { paginationMeta, paginationQuerySchema } from '@/utils/pagination';
 import {
   alertSchema,
   ExternalAlertInput,
@@ -672,11 +668,11 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
+const listAlertsQuerySchema = paginationQuerySchema.extend(alertsFilterShape);
+
 router.get(
   '/',
-  processRequest({
-    query: paginationQuerySchema.extend(alertsFilterShape),
-  }),
+  processRequest({ query: listAlertsQuerySchema }),
   async (req, res, next) => {
     try {
       const teamId = req.user?.team;
@@ -684,11 +680,10 @@ router.get(
         return res.status(403).json({ message: 'Forbidden' });
       }
 
-      const { limit, offset } = getPagination(req.query);
-      const filter = buildAlertsFilter(
-        teamId,
-        z.object(alertsFilterShape).parse(req.query ?? {}),
+      const { limit, offset, ...filterParams } = listAlertsQuerySchema.parse(
+        req.query ?? {},
       );
+      const filter = buildAlertsFilter(teamId, filterParams);
       const [alerts, total] = await Promise.all([
         getAlertsWithDisplayRefs(teamId, { limit, offset }, filter),
         countAlerts(teamId, filter),
