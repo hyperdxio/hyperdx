@@ -21,28 +21,32 @@ const SHA256_TEST_CASES: Record<string, Sha256TestCase> = {
     columnMeta: [{ name: 'Body', type: 'JSON' }],
     input:
       '{"caller":"github.com/cloudzero/cloudzero-agent/app/domain/shipper/shipper.go:289","level":"info","message":"Successfully ran the shipper cycle","time":"2026-10-18T00:00:03Z","version":"5d05872b1f292e4bf481c61b187494b9bafff6a8.1.2.10-2026-03-24_02:00:46PM"}',
-    expected: '9bf1e18eb79cfe32fa7abb7c2b5370085a73eb299ffaaa526393084c8681c0b8',
+    expected:
+      '9bf1e18eb79cfe32fa7abb7c2b5370085a73eb299ffaaa526393084c8681c0b8',
     whereKind: 'json',
   },
   '600-char string': {
     clickHouse: "lower(hex(SHA256(repeat('a', 600))))",
     columnMeta: [{ name: 'description', type: 'String' }],
     input: 'a'.repeat(600),
-    expected: 'ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d',
+    expected:
+      'ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d',
     whereKind: 'leftUtf8',
   },
   '2000-char string truncated to 1000 code points': {
     clickHouse: "lower(hex(SHA256(leftUTF8(repeat('a', 2000), 1000))))",
     columnMeta: [{ name: 'description', type: 'String' }],
     input: 'a'.repeat(2000),
-    expected: '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3',
+    expected:
+      '41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3',
     whereKind: 'leftUtf8',
   },
   '600 emoji code points': {
     clickHouse: "lower(hex(SHA256(leftUTF8(repeat('😀', 600), 1000))))",
     columnMeta: [{ name: 'description', type: 'String' }],
     input: '😀'.repeat(600),
-    expected: '7f22fd88b289648f5f2a8f290d1010a0cefcf260777d613f34f9fb7948db3e43',
+    expected:
+      '7f22fd88b289648f5f2a8f290d1010a0cefcf260777d613f34f9fb7948db3e43',
     whereKind: 'leftUtf8',
   },
 };
