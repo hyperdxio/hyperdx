@@ -81,8 +81,12 @@ export const toFormValues = (
     expression: queried?.expression ?? '',
     source: queried?.source ?? promqlLabel?.source ?? presetSourceId ?? '',
     sourceMetricType: queried?.sourceMetricType,
-    where: queried?.where ?? '',
-    whereLanguage: queried?.whereLanguage ?? getStoredLanguage() ?? 'sql',
+    where: queried?.where ?? adhoc?.where ?? '',
+    whereLanguage:
+      queried?.whereLanguage ??
+      adhoc?.whereLanguage ??
+      getStoredLanguage() ??
+      'sql',
     appliesToSourceIds:
       queried?.appliesToSourceIds ?? adhoc?.appliesToSourceIds ?? [],
 
@@ -137,6 +141,11 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
   }
 
   const appliesTo = values.appliesToSourceIds?.filter(id => !!id?.length);
+  const trimmedWhere = values.where?.trim() ?? '';
+  const whereFields = {
+    where: trimmedWhere || undefined,
+    whereLanguage: trimmedWhere ? (values.whereLanguage ?? 'sql') : undefined,
+  };
 
   // Selection limits don't apply to conditions, so they aren't stored.
   if (values.type === 'ADHOC') {
@@ -147,6 +156,8 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
       name: values.name,
       sourceType: values.sourceType,
       sources: values.sources,
+      // Only SQL suggestions can be narrowed; the input is hidden otherwise
+      ...(values.sourceType === 'sql' ? whereFields : {}),
       isBroadcastEnabled,
       // Hidden, and so unvalidated, while broadcast is off
       appliesToSourceIds:
@@ -156,13 +167,11 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
     });
   }
 
-  const trimmedWhere = values.where?.trim() ?? '';
   const isVariableEnabled = isFilterVariableEnabled(values);
 
   return DashboardFilterSchema.parse({
     ...rest,
-    where: trimmedWhere || undefined,
-    whereLanguage: trimmedWhere ? (values.whereLanguage ?? 'sql') : undefined,
+    ...whereFields,
     appliesToSourceIds: appliesTo?.length ? appliesTo : undefined,
     isBroadcastEnabled: isFilterBroadcastEnabled(values),
     isVariableEnabled,

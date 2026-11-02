@@ -712,6 +712,36 @@ describe('DashboardFilterSchema query-expression variant', () => {
   });
 });
 
+describe('DashboardFilterSchema ad hoc variant', () => {
+  const adhocFilter = {
+    id: 'f1',
+    type: 'ADHOC' as const,
+    name: 'Conditions',
+    sourceType: 'sql' as const,
+    sources: ['source-1'],
+    isVariableEnabled: true as const,
+  };
+
+  it('keeps the condition that narrows its suggestions', () => {
+    const filter = {
+      ...adhocFilter,
+      where: 'Namespace IN ($namespace)',
+      whereLanguage: 'sql' as const,
+    };
+    expect(DashboardFilterSchema.parse(filter)).toEqual(filter);
+  });
+
+  it('rejects a PromQL condition language', () => {
+    expect(
+      DashboardFilterSchema.safeParse({
+        ...adhocFilter,
+        where: 'up',
+        whereLanguage: 'promql',
+      }).success,
+    ).toBe(false);
+  });
+});
+
 // Preset dashboards are broadcast-only, so the preset schema extends the
 // query-expression variant rather than the union — a static filter is
 // unrepresentable rather than rejected by a refinement.

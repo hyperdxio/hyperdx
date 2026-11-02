@@ -1260,7 +1260,8 @@ function renderFrom({
   );
 }
 
-async function renderWhereExpressionStr({
+/** Render a SQL or Lucene condition as the SQL a chart query on `from` would use. */
+export async function renderWhereExpressionStr({
   condition,
   language,
   metadata,

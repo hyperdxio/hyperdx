@@ -9,7 +9,10 @@ import {
   quoteResultColumnNameIfNeeded,
 } from '@/core/metadata';
 import * as renderChartConfigModule from '@/core/renderChartConfig';
-import { timeFilterExpr } from '@/core/renderChartConfig';
+import {
+  renderWhereExpressionStr,
+  timeFilterExpr,
+} from '@/core/renderChartConfig';
 import { isBuilderChartConfig } from '@/guards';
 import { TextIndexInfoLookup } from '@/queryParser';
 import { BuilderChartConfigWithDateRange, SourceKind, TSource } from '@/types';
@@ -29,6 +32,7 @@ jest.mock('../core/renderChartConfig', () => ({
   renderChartConfig: jest
     .fn()
     .mockResolvedValue({ sql: 'SELECT 1', params: {} }),
+  renderWhereExpressionStr: jest.fn().mockResolvedValue('__CONDITION__'),
   timeFilterExpr: jest
     .fn()
     .mockResolvedValue({ sql: '__TIME_FILTER__', params: {} }),
@@ -2876,6 +2880,72 @@ describe('Metadata', () => {
       expect(scanCall.query).toContain('__TIME_FILTER__');
     });
 
+    describe('with a condition', () => {
+      const conditionSql = "ServiceName = 'api'";
+      const buildScopedMetadata = () => {
+        const md = buildMetadata();
+        jest.spyOn(md, 'getMapColumnTextIndexes').mockResolvedValue(
+          new Map([
+            [
+              'LogAttributes',
+              {
+                key: {
+                  indexName: 'idx_log_attr_keys',
+                  mapColumn: 'LogAttributes',
+                },
+              },
+            ],
+          ]),
+        );
+        jest.spyOn(md, 'getColumn').mockResolvedValue({
+          name: 'LogAttributes',
+          type: 'Map(String, String)',
+        } as ColumnMeta);
+        return md;
+      };
+
+      it('scans only matching rows, skipping the text index and the rollup', async () => {
+        const md = buildScopedMetadata();
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+          json: () => Promise.resolve({ data: [{ keysArr: ['scoped.key'] }] }),
+        });
+
+        const keys = await md.getMapKeys({ ...baseArgs, conditionSql });
+
+        expect(keys).toEqual(['scoped.key']);
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        const { query, query_params } = (
+          mockClickhouseClient.query as jest.Mock
+        ).mock.calls[0][0];
+        expect(query).not.toContain('mergeTreeTextIndex');
+        expect(Object.values(query_params)).not.toContain(
+          'otel_logs_key_rollup_15m',
+        );
+        expect(query).toContain(`__TIME_FILTER__ AND (${conditionSql})`);
+      });
+
+      it('caches its keys apart from the unscoped keys', async () => {
+        const md = buildScopedMetadata();
+        (mockClickhouseClient.query as jest.Mock)
+          .mockResolvedValueOnce({
+            json: () => Promise.resolve({ data: [{ key: 'indexed.key' }] }),
+          })
+          .mockResolvedValueOnce({
+            json: () =>
+              Promise.resolve({ data: [{ keysArr: ['scoped.key'] }] }),
+          });
+
+        const unscoped = await md.getMapKeys({ ...baseArgs });
+        const scoped = await md.getMapKeys({ ...baseArgs, conditionSql });
+        const scopedRepeat = await md.getMapKeys({ ...baseArgs, conditionSql });
+
+        expect(unscoped).toEqual(['indexed.key']);
+        expect(scoped).toEqual(['scoped.key']);
+        expect(scopedRepeat).toEqual(['scoped.key']);
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+      });
+    });
+
     it('falls back to an unbounded scan (with a warning) when timestampValueExpression is missing', async () => {
       const md = buildMetadata();
       const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
@@ -3241,6 +3311,82 @@ describe('Metadata', () => {
           timestampValueExpression: 'EventTime, EventDate',
         }),
       );
+    });
+
+    describe('with a condition', () => {
+      const mapColumn = (name: string): ColumnMeta => ({
+        name,
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+        comment: '',
+        codec_expression: '',
+        ttl_expression: '',
+      });
+      const tableConnection = {
+        databaseName: 'otel',
+        tableName: 'otel_logs',
+        connectionId: 'conn-1',
+      };
+
+      const buildMetadata = () => {
+        const md = new Metadata(mockClickhouseClient, new MetadataCache());
+        (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+          json: () =>
+            Promise.resolve({
+              data: [
+                mapColumn('LogAttributes'),
+                mapColumn('ResourceAttributes'),
+              ],
+            }),
+        });
+        return {
+          md,
+          getMapKeysSpy: jest.spyOn(md, 'getMapKeys').mockResolvedValue([]),
+        };
+      };
+
+      it('renders it once and scans every Map column with it', async () => {
+        const { md, getMapKeysSpy } = buildMetadata();
+
+        await md.getAllFields({
+          ...tableConnection,
+          condition: {
+            where: 'api',
+            whereLanguage: 'lucene',
+            implicitColumnExpression: 'Body',
+          },
+        });
+
+        expect(renderWhereExpressionStr).toHaveBeenCalledTimes(1);
+        expect(renderWhereExpressionStr).toHaveBeenCalledWith(
+          expect.objectContaining({
+            condition: 'api',
+            language: 'lucene',
+            implicitColumnExpression: 'Body',
+            from: { databaseName: 'otel', tableName: 'otel_logs' },
+            connectionId: 'conn-1',
+          }),
+        );
+        expect(getMapKeysSpy).toHaveBeenCalledTimes(2);
+        for (const [args] of getMapKeysSpy.mock.calls) {
+          expect(args.conditionSql).toBe('__CONDITION__');
+        }
+      });
+
+      it('scans every row when it is blank', async () => {
+        const { md, getMapKeysSpy } = buildMetadata();
+
+        await md.getAllFields({
+          ...tableConnection,
+          condition: { where: ' ' },
+        });
+
+        expect(renderWhereExpressionStr).not.toHaveBeenCalled();
+        expect(getMapKeysSpy).toHaveBeenCalledWith(
+          expect.objectContaining({ conditionSql: undefined }),
+        );
+      });
     });
 
     it('should extract LowCardinality(String) type for Map sub-fields when value type is LowCardinality', async () => {

@@ -242,11 +242,13 @@ export const DashboardFilterEditForm = ({
                 otherFilters={otherFilters}
               />
             ) : formFilterType === 'ADHOC' ? (
-              <AdhocFilterEditForm
-                control={control}
-                setValue={setValue}
-                otherFilters={otherFilters}
-              />
+              <SqlVariablesProvider variables={otherVariables}>
+                <AdhocFilterEditForm
+                  control={control}
+                  setValue={setValue}
+                  otherFilters={otherFilters}
+                />
+              </SqlVariablesProvider>
             ) : formFilterType === 'PROMETHEUS_LABEL' ? (
               <SqlVariablesProvider variables={otherVariables}>
                 <PromqlLabelFilterEditForm

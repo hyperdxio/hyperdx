@@ -2424,6 +2424,12 @@ export const AdhocDashboardFilterSchema = dashboardFilterBaseSchema
     /** IDs of the sources whose keys and values the filter offers, all of `sourceType`. */
     sources: z.array(z.string().min(1)).min(1),
     /**
+     * Narrows the rows keys and values are suggested from, as a queried filter's
+     * `where` narrows its dropdown. SQL sources only, and never broadcast.
+     */
+    where: QueryExpressionDashboardFilterSchema.shape.where,
+    whereLanguage: QueryExpressionDashboardFilterSchema.shape.whereLanguage,
+    /**
      * Sources the conditions are broadcast to, all of `sourceType`. Undefined /
      * empty means the filter's `sources`.
      */

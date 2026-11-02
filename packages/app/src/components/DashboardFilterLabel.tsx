@@ -5,6 +5,20 @@ import { IconAlertTriangle, IconHelp } from '@tabler/icons-react';
 /** What a filter does with its value, from `getFilterEffect`. */
 export type FilterEffect = { hasEffect: boolean; tooltip: string };
 
+/**
+ * Explain a dropdown query that may list nothing until one of the variables it
+ * depends on is selected. Only the bare SQL reference form gets here — the
+ * macros and Lucene both have an empty state that lists every value.
+ */
+export const getPendingVariablesTooltip = (
+  pendingVariables: string[],
+): string => {
+  const names = pendingVariables.map(name => `$${name}`).join(', ');
+  return `Filter depends on ${names}, which ${
+    pendingVariables.length === 1 ? 'has' : 'have'
+  } no selected value.`;
+};
+
 /** One of the caution icons a filter's label row can carry, with its tooltip. */
 export const FilterCaution = ({
   label,

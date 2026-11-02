@@ -107,6 +107,24 @@ describe('toFormValues', () => {
   it('defaults a new filter to SQL ad hoc sources', () => {
     expect(toFormValues()).toMatchObject({ sourceType: 'sql', sources: [] });
   });
+
+  it("seeds the shared where fields from a stored ad hoc filter's condition", () => {
+    const values = toFormValues({
+      id: 'a',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'sql',
+      sources: ['logs'],
+      where: 'Namespace:$namespace',
+      whereLanguage: 'lucene',
+      isVariableEnabled: true,
+    });
+
+    expect(values).toMatchObject({
+      where: 'Namespace:$namespace',
+      whereLanguage: 'lucene',
+    });
+  });
 });
 
 describe('toSavedFilter', () => {
@@ -241,6 +259,39 @@ describe('toSavedFilter', () => {
       isVariableEnabled: true,
       variableName: 'Conditions',
     });
+  });
+
+  it('keeps the trimmed condition narrowing a SQL ad hoc filter', () => {
+    const saved = toSavedFilter(
+      formValues({
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources: ['logs'],
+        where: '  Namespace IN ($namespace)  ',
+        whereLanguage: 'sql',
+      }),
+    );
+
+    expect(saved).toMatchObject({
+      where: 'Namespace IN ($namespace)',
+      whereLanguage: 'sql',
+    });
+  });
+
+  it('drops the condition from a PromQL ad hoc filter, which has no input for it', () => {
+    const saved = toSavedFilter(
+      formValues({
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'promql',
+        sources: ['prom'],
+        where: 'Namespace IN ($namespace)',
+      }),
+    );
+
+    expect(saved).not.toHaveProperty('where');
+    expect(saved).not.toHaveProperty('whereLanguage');
   });
 
   it('drops the ad hoc broadcast scope when broadcast is off', () => {

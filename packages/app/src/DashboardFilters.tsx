@@ -25,6 +25,7 @@ import {
   DashboardFilterLabel,
   FilterCaution,
   FilterEffect,
+  getPendingVariablesTooltip,
 } from './components/DashboardFilterLabel';
 import { FilterLinkToggle } from './components/FilterLinkToggle';
 import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
@@ -45,20 +46,6 @@ interface DashboardFilterSelectProps {
    */
   pendingVariables?: string[];
 }
-
-/**
- * Explain a dropdown query that may list nothing until one of the variables it
- * depends on is selected. Only the bare SQL reference form gets here — the
- * macros and Lucene both have an empty state that lists every value.
- */
-export const getPendingVariablesTooltip = (
-  pendingVariables: string[],
-): string => {
-  const names = pendingVariables.map(name => `$${name}`).join(', ');
-  return `Filter depends on ${names}, which ${
-    pendingVariables.length === 1 ? 'has' : 'have'
-  } no selected value.`;
-};
 
 /**
  * Explain a required filter that has nothing selected, naming how far the block
@@ -184,6 +171,8 @@ interface DashboardFilterProps {
    * as the gate for variable-specific copy.
    */
   variables?: ChartVariable[];
+  /** Required filters with nothing selected, which can block ad hoc filters. */
+  unsatisfiedRequiredFilters?: DashboardFilter[];
 }
 
 const DashboardFilters = ({
@@ -194,6 +183,7 @@ const DashboardFilters = ({
   adhocConditionsByFilterId,
   onSetAdhocConditions,
   variables,
+  unsatisfiedRequiredFilters,
 }: DashboardFilterProps) => {
   // "Link" mode (opt-in, off by default): each dropdown's values are narrowed by
   // the others' selections. Off by default because contingent value lookups
@@ -235,6 +225,8 @@ const DashboardFilters = ({
               }
               dateRange={dateRange}
               effect={getFilterEffect(filter)}
+              variables={variables}
+              unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
             />
           );
         }
