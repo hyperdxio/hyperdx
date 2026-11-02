@@ -265,6 +265,9 @@ export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
 };
 
+const stateTitleEmoji = (state?: AlertState): string =>
+  isAlertResolved(state) ? '✅ ' : '🚨 ';
+
 /**
  * Formats the value to match the decimal precision of the threshold.
  * This ensures consistent display of numbers in alert messages.
@@ -342,10 +345,8 @@ export const buildAlertMessageTemplateHdxLink = (
 
 export const buildAlertMessageTemplateTitle = ({
   view,
-  state,
 }: {
   view: AlertMessageTemplateDefaultView;
-  state?: AlertState;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
@@ -367,17 +368,14 @@ export const buildAlertMessageTemplateTitle = ({
     dashboard,
   });
 
-  // Add emoji prefix based on alert state
-  const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
-
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
     // TODO: using template engine to render the title
-    const baseTitle =
-      renderedTemplate ?? `Alert for "${displayName}" - ${value} lines found`;
-    return `${emoji}${baseTitle}`;
+    return (
+      renderedTemplate ?? `Alert for "${displayName}" - ${value} lines found`
+    );
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
@@ -389,27 +387,27 @@ export const buildAlertMessageTemplateTitle = ({
       );
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    const baseTitle =
+    return (
       renderedTemplate ??
       `Alert for "${displayName}" - ${formattedValue} ${
         doesExceedThreshold(alert, value)
           ? describeThresholdViolation(alert.thresholdType)
           : describeThresholdResolution(alert.thresholdType)
-      } ${describeThreshold(alert)}`;
-    return `${emoji}${baseTitle}`;
+      } ${describeThreshold(alert)}`
+    );
   } else if (alert.source === AlertSource.INLINE) {
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     // Inline alerts have no saved search/tile to name them; the alert's `name`
     // doubles as the title template, so the default falls back to the resolved
     // display name (itself derived from the chart config's name).
-    const baseTitle =
+    return (
       renderedTemplate ??
       `Alert for "${displayName}" - ${formattedValue} ${
         doesExceedThreshold(alert, value)
           ? describeThresholdViolation(alert.thresholdType)
           : describeThresholdResolution(alert.thresholdType)
-      } ${describeThreshold(alert)}`;
-    return `${emoji}${baseTitle}`;
+      } ${describeThreshold(alert)}`
+    );
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
@@ -739,7 +737,11 @@ export const renderAlertTemplate = async ({
       populatedChannel: channel,
       message: {
         hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
-        title,
+        // The state emoji is added per channel; a webhook can opt out.
+        title:
+          channel.channel.titleEmoji === false
+            ? title
+            : `${stateTitleEmoji(state)}${title}`,
         body: renderedBody,
         state,
         startTime: view.startTime.getTime(),

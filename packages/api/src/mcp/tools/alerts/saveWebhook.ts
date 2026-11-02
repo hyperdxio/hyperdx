@@ -59,6 +59,14 @@ const mcpSaveWebhookSchema = z.object({
       'Description shown in the UI. On update this is a full replace: ' +
         'omitting it clears the stored description.',
     ),
+  titleEmoji: z
+    .boolean()
+    .optional()
+    .describe(
+      'Set to false to omit the state emoji prefix from notification titles ' +
+        'sent through this webhook. On update this is a full replace: ' +
+        'omitting it restores the default prefix.',
+    ),
   headers: z
     .record(z.string(), z.string())
     .optional()
@@ -105,8 +113,8 @@ export function registerSaveWebhook({
         'clickstack_save_alert. For the slack service the url host must end ' +
         'in slack.com and headers/queryParams/body are not supported. On ' +
         'update, every alert using this webhook sends its next notifications ' +
-        'with the new settings, including a changed url. description and body ' +
-        'are a full replace (omitting them clears them), while write-only ' +
+        'with the new settings, including a changed url. description, titleEmoji and ' +
+        'body are a full replace (omitting them clears them), while write-only ' +
         'headers/queryParams are preserved when omitted (send {} to clear); ' +
         'changing url or service clears omitted headers/queryParams. ' +
         'url, headers, and queryParams are never returned.',
