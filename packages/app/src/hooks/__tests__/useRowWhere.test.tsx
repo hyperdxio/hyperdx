@@ -27,7 +27,8 @@ const SHA256_TEST_CASES: Record<string, Sha256TestCase> = {
     clickHouse: 'lower(hex(SHA256(toString(\'{"key": "value"}\'))))',
     columnMeta: [{ name: 'data', type: 'JSON' }],
     input: '{"key": "value"}',
-    expected: '9724c1e20e6e3e4d7f57ed25f9d4efb006e508590d528c90da597f6a775c13e5',
+    expected:
+      '9724c1e20e6e3e4d7f57ed25f9d4efb006e508590d528c90da597f6a775c13e5',
     whereKind: 'json',
   },
   'actual log line': {
