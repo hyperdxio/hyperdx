@@ -2,6 +2,7 @@ import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
   isFormulaSourceKind,
+  savedChartConfigSupportsAlerts,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -94,18 +95,20 @@ export const validateAlertInput = async (
       throw new Api400Error('Tile not found');
     }
 
-    // The alert checker skips PromQL tiles, so such an alert would never run.
-    if (tile.config != null && isPromqlSavedChartConfig(tile.config)) {
-      throw new Api400Error('Alerts are not supported on PromQL tiles');
+    // The alert checker cannot evaluate these tiles, so the alert would never run.
+    if (tile.config != null && !savedChartConfigSupportsAlerts(tile.config)) {
+      if (isPromqlSavedChartConfig(tile.config)) {
+        throw new Api400Error('Alerts are not supported on PromQL tiles');
+      }
+      const tileKind = isRawSqlSavedChartConfig(tile.config)
+        ? 'Raw SQL tiles'
+        : 'dashboard tiles';
+      throw new Api400Error(
+        `Alerts on ${tileKind} are only supported for Line, Stacked Bar, or Number display types`,
+      );
     }
 
     if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
-      if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
-        throw new Api400Error(
-          'Alerts on Raw SQL tiles are only supported for Line, Stacked Bar, or Number display types',
-        );
-      }
-
       const { errors } = validateRawSqlForAlert(tile.config);
       if (errors.length > 0) {
         throw new Api400Error(

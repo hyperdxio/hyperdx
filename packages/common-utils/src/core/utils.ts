@@ -11,7 +11,11 @@ import {
   isQueryExpressionFilter,
   isStaticListFilter,
 } from '@/filters';
-import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import {
+  isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
@@ -1673,6 +1677,22 @@ export function displayTypeSupportsPromQLAlerts(
   // TODO: Support alerts for PromQL (HDX-4636)
   // This looks funky, just doing it to satisfy knip
   return displayType ? false : false;
+}
+
+/**
+ * Whether the alert checker can evaluate an alert on a tile with this config.
+ * Shared by every save path so alerts are never stored where they cannot run.
+ */
+export function savedChartConfigSupportsAlerts(
+  config: SavedChartConfig,
+): boolean {
+  if (isPromqlSavedChartConfig(config)) {
+    return displayTypeSupportsPromQLAlerts(config.displayType);
+  }
+  if (isRawSqlSavedChartConfig(config)) {
+    return displayTypeSupportsRawSqlAlerts(config.displayType);
+  }
+  return displayTypeSupportsBuilderAlerts(config.displayType);
 }
 
 /** Expand the chart's macros, returning failures instead of throwing. */

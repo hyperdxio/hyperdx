@@ -1142,6 +1142,29 @@ describe('alerts router', () => {
       .expect(400);
   });
 
+  it('rejects creating an alert on a builder table tile', async () => {
+    const tile = makeTile();
+    tile.config = { ...tile.config, displayType: DisplayType.Table };
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({ name: 'Test Dashboard', tiles: [tile], tags: [] })
+      .expect(200);
+
+    const res = await agent
+      .post('/alerts')
+      .send(
+        makeAlertInput({
+          dashboardId: dashboard.body.id,
+          tileId: tile.id,
+          webhookId: webhook._id.toString(),
+        }),
+      )
+      .expect(400);
+    expect(JSON.stringify(res.body)).toContain(
+      'Alerts on dashboard tiles are only supported',
+    );
+  });
+
   it('rejects creating an alert on a PromQL tile', async () => {
     const promqlTileId = randomMongoId();
     const dashboard = await Dashboard.create({
