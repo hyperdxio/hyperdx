@@ -4,7 +4,10 @@ import {
   isFormulaSourceKind,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import { isRangeThresholdType } from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
 import { Types } from 'mongoose';
@@ -89,6 +92,11 @@ export const validateAlertInput = async (
 
     if (tile == null) {
       throw new Api400Error('Tile not found');
+    }
+
+    // The alert checker skips PromQL tiles, so such an alert would never run.
+    if (tile.config != null && isPromqlSavedChartConfig(tile.config)) {
+      throw new Api400Error('Alerts are not supported on PromQL tiles');
     }
 
     if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
