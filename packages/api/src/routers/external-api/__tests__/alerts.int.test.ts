@@ -921,6 +921,67 @@ describe('External API Alerts', () => {
         await authRequest('get', `${ALERTS_BASE_URL}?source=BOGUS`).expect(400);
       });
 
+      it('should match any of several sources or states', async () => {
+        expect(
+          (await listNames('source=tile&source=inline')).names.sort(),
+        ).toEqual(['Checkout errors', 'Checkout latency', 'Login failures']);
+        expect((await listNames('state=ALERT&state=OK')).names.sort()).toEqual([
+          'Checkout errors',
+          'Checkout latency',
+          'Login failures',
+        ]);
+        expect((await listNames('state=ALERT&state=DISABLED')).names).toEqual([
+          'Checkout latency',
+        ]);
+      });
+
+      it('should treat a legacy alert without a source as saved_search', async () => {
+        await Alert.collection.insertOne({
+          team: team._id,
+          displayName: 'Legacy alert',
+          threshold: 100,
+          interval: '1h',
+          thresholdType: AlertThresholdType.ABOVE,
+          channel: {
+            type: 'webhook',
+            webhookId: new ObjectId().toString(),
+          },
+        });
+
+        expect((await listNames('source=saved_search')).names).toEqual([
+          'Legacy alert',
+        ]);
+        expect((await listNames('source=tile')).names.sort()).toEqual([
+          'Checkout errors',
+          'Checkout latency',
+        ]);
+      });
+
+      it('should reject the ERROR state, which alerts never hold', async () => {
+        await authRequest('get', `${ALERTS_BASE_URL}?state=ERROR`).expect(400);
+      });
+
+      it('should reject oversized filter values', async () => {
+        await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}?search=${'a'.repeat(513)}`,
+        ).expect(400);
+        await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}?tag=${'a'.repeat(33)}`,
+        ).expect(400);
+        const tooManyTags = Array.from({ length: 51 }, (_, i) => `tag=t${i}`);
+        await authRequest(
+          'get',
+          `${ALERTS_BASE_URL}?${tooManyTags.join('&')}`,
+        ).expect(400);
+      });
+
+      it('should treat an empty tag or search as absent', async () => {
+        expect((await listNames('tag=')).names).toHaveLength(3);
+        expect((await listNames('search=')).names).toHaveLength(3);
+      });
+
       it('should treat a legacy alert without state or tags as OK and untagged', async () => {
         await Alert.collection.insertOne({
           team: team._id,

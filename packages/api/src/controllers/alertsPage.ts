@@ -11,6 +11,15 @@ import { objectIdSchema, stringListQueryParam, tagsSchema } from '@/utils/zod';
 
 const MAX_PAGE_LIMIT = 500;
 
+/** States an alert document can hold; ERROR only appears on history records. */
+const ALERT_FILTER_STATES = [
+  AlertState.ALERT,
+  AlertState.DISABLED,
+  AlertState.INSUFFICIENT_DATA,
+  AlertState.OK,
+  AlertState.PENDING,
+] as const;
+
 /** The page cursor's payload: the sort key of the last item on the page. */
 const alertsPageCursorSchema = z.object({
   n: z.string().nullable(),
@@ -25,11 +34,21 @@ export const alertsFilterShape = {
   tag: stringListQueryParam.pipe(tagsSchema).optional(),
   /** A list of alert sources to filter by. Returns alerts that match any of the specified sources */
   source: stringListQueryParam
-    .pipe(z.array(z.nativeEnum(AlertSource)).optional())
+    .pipe(
+      z
+        .array(z.nativeEnum(AlertSource))
+        .max(Object.values(AlertSource).length)
+        .optional(),
+    )
     .optional(),
   /** A list of alert states to filter by. Returns alerts that match any of the specified states */
   state: stringListQueryParam
-    .pipe(z.array(z.nativeEnum(AlertState)).optional())
+    .pipe(
+      z
+        .array(z.enum(ALERT_FILTER_STATES))
+        .max(ALERT_FILTER_STATES.length)
+        .optional(),
+    )
     .optional(),
   /** A search string to filter alerts by their display name. Substring, case-insensitive match */
   search: z.string().trim().max(MAX_ALERT_DISPLAY_NAME_LENGTH).optional(),

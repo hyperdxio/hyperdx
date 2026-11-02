@@ -380,9 +380,9 @@ export const updateAlert = async (
 
 export const countAlerts = async (
   teamId: ObjectId,
-  filter: FilterQuery<IAlert> = { team: teamId },
+  filter: FilterQuery<IAlert> = {},
 ) => {
-  return Alert.countDocuments(filter);
+  return Alert.countDocuments({ ...filter, team: teamId });
 };
 
 export const getAlertById = async (
@@ -498,9 +498,9 @@ const DISPLAY_REF_POPULATE = [
 export const getAlertsWithDisplayRefs = async (
   teamId: ObjectId,
   { limit, offset }: { limit: number; offset: number },
-  filter: FilterQuery<IAlert> = { team: teamId },
+  filter: FilterQuery<IAlert> = {},
 ) => {
-  return Alert.find(filter)
+  return Alert.find({ ...filter, team: teamId })
     .sort({ _id: 1 })
     .skip(offset)
     .limit(limit)

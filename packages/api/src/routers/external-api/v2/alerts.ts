@@ -615,7 +615,7 @@ router.get(
  *           type: array
  *           items:
  *             type: string
- *             enum: [ALERT, DISABLED, ERROR, INSUFFICIENT_DATA, OK, PENDING]
+ *             enum: [ALERT, DISABLED, INSUFFICIENT_DATA, OK, PENDING]
  *         description: >-
  *           Only return alerts in any of the given states. Repeat the
  *           parameter to pass several states.
@@ -651,6 +651,12 @@ router.get(
  *                     total: 1
  *                     limit: 1000
  *                     offset: 0
+ *       '400':
+ *         description: Invalid query parameters
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       '401':
  *         description: Unauthorized
  *         content:

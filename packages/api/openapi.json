@@ -6447,7 +6447,6 @@
                 "enum": [
                   "ALERT",
                   "DISABLED",
-                  "ERROR",
                   "INSUFFICIENT_DATA",
                   "OK",
                   "PENDING"
@@ -6500,6 +6499,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
