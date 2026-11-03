@@ -11,7 +11,7 @@
  * to common-utils later.
  */
 
-import MD5 from 'crypto-js/md5';
+import SHA256 from 'crypto-js/sha256';
 import SqlString from 'sqlstring';
 import {
   ColumnMetaType,
@@ -19,7 +19,11 @@ import {
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { quoteResultColumnNameIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
-import { aliasMapToWithClauses } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  aliasMapToWithClauses,
+  LEFT_UTF8_HASH_CODE_POINTS,
+  leftUtf8Prefix,
+} from '@hyperdx/common-utils/dist/core/utils';
 import type { BuilderChartConfig } from '@hyperdx/common-utils/dist/types';
 
 const MAX_STRING_LENGTH = 512;
@@ -67,7 +71,12 @@ function processRowToWhereClause(
         );
       }
 
-      const strValue = value != null ? String(value) : null;
+      // Handle nullish values for all types uniformly
+      if (value == null) {
+        return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
+      }
+
+      const strValue = String(value);
 
       switch (jsType) {
         case JSDataType.Date:
@@ -89,9 +98,9 @@ function processRowToWhereClause(
           ]);
         case JSDataType.JSON:
           // Handle case for whole json object, ex: json
-          return SqlString.format(`lower(hex(MD5(toString(?))))=?`, [
+          return SqlString.format(`lower(hex(SHA256(toString(?))))=?`, [
             SqlString.raw(valueExpr),
-            MD5(strValue ?? '').toString(),
+            SHA256(strValue).toString(),
           ]);
         case JSDataType.Dynamic:
           // Handle case for json element, ex: json.c
@@ -108,16 +117,17 @@ function processRowToWhereClause(
           );
 
         default:
-          // Handle nullish values
-          if (value == null) {
-            return SqlString.format(`isNull(?)`, [SqlString.raw(valueExpr)]);
-          }
           // Handle the case when string is too long
-          if ((strValue?.length ?? 0) > MAX_STRING_LENGTH) {
-            return SqlString.format(`lower(hex(MD5(leftUTF8(?, 1000))))=?`, [
-              SqlString.raw(valueExpr),
-              MD5((strValue ?? '').substring(0, 1000)).toString(),
-            ]);
+          if (strValue.length > MAX_STRING_LENGTH) {
+            return SqlString.format(
+              `lower(hex(SHA256(leftUTF8(?, ${LEFT_UTF8_HASH_CODE_POINTS}))))=?`,
+              [
+                SqlString.raw(valueExpr),
+                SHA256(
+                  leftUtf8Prefix(strValue, LEFT_UTF8_HASH_CODE_POINTS),
+                ).toString(),
+              ],
+            );
           }
           return SqlString.format(`?=?`, [
             SqlString.raw(valueExpr), // don't escape expressions

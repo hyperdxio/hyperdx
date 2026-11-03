@@ -419,6 +419,27 @@ export function useTableMetadata(
   });
 }
 
+/** Fetches server MergeTree settings; null on failure. */
+export function useMergeTreeSettings(
+  connectionId: string,
+  options?: Omit<
+    UseQueryOptions<Map<string, string> | null, Error>,
+    'queryKey' | 'queryFn'
+  >,
+) {
+  const metadata = useMetadataWithSettings();
+  return useQuery<Map<string, string> | null>({
+    queryKey: ['useMetadata.useMergeTreeSettings', { connectionId }],
+    // react-query rejects undefined
+    queryFn: async () =>
+      (await metadata.getMergeTreeSettings({ connectionId })) ?? null,
+    // Keep failures stale to refetch on next mount.
+    staleTime: query => (query.state.data ? 1000 * 60 * 5 : 0),
+    enabled: !!connectionId,
+    ...options,
+  });
+}
+
 /** How many keys a filter values query reads, per the team's setting. */
 export function useFilterKeysFetchLimit() {
   const { data: me } = api.useMe();

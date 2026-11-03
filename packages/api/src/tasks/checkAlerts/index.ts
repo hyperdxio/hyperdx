@@ -556,10 +556,7 @@ const fireChannelEvent = async ({
     clickhouseClient,
     metadata,
     state,
-    title: buildAlertMessageTemplateTitle({
-      view: templateView,
-      state,
-    }),
+    title: buildAlertMessageTemplateTitle({ view: templateView }),
     template: alert.message,
     view: templateView,
     teamId,

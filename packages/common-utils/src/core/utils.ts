@@ -11,7 +11,11 @@ import {
   isQueryExpressionFilter,
   isStaticListFilter,
 } from '@/filters';
-import { isBuilderSavedChartConfig, isRawSqlSavedChartConfig } from '@/guards';
+import {
+  isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@/guards';
 import { MacroExpansionError, MalformedMacroArgsError } from '@/macroErrors';
 import {
   getSourceDependentMacrosUsed,
@@ -50,6 +54,20 @@ import { SkipIndexMetadata, TableMetadata } from './metadata';
 
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
+
+/** Code-point limit for row-lookup string hashes (matches ClickHouse leftUTF8). */
+export const LEFT_UTF8_HASH_CODE_POINTS = 1000;
+
+/** First `limit` Unicode code points, matching ClickHouse leftUTF8(s, limit). */
+export function leftUtf8Prefix(value: string, limit: number): string {
+  let prefix = '';
+  let n = 0;
+  for (const ch of value) {
+    if (n++ === limit) break;
+    prefix += ch;
+  }
+  return prefix;
+}
 
 /**
  * Returns the quantile level of a percentile shorthand aggFn (`p95` -> 0.95),
@@ -1673,6 +1691,22 @@ export function displayTypeSupportsPromQLAlerts(
   // TODO: Support alerts for PromQL (HDX-4636)
   // This looks funky, just doing it to satisfy knip
   return displayType ? false : false;
+}
+
+/**
+ * Whether the alert checker can evaluate an alert on a tile with this config.
+ * Shared by every save path so alerts are never stored where they cannot run.
+ */
+export function savedChartConfigSupportsAlerts(
+  config: SavedChartConfig,
+): boolean {
+  if (isPromqlSavedChartConfig(config)) {
+    return displayTypeSupportsPromQLAlerts(config.displayType);
+  }
+  if (isRawSqlSavedChartConfig(config)) {
+    return displayTypeSupportsRawSqlAlerts(config.displayType);
+  }
+  return displayTypeSupportsBuilderAlerts(config.displayType);
 }
 
 /** Expand the chart's macros, returning failures instead of throwing. */
