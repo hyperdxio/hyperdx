@@ -599,8 +599,7 @@ router.get(
  *         schema:
  *           type: array
  *           items:
- *             type: string
- *             enum: [saved_search, tile, inline]
+ *             $ref: '#/components/schemas/AlertSource'
  *         description: >-
  *           Only return alerts of any of the given sources. Repeat the
  *           parameter to pass several sources.
@@ -610,8 +609,7 @@ router.get(
  *         schema:
  *           type: array
  *           items:
- *             type: string
- *             enum: [ALERT, DISABLED, INSUFFICIENT_DATA, OK, PENDING]
+ *             $ref: '#/components/schemas/AlertState'
  *         description: >-
  *           Only return alerts in any of the given states. Repeat the
  *           parameter to pass several states.
