@@ -13,6 +13,7 @@ import {
 import { formatDurationMs } from '@/utils';
 
 import {
+  buildServiceMapErrorWhere,
   ERROR_RATE_HIGH,
   formatApproximateNumber,
   formatRate,
@@ -77,15 +78,12 @@ export default function ServiceMapTooltip({
     navigateToTraceSearch({
       dateRange,
       source,
-      where: SqlString.format(
-        "? = ? AND ? IN ('Server', 'Consumer') AND ? = 'Error'",
-        [
-          SqlString.raw(source.serviceNameExpression ?? 'ServiceName'),
-          serviceName,
-          SqlString.raw(source.spanKindExpression ?? 'SpanKind'),
-          SqlString.raw(source.statusCodeExpression ?? 'StatusCode'),
-        ],
-      ),
+      where: buildServiceMapErrorWhere({
+        serviceNameExpression: source.serviceNameExpression ?? 'ServiceName',
+        serviceName,
+        spanKindExpression: source.spanKindExpression ?? 'SpanKind',
+        statusCodeExpression: source.statusCodeExpression ?? 'StatusCode',
+      }),
     });
   }, [dateRange, source, serviceName]);
 
