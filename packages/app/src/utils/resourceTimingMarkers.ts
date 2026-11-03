@@ -1,4 +1,4 @@
-import { get } from 'lodash';
+import { countBy, get } from 'lodash';
 import SqlString from 'sqlstring';
 import type {
   BuilderChartConfigWithDateRange,
@@ -58,11 +58,32 @@ export type ResourceTimingMarker = Omit<
 };
 
 /**
- * Matches a timing log to its waterfall log row. Both queries select the same
- * timestamp expression, and another log on the span has another timestamp.
+ * Matches a timing log to its waterfall log row: both queries select the same
+ * timestamp expression. Another log on the span can share the key, so the
+ * fold goes through getFoldedRowKeys.
  */
 export function resourceTimingRowKey(spanId: unknown, timestamp: unknown) {
   return `${String(spanId)}|${String(timestamp)}`;
+}
+
+/**
+ * Log rows carry no event name, and an exception or console error on the span
+ * in the same millisecond has the timing log's key. A key folds only when the
+ * dots query drew a timing log for each log row with it. All rows with a key
+ * share one timestamp, so an uncapped log list holds all of them or none.
+ */
+export function getFoldedRowKeys(
+  logRows: readonly { SpanId?: unknown; Timestamp?: unknown }[],
+  drawnRowCounts: ReadonlyMap<string, number>,
+): ReadonlySet<string> {
+  const rowCounts = countBy(logRows, row =>
+    resourceTimingRowKey(row.SpanId, row.Timestamp),
+  );
+  return new Set(
+    [...drawnRowCounts]
+      .filter(([key, drawn]) => rowCounts[key] <= drawn)
+      .map(([key]) => key),
+  );
 }
 
 export function buildResourceTimingQuery({
@@ -191,7 +212,7 @@ export function getResourceTimingMarkers(
   }[],
 ): {
   markersBySpanId: ReadonlyMap<string, ResourceTimingMarker[]>;
-  drawnRowKeys: ReadonlySet<string>;
+  drawnRowCounts: ReadonlyMap<string, number>;
 } {
   const spanStarts = new Map<string, number>();
   const shownSpanIds = new Set<string>();
@@ -208,7 +229,7 @@ export function getResourceTimingMarkers(
 
   const foldable = hasSubSecondTimestamps(meta);
   const markersBySpanId = new Map<string, ResourceTimingMarker[]>();
-  const drawnRowKeys = new Set<string>();
+  const drawnRowCounts = new Map<string, number>();
   for (const row of data) {
     const spanId = isSet(row.span_id) ? String(row.span_id) : undefined;
     const spanStartMs = spanId != null ? spanStarts.get(spanId) : undefined;
@@ -221,8 +242,9 @@ export function getResourceTimingMarkers(
       ...toMarkers(row.attributes, spanStartMs, fetchStart),
     ]);
     if (foldable && shownSpanIds.has(spanId)) {
-      drawnRowKeys.add(resourceTimingRowKey(spanId, row.timestamp));
+      const key = resourceTimingRowKey(spanId, row.timestamp);
+      drawnRowCounts.set(key, (drawnRowCounts.get(key) ?? 0) + 1);
     }
   }
-  return { markersBySpanId, drawnRowKeys };
+  return { markersBySpanId, drawnRowCounts };
 }

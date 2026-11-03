@@ -6,6 +6,7 @@ import {
 } from '@/hooks/__fixtures__/browserTraceEvents';
 import {
   buildResourceTimingQuery,
+  getFoldedRowKeys,
   getResourceTimingMarkers,
   resourceTimingRowKey,
 } from '@/utils/resourceTimingMarkers';
@@ -55,7 +56,7 @@ const draw = (
 
 describe('getResourceTimingMarkers', () => {
   it('places dots in sdk-trace-web order relative to the span start', () => {
-    const { markersBySpanId, drawnRowKeys } = draw(timingRow(sameOrigin));
+    const { markersBySpanId, drawnRowCounts } = draw(timingRow(sameOrigin));
 
     expect(markersBySpanId.get('span-1')).toEqual([
       { name: 'fetchStart', epochMs: SPAN_START_MS, attributes: {} },
@@ -85,8 +86,8 @@ describe('getResourceTimingMarkers', () => {
         },
       },
     ]);
-    expect([...drawnRowKeys]).toEqual([
-      resourceTimingRowKey('span-1', TIMING_TIMESTAMP),
+    expect([...drawnRowCounts]).toEqual([
+      [resourceTimingRowKey('span-1', TIMING_TIMESTAMP), 1],
     ]);
   });
 
@@ -164,9 +165,9 @@ describe('getResourceTimingMarkers', () => {
     ['without a span id', timingRow(sameOrigin, { span_id: '' })],
     ['with attributes that are not a map', timingRow('not a map')],
   ])('draws nothing and keeps the row for a log %s', (_name, row) => {
-    const { markersBySpanId, drawnRowKeys } = draw(row);
+    const { markersBySpanId, drawnRowCounts } = draw(row);
     expect(markersBySpanId.size).toBe(0);
-    expect(drawnRowKeys.size).toBe(0);
+    expect(drawnRowCounts.size).toBe(0);
   });
 
   it.each([
@@ -181,13 +182,60 @@ describe('getResourceTimingMarkers', () => {
       [{ name: 'timestamp', type: 'DateTime' }],
     ],
   ])('draws a log but keeps its row when %s', (_name, spans, meta) => {
-    const { markersBySpanId, drawnRowKeys } = draw(
+    const { markersBySpanId, drawnRowCounts } = draw(
       timingRow(sameOrigin),
       spans,
       meta,
     );
     expect(markersBySpanId.get('span-1')).toHaveLength(8);
-    expect(drawnRowKeys.size).toBe(0);
+    expect(drawnRowCounts.size).toBe(0);
+  });
+
+  it('counts a timing log ingested twice once per copy', () => {
+    const row = timingRow(sameOrigin);
+    const { drawnRowCounts } = getResourceTimingMarkers(
+      { data: [row, row], meta: TIMESTAMP_META },
+      traceRows,
+    );
+    expect([...drawnRowCounts]).toEqual([
+      [resourceTimingRowKey('span-1', TIMING_TIMESTAMP), 2],
+    ]);
+  });
+});
+
+describe('getFoldedRowKeys', () => {
+  const key = resourceTimingRowKey('span-1', TIMING_TIMESTAMP);
+  const timingLogRow = { SpanId: 'span-1', Timestamp: TIMING_TIMESTAMP };
+  const otherLogRow = {
+    SpanId: 'span-1',
+    Timestamp: '2026-10-22T04:52:37.825000000Z',
+  };
+
+  it.each([
+    ['folds the timing row alone', [timingLogRow, otherLogRow], 1, [key]],
+    [
+      'keeps an exception in the same millisecond and the timing row',
+      [timingLogRow, { ...timingLogRow, Body: '', SeverityNumber: 17 }],
+      1,
+      [],
+    ],
+    [
+      'keeps a console error in the same millisecond and the timing row',
+      [timingLogRow, { ...timingLogRow, Body: 'boom', SeverityText: 'error' }],
+      1,
+      [],
+    ],
+    [
+      'folds two copies of a timing log drawn twice',
+      [timingLogRow, timingLogRow],
+      2,
+      [key],
+    ],
+    ['ignores rows on other keys', [otherLogRow], 1, []],
+  ])('%s', (_name, logRows, drawn, expected) => {
+    expect([...getFoldedRowKeys(logRows, new Map([[key, drawn]]))]).toEqual(
+      expected,
+    );
   });
 });
 

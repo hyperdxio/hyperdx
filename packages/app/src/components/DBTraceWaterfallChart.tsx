@@ -793,6 +793,7 @@ export function DBTraceWaterfallChartContainer({
     meta: logRowsMeta,
     filterError: logFilterError,
     fatalError: logFatalError,
+    isTruncated: logIsTruncated,
   } = useFilteredEventsAroundFocus({
     // search data if logTableModel exist
     // search invalid date range if no logTableModel(react hook need execute no matter what)
@@ -834,8 +835,10 @@ export function DBTraceWaterfallChartContainer({
     traceId,
     highlightedRowWhere,
     initialRowHighlightHint,
-    // Only while the dots show. A log filter asks for the rows it matches.
-    foldTimingRows: showSpans && showSpanEvents && !logWhere,
+    // Only while the dots show. A log filter asks for the rows it matches. A
+    // capped list can keep a log that shares a timing log's key and drop the
+    // timing log, and the fold would then hide that other log.
+    foldTimingRows: showSpans && showSpanEvents && !logWhere && !logIsTruncated,
     enabled: !traceIsFetching,
   });
 

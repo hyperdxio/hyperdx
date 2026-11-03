@@ -213,6 +213,19 @@ describe('useBrowserTraceEvents', () => {
     expect(result.current.logRows).toEqual([consoleLogRow]);
   });
 
+  it("keeps a log in the timing log's millisecond on its span, and the timing row", () => {
+    const errorRow = {
+      ...consoleLogRow,
+      id: 'error-row',
+      Timestamp: TIMING_TIMESTAMP,
+      Body: '',
+    };
+    const { result } = setup({ logRows: [...logRows, errorRow] });
+
+    expect(result.current.resourceTimingBySpanId.has('span-1')).toBe(true);
+    expect(result.current.logRows).toEqual([...logRows, errorRow]);
+  });
+
   it('keeps the timing row while its dots are off screen', () => {
     const { result, rerender, initialProps } = setup({
       foldTimingRows: false,

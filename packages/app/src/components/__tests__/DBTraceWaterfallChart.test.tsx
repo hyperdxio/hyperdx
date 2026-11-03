@@ -1263,6 +1263,49 @@ describe('DBTraceWaterfallChartContainer', () => {
       expect(lastFold()).toBe(false);
     });
 
+    it('keeps the timing rows when the log list is capped', async () => {
+      setupQueryMocks({
+        traceData: mockTraceData,
+        logData: {
+          data: Array.from(
+            { length: TRACE_WATERFALL_ROW_LIMIT + 1 },
+            () => mockLogData.data[0],
+          ),
+          meta: [{ totalCount: TRACE_WATERFALL_ROW_LIMIT + 1 }],
+        },
+      });
+      renderComponent();
+      await waitForLoading();
+
+      expect(lastFold()).toBe(false);
+    });
+
+    it('sends the same log queries whether or not the source has browser event fields', () => {
+      const logQueries = (logSource: TLogSource) => {
+        mockUseOffsetPaginatedQuery.mockClear();
+        renderComponent(logSource).unmount();
+        return mockUseOffsetPaginatedQuery.mock.calls
+          .filter(([query]) => query?.from?.tableName === 'log_table')
+          .map(([query, opts]) => [query, opts?.enabled]);
+      };
+      setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+      const correlatedSource = {
+        ...mockLogTableSource,
+        traceIdExpression: 'TraceId',
+        spanIdExpression: 'SpanId',
+      };
+
+      const withEventFields = logQueries({
+        ...correlatedSource,
+        eventNameExpression: 'EventName',
+        eventAttributesExpression: 'LogAttributes',
+      });
+
+      expect(withEventFields.some(([, enabled]) => enabled)).toBe(true);
+      expect(withEventFields).toEqual(logQueries(correlatedSource));
+      expect(JSON.stringify(withEventFields)).not.toContain('EventName');
+    });
+
     describe('triggered-by row', () => {
       const triggeredBy = 'Triggered by: Clicked testid=checkout · 3ms before';
       const triggerRow: TraceTriggerRow = {

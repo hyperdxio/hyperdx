@@ -18,6 +18,7 @@ import {
 } from '@/utils/browserTraceContext';
 import {
   buildResourceTimingQuery,
+  getFoldedRowKeys,
   getResourceTimingMarkers,
   ResourceTimingMarker,
   resourceTimingRowKey,
@@ -52,7 +53,7 @@ export type TraceTriggerRow = {
 // Stable, so the waterfall's row memos don't rerun while there is nothing.
 const NO_RESOURCE_TIMING: ReturnType<typeof getResourceTimingMarkers> = {
   markersBySpanId: new Map(),
-  drawnRowKeys: new Set(),
+  drawnRowCounts: new Map(),
 };
 
 /**
@@ -106,7 +107,7 @@ export function useBrowserTraceEvents<T extends LogRow>({
   });
   const timingResult =
     timingQuery != null && !timing.isError ? timing.data : undefined;
-  const { markersBySpanId, drawnRowKeys } = useMemo(
+  const { markersBySpanId, drawnRowCounts } = useMemo(
     () =>
       timingResult?.data.length
         ? getResourceTimingMarkers(timingResult, traceRows)
@@ -118,19 +119,23 @@ export function useBrowserTraceEvents<T extends LogRow>({
   // would leave the detail panel showing a row the waterfall lacks, and the
   // hint would find nothing to select.
   const keptLogRows = useMemo(() => {
-    if (!foldTimingRows || drawnRowKeys.size === 0) {
+    if (!foldTimingRows || drawnRowCounts.size === 0) {
+      return logRows;
+    }
+    const foldedRowKeys = getFoldedRowKeys(logRows, drawnRowCounts);
+    if (foldedRowKeys.size === 0) {
       return logRows;
     }
     return logRows.filter(
       row =>
-        !drawnRowKeys.has(resourceTimingRowKey(row.SpanId, row.Timestamp)) ||
+        !foldedRowKeys.has(resourceTimingRowKey(row.SpanId, row.Timestamp)) ||
         row.id === highlightedRowWhere ||
         matchesRowHighlightHint(row, initialRowHighlightHint),
     );
   }, [
     logRows,
     foldTimingRows,
-    drawnRowKeys,
+    drawnRowCounts,
     highlightedRowWhere,
     initialRowHighlightHint,
   ]);
