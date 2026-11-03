@@ -55,6 +55,18 @@ import { SkipIndexMetadata, TableMetadata } from './metadata';
 /** The default maximum number of buckets setting when determining a bucket duration for 'auto' granularity */
 export const DEFAULT_AUTO_GRANULARITY_MAX_BUCKETS = 60;
 
+/** The bucket count a time chart sizes an 'auto' granularity for. */
+export const TIME_CHART_AUTO_GRANULARITY_BUCKETS = 80;
+
+/** The bucket count a heatmap sizes an 'auto' granularity for. */
+export const HEATMAP_AUTO_GRANULARITY_BUCKETS = 245;
+
+/**
+ * The most rows a table tile shows. Arbitrary limit to prevent OOM crashes for
+ * very large result sets. Most result sets should be paginated anyway.
+ */
+export const MAX_TABLE_ROWS = 10_000;
+
 /** Code-point limit for row-lookup string hashes (matches ClickHouse leftUTF8). */
 export const LEFT_UTF8_HASH_CODE_POINTS = 1000;
 
@@ -613,6 +625,22 @@ export function hashCode(str: string) {
     hash |= 0; // Convert to 32bit integer
   }
   return hash;
+}
+
+/** A chart's granularity, with 'auto' (or none) resolved for its date range. */
+export function getTimeChartGranularity<T extends string>(
+  granularity: T | 'auto' | undefined,
+  dateRange: [Date, Date],
+  minGranularitySeconds?: number,
+  maxBuckets = TIME_CHART_AUTO_GRANULARITY_BUCKETS,
+) {
+  return granularity === 'auto' || granularity == null
+    ? convertDateRangeToGranularityString(
+        dateRange,
+        maxBuckets,
+        minGranularitySeconds,
+      )
+    : granularity;
 }
 
 export function convertDateRangeToGranularityString(
