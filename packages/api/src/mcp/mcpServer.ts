@@ -39,7 +39,8 @@ const SERVER_INSTRUCTIONS = [
 
 const PROMQL_INSTRUCTIONS =
   'PromQL sources (kind "promql") hold Prometheus metrics: query them with\n' +
-  'clickstack_promql, not the builder tools or clickstack_sql.';
+  'clickstack_promql. The builder tools do not read them; clickstack_sql only\n' +
+  'inspects the raw tags and samples of a ClickHouse TimeSeries table.';
 
 /** The instructions a client sees. PromQL is mentioned only while it is enabled. */
 function serverInstructions(context: McpContext): string {

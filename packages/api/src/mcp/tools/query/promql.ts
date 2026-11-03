@@ -1,4 +1,7 @@
-import { SQLIntervalSchema } from '@hyperdx/common-utils/dist/types';
+import {
+  PromqlQueryTypeSchema,
+  SQLIntervalSchema,
+} from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
@@ -25,23 +28,20 @@ const promqlSchema = z.object({
         'in a PromQL tile. Dashboard variables such as $job do not resolve here: ' +
         'write the value inline.',
     ),
-  queryType: z
-    .enum(['range', 'instant'])
-    .optional()
-    .describe(
-      '"range" (the default) evaluates the expression at every step between ' +
-        'startTime and endTime and returns time series rows. "instant" evaluates ' +
-        'it once at endTime and returns one row per series with a column per label.',
-    ),
+  queryType: PromqlQueryTypeSchema.optional().describe(
+    '"range" (the default) evaluates the expression at every step between ' +
+      'startTime and endTime and returns time series rows. "instant" evaluates ' +
+      'it once at endTime and returns one row per series with a column per label.',
+  ),
   granularity: z
     .union([SQLIntervalSchema, z.literal('auto')])
     .optional()
     .describe(
-      'Step between points of a range query, as "<number> <unit>" with unit ' +
-        'second, minute, hour or day (e.g. "30 second", "5 minute"). Same format ' +
-        "as a PromQL tile's granularity; also sets $__interval. Omit for the " +
-        'auto step a tile would use (about 80 points over the range). Ignored ' +
-        'for instant queries.',
+      'Step between points of a range query, and the value of $__interval in ' +
+        'both query types, as "<number> <unit>" with unit second, minute, hour ' +
+        'or day (e.g. "30 second", "5 minute"). Same format as a PromQL ' +
+        "tile's granularity. Omit for the auto step a tile would use (about 80 " +
+        'points over the range).',
     ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
@@ -98,6 +98,7 @@ export function registerPromql({ context, registerTool }: ToolRegistrar) {
               expressions: [
                 { expression: input.expression, queryType: 'instant' as const },
               ],
+              granularity: input.granularity,
             })
           : buildTile('MCP PromQL', 24, 6, {
               configType: 'promql' as const,

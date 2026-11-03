@@ -236,6 +236,26 @@ describe('MCP clickstack_promql', () => {
     expect(sent).toContain('avg_over_time(mcp_up[60s])');
   });
 
+  it('sets $__interval from granularity in an instant query too', async () => {
+    mockFetch.mockResolvedValueOnce(
+      prometheusResponse({ resultType: 'vector', result: [] }),
+    );
+    const source = await createPrometheusSource();
+
+    await promql({
+      sourceId: source._id.toString(),
+      expression: 'avg_over_time(mcp_up[$__interval])',
+      queryType: 'instant',
+      granularity: '5 minute',
+    });
+
+    const requested = requestedUrls()[0];
+    expect(requested.pathname).toBe('/api/v1/query');
+    expect(requested.searchParams.get('query')).toBe(
+      'avg_over_time(mcp_up[300s])',
+    );
+  });
+
   it('rejects a sourceId that is not an ObjectId as a schema error', async () => {
     const result = await promql({ sourceId: 'Metrics' });
 
