@@ -71,13 +71,18 @@ function parseSection(lines: string[]) {
   return { header: lines.slice(0, headerLength), frames };
 }
 
+// The title is the `Caused by:` line joined with the header lines below it, so
+// a message that starts with a line break (`Error: \nDetails`) would keep it
+// and open with a blank line. Only the start is trimmed before matching: a
+// whitespace-only message leaves `Error: `, whose space the regex needs.
 function parseCauseTitle(
   title: string,
 ): Pick<JavaScriptCause, 'type' | 'value'> {
-  const match = ERROR_TITLE_REGEX.exec(title);
+  const text = title.trimStart();
+  const match = ERROR_TITLE_REGEX.exec(text);
   return match
-    ? { type: match[1], value: match[2] ?? '' }
-    : { type: '', value: title };
+    ? { type: match[1], value: (match[2] ?? '').trim() }
+    : { type: '', value: text.trimEnd() };
 }
 
 /**

@@ -67,7 +67,7 @@ type StackLineParser = [priority: number, parse: StackLineParserFn];
 
 const STACKTRACE_FRAME_LIMIT = 50;
 const MAX_LINE_PARENTHESES = 32;
-const UNKNOWN_FUNCTION = '?';
+export const UNKNOWN_FUNCTION = '?';
 // Used to sanitize webpack (error: *) wrapped stack errors
 const WEBPACK_ERROR_REGEXP = /\(error: (.*)\)/;
 

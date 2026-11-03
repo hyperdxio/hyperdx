@@ -314,6 +314,44 @@ describe('parseJavaScriptException', () => {
     ]);
   });
 
+  // V8 prints `new Error('\nRow 12 is invalid:')` as a line of `Error: `
+  // followed by the message's lines.
+  it.each([
+    [
+      'a message that starts with a line break',
+      ['Caused by: Error: ', 'Row 12 is invalid:', '  sku is required'],
+      { type: 'Error', value: 'Row 12 is invalid:\n  sku is required' },
+    ],
+    [
+      'a whitespace-only message',
+      ['Caused by: Error: ', ''],
+      { type: 'Error', value: '' },
+    ],
+    [
+      'an empty Caused by line',
+      ['Caused by: ', 'TypeError: Failed to fetch'],
+      { type: 'TypeError', value: 'Failed to fetch' },
+    ],
+    [
+      'a message without a Name: prefix',
+      ['Caused by: request timed out after 30s', ''],
+      { type: '', value: 'request timed out after 30s' },
+    ],
+  ])('trims the blank lines around %s', (_, causeLines, title) => {
+    const stack = [
+      `    at checkout (${APP}:120:11)`,
+      ...causeLines,
+      `    at fetchCart (${APP}:42:9)`,
+    ].join('\n');
+
+    expect(parseJavaScriptException(stack)?.causes).toEqual([
+      {
+        ...title,
+        frames: [expect.objectContaining({ function: 'fetchCart' })],
+      },
+    ]);
+  });
+
   it('keeps a URL line of a frameless Firefox cause in its title', () => {
     const stack = [
       `checkout@${APP}:1:2`,

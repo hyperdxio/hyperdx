@@ -3,7 +3,7 @@ import React, { useMemo } from 'react';
 import cx from 'classnames';
 import { ErrorBoundary } from 'react-error-boundary';
 import { Badge } from '@clickhouse/click-ui';
-import { Button, Text, Tooltip } from '@mantine/core';
+import { Button, Text, Tooltip, UnstyledButton } from '@mantine/core';
 import { Group, Loader } from '@mantine/core';
 import {
   IconChevronDown,
@@ -20,6 +20,7 @@ import type {
 } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { useSourceMappedFrame } from '@/useSourceMappedFrame';
+import { UNKNOWN_FUNCTION } from '@/utils/sentryStackParser';
 
 import { Table, TableCellButton } from './Table';
 
@@ -87,17 +88,19 @@ const StacktraceFrame = ({
             {colno != null && `:${colno}`}
           </span>
         )}
-        <span>{' in '}</span>
-        {functionName && (
-          <span
-            style={{
-              background: '#ffffff10',
-              padding: '0 4px',
-              borderRadius: 4,
-            }}
-          >
-            {functionName}
-          </span>
+        {functionName && functionName !== UNKNOWN_FUNCTION && (
+          <>
+            <span>{' in '}</span>
+            <span
+              style={{
+                background: '#ffffff10',
+                padding: '0 4px',
+                borderRadius: 4,
+              }}
+            >
+              {functionName}
+            </span>
+          </>
         )}
       </div>
       {isLoading && <Loader size="xs" color="gray" />}
@@ -184,6 +187,8 @@ const StacktraceRowExpandButton = ({
   );
 };
 
+const NOT_IN_APP_LABEL = 'Library or framework code';
+
 const StacktraceRow = ({
   row,
   table,
@@ -222,12 +227,16 @@ const StacktraceRow = ({
         <div>
           {!augmentedFrame.in_app && (
             <Tooltip
-              label="in_app: false"
-              position="top"
+              label={NOT_IN_APP_LABEL}
+              position="top-start"
               withArrow
               color="gray"
             >
-              <IconLogs size={14} className="me-2" aria-label="in_app: false" />
+              <IconLogs
+                size={14}
+                className="me-2"
+                aria-label={NOT_IN_APP_LABEL}
+              />
             </Tooltip>
           )}
           {augmentedFrame && (
@@ -426,7 +435,7 @@ export const useShowMoreRows = <T extends object>({
 
 type ExceptionValue = {
   type: string;
-  value: string;
+  value?: string;
   mechanism?: {
     type: string;
     handled: boolean;
@@ -446,13 +455,47 @@ type ExceptionValue = {
 const getFrames = ({ stacktrace }: ExceptionValue) =>
   typeof stacktrace === 'string' ? undefined : stacktrace?.frames;
 
-const ExceptionValueSection = ({
+const getExceptionTitle = ({ type, value }: ExceptionValue) =>
+  [type, value?.trim()].filter(Boolean).join(': ');
+
+const ExceptionTitle = ({
   exception,
   isCause,
+  singleLine,
 }: {
   exception: ExceptionValue;
   isCause: boolean;
+  singleLine: boolean;
 }) => {
+  const message = exception.value?.trim() ?? '';
+
+  return (
+    <Text
+      component="span"
+      inherit
+      truncate={singleLine}
+      title={singleLine ? getExceptionTitle(exception) : undefined}
+      style={
+        singleLine
+          ? undefined
+          : { whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }
+      }
+    >
+      {isCause && <span className="text-muted">Caused by: </span>}
+      {exception.type && (
+        <Text fw="bold" component="span" size="sm" variant="danger">
+          {exception.type}
+        </Text>
+      )}
+      <span className="text-muted">
+        {exception.type && message && ': '}
+        {singleLine ? message.replace(/\s+/g, ' ') : message}
+      </span>
+    </Text>
+  );
+};
+
+const ExceptionStacktrace = ({ exception }: { exception: ExceptionValue }) => {
   const stacktraceFrames = useMemo(
     () => getFrames(exception)?.slice().reverse() ?? [],
     [exception],
@@ -474,23 +517,101 @@ const ExceptionValueSection = ({
   });
 
   return (
+    <>
+      <ErrorBoundary
+        onError={err => {
+          console.error(err);
+        }}
+        fallbackRender={() => (
+          <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
+            An error occurred while rendering stacktrace
+          </div>
+        )}
+      >
+        <Table
+          hideHeader
+          columns={stacktraceColumns}
+          data={stacktraceVisibleRows}
+          density="zero"
+          tableMeta={{ firstFrameIndex }}
+        />
+      </ErrorBoundary>
+
+      {stacktraceHiddenRowsCount ? (
+        <Button
+          variant="secondary"
+          size="xs"
+          m="xs"
+          onClick={handleStacktraceToggleMoreRows}
+        >
+          {stacktraceExpanded ? (
+            <>
+              <IconChevronUp size={14} className="me-2" /> Hide stack trace
+            </>
+          ) : (
+            <>
+              <IconChevronDown size={14} className="me-2" />
+              Show {stacktraceHiddenRowsCount} more frames
+            </>
+          )}
+        </Button>
+      ) : null}
+    </>
+  );
+};
+
+const ExceptionValueSection = ({
+  exception,
+  isCause,
+}: {
+  exception: ExceptionValue;
+  isCause: boolean;
+}) => {
+  const hasFrames = !!getFrames(exception)?.length;
+
+  const unparsedStack =
+    !isCause && typeof exception.stacktrace === 'string'
+      ? exception.stacktrace
+      : '';
+
+  const collapsible = isCause && hasFrames;
+  const [expanded, setExpanded] = React.useState(!isCause);
+  const open = expanded || !collapsible;
+  const Chevron = expanded ? IconChevronDown : IconChevronRight;
+
+  return (
     <SectionWrapper
       title={
         <>
-          <div>
-            {isCause && <span className="text-muted">Caused by: </span>}
-            {exception.type && (
-              <Text fw="bold" component="span" size="sm" variant="danger">
-                {exception.type}
-              </Text>
-            )}
-            <span className="text-muted">
-              {exception.type && exception.value && ': '}
-              {exception.value}
-            </span>
-          </div>
+          {collapsible ? (
+            <UnstyledButton
+              className="d-flex align-items-start w-100"
+              fz="inherit"
+              aria-expanded={expanded}
+              onClick={() => setExpanded(!expanded)}
+            >
+              <Chevron
+                size={14}
+                className="me-2 flex-shrink-0"
+                style={{ height: '1lh' }}
+              />
+              <ExceptionTitle
+                exception={exception}
+                isCause={isCause}
+                singleLine={!expanded}
+              />
+            </UnstyledButton>
+          ) : (
+            <div>
+              <ExceptionTitle
+                exception={exception}
+                isCause={isCause}
+                singleLine={false}
+              />
+            </div>
+          )}
 
-          {exception.mechanism && (
+          {open && exception.mechanism && (
             <div className="d-flex gap-2 flex-wrap pt-3">
               <StacktraceValue
                 label="mechanism"
@@ -530,26 +651,8 @@ const ExceptionValueSection = ({
         </>
       }
     >
-      <ErrorBoundary
-        onError={err => {
-          console.error(err);
-        }}
-        fallbackRender={() => (
-          <div className="text-danger px-2 py-1 m-2 fs-7 font-monospace bg-danger-transparent p-4">
-            An error occurred while rendering stacktrace
-          </div>
-        )}
-      >
-        <Table
-          hideHeader
-          columns={stacktraceColumns}
-          data={stacktraceVisibleRows}
-          density="zero"
-          tableMeta={{ firstFrameIndex }}
-        />
-      </ErrorBoundary>
-
-      {typeof exception.stacktrace === 'string' && (
+      {open && hasFrames && <ExceptionStacktrace exception={exception} />}
+      {unparsedStack ? (
         <pre
           className="px-4"
           style={{
@@ -557,28 +660,8 @@ const ExceptionValueSection = ({
             wordWrap: 'break-word',
           }}
         >
-          {exception.stacktrace}
+          {unparsedStack}
         </pre>
-      )}
-
-      {stacktraceHiddenRowsCount ? (
-        <Button
-          variant="secondary"
-          size="xs"
-          m="xs"
-          onClick={handleStacktraceToggleMoreRows}
-        >
-          {stacktraceExpanded ? (
-            <>
-              <IconChevronUp size={14} className="me-2" /> Hide stack trace
-            </>
-          ) : (
-            <>
-              <IconChevronDown size={14} className="me-2" />
-              Show {stacktraceHiddenRowsCount} more frames
-            </>
-          )}
-        </Button>
       ) : null}
     </SectionWrapper>
   );
@@ -613,9 +696,7 @@ export const ExceptionSubpanel = ({
             {
               category: 'exception',
               timestamp: new Date(logData?.timestamp ?? 0).getTime() / 1000,
-              message: [firstException.type, firstException.value]
-                .filter(Boolean)
-                .join(': '),
+              message: getExceptionTitle(firstException),
             },
           ]
         : []),
