@@ -3684,4 +3684,347 @@ describe('MCP Dashboard Tools - clickstack_save_dashboard', () => {
       expect(getFirstText(result)).toContain('only valid for gauge metrics');
     });
   });
+
+  describe('savedFilterValues', () => {
+    const tile = (sourceId: string) => ({
+      name: 'Volume',
+      config: {
+        displayType: 'line' as const,
+        sourceId,
+        select: [{ aggFn: 'count' as const, where: '' }],
+      },
+    });
+
+    it('persists savedFilterValues on create and echoes them back', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Defaults on create',
+        tiles: [tile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            isVariableEnabled: true,
+            variableName: 'service',
+          },
+        ],
+        savedFilterValues: [
+          { type: 'sql', condition: "ServiceName IN ('api')" },
+          { type: 'variable', name: 'service', values: ['api', 'web'] },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(result));
+      expect(created.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+        { type: 'variable', name: 'service', values: ['api', 'web'] },
+      ]);
+
+      const stored = await Dashboard.findById(created.id);
+      expect(stored?.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+        { type: 'variable', name: 'service', values: ['api', 'web'] },
+      ]);
+    });
+
+    it('defaults an omitted type to sql on a condition entry', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Implicit sql type',
+        tiles: [tile(sourceId)],
+        savedFilterValues: [{ condition: "ServiceName IN ('api')" }],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(result));
+      expect(created.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+      ]);
+    });
+
+    it('returns savedFilterValues from clickstack_get_dashboard', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Defaults readable on get',
+          tiles: [tile(sourceId)],
+          savedFilterValues: [{ type: 'sql', condition: 'StatusCode = 200' }],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+
+      const getResult = await callTool(
+        ctx.client!,
+        'clickstack_get_dashboard',
+        { id: created.id },
+      );
+      const fetched = JSON.parse(getFirstText(getResult));
+      expect(fetched.savedFilterValues).toEqual([
+        { type: 'sql', condition: 'StatusCode = 200' },
+      ]);
+    });
+
+    it('leaves saved defaults untouched when the update omits the field', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Keep defaults on update',
+          tiles: [tile(sourceId)],
+          savedFilterValues: [{ type: 'sql', condition: 'StatusCode = 200' }],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+
+      const updateResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          id: created.id,
+          name: 'Keep defaults on update (renamed)',
+          tiles: [tile(sourceId)],
+        },
+      );
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.savedFilterValues).toEqual([
+        { type: 'sql', condition: 'StatusCode = 200' },
+      ]);
+    });
+
+    it('clears saved defaults when the update passes an empty array', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Clear defaults on update',
+          tiles: [tile(sourceId)],
+          savedFilterValues: [{ type: 'sql', condition: 'StatusCode = 200' }],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+
+      const updateResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          id: created.id,
+          name: 'Clear defaults on update',
+          tiles: [tile(sourceId)],
+          savedFilterValues: [],
+        },
+      );
+      expect(updateResult.isError).toBeFalsy();
+      const updated = JSON.parse(getFirstText(updateResult));
+      expect(updated.savedFilterValues).toEqual([]);
+
+      const stored = await Dashboard.findById(created.id);
+      expect(stored?.savedFilterValues).toEqual([]);
+    });
+
+    it('sets savedFilterValues via clickstack_patch_dashboard', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Patch defaults',
+          tiles: [tile(sourceId)],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          savedFilterValues: [
+            { type: 'sql', condition: "ServiceName IN ('api')" },
+          ],
+        },
+      );
+      expect(patchResult.isError).toBeFalsy();
+      const patched = JSON.parse(getFirstText(patchResult));
+      expect(patched.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+      ]);
+
+      const stored = await Dashboard.findById(created.id);
+      expect(stored?.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+      ]);
+
+      // Tiles are preserved by the targeted patch.
+      expect(stored?.tiles).toHaveLength(1);
+    });
+
+    it('patches a tile and savedFilterValues in the same call', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        { name: 'Combined patch', tiles: [tile(sourceId)] },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+      const tileId = created.tiles[0].id;
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          savedFilterValues: [
+            { type: 'sql', condition: "ServiceName IN ('api')" },
+          ],
+          tileId,
+          tile: {
+            config: {
+              displayType: 'table',
+              sourceId,
+              select: [{ aggFn: 'count', where: '' }],
+            },
+          },
+        },
+      );
+      expect(patchResult.isError).toBeFalsy();
+      const patched = JSON.parse(getFirstText(patchResult));
+      expect(patched.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+      ]);
+      expect(patched.patchedTile.config.displayType).toBe('table');
+
+      // Both the tile and the saved values changed in the database.
+      const stored = await Dashboard.findById(created.id);
+      expect(stored?.tiles).toHaveLength(1);
+      expect(stored?.tiles[0].id).toBe(tileId);
+      expect(stored?.tiles[0].config.displayType).toBe('table');
+      expect(stored?.savedFilterValues).toEqual([
+        { type: 'sql', condition: "ServiceName IN ('api')" },
+      ]);
+    });
+
+    it('warns when a variable saved value names no declared filter', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Variable default typo',
+        tiles: [tile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            isVariableEnabled: true,
+            variableName: 'service',
+          },
+        ],
+        savedFilterValues: [
+          { type: 'variable', name: 'srvice', values: ['api'] },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(result));
+      expect(created.warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining('$srvice')]),
+      );
+    });
+
+    it('does not warn when a variable saved value matches a declared filter', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const result = await callTool(ctx.client!, 'clickstack_save_dashboard', {
+        name: 'Variable default match',
+        tiles: [tile(sourceId)],
+        filters: [
+          {
+            type: 'QUERY_EXPRESSION',
+            name: 'Service',
+            expression: 'ServiceName',
+            sourceId,
+            whereLanguage: 'sql',
+            isVariableEnabled: true,
+            variableName: 'service',
+          },
+        ],
+        savedFilterValues: [
+          { type: 'variable', name: 'service', values: ['api'] },
+        ],
+      });
+
+      expect(result.isError).toBeFalsy();
+      const created = JSON.parse(getFirstText(result));
+      const savedValueWarnings = (created.warnings ?? []).filter((w: string) =>
+        w.includes('savedFilterValues'),
+      );
+      expect(savedValueWarnings).toEqual([]);
+    });
+
+    it('warns on a patch whose variable saved value names no declared filter', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        { name: 'Patch variable typo', tiles: [tile(sourceId)] },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        {
+          dashboardId: created.id,
+          savedFilterValues: [
+            { type: 'variable', name: 'ghost', values: ['api'] },
+          ],
+        },
+      );
+      expect(patchResult.isError).toBeFalsy();
+      const patched = JSON.parse(getFirstText(patchResult));
+      expect(patched.warnings).toEqual(
+        expect.arrayContaining([expect.stringContaining('$ghost')]),
+      );
+    });
+
+    it('rejects a patch with no updatable fields', async () => {
+      const sourceId = ctx.traceSource._id.toString();
+
+      const createResult = await callTool(
+        ctx.client!,
+        'clickstack_save_dashboard',
+        {
+          name: 'Empty patch',
+          tiles: [tile(sourceId)],
+        },
+      );
+      const created = JSON.parse(getFirstText(createResult));
+
+      const patchResult = await callTool(
+        ctx.client!,
+        'clickstack_patch_dashboard',
+        { dashboardId: created.id },
+      );
+      expect(patchResult.isError).toBe(true);
+      expect(getFirstText(patchResult)).toContain('savedFilterValues');
+    });
+  });
 });

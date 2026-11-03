@@ -33,7 +33,12 @@ import {
   mcpQuantileLevelSchema,
 } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
-import { objectIdSchema, tagsSchema } from '@/utils/zod';
+import {
+  externalSqlSavedFilterValueSchema,
+  externalVariableSavedFilterValueSchema,
+  objectIdSchema,
+  tagsSchema,
+} from '@/utils/zod';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -1895,6 +1900,48 @@ export function buildMcpFiltersParam(promqlEnabled: boolean) {
     .describe(`${mcpFiltersParam.description}${PROMQL_FILTERS_EXAMPLE}`);
 }
 
+// Validation rules come from the external schemas so MCP and REST stay in
+// lockstep; only the descriptions live here.
+const sqlValueShape = externalSqlSavedFilterValueSchema.shape;
+const mcpSqlSavedFilterValueSchema = externalSqlSavedFilterValueSchema.extend({
+  type: sqlValueShape.type.describe(
+    'Entry kind. Defaults to "sql"; a predicate broadcast to tiles.',
+  ),
+  condition: sqlValueShape.condition.describe(
+    'Raw SQL predicate applied to every tile (SQL, not Lucene). Example: ' +
+      '"ServiceName IN (\'api\')".',
+  ),
+});
+
+const variableValueShape = externalVariableSavedFilterValueSchema.shape;
+const mcpVariableSavedFilterValueSchema =
+  externalVariableSavedFilterValueSchema.extend({
+    type: variableValueShape.type.describe(
+      'Entry kind: a selection for a variable-enabled filter.',
+    ),
+    name: variableValueShape.name.describe(
+      'The variableName of the variable-enabled filter this selection belongs ' +
+        "to. Must match a filter's variableName declared in `filters` (see " +
+        'clickstack_get_dashboard for the resolved names); an unknown name is ' +
+        'ignored when the dashboard loads.',
+    ),
+    values: variableValueShape.values.describe(
+      'Selected values for the variable, e.g. ["api", "web"].',
+    ),
+  });
+
+export const mcpSavedFilterValuesParam = z
+  .array(
+    z.union([mcpSqlSavedFilterValueSchema, mcpVariableSavedFilterValueSchema]),
+  )
+  .describe(
+    'Default filter selections restored every time the dashboard is opened. ' +
+      'Replaces the whole saved set on write; pass [] to clear the defaults. ' +
+      'Omit to leave the saved defaults untouched.',
+  );
+
+export type McpSavedFilterValues = z.infer<typeof mcpSavedFilterValuesParam>;
+
 const mcpPatchDashboardSchema = z.object({
   dashboardId: objectIdSchema.describe(
     'ID of the dashboard to patch, from clickstack_get_dashboard (no id lists ' +
@@ -1908,6 +1955,7 @@ const mcpPatchDashboardSchema = z.object({
   tags: tagsSchema.describe(
     'New tag list; replaces all existing tags. Omit to keep the current tags.',
   ),
+  savedFilterValues: mcpSavedFilterValuesParam.optional(),
   tileId: z
     .string()
     .optional()

@@ -29,16 +29,18 @@ import {
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
-import type { McpDashboardFilter } from './schemas';
+import type { McpDashboardFilter, McpSavedFilterValues } from './schemas';
 import {
   buildMcpFiltersParam,
   buildMcpTilesParam,
   mcpContainersParam,
+  mcpSavedFilterValuesParam,
 } from './schemas';
 import {
   getFilterVariableWarnings,
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
+  getSavedFilterValueWarnings,
   getTileVariableWarnings,
 } from './validation';
 import { withResolvedFilterVariableNames } from './variables';
@@ -77,6 +79,7 @@ export function registerSaveDashboard({
         ),
         containers: mcpContainersParam.optional(),
         filters: buildMcpFiltersParam(promqlEnabled).optional(),
+        savedFilterValues: mcpSavedFilterValuesParam.optional(),
       }),
     },
     async ({
@@ -86,6 +89,7 @@ export function registerSaveDashboard({
       tags,
       containers,
       filters: inputFilters,
+      savedFilterValues,
     }) => {
       if (!dashboardId) {
         return createDashboard({
@@ -98,6 +102,7 @@ export function registerSaveDashboard({
           tags,
           containers,
           inputFilters,
+          savedFilterValues,
         });
       }
       return updateDashboard({
@@ -111,6 +116,7 @@ export function registerSaveDashboard({
         tags,
         containers,
         inputFilters,
+        savedFilterValues,
       });
     },
   );
@@ -157,6 +163,7 @@ async function createDashboard({
   tags,
   containers,
   inputFilters,
+  savedFilterValues,
 }: {
   teamId: string;
   userId: string | undefined;
@@ -167,6 +174,7 @@ async function createDashboard({
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
   inputFilters: McpDashboardFilter[] | undefined;
+  savedFilterValues: McpSavedFilterValues | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
@@ -174,6 +182,7 @@ async function createDashboard({
     tags,
     containers,
     filters: stripFilterIds(inputFilters),
+    savedFilterValues,
   });
   if (!parsed.success) {
     return mcpUserError(`Validation error:\n${formatZodIssues(parsed.error)}`);
@@ -201,6 +210,7 @@ async function createDashboard({
     ...getRawSqlTileMacroWarnings(tilesWithId),
     ...getTileVariableWarnings(tilesWithId, filters),
     ...getFilterVariableWarnings(filters),
+    ...getSavedFilterValueWarnings(parsed.data.savedFilterValues, filters),
   ];
 
   const internalTiles = convertExternalTilesToInternal(tilesWithId);
@@ -264,6 +274,7 @@ async function updateDashboard({
   tags,
   containers,
   inputFilters,
+  savedFilterValues,
 }: {
   teamId: string;
   userId: string | undefined;
@@ -275,6 +286,7 @@ async function updateDashboard({
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
   inputFilters: McpDashboardFilter[] | undefined;
+  savedFilterValues: McpSavedFilterValues | undefined;
 }) {
   const parsed = updateDashboardBodySchema.safeParse({
     name,
@@ -282,6 +294,7 @@ async function updateDashboard({
     tags,
     containers,
     filters: assignFilterIds(inputFilters),
+    savedFilterValues,
   });
   if (!parsed.success) {
     return mcpUserError(`Validation error:\n${formatZodIssues(parsed.error)}`);
@@ -327,6 +340,10 @@ async function updateDashboard({
     // persisted dependent filter the agent did not touch is noise it cannot
     // act on from a tiles-only update.
     ...getFilterVariableWarnings(filters),
+    ...getSavedFilterValueWarnings(
+      parsed.data.savedFilterValues,
+      effectiveFilters,
+    ),
   ];
 
   const existingTileIds = new Set(

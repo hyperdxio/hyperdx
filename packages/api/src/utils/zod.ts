@@ -221,12 +221,17 @@ export type ExternalDashboardFilter = z.infer<
  * One entry in a dashboard's `savedFilterValues`: either a rendered SQL
  * predicate, or a selection addressed by the dashboard variable it belongs to.
  */
+export const externalSqlSavedFilterValueSchema = z.object({
+  type: z.literal('sql').optional().default('sql'),
+  condition: z.string().max(10000),
+});
+
+export const externalVariableSavedFilterValueSchema =
+  VariableFilterValueSchema.strict();
+
 export const externalDashboardSavedFilterValueSchema = z.union([
-  z.object({
-    type: z.literal('sql').optional().default('sql'),
-    condition: z.string().max(10000),
-  }),
-  VariableFilterValueSchema.strict(),
+  externalSqlSavedFilterValueSchema,
+  externalVariableSavedFilterValueSchema,
 ]);
 
 // ================================
