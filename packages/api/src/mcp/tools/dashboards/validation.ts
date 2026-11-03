@@ -36,6 +36,8 @@ import {
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 
+import type { McpSavedFilterValues } from './schemas';
+
 /**
  * Returns one entry per raw SQL tile that uses a source-dependent macro but
  * does not set a `sourceId`, recording which macro(s) triggered it so callers
@@ -241,6 +243,37 @@ export function getFilterVariableWarnings(
     warnings.push(...issues.map(issue => `Filter "${label}": ${issue}`));
   });
 
+  return warnings;
+}
+
+/**
+ * Non-blocking check: a saved filter value of type 'variable' whose `name`
+ * matches no variable-enabled filter is silently ignored when the dashboard
+ * loads, so a typo'd variable name looks like a saved default but never
+ * applies. Warn so the agent can fix the name or add the filter.
+ */
+export function getSavedFilterValueWarnings(
+  savedFilterValues: McpSavedFilterValues | undefined,
+  filters: FilterForVariableDeclaration[] | undefined,
+): string[] {
+  if (!savedFilterValues?.length) return [];
+  const declaredNames = new Set(
+    getDashboardVariableDeclarations(filters).map(
+      declaration => declaration.name,
+    ),
+  );
+  const warnings: string[] = [];
+  for (const value of savedFilterValues) {
+    if (value.type !== 'variable') continue;
+    const name = value.name.trim();
+    if (!name || declaredNames.has(name)) continue;
+    warnings.push(
+      `savedFilterValues references variable $${name}, which no variable-enabled ` +
+        'filter declares. This default is ignored when the dashboard loads: add a ' +
+        `filter with isVariableEnabled: true and variableName: "${name}", or remove ` +
+        'the entry.',
+    );
+  }
   return warnings;
 }
 
