@@ -249,6 +249,19 @@ export async function updateDashboard(
   updates: Partial<z.infer<typeof DashboardWithoutIdSchema>>,
   userId?: ObjectId,
 ) {
+  // Defense-in-depth: callers pass spread objects into the update doc below.
+  // A smuggled `team`/`createdBy` here would move the document between
+  // tenants / forge ownership (the model marks them immutable, but the
+  // write below reaches Mongo directly).
+  const {
+    team: _ignoredTeam,
+    createdBy: _ignoredCreatedBy,
+    ...safeUpdates
+  } = updates as Record<string, unknown>;
+  if (_ignoredTeam !== undefined || _ignoredCreatedBy !== undefined) {
+    throw new Error('updateDashboard: team/createdBy are not updatable');
+  }
+
   const oldDashboard = await getDashboard(dashboardId, teamId);
 
   if (oldDashboard == null) {
@@ -261,7 +274,7 @@ export async function updateDashboard(
       team: teamId,
     },
     {
-      ...updates,
+      ...safeUpdates,
       tags: updates.tags && uniq(updates.tags),
       updatedBy: userId,
     },
