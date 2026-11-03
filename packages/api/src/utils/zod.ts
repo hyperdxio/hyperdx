@@ -221,12 +221,17 @@ export type ExternalDashboardFilter = z.infer<
  * One entry in a dashboard's `savedFilterValues`: either a rendered SQL
  * predicate, or a selection addressed by the dashboard variable it belongs to.
  */
+export const externalSqlSavedFilterValueSchema = z.object({
+  type: z.literal('sql').optional().default('sql'),
+  condition: z.string().max(10000),
+});
+
+export const externalVariableSavedFilterValueSchema =
+  VariableFilterValueSchema.strict();
+
 export const externalDashboardSavedFilterValueSchema = z.union([
-  z.object({
-    type: z.literal('sql').optional().default('sql'),
-    condition: z.string().max(10000),
-  }),
-  VariableFilterValueSchema.strict(),
+  externalSqlSavedFilterValueSchema,
+  externalVariableSavedFilterValueSchema,
 ]);
 
 // ================================
@@ -1276,6 +1281,7 @@ const baseWebhookSchema = {
   name: z.string(),
   url: z.string().optional(),
   description: z.string().optional(),
+  titleEmoji: z.boolean().optional(),
   updatedAt: z.string(),
   createdAt: z.string(),
 };
@@ -1379,6 +1385,7 @@ export const externalWebhookCreateSchema = z
     service: z.nativeEnum(WebhookService),
     url: z.string().url().max(MAX_WEBHOOK_URL_LENGTH),
     description: z.string().max(MAX_WEBHOOK_DESCRIPTION_LENGTH).optional(),
+    titleEmoji: z.boolean().optional(),
     queryParams: z
       .record(webhookQueryParamKeySchema, webhookQueryParamValueSchema)
       .refine(m => Object.keys(m).length <= MAX_WEBHOOK_QUERY_PARAMS, {

@@ -2,12 +2,16 @@ import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
   isFormulaSourceKind,
+  savedChartConfigSupportsAlerts,
   validateRawSqlForAlert,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { isRawSqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isPromqlSavedChartConfig,
+  isRawSqlSavedChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import { isRangeThresholdType } from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
-import { Types } from 'mongoose';
+import { type FilterQuery, Types } from 'mongoose';
 import { z } from 'zod';
 
 import { recordOnboardingTaskCompletion } from '@/controllers/user';
@@ -91,13 +95,20 @@ export const validateAlertInput = async (
       throw new Api400Error('Tile not found');
     }
 
-    if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
-      if (!displayTypeSupportsRawSqlAlerts(tile.config.displayType)) {
-        throw new Api400Error(
-          'Alerts on Raw SQL tiles are only supported for Line, Stacked Bar, or Number display types',
-        );
+    // The alert checker cannot evaluate these tiles, so the alert would never run.
+    if (tile.config != null && !savedChartConfigSupportsAlerts(tile.config)) {
+      if (isPromqlSavedChartConfig(tile.config)) {
+        throw new Api400Error('Alerts are not supported on PromQL tiles');
       }
+      const tileKind = isRawSqlSavedChartConfig(tile.config)
+        ? 'Raw SQL tiles'
+        : 'dashboard tiles';
+      throw new Api400Error(
+        `Alerts on ${tileKind} are only supported for Line, Stacked Bar, or Number display types`,
+      );
+    }
 
+    if (tile.config != null && isRawSqlSavedChartConfig(tile.config)) {
       const { errors } = validateRawSqlForAlert(tile.config);
       if (errors.length > 0) {
         throw new Api400Error(
@@ -378,8 +389,11 @@ export const updateAlert = async (
   return alert;
 };
 
-export const countAlerts = async (teamId: ObjectId) => {
-  return Alert.countDocuments({ team: teamId });
+export const countAlerts = async (
+  teamId: ObjectId,
+  filter: FilterQuery<IAlert> = {},
+) => {
+  return Alert.countDocuments({ ...filter, team: teamId });
 };
 
 export const getAlertById = async (
@@ -495,8 +509,9 @@ const DISPLAY_REF_POPULATE = [
 export const getAlertsWithDisplayRefs = async (
   teamId: ObjectId,
   { limit, offset }: { limit: number; offset: number },
+  filter: FilterQuery<IAlert> = {},
 ) => {
-  return Alert.find({ team: teamId })
+  return Alert.find({ ...filter, team: teamId })
     .sort({ _id: 1 })
     .skip(offset)
     .limit(limit)

@@ -652,6 +652,7 @@ export const WEBHOOK_TEMPLATE_VARIABLES = [
   'sourceQuery',
   'teamId',
   'note',
+  'tags',
 ] as const;
 
 export type WebhookTemplateVariable =
@@ -692,6 +693,7 @@ export const WebhookSchema = z.object({
       'Internal API returns masked value (<origin>/****). PUT accepts the masked form to preserve the stored URL.',
     ),
   description: z.string().optional(),
+  titleEmoji: z.boolean().optional(),
   queryParams: z
     .record(z.string(), z.string())
     .optional()
@@ -778,7 +780,8 @@ export const DEFAULT_INCIDENT_IO_WEBHOOK_BODY = `{
     "value": "{{value}}",
     "group_key": "{{groupKey}}",
     "window_start": "{{startTimeISO}}",
-    "window_end": "{{endTimeISO}}"
+    "window_end": "{{endTimeISO}}",
+    "tags": "{{tags}}"
   }
 }`;
 

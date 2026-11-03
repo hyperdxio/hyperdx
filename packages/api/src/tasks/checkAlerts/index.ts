@@ -60,6 +60,9 @@ import { serializeError } from 'serialize-error';
 import { ALERT_HISTORY_QUERY_CONCURRENCY } from '@/controllers/alertHistory';
 import { AlertState, IAlert, IAlertError } from '@/models/alert';
 import AlertHistory, {
+  attributesToGroupValues,
+  GroupValue,
+  groupValuesToAttributes,
   IAlertHistory,
   IAlertHistoryAnalytics,
 } from '@/models/alertHistory';
@@ -553,10 +556,7 @@ const fireChannelEvent = async ({
     clickhouseClient,
     metadata,
     state,
-    title: buildAlertMessageTemplateTitle({
-      view: templateView,
-      state,
-    }),
+    title: buildAlertMessageTemplateTitle({ view: templateView }),
     template: alert.message,
     view: templateView,
     teamId,
@@ -1287,7 +1287,6 @@ export const processAlert = async (
       string,
       { value: number; attributes: Record<string, string>; startTime: Date }
     >();
-    // ponytail: a group that vanished from the data resolves without its values.
     const groupAttributes = new Map<string, Record<string, string>>();
 
     // Helper to get or create history for a group
@@ -1474,7 +1473,12 @@ export const processAlert = async (
           group: groupKey,
           totalCount: lastValue?.count || 0,
           startTime: lastValue?.startTime || nowInMinsRoundDown,
-          attributes: groupAttributes.get(groupKey),
+          // A group with no rows left has no current values; use the ones
+          // recorded when it last reported. The aggregation yields null for
+          // rows that never stored any, which would skip the `{}` default.
+          attributes:
+            groupAttributes.get(groupKey) ??
+            groupValuesToAttributes(previousHistory?.groupValues),
         });
       }
     };
@@ -1651,7 +1655,6 @@ export const processAlert = async (
 
       for (const [groupKey, evaluation] of bucketEvaluations.entries()) {
         const history = getOrCreateHistory(groupKey);
-
         if (evaluation.exceeds) {
           history.counts += 1;
           if (shouldFireBasedOnConsecutiveWindows(groupKey)) {
@@ -1713,6 +1716,18 @@ export const processAlert = async (
     // If no histories exist at all (no current data and no previous alerting groups), create a default OK history
     if (histories.size === 0) {
       getOrCreateHistory('');
+    }
+
+    // A resolve reads values only from a previous ALERT or PENDING row.
+    for (const [groupKey, history] of histories.entries()) {
+      if (
+        history.state === AlertState.ALERT ||
+        history.state === AlertState.PENDING
+      ) {
+        history.groupValues = attributesToGroupValues(
+          groupAttributes.get(groupKey) ?? {},
+        );
+      }
     }
 
     // Check for state transitions and send notifications
@@ -1822,6 +1837,7 @@ export interface AggregatedAlertHistory {
   state: AlertState;
   group?: string;
   fired?: boolean;
+  groupValues?: GroupValue[] | null;
 }
 
 /**
@@ -1883,6 +1899,7 @@ export const getPreviousAlertHistories = async (
               createdAt: { $first: '$createdAt' },
               state: { $first: '$state' },
               fired: { $first: '$fired' },
+              groupValues: { $first: '$groupValues' },
             },
           },
           {
@@ -1892,6 +1909,7 @@ export const getPreviousAlertHistories = async (
               state: 1,
               group: '$_id.group',
               fired: 1,
+              groupValues: 1,
             },
           },
         ]);

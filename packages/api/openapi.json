@@ -5827,6 +5827,11 @@
             "description": "Webhook description, shown in the UI",
             "example": "Sends critical alerts to the #incidents channel"
           },
+          "titleEmoji": {
+            "type": "boolean",
+            "description": "Set to false to omit the state emoji prefix from notification titles sent through this webhook. Unset or true keeps the default prefix.",
+            "example": false
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time",
@@ -5879,6 +5884,11 @@
             "description": "Webhook description, shown in the UI",
             "example": "Routes alerts to incident.io for on-call escalation"
           },
+          "titleEmoji": {
+            "type": "boolean",
+            "description": "Set to false to omit the state emoji prefix from notification titles sent through this webhook. Unset or true keeps the default prefix.",
+            "example": false
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time",
@@ -5930,6 +5940,11 @@
             "type": "string",
             "description": "Webhook description, shown in the UI",
             "example": "Forwards alert payloads to an external monitoring service"
+          },
+          "titleEmoji": {
+            "type": "boolean",
+            "description": "Set to false to omit the state emoji prefix from notification titles sent through this webhook. Unset or true keeps the default prefix.",
+            "example": false
           },
           "body": {
             "type": "string",
@@ -6023,7 +6038,7 @@
           "service",
           "url"
         ],
-        "description": "Webhook create/update body. `body`, `headers`, and `queryParams`\nonly take effect for services that issue a templated HTTP request\n(`generic`, `incidentio`). The `slack` service posts a fixed payload\nto its incoming-webhook URL and ignores them, so supplying any of\nthese fields on a `slack` webhook is rejected. `headers` and\n`queryParams` are write-only — they are accepted here but never\nreturned by any read endpoint, so secrets such as auth tokens do\nnot leak. On\nupdate (PUT), omitted readable fields (`description`, `body`) are\ncleared, while omitted `headers`/`queryParams` are preserved —\nsend an explicit `{}` to clear them. Exception: if the destination\n(`url` or `service`) changes, omitted `headers`/`queryParams` are\ncleared rather than preserved, so stored secrets are never forwarded\nto a new destination; re-supply them for the new destination.\n",
+        "description": "Webhook create/update body. `body`, `headers`, and `queryParams`\nonly take effect for services that issue a templated HTTP request\n(`generic`, `incidentio`). The `slack` service posts a fixed payload\nto its incoming-webhook URL and ignores them, so supplying any of\nthese fields on a `slack` webhook is rejected. `headers` and\n`queryParams` are write-only — they are accepted here but never\nreturned by any read endpoint, so secrets such as auth tokens do\nnot leak. On\nupdate (PUT), omitted readable fields (`description`, `titleEmoji`, `body`) are\ncleared, while omitted `headers`/`queryParams` are preserved —\nsend an explicit `{}` to clear them. Exception: if the destination\n(`url` or `service`) changes, omitted `headers`/`queryParams` are\ncleared rather than preserved, so stored secrets are never forwarded\nto a new destination; re-supply them for the new destination.\n",
         "properties": {
           "name": {
             "type": "string",
@@ -6053,6 +6068,11 @@
             "maxLength": 2048,
             "description": "Webhook description, shown in the UI.",
             "example": "Sends critical alerts to the #incidents channel"
+          },
+          "titleEmoji": {
+            "type": "boolean",
+            "description": "Set to false to omit the state emoji prefix from notification titles sent through this webhook. Unset or true keeps the default prefix.",
+            "example": false
           },
           "body": {
             "type": "string",
@@ -6366,7 +6386,7 @@
     "/api/v2/alerts": {
       "get": {
         "summary": "List Alerts",
-        "description": "Retrieves alerts for the authenticated team (paginated). Results are capped at `limit` (default and maximum 1000). When more records exist than are returned, `meta.total` exceeds `data.length`; clients with large collections must page with `limit`/`offset` to retrieve them all.",
+        "description": "Retrieves alerts for the authenticated team (paginated). Results are capped at `limit` (default and maximum 1000). When more records exist than are returned, `meta.total` exceeds `data.length`; clients with large collections must page with `limit`/`offset` to retrieve them all. Optional filters narrow the result set, and `meta.total` counts only the matching alerts.",
         "operationId": "listAlerts",
         "tags": [
           "Alerts"
@@ -6394,6 +6414,54 @@
               "default": 0
             },
             "description": "Number of alerts to skip before returning results."
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 32
+              },
+              "maxItems": 50
+            },
+            "description": "Only return alerts that have any of the given tags. Repeat the parameter to pass several tags. Matches the tags stored on the alert, not tags inherited from the linked dashboard or saved search."
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "description": "Only return alerts whose display name contains this text (case-insensitive). Matches the display name stored on the alert, not a name derived from the linked dashboard or saved search."
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/AlertSource"
+              }
+            },
+            "description": "Only return alerts of any of the given sources. Repeat the parameter to pass several sources."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/AlertState"
+              }
+            },
+            "description": "Only return alerts in any of the given states. Repeat the parameter to pass several states."
           }
         ],
         "responses": {
@@ -6439,6 +6507,16 @@
                       }
                     }
                   }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query parameters",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -9178,7 +9256,7 @@
     "/api/v2/webhooks/{id}": {
       "put": {
         "summary": "Update Webhook",
-        "description": "Replaces an existing webhook. Readable optional fields\n(`description`, `body`) are a full replace: omitting them clears\nthem. The write-only fields `headers` and `queryParams` are never\nreturned on read, so omitting them preserves the stored values;\nsend an explicit empty object (`{}`) to clear them. Exception: if the\ndestination (`url` or `service`) changes, omitted `headers`/\n`queryParams` are cleared rather than preserved so stored secrets are\nnever forwarded to a new destination.\n",
+        "description": "Replaces an existing webhook. Readable optional fields\n(`description`, `titleEmoji`, `body`) are a full replace: omitting them clears\nthem. The write-only fields `headers` and `queryParams` are never\nreturned on read, so omitting them preserves the stored values;\nsend an explicit empty object (`{}`) to clear them. Exception: if the\ndestination (`url` or `service`) changes, omitted `headers`/\n`queryParams` are cleared rather than preserved so stored secrets are\nnever forwarded to a new destination.\n",
         "operationId": "updateWebhook",
         "tags": [
           "Webhooks"

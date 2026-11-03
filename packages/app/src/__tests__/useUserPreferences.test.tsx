@@ -60,7 +60,7 @@ describe('migrateUserPreferences', () => {
       const result = migrateUserPreferences(legacyData);
 
       expect(result).toEqual({
-        isUTC: false,
+        timeZone: 'local',
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
@@ -84,7 +84,7 @@ describe('migrateUserPreferences', () => {
       const result = migrateUserPreferences(legacyData);
 
       expect(result).toEqual({
-        isUTC: true,
+        timeZone: 'Etc/UTC',
         timeFormat: '24h',
         colorMode: 'light',
         font: 'Inter',
@@ -137,7 +137,7 @@ describe('migrateUserPreferences', () => {
       const result = migrateUserPreferences(legacyData);
 
       expect(result).toEqual({
-        isUTC: true,
+        timeZone: 'Etc/UTC',
         timeFormat: '24h',
         colorMode: 'light',
         font: 'Roboto Mono',
@@ -154,7 +154,7 @@ describe('migrateUserPreferences', () => {
       const result = migrateUserPreferences(legacyData);
 
       expect(result).toEqual({
-        isUTC: false, // From DEFAULT_PREFERENCES
+        timeZone: 'local', // From DEFAULT_PREFERENCES
         timeFormat: '12h', // From DEFAULT_PREFERENCES
         colorMode: 'dark', // Migrated from theme
         font: 'IBM Plex Mono', // From DEFAULT_PREFERENCES
@@ -221,7 +221,7 @@ describe('migrateUserPreferences', () => {
       const result = migrateUserPreferences(partialData);
 
       expect(result).toEqual({
-        isUTC: false, // From DEFAULT_PREFERENCES
+        timeZone: 'local', // From DEFAULT_PREFERENCES
         timeFormat: '12h', // From DEFAULT_PREFERENCES
         colorMode: 'light', // Migrated from theme
         font: 'IBM Plex Mono', // From DEFAULT_PREFERENCES
@@ -241,7 +241,7 @@ describe('migrateUserPreferences', () => {
       const result = migrateUserPreferences(legacyData);
 
       expect(result).toEqual({
-        isUTC: false,
+        timeZone: 'local',
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
@@ -254,7 +254,7 @@ describe('migrateUserPreferences', () => {
   describe('Migration idempotency', () => {
     it('should return already migrated data unchanged', () => {
       const migratedData: UserPreferences = {
-        isUTC: false,
+        timeZone: 'local',
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
@@ -269,7 +269,7 @@ describe('migrateUserPreferences', () => {
 
     it('should accept colorMode "system" as valid', () => {
       const dataWithSystem: UserPreferences = {
-        isUTC: false,
+        timeZone: 'local',
         timeFormat: '12h',
         colorMode: 'system',
         font: 'IBM Plex Mono',
@@ -286,7 +286,7 @@ describe('migrateUserPreferences', () => {
       const mixedData = JSON.stringify({
         theme: 'light',
         colorMode: 'dark',
-        isUTC: false,
+        timeZone: 'local',
         timeFormat: '12h',
         font: 'IBM Plex Mono',
       });
@@ -323,6 +323,53 @@ describe('migrateUserPreferences', () => {
     });
   });
 
+  describe('isUTC migration (isUTC → timeZone)', () => {
+    it.each([
+      [true, 'Etc/UTC'],
+      [false, 'local'],
+    ])('replaces isUTC=%s with timeZone=%s and saves it', (isUTC, timeZone) => {
+      const stored = JSON.stringify({
+        isUTC,
+        timeFormat: '24h',
+        colorMode: 'dark',
+        font: 'Inter',
+      });
+
+      const result = migrateUserPreferences(stored);
+
+      expect(result).toEqual({
+        timeZone,
+        timeFormat: '24h',
+        colorMode: 'dark',
+        font: 'Inter',
+      });
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        STORAGE_KEY,
+        JSON.stringify(result),
+      );
+    });
+
+    it('defaults to local when neither isUTC nor timeZone is stored', () => {
+      const result = migrateUserPreferences(
+        JSON.stringify({ colorMode: 'dark', timeFormat: '12h' }),
+      );
+      expect(result?.timeZone).toBe('local');
+    });
+
+    it('keeps a stored timeZone over isUTC', () => {
+      const result = migrateUserPreferences(
+        JSON.stringify({
+          isUTC: true,
+          timeZone: 'Asia/Tokyo',
+          colorMode: 'dark',
+          timeFormat: '12h',
+        }),
+      );
+      expect(result?.timeZone).toBe('Asia/Tokyo');
+      expect(result).not.toHaveProperty('isUTC');
+    });
+  });
+
   describe('localStorage error handling', () => {
     it('should handle localStorage.setItem errors gracefully', () => {
       localStorageMock.setItem.mockImplementation(() => {
@@ -339,7 +386,7 @@ describe('migrateUserPreferences', () => {
       // Should not throw, should return migrated data even if save fails
       const result = migrateUserPreferences(legacyData);
       expect(result).toEqual({
-        isUTC: false,
+        timeZone: 'local',
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',
@@ -365,7 +412,7 @@ describe('migrateUserPreferences', () => {
       // Should not throw - should return migrated data
       const result = migrateUserPreferences(legacyData);
       expect(result).toEqual({
-        isUTC: false,
+        timeZone: 'local',
         timeFormat: '12h',
         colorMode: 'dark',
         font: 'IBM Plex Mono',

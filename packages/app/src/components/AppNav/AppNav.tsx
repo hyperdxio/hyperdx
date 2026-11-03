@@ -40,8 +40,9 @@ import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
 import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
+import { getTimeZoneShortName } from '@/timeZone';
+import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
-import { useUserPreferences } from '@/useUserPreferences';
 
 import {
   AppNavCloudBanner,
@@ -82,7 +83,7 @@ type NavLinkConfig = {
 const NAV_LINKS: NavLinkConfig[] = [
   {
     id: 'chart',
-    label: 'Chart Explorer',
+    label: 'Chart explorer',
     href: '/chart',
     icon: <IconChartDots size={16} />,
   },
@@ -95,13 +96,13 @@ const NAV_LINKS: NavLinkConfig[] = [
   },
   {
     id: 'sessions',
-    label: 'Client Sessions',
+    label: 'Client sessions',
     href: '/sessions',
     icon: <IconDeviceLaptop size={16} />,
   },
   {
     id: 'service-map',
-    label: 'Service Map',
+    label: 'Service map',
     href: '/service-map',
     icon: <IconSitemap size={16} />,
     isBeta: true,
@@ -276,9 +277,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     { close: closeUserPreferences, open: openUserPreferences },
   ] = useDisclosure(false);
 
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
+  const timeZoneShortName = timeZone && getTimeZoneShortName(timeZone);
 
   const [
     showInstallInstructions,
@@ -373,12 +373,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                       would be redundant and crowd this already-tight row. */}
                   <InstanceLabel
                     fallback={
-                      isUTC && (
+                      timeZoneShortName && (
                         <Badge
                           size="sm"
-                          text="UTC"
+                          text={timeZoneShortName}
                           state="neutral"
-                          title="Showing time in UTC"
+                          title={`Showing time in ${timeZoneShortName}`}
                         />
                       )
                     }
@@ -392,7 +392,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               className={cx(styles.collapseButton, {
                 [styles.collapseButtonCollapsed]: isCollapsed,
               })}
-              title="Collapse/Expand Navigation"
+              title="Collapse/expand navigation"
               onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
             >
               <IconArrowBarToLeft size={16} />
@@ -417,7 +417,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
             {/* Saved Searches */}
             <AppNavLink
-              label="Saved Searches"
+              label="Saved searches"
               href="/search/list"
               icon={<IconDeviceFloppy size={16} />}
               isActive={isSavedSearchActive}
@@ -434,7 +434,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                     <Text size="xs" c="dimmed" pl="lg" pr="xs" py={4} lh={1.4}>
                       No favorites. Star on{' '}
                       <Anchor component={Link} href="/search/list" size="xs">
-                        Saved Searches
+                        Saved searches
                       </Anchor>
                       .
                     </Text>
@@ -499,7 +499,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             {/* Team Settings (Cloud only) */}
             {!IS_LOCAL_MODE && (
               <AppNavLink
-                label="Team Settings"
+                label="Team settings"
                 href="/team"
                 icon={<IconSettings size={16} />}
               />
