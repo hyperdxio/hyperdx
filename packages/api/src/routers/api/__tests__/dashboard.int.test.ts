@@ -1,5 +1,6 @@
 import {
   AlertThresholdType,
+  DisplayType,
   MetricsDataType,
   PresetDashboard,
   SourceKind,
@@ -33,6 +34,15 @@ const makeMockAlert = (webhookId: string) => ({
   interval: '12h' as const,
   threshold: 1,
   thresholdType: AlertThresholdType.ABOVE,
+});
+
+const makePromqlConfig = (alert?: ReturnType<typeof makeMockAlert>) => ({
+  configType: 'promql' as const,
+  name: 'Up',
+  displayType: DisplayType.Line,
+  source: 'test-source',
+  promqlExpression: [{ expression: 'up' }],
+  alert,
 });
 
 describe('dashboard router', () => {
@@ -506,6 +516,49 @@ describe('dashboard router', () => {
 
     const alerts = await agent.get(`/alerts`).expect(200);
     expect(alerts.body.data).toEqual([]);
+  });
+
+  it('does not create alerts on PromQL tiles when creating a dashboard', async () => {
+    await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [
+          {
+            ...makeTile(),
+            config: makePromqlConfig(makeMockAlert(webhook._id.toString())),
+          },
+        ],
+        tags: [],
+      })
+      .expect(200);
+
+    expect(await Alert.countDocuments({ team: team._id })).toBe(0);
+  });
+
+  it('deletes the alert when a tile is switched to PromQL', async () => {
+    const mockAlert = makeMockAlert(webhook._id.toString());
+    const dashboard = await agent
+      .post('/dashboards')
+      .send({
+        name: 'Test Dashboard',
+        tiles: [makeTile({ alert: mockAlert })],
+        tags: [],
+      })
+      .expect(200);
+    expect(await Alert.countDocuments({ team: team._id })).toBe(1);
+
+    await agent
+      .patch(`/dashboards/${dashboard.body.id}`)
+      .send({
+        ...dashboard.body,
+        tiles: [
+          { ...dashboard.body.tiles[0], config: makePromqlConfig(mockAlert) },
+        ],
+      })
+      .expect(200);
+
+    expect(await Alert.countDocuments({ team: team._id })).toBe(0);
   });
 
   it('alerts are updated when updating dashboard (updating tile alert settings)', async () => {
@@ -2583,6 +2636,69 @@ describe('dashboard router', () => {
         );
         expect(stillExistingFilter).toBeTruthy();
       });
+    });
+  });
+
+  describe('PATCH /:id server-owned fields', () => {
+    // Security regression: `team` and `createdBy` are server-owned. A PATCH
+    // body that smuggled them used to move a dashboard into another team's
+    // namespace (cross-tenant injection) and forge ownership attribution —
+    // zod-express-middleware's validateRequest validates without replacing
+    // req.body, and the handler used to spread req.body into the update.
+    // Now the handler re-parses the body against
+    // DashboardWithoutIdSchema.partial(), which declares neither field.
+    it('ignores smuggled team and createdBy on PATCH', async () => {
+      const victimTeamId = new mongoose.Types.ObjectId();
+      const victimUserId = new mongoose.Types.ObjectId();
+
+      const created = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+
+      const updated = await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({
+          name: 'Hijacked Dashboard',
+          team: victimTeamId.toString(),
+          createdBy: victimUserId.toString(),
+        })
+        .expect(200);
+
+      // API response must not echo the forged values
+      expect(updated.body.team).toBe(team._id.toString());
+
+      // Ground truth: the persisted document stays in the owning team
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(String(stored?.team)).toBe(team._id.toString());
+      expect(String(stored?.createdBy)).toBe(user._id.toString());
+
+      // And the owner can still reach it (a real move would orphan it)
+      const list = await agent.get('/dashboards').expect(200);
+      const listedIds = list.body.map((d: { _id: string }) => d._id);
+      expect(listedIds).toContain(created.body.id);
+    });
+
+    // Same mechanism via a client that round-trips a full GET response: the
+    // extra keys ride along in the spread and must still be dropped.
+    it('drops server-owned keys from a round-tripped PATCH body', async () => {
+      const created = await agent
+        .post('/dashboards')
+        .send(MOCK_DASHBOARD)
+        .expect(200);
+      const before = await agent.get('/dashboards').expect(200);
+      const full = before.body.find(
+        (d: { _id: string }) => d._id === created.body.id,
+      );
+
+      await agent
+        .patch(`/dashboards/${created.body.id}`)
+        .send({ ...full, name: 'Updated Name' })
+        .expect(200);
+
+      const stored = await Dashboard.findById(created.body.id).lean();
+      expect(String(stored?.team)).toBe(team._id.toString());
+      expect(String(stored?.createdBy)).toBe(user._id.toString());
     });
   });
 });

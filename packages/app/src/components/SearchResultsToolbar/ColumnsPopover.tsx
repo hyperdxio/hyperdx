@@ -13,6 +13,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { splitAndTrimWithBracket } from '@hyperdx/common-utils/dist/core/utils';
 import {
   Autocomplete,
   Box,
@@ -25,7 +26,7 @@ import {
 
 import { fieldListSummary } from '@/components/SplitValueButton/SplitValueButton';
 import SQLInlineEditor from '@/components/SQLEditor/SQLInlineEditor';
-import { isColumnInSelect, splitClauseList, withMapKeyAlias } from '@/utils';
+import { isColumnInSelect, withMapKeyAlias } from '@/utils';
 
 import {
   clauseApplyDisabled,
@@ -68,10 +69,10 @@ export function ColumnsPopover({
   // An empty stored SELECT means "use the source default". An empty draft does
   // not: the user may have removed every column before adding a replacement.
   const storedColumns = (select: string) =>
-    splitClauseList(select || defaultValue);
+    splitAndTrimWithBracket(select || defaultValue);
 
   const shown = storedColumns(value);
-  const items = useMemo(() => splitClauseList(draft), [draft]);
+  const items = useMemo(() => splitAndTrimWithBracket(draft), [draft]);
 
   const options = useMemo(
     () => fieldOptions.filter(option => !isColumnInSelect(items, option)),

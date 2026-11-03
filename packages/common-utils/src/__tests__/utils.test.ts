@@ -292,6 +292,27 @@ describe('utils', () => {
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
     });
 
+    it('should keep commas and brackets inside backtick-quoted identifiers', () => {
+      const input = "Timestamp, `a,b`, `x(y`, `it's` AS label, Body";
+      const expected = [
+        'Timestamp',
+        '`a,b`',
+        '`x(y`',
+        "`it's` AS label",
+        'Body',
+      ];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should keep the text after an unclosed quote', () => {
+      expect(splitAndTrimWithBracket('Timestamp, `a')).toEqual([
+        'Timestamp',
+        '`a',
+      ]);
+      expect(splitAndTrimWithBracket('a`b, c')).toEqual(['a`b, c']);
+      expect(splitAndTrimWithBracket("x, 'y, z")).toEqual(['x', "'y, z"]);
+    });
+
     it('should handle mixed quotes with commas', () => {
       const input = `col1, "double, quoted", col2, 'single, quoted', col3`;
       const expected = [

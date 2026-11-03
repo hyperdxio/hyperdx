@@ -2,9 +2,9 @@ import { DASHBOARD_VARIABLE_NAME_MAX_LENGTH } from '@hyperdx/common-utils/dist/t
 import mongoose from 'mongoose';
 
 import {
-  mcpFiltersParam,
-  mcpPatchDashboardSchema,
-  mcpTilesParam,
+  buildMcpFiltersParam,
+  buildMcpPatchDashboardSchema,
+  buildMcpTilesParam,
 } from '@/mcp/tools/dashboards/schemas';
 import {
   getFilterVariableWarnings,
@@ -20,6 +20,10 @@ import type {
 
 const connectionId = new mongoose.Types.ObjectId().toString();
 const sourceId = new mongoose.Types.ObjectId().toString();
+
+const mcpTilesParam = buildMcpTilesParam(false);
+const mcpFiltersParam = buildMcpFiltersParam(false);
+const mcpPatchDashboardSchema = buildMcpPatchDashboardSchema(false);
 
 describe('metric tile schema', () => {
   it('accepts exponential histograms and defaults their value expression', () => {

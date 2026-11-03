@@ -16,6 +16,7 @@ import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import {
   Alert,
   Button,
+  Checkbox,
   Code,
   Group,
   Radio,
@@ -66,6 +67,7 @@ const describeTemplateVariable = (
   endTimeISO: 'Window end, ISO-8601',
   teamId: 'Team the alert belongs to',
   note: "Alert's note, commonly a runbook link",
+  tags: "Alert's tags, comma-separated; iterate with {{#each tags}}",
 });
 
 export const getWebhookTemplateVariables = (
@@ -89,6 +91,7 @@ type WebhookForm = {
   url: string;
   service: WebhookService;
   description?: string;
+  titleEmoji: boolean;
   body?: string;
   headers?: string;
 };
@@ -114,6 +117,7 @@ export function WebhookForm({
       name: webhook?.name || '',
       url: webhook?.url || '',
       description: webhook?.description || '',
+      titleEmoji: webhook?.titleEmoji !== false,
       body: webhook?.body || '',
       headers: webhook?.headers ? JSON.stringify(webhook.headers, null, 2) : '',
     },
@@ -127,6 +131,7 @@ export function WebhookForm({
           name: webhook.name,
           url: webhook.url,
           description: webhook.description,
+          titleEmoji: webhook.titleEmoji !== false,
           body: webhook.body,
           headers: webhook.headers
             ? JSON.stringify(webhook.headers, null, 2)
@@ -214,7 +219,8 @@ export function WebhookForm({
   };
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
-    const { service, name, url, description, body, headers } = values;
+    const { service, name, url, description, titleEmoji, body, headers } =
+      values;
 
     try {
       // Parse headers JSON if provided (API will validate the content)
@@ -246,6 +252,7 @@ export function WebhookForm({
         name,
         url,
         description: description || '',
+        titleEmoji,
         body: defaultBody,
         headers: parsedHeaders,
       };
@@ -378,6 +385,11 @@ export function WebhookForm({
           placeholder="To be used for dev alerts"
           error={form.formState.errors.description?.message}
           {...form.register('description')}
+        />
+        <Checkbox
+          label="Show state emoji in notification titles"
+          data-testid="webhook-title-emoji-checkbox"
+          {...form.register('titleEmoji')}
         />
         {service === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">

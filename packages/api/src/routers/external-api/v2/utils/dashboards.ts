@@ -1,9 +1,8 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import {
-  displayTypeSupportsBuilderAlerts,
-  displayTypeSupportsRawSqlAlerts,
   isFormulaSourceKind,
+  savedChartConfigSupportsAlerts,
   TIME_SERIES_DISPLAY_TYPE_BY_NAME,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
@@ -773,11 +772,11 @@ function convertTileToExternalChart(
 export function convertToExternalDashboard(
   dashboard: DashboardDocument,
   {
-    hidePromqlTiles = false,
+    hidePromql = false,
   }: {
-    // MCP cannot save PromQL tiles until HDX-5302, so its tools hide them
-    // rather than show tiles the agent cannot edit. Remove with that work.
-    hidePromqlTiles?: boolean;
+    // MCP hides PromQL tiles and PROMETHEUS_LABEL filters while PromQL is
+    // disabled on the deployment.
+    hidePromql?: boolean;
   } = {},
 ): ExternalDashboard {
   const containers = dashboard.containers ?? [];
@@ -794,16 +793,14 @@ export function convertToExternalDashboard(
     id: dashboardId,
     name: dashboard.name,
     tiles: dashboard.tiles
-      .filter(
-        tile => !(hidePromqlTiles && isPromqlSavedChartConfig(tile.config)),
-      )
+      .filter(tile => !(hidePromql && isPromqlSavedChartConfig(tile.config)))
       .map(tile =>
         convertTileToExternalChart(tile, containerById, dashboardId),
       ),
     tags: dashboard.tags || [],
-    filters: getExternalCompatibleFilters(dashboard.filters).map(
-      translateFilterToExternalFilter,
-    ),
+    filters: getExternalCompatibleFilters(dashboard.filters)
+      .filter(filter => !(hidePromql && isPrometheusLabelFilter(filter)))
+      .map(translateFilterToExternalFilter),
     savedQuery: dashboard.savedQuery ?? null,
     savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
     savedFilterValues: getExternalCompatibleFilterValues(
@@ -1863,22 +1860,9 @@ export async function cleanupDashboardAlerts({
 }) {
   const newTileIdSet = new Set(internalTiles.map(t => t.id));
   const tileIdsToDeleteAlerts = [
-    // Tiles whose config no longer supports alerts. PromQL tiles cannot be
-    // alerted on (HDX-4636), so an alert left on a tile switched to PromQL
-    // would never be checked.
+    // Tiles whose config no longer supports alerts (e.g. switched to PromQL).
     ...internalTiles
-      .filter(tile => {
-        if (isPromqlSavedChartConfig(tile.config)) {
-          return true;
-        }
-        if (isRawSqlSavedChartConfig(tile.config)) {
-          return !displayTypeSupportsRawSqlAlerts(tile.config.displayType);
-        }
-        if (isBuilderSavedChartConfig(tile.config)) {
-          return !displayTypeSupportsBuilderAlerts(tile.config.displayType);
-        }
-        return false;
-      })
+      .filter(tile => !savedChartConfigSupportsAlerts(tile.config))
       .map(tile => tile.id),
     // Tiles that were completely removed.
     ...[...existingTileIds].filter(id => !newTileIdSet.has(id)),
