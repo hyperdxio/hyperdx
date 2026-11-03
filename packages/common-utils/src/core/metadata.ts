@@ -688,7 +688,7 @@ export class Metadata {
     connectionId: string;
     databaseName: string;
     tableName: string;
-    innerTableType: 'Tags' | 'Metrics' | 'Data';
+    innerTableType: 'Tags' | 'Metrics' | 'Data' | 'TimeRanges';
   }) {
     return this.cache.getOrFetch<ColumnMeta[]>(
       `${connectionId}.${databaseName}.${tableName}.${innerTableType}.getTimeSeriesTableColumns`,
