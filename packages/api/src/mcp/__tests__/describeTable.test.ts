@@ -1,10 +1,19 @@
 const mockQuery = jest.fn();
 const mockGetConnectionById = jest.fn();
+const mockGetTableMetadata = jest.fn();
+const mockGetSkipIndices = jest.fn();
 
 jest.mock('@/models/source', () => ({}));
 jest.mock('@/controllers/sources', () => ({}));
 jest.mock('@/controllers/connection', () => ({
   getConnectionById: (...args: unknown[]) => mockGetConnectionById(...args),
+}));
+jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
+  ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
+  getMetadata: () => ({
+    getTableMetadata: mockGetTableMetadata,
+    getSkipIndices: mockGetSkipIndices,
+  }),
 }));
 jest.mock('@/clickhouse', () => ({
   ClickhouseClient: jest.fn(() => ({ query: mockQuery })),
@@ -27,7 +36,11 @@ import { getErrorCategory, type McpErrorResult } from '@/mcp/utils/errors';
 
 const CONNECTION_ID = '65f5e4a3b9e77c001a567890';
 
-type QueryArgs = { query: string; query_params: Record<string, unknown> };
+type QueryArgs = {
+  query: string;
+  query_params: Record<string, unknown>;
+  clickhouse_settings: Record<string, unknown>;
+};
 
 const queryCalls = (): QueryArgs[] =>
   mockQuery.mock.calls.map(([args]: [QueryArgs]) => args);
@@ -106,6 +119,8 @@ describe('clickstack_describe_table', () => {
       username: 'default',
       password: '',
     });
+    mockGetTableMetadata.mockReset().mockResolvedValue(TABLE_ROW);
+    mockGetSkipIndices.mockReset().mockResolvedValue([]);
   });
 
   describe('input validation', () => {
@@ -177,8 +192,9 @@ describe('clickstack_describe_table', () => {
         shapeTableDescription({
           database: 'default',
           table: { ...TABLE_ROW, total_rows: null, total_bytes: null },
+          keys: TABLE_ROW,
           columns: COLUMN_ROWS,
-          indices: [{ name: 'idx_day', type: 'minmax', expr: 'Day' }],
+          indices: [{ name: 'idx_day', type: 'minmax', expression: 'Day' }],
         }),
       ).toEqual({
         table: {
@@ -221,7 +237,7 @@ describe('clickstack_describe_table', () => {
           engine: 'MergeTree',
           total_rows: '42',
         }),
-      ).toEqual({ name: 'events', engine: 'MergeTree', approxRows: 42 });
+      ).toEqual({ name: 'events', engine: 'MergeTree', approxTotalRows: 42 });
     });
 
     it('binds database and table names as query parameters', async () => {
@@ -230,11 +246,16 @@ describe('clickstack_describe_table', () => {
         connectionId: CONNECTION_ID,
         database: "evil'db",
         table: 'events`; DROP TABLE x',
+        sampleRows: 1,
       });
-      for (const { query: sql, query_params } of queryCalls()) {
+      const calls = queryCalls();
+      expect(calls.some(c => c.query.includes(':Identifier}'))).toBe(true);
+      for (const { query: sql, query_params } of calls) {
         expect(sql).not.toContain('evil');
         expect(sql).not.toContain('DROP');
-        expect(Object.values(query_params)).toContain("evil'db");
+        expect(Object.values(query_params)).toEqual(
+          expect.arrayContaining(["evil'db", 'events`; DROP TABLE x']),
+        );
       }
     });
 
@@ -254,8 +275,8 @@ describe('clickstack_describe_table', () => {
         }),
       );
       expect(output.tables).toEqual([
-        { name: 'a', engine: 'MergeTree', approxRows: 1 },
-        { name: 'b', engine: 'View', approxRows: null },
+        { name: 'a', engine: 'MergeTree', approxTotalRows: 1 },
+        { name: 'b', engine: 'View', approxTotalRows: null },
       ]);
       expect(output.nextCursor).toBe(encodeTableListCursor({ lastName: 'b' }));
     });
@@ -295,6 +316,7 @@ describe('clickstack_describe_table', () => {
 
     it('maps permission errors to user errors with a hint', async () => {
       respondWith({
+        'FROM system.tables': [TABLE_ROW],
         'FROM system.columns': new Error(
           'Code: 497. DB::Exception: default: Not enough privileges. (ACCESS_DENIED)',
         ),
@@ -319,13 +341,15 @@ describe('clickstack_describe_table', () => {
         }),
       );
       expect(output.sampleRows).toBeUndefined();
-      expect(queryCalls().some(q => q.query.includes('SELECT *'))).toBe(false);
+      expect(queryCalls().some(q => q.query.includes(':Identifier}'))).toBe(
+        false,
+      );
     });
 
     it('trims oversized sample rows', async () => {
       respondWith({
         'FROM system.tables': [TABLE_ROW],
-        'SELECT *': [{ Body: 'x'.repeat(50_000) }, { Body: 'short' }],
+        ':Identifier}': [{ Body: 'x'.repeat(50_000) }, { Body: 'short' }],
       });
       const output = parseText(
         await getHandler()({
@@ -343,7 +367,7 @@ describe('clickstack_describe_table', () => {
     it('keeps the schema when sampling fails', async () => {
       respondWith({
         'FROM system.tables': [TABLE_ROW],
-        'SELECT *': new Error('ACCESS_DENIED'),
+        ':Identifier}': new Error('ACCESS_DENIED'),
       });
       const output = parseText(
         await getHandler()({
@@ -355,6 +379,149 @@ describe('clickstack_describe_table', () => {
       );
       expect(output.table.name).toBe('events');
       expect(output.sampleRowsError).toBe('ACCESS_DENIED');
+      expect(output.sampleRowsHint).toMatch(/schema above is complete/);
+    });
+
+    it('lists an existing empty database without an error', async () => {
+      respondWith({ 'FROM system.databases': [{ name: 'empty' }] });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'empty',
+      });
+      expect(result.isError).toBeFalsy();
+      expect(parseText(result).tables).toEqual([]);
+    });
+
+    it('reports a missing database when a cursor is replayed against it', async () => {
+      respondWith({});
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'dropped',
+        cursor: encodeTableListCursor({ lastName: 'a' }),
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/Database "dropped" not found/);
+    });
+
+    it('reads keys, indices, and key columns from the local table of a Distributed table', async () => {
+      respondWith({
+        'FROM system.tables': [
+          {
+            ...TABLE_ROW,
+            engine: 'Distributed',
+            engine_full:
+              "Distributed('prod', 'default', 'events_local', rand())",
+            sorting_key: '',
+            primary_key: '',
+            partition_key: '',
+            total_rows: null,
+          },
+        ],
+        'cluster(': [
+          { name: 'Timestamp', is_in_sorting_key: 1, is_in_primary_key: 1 },
+        ],
+        'FROM system.columns': COLUMN_ROWS.map(c => ({
+          ...c,
+          is_in_sorting_key: 0,
+          is_in_primary_key: 0,
+        })),
+      });
+      mockGetTableMetadata.mockResolvedValue({
+        ...TABLE_ROW,
+        engine: 'ReplicatedMergeTree',
+      });
+      mockGetSkipIndices.mockResolvedValue([
+        {
+          name: 'idx',
+          type: 'minmax',
+          typeFull: 'minmax',
+          expression: 'Day',
+          granularity: 1,
+        },
+      ]);
+
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+        }),
+      );
+      expect(output.table).toMatchObject({
+        engine: 'Distributed',
+        localTable: {
+          cluster: 'prod',
+          database: 'default',
+          table: 'events_local',
+          engine: 'ReplicatedMergeTree',
+        },
+        sortingKey: 'ServiceName, Timestamp',
+        primaryKey: 'ServiceName',
+      });
+      expect(output.columns[0]).toMatchObject({
+        name: 'Timestamp',
+        inSortingKey: true,
+        inPrimaryKey: true,
+      });
+      expect(output.dataSkippingIndices).toEqual([
+        { name: 'idx', type: 'minmax', expression: 'Day' },
+      ]);
+    });
+
+    it('keeps several medium sample rows within the sample budget', async () => {
+      const columns = Array.from({ length: 200 }, (_, i) => ({
+        ...COLUMN_ROWS[0],
+        name: `Column_${i}`,
+      }));
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        'FROM system.columns': columns,
+        ':Identifier}': Array.from({ length: 5 }, () => ({
+          Body: 'x'.repeat(9_900),
+        })),
+      });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+          sampleRows: 5,
+        }),
+      );
+      expect(JSON.stringify(output.sampleRows).length).toBeLessThan(11_000);
+      expect(output.columns).toHaveLength(200);
+      expect(output.note).toMatch(/trimmed/);
+    });
+
+    it('caps the bytes ClickHouse returns for the sample', async () => {
+      respondWith({ 'FROM system.tables': [TABLE_ROW] });
+      await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+        sampleRows: 1,
+      });
+      const sampleCall = queryCalls().find(c =>
+        c.query.includes(':Identifier}'),
+      );
+      expect(sampleCall?.clickhouse_settings.max_result_bytes).toBeDefined();
+    });
+
+    it('reports an infrastructure failure while sampling as a server error', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': Object.assign(new Error('connect ECONNREFUSED'), {
+          code: 'ECONNREFUSED',
+        }),
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+        sampleRows: 1,
+      });
+      expect(result.isError).toBe(true);
+      expect(errorCategory(result)).toBe('server');
     });
   });
 });

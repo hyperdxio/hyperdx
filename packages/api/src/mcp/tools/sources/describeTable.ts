@@ -1,3 +1,8 @@
+import {
+  getMetadata,
+  type Metadata,
+  quoteIdentifierIfNeeded,
+} from '@hyperdx/common-utils/dist/core/metadata';
 import { trace } from '@opentelemetry/api';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -5,6 +10,7 @@ import { getConnectionById } from '@/controllers/connection';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
+  isServerError,
   MCP_REQUEST_TIMEOUT,
 } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
@@ -39,8 +45,7 @@ import {
 // Sample rows can hold arbitrarily large values; keep them a small share of
 // the response so they never crowd out the schema.
 const SAMPLE_ROWS_MAX_CHARS = 10_000;
-
-const quoteName = (name: string) => `\`${name.replace(/`/g, '\\`')}\``;
+const RESPONSE_MAX_CHARS = 50_000;
 
 function jsonResult(payload: unknown): ToolResult {
   return { content: [{ type: 'text', text: JSON.stringify(payload) }] };
@@ -88,7 +93,7 @@ async function listTables(
   }
 
   // system.tables returns nothing for a missing database rather than erroring.
-  if (rows.length === 0 && !cursor) {
+  if (rows.length === 0) {
     try {
       if (!(await databaseExists(ctx, input.database))) {
         return mcpUserError(
@@ -121,75 +126,111 @@ async function listTables(
   });
 }
 
+function trimSampleRows(rows: Record<string, unknown>[]) {
+  const perRowBudget = Math.floor(
+    SAMPLE_ROWS_MAX_CHARS / Math.max(rows.length, 1),
+  );
+  let isTrimmed = false;
+  const data = rows.map(row => {
+    const trimmed = trimToolResponse(row, perRowBudget);
+    isTrimmed ||= trimmed.isTrimmed;
+    return trimmed.data;
+  });
+  return { data, isTrimmed };
+}
+
+async function sampleTableRows(
+  ctx: TableQueryContext,
+  args: { database: string; table: string; limit: number },
+) {
+  try {
+    const rows = trimSampleRows(await fetchSampleRows(ctx, args));
+    return { sampleRows: rows.data, isTrimmed: rows.isTrimmed };
+  } catch (e) {
+    if (isServerError(e)) throw e;
+    // The schema is still useful when the user can read system tables but
+    // not the table itself.
+    return {
+      sampleRowsError: sanitizeFetchError(e),
+      sampleRowsHint:
+        'Only the row sample failed; the schema above is complete. Retry without sampleRows, ' +
+        "or check that the connection's ClickHouse user can SELECT from this table.",
+      isTrimmed: false,
+    };
+  }
+}
+
 async function describeTable(
   ctx: TableQueryContext,
+  metadata: Metadata,
   input: DescribeTableInput & { table: string },
 ): Promise<ToolResult> {
   const { database, table } = input;
   let details;
   try {
-    details = await fetchTableDetails(ctx, { database, table });
+    details = await fetchTableDetails(ctx, metadata, { database, table });
   } catch (e) {
     return tableQueryErrorResult(e, 'Failed to describe table');
   }
 
-  if (!details.table) {
+  if (!details) {
     return mcpUserError(
       `Table "${database}.${table}" not found or not visible to this connection's ClickHouse user. ` +
         'Call clickstack_describe_table with only database to list its tables.',
     );
   }
 
-  const description = shapeTableDescription({
+  const { columns, ...description } = shapeTableDescription({
     database,
-    table: details.table,
-    columns: details.columns,
-    indices: details.indices,
+    ...details,
   });
 
-  let sample: Record<string, unknown> = {};
+  let sample = {};
+  let sampleTrimmed = false;
   if (input.sampleRows > 0) {
     try {
-      const rows = await fetchSampleRows(ctx, {
+      const { isTrimmed, ...result } = await sampleTableRows(ctx, {
         database,
         table,
-        limit: Math.min(input.sampleRows, MAX_SAMPLE_ROWS),
+        limit: input.sampleRows,
       });
-      sample = {
-        sampleRows: trimToolResponse(rows, SAMPLE_ROWS_MAX_CHARS).data,
-      };
+      sample = result;
+      sampleTrimmed = isTrimmed;
     } catch (e) {
-      // The schema is still useful when the user can read system tables but
-      // not the table itself.
-      sample = { sampleRowsError: sanitizeFetchError(e) };
+      return clickHouseErrorResult(e, 'Failed to sample rows');
     }
   }
 
   trace.getActiveSpan()?.setAttributes({
-    'mcp.describe_table.column_count': description.columns.length,
+    'mcp.describe_table.column_count': columns.length,
     'mcp.describe_table.index_count': description.dataSkippingIndices.length,
     'mcp.describe_table.engine': description.table.engine,
   });
 
-  const { data, isTrimmed } = trimToolResponse({
+  const rest = {
     ...description,
     ...sample,
     nextSteps: {
       query:
         `Query it with clickstack_sql using connectionId "${ctx.connectionId}" and ` +
-        `FROM ${quoteName(database)}.${quoteName(table)}. ` +
+        `FROM ${quoteIdentifierIfNeeded(database)}.${quoteIdentifierIfNeeded(table)}. ` +
         'To query it with the builder tools, register it as a source with clickstack_save_source.',
     },
-  });
-
-  return jsonResult(
-    isTrimmed
-      ? {
-          ...data,
-          note: 'Result was trimmed for context size. Some columns or sample rows may be omitted.',
-        }
-      : data,
+  };
+  // Trim only the column list, against what the rest of the response leaves,
+  // so a large sample cannot push columns out.
+  const trimmedColumns = trimToolResponse(
+    columns,
+    RESPONSE_MAX_CHARS - JSON.stringify(rest).length,
   );
+
+  return jsonResult({
+    ...rest,
+    columns: trimmedColumns.data,
+    ...((sampleTrimmed || trimmedColumns.isTrimmed) && {
+      note: 'Result was trimmed for context size. Some columns or sample values may be omitted.',
+    }),
+  });
 }
 
 export function registerDescribeTable({
@@ -258,7 +299,10 @@ export function registerDescribeTable({
             signal,
           };
           return input.table
-            ? describeTable(ctx, { ...input, table: input.table })
+            ? describeTable(ctx, getMetadata(clickhouseClient), {
+                ...input,
+                table: input.table,
+              })
             : listTables(ctx, input);
         },
         { timeoutMs: MCP_TOOL_TIMEOUT_MS },

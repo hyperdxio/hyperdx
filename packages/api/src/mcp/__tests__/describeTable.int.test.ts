@@ -165,7 +165,7 @@ describe('clickstack_describe_table', () => {
       getFirstText(await call({ database: DATABASE, limit: 1 })),
     );
     expect(first.tables).toEqual([
-      { name: 'events', engine: 'MergeTree', approxRows: 3 },
+      { name: 'events', engine: 'MergeTree', approxTotalRows: 3 },
     ]);
     expect(first.nextCursor).toEqual(expect.any(String));
 
@@ -175,7 +175,7 @@ describe('clickstack_describe_table', () => {
       ),
     );
     expect(second.tables).toEqual([
-      { name: 'events_view', engine: 'View', approxRows: null },
+      { name: 'events_view', engine: 'View', approxTotalRows: null },
     ]);
     expect(second.nextCursor).toBeUndefined();
   });

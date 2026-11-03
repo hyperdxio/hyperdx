@@ -1,8 +1,15 @@
+import type { ClickHouseSettings } from '@clickhouse/client-common';
 import {
   type ChSql,
   chSql,
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import type {
+  Metadata,
+  SkipIndexMetadata,
+  TableMetadata,
+} from '@hyperdx/common-utils/dist/core/metadata';
+import { getDistributedTableArgs } from '@hyperdx/common-utils/dist/core/utils';
 
 import type { ClickhouseClient } from '@/clickhouse';
 import { MCP_CLICKHOUSE_SETTINGS } from '@/mcp/tools/query/helpers';
@@ -16,13 +23,14 @@ export type TableQueryContext = {
 async function queryRows<T>(
   { clickhouseClient, connectionId, signal }: TableQueryContext,
   sql: ChSql,
+  settings?: ClickHouseSettings,
 ): Promise<T[]> {
   const response = await clickhouseClient.query<'JSON'>({
     query: sql.sql,
     query_params: sql.params,
     format: 'JSON',
     connectionId,
-    clickhouse_settings: MCP_CLICKHOUSE_SETTINGS,
+    clickhouse_settings: { ...MCP_CLICKHOUSE_SETTINGS, ...settings },
     abort_signal: signal,
   });
   const result = (await response.json()) as { data: T[] };
@@ -42,57 +50,70 @@ export type SystemTableRow = {
   total_rows: string | number | null;
 };
 
-export type SystemTableDetailRow = SystemTableRow & {
-  sorting_key: string;
-  primary_key: string;
-  partition_key: string;
-  comment: string;
-  total_bytes: string | number | null;
+// total_rows / total_bytes are NULL for views, unlike TableMetadata's typing.
+type TableInfo = Pick<TableMetadata, 'name' | 'engine' | 'comment'> & {
+  total_rows: string | null;
+  total_bytes: string | null;
 };
 
-export type SystemColumnRow = {
+type TableKeys = Pick<
+  TableMetadata,
+  'engine' | 'sorting_key' | 'primary_key' | 'partition_key'
+>;
+
+type ColumnKeyFlags = {
   name: string;
-  type: string;
-  default_kind: string;
-  default_expression: string;
-  comment: string;
   is_in_sorting_key: number;
   is_in_primary_key: number;
 };
 
-export type SystemIndexRow = {
-  name: string;
+export type SystemColumnRow = ColumnKeyFlags & {
   type: string;
-  expr: string;
+  default_kind: string;
+  default_expression: string;
+  comment: string;
 };
+
+type DistributedTarget = { cluster: string; database: string; table: string };
 
 export function shapeTableListEntry(row: SystemTableRow) {
   return {
     name: row.name,
     engine: row.engine,
-    approxRows: toApproxCount(row.total_rows),
+    approxTotalRows: toApproxCount(row.total_rows),
   };
 }
 
+/**
+ * `keys` comes from the local table when `table` is Distributed, since a
+ * Distributed table has no keys or indices of its own.
+ */
 export function shapeTableDescription({
   database,
   table,
+  keys,
+  distributedTarget,
   columns,
   indices,
 }: {
   database: string;
-  table: SystemTableDetailRow;
+  table: TableInfo;
+  keys: TableKeys;
+  distributedTarget?: DistributedTarget;
   columns: SystemColumnRow[];
-  indices: SystemIndexRow[];
+  indices: Pick<SkipIndexMetadata, 'name' | 'type' | 'expression'>[];
 }) {
   return {
     table: {
       database,
       name: table.name,
       engine: table.engine,
-      sortingKey: table.sorting_key,
-      primaryKey: table.primary_key,
-      partitionKey: table.partition_key,
+      ...(distributedTarget && {
+        localTable: { ...distributedTarget, engine: keys.engine },
+      }),
+      sortingKey: keys.sorting_key,
+      primaryKey: keys.primary_key,
+      partitionKey: keys.partition_key,
       ...(table.comment && { comment: table.comment }),
       approxTotalRows: toApproxCount(table.total_rows),
       approxTotalBytes: toApproxCount(table.total_bytes),
@@ -111,7 +132,7 @@ export function shapeTableDescription({
     dataSkippingIndices: indices.map(i => ({
       name: i.name,
       type: i.type,
-      expression: i.expr,
+      expression: i.expression,
     })),
   };
 }
@@ -147,20 +168,33 @@ export async function databaseExists(ctx: TableQueryContext, database: string) {
   return rows.length > 0;
 }
 
+/** Returns undefined when the table does not exist or is not visible. */
 export async function fetchTableDetails(
   ctx: TableQueryContext,
+  metadata: Pick<Metadata, 'getTableMetadata' | 'getSkipIndices'>,
   { database, table }: { database: string; table: string },
 ) {
-  const [tables, columns, indices] = await Promise.all([
-    queryRows<SystemTableDetailRow>(
-      ctx,
-      chSql`
-        SELECT name, engine, sorting_key, primary_key, partition_key, comment,
-          total_rows, total_bytes
-        FROM system.tables
-        WHERE database = ${{ String: database }} AND name = ${{ String: table }}
-      `,
-    ),
+  const rows = await queryRows<TableMetadata>(
+    ctx,
+    chSql`
+      SELECT * FROM system.tables
+      WHERE database = ${{ String: database }} AND name = ${{ String: table }}
+      LIMIT 1
+    `,
+  );
+  const info = rows.at(0);
+  if (!info) return undefined;
+
+  const distributedTarget =
+    info.engine === 'Distributed' ? getDistributedTableArgs(info) : undefined;
+  const metadataArgs = {
+    databaseName: database,
+    tableName: table,
+    connectionId: ctx.connectionId,
+  };
+  const [keys, indices, columns, localKeyFlags] = await Promise.all([
+    metadata.getTableMetadata(metadataArgs),
+    metadata.getSkipIndices(metadataArgs),
     queryRows<SystemColumnRow>(
       ctx,
       chSql`
@@ -171,17 +205,42 @@ export async function fetchTableDetails(
         ORDER BY position
       `,
     ),
-    queryRows<SystemIndexRow>(
-      ctx,
-      chSql`
-        SELECT name, type, expr
-        FROM system.data_skipping_indices
-        WHERE database = ${{ String: database }} AND table = ${{ String: table }}
-      `,
-    ),
+    distributedTarget
+      ? queryRows<ColumnKeyFlags>(
+          ctx,
+          chSql`
+            SELECT name, is_in_sorting_key, is_in_primary_key
+            FROM cluster(${{ String: distributedTarget.cluster }}, system.columns)
+            WHERE database = ${{ String: distributedTarget.database }}
+              AND table = ${{ String: distributedTarget.table }}
+            LIMIT 1 BY name
+          `,
+        )
+      : undefined,
   ]);
-  return { table: tables[0], columns, indices };
+
+  const flagsByName = new Map(localKeyFlags?.map(f => [f.name, f]));
+  return {
+    table: info,
+    keys: keys ?? info,
+    distributedTarget,
+    indices,
+    columns: columns.map(c => {
+      const flags = flagsByName.get(c.name);
+      return flags
+        ? {
+            ...c,
+            is_in_sorting_key: flags.is_in_sorting_key,
+            is_in_primary_key: flags.is_in_primary_key,
+          }
+        : c;
+    }),
+  };
 }
+
+// Five rows of wide String columns can still be large; cap what ClickHouse
+// sends back so the response is bounded before it is buffered.
+const SAMPLE_MAX_RESULT_BYTES = 1_000_000;
 
 export function fetchSampleRows(
   ctx: TableQueryContext,
@@ -194,5 +253,6 @@ export function fetchSampleRows(
   return queryRows<Record<string, unknown>>(
     ctx,
     chSql`SELECT * FROM ${tableExpr({ database, table })} LIMIT ${{ Int32: limit }}`,
+    { max_result_bytes: SAMPLE_MAX_RESULT_BYTES.toString() },
   );
 }
