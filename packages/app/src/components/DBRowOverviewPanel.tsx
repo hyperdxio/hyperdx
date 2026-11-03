@@ -113,7 +113,16 @@ export function RowOverviewPanel({
     'ScopeName',
     'ScopeVersion',
   ];
-  const topLevelAttributes = pickBy(firstRow, (value, key) => {
+  // `*` leaves out an ALIAS or MATERIALIZED EventName, so `useRowData` only
+  // returns it under its alias.
+  const rowWithEventName =
+    isLogSource(source) &&
+    source.eventNameExpression?.trim() === 'EventName' &&
+    firstRow?.EventName == null &&
+    firstRow?.__hdx_event_name != null
+      ? { ...firstRow, EventName: firstRow.__hdx_event_name }
+      : firstRow;
+  const topLevelAttributes = pickBy(rowWithEventName, (value, key) => {
     if (value === '') {
       return false;
     }

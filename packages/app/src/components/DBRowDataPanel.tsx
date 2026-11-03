@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
@@ -15,6 +16,7 @@ import {
   getSelectAllColumnsQuerySettings,
   useSelectAllColumnsQuerySettings,
 } from '@/hooks/useMaterializedAliasColumnsOption';
+import { useColumns } from '@/hooks/useMetadata';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
   getDisplayedTimestampValueExpression,
@@ -110,6 +112,34 @@ export function useRowData({
       ? eventNameExpr
       : undefined;
 
+  // `*` leaves out ALIAS and MATERIALIZED columns, so the table's columns
+  // decide whether a bare column is selected after all. renderChartConfig
+  // already reads these cached columns before the lookup runs, so waiting on
+  // them adds no query. A Known Columns List names its columns, so it returns
+  // such a column whenever it lists it.
+  const checksEventNameColumn =
+    rowId != null && eventNameColumn != null && knownColumns == null;
+  const { data: columns, isLoading: isColumnsLoading } = useColumns(
+    tcFromSource(source),
+    {
+      enabled: checksEventNameColumn,
+      // A failed DESCRIBE only costs the event name, so the lookup does not
+      // wait out retries.
+      retry: false,
+    },
+  );
+  const isEventNameColumnPending = checksEventNameColumn && isColumnsLoading;
+  // A disabled query still returns columns another page has cached.
+  const eventNameColumnKind = checksEventNameColumn
+    ? columns?.find(column => column.name === eventNameColumn)?.default_type
+    : undefined;
+  const selectsEventNameColumn =
+    eventNameColumnKind === 'ALIAS' || eventNameColumnKind === 'MATERIALIZED';
+  const selectedEventNameExpr =
+    eventNameColumn == null || selectsEventNameColumn
+      ? eventNameExpr
+      : undefined;
+
   const baseConfig = {
     source: source.id,
     connection: source.connection,
@@ -181,10 +211,10 @@ export function useRowData({
             },
           ]
         : []),
-      ...(eventNameExpr && eventNameColumn == null
+      ...(selectedEventNameExpr
         ? [
             {
-              valueExpression: eventNameExpr,
+              valueExpression: selectedEventNameExpr,
               alias: ROW_DATA_ALIASES.EVENT_NAME,
             },
           ]
@@ -235,7 +265,15 @@ export function useRowData({
 
   const additionalQuerySettings = useSelectAllColumnsQuerySettings(source);
 
-  const baseQueryKey = ['row_side_panel', rowId, aliasWith, source];
+  // This key replaces the config-derived one, so it has to carry the column
+  // check's effect on the select.
+  const baseQueryKey = [
+    'row_side_panel',
+    rowId,
+    aliasWith,
+    source,
+    selectsEventNameColumn,
+  ];
   // Both halves of the filter are needed for `renderChartConfig` to emit one, so
   // a source with no usable timestamp expression can't be bounded at all.
   const hasWindow = dateRange != null && timestampValueExpr != null;
@@ -249,7 +287,7 @@ export function useRowData({
     },
     {
       queryKey: [...baseQueryKey, dateRange],
-      enabled: rowId != null && hasWindow,
+      enabled: rowId != null && hasWindow && !isEventNameColumnPending,
       additionalQuerySettings,
     },
   );
@@ -270,7 +308,7 @@ export function useRowData({
   // often resolve from cache instead of scanning.
   const fallbackResult = useQueriedChartConfig(baseConfig, {
     queryKey: [...baseQueryKey, undefined],
-    enabled: rowId != null && isFallbackActive,
+    enabled: rowId != null && isFallbackActive && !isEventNameColumnPending,
     additionalQuerySettings,
   });
 
@@ -280,7 +318,9 @@ export function useRowData({
   // report loading until it settles rather than briefly claiming the row is
   // absent.
   const isLoading =
-    queryResult.isLoading || (isBoundedEmpty && queryResult.isPending);
+    isEventNameColumnPending ||
+    queryResult.isLoading ||
+    (isBoundedEmpty && queryResult.isPending);
 
   // Normalize resource, event and span-event exception attributes to always use flat keys for both JSON and Map columns
   const normalizedData = useMemo(() => {
@@ -309,7 +349,7 @@ export function useRowData({
       );
     }
 
-    if (eventNameColumn != null) {
+    if (eventNameColumn != null && !selectsEventNameColumn) {
       normalizedRow[ROW_DATA_ALIASES.EVENT_NAME] = row[eventNameColumn];
     }
 
@@ -317,7 +357,7 @@ export function useRowData({
       ...queryResult.data,
       data: [normalizedRow],
     };
-  }, [queryResult.data, eventNameColumn]);
+  }, [queryResult.data, eventNameColumn, selectsEventNameColumn]);
 
   return {
     ...queryResult,

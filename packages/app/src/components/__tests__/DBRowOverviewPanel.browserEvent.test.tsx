@@ -189,4 +189,30 @@ describe('RowOverviewPanel top level attributes', () => {
 
     expect(topLevelData()).toContainEqual({ ServiceName: 'api' });
   });
+
+  it('lists an ALIAS EventName from the row alias', () => {
+    renderRow(
+      CLICK_ATTRIBUTES,
+      { ServiceName: 'web', __hdx_event_name: 'browser.user_action.click' },
+      asSource({ ...LOG_SOURCE, eventNameExpression: 'EventName' }),
+    );
+
+    expect(topLevelData()).toContainEqual({
+      ServiceName: 'web',
+      EventName: 'browser.user_action.click',
+    });
+  });
+
+  it('does not list another event name expression as EventName', () => {
+    renderRow(
+      CLICK_ATTRIBUTES,
+      { ServiceName: 'web', __hdx_event_name: 'browser.user_action.click' },
+      asSource({
+        ...LOG_SOURCE,
+        eventNameExpression: "LogAttributes['event.name']",
+      }),
+    );
+
+    expect(topLevelData()).toContainEqual({ ServiceName: 'web' });
+  });
 });
