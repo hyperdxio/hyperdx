@@ -1,7 +1,31 @@
 import router from 'next/router';
+import SqlString from 'sqlstring';
+import { errorStatusPredicateSql } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import type { ServiceAggregation } from '@/hooks/useServiceMap';
+
+export function buildServiceMapErrorWhere({
+  serviceNameExpression,
+  serviceName,
+  spanKindExpression,
+  statusCodeExpression,
+}: {
+  serviceNameExpression: string;
+  serviceName: string;
+  spanKindExpression: string;
+  statusCodeExpression: string;
+}): string {
+  return SqlString.format(
+    `? = ? AND ? IN ('Server', 'Consumer') AND ${errorStatusPredicateSql('?')}`,
+    [
+      SqlString.raw(serviceNameExpression),
+      serviceName,
+      SqlString.raw(spanKindExpression),
+      SqlString.raw(statusCodeExpression),
+    ],
+  );
+}
 
 export function navigateToTraceSearch({
   dateRange,
