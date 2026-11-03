@@ -3,15 +3,28 @@
 // no AI hallmarks) so the prose-lint hook treats it like any other
 // reviewer-facing artifact.
 
+import {
+  PROMQL_DASHBOARD_SECTION,
+  PROMQL_QUERY_GUIDE_SECTION,
+} from './promqlContent';
+
+/** Which optional sections a prompt includes. */
+export type PromptOptions = {
+  /** Whether PromQL is enabled for this deployment. */
+  promql?: boolean;
+};
+
 export function buildCreateDashboardPrompt(
   sourceSummary: string,
   traceSourceId: string,
   logSourceId: string,
   description?: string,
+  options: PromptOptions = {},
 ): string {
   const userContext = description
     ? `\nThe user wants to create a dashboard for: ${description}\nTailor the dashboard tiles to match this goal.\n`
     : '';
+  const promqlSection = options.promql ? `\n\n${PROMQL_DASHBOARD_SECTION}` : '';
 
   return `You are an expert at creating HyperDX observability dashboards.
 ${userContext}
@@ -72,7 +85,7 @@ Use RAW SQL tiles (with connectionId) only for queries the builder cannot expres
   Use when you need JOINs, sub-queries, CTEs, or expressions the builder does not generate.
   ALWAYS set sourceId on a raw SQL tile (in addition to connectionId) UNLESS the query reads
   from multiple tables (e.g. JOINs across sources). sourceId enables the $__filters and 
-  $__sourceTable macros. When you can set sourceId, include "AND $__filters" in the WHERE clause.
+  $__sourceTable macros. When you can set sourceId, include "AND $__filters" in the WHERE clause.${promqlSection}
 
 == COLUMN NAMING ==
 
@@ -804,8 +817,12 @@ SQL TEMPLATE REFERENCE:
   );
 }
 
-export function buildQueryGuidePrompt(): string {
-  return `Reference guide for writing queries with ClickStack MCP tools (clickstack_timeseries, clickstack_table, clickstack_search, clickstack_event_patterns, clickstack_sql, and clickstack_save_dashboard).
+export function buildQueryGuidePrompt(options: PromptOptions = {}): string {
+  const promqlTool = options.promql ? 'clickstack_promql, ' : '';
+  const promqlSection = options.promql
+    ? `${PROMQL_QUERY_GUIDE_SECTION}\n\n`
+    : '';
+  return `Reference guide for writing queries with ClickStack MCP tools (clickstack_timeseries, clickstack_table, clickstack_search, clickstack_event_patterns, ${promqlTool}clickstack_sql, and clickstack_save_dashboard).
 
 == AGGREGATION FUNCTIONS (aggFn) ==
 
@@ -1031,7 +1048,7 @@ Examples:
   Exponential histogram p95 latency:
     { aggFn: "quantile", level: 0.95, metricType: "exponential histogram", metricName: "http.server.request.duration", alias: "P95 Latency" }, groupBy: "ServiceName"
 
-== NUMBER FORMAT ==
+${promqlSection}== NUMBER FORMAT ==
 
 numberFormat controls how a value renders. Two places to set it:
 

@@ -16,8 +16,8 @@ export function isHiddenSource(
 }
 
 export const PROMQL_QUERY_USAGE =
-  'PromQL sources hold Prometheus metrics and are queried with PromQL. The ' +
-  'builder query tools (clickstack_timeseries, clickstack_table, ' +
+  'PromQL sources hold Prometheus metrics. Query them with clickstack_promql; ' +
+  'the builder query tools (clickstack_timeseries, clickstack_table, ' +
   'clickstack_search) do not read them.';
 
 export function timeSeriesSqlUsage(table: string): string {
@@ -29,6 +29,6 @@ export function timeSeriesSqlUsage(table: string): string {
 }
 
 export const PROMQL_SOURCE_USAGE =
-  `${PROMQL_QUERY_USAGE} A PromQL source with backend "clickhouse" is a ` +
-  `ClickHouse TimeSeries table: ${timeSeriesSqlUsage('<table>')} ` +
-  'Call clickstack_describe_source to list label names and metric names.';
+  `${PROMQL_QUERY_USAGE} Call clickstack_describe_source to list label names ` +
+  'and metric names. A PromQL source with backend "clickhouse" is a ' +
+  `ClickHouse TimeSeries table; to inspect its raw tags and samples, ${timeSeriesSqlUsage('<table>')}`;
