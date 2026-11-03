@@ -12,6 +12,7 @@ import { getDistributedTableArgs } from '@hyperdx/common-utils/dist/core/utils';
 
 import type { ClickhouseClient } from '@/clickhouse';
 import { MCP_CLICKHOUSE_SETTINGS } from '@/mcp/tools/query/helpers';
+import logger from '@/utils/logger';
 
 export type TableQueryContext = {
   clickhouseClient: Pick<ClickhouseClient, 'query'>;
@@ -92,6 +93,7 @@ export function shapeTableDescription({
   table,
   keys,
   distributedTarget,
+  localTableEngine,
   columns,
   indices,
 }: {
@@ -99,6 +101,8 @@ export function shapeTableDescription({
   table: TableInfo;
   keys: TableKeys;
   distributedTarget?: DistributedTarget;
+  /** Unset when the local table could not be read. */
+  localTableEngine?: string;
   columns: SystemColumnRow[];
   indices: Pick<SkipIndexMetadata, 'name' | 'type' | 'expression'>[];
 }) {
@@ -108,7 +112,10 @@ export function shapeTableDescription({
       name: table.name,
       engine: table.engine,
       ...(distributedTarget && {
-        localTable: { ...distributedTarget, engine: keys.engine },
+        localTable: {
+          ...distributedTarget,
+          ...(localTableEngine && { engine: localTableEngine }),
+        },
       }),
       sortingKey: keys.sorting_key,
       primaryKey: keys.primary_key,
@@ -192,6 +199,18 @@ function nullOnPrivilegeError<T>(query: Promise<T>): Promise<T | null> {
 }
 
 /**
+ * Resolves to null on any failure. The cluster() lookups can fail for reasons
+ * besides grants (unknown cluster, unreachable shard), and the Distributed
+ * table's own schema is still worth returning.
+ */
+function nullOnFailure<T>(query: Promise<T>): Promise<T | null> {
+  return query.catch((e: unknown) => {
+    logger.warn({ error: e }, 'Distributed local-table lookup failed');
+    return null;
+  });
+}
+
+/**
  * Returns undefined when the table does not exist or is not visible. Every
  * lookup is uncached so the result reflects ALTERs made since the last call.
  */
@@ -218,7 +237,7 @@ export async function fetchTableDetails(
 
   const [localKeys, indices, columns, localKeyFlags] = await Promise.all([
     distributedTarget
-      ? nullOnPrivilegeError(
+      ? nullOnFailure(
           queryRows<TableKeys>(
             ctx,
             chSql`
@@ -233,7 +252,7 @@ export async function fetchTableDetails(
       : undefined,
     // Indices and the local-table lookups are optional detail, and cluster()
     // needs the REMOTE grant; a missing grant should not hide the schema.
-    nullOnPrivilegeError(
+    (distributedTarget ? nullOnFailure : nullOnPrivilegeError)(
       queryRows<Pick<SkipIndexMetadata, 'name' | 'type' | 'expression'>>(
         ctx,
         chSql`
@@ -256,7 +275,7 @@ export async function fetchTableDetails(
       `,
     ),
     distributedTarget
-      ? nullOnPrivilegeError(
+      ? nullOnFailure(
           queryRows<ColumnKeyFlags>(
             ctx,
             chSql`
@@ -271,14 +290,17 @@ export async function fetchTableDetails(
       : undefined,
   ]);
 
+  const localKeyRow = localKeys?.at(0);
   const flagsByName = new Map(localKeyFlags?.map(f => [f.name, f]));
   return {
     table: info,
-    keys: localKeys?.at(0) ?? info,
+    keys: localKeyRow ?? info,
     distributedTarget,
+    localTableEngine: localKeyRow?.engine,
     indices: indices ?? [],
     indicesUnavailable: indices === null,
-    localTableUnavailable: localKeys === null || localKeyFlags === null,
+    localTableUnavailable:
+      distributedTarget != null && (!localKeyRow || localKeyFlags === null),
     columns: columns.map(c => {
       const flags = flagsByName.get(c.name);
       return flags
@@ -296,6 +318,9 @@ export async function fetchTableDetails(
 // ClickHouse fails the query, which surfaces as sampleRowsError, so nothing
 // unbounded is buffered.
 const SAMPLE_MAX_RESULT_BYTES = 1_000_000;
+// Well inside the tool's budget, which the schema queries have already used
+// part of, so a slow sample fails on its own instead of timing out the call.
+const SAMPLE_MAX_EXECUTION_SEC = 10;
 
 export function fetchSampleRows(
   ctx: TableQueryContext,
@@ -308,6 +333,9 @@ export function fetchSampleRows(
   return queryRows<Record<string, unknown>>(
     ctx,
     chSql`SELECT * FROM ${tableExpr({ database, table })} LIMIT ${{ Int32: limit }}`,
-    { max_result_bytes: SAMPLE_MAX_RESULT_BYTES.toString() },
+    {
+      max_result_bytes: SAMPLE_MAX_RESULT_BYTES.toString(),
+      max_execution_time: SAMPLE_MAX_EXECUTION_SEC,
+    },
   );
 }

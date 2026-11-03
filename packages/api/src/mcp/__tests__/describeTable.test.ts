@@ -492,6 +492,41 @@ describe('clickstack_describe_table', () => {
       });
       expect(output.columns).toHaveLength(2);
       expect(output.localTableHint).toMatch(/REMOTE grant/);
+      expect(output.table.localTable).toEqual({
+        cluster: 'prod',
+        database: 'default',
+        table: 'events_local',
+      });
+    });
+
+    it('falls back to the Distributed table when its cluster is unknown', async () => {
+      const unknownCluster = new Error(
+        "Code: 701. DB::Exception: Requested cluster 'prod' not found. (CLUSTER_DOESNT_EXIST)",
+      );
+      respondWith({
+        'FROM system.tables': [
+          {
+            ...TABLE_ROW,
+            engine: 'Distributed',
+            engine_full:
+              "Distributed('prod', 'default', 'events_local', rand())",
+          },
+        ],
+        ', system.tables)': unknownCluster,
+        ', system.data_skipping_indices)': unknownCluster,
+        ', system.columns)': unknownCluster,
+        'FROM system.columns': COLUMN_ROWS,
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = parseText(result);
+      expect(output.columns).toHaveLength(2);
+      expect(output.localTableHint).toMatch(/unknown cluster/);
+      expect(output.dataSkippingIndicesHint).toBeDefined();
     });
 
     it('keeps the schema when the sample times out', async () => {
@@ -531,7 +566,7 @@ describe('clickstack_describe_table', () => {
       expect(result.isError).toBeFalsy();
       const output = parseText(result);
       expect(output.dataSkippingIndices).toEqual([]);
-      expect(output.dataSkippingIndicesHint).toMatch(/cannot read/);
+      expect(output.dataSkippingIndicesHint).toMatch(/Could not read/);
     });
 
     it('reports a sample over the byte cap as sampleRowsError', async () => {
@@ -590,6 +625,8 @@ describe('clickstack_describe_table', () => {
         c.query.includes(':Identifier}'),
       );
       expect(sampleCall?.clickhouse_settings.max_result_bytes).toBeDefined();
+      // Below the 30s tool budget, so a slow sample fails on its own.
+      expect(sampleCall?.clickhouse_settings.max_execution_time).toBe(10);
     });
 
     it('reports an infrastructure failure while sampling as a server error', async () => {

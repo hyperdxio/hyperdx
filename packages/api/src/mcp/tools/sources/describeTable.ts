@@ -209,11 +209,11 @@ async function describeTable(
     ...description,
     ...(localTableUnavailable && {
       localTableHint:
-        "The connection's ClickHouse user cannot run cluster() (REMOTE grant), so keys and key flags come from the Distributed table itself and may be empty.",
+        'Could not read the local table through cluster() (missing REMOTE grant, unknown cluster, or unreachable shard), so keys and key flags come from the Distributed table itself and may be empty.',
     }),
     ...(indicesUnavailable && {
       dataSkippingIndicesHint:
-        "The connection's ClickHouse user cannot read system.data_skipping_indices, so indices are not listed.",
+        'Could not read system.data_skipping_indices for this table (missing grant, or the local table was unreachable), so indices are not listed.',
     }),
     ...sample,
     nextSteps: {
