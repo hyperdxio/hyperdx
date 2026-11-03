@@ -2,8 +2,12 @@ import mongoose from 'mongoose';
 
 import { createTeam } from '@/controllers/team';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
-import { backfillAlertDisplayFields } from '@/migrations';
+import {
+  backfillAlertDisplayFields,
+  dropReplacedAlertHistoryIndex,
+} from '@/migrations';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 
@@ -223,5 +227,50 @@ describe('backfillAlertDisplayFields', () => {
     expect((await Alert.findById(otherAlert._id).lean())?.displayName).toBe(
       'Second name',
     );
+  });
+});
+
+describe('dropReplacedAlertHistoryIndex', () => {
+  const OLD = 'alert_1_group_1_createdAt_-1';
+  const NEW = 'alert_1_group_1_createdAt_-1_state_1';
+  const indexNames = async () =>
+    (await AlertHistory.collection.indexes()).map(i => i.name);
+
+  beforeAll(async () => {
+    await connectDB();
+    await AlertHistory.init();
+  });
+
+  afterAll(async () => {
+    await AlertHistory.createIndexes();
+    await closeDB();
+  });
+
+  it('drops the old index once the new one exists, and is idempotent', async () => {
+    await AlertHistory.createIndexes();
+    await AlertHistory.collection.createIndex(
+      { alert: 1, group: 1, createdAt: -1 },
+      { name: OLD },
+    );
+    expect(await indexNames()).toEqual(expect.arrayContaining([OLD, NEW]));
+
+    await dropReplacedAlertHistoryIndex();
+    await dropReplacedAlertHistoryIndex();
+
+    const names = await indexNames();
+    expect(names).toContain(NEW);
+    expect(names).not.toContain(OLD);
+  });
+
+  it('keeps the old index while the new one is missing', async () => {
+    await AlertHistory.collection.createIndex(
+      { alert: 1, group: 1, createdAt: -1 },
+      { name: OLD },
+    );
+    await AlertHistory.collection.dropIndex(NEW);
+
+    await dropReplacedAlertHistoryIndex();
+
+    expect(await indexNames()).toContain(OLD);
   });
 });
