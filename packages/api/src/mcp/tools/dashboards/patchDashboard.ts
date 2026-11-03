@@ -1,3 +1,4 @@
+import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import { uniq } from 'lodash';
 
 import * as config from '@/config';
@@ -5,6 +6,7 @@ import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { isPromqlEnabled } from '@/mcp/utils/promql';
 import Dashboard from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -16,7 +18,7 @@ import {
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
-import { mcpPatchDashboardSchema } from './schemas';
+import { buildMcpPatchDashboardSchema } from './schemas';
 import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
@@ -29,6 +31,7 @@ export function registerPatchDashboard({
 }: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
+  const promqlEnabled = isPromqlEnabled(context);
 
   registerTool(
     'clickstack_patch_dashboard',
@@ -45,7 +48,7 @@ export function registerPatchDashboard({
         'tile are permanently deleted. ' +
         'Use clickstack_get_dashboard_tile to inspect a tile before patching it. ' +
         'IMPORTANT: After patching a tile, run clickstack_query_tile to confirm the query still works.',
-      inputSchema: mcpPatchDashboardSchema,
+      inputSchema: buildMcpPatchDashboardSchema(promqlEnabled),
     },
     async ({ dashboardId, name, tags, tileId, tile: inputTile }) => {
       // Cross-field validation (kept in handler so the inputSchema
@@ -98,17 +101,20 @@ export function registerPatchDashboard({
         // untouched tiles are never round-tripped through the external
         // converter (which would strip orphaned container refs from
         // unrelated tiles).
-        const internalTiles =
-          (existingDashboard.tiles as { id: string }[]) ?? [];
-        const existingIdx = internalTiles.findIndex(t => t.id === tileId);
+        const internalTiles = existingDashboard.tiles ?? [];
+        // With PromQL disabled, PromQL tiles are hidden from reads, so they
+        // cannot be patched either.
+        const existingIdx = internalTiles.findIndex(
+          t =>
+            t.id === tileId &&
+            (promqlEnabled || !isPromqlSavedChartConfig(t.config)),
+        );
         if (existingIdx === -1) {
           // Build a human-readable list of available tile IDs.
           // Convert only for the error message (read-only, no write-back).
           const externalDashboard = convertToExternalDashboard(
             existingDashboard,
-            {
-              hidePromqlTiles: true,
-            },
+            { hidePromql: !promqlEnabled },
           );
           return mcpUserError(
             `Tile not found: ${tileId}. Available tile IDs: ${externalDashboard.tiles.map(t => `${t.id} (${t.name})`).join(', ')}`,
