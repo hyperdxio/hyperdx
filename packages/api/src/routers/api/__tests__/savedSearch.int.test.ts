@@ -189,6 +189,36 @@ describe('savedSearch router', () => {
     expect(dbRecord?.createdBy?.toString()).toBe(user._id.toString());
   });
 
+  it('ignores smuggled team and createdBy on PATCH', async () => {
+    const otherUser = await User.create({
+      email: 'other@test.com',
+      name: 'Other User',
+    });
+    const otherTeamId = '679b12d6cf282580fc63aad5';
+    const created = await agent
+      .post('/saved-search')
+      .send(MOCK_SAVED_SEARCH)
+      .expect(200);
+
+    await agent
+      .patch(`/saved-search/${created.body._id}`)
+      .send({
+        name: 'updated name',
+        team: otherTeamId,
+        createdBy: otherUser._id.toString(),
+      })
+      .expect(200);
+
+    const dbRecord = await SavedSearch.findById(created.body._id);
+    expect(dbRecord?.name).toBe('updated name');
+    expect(dbRecord?.team.toString()).toBe(team._id.toString());
+    expect(dbRecord?.createdBy?.toString()).toBe(user._id.toString());
+
+    const savedSearches = await agent.get('/saved-search').expect(200);
+    const listed = savedSearches.body.find(s => s._id === created.body._id);
+    expect(listed.createdBy).toMatchObject({ email: user.email });
+  });
+
   it('sets createdBy on alerts created from a saved search and populates it in list', async () => {
     // Create a saved search
     const savedSearch = await agent
