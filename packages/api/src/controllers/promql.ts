@@ -3,7 +3,7 @@ import {
   buildQueryId,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { getCurrentQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { SourceKind, type SQLInterval } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -289,7 +289,7 @@ type PromqlTarget = {
   databaseName: string;
   tableName: string;
   /** The source's scrape interval floor, e.g. "1 minute". */
-  minAutoGranularity?: string;
+  minAutoGranularity?: SQLInterval;
 };
 
 /**

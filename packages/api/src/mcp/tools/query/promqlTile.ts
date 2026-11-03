@@ -256,7 +256,7 @@ export async function runPromqlTile({
     config,
     dateRange,
     minGranularitySeconds: target.minAutoGranularity
-      ? convertGranularityToSeconds(target.minAutoGranularity as SQLInterval)
+      ? convertGranularityToSeconds(target.minAutoGranularity)
       : undefined,
     variables,
   });
