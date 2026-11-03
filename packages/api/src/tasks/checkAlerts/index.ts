@@ -1829,11 +1829,11 @@ export interface AggregatedAlertHistory {
  * For group-by alerts, returns the latest history for each group within each alert.
  *
  * Uses per-alert queries so each one can use the compound index
- * {alert: 1, group: 1, createdAt: -1} as a DISTINCT_SCAN: one index seek per
- * group instead of reading every row in the lookback window. That plan needs
- * a single-field $group key and only index fields in $match; a compound _id or
- * a state predicate turns it back into a scan of all rows, which for a
- * high-cardinality group-by alert is millions of rows (#3508).
+ * {alert: 1, group: 1, createdAt: -1, state: 1} as a DISTINCT_SCAN: one index
+ * seek per group instead of reading every row in the lookback window, which
+ * for a high-cardinality group-by alert is millions of rows (#3508). That plan
+ * needs a single-field $group key and only index fields in $match; ERROR rows
+ * are skipped inside the index (keys examined, documents not fetched).
  *
  * @param alertIds The list of alert IDs to query the latest history for.
  * @param now The current date and time. AlertHistory documents that have a createdAt > now are ignored.
@@ -1857,68 +1857,45 @@ export const getPreviousAlertHistories = async (
     alertIds.map(alertId =>
       queue.add(async () => {
         const id = new mongoose.Types.ObjectId(alertId);
-        const createdAt = { $lte: now, $gte: lookbackDate };
-        // Same shape as before: _id is the alert. (No $$REMOVE: DocumentDB
-        // doesn't support it; callers read `group || ''`.)
-        const project = {
-          $project: {
-            _id: '$alert',
-            group: 1,
-            createdAt: 1,
-            state: 1,
-            fired: 1,
-          },
-        };
-        const latestPerGroup =
-          await AlertHistory.aggregate<AggregatedAlertHistory>([
-            { $match: { alert: id, createdAt } },
-            { $sort: { alert: 1, group: 1, createdAt: -1 } },
-            // $first on individual fields instead of '$$ROOT' lets DocumentDB
-            // avoid fetching full documents.
-            {
-              $group: {
-                _id: '$group',
-                alert: { $first: '$alert' },
-                group: { $first: '$group' },
-                createdAt: { $first: '$createdAt' },
-                state: { $first: '$state' },
-                fired: { $first: '$fired' },
-              },
+        return AlertHistory.aggregate<AggregatedAlertHistory>([
+          {
+            $match: {
+              alert: id,
+              createdAt: { $lte: now, $gte: lookbackDate },
+              // ERROR rows record failed evaluations; they must not count as
+              // "window evaluated" or the failed window would never be
+              // retried/backfilled. `state` is the last index field, so this
+              // is an index bound, not a filter on fetched documents.
+              state: { $ne: AlertState.ERROR },
             },
-            project,
-          ]);
-
-        // One at a time, inside the queue slot this alert already holds, so
-        // the follow-ups never add concurrency. (Queuing them on the same
-        // queue could deadlock when it's full.)
-        const histories: (AggregatedAlertHistory | undefined)[] = [];
-        for (const latest of latestPerGroup) {
-          if (latest.state !== AlertState.ERROR) {
-            histories.push(latest);
-            continue;
-          }
-          // ERROR rows record failed evaluations; they must not count as
-          // "window evaluated" or the failed window would never be
-          // retried/backfilled. Take the group's newest non-ERROR row
-          // instead. ERROR rows are written without a group, so this is at
-          // most one indexed lookup per alert, over its group-less rows.
-          const [previous] =
-            await AlertHistory.aggregate<AggregatedAlertHistory>([
-              {
-                $match: {
-                  alert: id,
-                  group: latest.group ?? null,
-                  createdAt,
-                  state: { $ne: AlertState.ERROR },
-                },
-              },
-              { $sort: { createdAt: -1 } },
-              { $limit: 1 },
-              project,
-            ]);
-          histories.push(previous);
-        }
-        return histories;
+          },
+          // With a single alert value, the index delivers results already in
+          // this sort order — this is an index-backed no-op sort.
+          {
+            $sort: { alert: 1, group: 1, createdAt: -1 },
+          },
+          // One group key (not {alert, group}) so the planner can use a
+          // DISTINCT_SCAN. $first on individual fields instead of
+          // $first: '$$ROOT' lets DocumentDB avoid fetching full documents.
+          {
+            $group: {
+              _id: '$group',
+              alert: { $first: '$alert' },
+              createdAt: { $first: '$createdAt' },
+              state: { $first: '$state' },
+              fired: { $first: '$fired' },
+            },
+          },
+          {
+            $project: {
+              _id: '$alert',
+              createdAt: 1,
+              state: 1,
+              group: '$_id',
+              fired: 1,
+            },
+          },
+        ]);
       }),
     ),
   );

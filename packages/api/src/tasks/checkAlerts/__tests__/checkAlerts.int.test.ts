@@ -12084,18 +12084,30 @@ describe('checkAlerts', () => {
           state: AlertState.OK,
         })),
       );
+      // A failed evaluation every minute too, without a group (as the worker
+      // writes them): excluding them must not cost a document read each.
+      await AlertHistory.insertMany(
+        Array.from({ length: evaluations }, (_, i) => ({
+          alert: alertId,
+          createdAt: new Date(now.getTime() - (i + 1) * 60_000),
+          state: AlertState.ERROR,
+        })),
+      );
 
       const aggregateSpy = jest.spyOn(AlertHistory, 'aggregate');
       const result = await getPreviousAlertHistories([alertId.toString()], now);
       expect(result.size).toBe(groups);
+      expect(aggregateSpy).toHaveBeenCalledTimes(1);
 
       const pipeline = aggregateSpy.mock.calls[0][0] as any[];
+      aggregateSpy.mockRestore();
       const explain: any = await AlertHistory.collection
         .aggregate(pipeline)
         .explain('executionStats');
       const cursor = explain.stages?.[0]?.$cursor ?? explain;
-      // MongoDB 5.0-8.0 answer this with a DISTINCT_SCAN; the property that
-      // matters is one row read per group, not every row in the window.
+      // MongoDB 5.0-8.0 answer this with a DISTINCT_SCAN that skips the ERROR
+      // rows inside the index; the property that matters is one row read per
+      // group, not every row in the window.
       expect(cursor.executionStats.totalDocsExamined).toBeLessThanOrEqual(
         groups + 1,
       );
