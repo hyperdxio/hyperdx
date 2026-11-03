@@ -236,6 +236,14 @@ describe('MCP clickstack_promql', () => {
     expect(sent).toContain('avg_over_time(mcp_up[60s])');
   });
 
+  it('rejects a sourceId that is not an ObjectId as a schema error', async () => {
+    const result = await promql({ sourceId: 'Metrics' });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain('Invalid ObjectId');
+    expect(getFirstText(result)).toContain('sourceId');
+  });
+
   it('rejects an unknown source and a source that is not PromQL', async () => {
     const unknown = await promql({ sourceId: '000000000000000000000001' });
     expect(unknown.isError).toBe(true);

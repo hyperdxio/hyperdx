@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { objectIdSchema } from '@/utils/zod';
 
 import { buildTile, parseTimeRange, runConfigTile } from './helpers';
 import { endTimeSchema, startTimeSchema } from './schemas';
@@ -11,12 +12,10 @@ import { endTimeSchema, startTimeSchema } from './schemas';
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
 const promqlSchema = z.object({
-  sourceId: z
-    .string()
-    .describe(
-      'ID of a source whose kind is "promql". Call clickstack_list_sources to ' +
-        'find it, and clickstack_describe_source for its metric and label names.',
-    ),
+  sourceId: objectIdSchema.describe(
+    'ID of a source whose kind is "promql". Call clickstack_list_sources to ' +
+      'find it, and clickstack_describe_source for its metric and label names.',
+  ),
   expression: z
     .string()
     .max(10000)
