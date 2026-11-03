@@ -546,6 +546,61 @@ describe('Metadata', () => {
     });
   });
 
+  describe('getMergeTreeSettings', () => {
+    it('returns the server MergeTree settings by name', async () => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
+        json: jest.fn().mockResolvedValue({
+          data: [
+            { name: 'enable_block_number_column', value: '1' },
+            { name: 'enable_block_offset_column', value: '0' },
+          ],
+        }),
+      });
+
+      const result = await metadata.getMergeTreeSettings({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toEqual(
+        new Map([
+          ['enable_block_number_column', '1'],
+          ['enable_block_offset_column', '0'],
+        ]),
+      );
+      expect(mockClickhouseClient.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: 'SELECT name, value FROM system.merge_tree_settings',
+        }),
+      );
+    });
+
+    it('re-queries after a failure instead of caching it', async () => {
+      const realMetadata = new Metadata(
+        mockClickhouseClient,
+        new MetadataCache(),
+      );
+      (mockClickhouseClient.query as jest.Mock)
+        .mockRejectedValueOnce(new Error('Not enough privileges'))
+        .mockResolvedValueOnce({
+          json: jest.fn().mockResolvedValue({
+            data: [{ name: 'enable_block_offset_column', value: '1' }],
+          }),
+        });
+
+      const first = await realMetadata.getMergeTreeSettings({
+        connectionId: 'test_connection',
+      });
+      const second = await realMetadata.getMergeTreeSettings({
+        connectionId: 'test_connection',
+      });
+
+      expect(first).toBeUndefined();
+      expect(second).toEqual(new Map([['enable_block_offset_column', '1']]));
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(2);
+    });
+  });
+
   describe('getSkipIndices', () => {
     beforeEach(() => {
       mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
