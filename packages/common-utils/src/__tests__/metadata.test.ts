@@ -1,6 +1,7 @@
 import { ColumnMeta } from '@/clickhouse';
 import { ClickhouseClient } from '@/clickhouse/node';
 import {
+  COLUMNS_CACHE_TTL_MS,
   GET_ALL_KEY_VALUES_CHUNK_SIZE,
   Metadata,
   MetadataCache,
@@ -157,6 +158,48 @@ describe('MetadataCache', () => {
       // And no value should be stored in the cache
       expect(metadataCache.get(key)).toBeUndefined();
     });
+
+    it('refetches a value stored with a TTL once the TTL has passed', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+      const queryFn = jest
+        .fn()
+        .mockResolvedValueOnce('first')
+        .mockResolvedValueOnce('second');
+
+      try {
+        await expect(
+          metadataCache.getOrFetch('key', queryFn, { ttlMs: 100 }),
+        ).resolves.toBe('first');
+
+        now.mockReturnValue(1_099);
+        await expect(
+          metadataCache.getOrFetch('key', queryFn, { ttlMs: 100 }),
+        ).resolves.toBe('first');
+
+        now.mockReturnValue(1_100);
+        await expect(
+          metadataCache.getOrFetch('key', queryFn, { ttlMs: 100 }),
+        ).resolves.toBe('second');
+        expect(queryFn).toHaveBeenCalledTimes(2);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it('keeps a value stored without a TTL', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(1_000);
+      const queryFn = jest.fn().mockResolvedValue('value');
+
+      try {
+        await metadataCache.getOrFetch('key', queryFn);
+        now.mockReturnValue(1_000 + 365 * 24 * 60 * 60 * 1000);
+        await metadataCache.getOrFetch('key', queryFn);
+
+        expect(queryFn).toHaveBeenCalledTimes(1);
+      } finally {
+        now.mockRestore();
+      }
+    });
   });
 });
 
@@ -166,6 +209,63 @@ describe('Metadata', () => {
   beforeEach(() => {
     metadata = new Metadata(mockClickhouseClient, mockCache);
     jest.clearAllMocks();
+  });
+
+  describe('getMaterializedColumnsLookupTable', () => {
+    it('sees a MATERIALIZED column added after the first read once the cached columns expire', async () => {
+      const now = jest.spyOn(Date, 'now').mockReturnValue(0);
+      const client = { query: jest.fn() } as unknown as ClickhouseClient;
+      const md = new Metadata(client, new MetadataCache());
+      const describeResult = (columns: Partial<ColumnMeta>[]) => ({
+        json: jest.fn().mockResolvedValue({ data: columns }),
+      });
+      const resourceAttributes = {
+        name: 'ResourceAttributes',
+        type: 'Map(LowCardinality(String), String)',
+        default_type: '',
+        default_expression: '',
+      };
+      const materialized = {
+        name: '__otel_materialized_k8s.namespace.name',
+        type: 'LowCardinality(String)',
+        default_type: 'MATERIALIZED',
+        default_expression: "ResourceAttributes['k8s.namespace.name']",
+      };
+      (client.query as jest.Mock)
+        .mockResolvedValueOnce(describeResult([resourceAttributes]))
+        .mockResolvedValueOnce(
+          describeResult([resourceAttributes, materialized]),
+        );
+      const table = {
+        databaseName: 'otel',
+        tableName: 'otel_metrics_gauge',
+        connectionId: 'conn-1',
+      };
+
+      try {
+        expect(await md.getMaterializedColumnsLookupTable(table)).toEqual(
+          new Map(),
+        );
+
+        now.mockReturnValue(COLUMNS_CACHE_TTL_MS - 1);
+        expect(await md.getMaterializedColumnsLookupTable(table)).toEqual(
+          new Map(),
+        );
+
+        now.mockReturnValue(COLUMNS_CACHE_TTL_MS);
+        expect(await md.getMaterializedColumnsLookupTable(table)).toEqual(
+          new Map([
+            [
+              "ResourceAttributes['k8s.namespace.name']",
+              '__otel_materialized_k8s.namespace.name',
+            ],
+          ]),
+        );
+        expect(client.query).toHaveBeenCalledTimes(2);
+      } finally {
+        now.mockRestore();
+      }
+    });
   });
 
   describe('getTableMetadata', () => {

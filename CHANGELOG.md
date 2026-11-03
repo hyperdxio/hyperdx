@@ -6,6 +6,38 @@ PR — keep the `hyperdx-release-notes` comment marker intact when editing so yo
 edits survive regeneration. Per-package detail lives in each
 `packages/*/CHANGELOG.md`.
 
+## v2.43.1 — 2026-10-31
+
+<!-- hyperdx-release-notes version=2.43.1 inputs=b9b44254f52c -->
+
+**Multipath TCP disabled in the collector image**
+
+The collector image now sets `GODEBUG=multipathtcp=0` at startup, so it no longer
+opens Multipath TCP listeners — Go 1.24 and later turn them on by default — which
+mitigates CVE-2026-98432 with no change needed on your side. The all-in-one image
+picks up the same setting. Any other `GODEBUG` values you pass through are kept,
+and an explicit `multipathtcp=` of your own is left exactly as you set it, so you
+can still opt back in to MPTCP. Patching the host kernel remains the actual fix.
+
+### 📦 Build / Packaging
+
+- **Multipath TCP listeners no longer opened by the collector**: the collector
+  image, and the all-in-one image with it, starts with
+  `GODEBUG=multipathtcp=0`, mitigating CVE-2026-98432 on hosts where Go 1.24+
+  would otherwise listen over MPTCP. Your own `GODEBUG` settings are preserved
+  and an explicit `multipathtcp=` value is honoured as written; patching the host
+  kernel is still the real fix.
+
+<!-- hyperdx-package-list -->
+
+### 📦 Package changelogs
+
+- `@hyperdx/api` 2.43.0 → 2.43.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/api/CHANGELOG.md#2431)
+- `@hyperdx/app` 2.43.0 → 2.43.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/app/CHANGELOG.md#2431)
+- `@hyperdx/otel-collector` 2.43.0 → 2.43.1 — [changelog](https://github.com/hyperdxio/hyperdx/blob/main/packages/otel-collector/CHANGELOG.md#2431)
+
+<!-- /hyperdx-package-list -->
+
 ## v2.43.0 — 2026-10-30
 
 <!-- hyperdx-release-notes version=2.43.0 inputs=c36a45573378 -->
