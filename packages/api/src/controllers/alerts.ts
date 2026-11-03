@@ -11,7 +11,7 @@ import {
 } from '@hyperdx/common-utils/dist/guards';
 import { isRangeThresholdType } from '@hyperdx/common-utils/dist/types';
 import { groupBy } from 'lodash';
-import { Types } from 'mongoose';
+import { type FilterQuery, Types } from 'mongoose';
 import { z } from 'zod';
 
 import { recordOnboardingTaskCompletion } from '@/controllers/user';
@@ -389,8 +389,11 @@ export const updateAlert = async (
   return alert;
 };
 
-export const countAlerts = async (teamId: ObjectId) => {
-  return Alert.countDocuments({ team: teamId });
+export const countAlerts = async (
+  teamId: ObjectId,
+  filter: FilterQuery<IAlert> = {},
+) => {
+  return Alert.countDocuments({ ...filter, team: teamId });
 };
 
 export const getAlertById = async (
@@ -506,8 +509,9 @@ const DISPLAY_REF_POPULATE = [
 export const getAlertsWithDisplayRefs = async (
   teamId: ObjectId,
   { limit, offset }: { limit: number; offset: number },
+  filter: FilterQuery<IAlert> = {},
 ) => {
-  return Alert.find({ team: teamId })
+  return Alert.find({ ...filter, team: teamId })
     .sort({ _id: 1 })
     .skip(offset)
     .limit(limit)
