@@ -1,14 +1,7 @@
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
-import {
-  ActionIcon,
-  Badge,
-  Card,
-  Group,
-  Menu,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Badge } from '@clickhouse/click-ui';
+import { ActionIcon, Card, Group, Menu, Text, Tooltip } from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
 
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -118,9 +111,7 @@ export function ListingCard({
       {tags && tags.length > 0 && (
         <Group gap="xs" mt="xs">
           {tags.map(tag => (
-            <Badge key={tag} variant="light" size="xs">
-              {tag}
-            </Badge>
+            <Badge key={tag} size="sm" text={tag} state="neutral" />
           ))}
         </Group>
       )}

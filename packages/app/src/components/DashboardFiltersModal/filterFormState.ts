@@ -7,12 +7,14 @@ import {
   isFilterVariableEnabled,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  AdhocDashboardFilter,
   DashboardFilter,
   DashboardFilterSchema,
   PromqlLabelDashboardFilter,
   QueryExpressionDashboardFilter,
   StaticListDashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
+import { isFilterSingleSelect } from '@hyperdx/common-utils/dist/variables';
 
 import { getStoredLanguage } from '@/components/SearchInput/SearchWhereInput';
 
@@ -27,9 +29,11 @@ export type FilterFormValues = {
   isRequired: boolean;
   /** Always set, unlike the stored field, whose default lives in `isFilterGlobalRequirement`. */
   isGlobalRequirement: boolean;
+  /** Boolean version of the persisted numeric `maxSelections`. */
+  isSingleSelect: boolean;
 } & Omit<
   QueryExpressionDashboardFilter,
-  'type' | 'minSelections' | 'isGlobalRequirement'
+  'type' | 'minSelections' | 'isGlobalRequirement' | 'maxSelections'
 > &
   Omit<
     StaticListDashboardFilter,
@@ -38,6 +42,7 @@ export type FilterFormValues = {
     | 'isVariableEnabled'
     | 'minSelections'
     | 'isGlobalRequirement'
+    | 'maxSelections'
   > &
   Omit<
     PromqlLabelDashboardFilter,
@@ -46,7 +51,9 @@ export type FilterFormValues = {
     | 'isVariableEnabled'
     | 'minSelections'
     | 'isGlobalRequirement'
-  >;
+    | 'maxSelections'
+  > &
+  Pick<AdhocDashboardFilter, 'sourceType' | 'sources'>;
 
 export type FilterFormControl = Control<FilterFormValues>;
 
@@ -57,6 +64,7 @@ export const toFormValues = (
   const queried = filter?.type === 'QUERY_EXPRESSION' ? filter : undefined;
   const staticList = filter?.type === 'STATIC_LIST' ? filter : undefined;
   const promqlLabel = filter?.type === 'PROMETHEUS_LABEL' ? filter : undefined;
+  const adhoc = filter?.type === 'ADHOC' ? filter : undefined;
 
   return {
     id: filter?.id ?? crypto.randomUUID(),
@@ -67,6 +75,7 @@ export const toFormValues = (
     isVariableEnabled: filter ? isFilterVariableEnabled(filter) : false,
     isRequired: filter ? isFilterRequired(filter) : false,
     isGlobalRequirement: filter ? isFilterGlobalRequirement(filter) : false,
+    isSingleSelect: filter ? isFilterSingleSelect(filter) : false,
 
     // QUERY_EXPRESSION fields
     expression: queried?.expression ?? '',
@@ -74,7 +83,8 @@ export const toFormValues = (
     sourceMetricType: queried?.sourceMetricType,
     where: queried?.where ?? '',
     whereLanguage: queried?.whereLanguage ?? getStoredLanguage() ?? 'sql',
-    appliesToSourceIds: queried?.appliesToSourceIds ?? [],
+    appliesToSourceIds:
+      queried?.appliesToSourceIds ?? adhoc?.appliesToSourceIds ?? [],
 
     // STATIC_LIST fields
     options: staticList?.options ?? [],
@@ -82,19 +92,26 @@ export const toFormValues = (
     // PROMETHEUS_LABEL fields
     label: promqlLabel?.label ?? '',
     match: promqlLabel?.match ?? '',
+
+    // ADHOC fields
+    sourceType: adhoc?.sourceType ?? 'sql',
+    sources: adhoc?.sources ?? [],
   };
 };
 
 /** Normalizes the form values into the filter that gets stored. */
 export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
-  // Pulled out of the spread below so neither key is stored unless it's relevant
-  const { isRequired, isGlobalRequirement, ...rest } = values;
-  const requirement = isRequired
-    ? {
-        minSelections: 1,
-        ...(isGlobalRequirement ? { isGlobalRequirement: true } : {}),
-      }
-    : {};
+  // Pulled out of the spread below so no key is stored unless it's relevant
+  const { isRequired, isGlobalRequirement, isSingleSelect, ...rest } = values;
+  const selectionLimits = {
+    ...(isRequired
+      ? {
+          minSelections: 1,
+          ...(isGlobalRequirement ? { isGlobalRequirement: true } : {}),
+        }
+      : {}),
+    ...(isSingleSelect ? { maxSelections: 1 } : {}),
+  };
 
   if (values.type === 'STATIC_LIST') {
     return DashboardFilterSchema.parse({
@@ -103,7 +120,7 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),
-      ...requirement,
+      ...selectionLimits,
     });
   }
 
@@ -115,12 +132,31 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
       isBroadcastEnabled: false,
       isVariableEnabled: true,
       variableName: getFilterVariableName(values),
-      ...requirement,
+      ...selectionLimits,
+    });
+  }
+
+  const appliesTo = values.appliesToSourceIds?.filter(id => !!id?.length);
+
+  // Selection limits don't apply to conditions, so they aren't stored.
+  if (values.type === 'ADHOC') {
+    const isBroadcastEnabled = isFilterBroadcastEnabled(values);
+    return DashboardFilterSchema.parse({
+      id: values.id,
+      type: values.type,
+      name: values.name,
+      sourceType: values.sourceType,
+      sources: values.sources,
+      isBroadcastEnabled,
+      // Hidden, and so unvalidated, while broadcast is off
+      appliesToSourceIds:
+        isBroadcastEnabled && appliesTo?.length ? appliesTo : undefined,
+      isVariableEnabled: true,
+      variableName: getFilterVariableName(values),
     });
   }
 
   const trimmedWhere = values.where?.trim() ?? '';
-  const appliesTo = values.appliesToSourceIds?.filter(id => !!id?.length);
   const isVariableEnabled = isFilterVariableEnabled(values);
 
   return DashboardFilterSchema.parse({
@@ -131,6 +167,6 @@ export const toSavedFilter = (values: FilterFormValues): DashboardFilter => {
     isBroadcastEnabled: isFilterBroadcastEnabled(values),
     isVariableEnabled,
     variableName: isVariableEnabled ? getFilterVariableName(values) : undefined,
-    ...requirement,
+    ...selectionLimits,
   });
 };

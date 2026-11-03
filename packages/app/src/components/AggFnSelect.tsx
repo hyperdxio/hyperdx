@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useController, UseControllerProps } from 'react-hook-form';
+import { getPercentileAggFnLevel } from '@hyperdx/common-utils/dist/core/utils';
 import { MetricsDataType } from '@hyperdx/common-utils/dist/types';
 import { Select } from '@mantine/core';
 
@@ -64,13 +65,11 @@ function AggFnSelect({
 }) {
   const _onChange = useCallback(
     (value: string | null) => {
+      const percentileLevel = getPercentileAggFnLevel(value ?? undefined);
       if (value == null) {
         onChange({});
-      } else if (['p50', 'p90', 'p95', 'p99'].includes(value)) {
-        onChange({
-          aggFn: 'quantile',
-          level: Number.parseFloat(value.replace('p', '0.')),
-        });
+      } else if (percentileLevel != null) {
+        onChange({ aggFn: 'quantile', level: percentileLevel });
       } else {
         // @ts-expect-error Mantine Select passes a string; onChange expects a narrowed AggFn union
         onChange({ aggFn: value });

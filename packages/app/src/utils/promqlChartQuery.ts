@@ -1,6 +1,8 @@
+import type { QueryAttribution } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   displayTypeSupportsInstantQuery,
   getQueriedPromqlSeries,
+  parsePromqlLe,
   promqlSeriesQueryType,
   promqlStep,
   reducePromqlSamples,
@@ -84,19 +86,19 @@ async function fetchInstantExpression(
   series: PromqlSeries,
   evalTime: Date,
   signal: AbortSignal,
+  attribution: QueryAttribution,
 ): Promise<ExpressionResult> {
   const response = await prometheusApi.query({
     query: series.expression,
     time: evalTime.getTime() / 1000,
-    connectionId: config.connection,
+    sourceId: config.source,
     // A vector is one sample per series, so capping series caps a table's
     // rows exactly. Range queries go uncapped: series can be sparse, so no
     // series count bounds their samples without dropping rows that would fit.
     limit:
       config.displayType === DisplayType.Table ? MAX_TABLE_ROWS : undefined,
-    database: config.from?.databaseName,
-    table: config.from?.tableName,
     signal,
+    attribution,
   });
 
   return {
@@ -111,6 +113,7 @@ async function fetchRangeExpression(
   series: PromqlSeries,
   dateRange: [Date, Date],
   signal: AbortSignal,
+  attribution: QueryAttribution,
 ): Promise<ExpressionResult> {
   const [startDate, endDate] = dateRange;
   const response = await prometheusApi.queryRange({
@@ -122,10 +125,9 @@ async function fetchRangeExpression(
       dateRange,
       config.minGranularitySeconds,
     ),
-    connectionId: config.connection,
-    database: config.from?.databaseName,
-    table: config.from?.tableName,
+    sourceId: config.source,
     signal,
+    attribution,
   });
 
   if (response.status !== 'success' || !response.data) {
@@ -155,9 +157,11 @@ function toChartRows(
   const isBucketed = expressions.some(result => result.isBucketed);
 
   const data: Record<string, string | number>[] = [];
+  const promqlSeriesLabels: Record<string, Record<string, string>> = {};
   expressions.forEach(({ result: series }, expressionIndex) => {
-    series.forEach(({ values }, seriesIndex) => {
+    series.forEach(({ values, metric }, seriesIndex) => {
       const seriesName = seriesNames[expressionIndex][seriesIndex];
+      promqlSeriesLabels[seriesName] = metric;
       for (const [ts, value] of values) {
         data.push(
           isBucketed
@@ -183,6 +187,7 @@ function toChartRows(
     ],
     rows: data.length,
     isComplete: true,
+    promqlSeriesLabels,
   };
 }
 
@@ -258,6 +263,51 @@ export function toTableRows(
 }
 
 /**
+ * Rows for a histogram heatmap: one per sample, grouped by the series' `le`
+ * bucket. Every series must be a distinct bucket (le).
+ */
+export function toHistogramRows(
+  expressions: ExpressionResult[],
+): ChartQueryResult {
+  const seenLe = new Set<string>();
+  const data: Record<string, string | number>[] = [];
+  for (const { result } of expressions) {
+    for (const { metric, values } of result) {
+      const le = metric.le;
+      if (Number.isNaN(parsePromqlLe(le))) {
+        throw new Error(
+          'Histogram heatmaps need series with an "le" label, e.g. sum by (le) (rate(x_bucket[$__rate_interval])).',
+        );
+      }
+      if (seenLe.has(le)) {
+        throw new Error(
+          `Several series share le="${le}". Aggregate them by bucket with sum by (le) (...).`,
+        );
+      }
+      seenLe.add(le);
+      for (const [ts, value] of values) {
+        data.push({
+          __hdx_time_bucket: new Date(ts * 1000).toISOString(),
+          le,
+          value,
+        });
+      }
+    }
+  }
+
+  return {
+    data,
+    meta: [
+      { name: '__hdx_time_bucket', type: 'DateTime64(3)' },
+      { name: 'le', type: 'String' },
+      { name: 'value', type: 'Float64' },
+    ],
+    rows: data.length,
+    isComplete: true,
+  };
+}
+
+/**
  * Run a PromQL tile's expressions and shape the result like a ClickHouse
  * response, so the chart formatters treat it like every other source.
  */
@@ -265,6 +315,8 @@ export async function queryPromqlChartConfig(
   config: PromqlChartConfig & Pick<DateRange, 'minGranularitySeconds'>,
   dateRange: [Date, Date],
   signal: AbortSignal,
+  // Required so a new caller can't forget it and leave its queries untagged.
+  attribution: QueryAttribution,
 ): Promise<ChartQueryResult> {
   // Expand dashboard variables and macros before sending to Prometheus.
   const substituted = substitutePromqlChartConfigTemplates({
@@ -276,10 +328,28 @@ export async function queryPromqlChartConfig(
     getQueriedPromqlSeries(substituted).map(series =>
       displayTypeSupportsInstantQuery(substituted) &&
       promqlSeriesQueryType(series) === 'instant'
-        ? fetchInstantExpression(substituted, series, dateRange[1], signal)
-        : fetchRangeExpression(substituted, series, dateRange, signal),
+        ? fetchInstantExpression(
+            substituted,
+            series,
+            dateRange[1],
+            signal,
+            attribution,
+          )
+        : fetchRangeExpression(
+            substituted,
+            series,
+            dateRange,
+            signal,
+            attribution,
+          ),
     ),
   );
+
+  // Rows keyed by the series' `le` bucket. Done here so that
+  // alias and legend templates don't interfere with the le label.
+  if (substituted.heatmap?.mode === 'histogram') {
+    return toHistogramRows(results);
+  }
 
   return substituted.displayType === DisplayType.Table
     ? toTableRows(results)

@@ -89,7 +89,7 @@ describe('buildAlertChartConfig', () => {
       build({
         configType: 'promql',
         promqlExpression: 'up',
-        connection: 'conn-1',
+        source: 'source-promql',
         displayType: DisplayType.Line,
       }),
     ).toBeUndefined();

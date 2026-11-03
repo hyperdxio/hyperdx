@@ -1,11 +1,19 @@
 import { useMemo } from 'react';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  errorStatusPredicateSql,
+  serverSpanKindPredicateSql,
+} from '@hyperdx/common-utils/dist/core/spanPredicates';
+import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { useColumns, useJsonColumns } from './hooks/useMetadata';
 
 const COALESCE_FIELDS_LIMIT = 100;
+
+// Ordered from highest to lowest precedence
+const DB_STATEMENT_KEYS = ['db.query.text', 'db.statement'];
 
 // Helper function to format field access based on column type
 function formatFieldAccess(
@@ -89,20 +97,20 @@ function getDefaults({
   isAttributeFieldJSON?: boolean;
 } = {}) {
   const dbStatement = makeCoalescedFieldsAccessQuery(
-    [
-      formatFieldAccess(
-        spanAttributeField,
-        'db.query.text',
-        isAttributeFieldJSON,
-      ),
-      formatFieldAccess(
-        spanAttributeField,
-        'db.statement',
-        isAttributeFieldJSON,
-      ),
-    ],
+    DB_STATEMENT_KEYS.map(key =>
+      formatFieldAccess(spanAttributeField, key, isAttributeFieldJSON),
+    ),
     isAttributeFieldJSON,
   );
+
+  // Plain map accessors: the shape `rewriteSqlFilterWithKvItems` rewrites onto
+  // an indexed items column. JSON columns have no such column, and their
+  // accessors are not map subscripts, so they get no prefilter.
+  const dbStatementPrefilterFields = isAttributeFieldJSON
+    ? []
+    : DB_STATEMENT_KEYS.map(key =>
+        formatFieldAccess(spanAttributeField, key, false),
+      );
 
   return {
     duration: 'Duration',
@@ -133,10 +141,44 @@ function getDefaults({
       isAttributeFieldJSON,
     ),
     dbStatement,
+    dbStatementPrefilterFields,
   };
 }
 
 const ENDPOINT_MATERIALIZED_COLUMN_NAME = 'endpoint';
+
+export function inList(expression: string, value: string): string {
+  return `${expression} IN ('${escapeSqlString(value)}')`;
+}
+
+/**
+ * Condition selecting the spans of a single database statement.
+ *
+ * No skip index covers the coalesced attribute lookup, so on its own it makes
+ * ClickHouse read every granule in the time range. The prefilter compares the
+ * same keys directly, which matches a superset of those spans while the
+ * coalesced comparison still decides; `rewriteSqlFilterWithKvItems` then
+ * rewrites each comparison onto the schema's indexed items column, and older
+ * schemas serve them from their `mapValues` index as written.
+ */
+export function makeDbStatementCondition({
+  expressions,
+  statement,
+}: {
+  expressions: Pick<
+    ReturnType<typeof getExpressions>,
+    'dbStatement' | 'dbStatementPrefilterFields'
+  >;
+  statement: string;
+}): string {
+  const equality = inList(expressions.dbStatement, statement);
+  const prefilter = expressions.dbStatementPrefilterFields.map(field =>
+    inList(field, statement),
+  );
+  return prefilter.length
+    ? `(${prefilter.join(' OR ')}) AND ${equality}`
+    : equality;
+}
 
 export function getExpressions(
   source: TTraceSource,
@@ -172,6 +214,7 @@ export function getExpressions(
 
     // Database
     dbStatement: defaults.dbStatement,
+    dbStatementPrefilterFields: defaults.dbStatementPrefilterFields,
   };
 
   const auxExpressions = {
@@ -186,8 +229,8 @@ export function getExpressions(
 
   const filterExpressions = {
     isEndpointNonEmpty: `NOT empty(${auxExpressions.endpoint})`,
-    isError: `lower(${fieldExpressions.severityText}) = 'error'`,
-    isSpanKindServer: `${fieldExpressions.spanKind} IN ('Server', 'SPAN_KIND_SERVER')`,
+    isError: errorStatusPredicateSql(fieldExpressions.severityText),
+    isSpanKindServer: serverSpanKindPredicateSql(fieldExpressions.spanKind),
     isDbSpan: `${fieldExpressions.dbStatement} <> ''`,
   };
 

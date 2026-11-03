@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 import DBHeatmapChart from '@/components/DBHeatmapChart';
 import type {
@@ -263,5 +264,60 @@ describe('DBHeatmapChart refresh', () => {
     expect(lastOptionsFor('heatmap_bucket')?.placeholderData).toBeUndefined();
     expect(lastOptionsFor('heatmap_bucket')?.enabled).toBe(false);
     expect(empty).not.toHaveClass('effect-pulse');
+  });
+});
+
+describe('DBHeatmapChart series cap', () => {
+  beforeEach(() => {
+    mockUseQueriedChartConfig.mockReset();
+    mockPlot.mockReset();
+  });
+
+  it('flags dropped series with a warning icon whose tooltip explains the cap', async () => {
+    const config = configFor(T0);
+    mockUseQueriedChartConfig.mockImplementation((_config, options) =>
+      options?.queryKey?.[0] === 'heatmap_series'
+        ? {
+            data: {
+              meta: [
+                { name: '__hdx_time_bucket', type: 'DateTime' },
+                { name: 'count()', type: 'UInt64' },
+                { name: 'ServiceName', type: 'String' },
+              ],
+              data: Array.from({ length: 51 }, (_, i) => ({
+                __hdx_time_bucket: new Date(T0).toISOString(),
+                'count()': String(i + 1),
+                ServiceName: `service-${i}`,
+              })),
+            },
+            isLoading: false,
+            isPlaceholderData: false,
+            error: null,
+          }
+        : { data: undefined, isLoading: false, error: null },
+    );
+
+    render(
+      <DBHeatmapChart
+        query={{
+          mode: 'series',
+          config: {
+            ...config,
+            select: [{ aggFn: 'count', aggCondition: '', valueExpression: '' }],
+            groupBy: 'ServiceName',
+          },
+        }}
+      />,
+      { wrapper: MantineProvider },
+    );
+
+    await screen.findByTestId('heatmap-plot');
+    expect(screen.queryByText(/Showing top/)).not.toBeInTheDocument();
+    const warningIcon = document.querySelector('.tabler-icon-alert-triangle');
+    expect(warningIcon).not.toBeNull();
+    await userEvent.hover(warningIcon!);
+    expect(
+      await screen.findByText(/This query returned 51 series/),
+    ).toBeInTheDocument();
   });
 });

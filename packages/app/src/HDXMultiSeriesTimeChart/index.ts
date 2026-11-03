@@ -23,4 +23,8 @@ export {
 export { MAX_TOOLTIP_ROWS, TOOLTIP_POINT_OFFSET_PX } from './constants';
 export { collectMemoChartGradientHexes, MemoChart } from './MemoChart';
 export { TooltipItem } from './TooltipItem';
-export { computeYAxisBounds, scanYAxisValueRange } from './useChartScales';
+export {
+  computeYAxisBounds,
+  getLineCurveType,
+  scanYAxisValueRange,
+} from './useChartScales';

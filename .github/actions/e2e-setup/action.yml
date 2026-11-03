@@ -46,7 +46,7 @@ runs:
     # version, so it isn't re-downloaded every shard/run. Browser versions are
     # pinned to the Playwright package version, so the version is the correct
     # cache key. On a hit, `playwright install` finds the browser present and
-    # only installs OS deps.
+    # does nothing.
     - name: Resolve Playwright version
       id: playwright-version
       shell: bash
@@ -62,9 +62,11 @@ runs:
           ${{ runner.os }}-playwright-${{
           steps.playwright-version.outputs.version }}
 
+    # No --with-deps: the ubuntu-24.04 image already ships Chromium's shared
+    # libs, and the apt step it adds can stall for 10+ min on a slow mirror.
     - name: Install Playwright browsers
       shell: bash
-      run: cd packages/app && npx playwright install --with-deps chromium
+      run: cd packages/app && npx playwright install chromium
 
     - name: Start E2E Docker Compose
       shell: bash

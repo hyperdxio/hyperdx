@@ -24,6 +24,13 @@ const MOCK_INCIDENT_IO_WEBHOOK = {
   description: 'Test webhook for incident.io',
 };
 
+// Valid JSON, but `\"` inside {{ }} is not valid Handlebars.
+const ESCAPED_QUOTES_BODY =
+  '{"status": "{{#if (eq state \\"ALERT\\")}}firing{{/if}}"}';
+// Not JSON as written, but compiles.
+const CONDITIONAL_BODY =
+  '{"status": "{{#if (eq state "ALERT")}}firing{{else}}resolved{{/if}}"}';
+
 const MOCK_GENERIC_WEBHOOK = {
   name: 'Test Generic Webhook',
   service: WebhookService.Generic,
@@ -324,6 +331,27 @@ describe('External API v2 Webhooks', () => {
         .expect(401);
     });
 
+    it('should round-trip titleEmoji through create and list', async () => {
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({ ...MOCK_SLACK_WEBHOOK, titleEmoji: false })
+        .expect(200);
+      expect(response.body.data.titleEmoji).toBe(false);
+
+      const stored = await Webhook.findById(response.body.data.id).lean();
+      expect(stored?.titleEmoji).toBe(false);
+
+      const list = await authRequest('get', WEBHOOKS_BASE_URL).expect(200);
+      expect(list.body.data[0].titleEmoji).toBe(false);
+    });
+
+    it('should leave titleEmoji unset when not provided', async () => {
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(200);
+
+      expect(response.body.data).not.toHaveProperty('titleEmoji');
+    });
+
     it('should create a Slack webhook and never return sensitive fields', async () => {
       const response = await authRequest('post', WEBHOOKS_BASE_URL)
         .send(MOCK_GENERIC_WEBHOOK)
@@ -449,6 +477,36 @@ describe('External API v2 Webhooks', () => {
         .expect(400);
     });
 
+    it('should reject a body template that does not compile', async () => {
+      const response = await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({ ...MOCK_GENERIC_WEBHOOK, body: ESCAPED_QUOTES_BODY })
+        .expect(400);
+
+      expect(response.body.message).toMatch(
+        /^Invalid webhook body template \(line 1, column 29\): Parse error/,
+      );
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
+    it('should reject an incident.io body template that does not compile', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({
+          ...MOCK_INCIDENT_IO_WEBHOOK,
+          body: '{"text": "{{#if title}}"}',
+        })
+        .expect(400);
+
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
+    it('should accept a body template that compiles but is not JSON as written', async () => {
+      await authRequest('post', WEBHOOKS_BASE_URL)
+        .send({ ...MOCK_GENERIC_WEBHOOK, body: CONDITIONAL_BODY })
+        .expect(200);
+
+      expect((await Webhook.findOne({}))?.body).toBe(CONDITIONAL_BODY);
+    });
+
     describe('field size caps', () => {
       it('should reject an over-long name', async () => {
         await authRequest('post', WEBHOOKS_BASE_URL)
@@ -514,6 +572,39 @@ describe('External API v2 Webhooks', () => {
   });
 
   describe('PUT /api/v2/webhooks/:id', () => {
+    it('should reject a body template that does not compile without updating it', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        team: team._id,
+      });
+
+      const response = await authRequest(
+        'put',
+        `${WEBHOOKS_BASE_URL}/${created._id}`,
+      )
+        .send({ ...MOCK_GENERIC_WEBHOOK, body: ESCAPED_QUOTES_BODY })
+        .expect(400);
+
+      expect(response.body.message).toContain('Invalid webhook body template');
+      expect((await Webhook.findById(created._id))!.body).toBe(
+        MOCK_GENERIC_WEBHOOK.body,
+      );
+    });
+
+    it('should accept a body template that compiles but is not JSON as written', async () => {
+      const created = await Webhook.create({
+        ...MOCK_GENERIC_WEBHOOK,
+        team: team._id,
+      });
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send({ ...MOCK_GENERIC_WEBHOOK, body: CONDITIONAL_BODY })
+        .expect(200);
+
+      expect((await Webhook.findById(created._id))!.body).toBe(
+        CONDITIONAL_BODY,
+      );
+    });
     it('should reject a private webhook URL without updating it', async () => {
       const created = await Webhook.create({
         ...MOCK_GENERIC_WEBHOOK,
@@ -563,6 +654,36 @@ describe('External API v2 Webhooks', () => {
       // readable fields omitted => cleared (full replace)
       expect(stored?.body).toBeUndefined();
       expect(stored?.description).toBeUndefined();
+    });
+
+    it('should set titleEmoji on update and clear it when omitted', async () => {
+      const created = await Webhook.create({
+        ...MOCK_SLACK_WEBHOOK,
+        team: team._id,
+      });
+      const base = {
+        name: MOCK_SLACK_WEBHOOK.name,
+        service: WebhookService.Slack,
+        url: MOCK_SLACK_WEBHOOK.url,
+      };
+
+      const set = await authRequest(
+        'put',
+        `${WEBHOOKS_BASE_URL}/${created._id}`,
+      )
+        .send({ ...base, titleEmoji: false })
+        .expect(200);
+      expect(set.body.data.titleEmoji).toBe(false);
+      expect((await Webhook.findById(created._id).lean())?.titleEmoji).toBe(
+        false,
+      );
+
+      await authRequest('put', `${WEBHOOKS_BASE_URL}/${created._id}`)
+        .send(base)
+        .expect(200);
+      expect(
+        (await Webhook.findById(created._id).lean())?.titleEmoji,
+      ).toBeUndefined();
     });
 
     it('should preserve omitted queryParams when the destination is unchanged', async () => {
@@ -788,6 +909,100 @@ describe('External API v2 Webhooks', () => {
       }
 
       expect(await Webhook.findById(created._id)).toBeNull();
+    });
+  });
+
+  describe('POST /api/v2/webhooks/validate', () => {
+    const VALIDATE_URL = `${WEBHOOKS_BASE_URL}/validate`;
+
+    it('should return valid with the normalized body, minus write-only secrets', async () => {
+      const response = await authRequest('post', VALIDATE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          queryParams: { token: 'secret' },
+          body: CONDITIONAL_BODY,
+        })
+        .expect(200);
+
+      const { headers: _headers, ...readable } = MOCK_GENERIC_WEBHOOK;
+      expect(response.body).toEqual({
+        valid: true,
+        errors: [],
+        normalized: { ...readable, body: CONDITIONAL_BODY },
+      });
+      expect(await Webhook.countDocuments({})).toBe(0);
+    });
+
+    it('should report a body template that does not compile', async () => {
+      const response = await authRequest('post', VALIDATE_URL)
+        .send({ ...MOCK_GENERIC_WEBHOOK, body: ESCAPED_QUOTES_BODY })
+        .expect(200);
+
+      expect(response.body.valid).toBe(false);
+      expect(response.body.normalized).toBeNull();
+      expect(response.body.errors).toEqual([
+        {
+          path: 'body',
+          message: expect.stringMatching(
+            /^Invalid webhook body template \(line 1, column 29\)/,
+          ),
+        },
+      ]);
+    });
+
+    it('should report a call to a helper delivery does not register', async () => {
+      const response = await authRequest('post', VALIDATE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          body: '{"s": "{{#if (equals state "ALERT")}}x{{/if}}"}',
+        })
+        .expect(200);
+
+      expect(response.body).toEqual({
+        valid: false,
+        errors: [
+          {
+            path: 'body',
+            message:
+              'Invalid webhook body template (line 1, column 15): Unknown helper "equals"',
+          },
+        ],
+        normalized: null,
+      });
+    });
+
+    it('should report URL and body errors together', async () => {
+      const response = await authRequest('post', VALIDATE_URL)
+        .send({
+          ...MOCK_GENERIC_WEBHOOK,
+          url: 'http://[fd00::1]/webhook',
+          body: ESCAPED_QUOTES_BODY,
+        })
+        .expect(200);
+
+      expect(response.body.valid).toBe(false);
+      expect(response.body.errors.map((e: { path: string }) => e.path)).toEqual(
+        ['url', 'body'],
+      );
+    });
+
+    it('should report schema errors with their path', async () => {
+      const response = await authRequest('post', VALIDATE_URL)
+        .send({ ...MOCK_SLACK_WEBHOOK, name: undefined })
+        .expect(200);
+
+      expect(response.body.valid).toBe(false);
+      expect(response.body.normalized).toBeNull();
+      expect(response.body.errors).toEqual(
+        expect.arrayContaining([expect.objectContaining({ path: 'name' })]),
+      );
+    });
+
+    it('should require authentication', async () => {
+      await request(server.getHttpServer())
+        .post(VALIDATE_URL)
+        .send(MOCK_SLACK_WEBHOOK)
+        .expect(401);
     });
   });
 

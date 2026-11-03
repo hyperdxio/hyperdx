@@ -34,13 +34,16 @@ import {
   useQueriedChartConfig,
 } from '@/hooks/useChartConfig';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+import { useResultColumnFilterKeys } from '@/hooks/useResultColumnFilterKeys';
 import { useChartNumberFormats, useSource } from '@/source';
+import type { TileFilterHandler } from '@/types';
 
 import { ChartTooltipOverlay } from './ChartTooltipOverlay';
 import { useCrossChartPinDismiss } from './crossChartPin';
 import {
   buildSeriesSearchUrl,
   decodeSeriesGroupFilters,
+  getSeriesFilterEntries,
   type SeriesGroupFilter,
 } from './searchUrl';
 import { useChartToolbarItems } from './useChartToolbarItems';
@@ -82,6 +85,11 @@ type DBTimeChartComponentProps = {
    * behavior), which is all a standalone chart can do.
    */
   onFocusSeries?: (filters: SeriesGroupFilter[]) => void;
+  /**
+   * When set, the pinned tooltip offers filter / exclude actions per series,
+   * with the series' group-by expressions (or PromQL labels) and values.
+   */
+  onFilter?: TileFilterHandler;
 };
 
 function DBTimeChartComponent({
@@ -108,6 +116,7 @@ function DBTimeChartComponent({
   showDateRangeIndicator = true,
   errorVariant,
   onFocusSeries,
+  onFilter,
 }: DBTimeChartComponentProps) {
   const [selectedSeriesSet, setSelectedSeriesSet] = useState<Set<string>>(
     new Set(),
@@ -392,12 +401,20 @@ function DBTimeChartComponent({
   const [displayTypeLocal, setDisplayTypeLocal] = useState(displayTypeProp);
 
   const displayType = useMemo(() => {
-    if (setDisplayType) {
+    // Stacking would sum the current and previous periods together.
+    if (config.compareToPreviousPeriod) {
+      return DisplayType.Line;
+    } else if (setDisplayType) {
       return displayTypeProp;
     } else {
       return displayTypeLocal;
     }
-  }, [displayTypeLocal, displayTypeProp, setDisplayType]);
+  }, [
+    config.compareToPreviousPeriod,
+    displayTypeLocal,
+    displayTypeProp,
+    setDisplayType,
+  ]);
 
   // The chart replaces its whole subtree — marker layer and exemplar card
   // included — for the loading, error and empty states. Derived here from the
@@ -456,12 +473,6 @@ function DBTimeChartComponent({
     },
     [setDisplayType],
   );
-
-  useEffect(() => {
-    if (config.compareToPreviousPeriod) {
-      setDisplayTypeLocal(DisplayType.Line);
-    }
-  }, [config.compareToPreviousPeriod]);
 
   const [activeClickPayload, setActiveClickPayload] = useState<
     ActiveClickPayload | undefined
@@ -586,6 +597,27 @@ function DBTimeChartComponent({
     [onFocusSeries, groupColumns, isSingleValueColumn, handleToggleSeries],
   );
 
+  const promqlSeriesLabels = data?.promqlSeriesLabels;
+  const filterKeyByColumn = useResultColumnFilterKeys({
+    config: queriedConfig,
+    meta: data?.meta,
+    enabled: !!onFilter && !promqlSeriesLabels,
+  });
+  const lineDataByKey = useMemo(
+    () => new Map(lineData.map(line => [line.dataKey, line])),
+    [lineData],
+  );
+  const getSeriesFilters = useCallback(
+    (dataKey: string | undefined) =>
+      getSeriesFilterEntries({
+        line: dataKey != null ? lineDataByKey.get(dataKey) : undefined,
+        groupColumns,
+        filterKeyByColumn,
+        promqlSeriesLabels,
+      }),
+    [lineDataByKey, groupColumns, filterKeyByColumn, promqlSeriesLabels],
+  );
+
   const toolbarItemsMemo = useChartToolbarItems({
     builderQueriedConfig,
     config,
@@ -636,6 +668,8 @@ function DBTimeChartComponent({
             // re-register its window listener on every re-render.
             onDismiss={dismissPinned}
             onFocusSeries={handleFocusSeries}
+            getSeriesFilters={getSeriesFilters}
+            onFilterSeries={onFilter}
             onShowAllSeries={
               selectedSeriesSet.size > 0 ? handleClearSelectedSeries : undefined
             }
@@ -689,6 +723,7 @@ function DBTimeChartComponent({
             granularity={granularity}
             dateRangeEndInclusive={queriedConfig.dateRangeEndInclusive}
             fitYAxisToData={queriedConfig.fitYAxisToData}
+            lineInterpolation={queriedConfig.lineInterpolation}
             exemplars={exemplars}
             maxExemplars={me?.team?.maxExemplars ?? DEFAULT_MAX_EXEMPLARS}
             onExemplarHover={openExemplarCard}

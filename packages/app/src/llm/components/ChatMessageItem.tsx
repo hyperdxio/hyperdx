@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Badge, Box, Code, Group, Paper, Text } from '@mantine/core';
+import { Badge, BadgeProps } from '@clickhouse/click-ui';
+import { Box, Code, Group, Paper, Text } from '@mantine/core';
 import {
   IconChevronDown,
   IconChevronRight,
@@ -10,15 +11,15 @@ import {
 
 import { ChatToolCall, ConversationMessage } from '@/llm/lib/types';
 
-// Categorical role → badge color. Chat roles are categories, not statuses,
-// so plain Mantine palette colors are appropriate here.
-const ROLE_COLORS: Record<string, string> = {
-  system: 'gray',
-  developer: 'gray',
-  user: 'blue',
-  assistant: 'green',
-  tool: 'orange',
-  function: 'orange',
+// Chat roles are categories, not statuses. click-ui only has semantic badge
+// states, so these states are for color only and do not signal a problem.
+const ROLE_BADGE_STATES: Record<string, BadgeProps['state']> = {
+  system: 'neutral',
+  developer: 'neutral',
+  user: 'info',
+  assistant: 'success',
+  tool: 'warning',
+  function: 'warning',
 };
 
 function tryPrettyJson(value: string): string {
@@ -76,13 +77,11 @@ export function ChatMessageItem({ message }: { message: ConversationMessage }) {
     <Paper withBorder p="sm" radius="md" data-testid="llm-chat-message">
       <Group gap="xs" mb={message.content != null ? 6 : 0}>
         <Badge
-          size="xs"
-          variant="light"
-          color={ROLE_COLORS[role] ?? 'gray'}
+          size="sm"
+          text={role}
+          state={ROLE_BADGE_STATES[role] ?? 'neutral'}
           data-testid="llm-chat-message-role"
-        >
-          {role}
-        </Badge>
+        />
         {message.name != null && (
           <Text size="xs" c="dimmed" ff="monospace">
             {message.name}

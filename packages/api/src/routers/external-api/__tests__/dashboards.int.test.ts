@@ -1,5 +1,6 @@
 import { isBuilderSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
+  DisplayType,
   MetricsDataType,
   OnboardingTaskId,
   SourceKind,
@@ -2717,6 +2718,63 @@ describe('External API v2 Dashboards - new format', () => {
       expect(getResponse.body.data.tiles[1].config.seriesLimit).toBe(7);
     });
 
+    it('round-trips a stacked_line builder tile through create and get', async () => {
+      const stackedLineChart: ExternalDashboardTile = {
+        name: 'Stacked line',
+        x: 0,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          displayType: 'stacked_line',
+          sourceId: traceSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+          groupBy: 'ServiceName',
+          seriesLimit: 5,
+        },
+      };
+
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with a stacked line tile',
+          tiles: [stackedLineChart],
+        })
+        .expect(200);
+
+      expect(createResponse.body.data.tiles[0].config.displayType).toBe(
+        'stacked_line',
+      );
+
+      const { id } = createResponse.body.data;
+      const getResponse = await authRequest('get', `${BASE_URL}/${id}`).expect(
+        200,
+      );
+      expect(omit(getResponse.body.data.tiles[0], ['id'])).toEqual({
+        ...stackedLineChart,
+        config: {
+          ...stackedLineChart.config,
+          asRatio: false,
+          fillNulls: true,
+          select: [
+            {
+              aggFn: 'count',
+              alias: 'Count',
+              valueExpression: '',
+              where: '',
+              whereLanguage: 'sql',
+            },
+          ],
+        },
+      });
+    });
+
     it('omits seriesLimit on line/stacked_bar tiles when it is not provided', async () => {
       const lineChart: ExternalDashboardTile = {
         name: 'Line without series limit',
@@ -2808,6 +2866,24 @@ describe('External API v2 Dashboards - new format', () => {
         },
       },
       {
+        label: 'series heatmap tile with multiple select items',
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'series',
+          sourceId: () => traceSource._id.toString(),
+          select: [{ aggFn: 'count' }, { aggFn: 'count' }],
+        },
+      },
+      {
+        label: 'heatmap tile with an unknown mode',
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'bogus',
+          sourceId: () => traceSource._id.toString(),
+          select: [{ valueExpression: 'Duration' }],
+        },
+      },
+      {
         label: 'heatmap tile with multiple select items',
         config: {
           displayType: 'heatmap',
@@ -2876,6 +2952,293 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(response.body.message).toContain(
         'Heatmap tiles require a Trace source',
+      );
+    });
+
+    it('returns series-mode heatmap tiles on GET', async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Series heatmap',
+              displayType: DisplayType.Heatmap,
+              source: traceSource._id.toString(),
+              select: [
+                {
+                  aggFn: 'count',
+                  aggCondition: 'StatusCode:Error',
+                  aggConditionLanguage: 'lucene',
+                  valueExpression: '',
+                },
+              ],
+              groupBy: 'ServiceName',
+              where: '',
+              heatmap: { mode: 'series' },
+            },
+          },
+        ],
+      });
+
+      const response = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      expect(response.body.data.tiles).toEqual([
+        {
+          id: tileId,
+          name: 'Series heatmap',
+          x: 0,
+          y: 0,
+          w: 6,
+          h: 3,
+          config: {
+            displayType: 'heatmap',
+            heatmapMode: 'series',
+            sourceId: traceSource._id.toString(),
+            select: [
+              {
+                aggFn: 'count',
+                valueExpression: '',
+                where: 'StatusCode:Error',
+                whereLanguage: 'lucene',
+              },
+            ],
+            groupBy: 'ServiceName',
+          },
+        },
+      ]);
+    });
+
+    it('round-trips a series-mode heatmap tile on a Log source', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+      const seriesHeatmap: ExternalDashboardTile = {
+        name: 'Errors by service',
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 5,
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'series',
+          sourceId: logSource._id.toString(),
+          select: [
+            {
+              aggFn: 'count',
+              valueExpression: '',
+              where: 'SeverityText:error',
+              whereLanguage: 'lucene',
+            },
+          ],
+          groupBy: 'ServiceName',
+          numberFormat: { output: 'number' },
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with series heatmap',
+          tiles: [seriesHeatmap],
+          tags: [],
+        })
+        .expect(200);
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(seriesHeatmap);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${response.body.data.id}`,
+      ).expect(200);
+      expect(omit(get.body.data.tiles[0], ['id'])).toEqual(seriesHeatmap);
+
+      const dashboardInDb = await Dashboard.findById(
+        response.body.data.id,
+      ).lean();
+      expect(dashboardInDb!.tiles[0].config).toMatchObject({
+        displayType: DisplayType.Heatmap,
+        heatmap: { mode: 'series' },
+        groupBy: 'ServiceName',
+        where: '',
+      });
+    });
+
+    it('accepts a series-mode heatmap tile on a Metric source', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with metric series heatmap',
+          tiles: [
+            {
+              name: 'CPU by host',
+              x: 0,
+              y: 0,
+              w: 12,
+              h: 5,
+              config: {
+                displayType: 'heatmap',
+                heatmapMode: 'series',
+                sourceId: metricSource._id.toString(),
+                select: [
+                  {
+                    aggFn: 'avg',
+                    metricType: MetricsDataType.Gauge,
+                    metricName: 'system.cpu.utilization',
+                  },
+                ],
+                groupBy: "ResourceAttributes['host.name']",
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(response.body.data.tiles[0].config).toMatchObject({
+        heatmapMode: 'series',
+        select: [
+          {
+            aggFn: 'avg',
+            metricType: MetricsDataType.Gauge,
+            metricName: 'system.cpu.utilization',
+          },
+        ],
+      });
+    });
+
+    it('rejects a series-mode heatmap tile on a Session source', async () => {
+      const sessionSource = await Source.create({
+        kind: SourceKind.Session,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'rrweb_events' },
+        timestampValueExpression: 'Timestamp',
+        traceSourceId: traceSource._id.toString(),
+        connection: connection._id,
+        name: 'Sessions',
+      });
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with session series heatmap',
+          tiles: [
+            {
+              name: 'Series heatmap',
+              x: 0,
+              y: 0,
+              w: 12,
+              h: 5,
+              config: {
+                displayType: 'heatmap',
+                heatmapMode: 'series',
+                sourceId: sessionSource._id.toString(),
+                select: [{ aggFn: 'count' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'Series heatmap tiles require a Trace, Log, or Metric source',
+      );
+    });
+
+    it('re-checks the source when an existing heatmap changes mode', async () => {
+      const logSource = await Source.create({
+        kind: SourceKind.Log,
+        team: team._id,
+        from: { databaseName: DEFAULT_DATABASE, tableName: 'otel_logs' },
+        timestampValueExpression: 'Timestamp',
+        connection: connection._id,
+        name: 'Logs',
+      });
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Series heatmap',
+              displayType: DisplayType.Heatmap,
+              source: logSource._id.toString(),
+              select: [
+                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              ],
+              where: '',
+              heatmap: { mode: 'series' },
+            },
+          },
+        ],
+      });
+
+      const response = await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Dashboard',
+          tiles: [
+            {
+              id: tileId,
+              name: 'Distribution heatmap',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                displayType: 'heatmap',
+                sourceId: logSource._id.toString(),
+                select: [{ valueExpression: 'Duration' }],
+              },
+            },
+          ],
+          tags: [],
+        })
+        .expect(400);
+
+      expect(response.body.message).toContain(
+        'Heatmap tiles require a Trace source',
+      );
+    });
+
+    it('round-trips an explicit distribution heatmap mode', async () => {
+      const distributionHeatmap: ExternalDashboardTile = {
+        name: 'Latency',
+        x: 0,
+        y: 0,
+        w: 12,
+        h: 5,
+        config: {
+          displayType: 'heatmap',
+          heatmapMode: 'distribution',
+          sourceId: traceSource._id.toString(),
+          select: [{ valueExpression: 'Duration' }],
+          where: '',
+          whereLanguage: 'lucene',
+        },
+      };
+
+      const response = await authRequest('post', BASE_URL)
+        .send({
+          name: 'Dashboard with distribution heatmap',
+          tiles: [distributionHeatmap],
+          tags: [],
+        })
+        .expect(200);
+
+      expect(omit(response.body.data.tiles[0], ['id'])).toEqual(
+        distributionHeatmap,
       );
     });
 
@@ -3090,6 +3453,24 @@ describe('External API v2 Dashboards - new format', () => {
         },
       };
 
+      const stackedLineRawSql: ExternalDashboardTile = {
+        name: 'Stacked Line Raw SQL',
+        x: 12,
+        y: 0,
+        w: 6,
+        h: 3,
+        config: {
+          configType: 'sql',
+          displayType: 'stacked_line',
+          connectionId,
+          sqlTemplate,
+          sourceId,
+          fillNulls: false,
+          alignDateRangeToGranularity: false,
+          numberFormat: { output: 'byte', decimalBytes: true },
+        },
+      };
+
       const tableRawSql: ExternalDashboardTile = {
         name: 'Table Raw SQL',
         x: 0,
@@ -3169,6 +3550,7 @@ describe('External API v2 Dashboards - new format', () => {
           tiles: [
             lineRawSql,
             barRawSql,
+            stackedLineRawSql,
             tableRawSql,
             numberRawSql,
             pieRawSql,
@@ -3180,10 +3562,13 @@ describe('External API v2 Dashboards - new format', () => {
 
       expect(omit(response.body.data.tiles[0], ['id'])).toEqual(lineRawSql);
       expect(omit(response.body.data.tiles[1], ['id'])).toEqual(barRawSql);
-      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(tableRawSql);
-      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(numberRawSql);
-      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(pieRawSql);
-      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(
+      expect(omit(response.body.data.tiles[2], ['id'])).toEqual(
+        stackedLineRawSql,
+      );
+      expect(omit(response.body.data.tiles[3], ['id'])).toEqual(tableRawSql);
+      expect(omit(response.body.data.tiles[4], ['id'])).toEqual(numberRawSql);
+      expect(omit(response.body.data.tiles[5], ['id'])).toEqual(pieRawSql);
+      expect(omit(response.body.data.tiles[6], ['id'])).toEqual(
         categoricalBarRawSql,
       );
     });
@@ -3258,6 +3643,78 @@ describe('External API v2 Dashboards - new format', () => {
       expect(tiles[1].config).not.toHaveProperty('fitYAxisToData');
       // Omitted on input → absent on read-back (optional, no default).
       expect(tiles[2].config).not.toHaveProperty('fitYAxisToData');
+    });
+
+    it('persists lineInterpolation on line and stacked line tiles only', async () => {
+      const sourceId = traceSource._id.toString();
+      const connectionId = connection._id.toString();
+      const sqlTemplate = 'SELECT count() FROM otel_logs WHERE {timeFilter}';
+      const select = [
+        { aggFn: 'count' as const, where: '', whereLanguage: 'sql' as const },
+      ];
+      const configs = [
+        { displayType: 'line', sourceId, select, lineInterpolation: 'step' },
+        {
+          displayType: 'stacked_line',
+          sourceId,
+          select,
+          lineInterpolation: 'smooth',
+        },
+        {
+          configType: 'sql',
+          displayType: 'line',
+          connectionId,
+          sqlTemplate,
+          lineInterpolation: 'linear',
+        },
+        {
+          configType: 'sql',
+          displayType: 'stacked_line',
+          connectionId,
+          sqlTemplate,
+          lineInterpolation: 'step',
+        },
+        {
+          displayType: 'stacked_bar',
+          sourceId,
+          select,
+          lineInterpolation: 'step',
+        },
+        { displayType: 'line', sourceId, select },
+      ];
+
+      const createResponse = await authRequest('post', BASE_URL)
+        .send({
+          name: 'lineInterpolation dashboard',
+          tiles: configs.map((config, i) => ({
+            name: `Tile ${i}`,
+            x: 0,
+            y: i * 3,
+            w: 6,
+            h: 3,
+            config,
+          })),
+          tags: [],
+        })
+        .expect(200);
+
+      const getResponse = await authRequest(
+        'get',
+        `${BASE_URL}/${createResponse.body.data.id}`,
+      ).expect(200);
+      const tiles: { config: Record<string, unknown> }[] =
+        getResponse.body.data.tiles;
+
+      expect(tiles.map(t => t.config.lineInterpolation)).toEqual([
+        'step',
+        'smooth',
+        'linear',
+        'step',
+        undefined,
+        undefined,
+      ]);
+      expect(tiles[4].config).not.toHaveProperty('lineInterpolation');
+      expect(tiles[5].config).not.toHaveProperty('lineInterpolation');
     });
 
     it('should return 400 when source IDs do not exist', async () => {
@@ -5145,6 +5602,71 @@ describe('External API v2 Dashboards - new format', () => {
       expect(await Alert.findById(alert._id)).toBeNull();
     });
 
+    it('should delete alert when tile is updated from builder to PromQL config', async () => {
+      const tileId = new ObjectId().toString();
+      const dashboard = await createTestDashboard({
+        tiles: [
+          {
+            id: tileId,
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Builder Tile',
+              displayType: 'line',
+              source: traceSource._id.toString(),
+              select: [
+                { aggFn: 'count', aggCondition: '', valueExpression: '' },
+              ],
+              where: '',
+            },
+          },
+        ],
+      });
+      const webhook = await Webhook.create({
+        name: 'Test Webhook',
+        service: WebhookService.Slack,
+        url: 'https://hooks.slack.com/test',
+        team: team._id,
+      });
+      const alert = await Alert.create({
+        team: team._id,
+        dashboard: dashboard._id,
+        tileId,
+        source: AlertSource.TILE,
+        threshold: 100,
+        interval: '1h',
+        thresholdType: AlertThresholdType.ABOVE,
+        channel: { type: 'webhook', webhookId: webhook._id.toString() },
+      });
+
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({
+          name: 'Updated Dashboard',
+          tags: [],
+          tiles: [
+            {
+              id: tileId,
+              name: 'PromQL Tile',
+              x: 0,
+              y: 0,
+              w: 6,
+              h: 3,
+              config: {
+                configType: 'promql',
+                displayType: 'line',
+                sourceId: promqlSource._id.toString(),
+                expressions: [{ expression: 'up' }],
+              },
+            },
+          ],
+        })
+        .expect(200);
+
+      expect(await Alert.findById(alert._id)).toBeNull();
+    });
+
     it('should delete alert when a tile with an alert is removed from the dashboard', async () => {
       const keepTileId = new ObjectId().toString();
       const removeTileId = new ObjectId().toString();
@@ -5729,6 +6251,37 @@ describe('External API v2 Dashboards - new format', () => {
         await authRequest('put', `${BASE_URL}/${response.body.data.id}`)
           .send(omit(dashboard.body.data, 'id'))
           .expect(200);
+      });
+    });
+
+    describe('single-select filters', () => {
+      const variants = [
+        ['QUERY_EXPRESSION', filterInput],
+        ['STATIC_LIST', staticFilterInput],
+        ['PROMETHEUS_LABEL', promqlFilterInput],
+      ] as const;
+
+      it.each(variants)(
+        'accepts a single-select %s filter',
+        async (_type, makeFilter) => {
+          const response = await sendFilters([
+            makeFilter({ maxSelections: 1 }),
+          ]);
+          expect(response.status).toBe(200);
+          expect(response.body.data.filters[0].maxSelections).toBe(1);
+        },
+      );
+
+      it('omits the key from responses for a multi-select filter', async () => {
+        const response = await sendFilters([filterInput()]);
+        expect(response.status).toBe(200);
+        expect(response.body.data.filters[0]).not.toHaveProperty(
+          'maxSelections',
+        );
+      });
+
+      it.each([0, 2, 1.5, '1'])('rejects maxSelections %s', async value => {
+        await expectFilters([filterInput({ maxSelections: value })], 400);
       });
     });
 
@@ -6585,6 +7138,152 @@ describe('External API v2 Dashboards - new format', () => {
     });
   });
 
+  describe('PromQL tiles', () => {
+    const promqlTile = (config: Record<string, unknown> = {}) => ({
+      name: 'PromQL',
+      x: 0,
+      y: 0,
+      w: 6,
+      h: 3,
+      config: {
+        configType: 'promql',
+        displayType: 'line',
+        sourceId: promqlSource._id.toString(),
+        expressions: [{ expression: 'up', alias: 'Up' }],
+        legendTemplate: '{{job}}',
+        ...config,
+      },
+    });
+
+    const postTile = (config: Record<string, unknown> = {}) =>
+      authRequest('post', BASE_URL).send({
+        name: 'PromQL dashboard',
+        tiles: [promqlTile(config)],
+        tags: [],
+      });
+
+    it('round-trips a PromQL tile through POST and GET', async () => {
+      const create = await postTile().expect(200);
+      const expected = { ...promqlTile().config, fillNulls: true };
+      expect(create.body.data.tiles[0].config).toEqual(expected);
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${create.body.data.id}`,
+      ).expect(200);
+      expect(get.body.data.tiles[0].config).toEqual(expected);
+    });
+
+    it('keeps PromQL tiles when a dashboard is read and saved back', async () => {
+      const promqlConfig = {
+        configType: 'promql',
+        name: 'Saved in the app',
+        displayType: DisplayType.Number,
+        source: promqlSource._id.toString(),
+        promqlExpression: [{ expression: 'up', reducer: 'max' }],
+      };
+      const dashboard = await createTestDashboard({
+        tiles: [
+          { id: 'promql-tile', x: 0, y: 0, w: 6, h: 3, config: promqlConfig },
+          {
+            id: 'markdown-tile',
+            x: 6,
+            y: 0,
+            w: 6,
+            h: 3,
+            config: {
+              name: 'Notes',
+              displayType: DisplayType.Markdown,
+              markdown: 'Notes',
+              source: '',
+              where: '',
+              select: [],
+            },
+          },
+        ],
+      });
+
+      const get = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+      const { name, tiles, tags } = get.body.data;
+      await authRequest('put', `${BASE_URL}/${dashboard._id}`)
+        .send({ name, tiles, tags })
+        .expect(200);
+
+      const stored = await Dashboard.findById(dashboard._id).lean();
+      expect(stored?.tiles.find(t => t.id === 'promql-tile')?.config).toEqual(
+        promqlConfig,
+      );
+    });
+
+    it('rejects a PromQL tile whose source is not a PromQL source', async () => {
+      const res = await postTile({
+        sourceId: traceSource._id.toString(),
+      }).expect(400);
+      expect(JSON.stringify(res.body)).toContain(
+        `PromQL tiles require a PromQL source. The following source IDs are not PromQL sources: ${traceSource._id.toString()}`,
+      );
+    });
+
+    describe('when the source kind changes after the tile is saved', () => {
+      const createAndRetypeSource = async () => {
+        const create = await postTile().expect(200);
+        await Source.updateOne(
+          { _id: promqlSource._id },
+          { $set: { kind: SourceKind.Log } },
+        );
+        return create.body.data;
+      };
+
+      it('still lets unrelated edits through', async () => {
+        const { id, tiles, tags } = await createAndRetypeSource();
+
+        await authRequest('put', `${BASE_URL}/${id}`)
+          .send({ name: 'Renamed', tiles, tags })
+          .expect(200);
+      });
+
+      it('rejects pointing the tile at a non-PromQL source', async () => {
+        const { id, tiles, tags } = await createAndRetypeSource();
+        const [tile] = tiles;
+
+        const res = await authRequest('put', `${BASE_URL}/${id}`)
+          .send({
+            name: 'Renamed',
+            tiles: [
+              {
+                ...tile,
+                config: {
+                  ...tile.config,
+                  sourceId: traceSource._id.toString(),
+                },
+              },
+            ],
+            tags,
+          })
+          .expect(400);
+        expect(JSON.stringify(res.body)).toContain(
+          'PromQL tiles require a PromQL source',
+        );
+      });
+    });
+
+    // The builder heatmap check requires a Trace source; it must not apply.
+    it('accepts a PromQL heatmap on a PromQL source', async () => {
+      const create = await postTile({
+        displayType: 'heatmap',
+        heatmapMode: 'histogram',
+        expressions: [{ expression: 'sum by (le) (rate(x_bucket[5m]))' }],
+      }).expect(200);
+      expect(create.body.data.tiles[0].config).toMatchObject({
+        displayType: 'heatmap',
+        heatmapMode: 'histogram',
+      });
+    });
+  });
+
   describe('Chart formulas', () => {
     // Two metric operand series (A, B) — the shape the formula grammar
     // references by position. Payloads go through `.send()` (untyped) so
@@ -6767,10 +7466,12 @@ describe('External API v2 Dashboards - new format', () => {
       // check it would persist as a builder tile AND skip the builder-only
       // rules — here a formula referencing a nonexistent series.
       const res = await postTile({
-        configType: 'promql',
+        configType: 'foo',
         formulas: [{ expression: 'C * 2' }],
       }).expect(400);
-      expect(res.body.message).toContain('configType must be "sql" or omitted');
+      expect(res.body.message).toContain(
+        'configType must be "sql", "promql" or omitted',
+      );
     });
 
     it('round-trips formulas on a log/trace event source', async () => {
@@ -7732,6 +8433,58 @@ describe('External API v2 Dashboards - new format', () => {
         .send(
           createMockDashboard(traceSource._id.toString(), {
             savedFilterValues: [{ type: 'nonsense', name: 'svc', values: [] }],
+          }),
+        )
+        .expect(400);
+    });
+  });
+
+  describe('ad hoc filters', () => {
+    const adhocFilter = () => ({
+      id: new ObjectId().toString(),
+      type: 'ADHOC' as const,
+      name: 'Ad hoc',
+      sourceType: 'sql' as const,
+      sources: [traceSource._id.toString()],
+      isVariableEnabled: true as const,
+      variableName: 'adhoc',
+    });
+    const adhocValue = {
+      type: 'adhoc' as const,
+      name: 'adhoc',
+      conditions: [{ key: 'ServiceName', operator: '=', value: 'api' }],
+    };
+
+    it('hides ad hoc filters and their saved values from GET', async () => {
+      const dashboard = await createTestDashboard({
+        filters: [adhocFilter()],
+        savedFilterValues: [adhocValue],
+      });
+
+      const response = await authRequest(
+        'get',
+        `${BASE_URL}/${dashboard._id}`,
+      ).expect(200);
+
+      expect(response.body.data.filters).toEqual([]);
+      expect(response.body.data.savedFilterValues).toEqual([]);
+    });
+
+    it('rejects an ad hoc filter in a POST', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            filters: [omit(adhocFilter(), 'id')],
+          }),
+        )
+        .expect(400);
+    });
+
+    it('rejects ad hoc saved values in a POST', async () => {
+      await authRequest('post', BASE_URL)
+        .send(
+          createMockDashboard(traceSource._id.toString(), {
+            savedFilterValues: [adhocValue],
           }),
         )
         .expect(400);

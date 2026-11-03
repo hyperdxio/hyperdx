@@ -13,6 +13,7 @@ import {
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 
+import { INSTANCE_TITLE_SUFFIX } from '@/config';
 interface GreenhouseJob {
   id: number;
   title: string;
@@ -91,7 +92,7 @@ export default function CareersPage() {
   return (
     <Container size="md" py="xl">
       <Head>
-        <title>Careers | HyperDX</title>
+        <title>{`Careers | HyperDX${INSTANCE_TITLE_SUFFIX}`}</title>
       </Head>
       <Stack gap="lg">
         <Title order={1}>

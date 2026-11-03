@@ -78,6 +78,12 @@ jest.mock('@/hooks/useExemplars', () => ({
     .mockReturnValue({ data: null, isLoading: false }),
 }));
 
+// Not under test here, and calling through would require a QueryClientProvider
+// this file's bare MantineProvider render doesn't set up.
+jest.mock('@/hooks/useResultColumnFilterKeys', () => ({
+  useResultColumnFilterKeys: jest.fn().mockReturnValue(new Map()),
+}));
+
 jest.mock('@/components/MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );

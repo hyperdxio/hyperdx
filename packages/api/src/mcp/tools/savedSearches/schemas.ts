@@ -1,11 +1,6 @@
 import { z } from 'zod';
 
-import {
-  MAX_TAG_LENGTH,
-  MAX_TAGS,
-  objectIdSchema,
-  tagsSchema,
-} from '@/utils/zod';
+import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
 // ---------------------------------------------------------------------------
 // MCP-compatible Zod schemas for saved search tools.
@@ -14,34 +9,50 @@ import {
 const mcpFilterSchema = z
   .union([
     z.object({
-      type: z
-        .enum(['lucene', 'sql'])
-        .describe('Filter language: lucene or sql.'),
-      condition: z.string().describe('Filter condition string.'),
+      type: z.enum(['lucene', 'sql']).describe('Language of condition.'),
+      condition: z
+        .string()
+        .describe(
+          "Filter condition in the chosen language, e.g. level:error or StatusCode = 'Error'.",
+        ),
     }),
     z.object({
-      type: z.literal('sql_ast').describe('Structured SQL AST filter.'),
+      type: z
+        .literal('sql_ast')
+        .describe('Structured comparison, rendered as `left operator right`.'),
       operator: z
         .enum(['=', '<', '>', '!=', '<=', '>='])
-        .describe('Comparison operator.'),
-      left: z.string().describe('Left operand (column or expression).'),
-      right: z.string().describe('Right operand (value or expression).'),
+        .describe('Comparison between left and right.'),
+      left: z
+        .string()
+        .describe('Column or SQL expression to compare. Inserted as raw SQL.'),
+      right: z
+        .string()
+        .describe(
+          'Value or SQL expression that left is compared against. Inserted ' +
+            'verbatim as raw SQL, so quote string literals ("\'ok\'") and leave ' +
+            'numbers bare ("100").',
+        ),
     }),
   ])
-  .describe('Filter applied to the saved search.');
+  .describe(
+    'Extra filter ANDed with where: either a lucene/sql condition string or a ' +
+      'structured sql_ast comparison.',
+  );
 
 export const mcpSaveSavedSearchSchema = z.object({
   id: z
     .string()
     .optional()
     .describe(
-      'Saved search ID. Omit to create a new saved search, provide to update an existing one.',
+      'Saved search ID, from clickstack_get_saved_search. Omit to create a new ' +
+        'saved search, provide to update an existing one.',
     ),
   name: z
     .string()
     .min(1)
     .max(512)
-    .describe('Human-friendly name for the saved search.'),
+    .describe('Name shown for the saved search in the app.'),
   select: z
     .string()
     .optional()
@@ -59,7 +70,10 @@ export const mcpSaveSavedSearchSchema = z.object({
   whereLanguage: z
     .enum(['sql', 'lucene'])
     .optional()
-    .describe('Language for the where filter. Default: lucene.'),
+    .describe(
+      'Language for the where filter. Defaults to lucene on create; on update, ' +
+        'omitting it keeps the stored value, so resend it whenever you change where.',
+    ),
   orderBy: z
     .string()
     .optional()
@@ -68,7 +82,7 @@ export const mcpSaveSavedSearchSchema = z.object({
     'Source ID — call clickstack_list_sources to find available sources.',
   ),
   tags: tagsSchema.describe(
-    `Tags for organizing saved searches. Up to ${MAX_TAGS} tags, each at most ${MAX_TAG_LENGTH} characters.`,
+    'Tags for organizing saved searches. On update, omitting tags clears them.',
   ),
   filters: z
     .array(mcpFilterSchema)

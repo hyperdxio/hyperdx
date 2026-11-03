@@ -22,27 +22,22 @@ import {
   useQueryState,
   useQueryStates,
 } from 'nuqs';
-import { formatDate } from '@hyperdx/common-utils/dist/core/utils';
 import { DateRange } from '@hyperdx/common-utils/dist/types';
 
-import { parseTimeRangeInput } from './components/TimePicker/utils';
-import { useUserPreferences } from './useUserPreferences';
+import {
+  formatTimeRangeText,
+  parseTimeRangeInput,
+} from './components/TimePicker/utils';
+import { useDisplayTimeZone } from './useDisplayTimeZone';
 import { usePrevious } from './utils';
 
 const LIVE_TAIL_TIME_QUERY = 'Live Tail';
 const LIVE_TAIL_REFRESH_INTERVAL_MS = 1000;
 
-export const dateRangeToString = (range: [Date, Date], isUTC: boolean) => {
-  return `${formatDate(range[0], {
-    isUTC,
-    format: 'normal',
-    clock: '24h',
-  })} - ${formatDate(range[1], {
-    isUTC,
-    format: 'normal',
-    clock: '24h',
-  })}`;
-};
+export const dateRangeToString = (
+  range: [Date, Date],
+  timeZone: string | undefined,
+) => formatTimeRangeText(range, { timeZone, clock: '24h' });
 
 function isInputTimeQueryLive(inputTimeQuery: string) {
   return inputTimeQuery === '' || inputTimeQuery.includes(LIVE_TAIL_TIME_QUERY);
@@ -56,16 +51,16 @@ export function parseRelativeTimeQuery(interval: number): [Date, Date] {
 
 function parseTimeQuery(
   timeQuery: string,
-  isUTC: boolean,
+  timeZone: string | undefined,
 ): [Date | null, Date | null] {
-  return parseTimeRangeInput(timeQuery, isUTC);
+  return parseTimeRangeInput(timeQuery, timeZone);
 }
 
 function parseValidTimeRange(
   timeQuery: string,
-  isUTC: boolean,
+  timeZone: string | undefined,
 ): [Date, Date] | undefined {
-  const [start, end] = parseTimeQuery(timeQuery, isUTC);
+  const [start, end] = parseTimeQuery(timeQuery, timeZone);
   if (start != null && end != null) {
     return [start, end];
   }
@@ -86,9 +81,7 @@ export function useTimeQuery({
   const isReady = typeof window === 'undefined' ? true : router.isReady;
   const prevIsReady = usePrevious(isReady);
 
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   const [displayedTimeInputValue, setDisplayedTimeInputValue] = useState<
     undefined | string
@@ -125,7 +118,7 @@ export function useTimeQuery({
         // If we're missing the time range query, let's parse it from the input time query
         const timeQueryDerivedInputValue = dateRangeToString(
           [new Date(_timeRangeQuery.from), new Date(_timeRangeQuery.to)],
-          isUTC,
+          timeZone,
         );
         setDisplayedTimeInputValue(timeQueryDerivedInputValue);
         setInputTimeQuery(timeQueryDerivedInputValue);
@@ -138,7 +131,7 @@ export function useTimeQuery({
     defaultValue,
     inputTimeQuery,
     isReady,
-    isUTC,
+    timeZone,
     prevIsReady,
     setInputTimeQuery,
     setDisplayedTimeInputValue,
@@ -161,7 +154,7 @@ export function useTimeQuery({
     isReady && timeRangeQuery.from != -1 && timeRangeQuery.to != -1
       ? dateRangeToString(
           [new Date(timeRangeQuery.from), new Date(timeRangeQuery.to)],
-          isUTC,
+          timeZone,
         )
       : undefined;
 
@@ -179,7 +172,7 @@ export function useTimeQuery({
       !isInputTimeQueryLive(inputTimeQuery) &&
       prevInputTimeQuery != inputTimeQuery
     ) {
-      const timeRange = parseValidTimeRange(inputTimeQuery, isUTC);
+      const timeRange = parseValidTimeRange(inputTimeQuery, timeZone);
       inputTimeQueryDerivedTimeQueryRef.current = timeRange;
 
       if (
@@ -196,7 +189,7 @@ export function useTimeQuery({
   }, [
     isReady,
     inputTimeQuery,
-    isUTC,
+    timeZone,
     _timeRangeQuery,
     setTimeRangeQuery,
     prevInputTimeQuery,
@@ -320,7 +313,7 @@ export function useTimeQuery({
         setTempLiveTailTimeRange(liveTailTimeRange);
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
         setLiveTailTimeRange(undefined);
-        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        const dateRangeStr = dateRangeToString([start, end], timeZone);
         setDisplayedTimeInputValue(dateRangeStr);
         setInputTimeQuery(dateRangeStr);
       }
@@ -330,7 +323,7 @@ export function useTimeQuery({
       setTimeRangeQuery,
       setDisplayedTimeInputValue,
       liveTailTimeRange,
-      isUTC,
+      timeZone,
       setInputTimeQuery,
     ],
   );
@@ -345,12 +338,12 @@ export function useTimeQuery({
     searchedTimeRange,
     onSearch: useCallback(
       (timeQuery: string) => {
-        const [start, end] = parseTimeQuery(timeQuery, isUTC);
+        const [start, end] = parseTimeQuery(timeQuery, timeZone);
         // TODO: Add validation UI
         if (start != null && end != null) {
           setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
           if (timeQuery.toLowerCase().indexOf('past') === -1) {
-            const dateRangeStr = dateRangeToString([start, end], isUTC);
+            const dateRangeStr = dateRangeToString([start, end], timeZone);
             setDisplayedTimeInputValue(dateRangeStr);
             setInputTimeQuery(dateRangeStr);
           } else {
@@ -358,16 +351,26 @@ export function useTimeQuery({
           }
         }
       },
-      [isUTC, setTimeRangeQuery, setDisplayedTimeInputValue, setInputTimeQuery],
+      [
+        timeZone,
+        setTimeRangeQuery,
+        setDisplayedTimeInputValue,
+        setInputTimeQuery,
+      ],
     ),
     onTimeRangeSelect: useCallback(
       (start: Date, end: Date) => {
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
-        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        const dateRangeStr = dateRangeToString([start, end], timeZone);
         setDisplayedTimeInputValue(dateRangeStr);
         setInputTimeQuery(dateRangeStr);
       },
-      [isUTC, setTimeRangeQuery, setDisplayedTimeInputValue, setInputTimeQuery],
+      [
+        timeZone,
+        setTimeRangeQuery,
+        setDisplayedTimeInputValue,
+        setInputTimeQuery,
+      ],
     ),
     setIsLive,
   };
@@ -425,15 +428,13 @@ export function useNewTimeQuery({
   // We need to return true in SSR to prevent mismatch issues
   const isReady = typeof window === 'undefined' ? true : router.isReady;
 
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   const [
     deprecatedDisplayedTimeInputValue,
     deprecatedSetDisplayedTimeInputValue,
   ] = useState<string>(() => {
-    return initialDisplayValue ?? dateRangeToString(initialTimeRange, isUTC);
+    return initialDisplayValue ?? dateRangeToString(initialTimeRange, timeZone);
   });
 
   const _setDisplayedTimeInputValue =
@@ -454,13 +455,13 @@ export function useNewTimeQuery({
 
   const onSearch = useCallback(
     (timeQuery: string) => {
-      const [start, end] = parseTimeQuery(timeQuery, isUTC);
+      const [start, end] = parseTimeQuery(timeQuery, timeZone);
       // TODO: Add validation UI
       if (start != null && end != null) {
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
       }
     },
-    [isUTC, setTimeRangeQuery],
+    [timeZone, setTimeRangeQuery],
   );
 
   useEffect(() => {
@@ -472,14 +473,14 @@ export function useNewTimeQuery({
         const relativeInterval =
           showRelativeInterval && getRelativeInterval(start, end);
         const dateRangeStr =
-          relativeInterval || dateRangeToString([start, end], isUTC);
+          relativeInterval || dateRangeToString([start, end], timeZone);
         if (updateInput !== false) {
           _setDisplayedTimeInputValue(dateRangeStr);
         }
       }
     } else if (from == null && to == null && isReady) {
       setSearchedTimeRange(initialTimeRange);
-      const dateRangeStr = dateRangeToString(initialTimeRange, isUTC);
+      const dateRangeStr = dateRangeToString(initialTimeRange, timeZone);
       if (updateInput !== false) {
         if (!showRelativeInterval) {
           _setDisplayedTimeInputValue(dateRangeStr);
@@ -490,7 +491,7 @@ export function useNewTimeQuery({
     }
   }, [
     isReady,
-    isUTC,
+    timeZone,
     from,
     to,
     initialDisplayValue,
@@ -512,19 +513,22 @@ export function useNewTimeQuery({
       (start: Date, end: Date, displayedTimeInputValue?: string | null) => {
         setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
         setSearchedTimeRange([start, end]);
-        const dateRangeStr = dateRangeToString([start, end], isUTC);
+        const dateRangeStr = dateRangeToString([start, end], timeZone);
         if (displayedTimeInputValue !== null) {
           _setDisplayedTimeInputValue(displayedTimeInputValue ?? dateRangeStr);
         }
       },
-      [setTimeRangeQuery, isUTC, _setDisplayedTimeInputValue],
+      [setTimeRangeQuery, timeZone, _setDisplayedTimeInputValue],
     ),
   };
 }
 
-function getRangeOrFallback(query: string, isUTC: boolean): [Date, Date] {
+function getRangeOrFallback(
+  query: string,
+  timeZone: string | undefined,
+): [Date, Date] {
   return (
-    parseValidTimeRange(query, isUTC) ??
+    parseValidTimeRange(query, timeZone) ??
     // This fallback catches arbitrary inputs but shouldn't be reachable
     // for standard literal labels (e.g., 'Past 1h') since they are always valid.
     parseRelativeTimeQuery(60 * 60 * 1000)
@@ -532,20 +536,18 @@ function getRangeOrFallback(query: string, isUTC: boolean): [Date, Date] {
 }
 
 export function useDefaultTimeRange(query: string): [Date, Date] {
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
   const [state, setState] = useState<{ query: string; range: [Date, Date] }>(
     () => ({
       query,
-      range: getRangeOrFallback(query, isUTC),
+      range: getRangeOrFallback(query, timeZone),
     }),
   );
 
   if (state.query !== query) {
     const newState = {
       query,
-      range: getRangeOrFallback(query, isUTC),
+      range: getRangeOrFallback(query, timeZone),
     };
     setState(newState);
     return newState.range;

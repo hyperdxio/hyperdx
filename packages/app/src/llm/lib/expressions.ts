@@ -1,3 +1,4 @@
+import { errorStatusPredicateSql } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import { TLogSource, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import { generateCostSqlExpression } from './cost';
@@ -452,7 +453,7 @@ export function getLLMExpressions(source: TTraceSource, jsonColumns: string[]) {
     ...attributeExpressions,
     ...fieldExpressions,
     ...auxExpressions,
-    isError: `lower(${fieldExpressions.severityText}) = 'error'`,
+    isError: errorStatusPredicateSql(fieldExpressions.severityText),
     hasTokens: `${attributeExpressions.totalTokens} > 0`,
   };
 }
@@ -481,7 +482,13 @@ export function getLLMLogExpressions(
     ...attributeExpressions,
     service: source.serviceNameExpression || 'ServiceName',
     severityText,
-    /** Error log events (mirrors the serviceDashboard convention). */
+    /**
+     * Error log events. Severity text has its own vocabulary, so this keeps a
+     * predicate of its own rather than reusing the span-status one: the extra
+     * status value that predicate matches cannot appear in a severity-text
+     * column, and the values severity text does use for errors are a
+     * different set.
+     */
     isError: `lower(${severityText}) = 'error'`,
     /**
      * Log events that belong to LLM activity: explicit LLM markers or any

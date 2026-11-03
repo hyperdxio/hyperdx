@@ -2,6 +2,7 @@ import { JSX } from 'react';
 import {
   ColumnMetaType,
   convertCHDataTypeToJSType,
+  isCHIntegerType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
@@ -12,6 +13,8 @@ export type SourceFieldKind =
   | 'serviceNameExpression'
   | 'serviceVersionExpression'
   | 'severityTextExpression'
+  | 'severityNumberExpression'
+  | 'eventNameExpression'
   | 'eventAttributesExpression'
   | 'resourceAttributesExpression'
   | 'traceIdExpression'
@@ -119,6 +122,16 @@ const FIELD_RULES: Record<SourceFieldKind, FieldRule> = {
       'log_level',
       'loglevel',
     ],
+    typeMatches: isStringy,
+    recommendStrategy: 'name-only',
+  },
+  severityNumberExpression: {
+    canonicalNames: ['SeverityNumber', 'severity_number'],
+    typeMatches: isCHIntegerType,
+    recommendStrategy: 'name-only',
+  },
+  eventNameExpression: {
+    canonicalNames: ['EventName', 'event_name'],
     typeMatches: isStringy,
     recommendStrategy: 'name-only',
   },

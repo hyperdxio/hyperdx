@@ -3,7 +3,11 @@ import {
   validateDashboardFilterOptionUniqueness,
   validateDashboardFilterVariableNames,
 } from '@hyperdx/common-utils/dist/dashboardValidation';
-import { isPrometheusLabelFilter } from '@hyperdx/common-utils/dist/filters';
+import {
+  getAdhocFilterSourceKinds,
+  isAdhocFilter,
+  isPrometheusLabelFilter,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   DashboardFilter,
   DashboardSchema,
@@ -11,6 +15,7 @@ import {
   PresetDashboard,
   PresetDashboardFilterSchema,
   resolveChartPaletteToken,
+  SourceKind,
   walkRawDashboardTileColors,
 } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
@@ -34,7 +39,6 @@ import {
 import { getSources } from '@/controllers/sources';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import type { ObjectId } from '@/models';
-import { getPromqlLabelFilterSourceError } from '@/routers/external-api/v2/utils/dashboards';
 import { objectIdSchema } from '@/utils/zod';
 
 // create routes that will get and update dashboards
@@ -60,40 +64,62 @@ const addFilterIssues = (
   validateDashboardFilterOptionUniqueness(data.filters ?? [], ctx);
 };
 
-/** Returns new and updated PROMETHEUS_LABEL filters. */
-function filterChangedPromqlLabelFilters(
-  filters: DashboardFilter[],
-  existingFilters: DashboardFilter[],
-) {
-  const existingSourceById = new Map(
-    existingFilters
-      .filter(isPrometheusLabelFilter)
-      .map(filter => [filter.id, filter.source]),
-  );
-  return filters
-    .filter(isPrometheusLabelFilter)
-    .filter(filter => existingSourceById.get(filter.id) !== filter.source);
+/** The sources a filter reads from, each with the kinds it must be. */
+function getFilterSourceRefs(
+  filter: DashboardFilter,
+): { id: string; kinds: SourceKind[] }[] {
+  if (isPrometheusLabelFilter(filter)) {
+    return [{ id: filter.source, kinds: [SourceKind.Promql] }];
+  }
+  if (isAdhocFilter(filter)) {
+    const kinds = getAdhocFilterSourceKinds(filter.sourceType);
+    return [...filter.sources, ...(filter.appliesToSourceIds ?? [])].map(
+      id => ({ id, kinds }),
+    );
+  }
+  return [];
 }
 
 /**
- * Rejects PROMETHEUS_LABEL filters whose `source` is missing or is not a PromQL
- * source. Returns an error message, or null when there is nothing to reject.
+ * Rejects PROMETHEUS_LABEL and ADHOC filters that reference a source that is
+ * missing or of the wrong kind. Resolving these filters needs a live source of
+ * the right kind, unlike other filter types. References the stored filter with
+ * the same ID already made are skipped, so a since-deleted source doesn't block
+ * unrelated saves. Returns an error message, or null when there is nothing to
+ * reject.
  */
-async function validatePromqlLabelFilterSources(
+async function validateFilterSources(
   teamId: ObjectId,
   filters: DashboardFilter[] = [],
-  existingFilters?: DashboardFilter[],
+  existingFilters: DashboardFilter[] = [],
 ): Promise<string | null> {
-  const promqlLabelFilters = existingFilters
-    ? filterChangedPromqlLabelFilters(filters, existingFilters)
-    : filters.filter(isPrometheusLabelFilter);
-  if (promqlLabelFilters.length === 0) return null;
+  const refKey = ({ id, kinds }: { id: string; kinds: SourceKind[] }) =>
+    `${id}:${kinds.join(',')}`;
+  const existingRefsById = new Map(
+    existingFilters.map(filter => [
+      filter.id,
+      new Set(getFilterSourceRefs(filter).map(refKey)),
+    ]),
+  );
+  const newRefs = filters.flatMap(filter =>
+    getFilterSourceRefs(filter).filter(
+      ref => !existingRefsById.get(filter.id)?.has(refKey(ref)),
+    ),
+  );
+  if (newRefs.length === 0) return null;
 
   const sources = await getSources(teamId.toString());
-  return getPromqlLabelFilterSourceError(
-    sources,
-    promqlLabelFilters.map(filter => filter.source),
+  const kindById = new Map(sources.map(s => [s._id.toString(), s.kind]));
+  const invalid = new Set(
+    newRefs
+      .filter(({ id, kinds }) => {
+        const kind = kindById.get(id);
+        return kind === undefined || !kinds.includes(kind);
+      })
+      .map(({ id }) => id),
   );
+  if (invalid.size === 0) return null;
+  return `The following filter source IDs do not exist or are not a kind of source the filter supports: ${[...invalid].join(', ')}`;
 }
 
 /**
@@ -152,10 +178,7 @@ router.post(
       // dashboard to the provisioner.
       const dashboard = _.omit(req.body, 'provisioned');
 
-      const sourceError = await validatePromqlLabelFilterSources(
-        teamId,
-        req.body.filters,
-      );
+      const sourceError = await validateFilterSources(teamId, req.body.filters);
       if (sourceError != null) {
         return res.status(400).json({ message: sourceError });
       }
@@ -193,10 +216,10 @@ router.patch(
       // `provisioned` is server-owned — see the POST handler above.
       const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
 
-      const sourceError = await validatePromqlLabelFilterSources(
+      const sourceError = await validateFilterSources(
         teamId,
         req.body.filters,
-        dashboard.filters ?? [],
+        dashboard.filters,
       );
       if (sourceError != null) {
         return res.status(400).json({ message: sourceError });

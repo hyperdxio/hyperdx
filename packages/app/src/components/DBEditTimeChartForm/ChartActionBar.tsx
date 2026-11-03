@@ -1,7 +1,6 @@
-import { Control, UseFormHandleSubmit, useWatch } from 'react-hook-form';
+import { Control, useWatch } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
 import { isRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
-import { SavedChartConfig } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Box,
@@ -12,7 +11,6 @@ import {
   Tooltip,
 } from '@mantine/core';
 import {
-  IconBell,
   IconDotsVertical,
   IconLayoutGrid,
   IconPlayerPlay,
@@ -63,7 +61,6 @@ function DashboardFiltersToggle({
 
 type ChartActionBarProps = {
   control: Control<ChartEditorFormState>;
-  handleSubmit: UseFormHandleSubmit<ChartEditorFormState>;
   tableConnection: TableConnection;
   sourceId?: string;
   dateRange?: [Date, Date];
@@ -73,16 +70,6 @@ type ChartActionBarProps = {
   parentRef: HTMLElement | null;
   groupBy: ChartEditorFormState['groupBy'];
   onSubmit: (suppressErrorNotification?: boolean) => void;
-  handleSave: (form: ChartEditorFormState) => void;
-  onSave?: (chart: SavedChartConfig) => void;
-  onClose?: () => void;
-  isSaving?: boolean;
-  /** Whether the edited chart currently carries an alert. */
-  hasAlert?: boolean;
-  handleSaveAlert?: (form: ChartEditorFormState) => void;
-  onSaveAlert?: (chart: SavedChartConfig) => void;
-  saveAlertLabel?: string;
-  isSavingAlert?: boolean;
   /**
    * Whether to offer "Save to dashboard". Defaults to "outside a dashboard".
    * The inline-alert editor turns it off: saving that chart as a tile would
@@ -98,7 +85,6 @@ type ChartActionBarProps = {
 
 export function ChartActionBar({
   control,
-  handleSubmit,
   tableConnection,
   sourceId,
   dateRange,
@@ -108,15 +94,6 @@ export function ChartActionBar({
   parentRef,
   groupBy,
   onSubmit,
-  handleSave,
-  onSave,
-  onClose,
-  isSaving,
-  hasAlert,
-  handleSaveAlert,
-  onSaveAlert,
-  saveAlertLabel = 'Save alert',
-  isSavingAlert,
   showSaveToDashboard,
   displayedTimeInputValue,
   setDisplayedTimeInputValue,
@@ -128,11 +105,13 @@ export function ChartActionBar({
   const displayType = useWatch({ control, name: 'displayType' });
   const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
 
-  // A time chart always buckets, and a PromQL tile that reduces a range query
-  // reads the same granularity even though it shows one value rather than a
-  // series. An all-instant PromQL tile has no resolution to choose.
+  // Time charts and heatmaps always bucket, and a PromQL tile that reduces a
+  // range query reads the same granularity even though it shows one value
+  // rather than a series. An all-instant PromQL tile has no resolution to
+  // choose.
   const showGranularity =
     activeTab === 'time' ||
+    activeTab === 'heatmap' ||
     (configType === 'promql' &&
       isPromqlDisplayType(displayType) &&
       isRangeQuery({
@@ -141,42 +120,7 @@ export function ChartActionBar({
       }));
 
   return (
-    <Flex justify="space-between" mt="sm">
-      <Flex gap="sm">
-        {onSave != null && (
-          <Button
-            data-testid="chart-save-button"
-            loading={isSaving}
-            variant="primary"
-            onClick={handleSubmit(handleSave)}
-          >
-            Save
-          </Button>
-        )}
-        {/* Only once an alert exists on the chart: with none there is nothing
-            to save, and the button would read as a second way to add one. */}
-        {onSaveAlert != null && handleSaveAlert != null && hasAlert && (
-          <Button
-            data-testid="chart-save-alert-button"
-            loading={isSavingAlert}
-            variant="primary"
-            leftSection={<IconBell size={16} />}
-            onClick={handleSubmit(handleSaveAlert)}
-          >
-            {saveAlertLabel}
-          </Button>
-        )}
-        {onClose != null && (
-          <Button
-            variant="subtle"
-            color="dark"
-            onClick={onClose}
-            disabled={isSaving}
-          >
-            Cancel
-          </Button>
-        )}
-      </Flex>
+    <Flex justify="flex-end" mt="sm">
       <Flex gap="sm" mb="sm" align="flex-start" justify="end">
         {filtersToggle != null && tabQueriesData(activeTab) && (
           <Flex h={`${EDITOR_INPUT_HEIGHTS.sm}px`} align="center">

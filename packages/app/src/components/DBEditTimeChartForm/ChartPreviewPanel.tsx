@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
-import { convertDateRangeToGranularityString } from '@hyperdx/common-utils/dist/core/utils';
-import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
+import {
+  isBuilderChartConfig,
+  isPromqlChartConfig,
+} from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
   BuilderChartConfigWithOptTimestamp,
@@ -25,7 +27,10 @@ import { DBBarChart } from '@/components/DBBarChart';
 import DBHeatmapChart, {
   buildHeatmapBoundsConfig,
   buildHeatmapBucketConfig,
+  buildHeatmapSeriesConfig,
   HEATMAP_N_BUCKETS,
+  HeatmapSeriesChartConfig,
+  resolveHeatmapGranularity,
   toHeatmapQuery,
 } from '@/components/DBHeatmapChart';
 import DBNumberChart from '@/components/DBNumberChart';
@@ -61,13 +66,15 @@ const RUN_TO_PREVIEW = 'Run the query to see the preview';
 
 function HeatmapPreview({
   config,
+  minGranularitySeconds,
 }: {
-  config: BuilderChartConfigWithDateRange;
+  config: HeatmapSeriesChartConfig;
+  minGranularitySeconds: number | undefined;
 }) {
   return (
     <div className="flex-grow-1 d-flex flex-column" style={{ height: 400 }}>
       <DBHeatmapChart
-        query={toHeatmapQuery(config)}
+        query={toHeatmapQuery({ ...config, minGranularitySeconds })}
         showLegend
         errorVariant="inline"
       />
@@ -79,7 +86,8 @@ function HeatmapPreview({
  * Heatmap renders via two sequential ClickHouse queries — bounds first, then
  * the bucketed-counts query that uses the resolved min/max.  Show both,
  * labeled, with placeholder tokens for the bucket-array literals (which only
- * exist at runtime once the bounds query returns).
+ * exist at runtime once the bounds query returns). A series heatmap runs a
+ * single time-chart query instead.
  */
 function HeatmapSQLPreview({
   config,
@@ -96,13 +104,35 @@ function HeatmapSQLPreview({
     ...config,
     timestampValueExpression,
   };
-  const { config: heatmapConfig, scaleType } =
-    toHeatmapQuery(configWithTimestamp);
-  const granularity = convertDateRangeToGranularityString(dateRange, 245);
+  const query = toHeatmapQuery(configWithTimestamp);
+
+  // Only PromQL heatmaps are calculated or histograms, and they have no SQL
+  if (query.mode === 'calculated' || query.mode === 'histogram') {
+    return null;
+  }
+
+  if (query.mode === 'series') {
+    const seriesConfig = { ...query.config, dateRange };
+    return (
+      <ChartSQLPreview
+        config={buildHeatmapSeriesConfig(
+          seriesConfig,
+          resolveHeatmapGranularity(seriesConfig),
+        )}
+        enableCopy
+      />
+    );
+  }
+  const { config: heatmapConfig, scaleType } = query;
+  const granularity = resolveHeatmapGranularity({
+    granularity: heatmapConfig.granularity,
+    dateRange,
+  });
 
   const boundsConfig = buildHeatmapBoundsConfig({
     config: heatmapConfig,
     scaleType,
+    granularity,
   });
 
   const bucketConfig = buildHeatmapBucketConfig({
@@ -149,6 +179,7 @@ type ChartPreviewPanelProps = {
   /** Required dashboard filters with nothing selected that block this tile. */
   missingRequiredFilterNames?: string[];
   setValue: (name: 'orderBy', value: string) => void;
+  setDisplayType: (displayType: DisplayType) => void;
   onSubmit: () => void;
 };
 
@@ -167,6 +198,7 @@ export function ChartPreviewPanel({
   dbTimeChartConfig,
   missingRequiredFilterNames,
   setValue,
+  setDisplayType,
   onSubmit,
 }: ChartPreviewPanelProps) {
   const [isSampleEventsOpen, setIsSampleEventsOpen] = useState(false);
@@ -275,6 +307,7 @@ export function ChartPreviewPanel({
           <DBTimeChart
             sourceId={sourceId}
             config={dbTimeChartConfig}
+            setDisplayType={setDisplayType}
             onTimeRangeSelect={onTimeRangeSelect}
             referenceLines={
               alert &&
@@ -323,8 +356,14 @@ export function ChartPreviewPanel({
       )}
       {queryReady &&
         queriedConfig != null &&
-        isBuilderChartConfig(queriedConfig) &&
-        activeTab === 'heatmap' && <HeatmapPreview config={queriedConfig} />}
+        (isBuilderChartConfig(queriedConfig) ||
+          isPromqlChartConfig(queriedConfig)) &&
+        activeTab === 'heatmap' && (
+          <HeatmapPreview
+            config={queriedConfig}
+            minGranularitySeconds={minGranularitySeconds}
+          />
+        )}
       {queryReady &&
         tableSource &&
         queriedConfig != null &&

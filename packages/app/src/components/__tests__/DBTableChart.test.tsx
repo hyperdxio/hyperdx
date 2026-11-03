@@ -54,6 +54,10 @@ jest.mock('@/hooks/useOnClickLinkBuilder', () => ({
   useOnClickLinkBuilder: jest.fn().mockReturnValue(null),
 }));
 
+jest.mock('@/hooks/useResultColumnFilterKeys', () => ({
+  useResultColumnFilterKeys: jest.fn(() => new Map()),
+}));
+
 jest.mock('../MaterializedViews/MVOptimizationIndicator', () =>
   jest.fn(() => null),
 );
@@ -501,6 +505,7 @@ describe('DBTableChart', () => {
       configType: 'promql' as const,
       dateRange: [new Date(), new Date()] as [Date, Date],
       connection: 'test-connection',
+      source: 'source-promql',
       promqlExpression: [{ expression: 'up' }],
       numberFormat: { output: 'number' as const },
     };

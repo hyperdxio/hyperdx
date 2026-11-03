@@ -4,12 +4,20 @@ import uPlot from 'uplot';
 import UplotReact from 'uplot-react';
 import { useElementSize } from '@mantine/hooks';
 
+import { useStableValue } from '@/hooks/useStableValue';
 import { NumberFormat } from '@/types';
 
-import { formatHeatmapTick, heatmapYAxisOptions } from './heatmapAxis';
+import {
+  formatBucketBound,
+  formatBucketRange,
+  formatHeatmapTick,
+  formatHeatmapValue,
+  heatmapYAxisOptions,
+} from './heatmapAxis';
 import {
   computeBucketPercentiles,
   gridToPlotData,
+  heatmapCellKind,
   HeatmapGrid,
   heatmapRowCount,
   HeatmapScaleType,
@@ -19,9 +27,10 @@ import {
   buildSeriesForPalette,
   HEATMAP_AXIS_FONT,
 } from './heatmapPaths';
-import { HeatmapTooltip } from './HeatmapTooltip';
+import { HeatmapTooltip, HeatmapTooltipCell } from './HeatmapTooltip';
 import { highlightDataPlugin, HighlightedPoint } from './highlightDataPlugin';
 import { applySelectionToChart, SelectionBounds } from './selection';
+import { SeriesAxisTooltip, useSeriesAxisHover } from './SeriesAxisTooltip';
 
 const isSameRenderedPoint = (
   a: HighlightedPoint | undefined,
@@ -125,37 +134,51 @@ export function HeatmapPlot({
   // render; depending on its identity would rebuild tickFormatter, then
   // the options memo, then uplot-react would see new top-level keys via
   // optionsUpdateState and treat the change as 'create', destroying the
-  // chart and wiping u.select. Hashing the contents lets the memo skip
-  // when the actual format is unchanged. (HDX-4147)
-  //
-  // Relies on NumberFormat being JSON-serializable: today it is plain
-  // config (string + number fields), so JSON.stringify is a faithful
-  // fingerprint. If the type ever grows a function-valued field
-  // (e.g. a custom `formatter` callback), switch to a shallow-equal
-  // helper keyed on the known fields, because functions stringify to
-  // undefined and would silently skip rebuilds.
-  const numberFormatKey = useMemo(
-    () => (numberFormat ? JSON.stringify(numberFormat) : ''),
-    [numberFormat],
-  );
+  // chart and wiping u.select.
+  const stableNumberFormat = useStableValue(numberFormat);
   const tickFormatter = useCallback(
-    (value: number) => formatHeatmapTick(value, scaleType, numberFormat),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [numberFormatKey, scaleType],
+    (value: number) => formatHeatmapTick(value, scaleType, stableNumberFormat),
+    [stableNumberFormat, scaleType],
+  );
+  const boundFormatter = useCallback(
+    (bound: number) => formatBucketBound(bound, stableNumberFormat),
+    [stableNumberFormat],
   );
 
   const plotData = useMemo(() => gridToPlotData(grid), [grid]);
   const rowCount = heatmapRowCount(grid.yAxis);
+  const cellKind = heatmapCellKind(grid.yAxis);
+
+  // Fresh grids carry fresh arrays, and new options make uplot-react recreate
+  // the chart instead of updating its data.
+  const seriesLabels = useStableValue(
+    grid.yAxis.type === 'series' ? grid.yAxis.labels : undefined,
+  );
+  const bucketBounds = useStableValue(
+    grid.yAxis.type === 'buckets' ? grid.yAxis.bounds : undefined,
+  );
+
   const bucketPercentiles = useMemo(
-    () => computeBucketPercentiles(grid),
+    () =>
+      grid.yAxis.type === 'series' ? null : computeBucketPercentiles(grid),
     [grid],
   );
 
   const options: uPlot.Options = useMemo(() => {
     const opt = baseHeatmapOptions;
-    const themedSeries = buildSeriesForPalette(palette);
+    const themedSeries = buildSeriesForPalette(palette, cellKind);
+    const yAxis = heatmapYAxisOptions({
+      seriesLabels,
+      bucketBounds,
+      scaleType,
+      tickFormatter,
+      boundFormatter,
+    });
     return {
       ...opt,
+      ...(yAxis.scale != null
+        ? { scales: { ...opt.scales, y: yAxis.scale } }
+        : {}),
       series: [opt.series[0], { ...opt.series[1], ...themedSeries }],
       ...(opt != null && opt.axes != null
         ? {
@@ -163,7 +186,7 @@ export function HeatmapPlot({
               opt.axes[0],
               {
                 ...opt.axes[1],
-                ...heatmapYAxisOptions(scaleType, tickFormatter),
+                ...yAxis.axis,
                 // Override the static size fn so it measures the actual
                 // formatted labels (from tickFormatter) rather than
                 // whatever raw values uPlot passes in a prior cycle.
@@ -199,8 +222,12 @@ export function HeatmapPlot({
         },
       },
       plugins: [
+        // False positive: onPointHighlight reads mouseInsideRef on cursor
+        // moves, not during render.
+        // eslint-disable-next-line react-hooks/refs
         highlightDataPlugin({
           margin: 20,
+          cellKind,
           onPointHighlight: point => {
             // Only show tooltip after the user has actually hovered the chart.
             // uPlot fires setCursor on init which would trigger this on page load.
@@ -253,12 +280,52 @@ export function HeatmapPlot({
         },
       ],
     };
-  }, [width, height, tickFormatter, scaleType, palette, hasFilter]);
+  }, [
+    width,
+    height,
+    tickFormatter,
+    scaleType,
+    palette,
+    hasFilter,
+    seriesLabels,
+    bucketBounds,
+    boundFormatter,
+    cellKind,
+  ]);
 
-  const highlightedPercentile =
+  const seriesAxisHover = useSeriesAxisHover(uplotRef, seriesLabels);
+
+  const highlightedRow =
     highlightedPoint && rowCount > 0
-      ? bucketPercentiles.get(highlightedPoint.closestIndex % rowCount)
-      : undefined;
+      ? highlightedPoint.closestIndex % rowCount
+      : 0;
+  const highlightedCell: HeatmapTooltipCell | undefined =
+    highlightedPoint == null
+      ? undefined
+      : seriesLabels != null
+        ? {
+            kind: 'series',
+            name: seriesLabels[highlightedRow] ?? '',
+            formattedValue: formatHeatmapValue(
+              highlightedPoint.countVal,
+              numberFormat,
+            ),
+          }
+        : bucketBounds != null
+          ? {
+              kind: 'bucket',
+              formattedRange: formatBucketRange(
+                bucketBounds,
+                highlightedRow,
+                boundFormatter,
+              ),
+              percentile: bucketPercentiles?.get(highlightedRow),
+            }
+          : {
+              kind: 'distribution',
+              formattedY: tickFormatter(highlightedPoint.yVal),
+              percentile: bucketPercentiles?.get(highlightedRow),
+            };
 
   return (
     <div
@@ -283,9 +350,11 @@ export function HeatmapPlot({
       onMouseMoveCapture={() => {
         mouseInsideRef.current = true;
       }}
+      onMouseMove={seriesAxisHover.onMouseMove}
       onMouseLeave={() => {
         mouseInsideRef.current = false;
         setHighlightedPoint(undefined);
+        seriesAxisHover.clear();
       }}
     >
       <UplotReact
@@ -300,14 +369,14 @@ export function HeatmapPlot({
           uplotRef.current = null;
         }}
       />
-      {highlightedPoint != null && (
+      <SeriesAxisTooltip hover={seriesAxisHover.hover} />
+      {highlightedPoint != null && highlightedCell != null && (
         <HeatmapTooltip
           point={highlightedPoint}
+          cell={highlightedCell}
           width={width}
           height={height}
           showDragHint={!!onFilter}
-          formatY={tickFormatter}
-          percentile={highlightedPercentile}
         />
       )}
     </div>

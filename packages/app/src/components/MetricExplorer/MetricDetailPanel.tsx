@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import { TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Badge,
   Box,
   Divider,
   Group,
@@ -116,9 +116,12 @@ function MetricDetail({
           <Text size="sm" fw={600} style={{ wordBreak: 'break-all' }}>
             {metricName}
           </Text>
-          <Badge size="xs" variant="light" style={{ flexShrink: 0 }}>
-            {METRIC_KIND_LABELS[metricType]}
-          </Badge>
+          <Badge
+            size="sm"
+            text={METRIC_KIND_LABELS[metricType]}
+            state="info"
+            style={{ flexShrink: 0 }}
+          />
         </Group>
 
         <Stack gap={4} mt={4}>
@@ -159,9 +162,7 @@ function MetricDetail({
           Tags
         </Text>
         {attributeKeys.length > 0 && (
-          <Badge size="xs" variant="default" fw="normal">
-            {attributeKeys.length}
-          </Badge>
+          <Badge size="sm" text={attributeKeys.length} state="neutral" />
         )}
       </Group>
 

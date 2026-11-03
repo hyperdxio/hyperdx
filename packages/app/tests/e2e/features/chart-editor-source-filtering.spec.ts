@@ -11,6 +11,7 @@ import { DashboardPage } from '../page-objects/DashboardPage';
 import { expect, test } from '../utils/base-test';
 import {
   DEFAULT_LOGS_SOURCE_NAME,
+  DEFAULT_METRICS_SOURCE_NAME,
   DEFAULT_TRACES_SOURCE_NAME,
   PROMQL_SOURCE_NAME,
 } from '../utils/constants';
@@ -78,7 +79,7 @@ test.describe(
       });
     });
 
-    test('keeps a queryable source across display type changes, and swaps for heatmaps', async ({
+    test('keeps a queryable source across display type changes, and swaps for heatmap modes', async ({
       page,
     }) => {
       test.setTimeout(120000);
@@ -106,6 +107,18 @@ test.describe(
           0,
         );
         await editor.closeSourcePicker();
+      });
+
+      await test.step('A series heatmap offers metric sources', async () => {
+        await editor.setHeatmapMode('Series');
+        await expect(editor.source).toHaveValue(DEFAULT_TRACES_SOURCE_NAME);
+        await editor.selectSource(DEFAULT_METRICS_SOURCE_NAME);
+        await expect(editor.source).toHaveValue(DEFAULT_METRICS_SOURCE_NAME);
+      });
+
+      await test.step('Switching back to distribution swaps in a trace source', async () => {
+        await editor.setHeatmapMode('Distribution');
+        await expect(editor.source).toHaveValue(DEFAULT_TRACES_SOURCE_NAME);
       });
     });
   },

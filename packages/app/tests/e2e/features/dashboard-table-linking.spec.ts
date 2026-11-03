@@ -206,8 +206,11 @@ test.describe(
         expect(url.searchParams.get('source')).toBe(logsSourceId);
         expect(url.searchParams.get('isLive')).toBe('false');
         // Default row click encodes the group-by filter as a SQL IN clause in
-        // the JSON-encoded `filters` param.
-        const filters = url.searchParams.get('filters') ?? '[]';
+        // the JSON-encoded `filters` param. The search page reads it with nuqs
+        // (double-encoded), so decode the extra layer before asserting.
+        const filters = decodeURIComponent(
+          url.searchParams.get('filters') ?? '[]',
+        );
         expect(filters).toContain(`ServiceName IN ('${serviceName}')`);
         const from = Number(url.searchParams.get('from'));
         const to = Number(url.searchParams.get('to'));

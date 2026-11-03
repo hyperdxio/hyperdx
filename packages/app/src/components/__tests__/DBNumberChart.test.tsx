@@ -779,6 +779,7 @@ describe('DBNumberChart', () => {
       displayType: DisplayType.Number,
       promqlExpression: 'e2e_service_up',
       connection: 'test-connection',
+      source: 'source-promql',
       dateRange: [new Date(), new Date()] as [Date, Date],
     };
 

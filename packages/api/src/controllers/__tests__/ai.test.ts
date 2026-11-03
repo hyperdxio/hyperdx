@@ -48,7 +48,10 @@ function setConfig(overrides: Record<string, string | undefined>) {
   Object.assign(mockConfig, overrides);
 }
 
-import { getAIModel } from '@/controllers/ai';
+import { DisplayType, SourceKind } from '@hyperdx/common-utils/dist/types';
+
+import { getAIModel, getChartConfigFromResolvedConfig } from '@/controllers/ai';
+import type { ISource } from '@/models/source';
 
 beforeEach(() => {
   setConfig({});
@@ -250,5 +253,46 @@ describe('openai provider', () => {
       const call = mockCreateOpenAI.mock.calls[0]?.[0];
       expect(call?.headers).toBeUndefined();
     });
+  });
+});
+
+describe('getChartConfigFromResolvedConfig', () => {
+  // @ts-expect-error mock source only has the fields getChartConfigFromResolvedConfig reads
+  const source: ISource = {
+    id: 'source-id',
+    kind: SourceKind.Trace,
+    connection: 'connection-id',
+    from: { databaseName: 'default', tableName: 'otel_traces' },
+    timestampValueExpression: 'Timestamp',
+  };
+
+  it('maps percentile aggregations to quantile with a level', () => {
+    const result = getChartConfigFromResolvedConfig(
+      {
+        displayType: DisplayType.Table,
+        select: [
+          { aggregationFunction: 'max', property: 'Duration' },
+          {
+            aggregationFunction: 'p95',
+            property: 'Duration',
+            condition: "ServiceName = 'api'",
+          },
+        ],
+        groupBy: 'SpanName',
+        timeRange: 'Past 1h',
+      },
+      source,
+    );
+
+    expect(result.select).toEqual([
+      { aggFn: 'max', valueExpression: 'Duration' },
+      {
+        aggFn: 'quantile',
+        level: 0.95,
+        valueExpression: 'Duration',
+        aggCondition: "ServiceName = 'api'",
+        aggConditionLanguage: 'sql',
+      },
+    ]);
   });
 });

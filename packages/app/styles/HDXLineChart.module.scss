@@ -9,7 +9,8 @@
 // On hover, hide the series area fills so overlapping lines stay readable. A
 // class toggle is cheaper than swapping each <Area>'s fill prop (which
 // re-created every Area). `!important` beats recharts' inline fill.
-.chartHovered :global(.recharts-area .recharts-area-area) {
+.chartHovered:not([data-stacked-fill])
+  :global(.recharts-area .recharts-area-area) {
   fill: none !important;
 }
 
@@ -19,7 +20,7 @@
 }
 
 .legendItem {
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
   margin-right: 8px;
   margin-bottom: 4px;
   display: flex;
@@ -57,7 +58,7 @@
   background-color: var(--color-bg-surface);
   border: 1px solid var(--color-border);
   border-radius: 2px;
-  font-size: 11px;
+  font-size: var(--hdx-content-font-size-compact);
 
   // Fixed width so hover and pinned tooltips match and don't reflow when a row's
   // content changes (e.g. the pinned copy icon swapping to a check).
@@ -89,6 +90,12 @@
 .chartTooltipContentClipped {
   max-height: 200px;
   overflow: hidden;
+}
+
+// Release-marker tooltip only. Its values wrap over several lines each, so the
+// shared cap above clips a cluster of releases almost immediately.
+.annotationTooltipContent {
+  max-height: 500px;
 }
 
 .chartTooltipFooter {

@@ -31,6 +31,7 @@ services:
         OTEL_COLLECTOR_CORE_VERSION: ${OTEL_COLLECTOR_CORE_VERSION}
     environment:
       CLICKHOUSE_ENDPOINT: 'tcp://ch-server:9000?dial_timeout=10s'
+      # host:port (plain HTTP), http://host:port or https://host:port
       CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT: 'ch-server:9363'
       HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE: ${HYPERDX_OTEL_EXPORTER_CLICKHOUSE_DATABASE}
       HYPERDX_API_KEY: ${HYPERDX_API_KEY}
@@ -111,7 +112,7 @@ services:
       hdx.dev.service: clickhouse
       hdx.dev.port: '${HDX_DEV_CH_HTTP_PORT:-8123}'
       hdx.dev.url: 'http://localhost:${HDX_DEV_CH_HTTP_PORT:-8123}'
-    image: clickhouse/clickhouse-server:26.8-alpine
+    image: clickhouse/clickhouse-server:26.8.36.3-alpine
     ports:
       - '${HDX_DEV_CH_HTTP_PORT:-8123}:8123' # http api
       - '${HDX_DEV_CH_NATIVE_PORT:-9000}:9000' # native

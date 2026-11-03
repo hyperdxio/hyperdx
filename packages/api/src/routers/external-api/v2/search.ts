@@ -3,6 +3,10 @@ import express from 'express';
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
 
+import {
+  EXTERNAL_API_SEARCH_DEFAULT_MAX_RESULTS,
+  EXTERNAL_API_SEARCH_MAX_RESULTS,
+} from '@/config';
 import { parseTimeRange } from '@/mcp/tools/query/helpers';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
 import { processRequestWithEnhancedErrors as validateRequest } from '@/utils/enhancedErrors';
@@ -223,10 +227,12 @@ const searchRequestSchema = z.object({
     .number()
     .int()
     .min(1)
-    .max(2000)
+    .max(EXTERNAL_API_SEARCH_MAX_RESULTS)
     .optional()
-    .default(100)
-    .describe('Maximum rows to return (1-2000). Default: 100.'),
+    .default(EXTERNAL_API_SEARCH_DEFAULT_MAX_RESULTS)
+    .describe(
+      `Maximum rows to return (1-${EXTERNAL_API_SEARCH_MAX_RESULTS}). Default: ${EXTERNAL_API_SEARCH_DEFAULT_MAX_RESULTS}.`,
+    ),
   offset: z
     .number()
     .int()

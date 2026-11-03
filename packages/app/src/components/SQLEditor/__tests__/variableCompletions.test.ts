@@ -53,8 +53,9 @@ describe('buildSqlVariableCompletions', () => {
     );
   });
 
-  it('withholds the markdown format, which only applies to markdown tiles', () => {
+  it('withholds the markdown and promql formats, which only apply elsewhere', () => {
     expect(labels([SERVICE])).not.toContain('${service:markdown}');
+    expect(labels([SERVICE])).not.toContain('${service:promql}');
   });
 
   it('withholds the macros that a chart builder input never expands', () => {

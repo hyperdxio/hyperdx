@@ -22,8 +22,10 @@ import {
 } from '@/components/DBTraceWaterfallChart';
 import { TimelineChart } from '@/components/TimelineChart';
 import { TRACE_WATERFALL_ROW_LIMIT } from '@/components/traceWaterfallLimits';
+import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import useRowWhere from '@/hooks/useRowWhere';
+import { getChartColorError, getChartColorSuccess } from '@/utils';
 
 // Mock setup
 jest.mock('@/components/traceWaterfallLimits', () => ({
@@ -77,6 +79,10 @@ jest.mock('@/components/TimelineChart', () => {
 
 jest.mock('@/hooks/useOffsetPaginatedQuery');
 jest.mock('@/hooks/useRowWhere');
+jest.mock('@/hooks/useMetadata', () => ({
+  ...jest.requireActual('@/hooks/useMetadata'),
+  useColumns: jest.fn(),
+}));
 jest.mock('../DBRowDataPanel', () => ({
   getJSONColumnNames: jest.fn().mockReturnValue([]),
 }));
@@ -116,7 +122,17 @@ jest.mock('@/hooks/useWaterfallSearchState', () => ({
 
 const mockUseOffsetPaginatedQuery = useOffsetPaginatedQuery as jest.Mock;
 const mockUseRowWhere = useRowWhere as jest.Mock;
+const mockUseColumns = useColumns as jest.Mock;
 const MockTimelineChart = TimelineChart as any;
+
+// Mirrors useColumns, which is disabled, so never loading, without a table.
+const setupColumnsMock = (state: { data?: object[]; isLoading?: boolean }) =>
+  mockUseColumns.mockImplementation(({ tableName }: { tableName: string }) =>
+    tableName ? { isLoading: false, ...state } : { isLoading: false },
+  );
+
+const selectsSeverityNumber = (query: { select: Array<{ alias?: string }> }) =>
+  query.select.some(s => s.alias === 'SeverityNumber');
 
 describe('DBTraceWaterfallChartContainer', () => {
   // Common test data
@@ -202,6 +218,7 @@ describe('DBTraceWaterfallChartContainer', () => {
     mockUseRowWhere.mockReturnValue(() => ({ where: 'row-id', aliasWith: [] }));
     MockTimelineChart.latestProps = {};
     mockUseWaterfallSearchState.mockReturnValue(makeWaterfallSearchState());
+    setupColumnsMock({ data: [] });
   });
 
   // Helper functions
@@ -240,7 +257,7 @@ describe('DBTraceWaterfallChartContainer', () => {
   //   the unfiltered fallback still returns data.
   const setupQueryMocks = (options: {
     traceData?: typeof mockTraceData | typeof emptyData;
-    logData?: typeof mockLogData | typeof emptyData;
+    logData?: { data: object[]; meta: object[] };
     traceError?: Error;
     logError?: Error;
     traceFilterError?: Error;
@@ -320,6 +337,42 @@ describe('DBTraceWaterfallChartContainer', () => {
     expect(MockTimelineChart.latestProps.rows.length).toBe(2);
     expect(MockTimelineChart.latestProps.rows[0]).toBeTruthy(); // Trace row
     expect(MockTimelineChart.latestProps.rows[1]).toBeTruthy(); // Log row
+  });
+
+  it.each([
+    ['whose span was never exported', 'unsent-span'],
+    ['without a span id', ''],
+  ])('renders a log %s at the root', async (_, SpanId) => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: { ...mockLogData, data: [{ ...mockLogData.data[0], SpanId }] },
+    });
+
+    renderComponent();
+    await waitForLoading();
+
+    expect(MockTimelineChart.latestProps.rows.length).toBe(2);
+  });
+
+  it.each([
+    ['error', () => getChartColorError()],
+    ['warn', () => getChartColorSuccess()],
+  ])('colors a %s log bar', async (SeverityText, expectedColor) => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: {
+        ...mockLogData,
+        data: [{ ...mockLogData.data[0], SeverityText }],
+      },
+    });
+
+    renderComponent();
+    await waitForLoading();
+
+    const logRow = MockTimelineChart.latestProps.rows.find(
+      (row: { type?: string }) => row.type === SourceKind.Log,
+    );
+    expect(logRow.events[0].backgroundColor).toBe(expectedColor());
   });
 
   it('renders total duration computed from all fetched spans', async () => {
@@ -452,17 +505,11 @@ describe('DBTraceWaterfallChartContainer', () => {
   });
 
   it('does not render the total duration stat when there are no spans', async () => {
-    // A log with no matching span never becomes a visible node (correlated
-    // logs attach to a span), so this renders the existing empty state --
-    // just confirms the new stat doesn't render in that case either.
     setupQueryMocks({ logData: mockLogData });
     renderComponent();
+    await waitForLoading();
 
-    await waitFor(() => {
-      expect(
-        screen.getByText('No matching spans or logs found'),
-      ).toBeInTheDocument();
-    });
+    expect(MockTimelineChart.latestProps.rows.length).toBe(1);
     expect(screen.queryByTestId('trace-total-stats')).not.toBeInTheDocument();
   });
 
@@ -702,7 +749,7 @@ describe('DBTraceWaterfallChartContainer', () => {
           HyperDXEventType: 'span' as const,
           type: 'trace',
           SpanAttributes: {
-            'http.url': 'https://api.example.com/users',
+            'http.url': 'https://example-api.clickhouse.com/users',
             'http.method': 'GET',
             'http.status_code': 200,
           },
@@ -720,8 +767,87 @@ describe('DBTraceWaterfallChartContainer', () => {
 
     expect(MockTimelineChart.latestProps.rows[0]).toBeTruthy();
     expect(
-      screen.getByText('http span https://api.example.com/users'),
+      screen.getByText('http span https://example-api.clickhouse.com/users'),
     ).toBeInTheDocument();
+  });
+
+  const apiUrl = 'https://example-api.clickhouse.com/users?id=1';
+  it.each([
+    [{ 'url.full': apiUrl }, `test span ${apiUrl}`],
+    // An RPC span is named after its method, which the URL repeats.
+    [{ 'rpc.system.name': 'grpc', 'url.full': apiUrl }, 'test span'],
+  ])('labels a span with %p as %p', async (SpanAttributes, label) => {
+    setupQueryMocks({
+      traceData: {
+        data: [{ ...mockTraceData.data[0], SpanAttributes }],
+        meta: [{ totalCount: 1 }],
+      },
+    });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(screen.getByText(label)).toBeInTheDocument();
+  });
+
+  // Main drew icons only for exact lowercase 'error'/'warn' and counted only
+  // SeverityText 'error'.
+  it.each([
+    [{ SeverityNumber: 17, SeverityText: 'info' }, ['Error'], '1 error'],
+    [{ SeverityText: 'Warning' }, ['Warning'], '0 errors'],
+    [{}, [], '0 errors'],
+  ])('marks log %p with icons %p and %s', async (log, icons, errors) => {
+    setupQueryMocks({
+      traceData: mockTraceData,
+      logData: {
+        data: [{ ...mockLogData.data[0], SeverityText: undefined, ...log }],
+        meta: [{ totalCount: 1 }],
+      },
+    });
+    renderComponent();
+    await waitForLoading();
+
+    expect(screen.getByText(errors)).toBeInTheDocument();
+    const logRow = MockTimelineChart.latestProps.rows.find(
+      (row: { type?: string }) => row.type === SourceKind.Log,
+    );
+    const label = renderWithMantine(logRow.label);
+    expect(
+      ['Error', 'Warning'].filter(icon => label.queryByLabelText(icon)),
+    ).toEqual(icons);
+  });
+
+  it.each([
+    ['has it', [true], { data: [{ name: 'SeverityNumber', type: 'UInt8' }] }],
+    ['lacks it', [false], { data: [{ name: 'SeverityText', type: 'String' }] }],
+    // A failed lookup still shows logs, just without SeverityNumber.
+    ['failed', [false], {}],
+    // Held until the columns settle so a changed select can't run it twice.
+    ['is loading', [], { isLoading: true }],
+  ])(
+    'when the log column lookup %s, enabled log queries select SeverityNumber: %p',
+    (_name, expected, columns) => {
+      setupColumnsMock(columns);
+      setupQueryMocks({ traceData: mockTraceData, logData: mockLogData });
+      renderComponent();
+
+      const selects = mockUseOffsetPaginatedQuery.mock.calls
+        .filter(
+          ([query, opts]) =>
+            query?.from?.tableName === 'log_table' && opts?.enabled,
+        )
+        .map(([query]) => selectsSeverityNumber(query));
+      expect([...new Set(selects)]).toEqual(expected);
+    },
+  );
+
+  it('renders a trace without a log source', async () => {
+    // Without a log table the lookup is disabled, so it must not hold the chart.
+    setupColumnsMock({ isLoading: true });
+    setupQueryMocks({ traceData: mockTraceData });
+    renderComponent(null);
+    await waitForLoading();
+
+    expect(MockTimelineChart.latestProps.rows).toHaveLength(1);
   });
 
   it('renders Spans and Logs chips when log source is present', async () => {
@@ -966,11 +1092,15 @@ describe('useEventsAroundFocus', () => {
     beforeData?: any;
     afterData?: any;
     enabled?: boolean;
+    tableSource?: TTraceSource | TLogSource;
+    selectSeverityNumber?: boolean;
   }) => {
     const {
       beforeData = { data: [], meta: [] },
       afterData = { data: [], meta: [] },
       enabled = true,
+      tableSource = mockTableSource,
+      selectSeverityNumber,
     } = options;
 
     mockUseOffsetPaginatedQuery.mockReset();
@@ -988,16 +1118,39 @@ describe('useEventsAroundFocus', () => {
 
     const { result } = renderHook(() =>
       useEventsAroundFocus({
-        tableSource: mockTableSource,
+        tableSource,
         focusDate: mockFocusDate,
         dateRange: mockDateRange,
         traceId: mockTraceId,
         enabled,
+        selectSeverityNumber,
       }),
     );
 
     return result.current;
   };
+
+  it.each([true, false])(
+    'selects SeverityNumber from a log source only with the flag (%p), never in row ids',
+    selectSeverityNumber => {
+      const getRowWhere = jest.fn(() => ({ where: 'row-id', aliasWith: [] }));
+      mockUseRowWhere.mockReturnValue(getRowWhere);
+
+      const result = testEventsAroundFocus({
+        tableSource: { ...mockTableSource, kind: SourceKind.Log } as TLogSource,
+        selectSeverityNumber,
+        beforeData: {
+          data: [{ Body: 'log line', SeverityNumber: 17 }],
+          meta: [{ name: 'Body', type: 'String' }],
+        },
+      });
+
+      const [query] = mockUseOffsetPaginatedQuery.mock.calls[0];
+      expect(selectsSeverityNumber(query)).toBe(selectSeverityNumber);
+      expect(getRowWhere).toHaveBeenCalledWith({ Body: 'log line' });
+      expect(result.rows[0]).toMatchObject({ SeverityNumber: 17 });
+    },
+  );
 
   it('fetches events before and after focus date', () => {
     const mockBeforeData = {

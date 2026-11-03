@@ -6,6 +6,7 @@ import {
 } from '@hyperdx/common-utils/dist/macros';
 import { ChartVariable } from '@hyperdx/common-utils/dist/types';
 import {
+  isFilterSingleSelect,
   substituteVariables,
   TemplateLanguage,
   VariableFormat,
@@ -30,8 +31,10 @@ const COMPLETION_FORMATS: Record<
       'An OR of quoted terms, for Lucene inputs. e.g. ("a" OR "b" OR "c"). Quote the reference (field:"$var") for exact-match behavior. Leave unquoted (field:$var) for substring matching.',
   },
   promql: {
+    promql:
+      'The default format, written out. A single-select variable renders its value as written, for {label="$var"}; a multi-select variable renders a regex alternation, for {label=~"$var"}. Escaped for the double-quoted string literal it sits in.',
     regex:
-      'The default format, written out. A regex alternation, escaped for the string literal it sits in. e.g. (a|b|c)',
+      'A regex alternation, always regex escaped, and escaped for the double-quoted string literal it sits in. e.g. (a|b|c)',
     csv: 'Comma-separated and unquoted, with no escaping.',
   },
   // Lucene inputs suggest only the bare `$name` reference.
@@ -186,7 +189,9 @@ function getPromqlVariableCompletions(
   return [
     reference(
       `$${name}`,
-      `The selected values of ${name} as a regex alternation, for use inside a matcher such as {label=~"$${name}"}. Matches everything when nothing is selected.`,
+      isFilterSingleSelect(variable)
+        ? `The selected value of ${name} as written, for use inside an exact matcher such as {label="$${name}"}. An empty string when nothing is selected.`
+        : `The selected values of ${name} as a regex alternation, for use inside a matcher such as {label=~"$${name}"}. Matches everything when nothing is selected.`,
     ),
     reference(
       `\${${name}}`,

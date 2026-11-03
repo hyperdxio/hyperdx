@@ -26,10 +26,11 @@ import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { CheckBoxControlled } from '@/components/InputControlled';
 import SelectControlled from '@/components/SelectControlled';
 import { SqlVariablesProvider } from '@/components/SQLEditor/variableCompletions';
-import { IS_PROMQL_ENABLED } from '@/config';
+import { IS_ADHOC_FILTERS_ENABLED, IS_PROMQL_ENABLED } from '@/config';
 import { useConfirm } from '@/useConfirm';
 import { useZIndex } from '@/zIndex';
 
+import { AdhocFilterEditForm } from './AdhocFilterEditForm';
 import { MODAL_SIZE } from './constants';
 import { CustomInputWrapper } from './CustomInputWrapper';
 import {
@@ -52,6 +53,14 @@ const FILTER_TYPE_OPTIONS = [
         {
           value: DashboardFilterType.enum.PROMETHEUS_LABEL,
           label: 'PromQL label values',
+        },
+      ]
+    : []),
+  ...(IS_ADHOC_FILTERS_ENABLED
+    ? [
+        {
+          value: DashboardFilterType.enum.ADHOC,
+          label: 'Ad hoc keys and values',
         },
       ]
     : []),
@@ -232,6 +241,12 @@ export const DashboardFilterEditForm = ({
                 control={control}
                 otherFilters={otherFilters}
               />
+            ) : formFilterType === 'ADHOC' ? (
+              <AdhocFilterEditForm
+                control={control}
+                setValue={setValue}
+                otherFilters={otherFilters}
+              />
             ) : formFilterType === 'PROMETHEUS_LABEL' ? (
               <SqlVariablesProvider variables={otherVariables}>
                 <PromqlLabelFilterEditForm
@@ -252,9 +267,17 @@ export const DashboardFilterEditForm = ({
             )}
           </ErrorBoundary>
 
-          {showRequiredFilterOptions && (
+          {showRequiredFilterOptions && formFilterType !== 'ADHOC' && (
             <Stack gap="xs">
               <Divider my="xs" />
+              <CheckBoxControlled
+                control={control}
+                name="isSingleSelect"
+                size="xs"
+                label="Single select"
+                description="Only one value can be selected at a time."
+                data-testid="filter-single-select-checkbox"
+              />
               <CheckBoxControlled
                 control={control}
                 name="isRequired"

@@ -405,12 +405,21 @@ describe('useChartConfig', () => {
           configType: 'promql',
           promqlExpression: 'e2e_service_up',
           connection: 'foo',
+          source: 'source-promql',
           dateRange: [
             new Date('2023-01-10 00:00:00'),
             new Date('2023-01-10 01:00:00'),
           ],
           ...overrides,
         }) as ChartConfigWithOptDateRange;
+
+      /** The server resolves the connection and table from the source alone. */
+      const expectOnlySourceNamed = (params: object) => {
+        expect(params).toHaveProperty('sourceId', 'source-promql');
+        expect(params).not.toHaveProperty('connectionId');
+        expect(params).not.toHaveProperty('database');
+        expect(params).not.toHaveProperty('table');
+      };
 
       const matrixResponse = {
         status: 'success' as const,
@@ -769,6 +778,9 @@ describe('useChartConfig', () => {
 
           await waitFor(() => expect(result.current.isSuccess).toBe(true));
           expect(prometheusApi.queryRange).not.toHaveBeenCalled();
+          expectOnlySourceNamed(
+            jest.mocked(prometheusApi.query).mock.calls[0][0],
+          );
           // Evaluated at the end of the window, and timeless: a Date column
           // here would be read back as a time series.
           expect(jest.mocked(prometheusApi.query).mock.calls[0][0].time).toBe(
@@ -802,6 +814,9 @@ describe('useChartConfig', () => {
           await waitFor(() => expect(result.current.isSuccess).toBe(true));
           expect(prometheusApi.query).not.toHaveBeenCalled();
           expect(prometheusApi.queryRange).toHaveBeenCalledTimes(1);
+          expectOnlySourceNamed(
+            jest.mocked(prometheusApi.queryRange).mock.calls[0][0],
+          );
         });
 
         it('reports an expression that evaluates to a string', async () => {
