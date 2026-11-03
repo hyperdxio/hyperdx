@@ -11,9 +11,10 @@ import {
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
+import { isPromqlEnabled } from '@/mcp/utils/promql';
 import { isDuplicateKeyError } from '@/utils/errors';
 
-import { buildSourceInput, mcpSaveSourceSchema } from './schemas';
+import { buildMcpSaveSourceSchema, buildSourceInput } from './schemas';
 
 export function registerSaveSource({
   context,
@@ -40,7 +41,7 @@ export function registerSaveSource({
         'spanNameExpression, spanKindExpression; session needs traceSourceId; ' +
         'metric needs metricTables and resourceAttributesExpression. Get ' +
         'connection and source IDs from clickstack_list_sources.',
-      inputSchema: mcpSaveSourceSchema,
+      inputSchema: buildMcpSaveSourceSchema(isPromqlEnabled(context)),
     },
     async input => {
       const sourceId = input.id;

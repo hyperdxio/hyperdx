@@ -8,9 +8,9 @@ jest.mock('@/utils/instrumentation', () => {
   };
 });
 
+import { joinPrometheusUpstreamUrl } from '@/controllers/promql';
 import {
   isClientDisconnect,
-  joinPrometheusUpstreamUrl,
   parseDuration,
   parseTimestamp,
   recordProxyOutcome,

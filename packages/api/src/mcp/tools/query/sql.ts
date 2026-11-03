@@ -116,11 +116,10 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         'Call clickstack_describe_source to discover column names before writing SQL.\n\n' +
         'Results are always returned as table rows — for time-series semantics, ' +
         'include a time column and ORDER BY it in your SQL.\n\n' +
-        'To run several independent queries at once (e.g. comparing sources, or several ' +
-        'breakdowns for one investigation), pass queries instead of sql. They run in ' +
-        `parallel under a shared ${SQL_BATCH_DEADLINE_MS / 1000}s budget, and each result ` +
-        'reports its own status (ok, error, or timeout), so one failing query does not ' +
-        'fail the others.',
+        'To run several independent queries at once (e.g. comparing sources), pass ' +
+        'queries instead of sql. They run in parallel under a shared ' +
+        `${SQL_BATCH_DEADLINE_MS / 1000}s budget, and each result reports its own ` +
+        'status (ok, error, or timeout), so one failing query does not fail the others.',
       inputSchema: sqlSchema,
     },
     async input => {
