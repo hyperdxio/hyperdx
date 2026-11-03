@@ -48,6 +48,7 @@ export interface IAlertHistory {
   errors?: IAlertError[];
   /** Diagnostics for the evaluation that wrote this record. */
   analytics?: IAlertHistoryAnalytics;
+  lastNotifiedAt?: Date;
 }
 
 const AlertHistorySchema = new Schema<IAlertHistory>({
@@ -124,6 +125,10 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
     },
     required: false,
     default: undefined,
+  },
+  lastNotifiedAt: {
+    type: Date,
+    required: false,
   },
 });
 

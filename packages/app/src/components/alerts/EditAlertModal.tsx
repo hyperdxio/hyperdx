@@ -77,6 +77,7 @@ const EditAlertFormSchema = z
     // nullish() (not optional()): persisted alerts store this as null, which
     // optional() would reject.
     numConsecutiveWindows: z.number().int().min(1).nullish(),
+    renotifyIntervalMinutes: z.number().int().min(0).nullish(),
   })
   .passthrough()
   .superRefine(validateAlertChannelSelection)
@@ -115,6 +116,7 @@ function alertToFormValues(alert: AlertsPageItem): Alert {
     tags: alert.tags,
     // Persisted null -> undefined for the NumberInput.
     numConsecutiveWindows: alert.numConsecutiveWindows ?? undefined,
+    renotifyIntervalMinutes: alert.renotifyIntervalMinutes ?? undefined,
   };
 
   if (alert.source === AlertSource.TILE) {
@@ -215,6 +217,10 @@ export function EditAlertModal({
   const numConsecutiveWindows = useWatch({
     control,
     name: 'numConsecutiveWindows',
+  });
+  const renotifyIntervalMinutes = useWatch({
+    control,
+    name: 'renotifyIntervalMinutes',
   });
 
   const maxScheduleOffsetMinutes = Math.max(
@@ -419,6 +425,8 @@ export function EditAlertModal({
             offsetWindowLabel={`from each ${intervalLabel} window`}
             numConsecutiveWindowsName="numConsecutiveWindows"
             numConsecutiveWindows={numConsecutiveWindows ?? undefined}
+            renotifyIntervalName="renotifyIntervalMinutes"
+            renotifyIntervalMinutes={renotifyIntervalMinutes ?? undefined}
           />
           {!isChartAlert && (
             <>

@@ -1223,6 +1223,7 @@ const alertBaseSchema = z.object({
   displayName: alertDisplayNameSchema,
   tags: alertTagsSchema,
   numConsecutiveWindows: z.number().int().min(1).nullish(),
+  renotifyIntervalMinutes: z.number().int().min(0).nullish(),
 });
 
 // External v2 alert schema. Inline alerts carry their chart config in the
