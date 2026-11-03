@@ -12,6 +12,7 @@ export default function PromqlExpressionEditor({
   index,
   length,
   metricNames,
+  placeholder,
   isIgnored,
   isInstantQuerySupported,
   isReducerSupported,
@@ -26,6 +27,7 @@ export default function PromqlExpressionEditor({
   index: number;
   length: number;
   metricNames: string[] | undefined;
+  placeholder: string;
   /** Whether the display type leaves this expression unqueried. */
   isIgnored: boolean;
   /** Whether the display type lets this expression choose between instant and range queries. */
@@ -62,7 +64,7 @@ export default function PromqlExpressionEditor({
           value={expressionField.value ?? ''}
           onChange={expressionField.onChange}
           onSubmit={() => onSubmit()}
-          placeholder="rate(http_requests_total{service='api'}[5m])"
+          placeholder={placeholder}
           metricNames={metricNames}
           enableMacros
         />

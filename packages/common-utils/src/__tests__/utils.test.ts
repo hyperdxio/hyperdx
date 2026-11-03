@@ -10,9 +10,11 @@ import {
   extractSettingsClauseFromEnd,
   findJsonExpressions,
   formatDate,
+  fromWallClock,
   getAlignedDateRange,
   getDistributedTableArgs,
   getFirstOrderingItem,
+  getPercentileAggFnLevel,
   hasNonEmptyOrderBy,
   hasPositiveSeriesLimit,
   isFirstOrderByAscending,
@@ -25,8 +27,11 @@ import {
   parseToStartOfFunction,
   pickBucketTimestampColumn,
   replaceJsonExpressions,
+  resolvePercentileAggFn,
   splitAndTrimCSV,
   splitAndTrimWithBracket,
+  toWallClock,
+  UTC_TIME_ZONE,
 } from '@/core/utils';
 import { isBuilderSavedChartConfig } from '@/guards';
 import {
@@ -56,7 +61,7 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '12h',
-          isUTC: true,
+          timeZone: UTC_TIME_ZONE,
         }),
       ).toEqual('Jan 1 12:00:00 PM');
     });
@@ -66,7 +71,7 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '24h',
-          isUTC: true,
+          timeZone: UTC_TIME_ZONE,
           format: 'withMs',
         }),
       ).toEqual('Jan 1 12:00:00.000');
@@ -77,7 +82,6 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '12h',
-          isUTC: false,
         }),
       ).toEqual('Jan 1 12:00:00 PM');
     });
@@ -87,11 +91,66 @@ describe('utils', () => {
       expect(
         formatDate(date, {
           clock: '24h',
-          isUTC: false,
           format: 'withMs',
         }),
       ).toEqual('Jan 1 12:00:00.000');
     });
+
+    it('formats in the given time zone', () => {
+      const date = new Date('2021-01-01T12:00:00Z');
+      expect(
+        formatDate(date, { clock: '24h', timeZone: 'Asia/Tokyo' }),
+      ).toEqual('Jan 1 21:00:00');
+    });
+  });
+
+  describe('toWallClock / fromWallClock', () => {
+    it('reads the clock in the given zone into UTC fields', () => {
+      expect(
+        toWallClock(
+          new Date('2026-10-22T15:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-10-22T08:00:00.000Z');
+    });
+
+    it('uses the offset in effect on each side of a DST change', () => {
+      // Los Angeles leaves daylight time (UTC-7) for standard time (UTC-8) on Nov 1 2026.
+      expect(
+        fromWallClock(
+          new Date('2026-10-31T08:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-10-31T15:00:00.000Z');
+      expect(
+        fromWallClock(
+          new Date('2026-11-02T08:00:00Z'),
+          'America/Los_Angeles',
+        ).toISOString(),
+      ).toBe('2026-11-02T16:00:00.000Z');
+    });
+
+    it('reads the clock correctly in the hours around a DST change', () => {
+      // New York goes from UTC-4 to UTC-5 at 06:00 UTC on Nov 1 2026.
+      const read = (iso: string) =>
+        toWallClock(new Date(iso), 'America/New_York').toISOString();
+      expect(read('2026-11-01T03:30:00Z')).toBe('2026-10-31T23:30:00.000Z');
+      expect(read('2026-11-01T05:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      expect(read('2026-11-01T06:30:00Z')).toBe('2026-11-01T01:30:00.000Z');
+      // And from UTC-5 to UTC-4 at 07:00 UTC on Mar 8 2026.
+      expect(read('2026-03-08T06:30:00Z')).toBe('2026-03-08T01:30:00.000Z');
+      expect(read('2026-03-08T07:30:00Z')).toBe('2026-03-08T03:30:00.000Z');
+    });
+
+    it.each(['Etc/UTC', 'Asia/Kolkata', 'America/Los_Angeles'])(
+      'round-trips through %s',
+      timeZone => {
+        const date = new Date('2026-03-08T10:30:15.250Z');
+        expect(fromWallClock(toWallClock(date, timeZone), timeZone)).toEqual(
+          date,
+        );
+      },
+    );
   });
 
   describe('splitAndTrimCSV', () => {
@@ -231,6 +290,27 @@ describe('utils', () => {
       const input = "'path\\\\', count()";
       const expected = ["'path\\\\'", 'count()'];
       expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should keep commas and brackets inside backtick-quoted identifiers', () => {
+      const input = "Timestamp, `a,b`, `x(y`, `it's` AS label, Body";
+      const expected = [
+        'Timestamp',
+        '`a,b`',
+        '`x(y`',
+        "`it's` AS label",
+        'Body',
+      ];
+      expect(splitAndTrimWithBracket(input)).toEqual(expected);
+    });
+
+    it('should keep the text after an unclosed quote', () => {
+      expect(splitAndTrimWithBracket('Timestamp, `a')).toEqual([
+        'Timestamp',
+        '`a',
+      ]);
+      expect(splitAndTrimWithBracket('a`b, c')).toEqual(['a`b, c']);
+      expect(splitAndTrimWithBracket("x, 'y, z")).toEqual(['x', "'y, z"]);
     });
 
     it('should handle mixed quotes with commas', () => {
@@ -1277,6 +1357,83 @@ describe('utils', () => {
           filter.type === 'QUERY_EXPRESSION' && filter.appliesToSourceIds,
         ).toBeUndefined();
       }
+    });
+
+    it('should remap ad hoc filter sources and applies-to sources from IDs to names', () => {
+      const sources: TSource[] = [
+        {
+          id: 'source1',
+          name: 'Logs',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'logs_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+        {
+          id: 'source2',
+          name: 'Traces',
+          connection: 'connection1',
+          kind: SourceKind.Log,
+          from: { databaseName: 'db1', tableName: 'traces_table' },
+          timestampValueExpression: 'Timestamp',
+          defaultTableSelectExpression: '',
+        },
+      ];
+
+      const dashboard: z.infer<typeof DashboardSchema> = {
+        id: 'dashboard1',
+        name: 'Ad hoc Dashboard',
+        tags: [],
+        tiles: [],
+        filters: [
+          {
+            id: 'filter-scoped',
+            type: 'ADHOC',
+            name: 'Scoped',
+            sourceType: 'sql',
+            sources: ['source1', 'source2'],
+            appliesToSourceIds: ['source2', 'deleted-source-id'],
+            isVariableEnabled: true,
+            variableName: 'scoped',
+          },
+          {
+            id: 'filter-unresolved',
+            type: 'ADHOC',
+            name: 'Unresolved',
+            sourceType: 'sql',
+            sources: ['source1'],
+            appliesToSourceIds: ['deleted-source-id'],
+            isVariableEnabled: true,
+            variableName: 'unresolved',
+          },
+        ],
+      };
+
+      const template = convertToDashboardTemplate(dashboard, sources);
+
+      expect(template.filters).toEqual([
+        {
+          id: 'filter-scoped',
+          type: 'ADHOC',
+          name: 'Scoped',
+          sourceType: 'sql',
+          sources: ['Logs', 'Traces'],
+          appliesToSourceIds: ['Traces'],
+          isVariableEnabled: true,
+          variableName: 'scoped',
+        },
+        {
+          id: 'filter-unresolved',
+          type: 'ADHOC',
+          name: 'Unresolved',
+          sourceType: 'sql',
+          sources: ['Logs'],
+          isVariableEnabled: true,
+          variableName: 'unresolved',
+        },
+      ]);
+      expect(() => DashboardTemplateSchema.parse(template)).not.toThrow();
     });
 
     // Variable settings are dashboard-local — unlike `source` and
@@ -3421,6 +3578,46 @@ describe('utils', () => {
       expect(
         convertDateRangeToGranularityString(range(30 * 60), undefined, 0),
       ).toBe('30 second');
+    });
+  });
+
+  describe('getPercentileAggFnLevel', () => {
+    it.each([
+      ['p50', 0.5],
+      ['p90', 0.9],
+      ['p95', 0.95],
+      ['p99', 0.99],
+    ])('returns the level of %s', (aggFn, level) => {
+      expect(getPercentileAggFnLevel(aggFn)).toBe(level);
+    });
+
+    it.each(['quantile', 'avg', 'p75', 'toString', undefined])(
+      'returns undefined for %s',
+      aggFn => {
+        expect(getPercentileAggFnLevel(aggFn)).toBeUndefined();
+      },
+    );
+  });
+
+  describe('resolvePercentileAggFn', () => {
+    it('rewrites a percentile shorthand as quantile with its level', () => {
+      expect(
+        resolvePercentileAggFn({
+          aggFn: 'p95',
+          valueExpression: 'Duration',
+          aggCondition: "ServiceName = 'api'",
+        }),
+      ).toEqual({
+        aggFn: 'quantile',
+        level: 0.95,
+        valueExpression: 'Duration',
+        aggCondition: "ServiceName = 'api'",
+      });
+    });
+
+    it('returns other select items unchanged', () => {
+      const select = { aggFn: 'quantile', level: 0.5, valueExpression: 'x' };
+      expect(resolvePercentileAggFn(select)).toBe(select);
     });
   });
 });

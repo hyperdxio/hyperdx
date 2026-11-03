@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import { TMetricSource } from '@hyperdx/common-utils/dist/types';
 import {
-  Badge,
   Box,
   Button,
   Collapse,
@@ -237,9 +237,11 @@ export function AttributeValueList({
             <Text size="sm" fw={500}>
               {attribute.name}
             </Text>
-            <Badge size="xs" variant="default">
-              {CATEGORY_LABELS[attribute.category]}
-            </Badge>
+            <Badge
+              size="sm"
+              text={CATEGORY_LABELS[attribute.category]}
+              state="neutral"
+            />
           </Group>
         </UnstyledButton>
         {onAddToGroupBy && (
@@ -366,9 +368,7 @@ export function AttributeList({
                   <Text size="xs" fw={600} c="dimmed">
                     {CATEGORY_LABELS[category]}
                   </Text>
-                  <Badge size="xs" variant="default">
-                    {attrs.length}
-                  </Badge>
+                  <Badge size="sm" text={attrs.length} state="neutral" />
                 </Group>
                 <Flex gap={6} wrap="wrap">
                   {attrs.map(attr => (
@@ -447,22 +447,28 @@ export function MetricAttributeHelperPanel({
                 <Text size="xs" c="dimmed">
                   Unit:
                 </Text>
-                <Badge size="xs" variant="light">
-                  {formatUnitDisplay(metricMetadata.unit)}
-                </Badge>
+                <Badge
+                  size="sm"
+                  text={formatUnitDisplay(metricMetadata.unit)}
+                  state="info"
+                />
               </Group>
             )}
           </Box>
           <Group gap="xs" wrap="nowrap">
             {!!metricType && (
-              <Badge size="xs" variant="light">
-                {metricKindLabel(metricType)}
-              </Badge>
+              <Badge
+                size="sm"
+                text={metricKindLabel(metricType)}
+                state="info"
+              />
             )}
             {attributeKeys.length > 0 && (
-              <Badge size="xs" variant="light">
-                {attributeKeys.length} attributes
-              </Badge>
+              <Badge
+                size="sm"
+                text={`${attributeKeys.length} attributes`}
+                state="neutral"
+              />
             )}
             <IconChevronDown
               size={16}

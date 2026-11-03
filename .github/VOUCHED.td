@@ -29,9 +29,11 @@
 adityapimpalkar
 alex-fedotyev
 alok87
+andrewdunndev
 archat-hash
 arj22
 aryainguz
+bahltushar
 bilalatique
 brandon-pereira
 colehpage
@@ -46,6 +48,7 @@ fleon
 gingerwizard
 gyancr7
 harshul1484
+hercynium FIPS fix for #3390
 jaggederest
 jeyrathnam
 jordan-simonovski

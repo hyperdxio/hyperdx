@@ -47,6 +47,7 @@ import { useClickhouseClient } from '@/clickhouse';
 import { IS_MTVIEWS_ENABLED } from '@/config';
 import { buildMTViewSelectQuery } from '@/hdxMTViews';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
+import { useQueryAttribution } from '@/queryAttribution';
 import { useSource } from '@/source';
 import { ChartQueryResult } from '@/types';
 import { stripClientSideConfigFields } from '@/utils/chartConfig';
@@ -363,6 +364,7 @@ export function useQueriedChartConfig(
 ) {
   const { enabled = true } = options ?? {};
   const clickhouseClient = useClickhouseClient();
+  const attribution = useQueryAttribution();
   const queryClient = useQueryClient();
   const metadata = useMetadataWithSettings();
 
@@ -419,6 +421,7 @@ export function useQueriedChartConfig(
           { ...config, minGranularitySeconds },
           config.dateRange,
           context.signal,
+          attribution,
         );
       }
 

@@ -1,24 +1,28 @@
 import * as React from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import {
   Autocomplete,
-  Badge,
   Divider,
   Group,
   Modal,
   Select,
   Stack,
-  Switch,
   Text,
   Tooltip,
 } from '@mantine/core';
-import { IconFlask } from '@tabler/icons-react';
 
-import { OPTIONS_FONTS } from './config/fonts';
+import { TimeZoneSelect } from './components/TimeZoneSelect';
+import {
+  isContentFontSize,
+  OPTIONS_CONTENT_FONT_SIZE,
+  OPTIONS_FONTS,
+} from './config/fonts';
 import { useAppTheme } from './theme/ThemeProvider';
 import { isValidThemeName, themes } from './theme';
 import {
   DEFAULT_ROW_CLICK_ACTION,
   RowClickAction,
+  useContentFontSize,
   UserPreferences,
   useUserPreferences,
 } from './useUserPreferences';
@@ -54,7 +58,7 @@ const SettingContainer = ({
       <div style={{ flex: 1 }}>
         {label}
         {!!description && (
-          <Text size="xs" mt={2}>
+          <Text size="xs" mt={2} c="var(--color-text-muted)">
             {description}
           </Text>
         )}
@@ -72,6 +76,7 @@ export const UserPreferencesModal = ({
   onClose: () => void;
 }) => {
   const { userPreferences, setUserPreference } = useUserPreferences();
+  const { contentFontSize } = useContentFontSize();
   const { themeName, setTheme, isDev } = useAppTheme();
 
   return (
@@ -105,16 +110,14 @@ export const UserPreferencesModal = ({
             allowDeselect={false}
           />
         </SettingContainer>
-        <SettingContainer label="Use UTC time">
-          <Switch
-            size="md"
-            onLabel="UTC"
-            checked={userPreferences.isUTC}
-            onChange={e =>
-              setUserPreference({
-                isUTC: e.currentTarget.checked,
-              })
-            }
+        <SettingContainer
+          label="Time zone"
+          description="Times are displayed and input in this zone."
+        >
+          <TimeZoneSelect
+            data-testid="time-zone-select"
+            value={userPreferences.timeZone}
+            onChange={timeZone => setUserPreference({ timeZone })}
           />
         </SettingContainer>
 
@@ -143,9 +146,7 @@ export const UserPreferencesModal = ({
           label={
             <Group align="center" gap="xs">
               Appearance
-              <Badge variant="light" fw="normal" size="xs">
-                Experimental
-              </Badge>
+              <Badge size="sm" text="Experimental" state="info" />
             </Group>
           }
           labelPosition="left"
@@ -168,13 +169,30 @@ export const UserPreferencesModal = ({
           />
         </SettingContainer>
 
+        <SettingContainer
+          label="Content font size"
+          description="Text size for log tables, data tables, and charts"
+        >
+          <Select
+            data-testid="content-font-size-select"
+            value={contentFontSize}
+            onChange={value =>
+              value &&
+              isContentFontSize(value) &&
+              setUserPreference({ contentFontSize: value })
+            }
+            data={OPTIONS_CONTENT_FONT_SIZE}
+            allowDeselect={false}
+          />
+        </SettingContainer>
+
         {/*
           Brand Theme Selector - DEV MODE ONLY
-          
+
           This is intentionally NOT available in production. Brand theme (HyperDX vs ClickStack)
           is deployment-configured via NEXT_PUBLIC_THEME environment variable.
           Each deployment is branded for a specific product; users don't choose this.
-          
+
           This dev-only UI exists for testing theme implementations during development.
         */}
         {isDev && (
@@ -188,14 +206,12 @@ export const UserPreferencesModal = ({
                   w={220}
                 >
                   <Badge
-                    variant="light"
-                    color="violet"
-                    fw="normal"
-                    size="xs"
-                    leftSection={<IconFlask size={10} />}
-                  >
-                    Dev Only
-                  </Badge>
+                    size="sm"
+                    text="Dev only"
+                    state="neutral"
+                    icon="flask"
+                    iconDir="start"
+                  />
                 </Tooltip>
               </Group>
             }

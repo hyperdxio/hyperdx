@@ -15,6 +15,7 @@ import {
   mcpLineTileSchema,
   mcpNumberTileSchema,
   mcpSqlTileSchema,
+  mcpStackedLineTileSchema,
 } from '@/mcp/tools/dashboards/schemas';
 
 // ---------------------------------------------------------------------------
@@ -28,7 +29,8 @@ import {
 
 // Inline alerts carry their chart config in the same dialect as dashboard
 // tile configs, restricted to the display types the alert evaluator can run
-// as a time series: line, stacked_bar, and number (builder or raw SQL).
+// as a time series: line, stacked_bar, stacked_line, and number (builder or
+// raw SQL).
 // Reuses the dashboard tile config shapes so agents author both from one
 // vocabulary; the raw SQL variant narrows displayType and drops the
 // tile-only onClick affordance. Full validation (formulas, number
@@ -53,7 +55,12 @@ const mcpAlertChartLevelWhereSchema = z
   .optional()
   .describe(
     'Chart-level filter applied to every select item (combined with each ' +
-      "item's own `where` via AND). Lucene syntax by default.",
+      "item's own `where` via AND). Write it in the language set by whereLanguage.",
+  );
+
+const mcpAlertChartLevelWhereLanguageSchema =
+  SearchConditionTrimmedLanguageSchema.optional().describe(
+    'Query language the chart-level `where` is written in. Lucene when omitted.',
   );
 
 const rejectedRawSqlAlertWhereField = z
@@ -71,33 +78,38 @@ const mcpAlertChartConfigSchema = z
     mcpLineTileSchema.shape.config.extend({
       name: mcpAlertChartConfigNameSchema,
       where: mcpAlertChartLevelWhereSchema,
-      whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
+      whereLanguage: mcpAlertChartLevelWhereLanguageSchema,
     }),
     mcpBarTileSchema.shape.config.extend({
       name: mcpAlertChartConfigNameSchema,
       where: mcpAlertChartLevelWhereSchema,
-      whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
+      whereLanguage: mcpAlertChartLevelWhereLanguageSchema,
+    }),
+    mcpStackedLineTileSchema.shape.config.extend({
+      name: mcpAlertChartConfigNameSchema,
+      where: mcpAlertChartLevelWhereSchema,
+      whereLanguage: mcpAlertChartLevelWhereLanguageSchema,
     }),
     mcpNumberTileSchema.shape.config.extend({
       name: mcpAlertChartConfigNameSchema,
       where: mcpAlertChartLevelWhereSchema,
-      whereLanguage: SearchConditionTrimmedLanguageSchema.optional(),
+      whereLanguage: mcpAlertChartLevelWhereLanguageSchema,
     }),
     mcpSqlTileSchema.shape.config.omit({ onClick: true }).extend({
       name: mcpAlertChartConfigNameSchema,
       where: rejectedRawSqlAlertWhereField,
       whereLanguage: rejectedRawSqlAlertWhereField,
       displayType: z
-        .enum(['line', 'stacked_bar', 'number'])
+        .enum(['line', 'stacked_bar', 'stacked_line', 'number'])
         .describe(
-          'How to render the SQL results. Alerts evaluate line, stacked_bar, or number charts only.',
+          'How to render the SQL results. Alerts evaluate line, stacked_bar, stacked_line, or number charts only.',
         ),
     }),
   ])
   .describe(
     'Chart configuration for inline alerts (required when source is "inline"). ' +
       'Same shape as a dashboard tile config, limited to displayType line, ' +
-      'stacked_bar, or number. Omit configType for the builder variant ' +
+      'stacked_bar, stacked_line, or number. Omit configType for the builder variant ' +
       '(sourceId + select); set configType to "sql" for the Raw SQL variant ' +
       '(connectionId + sqlTemplate; the template must use the $__timeFilter ' +
       'and $__timeInterval macros so each evaluation window can be queried).',
@@ -105,21 +117,23 @@ const mcpAlertChartConfigSchema = z
 
 const mcpAlertChannelSchema = z
   .object({
-    type: z
-      .literal('webhook')
-      .describe('Channel type for alert notifications.'),
+    type: z.literal('webhook').describe('Notification channel kind.'),
     webhookId: z
       .string()
-      .describe('Webhook destination ID (required for webhook channel).'),
+      .describe(
+        'ID of the webhook to notify. Get it from clickstack_get_webhook, or ' +
+          'create one with clickstack_save_webhook.',
+      ),
   })
-  .describe('Alert notification channel configuration.');
+  .describe("A webhook that receives this alert's notifications.");
 
 export const mcpSaveAlertSchema = z.object({
   id: z
     .string()
     .optional()
     .describe(
-      'Alert ID. Omit to create a new alert, provide to update an existing one.',
+      'Alert ID from clickstack_get_alert. Omit to create a new alert, ' +
+        'provide to update an existing one.',
     ),
 
   // Source
@@ -133,25 +147,46 @@ export const mcpSaveAlertSchema = z.object({
   savedSearchId: z
     .string()
     .optional()
-    .describe('Saved search ID (required when source is saved_search).'),
+    .describe(
+      'Saved search to monitor (required when source is saved_search). Get ' +
+        'the ID from clickstack_get_saved_search.',
+    ),
   dashboardId: z
     .string()
     .optional()
-    .describe('Dashboard ID (required when source is tile).'),
+    .describe(
+      'Dashboard containing the tile to monitor (required when source is ' +
+        'tile). Get the ID from clickstack_get_dashboard.',
+    ),
   tileId: z
     .string()
     .optional()
     .describe(
-      'Tile ID within the dashboard (required when source is tile). Must be a line, stacked bar, or number tile.',
+      'Tile to monitor within the dashboard (required when source is tile). ' +
+        'Get the ID from clickstack_get_dashboard with the dashboard ID. Must ' +
+        'be a line, stacked line, stacked bar, or number tile.',
     ),
   groupBy: z
     .string()
     .optional()
-    .describe('Group-by key for saved search alerts.'),
+    .describe(
+      'Saved search alerts only (ignored for other sources): a column or ' +
+        'expression, e.g. ServiceName, that splits the matching-event count ' +
+        'into one series per value. Each group is checked against the ' +
+        'threshold and tracked separately. Tile and inline alerts group via ' +
+        'their chart config instead.',
+    ),
   chartConfig: mcpAlertChartConfigSchema.optional(),
 
   // Threshold
-  threshold: z.number().describe('Threshold value for triggering the alert.'),
+  threshold: z
+    .number()
+    .describe(
+      'Value the alert metric is compared against each interval window. For ' +
+        'saved_search alerts the metric is the number of matching events in ' +
+        'the window; for tile and inline alerts it is the chart value. Lower ' +
+        'bound for between/not_between.',
+    ),
   thresholdType: z
     .enum([
       'above',
@@ -163,18 +198,30 @@ export const mcpSaveAlertSchema = z.object({
       'between',
       'not_between',
     ])
-    .describe('How the metric value is compared against the threshold.'),
+    .describe(
+      'Comparison that fires the alert: above is value >= threshold, ' +
+        'above_exclusive is >, below is <, below_or_equal is <=, equal is ===, ' +
+        'not_equal is !== (exact match, so avoid them for averaged or rate ' +
+        'values). between ' +
+        'fires when threshold <= value <= thresholdMax; not_between fires ' +
+        'outside that range.',
+    ),
   thresholdMax: z
     .number()
     .optional()
     .describe(
-      'Upper bound (required when thresholdType is between or not_between, must be >= threshold).',
+      'Upper bound of the range for between/not_between (required for ' +
+        'those, must be >= threshold). Ignored and cleared for other ' +
+        'threshold types.',
     ),
 
   // Schedule
   interval: z
     .enum(['1m', '5m', '15m', '30m', '1h', '6h', '12h', '1d'])
-    .describe('Evaluation interval.'),
+    .describe(
+      'How often the alert is evaluated; also the size of each evaluated ' +
+        'time window.',
+    ),
   scheduleOffsetMinutes: z
     .number()
     .int()
@@ -182,14 +229,20 @@ export const mcpSaveAlertSchema = z.object({
     .max(1439)
     .optional()
     .describe(
-      'Offset from the interval boundary in minutes (must be < interval).',
+      'Shifts each evaluation window this many minutes past the interval ' +
+        'boundary. Must be less than the interval. Ignored when ' +
+        'scheduleStartAt is set.',
     ),
   scheduleStartAt: z
     .string()
     .datetime()
     .nullable()
     .optional()
-    .describe('Absolute UTC anchor for window alignment (ISO 8601).'),
+    .describe(
+      'UTC timestamp that evaluation windows are aligned to; when set, ' +
+        'scheduleOffsetMinutes is ignored. On update, omit to keep the ' +
+        'stored value or send null to clear it.',
+    ),
 
   // Channel
   channel: mcpAlertChannelSchema.optional(),
@@ -199,7 +252,9 @@ export const mcpSaveAlertSchema = z.object({
     .max(MAX_ALERT_CHANNELS)
     .optional()
     .describe(
-      `Notification channels (1-${MAX_ALERT_CHANNELS}). Provide this or "channel"; if both, "channel" must match the first entry.`,
+      'Webhooks notified when the alert fires or resolves. Provide this or ' +
+        '"channel"; if both, "channel" must match the first entry. Entries ' +
+        'must be unique.',
     ),
 
   // Metadata
@@ -208,13 +263,16 @@ export const mcpSaveAlertSchema = z.object({
     .min(1)
     .max(512)
     .optional()
-    .describe('Alert title template (supports Handlebars syntax).'),
+    .describe(
+      'Handlebars template for the notification title. When omitted, a ' +
+        'default title based on the display name is used.',
+    ),
   message: z
     .string()
     .min(1)
     .max(4096)
     .optional()
-    .describe('Alert message template (supports Handlebars syntax).'),
+    .describe('Handlebars template for the notification body.'),
   displayName: alertDisplayNameSchema.describe(
     'Display name shown for the alert in the UI. Defaults to the saved search name, dashboard tile name, or inline chartConfig name when omitted. Overridden by the "name" field in alert notifications when provided.',
   ),

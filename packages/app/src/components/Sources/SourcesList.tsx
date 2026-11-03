@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/router';
+import { Badge } from '@clickhouse/click-ui';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
   Alert,
-  Badge,
   Box,
   Button,
   Card,
@@ -206,9 +206,7 @@ export function SourcesList({
                     {s.name}
                   </Text>
                   {s.disabled && (
-                    <Badge size="xs" variant="light" color="gray">
-                      Disabled
-                    </Badge>
+                    <Badge size="sm" text="Disabled" state="neutral" />
                   )}
                 </Group>
                 <Text size={subtextSize} c="dimmed" mt={4}>

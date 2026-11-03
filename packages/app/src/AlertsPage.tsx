@@ -21,14 +21,14 @@ import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { ALERT_STATE_FILTER_OPTIONS } from '@/utils/alerts';
 
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
 import { withAppNav } from './layout';
 
 const SEARCH_DEBOUNCE_MS = 300;
 
 export default function AlertsPage() {
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Alerts');
   const mounted = useMounted();
 
   const [search, setSearch] = useQueryState('search');
@@ -114,7 +114,7 @@ export default function AlertsPage() {
       style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}
     >
       <Head>
-        <title>Alerts - {brandName}</title>
+        <title>{title}</title>
       </Head>
       <PageHeader title="Alerts" />
       <div

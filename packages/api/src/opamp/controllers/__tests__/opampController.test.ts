@@ -64,6 +64,52 @@ describe('opampController', () => {
     });
   });
 
+  describe('buildOtelCollectorConfig prometheusremotewrite exporter', () => {
+    it('takes the scheme and TLS mode from the collector environment, defaulting to plain HTTP', () => {
+      configState.IS_PROMQL_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      // The defaults matter: collector images older than this change don't
+      // export HYPERDX_PROMETHEUS_*, and must keep today's plain-HTTP config.
+      expect(cfg.exporters?.prometheusremotewrite).toMatchObject({
+        endpoint:
+          '${env:HYPERDX_PROMETHEUS_SCHEME:-http}://${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}/write',
+        tls: { insecure: '${env:HYPERDX_PROMETHEUS_TLS_INSECURE:-true}' },
+      });
+    });
+  });
+
+  describe('buildOtelCollectorConfig prometheus receiver', () => {
+    it('scrapes ClickHouse in its own job so the scheme follows the endpoint', () => {
+      configState.IS_PROMQL_ENABLED = true;
+
+      const cfg = buildOtelCollectorConfig([
+        { apiKey: 'k1', collectorAuthenticationEnforced: false },
+      ]);
+
+      const scrapeConfigs = cfg.receivers.prometheus?.config.scrape_configs;
+      // The collector's own endpoint is always plain HTTP: no scheme here.
+      expect(scrapeConfigs?.[0]).toEqual({
+        job_name: 'otelcol',
+        scrape_interval: '30s',
+        static_configs: [{ targets: ['0.0.0.0:8888'] }],
+      });
+      // The default keeps collector images that predate
+      // HYPERDX_PROMETHEUS_SCHEME on plain HTTP.
+      expect(scrapeConfigs?.[1]).toEqual({
+        job_name: 'clickhouse',
+        scrape_interval: '30s',
+        scheme: '${env:HYPERDX_PROMETHEUS_SCHEME:-http}',
+        static_configs: [
+          { targets: ['${env:CLICKHOUSE_PROMETHEUS_METRICS_ENDPOINT}'] },
+        ],
+      });
+    });
+  });
+
   describe('buildOtelCollectorConfig otlp/hyperdx authentication', () => {
     it('accepts bare and bearer-prefixed authorization values for each API key', () => {
       const cfg = buildOtelCollectorConfig([

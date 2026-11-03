@@ -1,4 +1,5 @@
-import { Badge, Box, Group, Text } from '@mantine/core';
+import { Badge } from '@clickhouse/click-ui';
+import { Box, Group, Text } from '@mantine/core';
 
 import type { WhatsNew } from './useWhatsNew';
 
@@ -32,11 +33,9 @@ export const WhatsNewHighlightRow = ({
     <Box w={BADGE_COLUMN_WIDTH} flex="none">
       <Badge
         size="sm"
-        variant="light"
-        color={headline.kind === 'breaking' ? 'red' : 'blue'}
-      >
-        {headline.kind === 'breaking' ? 'Breaking' : 'New'}
-      </Badge>
+        text={headline.kind === 'breaking' ? 'Breaking' : 'New'}
+        state={headline.kind === 'breaking' ? 'danger' : 'info'}
+      />
     </Box>
     {/* flex + miw=0 lets the headline wrap and clamp within the row rather than
         forcing the container wider. */}

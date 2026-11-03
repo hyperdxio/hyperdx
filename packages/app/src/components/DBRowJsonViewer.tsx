@@ -20,16 +20,21 @@ import {
   IconCheck,
   IconCopy,
   IconFilter,
+  IconList,
   IconMinus,
   IconPlus,
   IconSearch,
   IconSettings,
+  IconSortAscendingLetters,
+  IconSortDescendingLetters,
   IconTextWrap,
 } from '@tabler/icons-react';
 
 import HyperJson, {
+  DEFAULT_KEY_ORDER,
   FormatLeafValue,
   GetLineActions,
+  KeyOrder,
   LineAction,
 } from '@/components/HyperJson';
 import { useMaterializedAliasColumnsOption } from '@/hooks/useMaterializedAliasColumnsOption';
@@ -133,6 +138,9 @@ type ViewerOptions = {
   whiteSpace?: 'pre' | 'pre-wrap';
   tabulate: boolean;
   filterBlanks: boolean;
+  // Absent for options stored before sorting was configurable; falls back to
+  // the alphabetical default.
+  keyOrder?: KeyOrder;
 };
 
 const VIEWER_OPTIONS_KEY = 'hdx_json_viewer_options';
@@ -142,7 +150,30 @@ const DEFAULT_VIEWER_OPTIONS: ViewerOptions = {
   whiteSpace: 'pre-wrap',
   tabulate: true,
   filterBlanks: false,
+  keyOrder: DEFAULT_KEY_ORDER,
 };
+
+const KEY_ORDER_OPTIONS: {
+  value: KeyOrder;
+  label: string;
+  icon: React.ReactNode;
+}[] = [
+  {
+    value: 'asc',
+    label: 'Sort keys A–Z',
+    icon: <IconSortAscendingLetters size={14} />,
+  },
+  {
+    value: 'desc',
+    label: 'Sort keys Z–A',
+    icon: <IconSortDescendingLetters size={14} />,
+  },
+  {
+    value: 'original',
+    label: 'Original order',
+    icon: <IconList size={14} />,
+  },
+];
 
 /**
  * Migrates old `lineWrap` boolean to `whiteSpace` enum.
@@ -239,6 +270,7 @@ function HyperJsonMenu({
   const [showMaterializedAliasColumns, setShowMaterializedAliasColumns] =
     useMaterializedAliasColumnsOption();
   const effectiveWhiteSpace = jsonOptions.whiteSpace ?? 'pre-wrap';
+  const effectiveKeyOrder = jsonOptions.keyOrder ?? DEFAULT_KEY_ORDER;
 
   return (
     <Group>
@@ -285,7 +317,7 @@ function HyperJsonMenu({
       </UnstyledButton>
       <Menu width={240} withinPortal={false}>
         <Menu.Target>
-          <UnstyledButton>
+          <UnstyledButton data-testid="json-viewer-options-menu">
             <IconSettings size={14} />
           </UnstyledButton>
         </Menu.Target>
@@ -361,6 +393,29 @@ function HyperJsonMenu({
               Show materialized and alias columns
             </Menu.Item>
           )}
+          <Menu.Divider />
+          <Menu.Label lh={1} py={6}>
+            Property order
+          </Menu.Label>
+          {KEY_ORDER_OPTIONS.map(({ value, label, icon }) => (
+            <Menu.Item
+              key={value}
+              data-testid={`json-viewer-key-order-${value}`}
+              lh="1"
+              py={8}
+              leftSection={icon}
+              rightSection={
+                effectiveKeyOrder === value ? (
+                  <IconCheck size={14} className="ps-2" />
+                ) : null
+              }
+              onClick={() =>
+                setJsonOptions({ ...jsonOptions, keyOrder: value })
+              }
+            >
+              {label}
+            </Menu.Item>
+          ))}
         </Menu.Dropdown>
       </Menu>
     </Group>

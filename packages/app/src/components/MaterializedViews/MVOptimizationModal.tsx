@@ -1,20 +1,10 @@
 import { useMemo } from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import { MVOptimizationExplanation } from '@hyperdx/common-utils/dist/core/materializedViews';
 import { MaterializedViewConfiguration } from '@hyperdx/common-utils/dist/types';
-import {
-  Accordion,
-  Alert,
-  Badge,
-  Group,
-  Modal,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Accordion, Alert, Group, Modal, Text, Tooltip } from '@mantine/core';
 
 import MVConfigSummary from './MVConfigSummary';
-
-const WARNING_COLOR = 'var(--color-bg-warning)';
-const SUCCESS_COLOR = 'var(--color-bg-success)';
 
 function mvConfigToKey(config: MaterializedViewConfiguration) {
   return `mv-${config.databaseName}-${config.tableName}`;
@@ -75,35 +65,38 @@ export default function MVOptimizationModal({
                     {isBeingUsedByOptimizedConfig ? (
                       <Tooltip label={`Estimated rows scanned: ${rowEstimate}`}>
                         <Badge
-                          me="md"
-                          color={SUCCESS_COLOR}
+                          text="Active"
+                          state="success"
+                          style={{
+                            marginInlineEnd: 'var(--mantine-spacing-md)',
+                          }}
                           data-testid="mv-optimization-modal-status"
                           data-mv-status="active"
-                        >
-                          Active
-                        </Badge>
+                        />
                       </Tooltip>
                     ) : hasErrors ? (
                       <Tooltip label="This materialized view is not compatible with the selected query.">
                         <Badge
-                          me="md"
-                          color={WARNING_COLOR}
+                          text="Incompatible"
+                          state="warning"
+                          style={{
+                            marginInlineEnd: 'var(--mantine-spacing-md)',
+                          }}
                           data-testid="mv-optimization-modal-status"
                           data-mv-status="incompatible"
-                        >
-                          Incompatible
-                        </Badge>
+                        />
                       </Tooltip>
                     ) : explanation ? (
                       <Tooltip label={`Estimated rows scanned: ${rowEstimate}`}>
                         <Badge
-                          me="md"
-                          color="gray"
+                          text="Skipped"
+                          state="neutral"
+                          style={{
+                            marginInlineEnd: 'var(--mantine-spacing-md)',
+                          }}
                           data-testid="mv-optimization-modal-status"
                           data-mv-status="skipped"
-                        >
-                          Skipped
-                        </Badge>
+                        />
                       </Tooltip>
                     ) : null}
                   </Group>

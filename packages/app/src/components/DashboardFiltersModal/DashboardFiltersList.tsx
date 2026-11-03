@@ -17,6 +17,7 @@ import {
 import {
   IconAsterisk,
   IconBuildingBroadcastTower,
+  IconFilter,
   IconLabel,
   IconList,
   IconPencil,
@@ -47,6 +48,16 @@ interface DashboardFiltersListProps {
   onAddNew: () => void;
 }
 
+function getSourceNames(
+  ids: string[],
+  sources?: { id: string; name: string }[],
+) {
+  return ids
+    .map(id => sources?.find(s => s.id === id)?.name)
+    .filter((name): name is string => !!name)
+    .join(', ');
+}
+
 /** Where the dropdown's values come from: the queried source, or the authored list. */
 function getValuesAttribute(
   filter: DashboardFilter,
@@ -74,6 +85,12 @@ function getValuesAttribute(
         label: `${count} custom option${count === 1 ? '' : 's'}`,
       };
     }
+    case 'ADHOC':
+      return {
+        icon: <IconFilter size={14} />,
+        tooltip: 'Sources the condition keys and values come from',
+        label: getSourceNames(filter.sources, sources),
+      };
     default:
       filter satisfies never; // exhaustive check
       return { icon: <IconSearch size={14} />, label: '' };
@@ -91,11 +108,7 @@ function getBroadcastTargetDisplay(
     return 'All sources';
   }
 
-  const appliedSourceNames = broadcastTarget.appliesToSourceIds
-    .map(id => sources?.find(s => s.id === id)?.name)
-    .filter((name): name is string => !!name);
-
-  return appliedSourceNames.join(', ');
+  return getSourceNames(broadcastTarget.appliesToSourceIds, sources);
 }
 
 export const DashboardFiltersList = ({

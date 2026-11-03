@@ -77,7 +77,6 @@ describe('heatmapPaths', () => {
         stepMs: 1000,
         yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 3] },
         cells: [1, 5],
-        cellKind: 'count',
       },
       [0, 1],
     );
@@ -95,7 +94,6 @@ describe('heatmapPaths', () => {
         stepMs: 1000,
         yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 2] },
         cells: [0, 3, 4, 4],
-        cellKind: 'count',
       },
       [-1, 0, 1, 1],
     );
@@ -112,7 +110,6 @@ describe('heatmapPaths', () => {
         stepMs: 1000,
         yAxis: { type: 'numeric', scale: 'linear', edges: [0, 1, 2] },
         cells: [1, 1],
-        cellKind: 'count',
       },
       [1, 1],
     );

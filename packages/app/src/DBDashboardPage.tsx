@@ -34,11 +34,19 @@ import {
   Granularity,
   isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
-import { getBlockingRequiredFilterNames } from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import {
+  getAdhocFilterTargetsForTile,
+  getBlockingRequiredFilterNames,
+} from '@hyperdx/common-utils/dist/dashboardFilterValues';
+import {
+  getPromqlFilters,
+  getSqlFilters,
+} from '@hyperdx/common-utils/dist/filters';
 import {
   displayTypeRequiresSource,
   isBuilderChartConfig,
   isBuilderSavedChartConfig,
+  isPromqlChartConfig,
   isPromqlSavedChartConfig,
   isRawSqlChartConfig,
   isRawSqlSavedChartConfig,
@@ -50,13 +58,12 @@ import {
 import { isMissingFiltersMacro } from '@hyperdx/common-utils/dist/macros';
 import {
   AlertState,
-  BuilderChartConfigWithDateRange,
+  BroadcastFilter,
   ChartConfigWithDateRange,
   ChartVariable,
   DashboardContainer as DashboardContainerSchema,
   DashboardFilter,
   DisplayType,
-  Filter,
   getSampleWeightExpression,
   isLogSource,
   isTraceSource,
@@ -99,11 +106,11 @@ import {
   IconChevronsDown,
   IconChevronsUp,
   IconCopy,
-  IconCornerDownRight,
   IconDeviceFloppy,
   IconDotsVertical,
   IconDownload,
   IconFilterEdit,
+  IconInfoCircle,
   IconLayoutSidebarRightCollapse,
   IconLayoutSidebarRightExpand,
   IconPencil,
@@ -123,8 +130,14 @@ import {
 } from '@tabler/icons-react';
 
 import { IsolatedChartSyncProvider } from '@/chartSync';
+import { getAllowedSourceKinds } from '@/components/ChartEditor/utils';
 import { mergeAnnotations } from '@/components/charts/chartAnnotations';
 import { ContactSupportText } from '@/components/ContactSupportText';
+import {
+  buildMoveTargets,
+  MoveTarget,
+  MoveToGroupSubmenu,
+} from '@/components/dashboard/MoveToGroupSubmenu';
 import SnapGridLayout from '@/components/dashboard/SnapGridLayout';
 import DashboardContainer from '@/components/DashboardContainer';
 import {
@@ -139,6 +152,7 @@ import { DashboardKioskHeader } from '@/components/DashboardKioskHeader';
 import DashboardTableOfContents from '@/components/DashboardTableOfContents';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import DBNumberChart from '@/components/DBNumberChart';
+import type { RowSidePanelContextProps } from '@/components/DBRowSidePanel';
 import DBTableChart from '@/components/DBTableChart';
 import { DBTimeChart } from '@/components/DBTimeChart';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -161,12 +175,14 @@ import {
   useDeleteDashboard,
 } from '@/dashboard';
 import { useAlertAnnotations } from '@/hooks/useAlertAnnotations';
+import { getMinGranularitySeconds } from '@/hooks/useChartConfig';
 import useDashboardContainers, {
   TabDeleteAction,
 } from '@/hooks/useDashboardContainers';
 import { useDashboardKioskMode } from '@/hooks/useDashboardKioskMode';
 import { useReleaseAnnotations } from '@/hooks/useReleaseAnnotations';
 import { QueryAttributionProvider } from '@/queryAttribution';
+import type { TileFilterHandler } from '@/types';
 import { calculateNextTilePosition, makeId } from '@/utils/tilePositioning';
 
 import ChartContainer, {
@@ -176,7 +192,10 @@ import ChartContainer, {
 } from './components/charts/ChartContainer';
 import DashboardFiltersModal from './components/DashboardFiltersModal';
 import { DBBarChart } from './components/DBBarChart';
-import DBHeatmapChart, { toHeatmapQuery } from './components/DBHeatmapChart';
+import DBHeatmapChart, {
+  HeatmapSeriesChartConfig,
+  toHeatmapQuery,
+} from './components/DBHeatmapChart';
 import { DBPieChart } from './components/DBPieChart';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import OnboardingModal from './components/OnboardingModal';
@@ -188,7 +207,7 @@ import { Tags } from './components/Tags';
 import useDashboardFilters from './hooks/useDashboardFilters';
 import { useDashboardRefresh } from './hooks/useDashboardRefresh';
 import useTileSelection from './hooks/useTileSelection';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { usePageTitle } from './theme/ThemeProvider';
 import { parseAsJsonEncoded, parseAsStringEncoded } from './utils/queryParsers';
 import {
   buildDashboardReplaySearchUrl,
@@ -219,8 +238,8 @@ import {
   useNewTimeQuery,
 } from './timeQuery';
 import { useConfirm } from './useConfirm';
+import { useDisplayTimeZone } from './useDisplayTimeZone';
 import { FormatTime } from './useFormatTime';
-import { useUserPreferences } from './useUserPreferences';
 import { getMetricTableName, useLocalStorage } from './utils';
 import { useZIndex, ZIndexContext } from './zIndex';
 
@@ -243,12 +262,16 @@ function HeatmapTile({
   title: React.ReactNode;
   toolbarPrefix: React.ReactNode[];
   toolbarSuffix: React.ReactNode[];
-  queriedConfig: BuilderChartConfigWithDateRange;
+  queriedConfig: HeatmapSeriesChartConfig;
   source: TSource | undefined;
   dateRange: [Date, Date];
   enabled?: boolean;
 }) {
-  const heatmapQuery = toHeatmapQuery(queriedConfig);
+  const heatmapQuery = toHeatmapQuery({
+    ...queriedConfig,
+    minGranularitySeconds: getMinGranularitySeconds(source),
+  });
+  const { mode } = heatmapQuery;
 
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(
     null,
@@ -256,7 +279,14 @@ function HeatmapTile({
   const containerRef = useRef<HTMLDivElement>(null);
 
   const eventDeltasUrl = useMemo(() => {
-    if (!source) return null;
+    // Search page event deltas only supports trace sources and distribution mode
+    if (
+      !source ||
+      !isTraceSource(source) ||
+      mode !== 'distribution' ||
+      !isBuilderChartConfig(queriedConfig)
+    )
+      return null;
     const url = buildEventsSearchUrl({
       source,
       config: queriedConfig,
@@ -265,7 +295,7 @@ function HeatmapTile({
     if (!url) return null;
     const separator = url.includes('?') ? '&' : '?';
     return `${url}${separator}mode=delta`;
-  }, [source, queriedConfig, dateRange]);
+  }, [source, mode, queriedConfig, dateRange]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -361,14 +391,6 @@ function HeatmapTile({
   );
 }
 
-type MoveTarget = {
-  containerId: string;
-  tabId?: string;
-  label: string;
-  // For tabs: all tabs in order with the target tab ID
-  allTabs?: { id: string; title: string }[];
-};
-
 const tileToLayoutItem = (chart: Tile): RGL.Layout => ({
   i: chart.id,
   x: chart.x,
@@ -422,7 +444,7 @@ const Tile = ({
   onUpdateChart,
   onMoveToGroup,
   moveTargets,
-  granularity,
+  granularity: dashboardGranularity,
   onTimeRangeSelect,
   filters,
   variables,
@@ -431,6 +453,7 @@ const Tile = ({
   showReleaseAnnotations,
   isLive,
   readOnly,
+  onFilter,
 
   // Properties forwarded by grid layout
   className,
@@ -456,7 +479,7 @@ const Tile = ({
   onSettled?: () => void;
   granularity: SQLInterval | undefined;
   onTimeRangeSelect: (start: Date, end: Date) => void;
-  filters?: Filter[];
+  filters?: BroadcastFilter[];
   variables?: ChartVariable[];
   /** The dashboard's required filters that have nothing selected. */
   unsatisfiedRequiredFilters?: DashboardFilter[];
@@ -466,6 +489,8 @@ const Tile = ({
   showReleaseAnnotations?: boolean;
   isLive?: boolean;
   readOnly?: boolean;
+  /** Set when an ad hoc filter broadcasts to this tile; clicked values update it. */
+  onFilter?: TileFilterHandler;
 
   // Properties forwarded by grid layout
   className?: string;
@@ -481,6 +506,13 @@ const Tile = ({
 }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+
+  // A live dashboard's granularity is the coarse refresh interval; heatmaps
+  // ignore it and stay on their own finer auto granularity.
+  const granularity =
+    isLive && chart.config.displayType === DisplayType.Heatmap
+      ? undefined
+      : dashboardGranularity;
 
   // Lazy loading: only fetch a tile's data once it has scrolled into the
   // browser viewport. React Grid Layout mounts every tile up front, so
@@ -502,16 +534,14 @@ const Tile = ({
     setHasBeenVisible(true);
   }
 
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   // Date range and granularity state local to the fullscreen view so that
   // changing them does not propagate up to the dashboard.
   const [fullscreenDateRange, setFullscreenDateRange] =
     useState<[Date, Date]>(dateRange);
   const [fullscreenInputValue, setFullscreenInputValue] = useState<string>(() =>
-    dateRangeToString(dateRange, isUTC),
+    dateRangeToString(dateRange, timeZone),
   );
   const [fullscreenGranularity, setFullscreenGranularity] = useState<
     Granularity | 'auto' | undefined
@@ -521,21 +551,21 @@ const Tile = ({
     // Reinitialize to the dashboard's current date range and granularity
     // each time the fullscreen view is opened.
     setFullscreenDateRange(dateRange);
-    setFullscreenInputValue(dateRangeToString(dateRange, isUTC));
+    setFullscreenInputValue(dateRangeToString(dateRange, timeZone));
     setFullscreenGranularity(
       (granularity as Granularity | undefined) ?? 'auto',
     );
     setIsFullscreen(true);
-  }, [dateRange, granularity, isUTC]);
+  }, [dateRange, granularity, timeZone]);
 
   const handleFullscreenSearch = useCallback(
     (value: string) => {
-      const [start, end] = parseTimeRangeInput(value, isUTC);
+      const [start, end] = parseTimeRangeInput(value, timeZone);
       if (start != null && end != null) {
         setFullscreenDateRange([start, end]);
       }
     },
-    [isUTC],
+    [timeZone],
   );
 
   useEffect(() => {
@@ -632,6 +662,39 @@ const Tile = ({
     missingRequiredFilterNames.length > 0 &&
     displayTypeRequiresSource(chart.config.displayType);
 
+  const sqlFilters = useMemo(
+    () => (filters ? getSqlFilters(filters) : undefined),
+    [filters],
+  );
+
+  // `source` keeps the handler off rows from other sources, e.g. a linked trace
+  const searchRowContext = useMemo<RowSidePanelContextProps | undefined>(
+    () =>
+      onFilter &&
+      source &&
+      getAllowedSourceKinds({
+        configType: 'builder',
+        displayType: DisplayType.Search,
+      }).includes(source.kind)
+        ? {
+            // Only the cell popover passes an action; the side panel's
+            // "Add to filters" passes none and shouldn't toggle a condition off.
+            onPropertyAddClick: (key, value, action) =>
+              onFilter(
+                [{ key, value: String(value) }],
+                action === 'include' || action === 'exclude' ? action : 'add',
+              ),
+            source,
+            isAdhocFilterTarget: true,
+          }
+        : undefined,
+    [onFilter, source],
+  );
+  const promqlFilters = useMemo(
+    () => (filters ? getPromqlFilters(filters) : undefined),
+    [filters],
+  );
+
   useEffect(() => {
     if (isPromqlSavedChartConfig(chart.config)) {
       if (source != null) {
@@ -642,6 +705,7 @@ const Tile = ({
           dateRange,
           granularity,
           variables: tileVariables,
+          filters: promqlFilters,
         });
       }
       return;
@@ -654,7 +718,7 @@ const Tile = ({
           ...chart.config,
           dateRange,
           granularity,
-          filters,
+          filters: sqlFilters,
           variables: tileVariables,
         });
       } else if (source != null) {
@@ -673,7 +737,7 @@ const Tile = ({
           sampleWeightExpression: getSampleWeightExpression(source),
           dateRange,
           granularity,
-          filters,
+          filters: sqlFilters,
           variables: tileVariables,
         });
       }
@@ -714,13 +778,21 @@ const Tile = ({
             ? source.bodyExpression
             : undefined,
           sampleWeightExpression: getSampleWeightExpression(source),
-          filters,
+          filters: sqlFilters,
           variables: tileVariables,
           metricTables: isMetricSource ? source.metricTables : undefined,
         });
       }
     }
-  }, [source, chart, dateRange, granularity, filters, tileVariables]);
+  }, [
+    source,
+    chart,
+    dateRange,
+    granularity,
+    sqlFilters,
+    promqlFilters,
+    tileVariables,
+  ]);
 
   const [hovered, setHovered] = useState(false);
 
@@ -791,7 +863,7 @@ const Tile = ({
       where: builderConfig?.where,
       whereLanguage: builderConfig?.whereLanguage,
       select: builderConfig?.select,
-      filters,
+      filters: sqlFilters,
     },
   );
 
@@ -801,10 +873,10 @@ const Tile = ({
   );
 
   const filterWarning = useMemo(() => {
-    const doFiltersExist = !!filters?.filter(
+    const doFiltersExist = !!sqlFilters?.filter(
       f => (f.type === 'lucene' || f.type === 'sql') && f.condition.trim(),
     )?.length;
-    const doLuceneFiltersExist = !!filters?.filter(
+    const doLuceneFiltersExist = !!sqlFilters?.filter(
       f => f.type === 'lucene' && f.condition.trim(),
     )?.length;
 
@@ -840,7 +912,7 @@ const Tile = ({
         <IconZoomExclamation size={16} color="var(--color-text-danger)" />
       </Tooltip>
     );
-  }, [filters, queriedConfig, source]);
+  }, [sqlFilters, queriedConfig, source]);
 
   const replaySearchUrl = useMemo(() => {
     return buildDashboardReplaySearchUrl({
@@ -968,64 +1040,12 @@ const Tile = ({
               Edit
             </Menu.Item>
             {canMoveToGroup && (
-              <>
-                <Menu.Divider />
-                <Menu.Label>Move to Group</Menu.Label>
-                {chart.containerId && (
-                  <Menu.Item
-                    leftSection={<IconCornerDownRight size={14} />}
-                    onClick={() => onMoveToGroup(undefined)}
-                  >
-                    (Ungrouped)
-                  </Menu.Item>
-                )}
-                {moveTargets
-                  .filter(
-                    t =>
-                      !(
-                        t.containerId === chart.containerId &&
-                        t.tabId === chart.tabId
-                      ),
-                  )
-                  .map(t => (
-                    <Menu.Item
-                      key={`${t.containerId}-${t.tabId ?? ''}`}
-                      leftSection={<IconCornerDownRight size={14} />}
-                      onClick={() => onMoveToGroup(t.containerId, t.tabId)}
-                    >
-                      {t.allTabs ? (
-                        <span>
-                          {t.allTabs.map((tab, i) => (
-                            <span key={tab.id}>
-                              {i > 0 && (
-                                <span
-                                  style={{
-                                    color: 'var(--mantine-color-dimmed)',
-                                  }}
-                                >
-                                  {' | '}
-                                </span>
-                              )}
-                              <span
-                                style={
-                                  tab.id !== t.tabId
-                                    ? {
-                                        color: 'var(--mantine-color-dimmed)',
-                                      }
-                                    : undefined
-                                }
-                              >
-                                {tab.title}
-                              </span>
-                            </span>
-                          ))}
-                        </span>
-                      ) : (
-                        t.label
-                      )}
-                    </Menu.Item>
-                  ))}
-              </>
+              <MoveToGroupSubmenu
+                moveTargets={moveTargets}
+                containerId={chart.containerId}
+                tabId={chart.tabId}
+                onMoveToGroup={onMoveToGroup}
+              />
             )}
             <Menu.Divider />
             <Menu.Item
@@ -1058,9 +1078,9 @@ const Tile = ({
     readOnly,
   ]);
 
-  // Flat Menu.Item list for the collapsed (narrow-tile) toolbar.
-  // Merges the alert action + all kebab items into a single flat list
-  // so ChartContainer can render them without nested menus.
+  // Menu items for the collapsed (narrow-tile) toolbar.
+  // Merges the alert action + all kebab items into a single list
+  // for ChartContainer's menu.
   const collapsedMenuItems = useMemo(() => {
     if (readOnly) return null;
 
@@ -1115,64 +1135,12 @@ const Tile = ({
           Edit
         </Menu.Item>
         {canMoveToGroup && (
-          <>
-            <Menu.Divider />
-            <Menu.Label>Move to Group</Menu.Label>
-            {chart.containerId && (
-              <Menu.Item
-                leftSection={<IconCornerDownRight size={14} />}
-                onClick={() => onMoveToGroup(undefined)}
-              >
-                (Ungrouped)
-              </Menu.Item>
-            )}
-            {moveTargets
-              .filter(
-                t =>
-                  !(
-                    t.containerId === chart.containerId &&
-                    t.tabId === chart.tabId
-                  ),
-              )
-              .map(t => (
-                <Menu.Item
-                  key={`collapsed-${t.containerId}-${t.tabId ?? ''}`}
-                  leftSection={<IconCornerDownRight size={14} />}
-                  onClick={() => onMoveToGroup(t.containerId, t.tabId)}
-                >
-                  {t.allTabs ? (
-                    <span>
-                      {t.allTabs.map((tab, i) => (
-                        <span key={tab.id}>
-                          {i > 0 && (
-                            <span
-                              style={{
-                                color: 'var(--mantine-color-dimmed)',
-                              }}
-                            >
-                              {' | '}
-                            </span>
-                          )}
-                          <span
-                            style={
-                              tab.id !== t.tabId
-                                ? {
-                                    color: 'var(--mantine-color-dimmed)',
-                                  }
-                                : undefined
-                            }
-                          >
-                            {tab.title}
-                          </span>
-                        </span>
-                      ))}
-                    </span>
-                  ) : (
-                    t.label
-                  )}
-                </Menu.Item>
-              ))}
-          </>
+          <MoveToGroupSubmenu
+            moveTargets={moveTargets}
+            containerId={chart.containerId}
+            tabId={chart.tabId}
+            onMoveToGroup={onMoveToGroup}
+          />
         )}
         <Menu.Divider />
         <Menu.Item
@@ -1203,9 +1171,25 @@ const Tile = ({
   const title = useMemo(
     () =>
       chart.config.name ? (
-        <Text size="sm">{chart.config.name}</Text>
+        <Group gap={4} wrap="nowrap">
+          <Text size="sm">{chart.config.name}</Text>
+          {chart.config.description && (
+            <Tooltip
+              label={chart.config.description}
+              multiline
+              maw={360}
+              withArrow
+            >
+              <IconInfoCircle
+                size={14}
+                aria-label={chart.config.description}
+                data-testid={`tile-description-${chart.id}`}
+              />
+            </Tooltip>
+          )}
+        </Group>
       ) : undefined,
-    [chart.config.name],
+    [chart.config.name, chart.config.description, chart.id],
   );
 
   // Render chart content (used in both tile and fullscreen views)
@@ -1280,41 +1264,41 @@ const Tile = ({
             </TilePlaceholder>
           ) : (
             <>
-              {(effectiveQueriedConfig?.displayType === DisplayType.Line ||
-                effectiveQueriedConfig?.displayType ===
-                  DisplayType.StackedBar) && (
-                <DBTimeChart
-                  key={`${keyPrefix}-${chart.id}`}
-                  title={title}
-                  toolbarPrefix={toolbarPrefixItems}
-                  toolbarSuffix={toolbarSuffixItems}
-                  sourceId={chart.config.source}
-                  showDisplaySwitcher={!readOnly}
-                  enabled={chartEnabled}
-                  config={effectiveQueriedConfig}
-                  annotations={annotations}
-                  onTimeRangeSelect={
-                    readOnly
-                      ? undefined
-                      : isFullscreenView
-                        ? (start, end) => setFullscreenDateRange([start, end])
-                        : onTimeRangeSelect
-                  }
-                  setDisplayType={
-                    readOnly
-                      ? undefined
-                      : displayType => {
-                          onUpdateChart?.({
-                            ...chart,
-                            config: {
-                              ...chart.config,
-                              displayType,
-                            },
-                          });
-                        }
-                  }
-                />
-              )}
+              {effectiveQueriedConfig &&
+                isTimeSeriesDisplayType(effectiveQueriedConfig.displayType) && (
+                  <DBTimeChart
+                    key={`${keyPrefix}-${chart.id}`}
+                    title={title}
+                    toolbarPrefix={toolbarPrefixItems}
+                    toolbarSuffix={toolbarSuffixItems}
+                    sourceId={chart.config.source}
+                    showDisplaySwitcher={!readOnly}
+                    enabled={chartEnabled}
+                    config={effectiveQueriedConfig}
+                    annotations={annotations}
+                    onTimeRangeSelect={
+                      readOnly
+                        ? undefined
+                        : isFullscreenView
+                          ? (start, end) => setFullscreenDateRange([start, end])
+                          : onTimeRangeSelect
+                    }
+                    setDisplayType={
+                      readOnly
+                        ? undefined
+                        : displayType => {
+                            onUpdateChart?.({
+                              ...chart,
+                              config: {
+                                ...chart.config,
+                                displayType,
+                              },
+                            });
+                          }
+                    }
+                    onFilter={onFilter}
+                  />
+                )}
               {effectiveQueriedConfig?.displayType === DisplayType.Table && (
                 <Box h="100%">
                   <DBTableChart
@@ -1336,6 +1320,7 @@ const Tile = ({
                             })
                         : undefined
                     }
+                    onFilter={onFilter}
                   />
                 </Box>
               )}
@@ -1370,7 +1355,8 @@ const Tile = ({
                 />
               )}
               {effectiveQueriedConfig?.displayType === DisplayType.Heatmap &&
-                isBuilderChartConfig(effectiveQueriedConfig) && (
+                (isBuilderChartConfig(effectiveQueriedConfig) ||
+                  isPromqlChartConfig(effectiveQueriedConfig)) && (
                   <HeatmapTile
                     keyPrefix={keyPrefix}
                     chartId={chart.id}
@@ -1431,6 +1417,7 @@ const Tile = ({
                       queryKeyPrefix={'search'}
                       variant="default"
                       errorVariant="collapsible"
+                      context={searchRowContext}
                     />
                   </ChartContainer>
                 )}
@@ -1512,6 +1499,8 @@ const Tile = ({
       readOnly,
       tileVariables,
       variableNames,
+      searchRowContext,
+      onFilter,
     ],
   );
 
@@ -1634,7 +1623,7 @@ const EditTileModal = ({
   isSaving?: boolean;
   onSave: (chart: Tile) => void;
   variables?: ChartVariable[];
-  getDashboardFilters: (sourceId: string | undefined) => Filter[];
+  getDashboardFilters: (sourceId: string | undefined) => BroadcastFilter[];
   unsatisfiedRequiredFilters?: DashboardFilter[];
 }) => {
   const contextZIndex = useZIndex();
@@ -1887,11 +1876,9 @@ function DBDashboardPage({
     isFetching: isFetchingDashboard,
     isSetting: isSavingDashboard,
   } = dashboardProps;
-  const brandName = useBrandDisplayName();
+  const title = usePageTitle(dashboard?.name ? dashboard.name : 'Dashboard');
   const confirm = useConfirm();
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   const router = useRouter();
   const dashboardId = router.query.dashboardId as string | undefined;
@@ -1956,10 +1943,13 @@ function DBDashboardPage({
 
   const [showFiltersModal, setShowFiltersModal] = useState(false);
 
-  const filters = dashboard?.filters ?? [];
+  const filters = useMemo(() => dashboard?.filters ?? [], [dashboard?.filters]);
   const {
     selectionByFilterId,
     setFilterValue,
+    adhocConditionsByFilterId,
+    setAdhocConditions,
+    applyAdhocAction,
     setFilterValueEntries,
     filterValueEntries,
     ignoredFilterExpressions,
@@ -2175,7 +2165,7 @@ function DBDashboardPage({
 
     const currentRelativeDateRange = timeRangeInputToSeconds(
       displayedTimeInputValue,
-      isUTC,
+      timeZone,
     );
 
     setDashboard(
@@ -2208,7 +2198,7 @@ function DBDashboardPage({
     getValues,
     filterValueEntries,
     onSubmit,
-    isUTC,
+    timeZone,
     displayedTimeInputValue,
   ]);
   const handleRemoveSavedQuery = useCallback(() => {
@@ -2335,33 +2325,10 @@ function DBDashboardPage({
     setUrlActiveTabs,
   ]);
 
-  // Valid move targets: groups and individual tabs within groups
-  const moveTargetContainers = useMemo<MoveTarget[]>(() => {
-    const targets: MoveTarget[] = [];
-    for (const c of containers) {
-      const cTabs = c.tabs ?? [];
-      if (cTabs.length >= 2) {
-        for (const tab of cTabs) {
-          targets.push({
-            containerId: c.id,
-            tabId: tab.id,
-            label: tab.title,
-            allTabs: cTabs.map(t => ({ id: t.id, title: t.title })),
-          });
-        }
-      } else if (cTabs.length === 1) {
-        // 1-tab group: show just the group name, target the single tab
-        targets.push({
-          containerId: c.id,
-          tabId: cTabs[0].id,
-          label: cTabs[0].title,
-        });
-      } else {
-        targets.push({ containerId: c.id, label: c.title });
-      }
-    }
-    return targets;
-  }, [containers]);
+  const moveTargetContainers = useMemo(
+    () => buildMoveTargets(containers),
+    [containers],
+  );
 
   const hasContainers = containers.length > 0;
   const allTiles = useMemo(() => dashboard?.tiles ?? [], [dashboard?.tiles]);
@@ -2411,7 +2378,7 @@ function DBDashboardPage({
   // `sourceId`. Shared with the tile editor so its preview queries what the
   // tile does.
   const getTileFilters = useCallback(
-    (sourceId: string | undefined): Filter[] => [
+    (sourceId: string | undefined): BroadcastFilter[] => [
       {
         type: whereLanguage === 'sql' ? 'sql' : 'lucene',
         condition: where,
@@ -2420,6 +2387,30 @@ function DBDashboardPage({
     ],
     [where, whereLanguage, getFilterQueriesForSource],
   );
+
+  // Built once per tile list so each tile's `onFilter` keeps its identity
+  // across renders; a fresh closure would rebuild the tile's row-panel context
+  // and re-render every cell in its search table.
+  const tileFilterHandlers = useMemo(() => {
+    const handlers = new Map<string, TileFilterHandler>();
+    // The filter bar is hidden in kiosk mode, so a click would add conditions
+    // the viewer can't see or remove.
+    if (isKioskMode) return handlers;
+    for (const tile of dashboard?.tiles ?? []) {
+      const sourceId = 'source' in tile.config ? tile.config.source : undefined;
+      const targetIds = getAdhocFilterTargetsForTile(
+        filters,
+        tile.config,
+        sourceId,
+      ).map(filter => filter.id);
+      if (targetIds.length > 0) {
+        handlers.set(tile.id, (entries, action) =>
+          applyAdhocAction(targetIds, entries, action),
+        );
+      }
+    }
+    return handlers;
+  }, [isKioskMode, dashboard?.tiles, filters, applyAdhocAction]);
 
   const renderTileComponent = useCallback(
     (chart: Tile) => {
@@ -2440,6 +2431,7 @@ function DBDashboardPage({
             isRefreshEnabled ? granularityOverride : (granularity ?? undefined)
           }
           filters={getTileFilters(tileSourceId)}
+          onFilter={tileFilterHandlers.get(chart.id)}
           variables={variables}
           unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
           onTimeRangeSelect={onTimeRangeSelect}
@@ -2542,6 +2534,7 @@ function DBDashboardPage({
       showAlertAnnotations,
       showReleaseAnnotations,
       getTileFilters,
+      tileFilterHandlers,
       variables,
       unsatisfiedRequiredFilters,
       moveTargetContainers,
@@ -3223,9 +3216,7 @@ function DBDashboardPage({
   const dashboardBody = (
     <>
       <Head>
-        <title>
-          {dashboard?.name ? `${dashboard.name}` : 'Dashboard'} – {brandName}
-        </title>
+        <title>{title}</title>
       </Head>
       {!isKioskMode && <OnboardingModal />}
       {!isKioskMode && (
@@ -3326,6 +3317,8 @@ function DBDashboardPage({
           filters={filters}
           selectionByFilterId={selectionByFilterId}
           onSetFilterValue={setFilterValue}
+          adhocConditionsByFilterId={adhocConditionsByFilterId}
+          onSetAdhocConditions={setAdhocConditions}
           dateRange={searchedTimeRange}
           variables={variables}
         />
@@ -3545,9 +3538,7 @@ function DBDashboardPageGuarded({
     dashboardId: dashboardId as string | undefined,
     presetConfig,
   });
-  const {
-    userPreferences: { isUTC },
-  } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   const savedDateRange = dashboardProps.dashboard?.savedDateRange;
   // Keyed on the saved range, not the render: a relative range re-stringifies
@@ -3560,8 +3551,8 @@ function DBDashboardPageGuarded({
         ? parseRelativeTimeQuery(savedDateRange.value * 1000)
         : savedDateRange.value.map(v => new Date(v));
     // TODO: show relative ranges as "Past Xh" via getRelativeInterval
-    return dateRangeToString([start, end], isUTC);
-  }, [savedDateRange, isUTC]);
+    return dateRangeToString([start, end], timeZone);
+  }, [savedDateRange, timeZone]);
 
   if (!dashboardProps || !router.isReady) return <Loader size="lg" />;
 

@@ -80,6 +80,35 @@ describe('DBRowDataPanel', () => {
     expect(config.select[0]).toEqual({ valueExpression: '*' });
   });
 
+  // JSON-typed Events.Attributes come back nested.
+  it('flattens span-event exception attributes', () => {
+    mockUseQueriedChartConfig.mockReturnValue({
+      data: {
+        data: [
+          {
+            __hdx_events_exception_attributes: {
+              exception: { type: 'TypeError' },
+            },
+          },
+        ],
+        meta: [],
+        rows: 1,
+        isComplete: true,
+      },
+      isLoading: false,
+      isError: false,
+      isSuccess: true,
+    });
+
+    const { result } = renderHook(() =>
+      useRowData({ source, rowId: "id='abc123'" }),
+    );
+
+    expect(
+      result.current.data?.data[0].__hdx_events_exception_attributes,
+    ).toEqual({ 'exception.type': 'TypeError' });
+  });
+
   it('selects the Known Columns List instead of `*` when set', () => {
     const sourceWithKnownColumns: TLogSource = {
       ...source,

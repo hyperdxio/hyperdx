@@ -4,6 +4,7 @@ import mongoose from 'mongoose';
 import * as config from '@/config';
 import { validateConnectionId } from '@/controllers/connection';
 import { createSource, getSource, updateSource } from '@/controllers/sources';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
@@ -25,11 +26,13 @@ export function registerSaveSource({
     'clickstack_save_source',
     {
       title: 'Create or Update Source',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new data source (omit id) or update an existing one ' +
         '(provide id) so shipped telemetry becomes queryable. Update is a ' +
-        'full replace of the source definition. Required for all kinds: kind, ' +
+        'full replace of the source definition: start from the `config` ' +
+        'returned by clickstack_describe_source and change only what you need. ' +
+        'Required for all kinds: kind, ' +
         'name, connection, databaseName, tableName, timestampValueExpression. ' +
         'Kind-specific requirements: log & trace need ' +
         'defaultTableSelectExpression; trace also needs durationExpression, ' +

@@ -24,6 +24,25 @@ const toolErrorCounter = getCounter('hyperdx.mcp.tool.errors', {
     'Count of MCP tool invocations that returned an error or threw an exception.',
 });
 
+const toolResponseSizeHistogram = getHistogram(
+  'hyperdx.mcp.tool.response.size_bytes',
+  {
+    description:
+      'UTF-8 size of the text an MCP tool returns to the model, a proxy for the tokens it costs.',
+    unit: 'By',
+  },
+);
+
+/** UTF-8 bytes of a tool result's text blocks: what the model has to read. */
+function getResponseSizeBytes(
+  content: { text?: string }[] | undefined,
+): number {
+  return (content ?? []).reduce(
+    (total, block) => total + Buffer.byteLength(block?.text ?? '', 'utf8'),
+    0,
+  );
+}
+
 /** Keeps a runaway error body from becoming the whole span status message. */
 const MAX_STATUS_MESSAGE_LENGTH = 512;
 
@@ -101,6 +120,12 @@ export function withToolTracing<TArgs>(
             async () => handler(args),
           );
           const durationMs = Date.now() - startTime;
+          const responseBytes = getResponseSizeBytes(result.content);
+          span.setAttribute('mcp.tool.response.size_bytes', responseBytes);
+          toolResponseSizeHistogram.record(responseBytes, {
+            tool: toolName,
+            outcome: result.isError ? 'error' : 'success',
+          });
 
           if (result.isError) {
             // Default to 'server' when category is not set — safe default
@@ -121,13 +146,19 @@ export function withToolTracing<TArgs>(
               error_category: errorCategory,
             });
             logger.warn(
-              { ...logContext, durationMs, errorCategory, errorMessage },
+              {
+                ...logContext,
+                durationMs,
+                responseBytes,
+                errorCategory,
+                errorMessage,
+              },
               `MCP tool error: ${toolName}`,
             );
           } else {
             span.setStatus({ code: SpanStatusCode.OK });
             logger.info(
-              { ...logContext, durationMs },
+              { ...logContext, durationMs, responseBytes },
               `MCP tool completed: ${toolName}`,
             );
             // Only reliable signal the user exercised the MCP server.

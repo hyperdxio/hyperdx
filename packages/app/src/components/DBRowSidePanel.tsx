@@ -9,9 +9,11 @@ import {
 } from 'react';
 import { add } from 'date-fns';
 import { isString } from 'lodash';
+import { useQueryState } from 'nuqs';
 import { ErrorBoundary, FallbackProps } from 'react-error-boundary';
 import { useHotkeys } from 'react-hotkeys-hook';
 import SqlString from 'sqlstring';
+import { Badge } from '@clickhouse/click-ui';
 import {
   isLogSource,
   isTraceSource,
@@ -23,7 +25,6 @@ import {
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import {
   ActionIcon,
-  Badge,
   Box,
   Button,
   CopyButton,
@@ -37,6 +38,7 @@ import {
 import { IconCopy, IconKeyboard, IconShare, IconX } from '@tabler/icons-react';
 
 import { useCloseOnClickOutside } from '@/hooks/useCloseOnClickOutside';
+import { useOpenedRowSpanSelection } from '@/hooks/useOpenedRowSpanSelection';
 import useResizable from '@/hooks/useResizable';
 import { WithClause } from '@/hooks/useRowWhere';
 import useSidePanelStack, {
@@ -55,6 +57,7 @@ import {
   getRowLookupWindow,
   resolveRowTimestampAnchor,
 } from '@/utils/rowTimestamps';
+import type { SessionEventNavigate } from '@/utils/sessionLogEvents';
 import { useZIndex, ZIndexContext } from '@/zIndex';
 
 import ServiceMapSidePanel from './ServiceMap/ServiceMapSidePanel';
@@ -77,6 +80,7 @@ import {
   DrawerFullWidthToggle,
   INITIAL_DRAWER_WIDTH_PERCENT,
 } from './DrawerUtils';
+import { eventRowWhereParser } from './eventRowWhere';
 import LogLevel from './LogLevel';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
@@ -111,8 +115,13 @@ export type RowSidePanelContextProps = {
   dbSqlRowTableConfig?: BuilderChartConfigWithDateRange;
   isChildModalOpen?: boolean;
   setChildModalOpen?: (open: boolean) => void;
-  source?: TLogSource | TTraceSource;
+  source?: TSource;
   onOpenLinkedTrace?: (link: SpanLinkData) => void;
+  /**
+   * onPropertyAddClick updates ad hoc dashboard filters. Tables shape
+   * each cell's key and value for that with getAdhocCellCondition.
+   */
+  isAdhocFilterTarget?: boolean;
 };
 
 export const RowSidePanelContext = createContext<RowSidePanelContextProps>({});
@@ -198,6 +207,7 @@ function SidePanelHeaderActions({
             size="sm"
             onClick={onClose}
             aria-label="Close"
+            data-testid="side-panel-close"
           >
             <IconX size={16} />
           </ActionIcon>
@@ -402,18 +412,22 @@ export const DBRowSidePanelInner = ({
     [pushSource],
   );
 
+  const clearSpanSelection = useOpenedRowSpanSelection(initialRowId);
+
   const handlePanelBack = useCallback(() => {
     // Pop one level (nav → source), restoring the tab active before that level
     // was entered. When the trail is empty, leave the panel: hand off to an
-    // embedding parent (session) or close.
+    // embedding parent (session) or close. The search drawer clears the span
+    // in its own close handler; a parent (the session) does not.
     if (popOne() === 'none') {
       if (onNavigateToParent) {
+        clearSpanSelection();
         onNavigateToParent();
       } else {
         onClose();
       }
     }
-  }, [popOne, onNavigateToParent, onClose]);
+  }, [popOne, onNavigateToParent, onClose, clearSpanSelection]);
 
   useHotkeys(['esc'], handlePanelBack);
 
@@ -605,19 +619,37 @@ export const DBRowSidePanelInner = ({
     return clauses.length > 0 ? clauses.join(' AND ') : undefined;
   }, [traceIdExpression, traceId, spanIdExpression, spanId]);
 
-  const handleSessionEventNavigate = useCallback(
-    (rowId: string, aliasWith: WithClause[]) => {
-      if (traceSourceData) {
+  const handleSessionEventNavigate = useCallback<SessionEventNavigate>(
+    (rowId, aliasWith, target) => {
+      const label = mainContent || 'Session Replay';
+      if (target?.sourceId === source.id) {
+        handleNavigateToRow(rowId, aliasWith, label, SourceKind.Log);
+      } else if (target != null) {
+        handleSourceStackPush({
+          sourceId: target.sourceId,
+          rowId,
+          aliasWith,
+          label,
+          sourceKind: SourceKind.Log,
+          focusTimestamp: target.focusTimestamp,
+        });
+      } else if (traceSourceData) {
         handleSourceStackPush({
           sourceId: traceSourceData.id,
           rowId,
           aliasWith,
-          label: mainContent || 'Session Replay',
+          label,
           sourceKind: traceSourceData.kind as SourceKind,
         });
       }
     },
-    [traceSourceData, handleSourceStackPush, mainContent],
+    [
+      traceSourceData,
+      source.id,
+      handleNavigateToRow,
+      handleSourceStackPush,
+      mainContent,
+    ],
   );
 
   const handleTraceLogNavigate = useCallback(
@@ -714,7 +746,7 @@ export const DBRowSidePanelInner = ({
     [parentContext, handleOpenLinkedTrace, source],
   );
 
-  const { rumSessionId, rumServiceName } = useSessionId({
+  const { rumSessionId, rumServiceName, sessionIdKey } = useSessionId({
     sourceId: traceSourceId,
     traceId,
     dateRange: oneHourRange,
@@ -755,7 +787,23 @@ export const DBRowSidePanelInner = ({
     const items: BreadcrumbItem[] = [];
 
     if (parentBreadcrumbs) {
-      items.push(...parentBreadcrumbs);
+      // A parent crumb (the session name) leaves this row without going
+      // through Back or Close. Clear the span on that click too.
+      items.push(
+        ...parentBreadcrumbs.map(item => {
+          const onClick = item.onClick;
+          if (onClick == null) {
+            return item;
+          }
+          return {
+            ...item,
+            onClick: () => {
+              clearSpanSelection();
+              onClick();
+            },
+          };
+        }),
+      );
     }
 
     const crumbSourceStack = sourceStack;
@@ -817,6 +865,7 @@ export const DBRowSidePanelInner = ({
     source.kind,
     handleBreadcrumbNavigation,
     parentBreadcrumbs,
+    clearSpanSelection,
   ]);
 
   const availableTabs = useMemo<Tab[]>(() => {
@@ -973,9 +1022,7 @@ export const DBRowSidePanelInner = ({
             </>
           )}
           {sourceIsTrace && spanKindLabel && (
-            <Badge size="sm" variant="light" radius="sm">
-              {spanKindLabel}
-            </Badge>
+            <Badge size="sm" text={spanKindLabel} state="info" />
           )}
           {(sourceIsTrace ? traceId : showLogTraceActions) && (
             <>
@@ -1248,6 +1295,7 @@ export const DBRowSidePanelInner = ({
               traceSourceId={traceSourceId}
               serviceName={rumServiceName}
               rumSessionId={rumSessionId}
+              sessionIdKey={sessionIdKey}
             />
           </div>
         </ErrorBoundary>
@@ -1324,6 +1372,10 @@ export default function DBRowSidePanelErrorBoundary({
   }, [isFullWidth, setSize]);
 
   const { clear: clearTraceWaterfallSearchState } = useWaterfallSearchState({});
+  const [, setEventRowWhere] = useQueryState(
+    'eventRowWhere',
+    eventRowWhereParser,
+  );
 
   const sidePanelStack = useSidePanelStack({ initialRowId: rowId });
 
@@ -1333,8 +1385,16 @@ export default function DBRowSidePanelErrorBoundary({
     // Clear waterfall search state on close, so that filters don't
     // persist when reopening another trace.
     clearTraceWaterfallSearchState();
+    // The selected span is in the URL. Leaving it there makes the next open,
+    // and any shared row link, show the previous span.
+    setEventRowWhere(null);
     onClose();
-  }, [sidePanelStack, onClose, clearTraceWaterfallSearchState]);
+  }, [
+    sidePanelStack,
+    onClose,
+    clearTraceWaterfallSearchState,
+    setEventRowWhere,
+  ]);
 
   useCloseOnClickOutside({
     // Only close on outside click at the root level. When the user has

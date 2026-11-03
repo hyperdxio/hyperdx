@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/cli",
-  "version": "0.6.4",
+  "version": "0.8.0",
   "license": "MIT",
   "type": "module",
   "repository": {
@@ -41,7 +41,7 @@
   },
   "devDependencies": {
     "@clickhouse/client": "1.23.0-head.fae5998.1",
-    "@hyperdx/common-utils": "^0.30.0",
+    "@hyperdx/common-utils": "^0.33.0",
     "@jest/globals": "^30.2.0",
     "@types/crypto-js": "^4.2.2",
     "@types/jest": "^29.5.14",
@@ -50,7 +50,7 @@
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
     "crypto-js": "^4.2.0",
-    "glob": "^13.0.6",
+    "glob": "^14.0.2",
     "ink": "6.8.0",
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",

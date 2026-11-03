@@ -1,0 +1,40 @@
+{
+  "resourceMetrics": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "promql-remote-write"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "promql-remote-write-test-service"
+            }
+          }
+        ]
+      },
+      "scopeMetrics": [
+        {
+          "scope": {},
+          "metrics": [
+            {
+              "name": "smoke.promql.url.gauge",
+              "gauge": {
+                "dataPoints": [
+                  {
+                    "timeUnixNano": "1901999590000000000",
+                    "asDouble": 42
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+SELECT ResourceAttributes, LogAttributes FROM otel_logs WHERE ResourceAttributes['suite-id'] = 'auto-parse' AND ResourceAttributes['test-id'] = 'json-whitespace' ORDER BY (toStartOfFiveMinutes(Timestamp), Timestamp) FORMAT CSV

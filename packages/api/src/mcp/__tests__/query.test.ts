@@ -229,6 +229,38 @@ describe('errorHint', () => {
     expect(hint).toBeNull();
   });
 
+  const unknownTableErrors = [
+    "Unknown table expression identifier 'otel_logs' in scope SELECT count() FROM otel_logs",
+    'Table default.otel_traces does not exist.',
+    'Database o11y does not exist.',
+  ];
+
+  it.each(unknownTableErrors)(
+    'points unknown-table errors in raw SQL at clickstack_list_sources: %s',
+    msg => {
+      expect(errorHint(msg, undefined, { rawSql: true })).toContain(
+        'clickstack_list_sources',
+      );
+    },
+  );
+
+  // Source-based tools take a sourceId, so the failing table is the source's
+  // own and listing sources would only hand it back.
+  it.each(unknownTableErrors)(
+    'does not point source-based tools at clickstack_list_sources: %s',
+    msg => {
+      expect(errorHint(msg) ?? '').not.toContain('clickstack_list_sources');
+    },
+  );
+
+  it('keeps pointing unknown-column errors at clickstack_describe_source', () => {
+    const hint = errorHint(
+      'Unknown expression or function identifier `TimestampTime` in scope SELECT TimestampTime FROM t',
+    );
+    expect(hint).toContain('clickstack_describe_source');
+    expect(hint).not.toContain('clickstack_list_sources');
+  });
+
   it('should NOT match lowercase "as" in cast expressions', () => {
     const hint = errorHint(
       'Syntax error: cannot cast as Float64 near token...',

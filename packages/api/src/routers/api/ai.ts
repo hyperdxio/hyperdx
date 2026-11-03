@@ -56,7 +56,7 @@ Generate a visualization or search that matches their request. The chart should 
 
 Here are some guidelines:
 - Use appropriate display types: 'line' for time series, 'table' for tabular data
-- Use appropriate aggregate functions depending on user's request: 'count', 'sum', 'avg', 'min', 'max', 'count_distinct'
+- Use appropriate aggregate functions depending on user's request: 'count', 'sum', 'avg', 'min', 'max', 'count_distinct', and 'p50', 'p90', 'p95', 'p99' for percentiles
 - If the user is requesting for a specific set of data (ex. "frontend service", filter the condition by the appropriate property based on the below properties ex. \`ServiceName = 'frontend'\`)
 - Pick an appropriate time range based on the user's request if one can be inferred from the request.
 

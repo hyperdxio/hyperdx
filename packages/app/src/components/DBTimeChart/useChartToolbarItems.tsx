@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { isPromqlChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   type BuilderChartConfigWithDateRange,
   type ChartConfigWithDateRange,
@@ -8,6 +9,7 @@ import {
 import { Text, Tooltip } from '@mantine/core';
 import {
   IconAlertTriangle,
+  IconChartAreaLine,
   IconChartBar,
   IconChartLine,
 } from '@tabler/icons-react';
@@ -17,6 +19,9 @@ import DisplaySwitcher from '@/components/charts/DisplaySwitcher';
 import HiddenSeriesIndicator from '@/components/charts/HiddenSeriesIndicator';
 import MVOptimizationIndicator from '@/components/MaterializedViews/MVOptimizationIndicator';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
+
+const PROMQL_REDUCE_CARDINALITY_HINT =
+  'Narrow the label matchers, aggregate with sum by (...), or set a series limit to reduce the number of series.';
 
 type UseChartToolbarItemsArgs = {
   builderQueriedConfig: BuilderChartConfigWithDateRange | undefined;
@@ -117,15 +122,23 @@ export function useChartToolbarItems({
           options={[
             {
               value: DisplayType.Line,
-              label: 'Display as Line Chart',
+              label: 'Display as line chart',
               icon: <IconChartLine />,
             },
             {
               value: DisplayType.StackedBar,
               label: config.compareToPreviousPeriod
-                ? 'Bar Chart Unavailable When Comparing to Previous Period'
-                : 'Display as Bar Chart',
+                ? 'Stacked bar chart unavailable when comparing to previous period'
+                : 'Display as stacked bar chart',
               icon: <IconChartBar />,
+              disabled: config.compareToPreviousPeriod,
+            },
+            {
+              value: DisplayType.StackedLine,
+              label: config.compareToPreviousPeriod
+                ? 'Stacked line chart unavailable when comparing to previous period'
+                : 'Display as stacked line chart',
+              icon: <IconChartAreaLine />,
               disabled: config.compareToPreviousPeriod,
             },
           ]}
@@ -143,6 +156,11 @@ export function useChartToolbarItems({
           // raise the cap (loadAllHandler is undefined otherwise), so the
           // notice never advertises a no-op click.
           onLoadAll={loadAllHandler}
+          reduceCardinalityHint={
+            isPromqlChartConfig(config)
+              ? PROMQL_REDUCE_CARDINALITY_HINT
+              : undefined
+          }
         />,
       );
     }
