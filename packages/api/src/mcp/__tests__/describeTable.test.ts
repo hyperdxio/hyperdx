@@ -1,19 +1,10 @@
 const mockQuery = jest.fn();
 const mockGetConnectionById = jest.fn();
-const mockGetTableMetadata = jest.fn();
-const mockGetSkipIndices = jest.fn();
 
 jest.mock('@/models/source', () => ({}));
 jest.mock('@/controllers/sources', () => ({}));
 jest.mock('@/controllers/connection', () => ({
   getConnectionById: (...args: unknown[]) => mockGetConnectionById(...args),
-}));
-jest.mock('@hyperdx/common-utils/dist/core/metadata', () => ({
-  ...jest.requireActual('@hyperdx/common-utils/dist/core/metadata'),
-  getMetadata: () => ({
-    getTableMetadata: mockGetTableMetadata,
-    getSkipIndices: mockGetSkipIndices,
-  }),
 }));
 jest.mock('@/clickhouse', () => ({
   ClickhouseClient: jest.fn(() => ({ query: mockQuery })),
@@ -119,8 +110,6 @@ describe('clickstack_describe_table', () => {
       username: 'default',
       password: '',
     });
-    mockGetTableMetadata.mockReset().mockResolvedValue(TABLE_ROW);
-    mockGetSkipIndices.mockReset().mockResolvedValue([]);
   });
 
   describe('input validation', () => {
@@ -417,7 +406,11 @@ describe('clickstack_describe_table', () => {
             total_rows: null,
           },
         ],
-        'cluster(': [
+        ', system.tables)': [{ ...TABLE_ROW, engine: 'ReplicatedMergeTree' }],
+        ', system.data_skipping_indices)': [
+          { name: 'idx', type: 'minmax', expression: 'Day' },
+        ],
+        ', system.columns)': [
           { name: 'Timestamp', is_in_sorting_key: 1, is_in_primary_key: 1 },
         ],
         'FROM system.columns': COLUMN_ROWS.map(c => ({
@@ -426,19 +419,6 @@ describe('clickstack_describe_table', () => {
           is_in_primary_key: 0,
         })),
       });
-      mockGetTableMetadata.mockResolvedValue({
-        ...TABLE_ROW,
-        engine: 'ReplicatedMergeTree',
-      });
-      mockGetSkipIndices.mockResolvedValue([
-        {
-          name: 'idx',
-          type: 'minmax',
-          typeFull: 'minmax',
-          expression: 'Day',
-          granularity: 1,
-        },
-      ]);
 
       const output = parseText(
         await getHandler()({
@@ -466,6 +446,52 @@ describe('clickstack_describe_table', () => {
       expect(output.dataSkippingIndices).toEqual([
         { name: 'idx', type: 'minmax', expression: 'Day' },
       ]);
+      const localQueries = queryCalls().filter(c =>
+        c.query.includes('cluster('),
+      );
+      expect(localQueries).toHaveLength(3);
+      for (const { query_params } of localQueries) {
+        expect(Object.values(query_params)).toEqual(
+          expect.arrayContaining(['prod', 'events_local']),
+        );
+      }
+    });
+
+    it('still describes the table when skip indices are not readable', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        'FROM system.data_skipping_indices': new Error(
+          'Code: 497. DB::Exception: Not enough privileges. (ACCESS_DENIED)',
+        ),
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = parseText(result);
+      expect(output.dataSkippingIndices).toEqual([]);
+      expect(output.dataSkippingIndicesHint).toMatch(/cannot read/);
+    });
+
+    it('reports a sample over the byte cap as sampleRowsError', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': new Error(
+          'Code: 396. DB::Exception: Limit for result exceeded, max bytes: 976.56 KiB. (TOO_MANY_ROWS_OR_BYTES)',
+        ),
+      });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+          sampleRows: 5,
+        }),
+      );
+      expect(output.columns).toBeDefined();
+      expect(output.sampleRowsError).toMatch(/TOO_MANY_ROWS_OR_BYTES/);
     });
 
     it('keeps several medium sample rows within the sample budget', async () => {

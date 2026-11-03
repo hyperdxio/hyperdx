@@ -13,6 +13,8 @@ import Connection from '@/models/connection';
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
 const DATABASE = 'mcp_describe_table_test';
+// Kept apart so the Distributed table does not change DATABASE's listing.
+const DIST_DATABASE = 'mcp_describe_table_dist_test';
 
 describe('clickstack_describe_table', () => {
   const server = getServer();
@@ -23,7 +25,9 @@ describe('clickstack_describe_table', () => {
     await server.start();
     const ch = await getTestFixtureClickHouseClient();
     await ch.command({ query: `DROP DATABASE IF EXISTS ${DATABASE}` });
+    await ch.command({ query: `DROP DATABASE IF EXISTS ${DIST_DATABASE}` });
     await ch.command({ query: `CREATE DATABASE ${DATABASE}` });
+    await ch.command({ query: `CREATE DATABASE ${DIST_DATABASE}` });
     await ch.command({
       query: `
         CREATE TABLE ${DATABASE}.events (
@@ -42,6 +46,9 @@ describe('clickstack_describe_table', () => {
     });
     await ch.command({
       query: `CREATE VIEW ${DATABASE}.events_view AS SELECT ServiceName FROM ${DATABASE}.events`,
+    });
+    await ch.command({
+      query: `CREATE TABLE ${DIST_DATABASE}.events AS ${DATABASE}.events ENGINE = Distributed(hdx_cluster, ${DATABASE}, events)`,
     });
     await ch.insert({
       table: `${DATABASE}.events`,
@@ -77,6 +84,7 @@ describe('clickstack_describe_table', () => {
 
   afterAll(async () => {
     const ch = await getTestFixtureClickHouseClient();
+    await ch.command({ query: `DROP DATABASE IF EXISTS ${DIST_DATABASE}` });
     await ch.command({ query: `DROP DATABASE IF EXISTS ${DATABASE}` });
     await server.stop();
   });
@@ -137,6 +145,53 @@ describe('clickstack_describe_table', () => {
       { name: 'idx_body', type: 'tokenbf_v1', expression: 'Body' },
     ]);
     expect(output.sampleRows).toBeUndefined();
+  });
+
+  it('reads keys and indices of a Distributed table from its local table', async () => {
+    const result = await call({ database: DIST_DATABASE, table: 'events' });
+    expect(result.isError).toBeFalsy();
+    const output = JSON.parse(getFirstText(result));
+    expect(output.table).toMatchObject({
+      engine: 'Distributed',
+      localTable: {
+        cluster: 'hdx_cluster',
+        database: DATABASE,
+        table: 'events',
+        engine: 'MergeTree',
+      },
+      sortingKey: 'ServiceName, Timestamp',
+      primaryKey: 'ServiceName',
+      partitionKey: 'toDate(Timestamp)',
+    });
+    expect(
+      output.columns.find((c: any) => c.name === 'ServiceName'),
+    ).toMatchObject({
+      inSortingKey: true,
+      inPrimaryKey: true,
+    });
+    expect(output.dataSkippingIndices).toEqual([
+      { name: 'idx_body', type: 'tokenbf_v1', expression: 'Body' },
+    ]);
+  });
+
+  it('reflects an index added after a previous describe', async () => {
+    await call({ database: DATABASE, table: 'events' });
+    const ch = await getTestFixtureClickHouseClient();
+    await ch.command({
+      query: `ALTER TABLE ${DATABASE}.events ADD INDEX idx_svc ServiceName TYPE set(10) GRANULARITY 1`,
+    });
+    try {
+      const output = JSON.parse(
+        getFirstText(await call({ database: DATABASE, table: 'events' })),
+      );
+      expect(
+        output.dataSkippingIndices.map((i: { name: string }) => i.name),
+      ).toContain('idx_svc');
+    } finally {
+      await ch.command({
+        query: `ALTER TABLE ${DATABASE}.events DROP INDEX idx_svc`,
+      });
+    }
   });
 
   it('returns a capped sample of rows when asked', async () => {

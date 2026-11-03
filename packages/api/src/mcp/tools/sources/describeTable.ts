@@ -1,8 +1,4 @@
-import {
-  getMetadata,
-  type Metadata,
-  quoteIdentifierIfNeeded,
-} from '@hyperdx/common-utils/dist/core/metadata';
+import { quoteIdentifierIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
 import { trace } from '@opentelemetry/api';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -162,13 +158,12 @@ async function sampleTableRows(
 
 async function describeTable(
   ctx: TableQueryContext,
-  metadata: Metadata,
   input: DescribeTableInput & { table: string },
 ): Promise<ToolResult> {
   const { database, table } = input;
   let details;
   try {
-    details = await fetchTableDetails(ctx, metadata, { database, table });
+    details = await fetchTableDetails(ctx, { database, table });
   } catch (e) {
     return tableQueryErrorResult(e, 'Failed to describe table');
   }
@@ -180,9 +175,10 @@ async function describeTable(
     );
   }
 
+  const { indicesUnavailable, ...shapeInput } = details;
   const { columns, ...description } = shapeTableDescription({
     database,
-    ...details,
+    ...shapeInput,
   });
 
   let sample = {};
@@ -209,6 +205,10 @@ async function describeTable(
 
   const rest = {
     ...description,
+    ...(indicesUnavailable && {
+      dataSkippingIndicesHint:
+        "The connection's ClickHouse user cannot read system.data_skipping_indices, so indices are not listed.",
+    }),
     ...sample,
     nextSteps: {
       query:
@@ -299,10 +299,7 @@ export function registerDescribeTable({
             signal,
           };
           return input.table
-            ? describeTable(ctx, getMetadata(clickhouseClient), {
-                ...input,
-                table: input.table,
-              })
+            ? describeTable(ctx, { ...input, table: input.table })
             : listTables(ctx, input);
         },
         { timeoutMs: MCP_TOOL_TIMEOUT_MS },

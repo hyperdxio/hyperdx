@@ -5,7 +5,6 @@ import {
   tableExpr,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import type {
-  Metadata,
   SkipIndexMetadata,
   TableMetadata,
 } from '@hyperdx/common-utils/dist/core/metadata';
@@ -168,10 +167,28 @@ export async function databaseExists(ctx: TableQueryContext, database: string) {
   return rows.length > 0;
 }
 
-/** Returns undefined when the table does not exist or is not visible. */
+type SystemTableName = 'tables' | 'columns' | 'data_skipping_indices';
+
+/** A system table, read across the cluster when `cluster` is set. */
+function systemTable(name: SystemTableName, cluster?: string): ChSql {
+  return cluster
+    ? chSql`cluster(${{ String: cluster }}, system.${name})`
+    : chSql`system.${name}`;
+}
+
+function isPrivilegeError(e: unknown) {
+  const message = e instanceof Error ? e.message : String(e);
+  return /ACCESS_DENIED|NOT_ENOUGH_PRIVILEGES|Not enough privileges/i.test(
+    message,
+  );
+}
+
+/**
+ * Returns undefined when the table does not exist or is not visible. Every
+ * lookup is uncached so the result reflects ALTERs made since the last call.
+ */
 export async function fetchTableDetails(
   ctx: TableQueryContext,
-  metadata: Pick<Metadata, 'getTableMetadata' | 'getSkipIndices'>,
   { database, table }: { database: string; table: string },
 ) {
   const rows = await queryRows<TableMetadata>(
@@ -185,16 +202,39 @@ export async function fetchTableDetails(
   const info = rows.at(0);
   if (!info) return undefined;
 
+  // A Distributed table has no keys or indices of its own; read them from
+  // the local table it routes to.
   const distributedTarget =
     info.engine === 'Distributed' ? getDistributedTableArgs(info) : undefined;
-  const metadataArgs = {
-    databaseName: database,
-    tableName: table,
-    connectionId: ctx.connectionId,
-  };
-  const [keys, indices, columns, localKeyFlags] = await Promise.all([
-    metadata.getTableMetadata(metadataArgs),
-    metadata.getSkipIndices(metadataArgs),
+  const keyTable = distributedTarget ?? { database, table, cluster: undefined };
+
+  const [localKeys, indices, columns, localKeyFlags] = await Promise.all([
+    distributedTarget
+      ? queryRows<TableKeys>(
+          ctx,
+          chSql`
+            SELECT engine, sorting_key, primary_key, partition_key
+            FROM ${systemTable('tables', keyTable.cluster)}
+            WHERE database = ${{ String: keyTable.database }}
+              AND name = ${{ String: keyTable.table }}
+            LIMIT 1
+          `,
+        )
+      : undefined,
+    queryRows<Pick<SkipIndexMetadata, 'name' | 'type' | 'expression'>>(
+      ctx,
+      chSql`
+        SELECT name, type, expr AS expression
+        FROM ${systemTable('data_skipping_indices', keyTable.cluster)}
+        WHERE database = ${{ String: keyTable.database }}
+          AND table = ${{ String: keyTable.table }}
+        LIMIT 1 BY name
+      `,
+    ).catch((e: unknown) => {
+      // Indices are optional detail; a missing grant should not hide the schema.
+      if (isPrivilegeError(e)) return undefined;
+      throw e;
+    }),
     queryRows<SystemColumnRow>(
       ctx,
       chSql`
@@ -210,9 +250,9 @@ export async function fetchTableDetails(
           ctx,
           chSql`
             SELECT name, is_in_sorting_key, is_in_primary_key
-            FROM cluster(${{ String: distributedTarget.cluster }}, system.columns)
-            WHERE database = ${{ String: distributedTarget.database }}
-              AND table = ${{ String: distributedTarget.table }}
+            FROM ${systemTable('columns', keyTable.cluster)}
+            WHERE database = ${{ String: keyTable.database }}
+              AND table = ${{ String: keyTable.table }}
             LIMIT 1 BY name
           `,
         )
@@ -222,9 +262,10 @@ export async function fetchTableDetails(
   const flagsByName = new Map(localKeyFlags?.map(f => [f.name, f]));
   return {
     table: info,
-    keys: keys ?? info,
+    keys: localKeys?.at(0) ?? info,
     distributedTarget,
-    indices,
+    indices: indices ?? [],
+    indicesUnavailable: indices === undefined,
     columns: columns.map(c => {
       const flags = flagsByName.get(c.name);
       return flags
@@ -238,8 +279,9 @@ export async function fetchTableDetails(
   };
 }
 
-// Five rows of wide String columns can still be large; cap what ClickHouse
-// sends back so the response is bounded before it is buffered.
+// Five rows of wide String columns can still be large. Past this cap
+// ClickHouse fails the query, which surfaces as sampleRowsError, so nothing
+// unbounded is buffered.
 const SAMPLE_MAX_RESULT_BYTES = 1_000_000;
 
 export function fetchSampleRows(
