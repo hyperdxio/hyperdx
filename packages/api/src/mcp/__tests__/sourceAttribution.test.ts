@@ -28,7 +28,8 @@ jest.mock('@/controllers/connection', () => ({
 }));
 // The real node client, so log_comment comes from its own attribution logic.
 // queryChartConfig is replaced with a plain query that carries no per-query
-// attribution of its own, so only the ambient scope can supply the source.
+// attribution, standing in for the metadata queries renderChartConfig issues:
+// only the ambient scope can give those a source.
 jest.mock('@/clickhouse', () => {
   const { ClickhouseClient } = jest.requireActual(
     '@hyperdx/common-utils/dist/clickhouse/node',

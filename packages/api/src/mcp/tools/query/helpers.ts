@@ -609,6 +609,8 @@ export async function runConfigTile(
 
     const metadata = getMetadata(clickhouseClient);
     try {
+      // queryChartConfig tags its own query with config.source, but not the
+      // metadata queries renderChartConfig issues on the way there.
       const result = await withQueryAttribution(
         { source: source._id.toString() },
         () =>
