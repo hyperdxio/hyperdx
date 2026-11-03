@@ -15,6 +15,7 @@ import {
   isConfigTile,
   validateDashboardTiles,
 } from '@/routers/external-api/v2/utils/dashboards';
+import { getExternalCompatibleFilterValues } from '@/utils/externalApi';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
@@ -22,6 +23,7 @@ import { buildMcpPatchDashboardSchema } from './schemas';
 import {
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
+  getSavedFilterValueWarnings,
   getTileVariableWarnings,
 } from './validation';
 
@@ -40,7 +42,7 @@ export function registerPatchDashboard({
       annotations: IDEMPOTENT_DESTRUCTIVE_TOOL,
       description:
         'Make targeted updates to a dashboard without resubmitting the full object. ' +
-        'You can update dashboard-level fields (name, tags) and/or replace a single ' +
+        'You can update dashboard-level fields (name, tags, savedFilterValues) and/or replace a single ' +
         'tile by tileId \u2014 all in one call. Unmentioned tiles and fields are preserved. ' +
         "Replacing a tile overwrites its whole config; the old config's fields are not merged in. " +
         'If the new config cannot carry alerts (anything other than a line, ' +
@@ -50,17 +52,25 @@ export function registerPatchDashboard({
         'IMPORTANT: After patching a tile, run clickstack_query_tile to confirm the query still works.',
       inputSchema: buildMcpPatchDashboardSchema(promqlEnabled),
     },
-    async ({ dashboardId, name, tags, tileId, tile: inputTile }) => {
+    async ({
+      dashboardId,
+      name,
+      tags,
+      savedFilterValues,
+      tileId,
+      tile: inputTile,
+    }) => {
       // Cross-field validation (kept in handler so the inputSchema
       // stays a plain z.object and its properties are visible in the
       // JSON Schema that the MCP SDK exposes to LLMs).
       if (
         name === undefined &&
         tags === undefined &&
+        savedFilterValues === undefined &&
         (tileId === undefined || inputTile === undefined)
       ) {
         return mcpUserError(
-          'Provide at least one of: name, tags, or tileId+tile to patch.',
+          'Provide at least one of: name, tags, savedFilterValues, or tileId+tile to patch.',
         );
       }
       if ((tileId === undefined) !== (inputTile === undefined)) {
@@ -91,6 +101,9 @@ export function registerPatchDashboard({
       }
       if (tags !== undefined) {
         setPayload.tags = uniq(tags);
+      }
+      if (savedFilterValues !== undefined) {
+        setPayload.savedFilterValues = savedFilterValues;
       }
 
       let patchedTile: ExternalDashboardTileWithId | undefined;
@@ -224,7 +237,7 @@ export function registerPatchDashboard({
         if (tileId !== undefined) {
           return mcpUserError(
             `Tile ${tileId} was not found at write time (it may have been removed by a concurrent update). ` +
-              'The entire update was rejected — name/tags changes (if any) were not applied. Resubmit.',
+              'The entire update was rejected — dashboard-level changes (name/tags/savedFilterValues, if any) were not applied. Resubmit.',
           );
         }
         return mcpUserError('Dashboard not found');
@@ -256,21 +269,37 @@ export function registerPatchDashboard({
         id: updatedDashboard._id.toString(),
         name: updatedDashboard.name,
         tags: updatedDashboard.tags,
+        ...(savedFilterValues !== undefined
+          ? {
+              savedFilterValues: getExternalCompatibleFilterValues(
+                updatedDashboard.savedFilterValues,
+              ),
+            }
+          : {}),
         ...(frontendUrl
           ? { url: `${frontendUrl}/dashboards/${updatedDashboard._id}` }
           : {}),
       };
+      const warnings: string[] = [];
+      if (savedFilterValues !== undefined) {
+        warnings.push(
+          ...getSavedFilterValueWarnings(
+            savedFilterValues,
+            existingDashboard.filters,
+          ),
+        );
+      }
       if (patchedTile) {
         output.patchedTile = patchedTile;
         output.hint =
           'Use clickstack_query_tile to test the patched tile query.';
-        const macroWarnings = [
+        warnings.push(
           ...getRawSqlTileMacroWarnings([patchedTile]),
           ...getTileVariableWarnings([patchedTile], existingDashboard.filters),
-        ];
-        if (macroWarnings.length > 0) {
-          output.warnings = macroWarnings;
-        }
+        );
+      }
+      if (warnings.length > 0) {
+        output.warnings = warnings;
       }
 
       return {
