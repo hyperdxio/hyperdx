@@ -2205,6 +2205,37 @@ export class Metadata {
   }
 
   /**
+   * Reads and caches system.merge_tree_settings per connection. Returns
+   * undefined on failure so the next call retries.
+   */
+  async getMergeTreeSettings({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<Map<string, string> | undefined> {
+    return this.cache.getOrFetch(
+      `${connectionId}.mergeTreeSettings`,
+      async () => {
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: 'SELECT name, value FROM system.merge_tree_settings',
+              query_params: undefined,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res => res.json<{ name: string; value: string }>());
+
+          return new Map(json.data.map(row => [row.name, row.value]));
+        } catch (e) {
+          console.warn('Error fetching MergeTree settings:', e);
+          return undefined;
+        }
+      },
+    );
+  }
+
+  /**
    * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
    * Results are cached using MetadataCache.
    *

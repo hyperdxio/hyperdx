@@ -18,6 +18,7 @@ import {
   deduplicate2dArray,
   intersect2dArray,
   useGetKeyValues,
+  useMergeTreeSettings,
   useMultipleAllFields,
   useMultipleGetKeyValues,
 } from '@/hooks/useMetadata';
@@ -945,6 +946,62 @@ describe('useMultipleAllFields', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
     expect(result.current.data).toEqual(fieldsA);
+  });
+});
+
+describe('useMergeTreeSettings', () => {
+  let wrapper: React.ComponentType<{ children: any }>;
+  let mockMetadata: Metadata;
+  const settings = new Map([['enable_block_number_column', '1']]);
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMetadata = createMockMetadata();
+    jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    wrapper = ({ children }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+  });
+
+  it('keeps a successful result fresh across mounts', async () => {
+    const spy = jest
+      .spyOn(mockMetadata, 'getMergeTreeSettings')
+      .mockResolvedValue(settings);
+
+    const first = renderHook(() => useMergeTreeSettings('conn1'), { wrapper });
+    await waitFor(() => expect(first.result.current.data).toEqual(settings));
+    first.unmount();
+
+    const second = renderHook(() => useMergeTreeSettings('conn1'), { wrapper });
+    expect(second.result.current.data).toEqual(settings);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns null on failure and refetches on the next mount', async () => {
+    const spy = jest
+      .spyOn(mockMetadata, 'getMergeTreeSettings')
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(settings);
+
+    const first = renderHook(() => useMergeTreeSettings('conn1'), { wrapper });
+    await waitFor(() => expect(first.result.current.data).toBeNull());
+    first.unmount();
+
+    const second = renderHook(() => useMergeTreeSettings('conn1'), { wrapper });
+    await waitFor(() => expect(second.result.current.data).toEqual(settings));
+    expect(spy).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not query without a connection', () => {
+    const spy = jest.spyOn(mockMetadata, 'getMergeTreeSettings');
+
+    const { result } = renderHook(() => useMergeTreeSettings(''), { wrapper });
+
+    expect(result.current.isLoading).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
   });
 });
 
