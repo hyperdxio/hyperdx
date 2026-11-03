@@ -220,11 +220,17 @@ export function toPromqlChartRows(
   const isBucketed = expressions.some(result => result.isBucketed);
 
   const data: Record<string, string | number>[] = [];
-  const promqlSeriesLabels: Record<string, Record<string, string>> = {};
+  const promqlSeriesLabels = new Map<string, Record<string, string>>();
   expressions.forEach(({ result: series }, expressionIndex) => {
     series.forEach(({ values, metric }, seriesIndex) => {
-      const seriesName = seriesNames[expressionIndex][seriesIndex];
-      promqlSeriesLabels[seriesName] = metric;
+      const seriesName = seriesNames.at(expressionIndex)?.at(seriesIndex);
+      if (seriesName == null) {
+        // Unreachable: renderPromqlSeriesNames returns one name per series.
+        throw new Error(
+          `No name rendered for series ${expressionIndex}:${seriesIndex}`,
+        );
+      }
+      promqlSeriesLabels.set(seriesName, metric);
       for (const [ts, value] of values) {
         data.push(
           isBucketed
@@ -249,7 +255,7 @@ export function toPromqlChartRows(
       { name: 'series_name', type: 'String' },
     ],
     rows: data.length,
-    promqlSeriesLabels,
+    promqlSeriesLabels: Object.fromEntries(promqlSeriesLabels),
   };
 }
 
@@ -277,7 +283,8 @@ function labelColumns(expressions: PromqlExpressionSamples[]): string[] {
 function* samples(expressions: PromqlExpressionSamples[]) {
   for (const { result } of expressions) {
     for (const { metric, values } of result) {
-      for (const [ts, value] of values) yield { metric, ts, value };
+      const labelValues = new Map(Object.entries(metric));
+      for (const [ts, value] of values) yield { labelValues, ts, value };
     }
   }
 }
@@ -301,12 +308,12 @@ export function toPromqlTableRows(
 
   // Cap the rows here, before the caller holds every sample.
   const data: Record<string, string | number>[] = [];
-  for (const { metric, ts, value } of samples(expressions)) {
+  for (const { labelValues, ts, value } of samples(expressions)) {
     if (data.length >= maxRows) break;
     const row: [string, string | number][] = [];
     if (timeColumn) row.push([timeColumn, new Date(ts * 1000).toISOString()]);
     for (const label of labels) {
-      row.push([label, Object.hasOwn(metric, label) ? metric[label] : '']);
+      row.push([label, labelValues.get(label) ?? '']);
     }
     row.push([valueColumn, value]);
     data.push(Object.fromEntries(row));
