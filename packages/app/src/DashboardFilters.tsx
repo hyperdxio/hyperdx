@@ -4,6 +4,7 @@ import {
   getFilterBroadcastTarget,
   getFilterVariableName,
   getPendingFilterValuesVariables,
+  isAdhocFilter,
   isFilterGlobalRequirement,
   isFilterRequired,
   isFilterVariableEnabled,
@@ -11,12 +12,20 @@ import {
   isStaticListFilter,
 } from '@hyperdx/common-utils/dist/filters';
 import {
+  AdhocFilterCondition,
   ChartVariable,
   DashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
-import { Group, Stack, Text, Tooltip } from '@mantine/core';
-import { IconAlertTriangle, IconHelp, IconRefresh } from '@tabler/icons-react';
+import { isFilterSingleSelect } from '@hyperdx/common-utils/dist/variables';
+import { Group, Stack, Text } from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
 
+import { AdhocDashboardFilter } from './components/AdhocDashboardFilter/AdhocDashboardFilter';
+import {
+  DashboardFilterLabel,
+  FilterCaution,
+  FilterEffect,
+} from './components/DashboardFilterLabel';
 import { FilterLinkToggle } from './components/FilterLinkToggle';
 import { VirtualMultiSelect } from './components/VirtualMultiSelect/VirtualMultiSelect';
 import { useDashboardFilterValues } from './hooks/useDashboardFilterValues';
@@ -64,9 +73,7 @@ export const getRequiredFilterTooltip = (filter: DashboardFilter): string =>
  * Describe what a filter does with the value you pick: broadcast it as a
  * condition, expose it as a variable, both, or neither.
  */
-export const getFilterEffect = (
-  filter: DashboardFilter,
-): { hasEffect: boolean; tooltip: string } => {
+export const getFilterEffect = (filter: DashboardFilter): FilterEffect => {
   const parts: string[] = [];
 
   const broadcast = getFilterBroadcastTarget(filter);
@@ -98,25 +105,6 @@ export const getFilterEffect = (
   return { hasEffect: true, tooltip: parts.join(', ') };
 };
 
-/** One of the caution icons a filter's label row can carry, with its tooltip. */
-const FilterCaution = ({
-  label,
-  testId,
-  variant = 'warning',
-}: {
-  label: string;
-  testId: string;
-  variant?: 'warning' | 'danger';
-}) => (
-  <Tooltip label={label} withinPortal multiline maw={400}>
-    <IconAlertTriangle
-      size={12}
-      color={`var(--color-text-${variant})`}
-      data-testid={testId}
-    />
-  </Tooltip>
-);
-
 const DashboardFilterSelect = ({
   filter,
   onChange,
@@ -133,25 +121,7 @@ const DashboardFilterSelect = ({
 
   return (
     <Stack gap={2}>
-      <Group gap={4} align="center" wrap="nowrap">
-        <Text size="xs" c="dimmed">
-          {filter.name}
-        </Text>
-        <Tooltip label={effect.tooltip} withinPortal>
-          {effect.hasEffect ? (
-            <IconHelp
-              size={12}
-              color="var(--color-text-muted)"
-              data-testid={`dashboard-filter-help-${filter.name}`}
-            />
-          ) : (
-            <IconAlertTriangle
-              size={12}
-              color="var(--color-text-warning)"
-              data-testid={`dashboard-filter-no-effect-${filter.name}`}
-            />
-          )}
-        </Tooltip>
+      <DashboardFilterLabel name={filter.name} effect={effect}>
         {isMissingRequiredValue && (
           <FilterCaution
             label={getRequiredFilterTooltip(filter)}
@@ -174,7 +144,7 @@ const DashboardFilterSelect = ({
             variant="danger"
           />
         )}
-      </Group>
+      </DashboardFilterLabel>
       <div style={{ width: 250 }}>
         <VirtualMultiSelect
           placeholder={value.length === 0 ? filter.name : undefined}
@@ -186,6 +156,7 @@ const DashboardFilterSelect = ({
           loading={isLoading}
           // A static list renders in the order its author wrote it.
           sort={!isStaticListFilter(filter)}
+          isMultiSelect={!isFilterSingleSelect(filter)}
           onChange={onChange}
           data-testid={`dashboard-filter-select-${filter.name}`}
         />
@@ -201,6 +172,11 @@ interface DashboardFilterProps {
   filters: DashboardFilter[];
   selectionByFilterId: ReadonlyMap<string, FilterSelection>;
   onSetFilterValue: (filterId: string, values: string[]) => void;
+  adhocConditionsByFilterId?: ReadonlyMap<string, AdhocFilterCondition[]>;
+  onSetAdhocConditions?: (
+    filterId: string,
+    conditions: AdhocFilterCondition[],
+  ) => void;
   dateRange: [Date, Date];
   /**
    * The dashboard's variables and their current selections. Defined only when
@@ -215,6 +191,8 @@ const DashboardFilters = ({
   dateRange,
   selectionByFilterId,
   onSetFilterValue,
+  adhocConditionsByFilterId,
+  onSetAdhocConditions,
   variables,
 }: DashboardFilterProps) => {
   // "Link" mode (opt-in, off by default): each dropdown's values are narrowed by
@@ -246,6 +224,20 @@ const DashboardFilters = ({
   return (
     <Group align="start">
       {filters.map(filter => {
+        if (isAdhocFilter(filter)) {
+          return (
+            <AdhocDashboardFilter
+              key={filter.id}
+              filter={filter}
+              conditions={adhocConditionsByFilterId?.get(filter.id) ?? []}
+              onChange={conditions =>
+                onSetAdhocConditions?.(filter.id, conditions)
+              }
+              dateRange={dateRange}
+              effect={getFilterEffect(filter)}
+            />
+          );
+        }
         const queriedFilterValues = filterValuesById?.get(filter.id);
         const included = selectionByFilterId.get(filter.id)?.included;
         const selectedValues = included

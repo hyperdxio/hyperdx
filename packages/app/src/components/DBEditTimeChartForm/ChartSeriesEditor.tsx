@@ -6,6 +6,7 @@ import {
   UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
+import { Badge } from '@clickhouse/click-ui';
 import { indexToSeriesRef } from '@hyperdx/common-utils/dist/core/formula';
 import {
   DateRange,
@@ -14,7 +15,7 @@ import {
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { ActionIcon, Badge, Flex, Group, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Flex, Group, Text, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconListSearch, IconPalette } from '@tabler/icons-react';
 
@@ -70,6 +71,7 @@ type ChartSeriesEditorProps = {
   showHaving: boolean;
   showDuplicate: boolean;
   showColor: boolean;
+  showSeriesNumberFormat?: boolean;
   tableName: string;
   length: number;
   tableSource?: TSource;
@@ -93,6 +95,7 @@ export function ChartSeriesEditor({
   showHaving,
   showDuplicate,
   showColor,
+  showSeriesNumberFormat = true,
   tableName: _tableName,
   parentRef,
   length,
@@ -300,19 +303,18 @@ export function ChartSeriesEditor({
         onSwap={onSwapSeries}
         onRemove={length > 1 ? onRemoveSeries : undefined}
         onDuplicate={showDuplicate ? onDuplicateSeries : undefined}
-        onOpenNumberFormat={openSeriesNumberFormat}
+        onOpenNumberFormat={
+          showSeriesNumberFormat ? openSeriesNumberFormat : undefined
+        }
         leadingSection={
           isFormulaSourceKind(tableSource?.kind) ? (
             <Tooltip label="Reference this series in a formula by this letter">
               <Badge
                 size="sm"
-                radius="sm"
-                variant="light"
-                color="gray"
+                text={indexToSeriesRef(index) ?? index + 1}
+                state="neutral"
                 data-testid="series-ref-badge"
-              >
-                {indexToSeriesRef(index) ?? index + 1}
-              </Badge>
+              />
             </Tooltip>
           ) : undefined
         }

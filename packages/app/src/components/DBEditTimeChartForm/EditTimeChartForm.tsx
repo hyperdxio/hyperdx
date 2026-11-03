@@ -1,36 +1,41 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { isEqual } from 'lodash';
 import {
   Controller,
   useFieldArray,
   useForm,
+  type UseFormGetValues,
   type UseFormSetValue,
   useWatch,
 } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { isReducibleRangeQuery } from '@hyperdx/common-utils/dist/core/promql';
 import {
   displayTypeSupportsBuilderAlerts,
   displayTypeSupportsRawSqlAlerts,
+  isTimeSeriesDisplayType,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   displayTypeRequiresSource,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
+  BroadcastFilter,
   ChartConfigWithDateRange,
   ChartVariable,
   DashboardFilter,
   DisplayType,
-  Filter,
+  PromqlHeatmapMode,
   SavedChartConfig,
   SourceKind,
+  TILE_DESCRIPTION_MAX_LENGTH,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { getAlertVariableWarning } from '@hyperdx/common-utils/dist/variables';
 import {
   Box,
-  Divider,
   Flex,
   SegmentedControl,
   Tabs,
@@ -52,6 +57,7 @@ import {
 } from '@tabler/icons-react';
 
 import { getPreviousDateRange } from '@/ChartUtils';
+import { AlertPanelLayout } from '@/components/AlertPanel';
 import ChartDisplaySettingsDrawer, {
   ChartConfigDisplaySettings,
 } from '@/components/ChartDisplaySettingsDrawer';
@@ -69,9 +75,13 @@ import {
   isPromqlDisplayType,
   isRawSqlDisplayType,
   isStringSelectDisplayType,
+  toBuilderHeatmapMode,
   validateChartForm,
 } from '@/components/ChartEditor/utils';
-import { HEATMAP_DURATION_NUMBER_FORMAT } from '@/components/DBHeatmapChart';
+import {
+  HEATMAP_DURATION_NUMBER_FORMAT,
+  PROMQL_DEFAULT_HEATMAP_SCALE_TYPE,
+} from '@/components/DBHeatmapChart';
 import { ErrorBoundary } from '@/components/Error/ErrorBoundary';
 import { InputControlled } from '@/components/InputControlled';
 import SaveToDashboardModal from '@/components/SaveToDashboardModal';
@@ -90,9 +100,11 @@ import {
 } from '@/source';
 import { normalizeNoOpAlertScheduleFields } from '@/utils/alerts';
 
+import { AlertPanelPrimaryAction } from './AlertPanelPrimaryAction';
 import { ChartActionBar, DashboardFiltersToggleProps } from './ChartActionBar';
 import { ChartEditorControls } from './ChartEditorControls';
 import { ChartPreviewPanel } from './ChartPreviewPanel';
+import { ChartSaveActions } from './ChartSaveActions';
 import { ErrorNotificationMessage } from './ErrorNotificationMessage';
 import { useBuilderToSqlConversion } from './useBuilderToSqlConversion';
 import {
@@ -101,6 +113,7 @@ import {
   displayTypeToActiveTab,
   resolveTilePreviewFilters,
   TABS_WITH_GENERATED_SQL,
+  withBroadcastFilters,
   zSavedChartConfig,
 } from './utils';
 
@@ -110,7 +123,7 @@ type EditTimeChartFormProps = {
   /** Variables and their selected values, from the parent dashboard (if one exists). */
   variables?: ChartVariable[];
   /** Function returning the dashboard's broadcast filters for the given source, if any. */
-  getDashboardFilters?: (sourceId: string | undefined) => Filter[];
+  getDashboardFilters?: (sourceId: string | undefined) => BroadcastFilter[];
   /** The dashboard's required filters that have nothing selected, if any */
   unsatisfiedRequiredFilters?: DashboardFilter[];
   displayedTimeInputValue?: string;
@@ -152,23 +165,55 @@ type EditTimeChartFormProps = {
 const ALERT_IGNORES_DASHBOARD_FILTERS =
   'Dashboard-level filter and variable selections cannot be applied when an alert is configured.';
 
-/** Populate form state with the standard heatmap series + duration numberFormat. */
+/**
+ * Populate form state with the standard series for a heatmap mode.
+ * Distribution heatmaps bucket the trace duration (or `fallbackValueExpression`
+ * on a trace source without one) with a duration number format; series
+ * heatmaps start from a plain count. PromQL distribution heatmaps bucket
+ * arbitrary samples, so they get no duration format.
+ */
 function applyHeatmapDefaults(
   setValue: UseFormSetValue<ChartEditorFormState>,
-  valueExpression: string,
+  getValues: UseFormGetValues<ChartEditorFormState>,
+  {
+    mode,
+    tableSource,
+    fallbackValueExpression = '',
+    isPromql = false,
+  }: {
+    mode: PromqlHeatmapMode;
+    tableSource: TSource | undefined;
+    fallbackValueExpression?: string;
+    isPromql?: boolean;
+  },
 ) {
+  const isTraceDuration =
+    tableSource?.kind === SourceKind.Trace && !!tableSource.durationExpression;
   const heatmapSeries: SavedChartConfigWithSelectArray['select'] = [
     {
       aggFn: 'count',
       aggCondition: '',
       aggConditionLanguage: getStoredLanguage() ?? 'lucene',
-      valueExpression,
+      valueExpression:
+        mode === 'distribution'
+          ? isTraceDuration
+            ? getDurationMsExpression(tableSource)
+            : fallbackValueExpression
+          : '',
     },
   ];
   setValue('select', heatmapSeries);
   setValue('series', heatmapSeries);
-  setValue('series.0.countExpression', 'count()');
-  setValue('numberFormat', { ...HEATMAP_DURATION_NUMBER_FORMAT });
+
+  if (mode === 'distribution' && !isPromql) {
+    setValue('series.0.countExpression', 'count()');
+    setValue('numberFormat', { ...HEATMAP_DURATION_NUMBER_FORMAT });
+  } else if (
+    isEqual(getValues('numberFormat'), HEATMAP_DURATION_NUMBER_FORMAT)
+  ) {
+    // Unselect the default-applied duration format for builder series-mode
+    setValue('numberFormat', undefined);
+  }
 }
 
 export default function EditTimeChartForm({
@@ -215,6 +260,7 @@ export default function EditTimeChartForm({
     handleSubmit,
     register,
     setError,
+    trigger,
     clearErrors,
     formState: { errors, isDirty, dirtyFields },
   } = useForm<ChartEditorFormState>({
@@ -276,18 +322,28 @@ export default function EditTimeChartForm({
   const configType = useWatch({ control, name: 'configType' });
   const connection = useWatch({ control, name: 'connection' });
   const promqlExpressions = useWatch({ control, name: 'promqlExpressions' });
+  const storedHeatmapMode = getHeatmapMode({
+    heatmap: useWatch({ control, name: 'heatmap' }),
+  });
 
   const chartConfigAlert = chartConfig.alert;
   const isRawSqlInput =
     configType === 'sql' && isRawSqlDisplayType(displayType);
   const isPromqlInput =
     configType === 'promql' && isPromqlDisplayType(displayType);
+  // Switching from PromQL to builder leaves the PromQL-only histogram mode in
+  // the form, which the builder treats as distribution.
+  const builderHeatmapMode =
+    toBuilderHeatmapMode(storedHeatmapMode) ?? 'distribution';
+  const heatmapMode: PromqlHeatmapMode = isPromqlInput
+    ? storedHeatmapMode
+    : builderHeatmapMode;
 
   const { data: sources } = useSources();
 
   const allowedSourceKinds = useMemo(
-    () => getAllowedSourceKinds({ configType, displayType }),
-    [configType, displayType],
+    () => getAllowedSourceKinds({ configType, displayType, heatmapMode }),
+    [configType, displayType, heatmapMode],
   );
 
   // A source selection that current mode can't query counts as no source,
@@ -335,6 +391,7 @@ export default function EditTimeChartForm({
     fillNulls,
     compareToPreviousPeriod,
     fitYAxisToData,
+    lineInterpolation,
     numberFormat,
     groupByColumnsOnLeft,
     alternateRowBackground,
@@ -343,7 +400,8 @@ export default function EditTimeChartForm({
     colorRules,
     backgroundChart,
     legendTemplate,
-    heatmapScaleType,
+    builderHeatmapScaleType,
+    promqlHeatmapScaleType,
   ] = useWatch({
     control,
     name: [
@@ -351,6 +409,7 @@ export default function EditTimeChartForm({
       'fillNulls',
       'compareToPreviousPeriod',
       'fitYAxisToData',
+      'lineInterpolation',
       'numberFormat',
       'groupByColumnsOnLeft',
       'alternateRowBackground',
@@ -360,8 +419,12 @@ export default function EditTimeChartForm({
       'backgroundChart',
       'legendTemplate',
       'series.0.heatmapScaleType',
+      'heatmap.scaleType',
     ],
   });
+  const heatmapScaleType = isPromqlInput
+    ? promqlHeatmapScaleType
+    : builderHeatmapScaleType;
 
   // Format auto-detected purely from the datasource (e.g. duration for a trace
   // Duration column), used as the drawer's fallback when no explicit
@@ -383,6 +446,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -398,6 +462,7 @@ export default function EditTimeChartForm({
       fillNulls,
       compareToPreviousPeriod,
       fitYAxisToData,
+      lineInterpolation,
       numberFormat,
       groupByColumnsOnLeft,
       alternateRowBackground,
@@ -485,8 +550,7 @@ export default function EditTimeChartForm({
       return queriedConfig;
     }
     return {
-      ...queriedConfig,
-      filters: previewDashboardFilters?.filters,
+      ...withBroadcastFilters(queriedConfig, previewDashboardFilters?.filters),
       variables: previewDashboardFilters?.variables,
     };
   }, [queriedConfig, previewDashboardFilters]);
@@ -676,6 +740,31 @@ export default function EditTimeChartForm({
     [validateAndNormalize, onSaveAlert],
   );
 
+  // The edit-alert modal requires the alert and saves it by saving the chart,
+  // so there the panel's action saves too instead of only closing the panel.
+  const panelSaveAlert =
+    onSaveAlert != null
+      ? handleSaveAlert
+      : isAlertRequired && onSave != null
+        ? handleSave
+        : undefined;
+
+  // The alert as it was when its panel opened, restored if the panel is closed
+  // without confirming. Cloned: the form updates nested values in place.
+  const alertSnapshotRef = useRef(formValue.alert);
+  const snapshotAlert = useCallback(() => {
+    alertSnapshotRef.current = structuredClone(getValues('alert'));
+  }, [getValues]);
+  const cancelAlertChanges = useCallback(
+    (isDraft: boolean) => {
+      setValue('alert', isDraft ? undefined : alertSnapshotRef.current);
+      // setValue keeps errors from a failed confirm, which the next draft or
+      // the reverted alert would otherwise show straight away.
+      clearErrors('alert');
+    },
+    [setValue, clearErrors],
+  );
+
   // Track previous values for detecting changes
   const prevGranularityRef = useRef(granularity);
   const prevDisplayTypeRef = useRef(displayType);
@@ -706,11 +795,15 @@ export default function EditTimeChartForm({
   // Switching editor mode or display type can invalidate the selected source:
   // Swap in the first source the picker still offers rather than
   // leaving a selection it no longer lists.
-  const prevSourceModeRef = useRef({ configType, displayType });
+  const prevSourceModeRef = useRef({ configType, displayType, heatmapMode });
   useEffect(() => {
-    // Run only on configType and displayType changes
+    // Run only on configType, displayType and heatmap mode changes
     const prev = prevSourceModeRef.current;
-    if (prev.configType === configType && prev.displayType === displayType) {
+    if (
+      prev.configType === configType &&
+      prev.displayType === displayType &&
+      prev.heatmapMode === heatmapMode
+    ) {
       return;
     }
 
@@ -718,7 +811,7 @@ export default function EditTimeChartForm({
     if (sources == null) return;
     if (!displayTypeRequiresSource(displayType)) return;
 
-    prevSourceModeRef.current = { configType, displayType };
+    prevSourceModeRef.current = { configType, displayType, heatmapMode };
 
     // Builder and PromQL require a source, so an empty selection
     // should be filled in. Raw SQL source is optional, so leave it.
@@ -737,15 +830,19 @@ export default function EditTimeChartForm({
     // Select the first valid source
     setValue('source', firstSourceItemValue(allowedSourceItems) ?? '');
 
-    // Record that a display-type change triggered a source change, so
-    // that auto-submit runs in the correct effect below.
+    // Record that a display-type or heatmap mode change triggered a source
+    // change, so that auto-submit runs in the correct effect below. A mode
+    // change that comes from switching config type doesn't auto-submit, like
+    // any other config type change.
     isDisplayTypeSourceSwapPendingRef.current =
-      prev.displayType !== displayType;
+      prev.displayType !== displayType ||
+      (prev.heatmapMode !== heatmapMode && prev.configType === configType);
   }, [
     allowedSourceItems,
     allowedSourceKinds,
     configType,
     displayType,
+    heatmapMode,
     setValue,
     sourceId,
     sources,
@@ -769,18 +866,17 @@ export default function EditTimeChartForm({
         // Two entry paths into Heatmap:
         //   - From Search/RawSQL: select is a string; clear `where` too
         //   - From another builder tab: select is already an array
-        const fallbackValue = Array.isArray(select)
-          ? (select[0]?.valueExpression ?? '')
-          : '';
-        const defaultValue =
-          tableSource?.kind === SourceKind.Trace &&
-          tableSource.durationExpression
-            ? getDurationMsExpression(tableSource)
-            : fallbackValue;
         if (typeof select === 'string') {
           setValue('where', '');
         }
-        applyHeatmapDefaults(setValue, defaultValue);
+        applyHeatmapDefaults(setValue, getValues, {
+          mode: heatmapMode,
+          tableSource,
+          fallbackValueExpression: Array.isArray(select)
+            ? (select[0]?.valueExpression ?? '')
+            : '',
+          isPromql: isPromqlInput,
+        });
       } else if (!Array.isArray(select)) {
         const defaultSeries: SavedChartConfigWithSelectArray['select'] = [
           {
@@ -802,7 +898,48 @@ export default function EditTimeChartForm({
         onSubmit(true);
       }
     }
-  }, [displayType, select, setValue, onSubmit, configType, tableSource]);
+  }, [
+    displayType,
+    select,
+    setValue,
+    getValues,
+    onSubmit,
+    configType,
+    tableSource,
+    heatmapMode,
+    isPromqlInput,
+  ]);
+
+  // Switching heatmap mode may trigger a source swap, and should apply new defaults.
+  const onHeatmapModeChange = useCallback(
+    (mode: PromqlHeatmapMode) => {
+      setValue('heatmap.mode', mode);
+      applyHeatmapDefaults(setValue, getValues, {
+        mode,
+        tableSource,
+        isPromql: isPromqlInput,
+      });
+      if (
+        tableSource != null &&
+        getAllowedSourceKinds({
+          configType,
+          displayType,
+          heatmapMode: mode,
+        }).includes(tableSource.kind)
+      ) {
+        onSubmit(true);
+      }
+    },
+    [
+      setValue,
+      getValues,
+      tableSource,
+      onSubmit,
+      configType,
+      displayType,
+      isPromqlInput,
+    ],
+  );
 
   // Handle auto-submitting and form state updates when the source changes.
   useEffect(() => {
@@ -816,15 +953,27 @@ export default function EditTimeChartForm({
 
     if (
       displayType === DisplayType.Heatmap &&
+      heatmapMode === 'distribution' &&
       tableSource?.kind === SourceKind.Trace &&
       tableSource.durationExpression
     ) {
-      applyHeatmapDefaults(setValue, getDurationMsExpression(tableSource));
+      applyHeatmapDefaults(setValue, getValues, {
+        mode: 'distribution',
+        tableSource,
+      });
       onSubmit(true);
     } else if (swappedSourceDueToDisplayTypeChange) {
       onSubmit(true);
     }
-  }, [sourceId, displayType, tableSource, setValue, onSubmit]);
+  }, [
+    sourceId,
+    displayType,
+    heatmapMode,
+    tableSource,
+    setValue,
+    getValues,
+    onSubmit,
+  ]);
 
   // Emulate the date range picker auto-searching similar to dashboards
   useEffect(() => {
@@ -876,6 +1025,7 @@ export default function EditTimeChartForm({
         fillNulls,
         compareToPreviousPeriod,
         fitYAxisToData,
+        lineInterpolation,
         groupByColumnsOnLeft,
         alternateRowBackground,
         seriesLimit,
@@ -897,6 +1047,7 @@ export default function EditTimeChartForm({
       setValue('fillNulls', fillNulls);
       setValue('compareToPreviousPeriod', compareToPreviousPeriod);
       setValue('fitYAxisToData', fitYAxisToData);
+      setValue('lineInterpolation', lineInterpolation);
       setValue('groupByColumnsOnLeft', groupByColumnsOnLeft);
       setValue('alternateRowBackground', alternateRowBackground);
       // Persist `null` (not undefined) when cleared so the disabled state
@@ -910,8 +1061,15 @@ export default function EditTimeChartForm({
       if (configType === 'promql') {
         setValue('legendTemplate', legendTemplate ?? '');
       }
-      if (displayType === DisplayType.Heatmap) {
-        setValue('series.0.heatmapScaleType', heatmapScaleType);
+      if (
+        displayType === DisplayType.Heatmap &&
+        heatmapMode === 'distribution'
+      ) {
+        if (isPromqlInput) {
+          setValue('heatmap.scaleType', heatmapScaleType);
+        } else {
+          setValue('series.0.heatmapScaleType', heatmapScaleType);
+        }
       }
       // Display settings live in a separate drawer form, so RHF can't track
       // them. Latch dirty state only when the drawer reports actual changes.
@@ -921,7 +1079,15 @@ export default function EditTimeChartForm({
       }
       onSubmit();
     },
-    [setValue, onDirtyChange, onSubmit, configType, displayType],
+    [
+      setValue,
+      onDirtyChange,
+      onSubmit,
+      configType,
+      displayType,
+      heatmapMode,
+      isPromqlInput,
+    ],
   );
 
   const tableConnection = useMemo(
@@ -929,262 +1095,343 @@ export default function EditTimeChartForm({
     [tableSource],
   );
 
+  const configTypeOptions = useMemo(
+    () => [
+      { label: 'Builder', value: 'builder' },
+      ...(isRawSqlDisplayType(displayType)
+        ? [{ label: 'SQL', value: 'sql' }]
+        : []),
+      ...(IS_PROMQL_ENABLED && isPromqlDisplayType(displayType)
+        ? [{ label: 'PromQL', value: 'promql' }]
+        : []),
+    ],
+    [displayType],
+  );
+
   return (
-    <div ref={setParentRef} data-testid={dataTestId}>
-      <ErrorBoundary>
-        <Controller
-          control={control}
-          name="displayType"
-          render={({ field: { onChange, value } }) => (
-            <Tabs
-              value={value}
-              onChange={onChange}
-              radius={'xs'}
-              mb="md"
-              data-testid="chart-type-input"
-            >
-              <Tabs.List>
-                <Tabs.Tab
-                  value={DisplayType.Line}
-                  leftSection={<IconChartLine size={16} />}
-                >
-                  Time Series
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Table}
-                  leftSection={<IconTable size={16} />}
-                >
-                  Table
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Number}
-                  leftSection={<IconNumbers size={16} />}
-                >
-                  Number
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Bar}
-                  leftSection={<IconChartBar size={16} />}
-                >
-                  Bar
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Pie}
-                  leftSection={<IconChartPie size={16} />}
-                >
-                  Pie
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Search}
-                  leftSection={<IconList size={16} />}
-                >
-                  Search
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Heatmap}
-                  leftSection={<IconGrid3x3 size={16} />}
-                >
-                  Heatmap
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.EventPatterns}
-                  leftSection={<IconBracketsContain size={16} />}
-                >
-                  Patterns
-                </Tabs.Tab>
-                <Tabs.Tab
-                  value={DisplayType.Markdown}
-                  leftSection={<IconMarkdown size={16} />}
-                >
-                  Markdown
-                </Tabs.Tab>
-              </Tabs.List>
-            </Tabs>
-          )}
+    // The panel opens on request, except where the alert is what is being
+    // edited (the inline-alert modal).
+    <AlertPanelLayout
+      data-testid={dataTestId}
+      defaultOpened={isAlertRequired}
+      onOpen={snapshotAlert}
+      onCancel={cancelAlertChanges}
+      actions={
+        <AlertPanelPrimaryAction
+          trigger={trigger}
+          handleSubmit={handleSubmit}
+          handleSaveAlert={panelSaveAlert}
+          saveAlertLabel={saveAlertLabel}
+          isSavingAlert={onSaveAlert != null ? isSavingAlert : isSaving}
         />
-        <Flex align="center" gap="sm" mb="sm">
-          <Text size="sm" className="text-nowrap">
-            Chart Name
-          </Text>
-          <InputControlled
-            name="name"
-            control={control}
-            flex={1}
-            type="text"
-            placeholder="My Chart Name"
-            data-testid="chart-name-input"
-          />
-          {isRawSqlDisplayType(displayType) && (
-            <Controller
-              control={control}
-              name="configType"
-              render={({ field: { onChange, value } }) => (
-                <SegmentedControl
-                  value={value ?? 'builder'}
-                  onChange={onChange}
-                  data={[
-                    { label: 'Builder', value: 'builder' },
-                    { label: 'SQL', value: 'sql' },
-                    ...(IS_PROMQL_ENABLED
-                      ? [{ label: 'PromQL', value: 'promql' }]
-                      : []),
-                  ]}
+      }
+    >
+      <div ref={setParentRef}>
+        <ErrorBoundary>
+          <Flex align="center" gap="sm" mb="sm">
+            <Flex
+              flex={1}
+              gap="sm"
+              direction={{ base: 'column', lg: 'row' }}
+              align={{ base: 'stretch', lg: 'center' }}
+            >
+              <Flex align="center" gap="sm" flex={1}>
+                <Text size="sm" className="text-nowrap">
+                  Chart Name
+                </Text>
+                <InputControlled
+                  name="name"
+                  control={control}
+                  flex={1}
+                  type="text"
+                  placeholder="My Chart Name"
+                  data-testid="chart-name-input"
                 />
+              </Flex>
+              {isDashboardForm && (
+                <Flex align="center" gap="sm" flex={1}>
+                  <Text size="sm" className="text-nowrap">
+                    Description
+                  </Text>
+                  <Controller
+                    control={control}
+                    name="description"
+                    render={({ field: { value, onChange, onBlur } }) => (
+                      <Textarea
+                        flex={1}
+                        autosize
+                        minRows={1}
+                        maxRows={4}
+                        maxLength={TILE_DESCRIPTION_MAX_LENGTH}
+                        value={value ?? ''}
+                        onChange={e =>
+                          onChange(e.currentTarget.value || undefined)
+                        }
+                        onBlur={onBlur}
+                        placeholder="Describe what this chart displays"
+                        aria-label="Tile description"
+                        data-testid="chart-description-input"
+                      />
+                    )}
+                  />
+                </Flex>
               )}
+            </Flex>
+            {configTypeOptions.length > 1 && (
+              <Controller
+                control={control}
+                name="configType"
+                render={({ field: { onChange, value } }) => (
+                  <SegmentedControl
+                    value={
+                      configTypeOptions.some(option => option.value === value)
+                        ? value
+                        : 'builder'
+                    }
+                    onChange={onChange}
+                    data={configTypeOptions}
+                  />
+                )}
+              />
+            )}
+            <ChartSaveActions
+              handleSubmit={handleSubmit}
+              handleSave={handleSave}
+              onSave={onSave}
+              onClose={onClose}
+              isSaving={isSaving}
+            />
+          </Flex>
+          <Controller
+            control={control}
+            name="displayType"
+            render={({ field: { onChange, value } }) => (
+              <Tabs
+                // Stacked variants are picked from the preview's display
+                // switcher and live under the Time Series tab.
+                value={
+                  isTimeSeriesDisplayType(value) ? DisplayType.Line : value
+                }
+                onChange={v => {
+                  if (v === DisplayType.Line && isTimeSeriesDisplayType(value))
+                    return;
+                  onChange(v);
+                }}
+                radius={'xs'}
+                mb="md"
+                data-testid="chart-type-input"
+              >
+                <Tabs.List>
+                  <Tabs.Tab
+                    value={DisplayType.Line}
+                    leftSection={<IconChartLine size={16} />}
+                  >
+                    Time Series
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Table}
+                    leftSection={<IconTable size={16} />}
+                  >
+                    Table
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Number}
+                    leftSection={<IconNumbers size={16} />}
+                  >
+                    Number
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Bar}
+                    leftSection={<IconChartBar size={16} />}
+                  >
+                    Bar
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Pie}
+                    leftSection={<IconChartPie size={16} />}
+                  >
+                    Pie
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Search}
+                    leftSection={<IconList size={16} />}
+                  >
+                    Search
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Heatmap}
+                    leftSection={<IconGrid3x3 size={16} />}
+                  >
+                    Heatmap
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.EventPatterns}
+                    leftSection={<IconBracketsContain size={16} />}
+                  >
+                    Patterns
+                  </Tabs.Tab>
+                  <Tabs.Tab
+                    value={DisplayType.Markdown}
+                    leftSection={<IconMarkdown size={16} />}
+                  >
+                    Markdown
+                  </Tabs.Tab>
+                </Tabs.List>
+              </Tabs>
+            )}
+          />
+          {activeTab === 'markdown' ? (
+            <div>
+              <Textarea
+                {...register('markdown')}
+                label="Markdown content"
+                placeholder="Markdown"
+                mb="md"
+                styles={{
+                  input: {
+                    minHeight: 200,
+                  },
+                }}
+              />
+              <Box p="md" mb="md">
+                <HDXMarkdownChart
+                  config={{
+                    markdown: markdown || 'Preview',
+                  }}
+                  variables={variables}
+                />
+              </Box>
+            </div>
+          ) : isPromqlInput ? (
+            <PromqlChartEditor
+              control={control}
+              getValues={getValues}
+              allowedSourceKinds={allowedSourceKinds}
+              onSubmit={onSubmit}
+              onOpenDisplaySettings={openDisplaySettings}
+              heatmapMode={heatmapMode}
+              onHeatmapModeChange={onHeatmapModeChange}
+            />
+          ) : isRawSqlInput ? (
+            <RawSqlChartEditor
+              control={control}
+              setValue={setValue}
+              allowedSourceKinds={allowedSourceKinds}
+              onOpenDisplaySettings={openDisplaySettings}
+              onSubmit={onSubmit}
+              isDashboardForm={isDashboardForm}
+              alert={alert}
+              additionalWarnings={additionalAlertWarnings}
+              alertsEnabled={alertsEnabled}
+              isAlertRequired={isAlertRequired}
+              dashboardId={dashboardId}
+              variables={variables}
+            />
+          ) : (
+            <ChartEditorControls
+              control={control}
+              setValue={setValue}
+              clearErrors={clearErrors}
+              errors={errors}
+              fields={fields}
+              append={append}
+              removeSeries={removeSeries}
+              swapSeries={swapSeries}
+              duplicateSeries={duplicateSeries}
+              tableSource={tableSource}
+              tableConnection={tableConnection}
+              allowedSourceKinds={allowedSourceKinds}
+              databaseName={databaseName}
+              tableName={tableName}
+              dateRange={dateRange}
+              select={select}
+              displayType={displayType}
+              activeTab={activeTab}
+              seriesReturnType={seriesReturnType}
+              ratioMode={ratioMode}
+              alert={alert}
+              additionalWarnings={additionalAlertWarnings}
+              alertsEnabled={alertsEnabled}
+              isAlertRequired={isAlertRequired}
+              isRawSqlInput={isRawSqlInput}
+              dashboardId={dashboardId}
+              parentRef={parentRef}
+              chartConfigForExplanations={chartConfigForExplanations}
+              onSubmit={onSubmit}
+              openDisplaySettings={openDisplaySettings}
+              heatmapMode={builderHeatmapMode}
+              onHeatmapModeChange={onHeatmapModeChange}
             />
           )}
-        </Flex>
-        <Divider my="md" />
-        {activeTab === 'markdown' ? (
-          <div>
-            <Textarea
-              {...register('markdown')}
-              label="Markdown content"
-              placeholder="Markdown"
-              mb="md"
-              styles={{
-                input: {
-                  minHeight: 200,
-                },
-              }}
-            />
-            <Box p="md" mb="md">
-              <HDXMarkdownChart
-                config={{
-                  markdown: markdown || 'Preview',
-                }}
-                variables={variables}
-              />
-            </Box>
-          </div>
-        ) : isPromqlInput ? (
-          <PromqlChartEditor
+          <ChartActionBar
             control={control}
-            getValues={getValues}
-            allowedSourceKinds={allowedSourceKinds}
-            onSubmit={onSubmit}
-            onOpenDisplaySettings={openDisplaySettings}
-          />
-        ) : isRawSqlInput ? (
-          <RawSqlChartEditor
-            control={control}
-            setValue={setValue}
-            allowedSourceKinds={allowedSourceKinds}
-            onOpenDisplaySettings={openDisplaySettings}
-            onSubmit={onSubmit}
-            isDashboardForm={isDashboardForm}
-            alert={alert}
-            additionalWarnings={additionalAlertWarnings}
-            alertsEnabled={alertsEnabled}
-            isAlertRequired={isAlertRequired}
-            dashboardId={dashboardId}
-            variables={variables}
-          />
-        ) : (
-          <ChartEditorControls
-            control={control}
-            setValue={setValue}
-            clearErrors={clearErrors}
-            errors={errors}
-            fields={fields}
-            append={append}
-            removeSeries={removeSeries}
-            swapSeries={swapSeries}
-            duplicateSeries={duplicateSeries}
-            tableSource={tableSource}
             tableConnection={tableConnection}
-            allowedSourceKinds={allowedSourceKinds}
-            databaseName={databaseName}
-            tableName={tableName}
+            sourceId={tableSource?.id}
             dateRange={dateRange}
-            select={select}
-            displayType={displayType}
             activeTab={activeTab}
-            seriesReturnType={seriesReturnType}
-            ratioMode={ratioMode}
-            alert={alert}
-            additionalWarnings={additionalAlertWarnings}
-            alertsEnabled={alertsEnabled}
-            isAlertRequired={isAlertRequired}
             isRawSqlInput={isRawSqlInput}
             dashboardId={dashboardId}
             parentRef={parentRef}
-            chartConfigForExplanations={chartConfigForExplanations}
+            groupBy={groupBy}
             onSubmit={onSubmit}
-            openDisplaySettings={openDisplaySettings}
+            showSaveToDashboard={showSaveToDashboard}
+            displayedTimeInputValue={displayedTimeInputValue}
+            setDisplayedTimeInputValue={setDisplayedTimeInputValue}
+            onTimeRangeSearch={onTimeRangeSearch}
+            filtersToggle={dashboardFiltersToggleProps}
+            setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
           />
-        )}
-        <ChartActionBar
-          control={control}
-          handleSubmit={handleSubmit}
-          tableConnection={tableConnection}
-          sourceId={tableSource?.id}
+        </ErrorBoundary>
+        <ChartPreviewPanel
+          queriedConfig={previewConfig}
+          tableSource={tableSource}
           dateRange={dateRange}
           activeTab={activeTab}
-          isRawSqlInput={isRawSqlInput}
-          dashboardId={dashboardId}
-          parentRef={parentRef}
-          groupBy={groupBy}
+          alert={alert}
+          sourceId={sourceId}
+          onTimeRangeSelect={onTimeRangeSelect}
+          chartConfigForExplanations={chartConfigForExplanations}
+          showGeneratedSql={showGeneratedSql}
+          showSampleEvents={showSampleEvents}
+          showGeneratedPromql={isPromqlInput}
+          dbTimeChartConfig={dbTimeChartConfig}
+          missingRequiredFilterNames={
+            previewDashboardFilters?.missingRequiredFilterNames
+          }
+          setValue={(name, value) => setValue(name, value)}
+          setDisplayType={type =>
+            setValue('displayType', type, { shouldDirty: true })
+          }
           onSubmit={onSubmit}
-          handleSave={handleSave}
-          onSave={onSave}
-          onClose={onClose}
-          isSaving={isSaving}
-          hasAlert={alert != null}
-          handleSaveAlert={handleSaveAlert}
-          onSaveAlert={onSaveAlert}
-          saveAlertLabel={saveAlertLabel}
-          isSavingAlert={isSavingAlert}
-          showSaveToDashboard={showSaveToDashboard}
-          displayedTimeInputValue={displayedTimeInputValue}
-          setDisplayedTimeInputValue={setDisplayedTimeInputValue}
-          onTimeRangeSearch={onTimeRangeSearch}
-          filtersToggle={dashboardFiltersToggleProps}
-          setSaveToDashboardModalOpen={setSaveToDashboardModalOpen}
         />
-      </ErrorBoundary>
-      <ChartPreviewPanel
-        queriedConfig={previewConfig}
-        tableSource={tableSource}
-        dateRange={dateRange}
-        activeTab={activeTab}
-        alert={alert}
-        sourceId={sourceId}
-        onTimeRangeSelect={onTimeRangeSelect}
-        chartConfigForExplanations={chartConfigForExplanations}
-        showGeneratedSql={showGeneratedSql}
-        showSampleEvents={showSampleEvents}
-        showGeneratedPromql={isPromqlInput}
-        dbTimeChartConfig={dbTimeChartConfig}
-        missingRequiredFilterNames={
-          previewDashboardFilters?.missingRequiredFilterNames
-        }
-        setValue={(name, value) => setValue(name, value)}
-        onSubmit={onSubmit}
-      />
-      <SaveToDashboardModal
-        chartConfig={chartConfig}
-        opened={saveToDashboardModalOpen}
-        onClose={() => setSaveToDashboardModalOpen(false)}
-      />
-      <ChartDisplaySettingsDrawer
-        opened={displaySettingsOpened}
-        settings={displaySettings}
-        defaultNumberFormat={autoDetectedNumberFormat}
-        previousDateRange={!dashboardId ? previousDateRange : undefined}
-        displayType={displayType}
-        configType={configType}
-        promqlUsesRange={isReducibleRangeQuery({
-          promqlExpression: promqlExpressions,
-          displayType,
-        })}
-        onChange={handleUpdateDisplaySettings}
-        onClose={closeDisplaySettings}
-        // Heatmaps format with the chart-level number format only.
-        isPerSeriesNumberFormatAllowed={
-          configType !== 'sql' && displayType !== DisplayType.Heatmap
-        }
-      />
-    </div>
+        <SaveToDashboardModal
+          chartConfig={chartConfig}
+          opened={saveToDashboardModalOpen}
+          onClose={() => setSaveToDashboardModalOpen(false)}
+        />
+        <ChartDisplaySettingsDrawer
+          opened={displaySettingsOpened}
+          settings={displaySettings}
+          defaultNumberFormat={autoDetectedNumberFormat}
+          previousDateRange={!dashboardId ? previousDateRange : undefined}
+          displayType={displayType}
+          configType={configType}
+          promqlUsesRange={isReducibleRangeQuery({
+            promqlExpression: promqlExpressions,
+            displayType,
+          })}
+          heatmapMode={heatmapMode}
+          defaultHeatmapScaleType={
+            isPromqlInput ? PROMQL_DEFAULT_HEATMAP_SCALE_TYPE : undefined
+          }
+          onChange={handleUpdateDisplaySettings}
+          onClose={closeDisplaySettings}
+          // Heatmaps format with the chart-level number format only.
+          isPerSeriesNumberFormatAllowed={
+            configType !== 'sql' && displayType !== DisplayType.Heatmap
+          }
+        />
+      </div>
+    </AlertPanelLayout>
   );
 }

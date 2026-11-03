@@ -3,6 +3,14 @@ import produce from 'immer';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 
+import {
+  CONTENT_FONT_SIZES,
+  type ContentFontSize,
+  DEFAULT_CONTENT_FONT_SIZE,
+  isContentFontSize,
+} from '@/config/fonts';
+import { LOCAL_TIME_ZONE, timeZonePreferenceFromIsUTC } from '@/timeZone';
+
 type ColorModePreference = 'light' | 'dark' | 'system';
 
 /** What clicking the body of a search result row does. */
@@ -11,12 +19,21 @@ export type RowClickAction = 'expand' | 'sidePanel';
 export const DEFAULT_ROW_CLICK_ACTION: RowClickAction = 'sidePanel';
 
 export type UserPreferences = {
-  isUTC: boolean;
+  /**
+   * Zone that times are shown and typed in: `LOCAL_TIME_ZONE`, or an IANA
+   * name such as `Etc/UTC`. Read it via `useDisplayTimeZone`.
+   */
+  timeZone: string;
   timeFormat: '12h' | '24h';
   /** Color mode preference (light/dark/system). Separate from brand theme (hyperdx/clickstack). */
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
+  /**
+   * Font size for content surfaces (tables, charts). Optional so preferences
+   * saved before it existed keep working; read it via `useContentFontSize`.
+   */
+  contentFontSize?: ContentFontSize;
   /**
    * Unset until the user opts in. Stored preferences that predate this field are
    * returned as-is rather than merged with `DEFAULT_PREFERENCES`, so readers must
@@ -32,7 +49,7 @@ type LegacyUserPreferences = Omit<UserPreferences, 'colorMode'> & {
 
 const STORAGE_KEY = 'hdx-user-preferences';
 const DEFAULT_PREFERENCES: UserPreferences = {
-  isUTC: false,
+  timeZone: LOCAL_TIME_ZONE,
   timeFormat: '12h',
   colorMode: 'system',
   font: 'IBM Plex Mono',
@@ -85,8 +102,44 @@ function isLegacyUserPreferences(obj: unknown): obj is LegacyUserPreferences {
   );
 }
 
+/** Replaces `isUTC`, the switch that predates `timeZone`, with `timeZone`. */
+function withTimeZone<T extends { isUTC?: unknown; timeZone?: unknown }>(
+  prefs: T,
+): Omit<T, 'isUTC' | 'timeZone'> & { timeZone: string } {
+  const { isUTC, timeZone, ...rest } = prefs;
+  return {
+    ...rest,
+    timeZone:
+      typeof timeZone === 'string'
+        ? timeZone
+        : timeZonePreferenceFromIsUTC(isUTC),
+  };
+}
+
+function needsTimeZoneMigration(prefs: {
+  isUTC?: unknown;
+  timeZone?: unknown;
+}): boolean {
+  return 'isUTC' in prefs || typeof prefs.timeZone !== 'string';
+}
+
+// Only writes when the value differs, to avoid a write on every read.
+function saveMigrated(migrated: UserPreferences) {
+  try {
+    if (typeof window !== 'undefined') {
+      const migratedJson = JSON.stringify(migrated);
+      if (localStorage.getItem(STORAGE_KEY) !== migratedJson) {
+        localStorage.setItem(STORAGE_KEY, migratedJson);
+      }
+    }
+  } catch {
+    // Ignore localStorage errors (private browsing, etc.)
+  }
+}
+
 /**
- * Migrates old localStorage data from `theme` to `colorMode`.
+ * Migrates old localStorage data from `theme` to `colorMode`, and from
+ * `isUTC` to `timeZone`.
  * This ensures existing users don't lose their light/dark mode preference.
  *
  * Uses an in-memory cache to avoid repeated localStorage writes on every read.
@@ -119,24 +172,10 @@ export function migrateUserPreferences(
         theme === 'light' || theme === 'dark' ? theme : 'dark';
       const migrated: UserPreferences = {
         ...DEFAULT_PREFERENCES,
-        ...rest,
+        ...withTimeZone(rest),
         colorMode: validTheme,
       };
-
-      // Only write to localStorage if the migrated data differs from what's stored
-      // This prevents unnecessary writes on every render and avoids race conditions
-      try {
-        if (typeof window !== 'undefined') {
-          const migratedJson = JSON.stringify(migrated);
-          // Compare with current stored value to avoid unnecessary write
-          const currentStored = localStorage.getItem(STORAGE_KEY);
-          if (currentStored !== migratedJson) {
-            localStorage.setItem(STORAGE_KEY, migratedJson);
-          }
-        }
-      } catch {
-        // Ignore localStorage errors (private browsing, etc.)
-      }
+      saveMigrated(migrated);
 
       // Cache the result to avoid re-processing on subsequent calls
       migrationCache = {
@@ -149,12 +188,18 @@ export function migrateUserPreferences(
 
     // Already migrated or new format - validate it's a proper UserPreferences
     if (isUserPreferences(parsed)) {
+      const result = needsTimeZoneMigration(parsed)
+        ? withTimeZone(parsed)
+        : parsed;
+      if (result !== parsed) {
+        saveMigrated(result);
+      }
       // Cache the result to avoid re-processing on subsequent calls
       migrationCache = {
         storedValue: stored,
-        result: parsed,
+        result,
       };
-      return parsed;
+      return result;
     }
 
     // Invalid format, return null to use defaults
@@ -226,6 +271,35 @@ export const useUserPreferences = () => {
   );
 
   return { userPreferences, setUserPreference };
+};
+
+/**
+ * Resolved content font size. CSS surfaces should read the
+ * `--hdx-content-font-size` / `--hdx-content-font-size-compact` custom
+ * properties set from this in `_app.tsx`; the numbers are for the charts,
+ * which take numeric `fontSize` props rather than CSS.
+ */
+export const useContentFontSize = () => {
+  const {
+    userPreferences: { contentFontSize },
+  } = useUserPreferences();
+
+  // The guard looks redundant against the declared type, but the value comes
+  // from localStorage: a hand-edited or stale blob can carry a size we no
+  // longer ship, and indexing CONTENT_FONT_SIZES with it would be undefined.
+  const size =
+    contentFontSize && isContentFontSize(contentFontSize)
+      ? contentFontSize
+      : DEFAULT_CONTENT_FONT_SIZE;
+  const { base, compact } = CONTENT_FONT_SIZES[size];
+
+  return {
+    contentFontSize: size,
+    base,
+    compact,
+    /** Ratio against the default, for px sizing that must grow with the text. */
+    scale: base / CONTENT_FONT_SIZES[DEFAULT_CONTENT_FONT_SIZE].base,
+  };
 };
 
 /**

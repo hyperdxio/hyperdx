@@ -5,6 +5,7 @@ import { useFormatTime } from '@/useFormatTime';
 
 export type TTimelineSpanEventMarker = {
   timestamp: number; // ms offset from minOffset
+  epochMs: number; // absolute time, shown in the tooltip
   name: string;
   attributes: Record<string, any>;
 };
@@ -21,6 +22,11 @@ export const TimelineSpanEventMarker = memo(function ({
   height: number;
 }) {
   const formatTime = useFormatTime();
+  // OTel records exceptions on spans as events named `exception`.
+  const isException = marker.name === 'exception';
+  const markerColor = isException
+    ? 'var(--color-bg-danger)'
+    : 'var(--color-bg-success)';
   const spanDuration = eventEnd - eventStart;
   const markerOffsetFromStart = marker.timestamp - eventStart;
   const markerPosition =
@@ -30,14 +36,22 @@ export const TimelineSpanEventMarker = memo(function ({
   const tooltipContent = (
     <div>
       <Text size="xxs" c="dimmed" mb="xxs">
-        {formatTime(new Date(marker.timestamp), { format: 'withMs' })}
+        {formatTime(new Date(marker.epochMs), { format: 'withMs' })}
       </Text>
       <Text size="xs">{marker.name}</Text>
       {attributeEntries.length > 0 && (
         <div style={{ fontSize: 10, marginTop: 4 }}>
           {attributeEntries.slice(0, 5).map(([key, value]) => (
             <div key={key}>
-              <span style={{ color: 'var(--color-text-primary)' }}>{key}:</span>{' '}
+              <span
+                style={{
+                  color: isException
+                    ? 'var(--color-text-danger)'
+                    : 'var(--color-text-primary)',
+                }}
+              >
+                {key}:
+              </span>{' '}
               {String(value).length > 50
                 ? String(value).substring(0, 50) + '...'
                 : String(value)}
@@ -85,7 +99,7 @@ export const TimelineSpanEventMarker = memo(function ({
           style={{
             width: 8,
             height: 8,
-            backgroundColor: 'var(--color-bg-success)',
+            backgroundColor: markerColor,
             transform: 'rotate(45deg)',
             border: '1px solid #333',
             boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
@@ -99,7 +113,7 @@ export const TimelineSpanEventMarker = memo(function ({
             transform: 'translate(-50%, -50%)',
             width: 1,
             height: height,
-            backgroundColor: 'var(--color-bg-success)',
+            backgroundColor: markerColor,
             opacity: 0.4,
             zIndex: -1,
           }}

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { sub } from 'date-fns';
+import { Badge } from '@clickhouse/click-ui';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import {
@@ -10,7 +11,7 @@ import {
   SearchConditionLanguage,
   TLogSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Badge, Group, Text, Timeline } from '@mantine/core';
+import { Group, Text, Timeline } from '@mantine/core';
 import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useClickhouseClient } from '@/clickhouse';
@@ -152,13 +153,10 @@ const renderKubeEvent = (source: TLogSource) => (event: KubeEvent) => {
         </Text>
         {event['object.type'] && (
           <Badge
-            variant="light"
-            size="xs"
-            fw="normal"
-            color={event['object.type'] === 'Normal' ? 'green' : 'yellow'}
-          >
-            {event['object.type']}
-          </Badge>
+            size="sm"
+            text={event['object.type']}
+            state={event['object.type'] === 'Normal' ? 'success' : 'warning'}
+          />
         )}
       </Group>
       <Text size="xs">{event['object.note'] || event['object.message']}</Text>
@@ -322,40 +320,16 @@ export const KubeTimeline = ({
 export const FormatPodStatus = ({ status }: { status?: number }) => {
   switch (status) {
     case KubePhase.Pending:
-      return (
-        <Badge variant="light" color="yellow" fw="normal" tt="none" size="md">
-          Pending
-        </Badge>
-      );
+      return <Badge text="Pending" state="warning" />;
     case KubePhase.Running:
-      return (
-        <Badge variant="light" color="green" fw="normal" tt="none" size="md">
-          Running
-        </Badge>
-      );
+      return <Badge text="Running" state="success" />;
     case KubePhase.Succeeded:
-      return (
-        <Badge variant="light" color="indigo" fw="normal" tt="none" size="md">
-          Succeeded
-        </Badge>
-      );
+      return <Badge text="Succeeded" state="info" />;
     case KubePhase.Failed:
-      return (
-        <Badge variant="light" color="red" fw="normal" tt="none" size="md">
-          Failed
-        </Badge>
-      );
+      return <Badge text="Failed" state="danger" />;
     case KubePhase.Unknown:
-      return (
-        <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
-          Unknown
-        </Badge>
-      );
+      return <Badge text="Unknown" state="neutral" />;
     default:
-      return (
-        <Badge variant="light" color="gray" fw="normal" tt="none" size="md">
-          Unknown
-        </Badge>
-      );
+      return <Badge text="Unknown" state="neutral" />;
   }
 };

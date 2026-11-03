@@ -1,5 +1,6 @@
+import { Badge } from '@clickhouse/click-ui';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
-import { Badge, Group, Stack, Text } from '@mantine/core';
+import { Group, Stack, Text } from '@mantine/core';
 
 import { useSource } from '@/source';
 
@@ -24,9 +25,12 @@ export default function ServiceMapSidePanel({
         <Text size="sm" ps="sm">
           Service Map
         </Text>
-        <Badge size="xs" ms="xs" color="gray" autoContrast radius="sm">
-          Beta
-        </Badge>
+        <Badge
+          size="sm"
+          text="Beta"
+          state="info"
+          style={{ marginInlineStart: 'var(--mantine-spacing-xs)' }}
+        />
       </Group>
       {traceTableSource && traceTableSource.kind === SourceKind.Trace ? (
         <ServiceMap

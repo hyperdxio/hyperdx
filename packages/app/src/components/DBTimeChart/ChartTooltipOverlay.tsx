@@ -2,7 +2,10 @@ import { useEffect, useRef } from 'react';
 import { NumberFormat } from '@hyperdx/common-utils/dist/types';
 import { Popover, Portal } from '@mantine/core';
 
-import { ChartSeriesTooltip } from '@/components/charts/ChartSeriesTooltip';
+import {
+  ChartSeriesTooltip,
+  type ChartSeriesTooltipProps,
+} from '@/components/charts/ChartSeriesTooltip';
 import { useChartTooltipZIndex } from '@/components/charts/ChartTooltip';
 import {
   type ActiveClickPayload,
@@ -17,6 +20,8 @@ export function ChartTooltipOverlay({
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  getSeriesFilters,
+  onFilterSeries,
   onShowAllSeries,
   fallbackNumberFormat,
   numberFormatByKey,
@@ -24,7 +29,7 @@ export function ChartTooltipOverlay({
   hiddenSeriesCount,
   onLoadAllSeries,
   expanded,
-}: {
+}: Pick<ChartSeriesTooltipProps, 'getSeriesFilters' | 'onFilterSeries'> & {
   payload: ActiveClickPayload | undefined;
   buildSearchUrl: (key?: string, value?: number) => string | null;
   onDismiss: () => void;
@@ -157,6 +162,8 @@ export function ChartTooltipOverlay({
             buildSearchUrl={buildSearchUrl}
             onDismiss={onDismiss}
             onFocusSeries={onFocusSeries}
+            getSeriesFilters={getSeriesFilters}
+            onFilterSeries={onFilterSeries}
             onShowAllSeries={onShowAllSeries}
             hiddenSeriesCount={hiddenSeriesCount}
             onLoadAllSeries={onLoadAllSeries}

@@ -92,6 +92,34 @@ export type KeyValues = {
   value: string[] | number[];
 };
 
+type AllKeyValuesQuery = {
+  databaseName: string;
+  tableName: string;
+  keyExpressions: string[];
+  maxValuesPerKey?: number;
+  connectionId: string;
+  metadataMVs?: MetadataMaterializedViews;
+  dateRange: [Date, Date];
+  timestampValueExpression: string;
+  signal?: AbortSignal;
+};
+
+/** Yields each promise's value as it resolves, fastest first. */
+async function* inCompletionOrder<T>(
+  promises: Promise<T>[],
+): AsyncGenerator<T, void, undefined> {
+  const pending = new Map(
+    promises.map(
+      (promise, i) => [i, promise.then(value => ({ i, value }))] as const,
+    ),
+  );
+  while (pending.size > 0) {
+    const { i, value } = await Promise.race(pending.values());
+    pending.delete(i);
+    yield value;
+  }
+}
+
 export type MetricNames = {
   names: string[];
   /** True when more names matched than `limit`, so the page is incomplete. */
@@ -223,17 +251,27 @@ const renderJsonStringSubcolumn = (
 };
 
 export class MetadataCache {
-  private cache = new Map<string, any>();
+  private cache = new Map<string, { value: any; expiresAt?: number }>();
   private pendingQueries = new Map<string, Promise<any>>();
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
-    return this.cache.get(key);
+    const entry = this.cache.get(key);
+    if (entry?.expiresAt != null && Date.now() >= entry.expiresAt) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry?.value;
   }
 
-  async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
+  /** Entries stored without `ttlMs` are kept for the life of the cache. */
+  async getOrFetch<T>(
+    key: string,
+    query: () => Promise<T>,
+    { ttlMs }: { ttlMs?: number } = {},
+  ): Promise<T> {
     // Check if value exists in cache
-    const cachedValue: T | undefined = this.cache.get(key);
+    const cachedValue: T | undefined = this.get(key);
     if (cachedValue != null) {
       return cachedValue;
     }
@@ -251,7 +289,7 @@ export class MetadataCache {
 
     try {
       const result = await queryPromise;
-      this.cache.set(key, result);
+      this.set(key, result, ttlMs);
       return result;
     } finally {
       // Clean up the pending query map
@@ -259,8 +297,11 @@ export class MetadataCache {
     }
   }
 
-  set<T>(key: string, value: T) {
-    return this.cache.set(key, value);
+  set<T>(key: string, value: T, ttlMs?: number) {
+    this.cache.set(key, {
+      value,
+      expiresAt: ttlMs == null ? undefined : Date.now() + ttlMs,
+    });
   }
 
   // TODO: This needs to be async, and use tanstack query on frontend for cache
@@ -324,6 +365,11 @@ export type SkipIndexMetadata = {
 };
 
 const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+// The API keeps one cache for the life of the process, so without a TTL a
+// column added by ALTER TABLE (such as a MATERIALIZED one) is only seen after a
+// restart. #3475
+export const COLUMNS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // Hour-aligned so a range-keyed cache rotates hourly instead of every call.
 export function defaultFieldMetadataDateRange(): [Date, Date] {
@@ -591,6 +637,7 @@ export class Metadata {
           .then(d => d.data);
         return columns;
       },
+      { ttlMs: COLUMNS_CACHE_TTL_MS },
     );
   }
 
@@ -649,6 +696,50 @@ export class Metadata {
           })
           .then(res => res.json<{ version: number }>());
         return Number(json.data[0]?.version ?? 0);
+      },
+    );
+  }
+
+  async getTimeSeriesTables({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<Pick<TableConnection, 'databaseName' | 'tableName'>[]> {
+    return this.cache.getOrFetch(
+      `${connectionId}.timeSeriesTables`,
+      async () => {
+        const sql = chSql`
+        SELECT database AS databaseName, name AS tableName
+        FROM system.tables
+        WHERE engine = 'TimeSeries'
+        ORDER BY database, name
+      `;
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: sql.sql,
+              query_params: sql.params,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res =>
+              res.json<Pick<TableConnection, 'databaseName' | 'tableName'>>(),
+            );
+          return json.data;
+        } catch (e) {
+          if (
+            e instanceof Error &&
+            e.message.includes('Not enough privileges')
+          ) {
+            console.warn(
+              'Not enough privileges to fetch TimeSeries tables:',
+              e,
+            );
+            return [];
+          }
+
+          throw e;
+        }
       },
     );
   }
@@ -974,10 +1065,10 @@ export class Metadata {
         ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
         : '';
     const cacheKey = metricName
-      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.keys`
+      ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.${maxKeys}.keys`
       : alignedDateRange
-        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.keys`
-        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.keys`;
+        ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.${maxKeys}.keys`
+        : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.${maxKeys}.keys`;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -1017,11 +1108,13 @@ export class Metadata {
         timestampValueExpression,
       });
       const index = textIndexInfo.key.indexName;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT token AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
@@ -1063,11 +1156,13 @@ export class Metadata {
       });
       const index = textIndexInfo.kv.indexName;
       const separator = textIndexInfo.kv.separator;
+      // `cardinality` is the token's row count in the part, not a distinct count.
       const sql = chSql`
         SELECT splitByString(${{ String: separator }}, token)[1] AS key
         FROM mergeTreeTextIndex(${{ String: databaseName }}, ${{ String: tableName }}, ${{ String: index }})
         WHERE ${partsFilter}
         GROUP BY key HAVING key != ''
+        ORDER BY sum(cardinality) DESC, key
         LIMIT ${{ Int32: maxKeys }}`;
       try {
         const keys = await this.clickhouseClient
@@ -2555,50 +2650,74 @@ export class Metadata {
    * Fetches top values for one or more keys from the text index, metadataMV, or the raw table in a
    * single batched query. Falls back to getMapValues when no rollup is available.
    */
-  async getAllKeyValues({
+  async getAllKeyValues(query: AllKeyValuesQuery): Promise<KeyValues[]> {
+    const results = await Promise.all(
+      await this.dispatchAllKeyValueQueries(query),
+    );
+    return results.filter(v => v !== undefined).flat();
+  }
+
+  /**
+   * `getAllKeyValues`, yielding each query's values as soon as it finishes
+   * instead of waiting for the slowest. Every key is served by exactly one
+   * query, so its values arrive in a single yield.
+   */
+  async *streamAllKeyValues(
+    query: AllKeyValuesQuery,
+  ): AsyncGenerator<KeyValues[], void, undefined> {
+    const queries = await this.dispatchAllKeyValueQueries(query);
+    for await (const keyValues of inCompletionOrder(queries)) {
+      if (keyValues?.length) yield keyValues;
+    }
+  }
+
+  /** Starts every query the keys need, without waiting for any to finish. */
+  private async dispatchAllKeyValueQueries({
+    keyExpressions,
+    maxValuesPerKey = 20,
+    ...query
+  }: AllKeyValuesQuery): Promise<Array<Promise<KeyValues[] | undefined>>> {
+    if (keyExpressions.length === 0) return [];
+
+    if (keyExpressions.length <= GET_ALL_KEY_VALUES_CHUNK_SIZE) {
+      return this.dispatchKeyValueQueries({
+        ...query,
+        keyExpressions,
+        maxValuesPerKey,
+      });
+    }
+
+    // A batch that fails to plan is dropped; the others still answer.
+    const batches = await Promise.allSettled(
+      chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
+        this.dispatchKeyValueQueries({
+          ...query,
+          keyExpressions: batch,
+          maxValuesPerKey,
+        }),
+      ),
+    );
+    return batches.filter(v => v.status === 'fulfilled').flatMap(v => v.value);
+  }
+
+  /**
+   * Routes up to `GET_ALL_KEY_VALUES_CHUNK_SIZE` keys to their cheapest
+   * strategy and starts one query per strategy in use.
+   */
+  private async dispatchKeyValueQueries({
     databaseName,
     tableName,
     keyExpressions,
-    maxValuesPerKey = 20,
+    maxValuesPerKey,
     connectionId,
     metadataMVs,
     dateRange,
     timestampValueExpression,
     signal,
-  }: {
-    databaseName: string;
-    tableName: string;
-    keyExpressions: string[];
-    maxValuesPerKey?: number;
-    connectionId: string;
-    metadataMVs?: MetadataMaterializedViews;
-    dateRange: [Date, Date];
-    timestampValueExpression: string;
-    signal?: AbortSignal;
-  }): Promise<KeyValues[]> {
-    if (keyExpressions.length === 0) return [];
-
-    if (keyExpressions.length > GET_ALL_KEY_VALUES_CHUNK_SIZE) {
-      const batched = await Promise.allSettled(
-        chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
-          this.getAllKeyValues({
-            databaseName,
-            tableName,
-            keyExpressions: batch,
-            maxValuesPerKey,
-            connectionId,
-            metadataMVs,
-            dateRange,
-            timestampValueExpression,
-            signal,
-          }),
-        ),
-      );
-      return batched
-        .filter(v => v.status === 'fulfilled')
-        .flatMap(v => v.value);
-    }
-
+  }: AllKeyValuesQuery &
+    Required<Pick<AllKeyValuesQuery, 'maxValuesPerKey'>>): Promise<
+    Array<Promise<KeyValues[] | undefined>>
+  > {
     // Parse all keys into (rollupColumn, rollupKey) pairs
     const parsed = keyExpressions.map(keyExpr => {
       const path = parseKeyPath(keyExpr);
@@ -2747,9 +2866,8 @@ export class Metadata {
     if (rawQueryOptions.length > 0) {
       promises.push(
         // Isolate raw-table failures (timeout, abort, network) the same way
-        // the three sibling strategies do internally, so a single rejection
-        // here doesn't discard already-successful text-index / MV results
-        // when they're aggregated through `Promise.all` below.
+        // the three sibling strategies do internally, so the failure is
+        // logged rather than silently dropped below.
         this.getKeyValues({
           chartConfig: {
             from: {
@@ -2775,11 +2893,10 @@ export class Metadata {
         }),
       );
     }
-    return (await Promise.allSettled(promises))
-      .filter(res => res.status === 'fulfilled')
-      .map(v => v.value)
-      .filter(v => v !== undefined)
-      .flat();
+    // The strategies isolate their own failures; this catches anything that
+    // slips past them, so one rejection can neither discard the others'
+    // results nor go unhandled while sibling batches are still being planned.
+    return promises.map(promise => promise.catch(() => undefined));
   }
 
   async getKeyValues({
@@ -2825,6 +2942,7 @@ export class Metadata {
       keys,
       // Serialize rather than hashing the raw state: the selections are Sets.
       keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
+      limit,
       disableRowLimit,
     };
     return this.cache.getOrFetch(
@@ -3096,6 +3214,7 @@ export class Metadata {
       keys,
       // Serialize rather than hashing the raw state: the selections are Sets.
       keyConditions: keyConditions?.map(s => s && serializeFilterState(s)),
+      limit,
       disableRowLimit,
     };
     return this.cache.getOrFetch(

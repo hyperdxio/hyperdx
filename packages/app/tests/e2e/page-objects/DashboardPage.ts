@@ -72,7 +72,7 @@ export type SeriesData = {
   whereLanguage?: 'sql' | 'lucene';
   groupBy?: string[];
   alias?: string;
-  displayType?: 'line' | 'stacked_bar';
+  displayType?: 'line' | 'stacked_bar' | 'stacked_line';
   sortOrder?: 'desc' | 'asc';
   fields?: string[]; // For search type
   content?: string; // For markdown type
@@ -107,6 +107,7 @@ export class DashboardPage {
   readonly variableEnabledCheckbox: Locator;
   readonly requiredFilterCheckbox: Locator;
   readonly globalRequirementCheckbox: Locator;
+  readonly singleSelectCheckbox: Locator;
   readonly variableNameInput: Locator;
   private readonly saveButton: Locator;
   private readonly tileSourceSelector: Locator;
@@ -172,6 +173,9 @@ export class DashboardPage {
     this.requiredFilterCheckbox = page.getByTestId('filter-required-checkbox');
     this.globalRequirementCheckbox = page.getByTestId(
       'filter-global-requirement-checkbox',
+    );
+    this.singleSelectCheckbox = page.getByTestId(
+      'filter-single-select-checkbox',
     );
     this.variableNameInput = page.getByTestId('filter-variable-name-input');
     this.saveButton = page.getByTestId('chart-save-button');
@@ -275,7 +279,7 @@ export class DashboardPage {
     // The document title comes from the saved dashboard, so it only changes
     // once the rename has persisted.
     const escaped = newName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} – `), {
+    await expect(this.page).toHaveTitle(new RegExp(`^${escaped} - `), {
       timeout: 10000,
     });
   }
@@ -654,6 +658,33 @@ export class DashboardPage {
   }
 
   /**
+   * Open the actions menu of the tile with this id. Narrow tiles swap the
+   * toolbar for a single collapsed menu button.
+   */
+  async openTileActionsMenuById(tileId: string, { narrow = false } = {}) {
+    const tile = this.page.getByTestId(`dashboard-tile-${tileId}`);
+    await tile.scrollIntoViewIfNeeded();
+    await tile.hover();
+    const trigger = narrow
+      ? tile.locator('button').filter({ visible: true })
+      : this.page.getByTestId(`tile-actions-button-${tileId}`);
+    await trigger.click();
+  }
+
+  getTileMenuItem(name: string): Locator {
+    return this.page.getByRole('menuitem', { name, exact: true });
+  }
+
+  /**
+   * Open the "Move to group" submenu of an open tile menu.
+   */
+  async openMoveToGroupSubmenu(): Promise<Locator> {
+    const item = this.getTileMenuItem('Move to group');
+    await item.hover();
+    return this.page.locator(`#${await item.getAttribute('aria-controls')}`);
+  }
+
+  /**
    * Edit a tile
    */
   async editTile(tileIndex: number) {
@@ -808,6 +839,16 @@ export class DashboardPage {
     return this.page.locator('.recharts-responsive-container');
   }
 
+  /** A time-chart display-switcher option in a tile's toolbar. */
+  getTileDisplaySwitcherOption(
+    displayType: 'line' | 'stacked_bar' | 'stacked_line',
+    tileIndex = 0,
+  ) {
+    return this.getTile(tileIndex).getByTestId(
+      `display-switcher-${displayType}`,
+    );
+  }
+
   /**
    * Read the trimmed text of all th cells in the first thead tr of the
    * given tile's rendered table. Waits for the table to be visible first.
@@ -951,14 +992,10 @@ export class DashboardPage {
     await this.setFilterRequirement(variableOptions);
 
     if (appliesToSourceNames && appliesToSourceNames.length > 0) {
-      for (const appliesName of appliesToSourceNames) {
-        await this.appliesToSourceSelector.click();
-        await this.page
-          .getByRole('option', { name: appliesName, exact: true })
-          .click();
-      }
-      // Close the dropdown so the save button is clickable.
-      await this.page.keyboard.press('Escape');
+      await this.selectSourcesInMultiSelect(
+        this.appliesToSourceSelector,
+        appliesToSourceNames,
+      );
     }
 
     const saveFilterButton = this.page.getByTestId('save-filter-button');
@@ -1134,6 +1171,11 @@ export class DashboardPage {
 
   getFilterItemByName(name: string) {
     return this.page.getByTestId(`dashboard-filter-item-${name}`);
+  }
+
+  /** The filters list's summary of which sources a filter broadcasts to. */
+  getFilterBroadcastTarget(name: string) {
+    return this.page.getByTestId(`dashboard-filter-applies-to-${name}`);
   }
 
   getFilterSelectByName(name: string) {
@@ -1350,7 +1392,11 @@ export class DashboardPage {
 
   /** Switch the add-filter form between the available value types. */
   async selectFilterType(
-    label: 'Queried values' | 'Static values' | 'PromQL label values',
+    label:
+      | 'Queried values'
+      | 'Static values'
+      | 'PromQL label values'
+      | 'Ad hoc keys and values',
   ) {
     await this.getFilterTypePicker().click();
     await this.getFilterOption(label).click();
@@ -1406,7 +1452,10 @@ export class DashboardPage {
   async addStaticListFilterToDashboard(
     name: string,
     options: string[],
-    variableOptions?: { variableName?: string } & FilterRequirementOptions,
+    variableOptions?: {
+      variableName?: string;
+      singleSelect?: boolean;
+    } & FilterRequirementOptions,
   ) {
     await this.addFiltersButton.click();
     await this.selectFilterType('Static values');
@@ -1416,6 +1465,9 @@ export class DashboardPage {
     await this.fillFilterOptions(options);
     if (variableOptions?.variableName !== undefined) {
       await this.variableNameInput.fill(variableOptions.variableName);
+    }
+    if (variableOptions?.singleSelect !== undefined) {
+      await this.singleSelectCheckbox.setChecked(variableOptions.singleSelect);
     }
     await this.setFilterRequirement(variableOptions);
     await this.page.getByTestId('save-filter-button').click();
@@ -1509,6 +1561,222 @@ export class DashboardPage {
     });
   }
 
+  /** The ad hoc filter form's ClickHouse / Prometheus source type control. */
+  getAdhocFilterSourceTypeControl(): Locator {
+    return this.getFilterForm().getByTestId('adhoc-filter-source-type');
+  }
+
+  /** The ad hoc filter form's data sources multi-select. */
+  getAdhocFilterSourcesInput(): Locator {
+    return this.getFilterForm().getByTestId('adhoc-filter-sources');
+  }
+
+  /** Switch the ad hoc filter form between ClickHouse and Prometheus sources. */
+  async selectAdhocFilterSourceType(label: 'ClickHouse' | 'Prometheus') {
+    await this.getAdhocFilterSourceTypeControl()
+      .getByText(label, { exact: true })
+      .click();
+  }
+
+  /** Add `sourceNames` to a source multi-select, then close its dropdown. */
+  async selectSourcesInMultiSelect(input: Locator, sourceNames: string[]) {
+    for (const sourceName of sourceNames) {
+      await input.click();
+      await this.getFilterOption(sourceName).click();
+    }
+    // Close the dropdown so the save button is clickable.
+    await this.page.keyboard.press('Escape');
+  }
+
+  /**
+   * Add an ad hoc filter over `sourceNames` and save it. Assumes the Edit
+   * Filters modal is already open; leaves it open on the filters list, having
+   * waited for the new filter to land there.
+   */
+  async addAdhocFilterToDashboard(
+    name: string,
+    sourceNames: string[],
+    options?: {
+      variableName?: string;
+      sourceType?: 'ClickHouse' | 'Prometheus';
+    },
+  ) {
+    await this.addFiltersButton.click();
+    await this.selectFilterType('Ad hoc keys and values');
+    await this.getFilterNameInput().fill(name);
+    // Before the sources, since switching the type clears them.
+    if (options?.sourceType) {
+      await this.selectAdhocFilterSourceType(options.sourceType);
+    }
+    await this.selectSourcesInMultiSelect(
+      this.getAdhocFilterSourcesInput(),
+      sourceNames,
+    );
+    if (options?.variableName !== undefined) {
+      await this.variableNameInput.fill(options.variableName);
+    }
+    await this.page.getByTestId('save-filter-button').click();
+    await this.getFilterItemByName(name).waitFor({
+      state: 'visible',
+      timeout: 10000,
+    });
+  }
+
+  /** The filter bar control of an ad hoc filter. */
+  getAdhocFilter(filterName: string): Locator {
+    return this.page.getByTestId(`adhoc-filter-${filterName}`);
+  }
+
+  /** The condition pills of an ad hoc filter in the filter bar. */
+  getAdhocConditionPills(filterName: string): Locator {
+    return this.getAdhocFilter(filterName).getByTestId('adhoc-condition-pill');
+  }
+
+  /** Add a Search tile and save it. */
+  async addSearchTile({
+    chartName,
+    sourceName,
+    select,
+  }: {
+    chartName: string;
+    sourceName: string;
+    select?: string;
+  }) {
+    await this.addTile();
+    await expect(this.chartEditor.nameInput).toBeVisible();
+    await this.chartEditor.waitForDataToLoad();
+    await this.chartEditor.setChartType(DisplayType.Search);
+    await this.chartEditor.setChartName(chartName);
+    await this.chartEditor.selectSource(sourceName);
+    if (select) await this.chartEditor.setSearchSelect(select);
+    await this.chartEditor.save();
+  }
+
+  /**
+   * A hover action of the tile cell under the mouse: `include` / `exclude`
+   * filter on its value, `copy` copies it.
+   */
+  getTileCellActionButton(
+    tile: Locator,
+    action: 'include' | 'exclude' | 'copy',
+  ): Locator {
+    const name = {
+      include: 'Toggle filter for this value',
+      exclude: 'Exclude this value',
+      copy: 'Copy field value',
+    }[action];
+    // The previous cell's popover can still be closing
+    return tile.getByRole('button', { name }).last();
+  }
+
+  /** Hover a tile cell showing `value` and return one of its actions. */
+  async getTileCellAction(
+    tile: Locator,
+    value: string | RegExp,
+    action: 'include' | 'exclude' | 'copy',
+  ): Promise<Locator> {
+    await tile.getByText(value, { exact: true }).first().hover();
+    return this.getTileCellActionButton(tile, action);
+  }
+
+  /** Hover a tile cell showing `value` and click its include / exclude action. */
+  async filterTileCell(
+    tile: Locator,
+    value: string,
+    action: 'include' | 'exclude',
+  ) {
+    await (await this.getTileCellAction(tile, value, action)).click();
+  }
+
+  /**
+   * Click a time chart tile until its tooltip pins. Recharts only pins when the
+   * click lands on a bucket, so retry.
+   */
+  async pinTimeChart(tile: Locator) {
+    const chart = tile.locator('.recharts-responsive-container');
+    const pinnedRow = this.page.locator('[data-testid^="chart-copy-name-"]');
+    await expect(async () => {
+      await chart.click();
+      await expect(pinnedRow.first()).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
+  }
+
+  /** The pinned tooltip's filter (`include`) or exclude action per series. */
+  getPinnedSeriesFilterActions(action: 'include' | 'exclude'): Locator {
+    const prefix =
+      action === 'include' ? 'chart-filter-series-' : 'chart-exclude-series-';
+    return this.page.locator(`[data-testid^="${prefix}"]`);
+  }
+
+  /** The open condition editor of an ad hoc filter. */
+  getAdhocConditionEditor(filterName: string): Locator {
+    return this.page.getByTestId(`adhoc-condition-editor-${filterName}`);
+  }
+
+  /** The key, operator, or value input of an ad hoc filter's open editor. */
+  getAdhocConditionInput(
+    filterName: string,
+    input: 'key' | 'operator' | 'value',
+  ): Locator {
+    return this.page.getByTestId(
+      `adhoc-condition-editor-${filterName}-${input}`,
+    );
+  }
+
+  /** A suggestion, matched exactly, in an ad hoc filter's open editor. */
+  getAdhocConditionOption(filterName: string, name: string): Locator {
+    return this.getAdhocConditionEditor(filterName).getByRole('option', {
+      name,
+      exact: true,
+    });
+  }
+
+  /** Open the editor that adds a condition to an ad hoc filter. */
+  async openAddAdhocCondition(filterName: string) {
+    await this.page.getByTestId(`adhoc-filter-add-${filterName}`).click();
+    await this.getAdhocConditionEditor(filterName).waitFor({
+      state: 'visible',
+    });
+  }
+
+  /** Click a condition's pill and change any part of it in the editor. */
+  async editAdhocCondition(
+    filterName: string,
+    pillText: string,
+    changes: { key?: string; operatorLabel?: string; value?: string },
+  ) {
+    await this.getAdhocConditionPills(filterName)
+      .filter({ hasText: pillText })
+      .click();
+    await this.fillAdhocConditionEditor(filterName, changes);
+  }
+
+  /** Fill the open editor's inputs, then apply it. */
+  async fillAdhocConditionEditor(
+    filterName: string,
+    {
+      key,
+      operatorLabel,
+      value,
+    }: { key?: string; operatorLabel?: string; value?: string },
+  ) {
+    if (key !== undefined) {
+      await this.getAdhocConditionInput(filterName, 'key').fill(key);
+    }
+    if (operatorLabel !== undefined) {
+      await this.getAdhocConditionInput(filterName, 'operator').click();
+      await this.getAdhocConditionOption(filterName, operatorLabel).click();
+    }
+    const valueInput = this.getAdhocConditionInput(filterName, 'value');
+    if (value !== undefined) {
+      await valueInput.fill(value);
+    }
+    // Enter applies. Escape would close the whole popover, and the value
+    // suggestions can cover the Apply button.
+    await valueInput.press('Enter');
+    await this.getAdhocConditionEditor(filterName).waitFor({ state: 'hidden' });
+  }
+
   /**
    * The options offered by the dashboard filter dropdown that is currently
    * open, in render order. Scoped to visible nodes: a just-closed dropdown's
@@ -1581,7 +1849,9 @@ export class DashboardPage {
     }
 
     const type: SeriesData['type'] =
-      config.displayType === 'line' || config.displayType === 'stacked_bar'
+      config.displayType === 'line' ||
+      config.displayType === 'stacked_bar' ||
+      config.displayType === 'stacked_line'
         ? 'time'
         : config.displayType;
 

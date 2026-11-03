@@ -23,12 +23,17 @@ import {
 } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { fetchServerVersion, installHdxDebug } from '@/hdxDebug';
-import { AppThemeProvider, useAppTheme } from '@/theme/ThemeProvider';
+import {
+  AppThemeProvider,
+  useAppTheme,
+  usePageTitle,
+} from '@/theme/ThemeProvider';
 import { ThemeWrapper } from '@/ThemeWrapper';
 import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
 import {
   SystemColorSchemeScript,
+  useContentFontSize,
   useResolvedColorScheme,
   useUserPreferences,
 } from '@/useUserPreferences';
@@ -70,11 +75,11 @@ type AppPropsWithLayout = AppProps & {
 // Component that renders Head content requiring user preferences
 // Must be rendered inside AppThemeProvider to avoid hydration mismatch
 function AppHeadContent() {
-  const { theme } = useAppTheme();
+  const title = usePageTitle();
 
   return (
     <Head>
-      <title>{theme.displayName}</title>
+      <title>{title}</title>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <meta name="google" content="notranslate" />
       <SystemColorSchemeScript />
@@ -94,6 +99,8 @@ function AppContent({
   const { userPreferences } = useUserPreferences();
   const resolvedColorScheme = useResolvedColorScheme();
   const { themeName } = useAppTheme();
+  const { base: contentFontSize, compact: compactContentFontSize } =
+    useContentFontSize();
 
   // ClickStack theme always uses Inter font - user preference is ignored
   // HyperDX theme allows user to select font preference
@@ -110,6 +117,21 @@ function AppContent({
       document.documentElement.style.setProperty('--app-font-family', fontVar);
     }
   }, [effectiveFont]);
+
+  useEffect(() => {
+    // Single write point for the content font size preference; tables and
+    // chart CSS read these vars (see styles/app.scss for the defaults).
+    if (typeof document !== 'undefined') {
+      document.documentElement.style.setProperty(
+        '--hdx-content-font-size',
+        `${contentFontSize}px`,
+      );
+      document.documentElement.style.setProperty(
+        '--hdx-content-font-size-compact',
+        `${compactContentFontSize}px`,
+      );
+    }
+  }, [contentFontSize, compactContentFontSize]);
 
   const getLayout = Component.getLayout ?? (page => page);
 

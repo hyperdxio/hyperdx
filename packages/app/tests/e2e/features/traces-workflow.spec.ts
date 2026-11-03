@@ -155,3 +155,92 @@ test.describe('Advanced Search Workflow - Traces', { tag: '@traces' }, () => {
     });
   });
 });
+
+// trace-0 is four spans in one trace. Opening a result and then another must
+// follow the span that was just opened, including a click inside the waterfall
+// that is already on screen.
+test.describe(
+  'Trace waterfall span selection',
+  { tag: ['@traces', '@full-stack'] },
+  () => {
+    let searchPage: SearchPage;
+
+    test.beforeEach(async ({ page }) => {
+      searchPage = new SearchPage(page);
+      await searchPage.goto();
+      await searchPage.selectSource(DEFAULT_TRACES_SOURCE_NAME);
+      await searchPage.timePicker.selectRelativeTime('Last 1 days');
+      await searchPage.switchToLuceneMode();
+    });
+
+    async function openSpanInWaterfall(spanId: string, spanName: string) {
+      await searchPage.performSearch(`SpanId:"${spanId}"`);
+      await expect(searchPage.table.firstRow).toBeVisible();
+      await searchPage.table.clickFirstRow();
+      await expect(searchPage.sidePanel.container).toBeVisible();
+      await expect(searchPage.sidePanel.getTab('trace')).toBeVisible({
+        timeout: 15_000,
+      });
+      await searchPage.sidePanel.clickTab('trace');
+      await expect(
+        searchPage.sidePanel.getWaterfallSpan(spanName).first(),
+      ).toBeVisible({ timeout: 15_000 });
+    }
+
+    test('Opening a span, closing it, opening another span from the same trace', async () => {
+      await openSpanInWaterfall('span-0-0', 'GET /api/logs');
+      await expect(
+        searchPage.sidePanel.getHighlightedWaterfallSpan('GET /api/logs'),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(searchPage.sidePanel.spanDetailsPanel).toContainText(
+        'GET /api/logs',
+        { timeout: 15_000 },
+      );
+
+      await searchPage.sidePanel.close();
+      await expect(searchPage.sidePanel.container).toBeHidden();
+
+      await openSpanInWaterfall('span-0-1', 'POST /api/traces');
+      await expect(
+        searchPage.sidePanel.getHighlightedWaterfallSpan('POST /api/traces'),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(
+        searchPage.sidePanel.getHighlightedWaterfallSpan('GET /api/logs'),
+      ).toBeHidden();
+      await expect(searchPage.sidePanel.spanDetailsPanel).toContainText(
+        'POST /api/traces',
+        { timeout: 15_000 },
+      );
+      await expect(searchPage.sidePanel.spanDetailsPanel).not.toContainText(
+        'GET /api/logs',
+      );
+    });
+
+    test('Opening a span, then selecting another span from the same trace without closing the side panel', async () => {
+      await searchPage.performSearch('TraceId:"trace-0"');
+      await searchPage.table.clickRowContaining('GET /api/logs');
+      await expect(searchPage.sidePanel.container).toBeVisible();
+      await expect(searchPage.sidePanel.getTab('trace')).toBeVisible({
+        timeout: 15_000,
+      });
+      await searchPage.sidePanel.clickTab('trace');
+      await expect(
+        searchPage.sidePanel.getHighlightedWaterfallSpan('GET /api/logs'),
+      ).toBeVisible({ timeout: 15_000 });
+
+      await searchPage.table.clickRowContaining('POST /api/traces');
+
+      await expect(searchPage.sidePanel.container).toBeVisible();
+      await expect(
+        searchPage.sidePanel.getHighlightedWaterfallSpan('POST /api/traces'),
+      ).toBeVisible({ timeout: 15_000 });
+      await expect(
+        searchPage.sidePanel.getHighlightedWaterfallSpan('GET /api/logs'),
+      ).toBeHidden();
+      await expect(searchPage.sidePanel.spanDetailsPanel).toContainText(
+        'POST /api/traces',
+        { timeout: 15_000 },
+      );
+    });
+  },
+);

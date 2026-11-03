@@ -11,7 +11,12 @@ import {
 // (NumberFormat.tsx), but 2 already distinguishes values >= 0.005 from 0.
 const MAX_AXIS_MANTISSA = 2;
 
-/** Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's comment. */
+/**
+ * Base width ceiling for a bare signed number - see MAX_AXIS_MANTISSA's
+ * comment. A character budget rather than a pixel one, which is why
+ * Y_AXIS_WIDTH scales with the content font size preference: the gutter has to
+ * grow with the tick font for this to keep holding at every setting.
+ */
 const AXIS_CHAR_BUDGET = 5;
 
 // Flat, not suffix-length-scaled - IBM Plex Mono is monospace, so a longer

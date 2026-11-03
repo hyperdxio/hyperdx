@@ -45,7 +45,7 @@ The suite exercises all three OTLP signal types against the standalone
 collector config (`docker/otel-collector/config.standalone.yaml`):
 
 - **logs** - severity inference/normalization, JSON auto-parse, JSON-schema
-  exporter, compat-schema (old ClickHouse), custom-pipeline processor swap, and
+  exporter, custom-pipeline processor swap, and
   the `routing/logs` connector that splits rrweb (session replay) logs into
   `hyperdx_sessions` from ordinary logs in `otel_logs`.
 - **traces** - the `traces` pipeline into `otel_traces` (`traces.bats`).

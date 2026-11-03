@@ -9,19 +9,17 @@ import {
   useWatch,
 } from 'react-hook-form';
 import { TableConnection } from '@hyperdx/common-utils/dist/core/metadata';
+import { displayTypeSupportsBuilderAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import { isBuilderChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
   DisplayType,
+  HeatmapMode,
   SourceKind,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
-import { Box, Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
-import {
-  IconBell,
-  IconCirclePlus,
-  IconMathFunction,
-} from '@tabler/icons-react';
+import { Button, Divider, Flex, Group, Switch, Text } from '@mantine/core';
+import { IconCirclePlus, IconMathFunction } from '@tabler/icons-react';
 
 import {
   ChartEditorFormState,
@@ -44,6 +42,7 @@ import { getEventBody, isSingleExpression } from '@/source';
 import { DEFAULT_TILE_ALERT } from '@/utils/alerts';
 
 import { OnClickFormButton } from './OnClickForm/OnClickFormButton';
+import { AlertPanelButton } from './AlertPanelButton';
 import { ChartFormulaEditor } from './ChartFormulaEditor';
 import { ChartSeriesEditor } from './ChartSeriesEditor';
 import { HeatmapSeriesEditor } from './HeatmapSeriesEditor';
@@ -83,6 +82,8 @@ type ChartEditorControlsProps = {
   chartConfigForExplanations?: ChartConfigWithOptTimestamp;
   onSubmit: (suppressErrorNotification?: boolean) => void;
   openDisplaySettings: () => void;
+  heatmapMode: HeatmapMode;
+  onHeatmapModeChange: (mode: HeatmapMode) => void;
 };
 
 export function ChartEditorControls({
@@ -116,6 +117,8 @@ export function ChartEditorControls({
   chartConfigForExplanations,
   onSubmit,
   openDisplaySettings,
+  heatmapMode,
+  onHeatmapModeChange,
 }: ChartEditorControlsProps) {
   // Formulas (HDX-5080): derived series computed from the chart's series via
   // letter-ref arithmetic expressions. Metric and event (log/trace) sources,
@@ -183,6 +186,18 @@ export function ChartEditorControls({
   const chartName = useWatch({ control, name: 'name' });
   const hasGroupBy = typeof groupBy === 'string' && groupBy.trim().length > 0;
 
+  const showAlertButton =
+    (alert != null && !isRawSqlInput) ||
+    (displayTypeSupportsBuilderAlerts(displayType) &&
+      alertsEnabled &&
+      !IS_LOCAL_MODE);
+
+  const alertWarning = useMemo(
+    () =>
+      additionalWarnings?.length ? additionalWarnings.join(' ') : undefined,
+    [additionalWarnings],
+  );
+
   return (
     <>
       <Flex mb="md" align="center" justify="space-between">
@@ -225,12 +240,15 @@ export function ChartEditorControls({
           key={fields[0]?.id}
           control={control}
           setValue={setValue}
+          clearErrors={clearErrors}
           errors={errors}
           tableSource={tableSource}
           dateRange={dateRange}
           parentRef={parentRef}
           onSubmit={onSubmit}
           onOpenDisplaySettings={openDisplaySettings}
+          mode={heatmapMode}
+          onModeChange={onHeatmapModeChange}
         />
       ) : displayType === DisplayType.EventPatterns ? (
         <Flex gap="xs" direction="column">
@@ -490,27 +508,18 @@ export function ChartEditorControls({
                     checked={ratioMode === 'share_of_total'}
                   />
                 )}
-              {(displayType === DisplayType.Line ||
-                displayType === DisplayType.StackedBar ||
-                displayType === DisplayType.Number) &&
-                alertsEnabled &&
-                !alert &&
-                !IS_LOCAL_MODE && (
-                  <Button
-                    variant="subtle"
-                    data-testid="alert-button"
-                    size="sm"
-                    onClick={() =>
-                      setValue('alert', {
-                        ...DEFAULT_TILE_ALERT,
-                        ...(chartName && { displayName: chartName }),
-                      })
-                    }
-                  >
-                    <IconBell size={14} className="me-2" />
-                    Add Alert
-                  </Button>
-                )}
+              {showAlertButton && (
+                <AlertPanelButton
+                  hasAlert={alert != null}
+                  warning={alertWarning}
+                  onAddAlert={() =>
+                    setValue('alert', {
+                      ...DEFAULT_TILE_ALERT,
+                      ...(chartName && { displayName: chartName }),
+                    })
+                  }
+                />
+              )}
             </Group>
             <Group>
               {displayType === DisplayType.Table && (
@@ -570,22 +579,16 @@ export function ChartEditorControls({
         </Flex>
       )}
       {alert && !isRawSqlInput && (
-        <Box mt="sm">
-          <TileAlertEditor
-            control={control}
-            setValue={setValue}
-            alert={alert}
-            dashboardId={dashboardId}
-            onRemove={
-              isAlertRequired ? undefined : () => setValue('alert', undefined)
-            }
-            warning={
-              additionalWarnings?.length
-                ? additionalWarnings.join(' ')
-                : undefined
-            }
-          />
-        </Box>
+        <TileAlertEditor
+          control={control}
+          setValue={setValue}
+          alert={alert}
+          dashboardId={dashboardId}
+          onRemove={
+            isAlertRequired ? undefined : () => setValue('alert', undefined)
+          }
+          warning={alertWarning}
+        />
       )}
     </>
   );

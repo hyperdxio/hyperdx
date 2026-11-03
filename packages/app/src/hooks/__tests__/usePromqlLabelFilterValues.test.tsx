@@ -97,11 +97,10 @@ describe('usePromqlLabelFilterValues', () => {
     expect(mockLabelValues).toHaveBeenCalledTimes(1);
     expect(mockLabelValues).toHaveBeenCalledWith({
       label: 'job',
-      connectionId: 'clickhouse-conn',
-      database: 'telemetry',
-      table: 'metrics',
+      sourceId: 'promql-source',
       start: 1704067200,
       end: 1704153600,
+      attribution: expect.objectContaining({ surface: 'metadata' }),
     });
     expect(result.current.data.get('promql1')).toEqual({
       values: ['api', 'web'],
@@ -123,6 +122,29 @@ describe('usePromqlLabelFilterValues', () => {
       values: ['api', 'web'],
       isLoading: false,
     });
+  });
+
+  // Access is checked per source, so two sources over one table are not interchangeable.
+  it('queries separately for two sources reading the same table', async () => {
+    mockSourcesData.push({
+      id: 'promql-source-2',
+      kind: SourceKind.Promql,
+      name: 'Prometheus copy',
+      connection: 'clickhouse-conn',
+      from: { databaseName: 'telemetry', tableName: 'metrics' },
+    });
+
+    const { result } = renderFilters([
+      filter(),
+      filter({ id: 'promql2', source: 'promql-source-2' }),
+    ]);
+
+    await waitFor(() => expect(result.current.isFetching).toBe(false));
+
+    expect(mockLabelValues).toHaveBeenCalledTimes(2);
+    expect(mockLabelValues).toHaveBeenCalledWith(
+      expect.objectContaining({ sourceId: 'promql-source-2' }),
+    );
   });
 
   it('queries separately for a different label on the same source', async () => {

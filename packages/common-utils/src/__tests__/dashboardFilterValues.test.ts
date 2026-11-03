@@ -1,20 +1,25 @@
 import {
   configConsumesBroadcastFilters,
   filterSelectionKey,
+  getAdhocFilterTargetsForTile,
   getBlockingRequiredFilterNames,
   getBlockingRequiredFilters,
   getUnsatisfiedRequiredFilters,
   parseDashboardFilterValues,
   resolveFilterSelection,
   serializeDashboardFilterValues,
+  VariableEntryValue,
 } from '@/dashboardFilterValues';
 import { FilterState, filtersToQuery } from '@/filters';
 import type {
+  AdhocDashboardFilter,
+  AdhocFilterCondition,
   ChartConfigWithOptDateRange,
   DashboardFilter,
   DashboardFilterValue,
   PromqlLabelDashboardFilter,
   QueryExpressionDashboardFilter,
+  SavedChartConfig,
   StaticListDashboardFilter,
 } from '@/types';
 
@@ -56,6 +61,17 @@ const promqlFilter = (
   ...overrides,
 });
 
+const condition: AdhocFilterCondition = {
+  key: 'ServiceName',
+  operator: '=',
+  value: 'api',
+};
+
+const variableValue = (...values: string[]): VariableEntryValue => ({
+  type: 'variable',
+  values,
+});
+
 const included = (...values: (string | boolean)[]) => ({
   included: new Set(values),
   excluded: new Set<string | boolean>(),
@@ -79,7 +95,9 @@ describe('dashboardFilterValues', () => {
       ]);
 
       expect(parsed.byExpression).toEqual({ Env: included('prod') });
-      expect(Array.from(parsed.byVariable)).toEqual([['svc', ['accounting']]]);
+      expect(Array.from(parsed.byVariable)).toEqual([
+        ['svc', variableValue('accounting')],
+      ]);
       expect(parsed.passthrough).toEqual([]);
     });
 
@@ -91,8 +109,8 @@ describe('dashboardFilterValues', () => {
 
       expect(parsed.byExpression).toEqual({});
       expect(Array.from(parsed.byVariable)).toEqual([
-        ['svc', ['a', 'b']],
-        ['env', []],
+        ['svc', variableValue('a', 'b')],
+        ['env', variableValue()],
       ]);
     });
 
@@ -114,7 +132,9 @@ describe('dashboardFilterValues', () => {
         { type: 'variable', name: 'svc', values: ['second'] },
       ]);
 
-      expect(Array.from(parsed.byVariable)).toEqual([['svc', ['first']]]);
+      expect(Array.from(parsed.byVariable)).toEqual([
+        ['svc', variableValue('first')],
+      ]);
     });
 
     it('routes non-sql entries to passthrough', () => {
@@ -137,6 +157,29 @@ describe('dashboardFilterValues', () => {
 
       expect(parsed.passthrough).toEqual([lucene, sqlAst]);
       expect(parsed.byExpression).toEqual({ Env: included('prod') });
+    });
+
+    it('carries ad hoc entries through a parse and serialize round trip', () => {
+      const adhoc: DashboardFilterValue = {
+        type: 'adhoc',
+        name: 'adhoc',
+        conditions: [{ key: 'ServiceName', operator: '=~', value: 'api.*' }],
+      };
+
+      const parsed = parseDashboardFilterValues([
+        adhoc,
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
+
+      expect(Array.from(parsed.byVariable)).toEqual([
+        ['adhoc', { type: 'adhoc', conditions: adhoc.conditions }],
+        ['env', variableValue('prod')],
+      ]);
+      expect(parsed.passthrough).toEqual([]);
+      expect(serializeDashboardFilterValues(parsed)).toEqual([
+        adhoc,
+        { type: 'variable', name: 'env', values: ['prod'] },
+      ]);
     });
 
     it('drops a sql entry it can extract nothing from, rather than carrying it', () => {
@@ -171,8 +214,8 @@ describe('dashboardFilterValues', () => {
         serializeDashboardFilterValues({
           byExpression: { Env: included('prod'), Region: included('us') },
           byVariable: new Map([
-            ['svc', ['accounting']],
-            ['team', ['platform']],
+            ['svc', variableValue('accounting')],
+            ['team', variableValue('platform')],
           ]),
           passthrough: [passthrough],
         }),
@@ -192,9 +235,10 @@ describe('dashboardFilterValues', () => {
             Env: included(),
             Region: included('us'),
           },
-          byVariable: new Map([
-            ['svc', []],
-            ['team', ['platform']],
+          byVariable: new Map<string, VariableEntryValue>([
+            ['svc', variableValue()],
+            ['team', variableValue('platform')],
+            ['conds', { type: 'adhoc', conditions: [] }],
           ]),
         }),
       ).toEqual([
@@ -246,7 +290,7 @@ describe('dashboardFilterValues', () => {
       'preserves %s exactly on the variable path',
       (_label, value) => {
         const entries = serializeDashboardFilterValues({
-          byVariable: new Map([['svc', [value]]]),
+          byVariable: new Map([['svc', variableValue(value)]]),
         });
         expect(entries).toEqual([
           { type: 'variable', name: 'svc', values: [value] },
@@ -257,7 +301,7 @@ describe('dashboardFilterValues', () => {
         const parsed = parseDashboardFilterValues(
           JSON.parse(JSON.stringify(entries)),
         );
-        expect(parsed.byVariable.get('svc')).toEqual([value]);
+        expect(parsed.byVariable.get('svc')).toEqual(variableValue(value));
         expect(parsed.byExpression).toEqual({});
         expect(parsed.passthrough).toEqual([]);
       },
@@ -301,7 +345,7 @@ describe('dashboardFilterValues', () => {
       ]);
       expect(
         serializeDashboardFilterValues({
-          byVariable: new Map([['svc', ['true']]]),
+          byVariable: new Map([['svc', variableValue('true')]]),
         }),
       ).toEqual([{ type: 'variable', name: 'svc', values: ['true'] }]);
     });
@@ -412,6 +456,14 @@ describe('dashboardFilterValues', () => {
       );
     });
 
+    it('does not read an ad hoc entry as a selection', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'adhoc', name: 'svc', conditions: [condition] },
+      ]);
+
+      expect(resolveFilterSelection(variableFilter, parsed)).toBeUndefined();
+    });
+
     it('falls back to the expression entry for back-compat', () => {
       const parsed = parseDashboardFilterValues([
         { type: 'sql', condition: "ServiceName IN ('legacy')" },
@@ -488,6 +540,38 @@ describe('dashboardFilterValues', () => {
       );
       expect(resolveFilterSelection(filter({ id: 'f2' }), parsed)).toEqual(
         included('plain'),
+      );
+    });
+  });
+
+  describe('resolveFilterSelection for a single-select filter', () => {
+    it('keeps only the first value of a variable entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ]);
+
+      expect(
+        resolveFilterSelection(staticFilter({ maxSelections: 1 }), parsed),
+      ).toEqual(included('staging'));
+    });
+
+    it('keeps only the first value of an expression entry', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'sql', condition: "ServiceName IN ('b', 'a')" },
+      ]);
+
+      expect(
+        resolveFilterSelection(filter({ maxSelections: 1 }), parsed),
+      ).toEqual(included('b'));
+    });
+
+    it('leaves a multi-select filter untouched', () => {
+      const parsed = parseDashboardFilterValues([
+        { type: 'variable', name: 'env', values: ['staging', 'prod'] },
+      ]);
+
+      expect(resolveFilterSelection(staticFilter(), parsed)).toEqual(
+        included('staging', 'prod'),
       );
     });
   });
@@ -761,6 +845,7 @@ describe('dashboardFilterValues', () => {
       configType: 'promql',
       promqlExpression: 'up',
       connection: 'local',
+      source: 'promql-source',
     };
 
     it('applies to a builder tile', () => {
@@ -801,6 +886,83 @@ describe('dashboardFilterValues', () => {
     });
   });
 
+  describe('getAdhocFilterTargetsForTile', () => {
+    const builderTile: SavedChartConfig = {
+      source: 'logs',
+      select: 'count()',
+      where: '',
+    };
+    const rawSqlTile = (sqlTemplate: string): SavedChartConfig => ({
+      configType: 'sql',
+      sqlTemplate,
+      connection: 'local',
+    });
+    const promqlTile: SavedChartConfig = {
+      configType: 'promql',
+      promqlExpression: 'up',
+      source: 'logs',
+    };
+    const adhoc = (
+      overrides: Partial<AdhocDashboardFilter> = {},
+    ): AdhocDashboardFilter => ({
+      id: 'a1',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'sql',
+      sources: ['logs'],
+      isVariableEnabled: true,
+      ...overrides,
+    });
+    const ids = (
+      filters: DashboardFilter[],
+      config: SavedChartConfig,
+      sourceId: string | undefined,
+    ) => getAdhocFilterTargetsForTile(filters, config, sourceId).map(f => f.id);
+
+    it('returns every ad hoc filter covering the tile source', () => {
+      const filters = [
+        adhoc(),
+        adhoc({ id: 'a2', sources: ['traces'], appliesToSourceIds: ['logs'] }),
+        adhoc({ id: 'a3', sources: ['traces'] }),
+        filter(),
+      ];
+      expect(ids(filters, builderTile, 'logs')).toEqual(['a1', 'a2']);
+    });
+
+    it('skips filters that do not broadcast', () => {
+      expect(
+        ids([adhoc({ isBroadcastEnabled: false })], builderTile, 'logs'),
+      ).toEqual([]);
+    });
+
+    it('matches the filter language to the tile', () => {
+      const filters = [
+        adhoc(),
+        adhoc({ id: 'p1', sourceType: 'promql', sources: ['logs'] }),
+      ];
+      expect(ids(filters, builderTile, 'logs')).toEqual(['a1']);
+      expect(ids(filters, promqlTile, 'logs')).toEqual(['p1']);
+    });
+
+    it('requires $__filters and a source on raw SQL tiles', () => {
+      const filters = [adhoc()];
+      expect(
+        ids(filters, rawSqlTile('SELECT 1 FROM t WHERE $__filters'), 'logs'),
+      ).toEqual(['a1']);
+      expect(
+        ids(filters, rawSqlTile('SELECT 1 FROM t WHERE $__filters'), undefined),
+      ).toEqual([]);
+      expect(ids(filters, rawSqlTile('SELECT 1 FROM t'), 'logs')).toEqual([]);
+      expect(
+        ids(
+          filters,
+          rawSqlTile('SELECT 1 FROM t WHERE $__filter(ServiceName, $svc)'),
+          'logs',
+        ),
+      ).toEqual([]);
+    });
+  });
+
   describe('getBlockingRequiredFilterNames', () => {
     const builderTile: ChartConfigWithOptDateRange = {
       select: 'count()',
@@ -814,6 +976,7 @@ describe('dashboardFilterValues', () => {
       configType: 'promql',
       promqlExpression: 'up',
       connection: 'local',
+      source: 'promql-source',
     };
 
     const unsatisfied = [

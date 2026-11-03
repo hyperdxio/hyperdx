@@ -1,14 +1,7 @@
 import Router from 'next/router';
 import { formatDistanceToNow } from 'date-fns';
-import {
-  ActionIcon,
-  Badge,
-  Group,
-  Menu,
-  Table,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Badge } from '@clickhouse/click-ui';
+import { ActionIcon, Group, Menu, Table, Text, Tooltip } from '@mantine/core';
 import { IconDots, IconTrash } from '@tabler/icons-react';
 
 import { FormatTime } from '@/useFormatTime';
@@ -61,9 +54,7 @@ export function ListingRow({
       <Table.Td>
         <Group gap={4}>
           {tags?.map(tag => (
-            <Badge key={tag} variant="light" size="xs">
-              {tag}
-            </Badge>
+            <Badge key={tag} size="sm" text={tag} state="neutral" />
           ))}
         </Group>
       </Table.Td>

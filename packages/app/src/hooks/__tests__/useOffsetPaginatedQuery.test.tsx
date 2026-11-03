@@ -1196,6 +1196,7 @@ describe('useOffsetPaginatedQuery', () => {
     const promqlConfig: PromqlConfigWithDateRange = {
       configType: 'promql',
       connection: 'foo',
+      source: 'source-promql',
       promqlExpression: [{ expression: 'up' }],
       dateRange: [
         new Date('2024-01-01T00:00:00Z'),
@@ -1225,6 +1226,7 @@ describe('useOffsetPaginatedQuery', () => {
         promqlConfig,
         promqlConfig.dateRange,
         expect.anything(),
+        {},
       );
       expect(renderChartConfig).not.toHaveBeenCalled();
       expect(mockClickhouseClient.query).not.toHaveBeenCalled();

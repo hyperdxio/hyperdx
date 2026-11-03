@@ -1,5 +1,6 @@
 import { add } from 'date-fns';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
+import type { AdhocConditionEntry } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
@@ -14,6 +15,7 @@ import {
   AGG_FNS,
   buildEventsSearchUrl,
   ChartKeyJoiner,
+  type LineData,
   tryExpandConfigVariables,
 } from '@/ChartUtils';
 
@@ -54,6 +56,47 @@ export function decodeSeriesGroupFilters({
   }
 
   return groupFilters;
+}
+
+/**
+ * The ad hoc filter entries that select one chart series: its PromQL labels,
+ * or a key per group-by column. Undefined when some group column has no key
+ * or can't be filtered on, since filtering on the rest would match more than
+ * the series.
+ */
+export function getSeriesFilterEntries({
+  line,
+  groupColumns,
+  filterKeyByColumn,
+  promqlSeriesLabels,
+}: {
+  line: Pick<LineData, 'groupValues'> | undefined;
+  groupColumns: string[];
+  filterKeyByColumn: ReadonlyMap<string, string>;
+  promqlSeriesLabels?: Record<string, Record<string, string>>;
+}): AdhocConditionEntry[] | undefined {
+  if (!line || groupColumns.length === 0) return undefined;
+  if (promqlSeriesLabels) {
+    // PromQL series are grouped by their name alone.
+    const labels = promqlSeriesLabels[String(line.groupValues[0])];
+    // An ad hoc filter reaches every PromQL query, so a `__name__` condition
+    // would empty those on other metrics.
+    return labels
+      ? Object.entries(labels)
+          .filter(([key]) => key !== '__name__')
+          .map(([key, value]) => ({ key, value }))
+      : undefined;
+  }
+  const entries: AdhocConditionEntry[] = [];
+  for (const [index, column] of groupColumns.entries()) {
+    const key = filterKeyByColumn.get(column);
+    const value = line.groupValues[index];
+    // NULL doesn't match `= ''`, and Map / Array / Tuple / JSON values are
+    // JSON in the series key, which their `toString()` wouldn't match.
+    if (!key || value == null || typeof value === 'object') return undefined;
+    entries.push({ key, value: String(value) });
+  }
+  return entries;
 }
 
 /**

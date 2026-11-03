@@ -125,6 +125,7 @@ describe('buildSparklineQueryConfig', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Number,
       connection: 'test-connection',
+      source: 'source-promql',
       dateRange: baseConfig.dateRange,
       promqlExpression: [
         {
@@ -245,6 +246,7 @@ describe('NumberTileBackgroundChart', () => {
         { expression: 'e2e_service_up', queryType: 'range' as const },
       ],
       connection: 'test-connection',
+      source: 'source-promql',
       granularity: '1 minute' as const,
       dateRange: [
         new Date('2024-01-01T00:00:00Z'),

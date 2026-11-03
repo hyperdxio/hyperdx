@@ -1,3 +1,6 @@
+import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
 import {
   TimelineChartRowEvents,
   type TTimelineEvent,
@@ -55,5 +58,60 @@ describe('TimelineChartRowEvents width', () => {
     expect(parseFloat(longBar.style.width)).toBeGreaterThan(
       parseFloat(shortBar.style.width),
     );
+  });
+});
+
+describe('TimelineChartRowEvents span event markers', () => {
+  it('colors exception events red and other events green', () => {
+    const { container } = renderRow(
+      [
+        makeEvent({
+          end: 10,
+          markers: [
+            { timestamp: 2, epochMs: 2, name: 'exception', attributes: {} },
+            { timestamp: 6, epochMs: 6, name: 'cache.miss', attributes: {} },
+          ],
+        }),
+      ],
+      10,
+    );
+
+    const diamonds = Array.from(
+      container.querySelectorAll<HTMLElement>('[style*="rotate(45deg)"]'),
+    );
+    expect(diamonds.map(d => d.style.backgroundColor)).toEqual([
+      'var(--color-bg-danger)',
+      'var(--color-bg-success)',
+    ]);
+  });
+
+  it('shows the event time and red attribute keys in an exception tooltip', async () => {
+    const { container } = renderRow(
+      [
+        makeEvent({
+          end: 10,
+          markers: [
+            {
+              timestamp: 2,
+              epochMs: Date.UTC(2024, 5, 15, 12, 0, 0, 345),
+              name: 'exception',
+              attributes: { 'exception.type': 'TypeError' },
+            },
+          ],
+        }),
+      ],
+      10,
+    );
+
+    await userEvent.hover(
+      container.querySelector<HTMLElement>('[style*="rotate(45deg)"]')!
+        .parentElement!,
+    );
+
+    expect((await screen.findByText('exception.type:')).style.color).toBe(
+      'var(--color-text-danger)',
+    );
+    // The absolute event time, not its offset from the trace start.
+    expect(screen.getByText(/^Jun 1[56] .*\.345/)).toBeInTheDocument();
   });
 });

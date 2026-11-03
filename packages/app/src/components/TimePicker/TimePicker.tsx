@@ -1,5 +1,5 @@
 import React, { memo, useMemo, useState } from 'react';
-import { add, Duration, format, sub } from 'date-fns';
+import { add, Duration, sub } from 'date-fns';
 import { useAtom } from 'jotai';
 import { atomWithStorage } from 'jotai/utils';
 import { useHotkeys } from 'react-hotkeys-hook';
@@ -25,6 +25,7 @@ import { DateInput, DateInputProps } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
 import { IconBolt, IconCalendarFilled } from '@tabler/icons-react';
 
+import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { useUserPreferences } from '@/useUserPreferences';
 
 import { TimePickerMode } from './types';
@@ -33,10 +34,13 @@ import {
   dateParser,
   DURATION_OPTIONS,
   DURATIONS,
+  formatTimeRangeText,
+  fromDateInputValue,
   LIVE_TAIL_DURATION_MS,
   LIVE_TAIL_TIME_QUERY,
   parseTimeRangeInput,
   RELATIVE_TIME_OPTIONS,
+  toDateInputValue,
 } from './utils';
 
 const modeAtom = atomWithStorage<TimePickerMode>(
@@ -55,21 +59,31 @@ const toDate = (v: Date | string | null): Date | null =>
  * Wrapper around Mantine v9 DateInput that bridges the Date ↔ string gap.
  * Mantine v9 DateInput expects/emits string values, but the TimePickerForm
  * stores Date objects (used by date-fns). This wrapper converts in both
- * directions: value (Date → string) and onChange (string → Date).
+ * directions: value (Date → string) and onChange (string → Date), reading
+ * and writing the strings as clock times in `timeZone`.
  *
  * `withTime` is required: by default DateInput strips the time part and
  * normalizes values to midnight, even when `valueFormat` includes time
  * tokens. Setting `withTime` preserves HH:mm:ss so manually-typed times
  * survive blur/commit.
  */
-type DateInputCmpProps = Omit<DateInputProps, 'value' | 'onChange'> & {
+type DateInputCmpProps = Omit<
+  DateInputProps,
+  'value' | 'onChange' | 'minDate' | 'maxDate'
+> & {
   value?: Date | null;
   onChange?: (value: Date | null) => void;
+  minDate?: Date | null;
+  maxDate?: Date;
+  timeZone: string | undefined;
 };
 
 const DateInputCmp = ({
   value,
   onChange: onChangeProp,
+  minDate,
+  maxDate,
+  timeZone,
   ...props
 }: DateInputCmpProps) => (
   <DateInput
@@ -79,15 +93,20 @@ const DateInputCmp = ({
     placeholder={DATE_INPUT_PLACEHOLDER}
     valueFormat={DATE_INPUT_FORMAT}
     variant="filled"
-    dateParser={dateParser}
+    dateParser={input => {
+      const date = dateParser(input, timeZone);
+      return date && toDateInputValue(date, timeZone);
+    }}
     onKeyDown={e => {
       if (e.key === 'Enter' && e.target instanceof HTMLInputElement) {
         e.target.blur();
       }
     }}
     {...props}
-    value={value instanceof Date ? value.toISOString() : (value ?? null)}
-    onChange={v => onChangeProp?.(toDate(v))}
+    minDate={minDate ? toDateInputValue(minDate, timeZone) : undefined}
+    maxDate={maxDate ? toDateInputValue(maxDate, timeZone) : undefined}
+    value={value ? toDateInputValue(value, timeZone) : null}
+    onChange={v => onChangeProp?.(v ? fromDateInputValue(v, timeZone) : null)}
   />
 );
 
@@ -123,6 +142,7 @@ const TimePickerComponent = ({
   const {
     userPreferences: { timeFormat },
   } = useUserPreferences();
+  const timeZone = useDisplayTimeZone();
 
   const [opened, { close, toggle }] = useDisclosure(false);
 
@@ -144,8 +164,8 @@ const TimePickerComponent = ({
   const form = useTimePickerForm({ mode });
 
   const dateRange = React.useMemo(() => {
-    return parseTimeRangeInput(value);
-  }, [value]);
+    return parseTimeRangeInput(value, timeZone);
+  }, [value, timeZone]);
 
   React.useEffect(() => {
     // Only update form values from external dateRange when popover is closed
@@ -190,16 +210,15 @@ const TimePickerComponent = ({
       if (!from || !to) {
         return;
       }
-      const formatStr =
-        timeFormat === '24h' ? 'MMM d HH:mm:ss' : 'MMM d h:mm:ss a';
-      const rangeStr = [from, to]
-        .map(d => d && format(d, formatStr))
-        .join(' - ');
+      const rangeStr = formatTimeRangeText([from, to], {
+        timeZone,
+        clock: timeFormat,
+      });
       onChange(rangeStr);
       onSearch(rangeStr);
       close();
     },
-    [close, onChange, onSearch, timeFormat],
+    [close, onChange, onSearch, timeFormat, timeZone],
   );
 
   const handleApply = React.useCallback(() => {
@@ -471,6 +490,7 @@ const TimePickerComponent = ({
                 <>
                   <H>Start time</H>
                   <DateInputCmp
+                    timeZone={timeZone}
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
@@ -479,9 +499,10 @@ const TimePickerComponent = ({
                   />
                   <H>End time</H>
                   <DateInputCmp
+                    timeZone={timeZone}
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}
-                    minDate={form.values.startDate ?? undefined}
+                    minDate={toDate(form.values.startDate)}
                     disabled={isRelative}
                     {...form.getInputProps('endDate')}
                   />
@@ -490,6 +511,7 @@ const TimePickerComponent = ({
                 <>
                   <H>Time</H>
                   <DateInputCmp
+                    timeZone={timeZone}
                     disabled={isRelative}
                     popoverProps={dateComponentPopoverProps}
                     maxDate={today}

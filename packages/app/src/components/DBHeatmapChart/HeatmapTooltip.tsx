@@ -4,23 +4,43 @@ import { FormatTime } from '@/useFormatTime';
 
 import type { HighlightedPoint } from './highlightDataPlugin';
 
+/** What the hovered cell holds: a series' value, or a y bucket's count. */
+export type HeatmapTooltipCell =
+  | { kind: 'series'; name: string; formattedValue: string }
+  | {
+      kind: 'bucket';
+      formattedRange: string;
+      percentile: number | undefined;
+    }
+  | {
+      kind: 'distribution';
+      formattedY: string;
+      percentile: number | undefined;
+    };
+
+// Histogram cells hold rate() values, which can be far below 0.001; keep
+// significant digits there without rounding large counts.
+const COUNT_FORMAT = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 3,
+  maximumSignificantDigits: 3,
+  roundingPriority: 'morePrecision',
+});
+
 type HeatmapTooltipProps = {
   point: HighlightedPoint;
+  cell: HeatmapTooltipCell;
   /** Chart container size, used to keep the tooltip inside it. */
   width: number;
   height: number;
   showDragHint: boolean;
-  formatY: (value: number) => string;
-  percentile: number | undefined;
 };
 
 export function HeatmapTooltip({
   point,
+  cell,
   width,
   height,
   showDragHint,
-  formatY,
-  percentile,
 }: HeatmapTooltipProps) {
   return (
     <>
@@ -70,20 +90,37 @@ export function HeatmapTooltip({
         <div>
           <FormatTime value={point.xVal} />
         </div>
-        <div>
-          <b>Y Value:</b> {formatY(point.yVal)}
-          {percentile != null &&
-            ` (p${new Intl.NumberFormat('en-US', {
-              maximumFractionDigits: 1,
-            }).format(percentile)})`}
-        </div>
-        <div>
-          <b>Count Value:</b>{' '}
-          {new Intl.NumberFormat('en-US', {
-            notation: 'standard',
-            compactDisplay: 'short',
-          }).format(point.countVal)}
-        </div>
+        {cell.kind === 'series' ? (
+          <>
+            <div>
+              <b>Series:</b> {cell.name}
+            </div>
+            <div>
+              <b>Value:</b> {cell.formattedValue}
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              {cell.kind === 'bucket' ? (
+                <>
+                  <b>Bucket:</b> {cell.formattedRange}
+                </>
+              ) : (
+                <>
+                  <b>Y Value:</b> {cell.formattedY}
+                </>
+              )}
+              {cell.percentile != null &&
+                ` (p${new Intl.NumberFormat('en-US', {
+                  maximumFractionDigits: 1,
+                }).format(cell.percentile)})`}
+            </div>
+            <div>
+              <b>Count Value:</b> {COUNT_FORMAT.format(point.countVal)}
+            </div>
+          </>
+        )}
       </div>
     </>
   );

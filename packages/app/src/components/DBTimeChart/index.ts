@@ -7,5 +7,6 @@ export { DBTimeChart } from './DBTimeChart';
 export {
   buildSeriesSearchUrl,
   decodeSeriesGroupFilters,
+  getSeriesFilterEntries,
   type SeriesGroupFilter,
 } from './searchUrl';

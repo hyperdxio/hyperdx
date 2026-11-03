@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import type { AdhocConditionEntry } from '@hyperdx/common-utils/dist/filters';
 import {
   ActionIcon,
   Group,
@@ -12,6 +13,8 @@ import {
   IconArrowsMaximize,
   IconCheck,
   IconCopy,
+  IconFilter,
+  IconFilterX,
   IconFocusCentered,
   IconSearch,
 } from '@tabler/icons-react';
@@ -31,13 +34,50 @@ import {
   useChartTooltipActionZIndex,
 } from './ChartTooltip';
 
+/** An icon button in a series row's action cluster, labelled by its tooltip. */
+function SeriesAction({
+  label,
+  testId,
+  icon,
+  onClick,
+  tooltipZIndex,
+}: {
+  label: string;
+  testId: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  tooltipZIndex?: number;
+}) {
+  return (
+    <Tooltip
+      label={label}
+      withArrow
+      withinPortal
+      color="gray"
+      position="top"
+      zIndex={tooltipZIndex}
+    >
+      <ActionIcon
+        variant="subtle"
+        size="xs"
+        aria-label={label}
+        data-testid={testId}
+        onClick={onClick}
+      >
+        {icon}
+      </ActionIcon>
+    </Tooltip>
+  );
+}
+
 /**
  * One pinned-tooltip series row: the shared ChartTooltipItem plus, when
  * `actions` is set, the per-series action cluster (Search / Copy / Focus). The
  * cluster is flexShrink:0 so it doesn't shift as the name truncates or the copy
  * icon swaps to a check (which would move the buttons out from under the cursor).
  *
- * Search is hidden when `actions.drillInUrl` is undefined (source-less charts).
+ * Search is hidden when `actions.drillInUrl` is undefined (source-less charts),
+ * and Focus, Filter and Exclude when their handlers are.
  */
 function SeriesRow({
   name,
@@ -58,8 +98,10 @@ function SeriesRow({
   actions?: {
     /** Drill-in URL; when undefined the Search action is hidden (no source). */
     drillInUrl?: string;
-    onDrillIn: () => void;
-    onFocus: () => void;
+    onDrillIn?: () => void;
+    onFocus?: () => void;
+    onFilter?: () => void;
+    onExclude?: () => void;
   };
   /** z-index for the action tooltips, so they sit above the pinned popover. */
   actionTooltipZIndex?: number;
@@ -132,24 +174,33 @@ function SeriesRow({
             )}
           </ActionIcon>
         </Tooltip>
-        <Tooltip
-          label="Focus"
-          withArrow
-          withinPortal
-          color="gray"
-          position="top"
-          zIndex={actionTooltipZIndex}
-        >
-          <ActionIcon
-            variant="subtle"
-            size="xs"
-            aria-label="Focus"
-            data-testid={`chart-focus-series-${dataKey}`}
+        {actions.onFilter != null && (
+          <SeriesAction
+            label="Filter for this series"
+            testId={`chart-filter-series-${dataKey}`}
+            icon={<IconFilter size={13} />}
+            onClick={actions.onFilter}
+            tooltipZIndex={actionTooltipZIndex}
+          />
+        )}
+        {actions.onExclude != null && (
+          <SeriesAction
+            label="Exclude this series"
+            testId={`chart-exclude-series-${dataKey}`}
+            icon={<IconFilterX size={13} />}
+            onClick={actions.onExclude}
+            tooltipZIndex={actionTooltipZIndex}
+          />
+        )}
+        {actions.onFocus != null && (
+          <SeriesAction
+            label="Focus"
+            testId={`chart-focus-series-${dataKey}`}
+            icon={<IconFocusCentered size={13} />}
             onClick={actions.onFocus}
-          >
-            <IconFocusCentered size={13} />
-          </ActionIcon>
-        </Tooltip>
+            tooltipZIndex={actionTooltipZIndex}
+          />
+        )}
       </Group>
     </Group>
   );
@@ -170,6 +221,18 @@ export type ChartSeriesTooltipProps = {
   onDismiss?: () => void;
   /** Focus a series by its raw key + display name. */
   onFocusSeries?: (payload: { dataKey?: string; name: string }) => void;
+  /**
+   * The entries identifying a series, or undefined when it can't be filtered
+   * on. Paired with `onFilterSeries`.
+   */
+  getSeriesFilters?: (
+    dataKey: string | undefined,
+  ) => AdhocConditionEntry[] | undefined;
+  /** Filter on (`include`) or out (`exclude`) a series' entries. */
+  onFilterSeries?: (
+    entries: AdhocConditionEntry[],
+    action: 'include' | 'exclude',
+  ) => void;
   /** Clear an active series focus; renders a "Show All Series" footer action when set. */
   onShowAllSeries?: () => void;
   /**
@@ -219,6 +282,8 @@ export function ChartSeriesTooltip({
   buildSearchUrl,
   onDismiss,
   onFocusSeries,
+  getSeriesFilters,
+  onFilterSeries,
   onShowAllSeries,
   hiddenSeriesCount = 0,
   onLoadAllSeries,
@@ -255,7 +320,7 @@ export function ChartSeriesTooltip({
   const totalHidden = tooltipHiddenCount + hiddenSeriesCount;
 
   // Per-series actions only make sense with more than one group (a single series
-  // is covered by the header/footer).
+  // is covered by the header/footer), except for filtering.
   const showPerSeriesActions = rows.length > 1;
 
   // buildSearchUrl is always supplied but returns null when drill-down isn't
@@ -324,6 +389,25 @@ export function ChartSeriesTooltip({
             (payload.valueColumnName != null
               ? numberFormatByKey.get(payload.valueColumnName)
               : undefined) ?? fallbackNumberFormat;
+          const seriesFilters = onFilterSeries
+            ? getSeriesFilters?.(payload.dataKey)
+            : undefined;
+          const filterSeries =
+            seriesFilters?.length && onFilterSeries
+              ? (action: 'include' | 'exclude') => {
+                  onFilterSeries(seriesFilters, action);
+                  onDismiss?.();
+                }
+              : undefined;
+          const filterActions = filterSeries && {
+            onFilter: () => filterSeries('include'),
+            // Excluding a series with several keys can't be written as ANDed
+            // `!=` conditions, so it's single-key only.
+            onExclude:
+              seriesFilters?.length === 1
+                ? () => filterSeries('exclude')
+                : undefined,
+          };
           const seriesUrl =
             showPerSeriesActions && canDrillDown
               ? (buildSearchUrl!(
@@ -353,8 +437,9 @@ export function ChartSeriesTooltip({
                         });
                         onDismiss?.();
                       },
+                      ...filterActions,
                     }
-                  : undefined
+                  : filterActions
               }
             />
           );

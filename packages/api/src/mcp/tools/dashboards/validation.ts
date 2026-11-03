@@ -1,3 +1,4 @@
+import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import type { FilterForVariableDeclaration } from '@hyperdx/common-utils/dist/filters';
 import {
   getDashboardVariableDeclarations,
@@ -89,9 +90,6 @@ export function getRawSqlMissingSourceError(
   );
 }
 
-/** Raw SQL display types that plot a value over time. */
-const TIME_SERIES_DISPLAY_TYPES = ['line', 'stacked_bar'];
-
 /**
  * Returns one advisory string per raw SQL tile that omits a strongly
  * recommended macro:
@@ -121,7 +119,7 @@ export function getRawSqlTileMacroWarnings(
       );
     }
     if (
-      TIME_SERIES_DISPLAY_TYPES.includes(displayType) &&
+      displayType in TIME_SERIES_DISPLAY_TYPE_BY_NAME &&
       !INTERVAL_MACROS.some(macro => hasMacro(sqlTemplate, macro))
     ) {
       missing.push(

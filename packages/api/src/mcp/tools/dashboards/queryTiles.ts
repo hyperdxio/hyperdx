@@ -1,9 +1,11 @@
 import PQueue from '@esm2cjs/p-queue';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { runWithTimeout } from '@/mcp/utils/timeout';
 import Dashboard from '@/models/dashboard';
 import {
   convertToExternalDashboard,
@@ -85,12 +87,8 @@ export class TileDeadlineError extends Error {
  * checked BEFORE the query is issued: once the budget is spent, tiles PQueue
  * schedules during the drain fail fast without touching ClickHouse.
  *
- * A tile that did start races the timer. When the deadline elapses we both
- * reject AND abort the `AbortSignal` handed to `startWork`, so the in-flight
- * ClickHouse query is cancelled server-side rather than left running headless
- * until it finishes on its own. The signal is also aborted on any other exit
- * (the work throwing, or resolving after we already lost the race is a no-op),
- * so a query never outlives the call it belongs to.
+ * A tile that did start runs under `runWithTimeout`: at the deadline its
+ * query is cancelled and the tile rejects with `TileDeadlineError`.
  *
  * @internal Exported for testing only.
  */
@@ -103,23 +101,11 @@ export async function withDeadline<T>(
   if (remaining <= 0) {
     throw new TileDeadlineError();
   }
-  const controller = new AbortController();
-  let timer: ReturnType<typeof setTimeout>;
-  const deadline = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      // Cancel the query in ClickHouse, then surface the timeout.
-      controller.abort();
-      reject(new TileDeadlineError());
-    }, remaining);
-  });
-  try {
-    return await Promise.race([startWork(controller.signal), deadline]);
-  } finally {
-    clearTimeout(timer!);
-    // Belt-and-suspenders: abort on any exit so a query started by a thunk
-    // that then rejected for another reason is never left running.
-    controller.abort();
+  const outcome = await runWithTimeout(startWork, { timeoutMs: remaining });
+  if (outcome.timedOut) {
+    throw new TileDeadlineError();
   }
+  return outcome.value;
 }
 
 /**
@@ -181,7 +167,7 @@ export function registerQueryTiles({
     'clickstack_query_tiles',
     {
       title: 'Query Multiple Dashboard Tiles',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Run the queries for many tiles of a dashboard in ONE call and return a ' +
         'compact per-tile success/failure summary. This is the efficient way to ' +
@@ -197,15 +183,17 @@ export function registerQueryTiles({
         'unrunTileIds — call again with those as tileIds to run the remainder. ' +
         'Drill into a specific failing tile with clickstack_query_tile.',
       inputSchema: z.object({
-        dashboardId: objectIdSchema.describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe(
+          'Dashboard ID, from clickstack_get_dashboard (no id lists dashboards) ' +
+            'or clickstack_search_dashboards.',
+        ),
         tileIds: z
           .array(z.string())
           .max(MAX_TILE_IDS_INPUT)
           .optional()
           .describe(
-            'Tile IDs to run. Default: every non-markdown tile on the ' +
-              'dashboard. Obtain IDs from clickstack_get_dashboard. ' +
-              `At most ${MAX_TILE_IDS_INPUT} IDs per call.`,
+            'Tile IDs to run, from clickstack_get_dashboard. When omitted, every ' +
+              'non-markdown tile on the dashboard runs; an empty array runs none.',
           ),
         startTime: z
           .string()
@@ -236,7 +224,9 @@ export function registerQueryTiles({
         return mcpUserError('Dashboard not found');
       }
 
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromqlTiles: true,
+      });
       const allTiles = externalDashboard.tiles;
 
       const resolved = resolveDashboardVariables(

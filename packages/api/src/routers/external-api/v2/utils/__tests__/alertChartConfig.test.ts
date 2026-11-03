@@ -247,6 +247,24 @@ describe('external <-> internal round-trip', () => {
     });
   });
 
+  it('round-trips a stacked_line alert chart config', () => {
+    const external: ExternalAlertChartConfig = {
+      displayType: DisplayType.StackedLine,
+      sourceId: SOURCE_ID,
+      groupBy: 'ServiceName',
+      seriesLimit: 5,
+      asRatio: false,
+      fillNulls: true,
+      select: [countItem()],
+    };
+
+    const roundTripped = convertAlertChartConfigToExternal(
+      convertExternalAlertChartConfigToInternal(external),
+    );
+
+    expect(roundTripped).toEqual(external);
+  });
+
   it('round-trips a raw SQL config', () => {
     const external = {
       configType: 'sql' as const,

@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
-import { hasNonEmptyOrderBy } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  hasNonEmptyOrderBy,
+  hasPositiveSeriesLimit,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
   isPromqlChartConfig,
@@ -130,8 +133,21 @@ export function useCategoricalChart({
         isBuilderChartConfig(queriedConfig) &&
         hasNonEmptyOrderBy(queriedConfig.orderBy);
 
+      // Builder charts apply seriesLimit as a SQL LIMIT. Prometheus returns
+      // every series, so a PromQL limit trims the largest-first rows here.
+      const maxGroups =
+        isPromqlChartConfig(queriedConfig) &&
+        hasPositiveSeriesLimit(queriedConfig.seriesLimit)
+          ? queriedConfig.seriesLimit
+          : undefined;
+
       return [
-        formatResponseForCategoricalChart(data, getColorProps, !hasOrderBy),
+        formatResponseForCategoricalChart(
+          data,
+          getColorProps,
+          !hasOrderBy,
+          maxGroups,
+        ),
         null,
       ];
     } catch (error) {

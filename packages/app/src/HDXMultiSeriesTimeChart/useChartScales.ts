@@ -1,8 +1,13 @@
 import { useMemo } from 'react';
 import { add, isSameSecond, sub } from 'date-fns';
+import { CurveType } from 'recharts/types/shape/Curve';
 import { AxisDomain } from 'recharts/types/util/types';
 import { convertGranularityToSeconds } from '@hyperdx/common-utils/dist/core/utils';
-import { DisplayType } from '@hyperdx/common-utils/dist/types';
+import {
+  DisplayType,
+  getDefaultLineInterpolation,
+  LineInterpolation,
+} from '@hyperdx/common-utils/dist/types';
 
 import {
   getSeriesColorForGroup,
@@ -25,7 +30,6 @@ import {
   getYAxisTicks,
 } from './axisTicks';
 import { hasSeriesSelection } from './chartData';
-import { Y_AXIS_WIDTH } from './constants';
 
 type UseChartScalesArgs = {
   annotations: ChartAnnotation[] | undefined;
@@ -42,6 +46,8 @@ type UseChartScalesArgs = {
   selectedSeriesNames: Set<string> | undefined;
   referenceLineValues: number[];
   axisNumberFormat: NumberFormat | undefined;
+  /** Already scaled for the content font size preference (see MemoChart). */
+  yAxisWidth: number;
 };
 
 // Shared by every yAxisDomain branch below. Callers pass only the series
@@ -79,8 +85,24 @@ const FIT_Y_AXIS_BOUNDS: YAxisBounds = {
   ticks: undefined,
 };
 
+const CURVE_TYPE_BY_INTERPOLATION: Record<LineInterpolation, CurveType> = {
+  smooth: 'monotone',
+  linear: 'linear',
+  step: 'stepAfter',
+};
+
+export function getLineCurveType(
+  displayType: DisplayType,
+  lineInterpolation: LineInterpolation | undefined,
+): CurveType {
+  return CURVE_TYPE_BY_INTERPOLATION[
+    lineInterpolation ?? getDefaultLineInterpolation(displayType)
+  ];
+}
+
 // A stacked bar's rendered height sums its series at each timestamp - leave
-// that entirely to Recharts, regardless of selection/fit-to-data state.
+// that entirely to Recharts, regardless of selection/fit-to-data state. Same
+// for a stacked line's filled bands.
 export function computeYAxisBounds(
   graphResults: any[],
   visibleLineData: LineData[],
@@ -90,7 +112,10 @@ export function computeYAxisBounds(
   referenceLineValues: number[],
   axisNumberFormat?: NumberFormat,
 ): YAxisBounds {
-  if (displayType === DisplayType.StackedBar) {
+  if (
+    displayType === DisplayType.StackedBar ||
+    displayType === DisplayType.StackedLine
+  ) {
     return DEFAULT_Y_AXIS_BOUNDS;
   }
   const shouldFitYAxis = fitYAxisToData;
@@ -233,6 +258,7 @@ export function useChartScales({
   selectedSeriesNames,
   referenceLineValues,
   axisNumberFormat,
+  yAxisWidth,
 }: UseChartScalesArgs) {
   const yAxisBounds = useMemo(
     () =>
@@ -300,9 +326,9 @@ export function useChartScales({
     }
     return layoutAnnotations(coloredAnnotations, {
       domain: xAxisDomain,
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth: Math.max(0, containerWidth - yAxisWidth),
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth, yAxisWidth]);
 
   // Alert/event markers as dashed lines, clamped to the chart's x-axis domain so
   // an edge marker (e.g. an alert already firing at window open) stays visible
@@ -316,9 +342,9 @@ export function useChartScales({
       // Drawable width, so markers too close together share one label. Zero on
       // the first paint (before ResponsiveContainer measures), which the
       // renderer treats as "label everything".
-      plotWidth: Math.max(0, containerWidth - Y_AXIS_WIDTH),
+      plotWidth: Math.max(0, containerWidth - yAxisWidth),
     });
-  }, [coloredAnnotations, xAxisDomain, containerWidth]);
+  }, [coloredAnnotations, xAxisDomain, containerWidth, yAxisWidth]);
 
   return {
     yAxisBounds,

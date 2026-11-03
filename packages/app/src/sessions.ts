@@ -5,9 +5,14 @@ import {
   chSql,
   streamToAsyncIterator,
 } from '@hyperdx/common-utils/dist/clickhouse';
+import type { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
+import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
+import { filtersToQuery } from '@hyperdx/common-utils/dist/filters';
 import {
   DateRange,
+  Filter,
   pickSampleWeightExpressionProps,
   SearchCondition,
   SearchConditionLanguage,
@@ -18,12 +23,29 @@ import { useQuery, UseQueryOptions } from '@tanstack/react-query';
 
 import { useQueryAttribution } from '@/queryAttribution';
 import { usePrevious } from '@/utils';
+import {
+  anySessionIdPresence,
+  rumSessionIdPresence,
+  sessionIdFilter,
+  SessionIdKey,
+  sessionIdKeyExpr,
+  sessionTableSessionIdColumns,
+  traceSessionIdColumns,
+} from '@/utils/sessionId';
 
 import useFieldExpressionGenerator, {
   FieldExpressionGenerator,
 } from './hooks/useFieldExpressionGenerator';
 import { useMetadataWithSettings } from './hooks/useMetadata';
 import { getClickhouseClient, useClickhouseClient } from './clickhouse';
+import { makeCoalescedFieldsAccessQuery } from './serviceDashboard';
+import {
+  buildOtelSessionIdsWithRecordingsChartConfig,
+  buildRecordingsChartConfig,
+  buildSessionsCtes,
+  isOtelSessionListEnabled,
+  unionSessionIds,
+} from './sessionsListQuery';
 import { SESSION_TABLE_EXPRESSIONS, useSource } from './source';
 
 export type Session = {
@@ -35,11 +57,103 @@ export type Session = {
   serviceName: string;
   sessionCount: string;
   sessionId: string;
+  /** Which attribute holds `sessionId`, for single-key lookups. */
+  sessionIdKey: SessionIdKey;
   teamId: string;
   teamName: string;
   userEmail: string;
   userName: string;
 };
+
+// Recording rows are written throughout a session, so the range only needs
+// padding for skew between recording and span timestamps.
+const SERVICE_SCOPE_PADDING_MS = 60 * 60 * 1000;
+
+// Trace tables sorted by ServiceName first can't prune on time alone, so the
+// sessions query is scoped to the services in the session table. Returns []
+// (unscoped) when that isn't possible or the lookup fails.
+export async function fetchServiceScopeFilters({
+  traceSource,
+  sessionSource,
+  dateRange,
+  metadata,
+  clickhouseClient,
+}: {
+  traceSource: TTraceSource;
+  sessionSource: TSessionSource;
+  dateRange: [Date, Date];
+  metadata: Metadata;
+  clickhouseClient: ClickhouseClient;
+}): Promise<Filter[]> {
+  if (!traceSource.serviceNameExpression) {
+    return [];
+  }
+  try {
+    const columns = await metadata.getColumns({
+      databaseName: sessionSource.from.databaseName,
+      tableName: sessionSource.from.tableName,
+      connectionId: sessionSource.connection,
+    });
+    if (!columns.some(c => c.name === 'ServiceName')) {
+      return [];
+    }
+    const query = await renderChartConfig(
+      {
+        select: [
+          { valueExpression: 'DISTINCT ServiceName', alias: 'serviceName' },
+        ],
+        from: sessionSource.from,
+        dateRange: [
+          new Date(dateRange[0].getTime() - SERVICE_SCOPE_PADDING_MS),
+          new Date(dateRange[1].getTime() + SERVICE_SCOPE_PADDING_MS),
+        ],
+        where: '',
+        timestampValueExpression: sessionSource.timestampValueExpression,
+        connection: sessionSource.connection,
+      },
+      metadata,
+      sessionSource.querySettings,
+    );
+    const json = await clickhouseClient
+      .query({
+        query: query.sql,
+        query_params: query.params,
+        connectionId: sessionSource.connection,
+        format: 'JSON',
+      })
+      .then(res => res.json<{ serviceName: string }>());
+    const serviceNames = (json.data ?? [])
+      .map(row => row.serviceName)
+      .filter(name => name != null);
+    return filtersToQuery({
+      [traceSource.serviceNameExpression]: {
+        included: new Set(serviceNames),
+        excluded: new Set(),
+      },
+    });
+  } catch (e) {
+    console.warn('Sessions service scope lookup failed', e);
+    return [];
+  }
+}
+
+export function buildSessionsQueryFilters(
+  serviceScopeFilters: Filter[],
+  where: SearchCondition | undefined,
+  whereLanguage: SearchConditionLanguage | undefined,
+): Filter[] {
+  return [
+    ...serviceScopeFilters,
+    ...(where
+      ? [
+          {
+            type: whereLanguage === 'sql' ? 'sql' : 'lucene',
+            condition: where,
+          } satisfies Filter,
+        ]
+      : []),
+  ];
+}
 
 export function useSessions(
   {
@@ -69,7 +183,12 @@ export function useSessions(
     isLoading: isLoadingSessionsExpressionGenerator,
   } = useFieldExpressionGenerator(sessionSource);
 
-  const FIXED_SDK_ATTRIBUTES = ['teamId', 'teamName', 'userEmail', 'userName'];
+  const FIXED_SDK_ATTRIBUTES = ['teamId', 'teamName'];
+  // OTel semconv keys first, then the legacy SDK's
+  const USER_ATTRIBUTES = {
+    userEmail: ['user.email', 'userEmail'],
+    userName: ['user.name', 'userName'],
+  };
   const SESSIONS_CTE_NAME = 'sessions';
   const clickhouseClient = useClickhouseClient();
   const metadata = useMetadataWithSettings();
@@ -92,15 +211,41 @@ export function useSessions(
         return [];
       }
 
-      const traceSessionIdExpression = getTraceSourceFieldExpression(
-        traceSource.resourceAttributesExpression ?? 'ResourceAttributes',
-        'rum.sessionId',
+      const traceSessionIdCols = traceSessionIdColumns(traceSource);
+
+      const serviceScopeFilters = await fetchServiceScopeFilters({
+        traceSource,
+        sessionSource,
+        dateRange,
+        metadata,
+        clickhouseClient,
+      });
+
+      const includeOtelSessions = isOtelSessionListEnabled({
+        traceSource,
+        sessionSource,
+        serviceScopeFilters,
+      });
+
+      const traceSessionIdExpression = includeOtelSessions
+        ? sessionIdKeyExpr(getTraceSourceFieldExpression, traceSessionIdCols)
+        : getTraceSourceFieldExpression(
+            traceSessionIdCols.resource,
+            'rum.sessionId',
+          );
+
+      const sessionsQueryFilters = buildSessionsQueryFilters(
+        serviceScopeFilters,
+        where,
+        whereLanguage,
       );
 
       const [
         sessionsQuery,
         sessionIdsWithRecordingsQuery,
         sessionIdsWithUserActivityQuery,
+        recordingsQuery,
+        otelSessionIdsWithRecordingsQuery,
       ] = await Promise.all([
         renderChartConfig(
           {
@@ -116,11 +261,11 @@ export function useSessions(
               // TODO: can't use aggFn max/min here for string value field
               {
                 alias: 'maxTimestamp',
-                valueExpression: `MAX(${traceSource.timestampValueExpression})`,
+                valueExpression: `MAX(${getFirstTimestampValueExpression(traceSource.timestampValueExpression)})`,
               },
               {
                 alias: 'minTimestamp',
-                valueExpression: `MIN(${traceSource.timestampValueExpression})`,
+                valueExpression: `MIN(${getFirstTimestampValueExpression(traceSource.timestampValueExpression)})`,
               },
               {
                 aggFn: 'count',
@@ -148,24 +293,40 @@ export function useSessions(
                 valueExpression: '',
                 alias: 'recordingCount',
               },
+              {
+                aggFn: 'count',
+                aggConditionLanguage: 'lucene',
+                aggCondition: rumSessionIdPresence(traceSessionIdCols),
+                valueExpression: '',
+                alias: 'rumRows',
+              },
               ...FIXED_SDK_ATTRIBUTES.map(attr => ({
                 valueExpression: `MAX(${getTraceSourceFieldExpression(traceSource.eventAttributesExpression ?? 'SpanAttributes', attr)})`,
                 alias: attr,
               })),
+              ...Object.entries(USER_ATTRIBUTES).map(([alias, keys]) => ({
+                // The non-JSON form also works on JSON columns, since the
+                // generator already wraps JSON paths in toString().
+                valueExpression: `MAX(${makeCoalescedFieldsAccessQuery(
+                  keys.map(key =>
+                    getTraceSourceFieldExpression(
+                      traceSource.eventAttributesExpression ?? 'SpanAttributes',
+                      key,
+                    ),
+                  ),
+                  false,
+                )})`,
+                alias,
+              })),
             ],
             from: traceSource.from,
             dateRange,
-            where: `${traceSource.resourceAttributesExpression}.rum.sessionId:*`,
+            where: includeOtelSessions
+              ? anySessionIdPresence(traceSessionIdCols)
+              : rumSessionIdPresence(traceSessionIdCols),
             whereLanguage: 'lucene',
-            ...(where && {
-              filters: [
-                {
-                  type:
-                    (whereLanguage === 'promql' ? 'lucene' : whereLanguage) ??
-                    'lucene',
-                  condition: where,
-                },
-              ],
+            ...(sessionsQueryFilters.length > 0 && {
+              filters: sessionsQueryFilters,
             }),
             timestampValueExpression: traceSource.timestampValueExpression,
             implicitColumnExpression: traceSource.implicitColumnExpression,
@@ -173,7 +334,11 @@ export function useSessions(
               traceSource.useTextIndexForImplicitColumn,
             ...pickSampleWeightExpressionProps(traceSource),
             connection: traceSource.connection,
-            groupBy: 'serviceName, sessionId',
+            groupBy: [
+              { valueExpression: 'serviceName' },
+              { valueExpression: 'sessionId' },
+            ],
+            selectGroupBy: false,
           },
           metadata,
           traceSource.querySettings,
@@ -226,28 +391,50 @@ export function useSessions(
           metadata,
           traceSource.querySettings,
         ),
+        includeOtelSessions && !where
+          ? renderChartConfig(
+              buildRecordingsChartConfig({
+                sessionSource,
+                dateRange,
+                getSessionSourceFieldExpression:
+                  getSessionsSourceFieldExpression,
+              }),
+              metadata,
+              sessionSource.querySettings,
+            )
+          : undefined,
+        includeOtelSessions && where
+          ? renderChartConfig(
+              buildOtelSessionIdsWithRecordingsChartConfig({
+                sessionSource,
+                dateRange,
+                getSessionSourceFieldExpression:
+                  getSessionsSourceFieldExpression,
+                sessionsCteName: SESSIONS_CTE_NAME,
+              }),
+              metadata,
+              sessionSource.querySettings,
+            )
+          : undefined,
       ]);
 
-      const sessionsCTE = chSql`
-        WITH _${SESSIONS_CTE_NAME} AS (${sessionsQuery}),
-        ${SESSIONS_CTE_NAME} AS (
-          SELECT * 
-          FROM _${SESSIONS_CTE_NAME}
-          ${
-            // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
-            // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
-            where ? '' : 'HAVING interactionCount > 0 OR recordingCount > 0'
-          }
-          ORDER BY maxTimestamp DESC
-          LIMIT 500
-        )
-      `;
+      const sessionsCTE = buildSessionsCtes({
+        name: SESSIONS_CTE_NAME,
+        spans: sessionsQuery,
+        recordings: recordingsQuery,
+        // If the user is giving us an explicit query, we don't need to filter out sessions with no interactions
+        // this is because the events that match the query might not be user interactions, and we'll just show 0 results otherwise.
+        withActivityFilter: !where,
+      });
 
       const finalQuery =
         where && where.length > 0
           ? chSql`
         ${sessionsCTE},
-        sessionIdsWithRecordings AS (${sessionIdsWithRecordingsQuery}),
+        sessionIdsWithRecordings AS (${unionSessionIds(
+          sessionIdsWithRecordingsQuery,
+          otelSessionIdsWithRecordingsQuery,
+        )}),
         sessionIdsWithUserActivity AS (${sessionIdsWithUserActivityQuery})
         SELECT *
         FROM ${SESSIONS_CTE_NAME}
@@ -256,11 +443,13 @@ export function useSessions(
         ) OR ${SESSIONS_CTE_NAME}.sessionId IN (
           SELECT sessionIdsWithUserActivity.sessionId FROM sessionIdsWithUserActivity
         )
+        ORDER BY maxTimestamp DESC
       `
           : chSql`
         ${sessionsCTE}
         SELECT *
         FROM ${SESSIONS_CTE_NAME}
+        ORDER BY maxTimestamp DESC
         `;
 
       const json = await clickhouseClient
@@ -318,6 +507,7 @@ export function buildRRWebStreamChartConfig({
   source,
   serviceName,
   sessionId,
+  sessionIdKey,
   startDate,
   endDate,
   limit,
@@ -331,6 +521,7 @@ export function buildRRWebStreamChartConfig({
   };
   serviceName: string;
   sessionId: string;
+  sessionIdKey?: SessionIdKey;
   startDate: Date;
   endDate: Date;
   limit: number;
@@ -370,7 +561,7 @@ export function buildRRWebStreamChartConfig({
     dateRange: [startDate, endDate] as [Date, Date],
     from: source.from,
     whereLanguage: 'lucene' as const,
-    where: `ServiceName:"${serviceName}" AND ${SESSION_TABLE_EXPRESSIONS.resourceAttributesExpression}.rum.sessionId:"${sessionId}"`,
+    where: `ServiceName:"${serviceName}" AND ${sessionIdFilter(sessionTableSessionIdColumns(), sessionId, sessionIdKey)}`,
     timestampValueExpression: source.timestampValueExpression,
     implicitColumnExpression:
       SESSION_TABLE_EXPRESSIONS.implicitColumnExpression,
@@ -387,6 +578,7 @@ export function useRRWebEventStream(
   {
     serviceName,
     sessionId,
+    sessionIdKey,
     sourceId,
     startDate,
     endDate,
@@ -398,6 +590,7 @@ export function useRRWebEventStream(
   }: {
     serviceName: string;
     sessionId: string;
+    sessionIdKey?: SessionIdKey;
     sourceId: string;
     startDate: Date;
     endDate: Date;
@@ -461,6 +654,7 @@ export function useRRWebEventStream(
           source,
           serviceName,
           sessionId,
+          sessionIdKey,
           startDate: new Date(parseInt(startTime)),
           endDate: new Date(parseInt(endTime)),
           limit: Math.min(MAX_LIMIT, parseInt(queryLimit)),
@@ -562,6 +756,7 @@ export function useRRWebEventStream(
       source,
       serviceName,
       sessionId,
+      sessionIdKey,
       startDate,
       endDate,
       limit,

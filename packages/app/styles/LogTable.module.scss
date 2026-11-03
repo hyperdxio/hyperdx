@@ -3,7 +3,7 @@ $button-height: 18px;
 .tableWrapper {
   overflow: auto;
   height: 100%;
-  font-size: var(--mantine-font-size-xs);
+  font-size: var(--hdx-content-font-size);
 
   /* CSS custom properties for variant support */
   --log-table-bg: var(--color-bg-body);
@@ -266,6 +266,12 @@ $button-height: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
   min-height: $button-height;
+}
+
+// For tables that pad their own cells
+.fieldText.inline {
+  padding: 0;
+  min-height: 0;
 }
 
 .fieldText.wrapped {

@@ -1,12 +1,14 @@
 import React from 'react';
 import * as metadataModule from '@hyperdx/app/src/metadata';
-import { JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
+import { ColumnMeta, JSDataType } from '@hyperdx/common-utils/dist/clickhouse';
 import { ClickhouseClient } from '@hyperdx/common-utils/dist/clickhouse/browser';
 import {
   Field,
+  KeyValues,
   Metadata,
   MetadataCache,
 } from '@hyperdx/common-utils/dist/core/metadata';
+import { FilterState } from '@hyperdx/common-utils/dist/filters';
 import { BuilderChartConfigWithDateRange } from '@hyperdx/common-utils/dist/types';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
@@ -35,9 +37,25 @@ const createMockChartConfig = (
     ...overrides,
   }) as BuilderChartConfigWithDateRange;
 
+const createMockMetadata = () =>
+  new Metadata({} as ClickhouseClient, {} as MetadataCache);
+
 jest.mock('@/source', () => ({
   useSources: jest.fn().mockReturnValue({
-    data: [{ id: 'source1' }, { id: 'source2' }],
+    data: [
+      { id: 'source1' },
+      { id: 'source2' },
+      {
+        id: 'logs',
+        kind: 'log',
+        metadataMaterializedViews: { kvRollupTable: 'logs_kv' },
+      },
+      {
+        id: 'traces',
+        kind: 'trace',
+        metadataMaterializedViews: { kvRollupTable: 'traces_kv' },
+      },
+    ],
     isLoading: false,
   }),
 }));
@@ -52,7 +70,7 @@ describe('useGetKeyValues', () => {
     jest.clearAllMocks();
 
     // initialize metadata object
-    mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
+    mockMetadata = createMockMetadata();
     jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
 
     // Create a new QueryClient for each test
@@ -247,6 +265,323 @@ describe('useGetKeyValues', () => {
     expect(result.current.error!.message).toBe('Fetch failed');
   });
 
+  const keys = ["ResourceAttributes['service.name']"];
+  const logsConfig = createMockChartConfig({
+    source: 'logs',
+    from: { databaseName: 'db', tableName: 'logs' },
+  });
+  const tracesConfig = createMockChartConfig({
+    source: 'traces',
+    from: { databaseName: 'db', tableName: 'traces' },
+  });
+
+  const renderValues = (
+    params: Partial<Parameters<typeof useMultipleGetKeyValues>[0]> = {},
+  ) =>
+    renderHook(
+      () =>
+        useMultipleGetKeyValues({
+          chartConfigs: [logsConfig, tracesConfig],
+          keys,
+          ...params,
+        }),
+      { wrapper },
+    );
+
+  // 'all' mode publishes partial results, so `isSuccess` alone doesn't mean
+  // every source has answered.
+  const waitForSettled = (result: {
+    current: { isSuccess: boolean; isFetching: boolean };
+  }) =>
+    waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+      expect(result.current.isFetching).toBe(false);
+    });
+
+  // One outcome per source, in config order.
+  type LookupOutcome = KeyValues[] | Error;
+  const mockLookups = {
+    all: (...outcomes: LookupOutcome[]) => {
+      const spy = jest.spyOn(mockMetadata, 'streamAllKeyValues');
+      for (const outcome of outcomes) {
+        spy.mockImplementationOnce(async function* () {
+          if (outcome instanceof Error) throw outcome;
+          yield outcome;
+        });
+      }
+      return spy;
+    },
+    exact: (...outcomes: LookupOutcome[]) => {
+      const spy = jest.spyOn(mockMetadata, 'getKeyValuesWithMVs');
+      for (const outcome of outcomes) {
+        if (outcome instanceof Error) spy.mockRejectedValueOnce(outcome);
+        else spy.mockResolvedValueOnce(outcome);
+      }
+      return spy;
+    },
+  };
+
+  it("streams every config in 'all' mode with its own source's MVs", async () => {
+    const streamAllKeyValues = mockLookups.all(
+      [{ key: keys[0], value: ['api'] }],
+      [{ key: keys[0], value: ['web'] }],
+    );
+
+    const { result } = renderValues({ mode: 'all' });
+
+    await waitForSettled(result);
+    expect(result.current.data).toEqual([
+      { key: keys[0], value: ['api'] },
+      { key: keys[0], value: ['web'] },
+    ]);
+    expect(streamAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: 'logs',
+        metadataMVs: { kvRollupTable: 'logs_kv' },
+      }),
+    );
+    expect(streamAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tableName: 'traces',
+        metadataMVs: { kvRollupTable: 'traces_kv' },
+      }),
+    );
+  });
+
+  it("shows each source's values in 'all' mode before the slowest finishes", async () => {
+    let releaseSlowSource: () => void = () => {};
+    const slowSource = new Promise<void>(resolve => {
+      releaseSlowSource = resolve;
+    });
+    jest
+      .spyOn(mockMetadata, 'streamAllKeyValues')
+      .mockImplementationOnce(async function* () {
+        yield [{ key: keys[0], value: ['api'] }];
+      })
+      .mockImplementationOnce(async function* () {
+        await slowSource;
+        yield [{ key: keys[0], value: ['web'] }];
+      });
+
+    const { result } = renderValues({ mode: 'all' });
+
+    await waitFor(() =>
+      expect(result.current.data).toEqual([{ key: keys[0], value: ['api'] }]),
+    );
+    expect(result.current.isLoading).toBe(false);
+    expect(result.current.isFetching).toBe(true);
+
+    releaseSlowSource();
+
+    await waitForSettled(result);
+    expect(result.current.data).toEqual([
+      { key: keys[0], value: ['api'] },
+      { key: keys[0], value: ['web'] },
+    ]);
+  });
+
+  it("keeps the previous values until a new 'all' mode query completes", async () => {
+    let releaseSlowQuery: () => void = () => {};
+    const slowQuery = new Promise<void>(resolve => {
+      releaseSlowQuery = resolve;
+    });
+    let isSlowQueryWaiting = false;
+    jest
+      .spyOn(mockMetadata, 'streamAllKeyValues')
+      .mockImplementationOnce(async function* () {
+        yield [{ key: keys[0], value: ['api'] }];
+      })
+      .mockImplementationOnce(async function* () {
+        yield [{ key: keys[0], value: ['web'] }];
+        isSlowQueryWaiting = true;
+        await slowQuery;
+        yield [{ key: 'SeverityText', value: ['info'] }];
+      });
+
+    const { result, rerender } = renderHook(
+      ({ limit }: { limit: number }) =>
+        useMultipleGetKeyValues({
+          chartConfigs: [logsConfig],
+          keys,
+          limit,
+          mode: 'all',
+        }),
+      { wrapper, initialProps: { limit: 20 } },
+    );
+    await waitForSettled(result);
+
+    rerender({ limit: 50 });
+
+    await waitFor(() => expect(isSlowQueryWaiting).toBe(true));
+    expect(result.current.isFetching).toBe(true);
+    expect(result.current.data).toEqual([{ key: keys[0], value: ['api'] }]);
+
+    releaseSlowQuery();
+
+    await waitForSettled(result);
+    expect(result.current.data).toEqual([
+      { key: keys[0], value: ['web'] },
+      { key: 'SeverityText', value: ['info'] },
+    ]);
+  });
+
+  it("uses the metadataMVs override for a single config in 'all' mode", async () => {
+    const override = { kvRollupTable: 'override_kv', granularity: '15 minute' };
+    const streamAllKeyValues = mockLookups.all([]);
+
+    const { result } = renderValues({
+      mode: 'all',
+      chartConfigs: [logsConfig],
+      metadataMVs: override,
+    });
+
+    await waitForSettled(result);
+    expect(streamAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({ metadataMVs: override }),
+    );
+  });
+
+  it("ignores the metadataMVs override for multiple configs in 'all' mode", async () => {
+    const override = { kvRollupTable: 'override_kv', granularity: '15 minute' };
+    const streamAllKeyValues = mockLookups.all([], []);
+
+    const { result } = renderValues({ mode: 'all', metadataMVs: override });
+
+    await waitForSettled(result);
+    expect(
+      streamAllKeyValues.mock.calls.map(([args]) => args.metadataMVs),
+    ).toEqual([{ kvRollupTable: 'logs_kv' }, { kvRollupTable: 'traces_kv' }]);
+  });
+
+  it("passes limit to 'all' mode lookups as maxValuesPerKey", async () => {
+    const streamAllKeyValues = mockLookups.all([]);
+
+    const { result } = renderValues({
+      mode: 'all',
+      chartConfigs: [logsConfig],
+      limit: 100,
+    });
+
+    await waitForSettled(result);
+    expect(streamAllKeyValues).toHaveBeenCalledWith(
+      expect.objectContaining({ maxValuesPerKey: 100 }),
+    );
+  });
+
+  it("returns 'all' mode values as strings", async () => {
+    mockLookups.all([{ key: 'StatusCode', value: [200, 500] }]);
+
+    const { result } = renderValues({
+      mode: 'all',
+      chartConfigs: [logsConfig],
+    });
+
+    await waitForSettled(result);
+    expect(result.current.data).toEqual([
+      { key: 'StatusCode', value: ['200', '500'] },
+    ]);
+  });
+
+  it.each(['all', 'exact'] as const)(
+    "returns the other sources' values when one fails in '%s' mode",
+    async mode => {
+      mockLookups[mode](new Error('timeout'), [
+        { key: keys[0], value: ['web'] },
+      ]);
+
+      const { result } = renderValues({ mode });
+
+      await waitForSettled(result);
+      expect(result.current.data).toEqual([{ key: keys[0], value: ['web'] }]);
+    },
+  );
+
+  it.each(['all', 'exact'] as const)(
+    "errors when every source fails in '%s' mode",
+    async mode => {
+      mockLookups[mode](new Error('fail 1'), new Error('fail 2'));
+
+      const { result } = renderValues({ mode });
+
+      await waitFor(() => expect(result.current.isError).toBe(true));
+      expect(result.current.error?.message).toBe('fail 1');
+      expect(result.current.data).toBeUndefined();
+    },
+  );
+
+  it('applies the filter key limit to each Map column separately', async () => {
+    queryClient.setQueryData(['me'], { team: { filterKeysFetchLimit: 2 } });
+    const getKeyValuesWithMVs = jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockResolvedValue([]);
+    const conditionFor = (key: string): FilterState => ({
+      [key]: { included: new Set(['v']), excluded: new Set() },
+    });
+    const allKeys = [
+      "LogAttributes['a']",
+      "LogAttributes['b']",
+      "LogAttributes['c']",
+      "`Resource-Attributes`['x']",
+      'ServiceName',
+      'SeverityText',
+      'SpanName',
+    ];
+    const keptKeys = [
+      "LogAttributes['a']",
+      "LogAttributes['b']",
+      "`Resource-Attributes`['x']",
+      'ServiceName',
+      'SeverityText',
+    ];
+
+    const { result } = renderHook(
+      () =>
+        useGetKeyValues({
+          chartConfig: createMockChartConfig(),
+          keys: allKeys,
+          keyConditions: allKeys.map(conditionFor),
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getKeyValuesWithMVs).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keys: keptKeys,
+        keyConditions: keptKeys.map(conditionFor),
+      }),
+    );
+  });
+
+  it('passes no keyConditions when none are given', async () => {
+    const getKeyValuesWithMVs = jest
+      .spyOn(mockMetadata, 'getKeyValuesWithMVs')
+      .mockResolvedValue([]);
+
+    const { result } = renderHook(
+      () => useGetKeyValues({ chartConfig: createMockChartConfig(), keys }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(getKeyValuesWithMVs.mock.calls[0][0].keyConditions).toBeUndefined();
+  });
+
+  it("retries a failed 'exact' mode lookup per the client's defaults", async () => {
+    queryClient.setDefaultOptions({ queries: { retry: 1, retryDelay: 0 } });
+    mockLookups.exact(new Error('transient'), [
+      { key: keys[0], value: ['api'] },
+    ]);
+
+    const { result } = renderValues({
+      mode: 'exact',
+      chartConfigs: [logsConfig],
+    });
+
+    await waitForSettled(result);
+    expect(result.current.data).toEqual([{ key: keys[0], value: ['api'] }]);
+  });
+
   it('should be in a loading state while fetching sources', async () => {
     jest.mocked(useSources).mockReturnValue({
       data: undefined,
@@ -303,14 +638,41 @@ describe('useMultipleAllFields', () => {
     connectionId: 'conn1',
   };
 
+  const column = (name: string, type: string): ColumnMeta => ({
+    name,
+    type,
+    codec_expression: '',
+    comment: '',
+    default_expression: '',
+    default_type: '',
+    ttl_expression: '',
+  });
+  const columnsA = [
+    column('col_a', 'String'),
+    column('attrs', 'Map(String, String)'),
+    column('json', 'JSON'),
+  ];
+  const columnsB = [column('col_b', 'String')];
+
+  let team: { fieldMetadataDisabled?: boolean };
+
   beforeEach(() => {
     jest.clearAllMocks();
-    mockMetadata = new Metadata({} as ClickhouseClient, {} as MetadataCache);
+    team = {};
+    mockMetadata = createMockMetadata();
     jest.spyOn(metadataModule, 'getMetadata').mockReturnValue(mockMetadata);
-    jest.spyOn(api, 'useMe').mockReturnValue({
-      data: { team: {} },
-      isFetched: true,
-    } as any);
+    jest.spyOn(api, 'useMe').mockImplementation(
+      () =>
+        ({
+          data: { team },
+          isFetched: true,
+        }) as any,
+    );
+    jest
+      .spyOn(mockMetadata, 'getColumns')
+      .mockImplementation(async ({ tableName }) =>
+        tableName === 'table_a' ? columnsA : columnsB,
+      );
 
     queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },
@@ -320,7 +682,8 @@ describe('useMultipleAllFields', () => {
     );
   });
 
-  it('should return fields from successful connections and empty array for failed ones', async () => {
+  it('returns the other table connections and no error when only some fail', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
     jest
       .spyOn(mockMetadata, 'getAllFields')
       .mockResolvedValueOnce(fieldsA)
@@ -332,8 +695,14 @@ describe('useMultipleAllFields', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
 
-    // Should contain only fieldsA since fieldsB failed
     expect(result.current.data).toEqual(fieldsA);
+    expect(result.current.errorsByTableConnection).toEqual(
+      new Map([[1, new Error('connection refused')]]),
+    );
+    expect(result.current.isError).toBe(false);
+    expect(result.current.error).toBeNull();
+    // Columns loaded before the field lookup failed, so they're kept.
+    expect(result.current.columnsByTableConnection.get(1)).toEqual(columnsB);
   });
 
   it('falls back to each connection timestampValueExpression when none is passed', async () => {
@@ -392,9 +761,12 @@ describe('useMultipleAllFields', () => {
       wrapper,
     });
 
-    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(result.current.data).toEqual([]);
+    expect([...result.current.errorsByTableConnection.keys()]).toEqual([0, 1]);
+    expect(result.current.isSuccess).toBe(false);
+    expect(result.current.error).toEqual(new Error('fail 1'));
   });
 
   it('should log a warning for each failed connection', async () => {
@@ -477,6 +849,89 @@ describe('useMultipleAllFields', () => {
 
     await waitFor(() => expect(result.current.isPending).toBe(true));
     expect(getAllFields).not.toHaveBeenCalled();
+  });
+
+  it('returns the fields and columns of each table connection in input order', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockImplementation(async ({ tableName }) =>
+        tableName === 'table_a' ? fieldsA : fieldsB,
+      );
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA, tcB]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.fieldsByTableConnection).toEqual(
+      new Map([
+        [0, fieldsA],
+        [1, fieldsB],
+      ]),
+    );
+    expect(result.current.columnsByTableConnection).toEqual(
+      new Map([
+        [0, columnsA],
+        [1, columnsB],
+      ]),
+    );
+    expect(result.current.errorsByTableConnection.size).toBe(0);
+    expect(result.current.isError).toBe(false);
+  });
+
+  it('fails closed when intersecting and one table connection fails', async () => {
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockImplementation(async ({ tableName }) => {
+        if (tableName === 'table_b') throw new Error('timeout');
+        return fieldsA;
+      });
+
+    const { result } = renderHook(
+      () => useMultipleAllFields([tcA, tcB], { intersect: true }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('returns only columns when the team disables field metadata', async () => {
+    team = { fieldMetadataDisabled: true };
+    const getAllFields = jest.spyOn(mockMetadata, 'getAllFields');
+
+    const { result } = renderHook(() => useMultipleAllFields([tcA]), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([]);
+    expect(result.current.isFieldMetadataDisabled).toBe(true);
+    expect(result.current.columnsByTableConnection.get(0)).toEqual(columnsA);
+    expect(getAllFields).not.toHaveBeenCalled();
+  });
+
+  it('keeps the same data reference across re-renders', async () => {
+    jest
+      .spyOn(mockMetadata, 'getAllFields')
+      .mockImplementation(async ({ tableName }) =>
+        tableName === 'table_a' ? fieldsA : fieldsB,
+      );
+    const tableConnections = [tcA, tcB];
+
+    const { result, rerender } = renderHook(
+      () => useMultipleAllFields(tableConnections),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const first = result.current;
+    rerender();
+    expect(result.current.data).toBe(first.data);
+    expect(result.current.fieldsByTableConnection).toBe(
+      first.fieldsByTableConnection,
+    );
   });
 
   it('should fetch a populated table connection when the caller passes enabled: true', async () => {

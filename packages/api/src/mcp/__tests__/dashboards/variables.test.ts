@@ -128,6 +128,35 @@ describe('resolveDashboardVariables', () => {
     expect(resolved.error).toContain('Available variables: (none)');
   });
 
+  it('rejects several values for a single-select variable', () => {
+    const resolved = resolveDashboardVariables(
+      [staticFilter({ maxSelections: 1 })],
+      [{ name: 'env', values: ['prod', 'staging'] }],
+    );
+
+    if (!('error' in resolved)) throw new Error('expected an error');
+    expect(resolved.error).toContain('"env"');
+    expect(resolved.error).toContain('single-select');
+  });
+
+  it('applies one value to a single-select variable', () => {
+    expect(
+      resolveDashboardVariables(
+        [staticFilter({ maxSelections: 1 })],
+        [{ name: 'env', values: ['prod'] }],
+      ),
+    ).toEqual({
+      variables: [
+        {
+          name: 'env',
+          expression: undefined,
+          values: ['prod'],
+          maxSelections: 1,
+        },
+      ],
+    });
+  });
+
   it('declares a variable for a static filter', () => {
     expect(resolveDashboardVariables([staticFilter()], undefined)).toEqual({
       variables: [{ name: 'env', expression: undefined, values: [] }],

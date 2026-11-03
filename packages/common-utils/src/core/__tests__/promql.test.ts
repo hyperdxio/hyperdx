@@ -6,6 +6,7 @@ import {
   getPromqlSeries,
   getQueriedPromqlSeries,
   isRangeQuery,
+  parsePromqlLe,
   PROMQL_MACROS,
   promqlSeriesQueryType,
   promqlStep,
@@ -45,7 +46,11 @@ describe('getQueriedPromqlSeries', () => {
   ];
 
   it('keeps every expression for a time series chart', () => {
-    for (const displayType of [DisplayType.Line, DisplayType.StackedBar]) {
+    for (const displayType of [
+      DisplayType.Line,
+      DisplayType.StackedBar,
+      DisplayType.StackedLine,
+    ]) {
       expect(getQueriedPromqlSeries({ promqlExpression, displayType })).toEqual(
         promqlExpression,
       );
@@ -118,7 +123,7 @@ describe('displayTypeSupportsInstantQuery', () => {
     expect(displayTypeSupportsInstantQuery({ displayType })).toBe(true);
   });
 
-  it.each([DisplayType.Line, DisplayType.StackedBar])(
+  it.each([DisplayType.Line, DisplayType.StackedBar, DisplayType.StackedLine])(
     'always range-queries %s tiles',
     displayType => {
       expect(displayTypeSupportsInstantQuery({ displayType })).toBe(false);
@@ -243,6 +248,22 @@ describe('promqlStep with a window', () => {
 
   it('never floors a granularity the tile picked', () => {
     expect(promqlStep('15 second', hour, 300)).toBe('15s');
+  });
+});
+
+describe('parsePromqlLe', () => {
+  it.each([
+    ['0.5', 0.5],
+    ['10', 10],
+    ['1e+06', 1e6],
+    ['-1', -1],
+    ['+Inf', Infinity],
+  ])('parses %s', (le, expected) => {
+    expect(parsePromqlLe(le)).toBe(expected);
+  });
+
+  it.each([undefined, '', ' ', 'abc'])('is NaN for %p', le => {
+    expect(parsePromqlLe(le)).toBeNaN();
   });
 });
 

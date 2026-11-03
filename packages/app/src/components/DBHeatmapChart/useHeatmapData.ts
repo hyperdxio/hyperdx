@@ -23,7 +23,8 @@ import {
 } from './useHeatmapView';
 
 /**
- * Query a heatmap and shape it into a `HeatmapGrid`. While a refresh is in
+ * Query a distribution heatmap: a bounds query, then a server-side
+ * `widthBucket` query over the value expression. While a refresh is in
  * flight, `view` stays on the last settled result.
  */
 export function useHeatmapData({
@@ -35,14 +36,19 @@ export function useHeatmapData({
   scaleType: HeatmapScaleType;
   enabled: boolean;
 }): HeatmapData {
-  const { granularity, generatedTsBuckets } = useHeatmapTimeBuckets(
-    config.dateRange,
-  );
+  const { granularity, generatedTsBuckets } = useHeatmapTimeBuckets({
+    dateRange: config.dateRange,
+    granularity: config.granularity,
+  });
   const nBuckets = HEATMAP_N_BUCKETS;
 
   // Future: #1914 adds overflow-bucket indicators for smarter range
   // clamping without hiding spikes.
-  const minMaxConfig = buildHeatmapBoundsConfig({ config, scaleType });
+  const minMaxConfig = buildHeatmapBoundsConfig({
+    config,
+    scaleType,
+    granularity,
+  });
 
   const {
     data: minMaxData,
@@ -110,7 +116,13 @@ export function useHeatmapData({
   }, [data, generatedTsBuckets, scaleType, effectiveMin, max, nBuckets]);
 
   const currentView = useMemo<HeatmapView>(
-    () => ({ grid, generatedTsBuckets, effectiveMin, scaleType }),
+    () => ({
+      grid,
+      generatedTsBuckets,
+      effectiveMin,
+      scaleType,
+      hiddenSeriesCount: 0,
+    }),
     [grid, generatedTsBuckets, effectiveMin, scaleType],
   );
 

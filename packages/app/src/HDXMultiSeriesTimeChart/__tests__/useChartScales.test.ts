@@ -19,6 +19,7 @@ const series = (dataKey: string, displayName: string): LineData => ({
   currentPeriodKey: dataKey,
   previousPeriodKey: `${dataKey}-prev`,
   valueColumnName: dataKey,
+  groupValues: [],
   color: '#000000',
 });
 
@@ -42,6 +43,7 @@ const baseArgs = {
   lineData,
   selectedSeriesNames: undefined as Set<string> | undefined,
   referenceLineValues: [] as number[],
+  yAxisWidth: 40,
 };
 
 // visibleLineData mirrors MemoChart, which derives it from the selection.

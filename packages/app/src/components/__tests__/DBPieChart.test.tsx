@@ -305,6 +305,7 @@ describe('DBPieChart', () => {
       configType: 'promql' as const,
       displayType: DisplayType.Pie,
       connection: 'test-connection',
+      source: 'source-promql',
       promqlExpression: [{ expression: 'up' }, { expression: 'down' }],
       dateRange: [
         new Date('2025-11-26T00:00:14.076Z'),
@@ -351,7 +352,7 @@ describe('DBPieChart', () => {
       expect(second).toEqual(first);
     });
 
-    it('draws a slice per series, largest first', () => {
+    const mockThreeSeries = () =>
       mockUseQueriedChartConfig.mockReturnValue({
         data: {
           data: [
@@ -368,12 +369,31 @@ describe('DBPieChart', () => {
         isError: false,
       });
 
-      renderWithMantine(<DBPieChart config={promqlConfig} />);
-
-      const labels = within(screen.getByTestId('pie-chart-legend'))
+    const legendLabels = () =>
+      within(screen.getByTestId('pie-chart-legend'))
         .getAllByTitle(/.+/)
         .map(el => el.getAttribute('title'));
-      expect(labels).toEqual(['checkout', 'ad', 'cart']);
+
+    it('draws a slice per series, largest first', () => {
+      mockThreeSeries();
+      renderWithMantine(<DBPieChart config={promqlConfig} />);
+      expect(legendLabels()).toEqual(['checkout', 'ad', 'cart']);
+    });
+
+    it('keeps only the largest seriesLimit slices', () => {
+      mockThreeSeries();
+      renderWithMantine(
+        <DBPieChart config={{ ...promqlConfig, seriesLimit: 2 }} />,
+      );
+      expect(legendLabels()).toEqual(['checkout', 'ad']);
+    });
+
+    it('treats a seriesLimit of 0 as unlimited', () => {
+      mockThreeSeries();
+      renderWithMantine(
+        <DBPieChart config={{ ...promqlConfig, seriesLimit: 0 }} />,
+      );
+      expect(legendLabels()).toEqual(['checkout', 'ad', 'cart']);
     });
   });
 });

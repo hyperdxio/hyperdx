@@ -1,7 +1,7 @@
 import { useState } from 'react';
+import { Badge } from '@clickhouse/click-ui';
 import {
   Anchor,
-  Badge,
   Collapse,
   Group,
   ScrollArea,
@@ -67,9 +67,7 @@ export function TerraformHelperPanel({
         <Text size="sm" fw={500}>
           Terraform
         </Text>
-        <Badge variant="light" fw="normal" size="xs">
-          Experimental
-        </Badge>
+        <Badge size="sm" text="Experimental" state="info" />
       </Group>
       <Text size="xs" style={{ color: 'var(--color-text-muted)' }}>
         ClickStack resources in the ClickHouse Terraform provider are in alpha —

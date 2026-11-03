@@ -27,6 +27,25 @@ const readStoredPreferences = (): UserPreferences =>
   JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}');
 
 describe('UserPreferencesModal', () => {
+  describe('Time zone', () => {
+    it('reflects a stored zone', () => {
+      renderModal({ timeZone: 'Etc/UTC' });
+
+      expect(screen.getByTestId('time-zone-select')).toHaveValue('UTC');
+    });
+
+    it('stores the selected zone', async () => {
+      renderModal({ timeZone: 'local' });
+
+      await userEvent.click(screen.getByTestId('time-zone-select'));
+      await userEvent.click(
+        await screen.findByRole('option', { name: /^UTC/, hidden: true }),
+      );
+
+      expect(readStoredPreferences().timeZone).toBe('Etc/UTC');
+    });
+  });
+
   describe('Row click', () => {
     it('shows the default action for users with no stored preference', () => {
       renderModal();

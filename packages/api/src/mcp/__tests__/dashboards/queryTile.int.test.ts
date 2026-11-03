@@ -438,6 +438,71 @@ describe('MCP Dashboard Tools - clickstack_query_tile', () => {
     expect(result.isError).toBeFalsy();
   });
 
+  it('returns time-bucketed rows for a series-mode heatmap tile', async () => {
+    const logSource = await Source.create({
+      kind: SourceKind.Log,
+      team: ctx.team._id,
+      from: { databaseName: DEFAULT_DATABASE, tableName: DEFAULT_LOGS_TABLE },
+      timestampValueExpression: 'Timestamp',
+      connection: ctx.connection._id,
+      name: 'Series Heatmap Logs',
+      bodyExpression: 'Body',
+      severityTextExpression: 'SeverityText',
+    });
+    const now = new Date();
+    const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+    for (const minutesAgo of [10, 5]) {
+      for (const serviceName of ['svc-a', 'svc-b']) {
+        logs.push({
+          Body: `series heatmap log ${serviceName} ${minutesAgo}`,
+          ServiceName: serviceName,
+          SeverityText: 'INFO',
+          Timestamp: new Date(now.getTime() - minutesAgo * 60 * 1000),
+        });
+      }
+    }
+    await bulkInsertLogs(logs);
+
+    const createResult = await callTool(
+      ctx.client!,
+      'clickstack_save_dashboard',
+      {
+        name: 'Series Heatmap Dashboard',
+        tiles: [
+          {
+            name: 'Count by service',
+            config: {
+              displayType: 'heatmap',
+              heatmapMode: 'series',
+              sourceId: logSource._id.toString(),
+              select: [{ aggFn: 'count' }],
+              groupBy: 'ServiceName',
+            },
+          },
+        ],
+      },
+    );
+    if (createResult.isError) {
+      throw new Error(getFirstText(createResult));
+    }
+    const dashboard = JSON.parse(getFirstText(createResult));
+
+    const result = await callTool(ctx.client!, 'clickstack_query_tile', {
+      dashboardId: dashboard.id,
+      tileId: dashboard.tiles[0].id,
+      startTime: new Date(now.getTime() - 15 * 60 * 1000).toISOString(),
+      endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+    });
+
+    expect(result.isError).toBeFalsy();
+    const parsed: { result: { data: Array<Record<string, string>> } } =
+      JSON.parse(getFirstText(result));
+    expect(parsed.result.data).toHaveLength(4);
+    for (const row of parsed.result.data) {
+      expect(row).toHaveProperty('__hdx_time_bucket');
+    }
+  });
+
   // Regression: a metric source rendered as a categorical (bar/pie) tile with a
   // groupBy runs the chart config through convertToCategoricalChartConfig, which
   // structuredClones it. `source.metricTables` is a live Mongoose subdocument
