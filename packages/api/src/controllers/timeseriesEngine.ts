@@ -337,6 +337,7 @@ export async function queryRangeViaTableFunction({
   startMs,
   endMs,
   stepSec,
+  signal,
 }: {
   client: ClickhouseClient;
   connectionId: string;
@@ -346,6 +347,7 @@ export async function queryRangeViaTableFunction({
   startMs: number;
   endMs: number;
   stepSec: number;
+  signal?: AbortSignal;
 }): Promise<PrometheusMatrixResult[]> {
   const samplesColumn = await timeSeriesSamplesColumn({
     client,
@@ -364,6 +366,7 @@ export async function queryRangeViaTableFunction({
       stepSec,
     },
     format: 'JSON',
+    abort_signal: signal,
     clickhouse_settings: PROMQL_TABLE_FUNCTION_SETTINGS,
   });
   const json = await resp.json<any>();
@@ -376,17 +379,20 @@ export async function queryInstantViaTableFunction({
   tableName,
   expr,
   evalMs,
+  signal,
 }: {
   client: ClickhouseClient;
   databaseName: string;
   tableName: string;
   expr: string;
   evalMs: number;
+  signal?: AbortSignal;
 }): Promise<PrometheusVectorResult[]> {
   const resp = await client.query({
     query: `SELECT tags, timestamp, value FROM prometheusQuery({db:String}, {table:String}, {expr:String}, fromUnixTimestamp64Milli({evalMs:Int64})) SETTINGS allow_experimental_time_series_table = 1`,
     query_params: { db: databaseName, table: tableName, expr, evalMs },
     format: 'JSON',
+    abort_signal: signal,
     clickhouse_settings: PROMQL_TABLE_FUNCTION_SETTINGS,
   });
   const json = await resp.json<any>();

@@ -1,14 +1,8 @@
 import {
-  buildLogComment,
-  buildQueryId,
   parseLogComment,
   QUERY_ATTRIBUTION_HEADER,
 } from '@hyperdx/common-utils/dist/clickhouse';
-import {
-  getCurrentQueryAttribution,
-  withQueryAttribution,
-} from '@hyperdx/common-utils/dist/clickhouse/node';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
+import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import express from 'express';
 import { omit } from 'lodash';
 import { performance } from 'perf_hooks';
@@ -16,17 +10,16 @@ import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
 import z from 'zod';
 
-import { ClickhouseClient } from '@/clickhouse';
-import { getConnectionById } from '@/controllers/connection';
 import {
-  joinPrometheusUpstreamUrl,
-  takeBasicAuthHeader,
+  buildPrometheusRequest,
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
+  clickhousePrometheusRequest,
+  newPromqlClickhouseClient,
+  PROMETHEUS_MAX_RESOLUTION,
+  resolveClickhouseQueryBackend,
+  resolvePromqlTarget,
 } from '@/controllers/promql';
-import { getSource } from '@/controllers/sources';
 import {
-  connectionSupportsPrometheusHttpApi,
-  PROMETHEUS_MAX_EXECUTION_SEC,
-  PROMETHEUS_MAX_RESULT_ROWS,
   queryInstantViaTableFunction,
   queryLabelNames,
   queryLabelValues,
@@ -134,50 +127,9 @@ function getParams(req: express.Request): Record<string, string> {
   };
 }
 
-type PromqlTarget = {
-  connection: NonNullable<Awaited<ReturnType<typeof getConnectionById>>>;
-  databaseName: string;
-  tableName: string;
-};
-
-/**
- * Resolve the PromQL source a request names into the connection and table to
- * query. The table always comes from the source, never from the request, so a
- * caller can only reach data through a source.
- */
-async function resolvePromqlTarget(
-  req: express.Request,
-  sourceId: string | undefined,
-  { selectPassword }: { selectPassword: boolean },
-): Promise<PromqlTarget | { status: 400 | 404; error: string }> {
-  if (!sourceId) {
-    return { status: 400, error: 'missing required parameter: sourceId' };
-  }
-
-  const { teamId } = getNonNullUserWithTeam(req);
-
-  const source = await getSource(teamId.toString(), sourceId);
-
-  if (!source || source.kind !== SourceKind.Promql) {
-    return { status: 404, error: 'Source not found' };
-  }
-
-  const connection = await getConnectionById(
-    teamId.toString(),
-    source.connection.toString(),
-    selectPassword,
-  );
-
-  if (!connection) {
-    return { status: 404, error: 'Connection not found' };
-  }
-
-  return {
-    connection,
-    databaseName: source.from.databaseName,
-    tableName: source.from.tableName,
-  };
-}
+/** The request's team as the string the PromQL controller takes. */
+const requestTeamId = (req: express.Request): string =>
+  getNonNullUserWithTeam(req).teamId.toString();
 
 /**
  * Params for an external Prometheus endpoint. `database` and `table` select a
@@ -196,8 +148,6 @@ function prometheusEndpointParams<T extends Record<string, unknown>>(
 // --------------------------
 
 const PROMETHEUS_PROXY_TIMEOUT_MS = 90_000;
-const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
-const PROMETHEUS_MAX_RESOLUTION = 11_000;
 // Widest window /query_exemplars will proxy. Prometheus's exemplar store is a
 // small circular buffer, so a wider range mostly costs a bigger streamed body
 // for no extra markers — the chart's own thinning caps what's rendered anyway.
@@ -245,132 +195,6 @@ const CALLER_SETTABLE_PARAM_KEYS = new Set([
   'table',
 ]);
 
-// ClickHouse serves the Prometheus HTTP API under this prefix on its main HTTP
-// port when the `prometheus_api_v1` handler is configured (26.6+).
-export const CLICKHOUSE_PROMETHEUS_API_PREFIX = '/prometheus/api/v1';
-
-/**
- * The ClickHouse connection host with the query limits pinned as ClickHouse
- * HTTP settings. The prometheus_api_v1 handler honours settings given in the
- * URL and reports a breach as a Prometheus 400 (pinned by the live int test),
- * so this is the only place to bound a PromQL evaluation — the request carries
- * no SQL to attach SETTINGS to. Pinned on the host rather than passed as params
- * so the merge in proxyToPrometheus (which lets the caller override any
- * allowlisted key) can't loosen them.
- */
-export function clickhousePrometheusUpstream(
-  host: string,
-  {
-    maxExecutionSec = PROMETHEUS_MAX_EXECUTION_SEC,
-    maxResultRows = PROMETHEUS_MAX_RESULT_ROWS,
-    logComment,
-  }: {
-    maxExecutionSec?: number;
-    maxResultRows?: number;
-    logComment?: string;
-  } = {},
-): string {
-  const url = new URL(host);
-  url.searchParams.set('max_execution_time', String(maxExecutionSec));
-  url.searchParams.set('max_result_rows', String(maxResultRows));
-  if (logComment) url.searchParams.set('log_comment', logComment);
-  return url.toString();
-}
-
-/**
- * Where and how to proxy a PromQL request to the connection's prometheus_api_v1
- * handler, tagged with the query attribution in scope. The handler runs the
- * query itself rather than through our ClickHouse client, so the tags are set
- * here. `log_comment` goes in the URL like the limits. `query_id` goes in a
- * header: the handler reads every URL param as a setting, and `query_id` in
- * the URL fails the request as an unknown one.
- */
-function clickhousePrometheusRequest(connection: {
-  host: string;
-  username: string;
-  password?: string;
-}): { upstream: string; headers: Record<string, string> } {
-  const attribution = getCurrentQueryAttribution();
-  return {
-    upstream: clickhousePrometheusUpstream(connection.host, {
-      logComment: buildLogComment(attribution),
-    }),
-    headers: {
-      ...clickhouseAuthHeaders(connection),
-      'X-ClickHouse-Query-Id': buildQueryId(attribution),
-    },
-  };
-}
-
-function newClickhouseClient(connection: {
-  host: string;
-  username: string;
-  password?: string;
-}) {
-  return new ClickhouseClient({
-    host: connection.host,
-    username: connection.username,
-    password: connection.password,
-    requestTimeout: PROMETHEUS_CH_TIMEOUT_MS,
-  });
-}
-
-/**
- * Whether a ClickHouse connection answers PromQL over HTTP. Two conditions,
- * cheapest first: the server is new enough (26.6+), and the prometheus_api_v1
- * handler is actually configured — a self-managed server needs an
- * `<http_handlers>` rule for that, which a stock install lacks. The handler
- * answers every request, error or not, with Prometheus JSON (`{status, ...}`);
- * a server without it answers a plain-text 404. `format_query` is used as the
- * probe because it is the one endpoint that needs no table.
- *
- * Probed on every request, like the version check, so a handler enabled or
- * removed on the server is reflected immediately.
- */
-const PROBE_TIMEOUT_MS = 5_000;
-
-async function clickhouseServesPrometheusHttpApi(
-  client: ClickhouseClient,
-  connection: { id: string; host: string; username: string; password?: string },
-): Promise<boolean> {
-  if (
-    !(await connectionSupportsPrometheusHttpApi({
-      client,
-      connectionId: connection.id,
-    }))
-  ) {
-    return false;
-  }
-
-  try {
-    const url = joinPrometheusUpstreamUrl(
-      connection.host,
-      `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/format_query`,
-    );
-    url.searchParams.set('query', 'up');
-    const resp = await fetch(url, {
-      headers: {
-        ...takeBasicAuthHeader(url),
-        ...clickhouseAuthHeaders(connection),
-      },
-      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
-    });
-    return typeof JSON.parse(await resp.text())?.status === 'string';
-  } catch {
-    return false;
-  }
-}
-
-function clickhouseAuthHeaders(connection: {
-  username: string;
-  password?: string;
-}): Record<string, string> {
-  return {
-    'X-ClickHouse-User': connection.username,
-    'X-ClickHouse-Key': connection.password ?? '',
-  };
-}
-
 // Forwards the response straight from the upstream Prometheus to the
 // HyperDX client. Returns the HTTP status it wrote, so callers can record an
 // error metric: this helper handles its own failures by writing 400/502/504 and
@@ -388,17 +212,33 @@ async function proxyToPrometheus(
   res: express.Response,
   headers?: Record<string, string>,
 ): Promise<number> {
-  let url: URL;
+  // For a key in CALLER_SETTABLE_PARAM_KEYS, the request always wins
+  // outright, including repeatable ones like `match[]` -- so a Connection
+  // host can never silently override (or, for `match[]`, narrow) a value
+  // the caller or this proxy explicitly sets. A host-only param outside
+  // that set (e.g. VictoriaMetrics's `extra_label`) is left as-is.
+  const callerParams = Object.fromEntries(
+    Object.entries(params).flatMap(([k, v]) =>
+      CALLER_SETTABLE_PARAM_KEYS.has(k) && v != null
+        ? // Prometheus reads a limit of 0 as "unlimited", the same as omitting
+          // the key entirely -- forward that by omission too, rather than a
+          // literal "0", so upstream sees the same request shape it always
+          // has. An empty list still clears a host-pinned `limit`.
+          [[k, k === 'limit' && v === '0' ? [] : v]]
+        : [],
+    ),
+  );
+
+  let request: ReturnType<typeof buildPrometheusRequest>;
   try {
-    url = joinPrometheusUpstreamUrl(upstreamHost, path);
+    request = buildPrometheusRequest(upstreamHost, path, callerParams, headers);
   } catch (err) {
     // Not echoing `upstreamHost` at all -- a redaction regex on an arbitrary
     // (possibly malformed, since this is the failure branch) string can
     // always be wrong for some shape (e.g. a `/` preceding the credentials).
-    // `err.message` is always safe to show: it's either this function's own
-    // fixed "Connection host must be http(s)", or `URL`'s parse-failure
-    // message, which is the fixed string "Invalid URL" and never echoes the
-    // input (verified against Node's URL implementation).
+    // `err.message` is always safe to show: it's the fixed "Connection host
+    // must be http(s)", `URL`'s fixed "Invalid URL", or decodeURIComponent's
+    // fixed "URI malformed" for bad userinfo; none echo the input.
     res.status(400).json({
       status: 'error',
       errorType: 'bad_data',
@@ -406,49 +246,14 @@ async function proxyToPrometheus(
     });
     return 400;
   }
-  // For a key in CALLER_SETTABLE_PARAM_KEYS, the request always wins
-  // outright, including repeatable ones like `match[]` -- so a Connection
-  // host can never silently override (or, for `match[]`, narrow) a value
-  // the caller or this proxy explicitly sets. A host-only param outside
-  // that set (e.g. VictoriaMetrics's `extra_label`) is left as-is.
-  for (const [k, v] of Object.entries(params)) {
-    if (!CALLER_SETTABLE_PARAM_KEYS.has(k)) continue;
-    if (v == null) continue;
-    // Clear any host-pinned value at this key first: for a repeatable param
-    // this prevents an `append` from leaving the host's value(s) alongside
-    // the request's rather than replacing them. This also means a request's
-    // `limit=0` still clears a host-pinned `limit` (see below) even though
-    // it isn't itself re-set.
-    url.searchParams.delete(k);
-    // Prometheus reads a limit of 0 as "unlimited", the same as omitting the
-    // key entirely -- forward that by omission too, rather than a literal
-    // "0", so upstream sees the same request shape it always has.
-    if (k === 'limit' && v === '0') continue;
-    if (Array.isArray(v)) {
-      for (const item of v) url.searchParams.append(k, item);
-    } else {
-      url.searchParams.set(k, v);
-    }
-  }
-  // fetch rejects a URL that carries credentials, so `user:pw@` in the host
-  // becomes a Basic auth header instead.
-  const authHeader = takeBasicAuthHeader(url);
-  const target = url.toString();
-
-  // A connection host may carry basic-auth credentials (`http://user:pw@host`)
-  // or a secret pinned in its own query string (e.g. VictoriaMetrics
-  // `?authKey=...`, preserved by the merge above for any key outside
-  // `CALLER_SETTABLE_PARAM_KEYS`), and the error bodies below are shown in
-  // the browser. `url.origin` never includes userinfo (WHATWG URL spec), and
-  // dropping the query/hash entirely -- rather than trying to redact only the
-  // secret-shaped parts of it -- means there's no query key to ever miss.
-  // `target` still carries the query string, and `authHeader` the userinfo.
-  const redactedTarget = `${url.origin}${url.pathname}`;
+  // The error bodies below are shown in the browser, so they name only
+  // `redactedTarget`: never the host's credentials or query string.
+  const { redactedTarget } = request;
 
   let upstreamResp: Response;
   try {
-    upstreamResp = await fetch(target, {
-      headers: { ...authHeader, ...headers },
+    upstreamResp = await fetch(request.url, {
+      headers: request.headers,
       signal: AbortSignal.timeout(PROMETHEUS_PROXY_TIMEOUT_MS),
     });
   } catch (err) {
@@ -562,9 +367,11 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const target = await resolvePromqlTarget(req, params.sourceId, {
-      selectPassword: true,
-    });
+    const target = await resolvePromqlTarget(
+      requestTeamId(req),
+      params.sourceId,
+      { selectPassword: true },
+    );
 
     if ('error' in target) {
       return res.status(target.status).json({
@@ -602,13 +409,11 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const client = newClickhouseClient(connection);
-
-    // The Prometheus HTTP API is the only surface ClickHouse holds
-    // forward-compatible while TimeSeries is in preview, so it is preferred
-    // wherever the server has it (26.6+); the table function is the fallback.
-    if (await clickhouseServesPrometheusHttpApi(client, connection)) {
-      const { upstream, headers } = clickhousePrometheusRequest(connection);
+    const chBackend = await resolveClickhouseQueryBackend(target);
+    if (chBackend.kind === 'clickhouse-http') {
+      const { upstream, headers } = clickhousePrometheusRequest(
+        chBackend.connection,
+      );
       const status = await proxyToPrometheus(
         upstream,
         `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
@@ -622,8 +427,8 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
 
     // fallback for clickhouse version < 26.6
     const result = await queryRangeViaTableFunction({
-      client,
-      connectionId: connection.id,
+      client: chBackend.client,
+      connectionId: chBackend.connectionId,
       databaseName,
       tableName,
       expr: query,
@@ -672,9 +477,11 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const target = await resolvePromqlTarget(req, params.sourceId, {
-      selectPassword: true,
-    });
+    const target = await resolvePromqlTarget(
+      requestTeamId(req),
+      params.sourceId,
+      { selectPassword: true },
+    );
     if ('error' in target) {
       return res.status(target.status).json({
         status: 'error',
@@ -697,10 +504,11 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     }
 
     backend = 'clickhouse';
-    const client = newClickhouseClient(connection);
-
-    if (await clickhouseServesPrometheusHttpApi(client, connection)) {
-      const { upstream, headers } = clickhousePrometheusRequest(connection);
+    const chBackend = await resolveClickhouseQueryBackend(target);
+    if (chBackend.kind === 'clickhouse-http') {
+      const { upstream, headers } = clickhousePrometheusRequest(
+        chBackend.connection,
+      );
       const status = await proxyToPrometheus(
         upstream,
         `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query`,
@@ -714,7 +522,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
 
     // fallback for clickhouse version < 26.6
     const result = await queryInstantViaTableFunction({
-      client,
+      client: chBackend.client,
       databaseName,
       tableName,
       expr: query,
@@ -800,9 +608,11 @@ const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
 
     // No `selectPassword` — neither branch builds a ClickhouseClient, so there
     // is no reason to pull the connection secret into request scope.
-    const target = await resolvePromqlTarget(req, params.sourceId, {
-      selectPassword: false,
-    });
+    const target = await resolvePromqlTarget(
+      requestTeamId(req),
+      params.sourceId,
+      { selectPassword: false },
+    );
     if ('error' in target) {
       return res.status(target.status).json({
         status: 'error',
@@ -989,7 +799,7 @@ async function handleLabelLookup(
     }
 
     const { sourceId, start, end, limit, match } = parseResult.data;
-    const target = await resolvePromqlTarget(req, sourceId, {
+    const target = await resolvePromqlTarget(requestTeamId(req), sourceId, {
       selectPassword: true,
     });
     if ('error' in target) {
@@ -1026,7 +836,7 @@ async function handleLabelLookup(
     }
 
     backend = 'clickhouse';
-    const client = newClickhouseClient(connection);
+    const client = newPromqlClickhouseClient(connection);
 
     const startMs = start != null ? Math.floor(start * 1000) : undefined;
     const endMs = end != null ? Math.ceil(end * 1000) : undefined;

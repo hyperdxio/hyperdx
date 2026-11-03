@@ -30,6 +30,7 @@ import ms from 'ms';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
+import { PromQLQueryError } from '@/controllers/promql';
 import { getSource } from '@/controllers/sources';
 import type { McpErrorResult } from '@/mcp/utils/errors';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
@@ -47,6 +48,7 @@ import { trimToolResponse } from '@/utils/trimToolResponse';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { externalDashboardTileSchemaWithId } from '@/utils/zod';
 
+import { runPromqlTile } from './promqlTile';
 import { runEventPatterns } from './runEventPatterns';
 
 // ─── Source body expression helpers ──────────────────────────────────────────
@@ -630,7 +632,25 @@ export async function runConfigTile(
 
   // PromQL is evaluated by the Prometheus API, not the SQL renderer.
   if (isPromqlSavedChartConfig(savedConfig)) {
-    return mcpUserError('PromQL tiles cannot be queried through MCP yet.');
+    try {
+      return formatQueryResult(
+        await runPromqlTile({
+          teamId,
+          config: savedConfig,
+          dateRange: [startDate, endDate],
+          variables: options?.variables,
+          signal: options?.abortSignal,
+        }),
+      );
+    } catch (e) {
+      if (e instanceof PromQLQueryError) {
+        return e.category === 'user'
+          ? mcpUserError(e.message)
+          : mcpServerError(e.message);
+      }
+      // The table-function backend throws ClickHouse errors as they come.
+      return clickHouseErrorResult(e);
+    }
   }
 
   // Raw SQL tile — hydrate source fields for macro support ($__sourceTable, $__filters)
