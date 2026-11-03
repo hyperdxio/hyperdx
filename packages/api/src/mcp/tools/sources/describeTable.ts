@@ -6,6 +6,7 @@ import { getConnectionById } from '@/controllers/connection';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
+  isQueryOutOfTime,
   isServerError,
   MCP_REQUEST_TIMEOUT,
 } from '@/mcp/tools/query/helpers';
@@ -25,6 +26,7 @@ import {
   fetchSampleRows,
   fetchTableDetails,
   fetchTablePage,
+  isPrivilegeError,
   shapeTableDescription,
   shapeTableListEntry,
   type TableQueryContext,
@@ -54,9 +56,7 @@ function jsonResult(payload: unknown): ToolResult {
 function tableQueryErrorResult(e: unknown, prefix: string) {
   const message = e instanceof Error ? e.message : String(e);
   let suffix: string | undefined;
-  if (
-    /ACCESS_DENIED|NOT_ENOUGH_PRIVILEGES|Not enough privileges/i.test(message)
-  ) {
+  if (isPrivilegeError(e)) {
     suffix =
       "The ClickHouse user on this connection lacks the privileges needed. Ask the connection's administrator to grant them, or use another connection.";
   } else if (/UNKNOWN_(TABLE|DATABASE)|does not exist/i.test(message)) {
@@ -143,7 +143,9 @@ async function sampleTableRows(
     const rows = trimSampleRows(await fetchSampleRows(ctx, args));
     return { sampleRows: rows.data, isTrimmed: rows.isTrimmed };
   } catch (e) {
-    if (isServerError(e)) throw e;
+    // A slow View or Distributed table can time out on SELECT *; only a
+    // connection failure should cost the schema already fetched.
+    if (isServerError(e) && !isQueryOutOfTime(e)) throw e;
     // The schema is still useful when the user can read system tables but
     // not the table itself.
     return {
@@ -175,7 +177,7 @@ async function describeTable(
     );
   }
 
-  const { indicesUnavailable, ...shapeInput } = details;
+  const { indicesUnavailable, localTableUnavailable, ...shapeInput } = details;
   const { columns, ...description } = shapeTableDescription({
     database,
     ...shapeInput,
@@ -205,6 +207,10 @@ async function describeTable(
 
   const rest = {
     ...description,
+    ...(localTableUnavailable && {
+      localTableHint:
+        "The connection's ClickHouse user cannot run cluster() (REMOTE grant), so keys and key flags come from the Distributed table itself and may be empty.",
+    }),
     ...(indicesUnavailable && {
       dataSkippingIndicesHint:
         "The connection's ClickHouse user cannot read system.data_skipping_indices, so indices are not listed.",

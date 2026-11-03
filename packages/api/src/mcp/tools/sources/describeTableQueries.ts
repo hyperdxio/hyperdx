@@ -176,11 +176,19 @@ function systemTable(name: SystemTableName, cluster?: string): ChSql {
     : chSql`system.${name}`;
 }
 
-function isPrivilegeError(e: unknown) {
+export function isPrivilegeError(e: unknown) {
   const message = e instanceof Error ? e.message : String(e);
   return /ACCESS_DENIED|NOT_ENOUGH_PRIVILEGES|Not enough privileges/i.test(
     message,
   );
+}
+
+/** Resolves to null instead of rejecting when the user lacks a grant. */
+function nullOnPrivilegeError<T>(query: Promise<T>): Promise<T | null> {
+  return query.catch((e: unknown) => {
+    if (isPrivilegeError(e)) return null;
+    throw e;
+  });
 }
 
 /**
@@ -210,31 +218,33 @@ export async function fetchTableDetails(
 
   const [localKeys, indices, columns, localKeyFlags] = await Promise.all([
     distributedTarget
-      ? queryRows<TableKeys>(
-          ctx,
-          chSql`
+      ? nullOnPrivilegeError(
+          queryRows<TableKeys>(
+            ctx,
+            chSql`
             SELECT engine, sorting_key, primary_key, partition_key
             FROM ${systemTable('tables', keyTable.cluster)}
             WHERE database = ${{ String: keyTable.database }}
               AND name = ${{ String: keyTable.table }}
             LIMIT 1
           `,
+          ),
         )
       : undefined,
-    queryRows<Pick<SkipIndexMetadata, 'name' | 'type' | 'expression'>>(
-      ctx,
-      chSql`
+    // Indices and the local-table lookups are optional detail, and cluster()
+    // needs the REMOTE grant; a missing grant should not hide the schema.
+    nullOnPrivilegeError(
+      queryRows<Pick<SkipIndexMetadata, 'name' | 'type' | 'expression'>>(
+        ctx,
+        chSql`
         SELECT name, type, expr AS expression
         FROM ${systemTable('data_skipping_indices', keyTable.cluster)}
         WHERE database = ${{ String: keyTable.database }}
           AND table = ${{ String: keyTable.table }}
         LIMIT 1 BY name
       `,
-    ).catch((e: unknown) => {
-      // Indices are optional detail; a missing grant should not hide the schema.
-      if (isPrivilegeError(e)) return undefined;
-      throw e;
-    }),
+      ),
+    ),
     queryRows<SystemColumnRow>(
       ctx,
       chSql`
@@ -246,15 +256,17 @@ export async function fetchTableDetails(
       `,
     ),
     distributedTarget
-      ? queryRows<ColumnKeyFlags>(
-          ctx,
-          chSql`
+      ? nullOnPrivilegeError(
+          queryRows<ColumnKeyFlags>(
+            ctx,
+            chSql`
             SELECT name, is_in_sorting_key, is_in_primary_key
             FROM ${systemTable('columns', keyTable.cluster)}
             WHERE database = ${{ String: keyTable.database }}
               AND table = ${{ String: keyTable.table }}
             LIMIT 1 BY name
           `,
+          ),
         )
       : undefined,
   ]);
@@ -265,7 +277,8 @@ export async function fetchTableDetails(
     keys: localKeys?.at(0) ?? info,
     distributedTarget,
     indices: indices ?? [],
-    indicesUnavailable: indices === undefined,
+    indicesUnavailable: indices === null,
+    localTableUnavailable: localKeys === null || localKeyFlags === null,
     columns: columns.map(c => {
       const flags = flagsByName.get(c.name);
       return flags

@@ -10,6 +10,7 @@ jest.mock('@/clickhouse', () => ({
   ClickhouseClient: jest.fn(() => ({ query: mockQuery })),
 }));
 
+import { ClickHouseError } from '@clickhouse/client-common';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
 import { registerDescribeTable } from '@/mcp/tools/sources/describeTable';
@@ -455,6 +456,64 @@ describe('clickstack_describe_table', () => {
           expect.arrayContaining(['prod', 'events_local']),
         );
       }
+    });
+
+    it('falls back to the Distributed table when cluster() is not granted', async () => {
+      const denied = new Error(
+        'Code: 497. DB::Exception: Not enough privileges. To execute this query, it is necessary to have the grant REMOTE ON *.*. (ACCESS_DENIED)',
+      );
+      respondWith({
+        'FROM system.tables': [
+          {
+            ...TABLE_ROW,
+            engine: 'Distributed',
+            engine_full:
+              "Distributed('prod', 'default', 'events_local', rand())",
+            sorting_key: '',
+            primary_key: '',
+            partition_key: '',
+          },
+        ],
+        ', system.tables)': denied,
+        ', system.data_skipping_indices)': denied,
+        ', system.columns)': denied,
+        'FROM system.columns': COLUMN_ROWS,
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = parseText(result);
+      expect(output.table).toMatchObject({
+        engine: 'Distributed',
+        sortingKey: '',
+      });
+      expect(output.columns).toHaveLength(2);
+      expect(output.localTableHint).toMatch(/REMOTE grant/);
+    });
+
+    it('keeps the schema when the sample times out', async () => {
+      const timeout = new Error('query failed', {
+        cause: new ClickHouseError({
+          message: 'Timeout exceeded: elapsed 30s',
+          code: '159',
+          type: 'TIMEOUT_EXCEEDED',
+        }),
+      });
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': timeout,
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+        sampleRows: 1,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(parseText(result).sampleRowsError).toBeDefined();
     });
 
     it('still describes the table when skip indices are not readable', async () => {
