@@ -368,8 +368,14 @@ export class HyperdxApiClient {
         groupCount,
         sampleRows: rows.slice(0, 5),
       };
-    } catch {
-      return { success: true, hasData: content.text.length > 0 };
+    } catch (error) {
+      return {
+        success: false,
+        hasData: false,
+        error: `Invalid MCP content: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
     }
   }
 }
