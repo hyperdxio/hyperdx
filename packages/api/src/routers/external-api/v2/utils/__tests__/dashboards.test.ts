@@ -461,7 +461,7 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
     expect(ext.tiles[0].tabId).toBe('errors');
   });
 
-  it('returns PromQL tiles unless hidePromqlTiles is set', () => {
+  it('returns PromQL tiles and label filters unless hidePromql is set', () => {
     const doc = makeDoc({
       tiles: [
         makeTile({
@@ -476,16 +476,36 @@ describe('convertToExternalDashboard orphan-ref heal', () => {
         }),
         makeTile({ id: 'normal-tile' }),
       ],
+      filters: [
+        {
+          id: 'label-filter',
+          type: 'PROMETHEUS_LABEL',
+          name: 'Job',
+          source: new mongoose.Types.ObjectId().toString(),
+          label: 'job',
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        },
+        {
+          id: 'static-filter',
+          type: 'STATIC_LIST',
+          name: 'Env',
+          options: ['prod'],
+          isBroadcastEnabled: false,
+          isVariableEnabled: true,
+        },
+      ],
     });
-    expect(convertToExternalDashboard(doc).tiles.map(t => t.id)).toEqual([
-      'promql-tile',
-      'normal-tile',
+    const shown = convertToExternalDashboard(doc);
+    expect(shown.tiles.map(t => t.id)).toEqual(['promql-tile', 'normal-tile']);
+    expect(shown.filters?.map(f => f.id)).toEqual([
+      'label-filter',
+      'static-filter',
     ]);
-    expect(
-      convertToExternalDashboard(doc, { hidePromqlTiles: true }).tiles.map(
-        t => t.id,
-      ),
-    ).toEqual(['normal-tile']);
+
+    const hidden = convertToExternalDashboard(doc, { hidePromql: true });
+    expect(hidden.tiles.map(t => t.id)).toEqual(['normal-tile']);
+    expect(hidden.filters?.map(f => f.id)).toEqual(['static-filter']);
   });
 
   // seriesLimit is three-state (matching the internal schema): omitted =
