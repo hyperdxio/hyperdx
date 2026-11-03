@@ -1,3 +1,4 @@
+import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import type { FilterForVariableDeclaration } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -7,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -294,6 +296,10 @@ export function getTileVariableWarnings(
 
     if (isRawSqlSavedChartConfig(config)) {
       validate(config.sqlTemplate, 'sql');
+    } else if (isPromqlSavedChartConfig(config)) {
+      for (const { expression } of getPromqlSeries(config)) {
+        validate(expression, 'promql');
+      }
     } else if (
       isBuilderSavedChartConfig(config) &&
       config.displayType === DisplayType.Markdown
