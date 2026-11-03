@@ -18,9 +18,7 @@
 import type { ChSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { withQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
-import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
-import { getSource } from '@/controllers/sources';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
@@ -35,13 +33,12 @@ import {
 } from '@/mcp/tools/trace/breakdownSchema';
 import {
   durationDivisor,
-  getMcpClickhouseClient,
   inclusiveTimeFilter,
+  loadTraceSource,
   mcpQuerySettings,
 } from '@/mcp/tools/trace/shared';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
-import { recordMcpSource } from '@/mcp/utils/tracing';
 
 // The child stage looks spans up by TraceId, which is not in the sort key, so
 // it reads every span in the window regardless of how few parents matched.
@@ -80,32 +77,17 @@ export function registerTraceBreakdown({
       }
       const { startDate, endDate } = timeRange;
 
-      const source = await getSource(teamId.toString(), input.sourceId);
-      if (!source) {
-        return mcpUserError(
-          `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
-        );
-      }
-      recordMcpSource(source);
-      if (source.kind !== SourceKind.Trace) {
-        return mcpUserError(
-          `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_top_time_consuming_operations requires a source of kind="trace".`,
-        );
-      }
+      const loaded = await loadTraceSource(
+        teamId.toString(),
+        input.sourceId,
+        'clickstack_trace_top_time_consuming_operations',
+      );
+      if ('isError' in loaded) return loaded;
+      const { source, clickhouseClient } = loaded;
 
       return withQueryAttribution(
         { source: source._id.toString() },
         async () => {
-          const clickhouseClient = await getMcpClickhouseClient(
-            teamId.toString(),
-            source.connection.toString(),
-          );
-          if (!clickhouseClient) {
-            return mcpUserError(
-              `Connection not found for source: ${input.sourceId}`,
-            );
-          }
-
           const timeFilterParams = {
             connectionId: source.connection.toString(),
             databaseName: source.from.databaseName,

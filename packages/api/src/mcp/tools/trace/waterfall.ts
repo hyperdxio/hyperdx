@@ -23,6 +23,7 @@ import {
   durationDivisor,
   getMcpClickhouseClient,
   inclusiveTimeFilter,
+  loadTraceSource,
   mcpQuerySettings,
   type TimeFilterParams,
 } from '@/mcp/tools/trace/shared';
@@ -345,31 +346,17 @@ export function registerTraceWaterfall({
       }
       const { startDate, endDate } = timeRange;
 
-      const source = await getSource(teamId.toString(), input.sourceId);
-      if (!source) {
-        return mcpUserError(
-          `Source not found: ${input.sourceId}. Call clickstack_list_sources to find available source IDs.`,
-        );
-      }
-      recordMcpSource(source);
-      if (source.kind !== SourceKind.Trace) {
-        return mcpUserError(
-          `Source ${input.sourceId} is kind="${source.kind}". clickstack_trace_waterfall requires a source of kind="trace".`,
-        );
-      }
+      const loaded = await loadTraceSource(
+        teamId.toString(),
+        input.sourceId,
+        'clickstack_trace_waterfall',
+      );
+      if ('isError' in loaded) return loaded;
+      const { source, clickhouseClient } = loaded;
 
       return withQueryAttribution(
         { source: source._id.toString() },
         async () => {
-          const clickhouseClient = await getMcpClickhouseClient(
-            teamId.toString(),
-            source.connection.toString(),
-          );
-          if (!clickhouseClient) {
-            return mcpUserError(
-              `Connection not found for source: ${input.sourceId}`,
-            );
-          }
           const metadata = getMetadata(clickhouseClient);
 
           const traceIdExpr = source.traceIdExpression;

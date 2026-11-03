@@ -11,14 +11,14 @@ import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
-import { ClickhouseClient } from '@/clickhouse';
-import { getConnectionById } from '@/controllers/connection';
+import type { ClickhouseClient } from '@/clickhouse';
 import { getSource } from '@/controllers/sources';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import {
   clickHouseErrorResult,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
+import { getMcpClickhouseClient } from '@/mcp/tools/trace/shared';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
@@ -498,22 +498,15 @@ async function describeMetricImpl(
   const { startDate, endDate } = timeRange;
 
   return withQueryAttribution({ source: source._id.toString() }, async () => {
-    const connection = await getConnectionById(
+    const clickhouseClient = await getMcpClickhouseClient(
       teamId,
       source.connection.toString(),
-      true,
     );
-    if (!connection) {
+    if (!clickhouseClient) {
       return mcpUserError(
         `Connection not found for source "${input.sourceId}".`,
       );
     }
-
-    const clickhouseClient = new ClickhouseClient({
-      host: connection.host,
-      username: connection.username,
-      password: connection.password,
-    });
     const metadata = getMetadata(clickhouseClient);
     const databaseName = source.from.databaseName;
     const connectionId = source.connection.toString();
