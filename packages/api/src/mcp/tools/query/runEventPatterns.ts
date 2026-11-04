@@ -30,42 +30,49 @@ import {
 
 // ─── Reusable window mining ──────────────────────────────────────────────────
 
-/**
- * Sample + Drain-mine one time window and return the raw pattern groups
- * (template + counts), without MCP response formatting. Shared by
- * runEventPatterns (single window) and emerging_signals (two-window diff).
- *
- * Returns either an error result (MCP shape) or the mined patterns.
- */
-export async function mineWindowPatterns(
+// Shared by runEventPatterns (single window) and emerging_signals (two-window
+// diff). Each returns either an error result (MCP shape) or the data.
+
+type WindowOptions = {
+  where?: string;
+  whereLanguage?: 'lucene' | 'sql';
+  bodyExpression?: string;
+  sampleSize?: number;
+  trendBuckets?: number;
+  abortSignal?: AbortSignal;
+  /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
+  variables?: ChartVariable[];
+  /** Shared Drain miner, so cluster ids are comparable across windows. */
+  miner?: TemplateMiner;
+  /** Exclude rows at exactly endDate (half-open window), so two adjacent windows don't share a row. */
+  endExclusive?: boolean;
+};
+
+type WindowSample = {
+  sampleRows: Record<string, unknown>[];
+  totalCount: number;
+  bodyColumn: string;
+  startDate: Date;
+  endDate: Date;
+};
+
+type MinedWindow = {
+  patterns: ReturnType<typeof minePatterns>['patterns'];
+  sampleMultiplier: number;
+  totalCount: number;
+  sampledCount: number;
+  bodyColumn: string;
+};
+
+/** Sample rows and count the total for one window, without mining. */
+export async function fetchWindowSample(
   teamId: string,
   sourceId: string,
   startDate: Date,
   endDate: Date,
-  options?: {
-    where?: string;
-    whereLanguage?: 'lucene' | 'sql';
-    bodyExpression?: string;
-    sampleSize?: number;
-    trendBuckets?: number;
-    abortSignal?: AbortSignal;
-    /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
-    variables?: ChartVariable[];
-    /** Shared Drain miner, so cluster ids are comparable across windows. */
-    miner?: TemplateMiner;
-  },
-): Promise<
-  | { error: McpErrorResult }
-  | {
-      patterns: ReturnType<typeof minePatterns>['patterns'];
-      sampleMultiplier: number;
-      totalCount: number;
-      sampledCount: number;
-      bodyColumn: string;
-    }
-> {
+  options?: WindowOptions,
+): Promise<{ error: McpErrorResult } | WindowSample> {
   const sampleSize = options?.sampleSize ?? 10_000;
-  const trendBuckets = options?.trendBuckets ?? 0;
 
   const source = await getSource(teamId, sourceId);
   if (!source) {
@@ -155,6 +162,7 @@ export async function mineWindowPatterns(
     orderBy: [{ ordering: 'DESC' as const, valueExpression: 'rand()' }],
     limit: { limit: sampleSize, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
+    ...(options?.endExclusive ? { dateRangeEndInclusive: false } : {}),
     variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
@@ -174,6 +182,7 @@ export async function mineWindowPatterns(
     useTextIndexForImplicitColumn,
     limit: { limit: 1, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
+    ...(options?.endExclusive ? { dateRangeEndInclusive: false } : {}),
     variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
@@ -216,6 +225,16 @@ export async function mineWindowPatterns(
 
   const sampleRows = sampleResult.data ?? [];
   const totalCount = Number(countResult.data?.[0]?.total ?? 0);
+  return { sampleRows, totalCount, bodyColumn, startDate, endDate };
+}
+
+/** Drain-mine a fetched window. Synchronous, so callers control the order windows enter a shared miner. */
+export function mineWindowSample(
+  sample: WindowSample,
+  options?: Pick<WindowOptions, 'trendBuckets' | 'miner'>,
+): { error: McpErrorResult } | MinedWindow {
+  const { sampleRows, totalCount, bodyColumn, startDate, endDate } = sample;
+  const trendBuckets = options?.trendBuckets ?? 0;
   if (sampleRows.length === 0) {
     return {
       patterns: [],
@@ -226,11 +245,8 @@ export async function mineWindowPatterns(
     };
   }
 
-  // Wrap the synchronous Drain mining in try/catch. Without this a thrown
-  // Drain error escapes the helper — and since callers (emerging_signals)
-  // await it inside Promise.all and only inspect the returned {error} union
-  // AFTER the await, an unwrapped throw becomes an unhandled rejection / 500
-  // instead of a clean MCP error result.
+  // Return a Drain error as an {error} result instead of throwing, so callers
+  // that only inspect the union get a clean MCP error rather than a 500.
   let patterns: ReturnType<typeof minePatterns>['patterns'];
   let sampleMultiplier: number;
   try {
@@ -262,6 +278,44 @@ export async function mineWindowPatterns(
     sampledCount: sampleRows.length,
     bodyColumn,
   };
+}
+
+/**
+ * Sample + Drain-mine one time window and return the raw pattern groups
+ * (template + counts), without MCP response formatting.
+ */
+export async function mineWindowPatterns(
+  teamId: string,
+  sourceId: string,
+  startDate: Date,
+  endDate: Date,
+  options?: WindowOptions,
+): Promise<{ error: McpErrorResult } | MinedWindow> {
+  const sample = await fetchWindowSample(
+    teamId,
+    sourceId,
+    startDate,
+    endDate,
+    options,
+  );
+  if ('error' in sample) return sample;
+  return mineWindowSample(sample, options);
+}
+
+/**
+ * A Lucene where clause from a pattern's literal tokens, so agents can chain
+ * pattern → search. Tokens that contain a mask (`<*>`, also inside a token such
+ * as `[<*>]` or `trace_id=<*>`) are dropped, since their text varies per line.
+ * Escapes \ and " (the phrase-query metachars) in each token.
+ */
+export function buildWhereSnippet(pattern: string, bodyColumn: string): string {
+  const literalTokens = pattern
+    .split(/\s+/)
+    .filter(t => t.length > 0 && !t.includes('<*>'))
+    .map(t => t.replace(/[\\"]/g, '\\$&'));
+  return literalTokens.length > 0
+    ? `${bodyColumn}:"${literalTokens.join(' ')}"`
+    : '';
 }
 
 // ─── Event pattern mining ────────────────────────────────────────────────────
@@ -351,17 +405,7 @@ export async function runEventPatterns(
   const slicedPatterns = rawPatterns.slice(0, topN);
 
   const patterns = slicedPatterns.map((p, i) => {
-    // Build a Lucene-compatible where clause from the pattern's literal
-    // (non-<*>) tokens. This lets agents chain: pattern → search.
-    // Escape \ and " (the phrase-query metachars) in each token.
-    const literalTokens = p.pattern
-      .split(/\s+/)
-      .filter(t => t !== '<*>' && t.length > 0)
-      .map(t => t.replace(/[\\"]/g, '\\$&'));
-    const whereSnippet =
-      literalTokens.length > 0
-        ? `${bodyColumn}:"${literalTokens.join(' ')}"`
-        : '';
+    const whereSnippet = buildWhereSnippet(p.pattern, bodyColumn);
 
     const shareOfTotal = sampledCount > 0 ? p.sampleCount / sampledCount : 0;
 

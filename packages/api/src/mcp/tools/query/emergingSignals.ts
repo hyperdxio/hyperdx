@@ -1,4 +1,5 @@
 import {
+  flattenBody,
   TemplateMiner,
   TemplateMinerConfig,
 } from '@hyperdx/common-utils/dist/drain';
@@ -10,7 +11,7 @@ import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { parseTimeRange } from './helpers';
-import { mineWindowPatterns } from './runEventPatterns';
+import { fetchWindowSample, mineWindowSample } from './runEventPatterns';
 import { sourceIdSchema, whereLanguageSchema, whereSchema } from './schemas';
 
 // ─── Classification ────────────────────────────────────────────────────────
@@ -203,35 +204,41 @@ export function registerEmergingSignals({
       // cluster in either window, so the windows are compared by cluster id.
       // Separate trees keep tokens that were constant in one window literal
       // and generalize them in the other, which splits the same pattern.
-      const opts = {
+      const fetchOpts = {
         where: input.where,
         whereLanguage: input.whereLanguage,
         bodyExpression: input.bodyExpression,
         sampleSize: input.sampleSize,
-        trendBuckets: 0,
-        miner: new TemplateMiner(new TemplateMinerConfig()),
       };
-
-      const [curRes, baseRes] = await Promise.all([
-        mineWindowPatterns(
+      const [curSample, baseSample] = await Promise.all([
+        fetchWindowSample(
           teamId.toString(),
           input.sourceId,
           cur.startDate,
           cur.endDate,
-          opts,
+          fetchOpts,
         ),
-        // Window queries include both ends; end the baseline 1 ms early so a
-        // row at the shared boundary isn't counted in both windows.
-        mineWindowPatterns(
+        // Half-open baseline, so a row at the shared boundary is counted only
+        // in the current window.
+        fetchWindowSample(
           teamId.toString(),
           input.sourceId,
           base.startDate,
-          new Date(base.endDate.getTime() - 1),
-          opts,
+          base.endDate,
+          { ...fetchOpts, endExclusive: true },
         ),
       ]);
-      if ('error' in curRes) return curRes.error;
+      if ('error' in curSample) return curSample.error;
+      if ('error' in baseSample) return baseSample.error;
+
+      // Mine in a fixed order (baseline, then current): Drain depends on
+      // insertion order, so this keeps the result independent of which query
+      // finished first.
+      const miner = new TemplateMiner(new TemplateMinerConfig());
+      const baseRes = mineWindowSample(baseSample, { trendBuckets: 0, miner });
       if ('error' in baseRes) return baseRes.error;
+      const curRes = mineWindowSample(curSample, { trendBuckets: 0, miner });
+      if ('error' in curRes) return curRes.error;
 
       // Build share-of-window maps keyed by cluster id.
       type Agg = {
@@ -275,6 +282,13 @@ export function registerEmergingSignals({
       };
       ingest(curRes, 'cur');
       ingest(baseRes, 'base');
+      // A cluster's template can still generalize after a window first sees
+      // it, so report each cluster's template from the finished tree.
+      for (const a of byKey.values()) {
+        a.pattern =
+          miner.match(flattenBody(a.sample), 'fallback')?.getTemplate() ??
+          a.pattern;
+      }
 
       const ratio = input.minShareRatio;
       // Minimum share for a BRAND-NEW pattern (absent from baseline) to count
