@@ -66,6 +66,11 @@ export class TemplateMiner {
     };
   }
 
+  /** The masked tokens Drain compares for this message. */
+  tokenize(logMessage: string): string[] {
+    return this.drain.getContentAsTokens(this.masker.mask(logMessage));
+  }
+
   match(
     logMessage: string,
     fullSearchStrategy: string = 'never',
