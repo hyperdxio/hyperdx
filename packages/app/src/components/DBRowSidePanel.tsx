@@ -239,9 +239,10 @@ const SPAN_KIND_LABELS: Record<string, string> = {
   SPAN_KIND_CONSUMER: 'Consumer',
 };
 
-// Longest span name the header trusts the title breadcrumb to show in full.
-// The crumb is ellipsized by CSS as well as by its character cap, so a longer
-// name can be cut off in a narrow drawer; those keep the body paper.
+// Longest span name the header trusts a lone title breadcrumb to show in full.
+// Kept well under that crumb's 120 character cap (MAX_LABEL_LENGTH_SINGLE in
+// SidePanelBreadcrumbs.tsx) because CSS can still ellipsize a long title in a
+// narrow drawer; longer names keep the body paper.
 const TITLE_FITS_MAX_LENGTH = 40;
 
 /**
@@ -266,21 +267,23 @@ export function getHeaderHighlightExpressions(source: TSource) {
 }
 
 /**
- * Whether the panel title (the current breadcrumb) already shows a trace
- * span's name in full, so the header can skip the body paper that would only
- * repeat it. Long names, and hops where the title is another frame's label
- * (View Trace from a log), keep the paper.
+ * Whether the panel title already shows a trace span's name in full, so the
+ * header can skip the body paper that would only repeat it. Only a lone
+ * breadcrumb counts: in a trail the crumbs share one row and can cut the name
+ * off, and after View Trace the title is the originating log. Long names keep
+ * the paper too.
  */
 export function isSpanNameShownInTitle(
   source: TSource,
   spanName: string | undefined,
-  titleLabel: string | undefined,
+  breadcrumbLabels: string[],
 ) {
   return (
     source.kind === SourceKind.Trace &&
     spanName != null &&
     spanName.length <= TITLE_FITS_MAX_LENGTH &&
-    titleLabel === spanName
+    breadcrumbLabels.length === 1 &&
+    breadcrumbLabels[0] === spanName
   );
 }
 
@@ -895,7 +898,7 @@ export const DBRowSidePanelInner = ({
   const isBodyShownInTitle = isSpanNameShownInTitle(
     source,
     mainContent,
-    allBreadcrumbs.at(-1)?.label,
+    allBreadcrumbs.map(crumb => crumb.label),
   );
 
   const availableTabs = useMemo<Tab[]>(() => {

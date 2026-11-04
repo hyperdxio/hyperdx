@@ -7,35 +7,45 @@ import { makeLogSource, makeTraceSource } from '@/llm/__fixtures__/sources';
 describe('isSpanNameShownInTitle', () => {
   const trace = makeTraceSource();
 
-  it('is true when the title is a short span name', () => {
+  it('is true when the lone title crumb is a short span name', () => {
     expect(
-      isSpanNameShownInTitle(trace, 'GET /checkout', 'GET /checkout'),
+      isSpanNameShownInTitle(trace, 'GET /checkout', ['GET /checkout']),
     ).toBe(true);
   });
 
   it('allows names up to 40 characters', () => {
     const name = 'x'.repeat(40);
-    expect(isSpanNameShownInTitle(trace, name, name)).toBe(true);
+    expect(isSpanNameShownInTitle(trace, name, [name])).toBe(true);
   });
 
   it('keeps the body for longer names the title can cut off', () => {
     const name = 'x'.repeat(41);
-    expect(isSpanNameShownInTitle(trace, name, name)).toBe(false);
+    expect(isSpanNameShownInTitle(trace, name, [name])).toBe(false);
   });
 
-  it('keeps the body when the title is another frame label (View Trace)', () => {
+  it('keeps the body in a breadcrumb trail, where crumbs share the row', () => {
+    // A hop between two spans with the same name is still a trail.
     expect(
-      isSpanNameShownInTitle(trace, 'GET /checkout', 'Checkout failed'),
+      isSpanNameShownInTitle(trace, 'GET /checkout', [
+        'GET /checkout',
+        'GET /checkout',
+      ]),
     ).toBe(false);
   });
 
+  it('keeps the body when the title is not the span name', () => {
+    expect(isSpanNameShownInTitle(trace, 'GET /checkout', ['Trace'])).toBe(
+      false,
+    );
+  });
+
   it('keeps the body when the span has no body value', () => {
-    expect(isSpanNameShownInTitle(trace, undefined, 'Trace')).toBe(false);
+    expect(isSpanNameShownInTitle(trace, undefined, ['Trace'])).toBe(false);
   });
 
   it('keeps the body on log panels', () => {
     expect(
-      isSpanNameShownInTitle(makeLogSource(), 'a log line', 'a log line'),
+      isSpanNameShownInTitle(makeLogSource(), 'a log line', ['a log line']),
     ).toBe(false);
   });
 });
