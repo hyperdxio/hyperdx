@@ -236,9 +236,13 @@ export const buildOtelCollectorConfig = (
           ],
         },
       },
-      fluentforward: {
-        endpoint: '0.0.0.0:24225',
-      },
+      ...(collectorAuthenticationEnforced
+        ? {}
+        : {
+            fluentforward: {
+              endpoint: '0.0.0.0:24225',
+            },
+          }),
     },
     connectors: {
       'routing/logs': {
@@ -318,8 +322,11 @@ export const buildOtelCollectorConfig = (
           exporters: ['clickhouse'],
         },
         'logs/in': {
-          // TODO: fluentforward needs to be authenticated
-          receivers: ['fluentforward'],
+          // The upstream fluentforwardreceiver has no auth setting, so omit it
+          // when collector authentication is enforced.
+          receivers: [
+            collectorAuthenticationEnforced ? 'nop' : 'fluentforward',
+          ],
           exporters: ['routing/logs'],
         },
         'logs/out-default': {
