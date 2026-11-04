@@ -772,11 +772,11 @@ function convertTileToExternalChart(
 export function convertToExternalDashboard(
   dashboard: DashboardDocument,
   {
-    hidePromqlTiles = false,
+    hidePromql = false,
   }: {
-    // MCP cannot save PromQL tiles until HDX-5302, so its tools hide them
-    // rather than show tiles the agent cannot edit. Remove with that work.
-    hidePromqlTiles?: boolean;
+    // MCP hides PromQL tiles and PROMETHEUS_LABEL filters while PromQL is
+    // disabled on the deployment.
+    hidePromql?: boolean;
   } = {},
 ): ExternalDashboard {
   const containers = dashboard.containers ?? [];
@@ -793,16 +793,14 @@ export function convertToExternalDashboard(
     id: dashboardId,
     name: dashboard.name,
     tiles: dashboard.tiles
-      .filter(
-        tile => !(hidePromqlTiles && isPromqlSavedChartConfig(tile.config)),
-      )
+      .filter(tile => !(hidePromql && isPromqlSavedChartConfig(tile.config)))
       .map(tile =>
         convertTileToExternalChart(tile, containerById, dashboardId),
       ),
     tags: dashboard.tags || [],
-    filters: getExternalCompatibleFilters(dashboard.filters).map(
-      translateFilterToExternalFilter,
-    ),
+    filters: getExternalCompatibleFilters(dashboard.filters)
+      .filter(filter => !(hidePromql && isPrometheusLabelFilter(filter)))
+      .map(translateFilterToExternalFilter),
     savedQuery: dashboard.savedQuery ?? null,
     savedQueryLanguage: dashboard.savedQueryLanguage ?? null,
     savedFilterValues: getExternalCompatibleFilterValues(
