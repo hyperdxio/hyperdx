@@ -244,6 +244,46 @@ const SPAN_KIND_LABELS: Record<string, string> = {
 // name can be cut off in a narrow drawer; those keep the body paper.
 const TITLE_FITS_MAX_LENGTH = 40;
 
+/**
+ * Attribute expressions shown as chips in the side panel header. Log panels
+ * also get the service name, kept from before highlightedRowAttributeExpressions
+ * existed; trace panels skip it because the metadata row already shows it.
+ */
+export function getHeaderHighlightExpressions(source: TSource) {
+  const expressions: NonNullable<
+    (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
+  > = [];
+  if (
+    (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
+    source.highlightedRowAttributeExpressions
+  ) {
+    expressions.push(...source.highlightedRowAttributeExpressions);
+  }
+  if (isLogSource(source) && source.serviceNameExpression) {
+    expressions.push({ sqlExpression: source.serviceNameExpression });
+  }
+  return expressions;
+}
+
+/**
+ * Whether the panel title (the current breadcrumb) already shows a trace
+ * span's name in full, so the header can skip the body paper that would only
+ * repeat it. Long names, and hops where the title is another frame's label
+ * (View Trace from a log), keep the paper.
+ */
+export function isSpanNameShownInTitle(
+  source: TSource,
+  spanName: string | undefined,
+  titleLabel: string | undefined,
+) {
+  return (
+    source.kind === SourceKind.Trace &&
+    spanName != null &&
+    spanName.length <= TITLE_FITS_MAX_LENGTH &&
+    titleLabel === spanName
+  );
+}
+
 type DBRowSidePanelProps = {
   source: TSource;
   rowId: string | undefined;
@@ -503,30 +543,10 @@ export const DBRowSidePanelInner = ({
   }, [activeRowId, mainContent, resolvedFrameLabels]);
 
   const highlightedAttributeValues = useMemo(() => {
-    const attributeExpressions: NonNullable<
-      (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
-    > = [];
-    if (
-      (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
-      source.highlightedRowAttributeExpressions
-    ) {
-      attributeExpressions.push(...source.highlightedRowAttributeExpressions);
-    }
-
-    // Add service name expression to log sources, to maintain compatibility
-    // with the behavior prior to the addition of
-    // highlightedRowAttributeExpressions. Trace panels skip it: the metadata
-    // row already shows the service, and the waterfall below needs the room.
-    if (isLogSource(source) && source.serviceNameExpression) {
-      attributeExpressions.push({
-        sqlExpression: source.serviceNameExpression,
-      });
-    }
-
     return rowData
       ? getHighlightedAttributesFromData(
           source,
-          attributeExpressions,
+          getHeaderHighlightExpressions(source),
           rowData.data || [],
           rowData.meta || [],
         )
@@ -872,17 +892,11 @@ export const DBRowSidePanelInner = ({
     clearSpanSelection,
   ]);
 
-  // The current (last) breadcrumb is the panel title. On a trace panel it is
-  // usually the span name; when the name is short enough to show in full, a
-  // body paper would only repeat the title, so the header skips it. Longer
-  // names, and hops where the current crumb carries another frame's label
-  // (View Trace from a log), keep the paper so the full span name stays
-  // readable.
-  const isBodyShownInTitle =
-    sourceIsTrace &&
-    mainContent != null &&
-    mainContent.length <= TITLE_FITS_MAX_LENGTH &&
-    allBreadcrumbs.at(-1)?.label === mainContent;
+  const isBodyShownInTitle = isSpanNameShownInTitle(
+    source,
+    mainContent,
+    allBreadcrumbs.at(-1)?.label,
+  );
 
   const availableTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = [];
