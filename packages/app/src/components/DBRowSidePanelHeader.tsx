@@ -28,6 +28,8 @@ export default function DBRowSidePanelHeader({
   // trace span's name, for example), so the body paper is omitted rather
   // than repeating the title directly below it.
   bodyShownInTitle = false,
+  // Rows that never carry a body, such as browser events, skip the empty state.
+  hideEmptyBody = false,
   severityText,
   rowData,
 }: {
@@ -35,6 +37,7 @@ export default function DBRowSidePanelHeader({
   mainContentHeader?: string;
   bodyConfigured?: boolean;
   bodyShownInTitle?: boolean;
+  hideEmptyBody?: boolean;
   attributes?: HighlightedAttribute[];
   severityText?: string;
   rowData?: Record<string, any>;
@@ -90,7 +93,9 @@ export default function DBRowSidePanelHeader({
 
   return (
     <>
-      {!bodyConfigured || bodyShownInTitle ? null : mainContent ? (
+      {!bodyConfigured ||
+      bodyShownInTitle ||
+      (hideEmptyBody && !mainContent) ? null : mainContent ? (
         <Paper
           p="xs"
           mt="sm"
