@@ -2,6 +2,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 
 import * as config from '@/config';
+import { PROMETHEUS_MAX_RESPONSE_BYTES } from '@/controllers/promql';
 import {
   DEFAULT_DATABASE,
   dropTimeSeriesTable,
@@ -18,8 +19,8 @@ const mockFetch = jest.mocked(global.fetch);
 
 const TABLE = 'mcp_promql_sources';
 
-const prometheusResponse = (data: unknown) =>
-  new Response(JSON.stringify({ status: 'success', data }));
+const prometheusResponse = (data: unknown, init?: ResponseInit) =>
+  new Response(JSON.stringify({ status: 'success', data }), init);
 
 describe('MCP PromQL sources', () => {
   const server = getServer();
@@ -227,6 +228,26 @@ describe('MCP PromQL sources', () => {
       expect(output.partial).toBe(true);
       expect(output.error).toContain('http://prom.example.com/api/v1/');
       expect(output.error).not.toContain('secret');
+    });
+
+    it('still returns the source config when a label list is too large to buffer', async () => {
+      const source = await createPrometheusSource();
+      mockFetch.mockImplementation(async () =>
+        prometheusResponse(['up'], {
+          headers: {
+            'content-length': String(PROMETHEUS_MAX_RESPONSE_BYTES + 1),
+          },
+        }),
+      );
+
+      const result = await callTool(client, 'clickstack_describe_source', {
+        sourceId: source._id.toString(),
+      });
+
+      expect(result.isError).toBeFalsy();
+      const output = JSON.parse(getFirstText(result));
+      expect(output.partial).toBe(true);
+      expect(output.error).toContain('returned more than 8 MB');
     });
   });
 

@@ -1,4 +1,8 @@
-import { buildPrometheusRequest, runPromqlQuery } from '@/controllers/promql';
+import {
+  buildPrometheusRequest,
+  PROMETHEUS_MAX_RESPONSE_BYTES,
+  runPromqlQuery,
+} from '@/controllers/promql';
 
 const mockFetch = jest.mocked(global.fetch);
 
@@ -181,5 +185,50 @@ describe('runPromqlQuery', () => {
       runPromqlQuery(prometheus, { ...range, stepSec: 0.1 }),
     ).rejects.toMatchObject({ category: 'user' });
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  describe('response size cap', () => {
+    it('reports a response over the cap as a server error naming the cap', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('{', {
+          headers: {
+            'content-length': String(PROMETHEUS_MAX_RESPONSE_BYTES + 1),
+          },
+        }),
+      );
+
+      await expect(runPromqlQuery(prometheus, range)).rejects.toMatchObject({
+        message:
+          'Prometheus at http://prom:9090/api/v1/query_range returned more than 8 MB. Narrow the query or time range.',
+        category: 'server',
+      });
+    });
+
+    it('reads a chunked body under the cap as before', async () => {
+      const json = JSON.stringify({ status: 'success', data: matrix });
+      const [head, tail] = [json.slice(0, 10), json.slice(10)];
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(head));
+          controller.enqueue(new TextEncoder().encode(tail));
+          controller.close();
+        },
+      });
+      mockFetch.mockResolvedValueOnce(new Response(body));
+
+      await expect(runPromqlQuery(prometheus, range)).resolves.toEqual(matrix);
+    });
+
+    it('reports a body that is not JSON by its HTTP status', async () => {
+      mockFetch.mockResolvedValueOnce(
+        new Response('<html>Bad gateway</html>', { status: 502 }),
+      );
+
+      await expect(runPromqlQuery(prometheus, range)).rejects.toMatchObject({
+        message:
+          'Prometheus at http://prom:9090/api/v1/query_range returned HTTP 502',
+        category: 'server',
+      });
+    });
   });
 });
