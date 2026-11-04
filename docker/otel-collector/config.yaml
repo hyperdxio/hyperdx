@@ -119,6 +119,21 @@ processors:
             log.severity_number == 0
       - context: log
         error_mode: ignore
+        conditions:
+          - severity_text == "" and severity_number > 0
+        statements:
+          - set(log.severity_text, "trace") where log.severity_number < 5
+          - set(log.severity_text, "debug") where log.severity_number >= 5 and
+            log.severity_number < 9
+          - set(log.severity_text, "info") where log.severity_number >= 9 and
+            log.severity_number < 13
+          - set(log.severity_text, "warn") where log.severity_number >= 13 and
+            log.severity_number < 17
+          - set(log.severity_text, "error") where log.severity_number >= 17 and
+            log.severity_number < 21
+          - set(log.severity_text, "fatal") where log.severity_number >= 21
+      - context: log
+        error_mode: ignore
         statements:
           # Normalize the severity_text case
           - set(log.severity_text, ConvertCase(log.severity_text, "lower"))
