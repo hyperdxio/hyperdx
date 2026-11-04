@@ -78,9 +78,11 @@ const MIN_VIEWPORT_FRAC = 0.02;
 
 const axisHeight = 24;
 // Gap between the axis and the first row. The hover time label
-// (TimelineMouseCursor) reaches about 37px below the top of the chart, so the
-// first row starts at axisHeight + rowsMarginTop = 40px to stay clear of it.
-const rowsMarginTop = 16;
+// (TimelineMouseCursor, styled in TimelineChart.module.scss) reaches about 37px
+// below the top of the chart; the first row starts at
+// axisHeight + rowsMarginTop = 44px, which keeps it clear with some headroom.
+// Revisit this if the label's padding or offset grows.
+const rowsMarginTop = 20;
 const maxScale = 100;
 
 export const TimelineChart = memo(function (props: TimelineChartProps) {
@@ -427,6 +429,7 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
                 zoom hint lives here instead of in its own row above the chart. */}
             <div
               className={styles.timelineCorner}
+              data-testid="timeline-corner"
               style={{
                 width: labelWidth,
                 height: `${axisHeight + rowsMarginTop}px`,

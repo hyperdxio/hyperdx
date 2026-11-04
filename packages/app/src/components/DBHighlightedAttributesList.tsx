@@ -15,6 +15,7 @@ export type HighlightedAttribute = {
   lucene?: string;
 };
 
+// Renders without an outer margin; callers set the spacing around the list.
 export function DBHighlightedAttributesList({
   attributes,
 }: {

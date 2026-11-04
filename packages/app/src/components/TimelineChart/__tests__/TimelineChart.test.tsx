@@ -32,9 +32,8 @@ describe('TimelineChart', () => {
 
     const hint = screen.getByTestId('timeline-zoom-hint');
     expect(hint).toHaveTextContent('⌘/Ctrl + scroll to zoom');
-    // Lives in the sticky corner cell of the scroll container rather than in
-    // a row of its own above the chart.
-    expect(hint.closest('.timelineCorner')).not.toBeNull();
-    expect(hint.closest('.timelineContainer')).not.toBeNull();
+    // Lives in the corner cell above the span labels rather than in a row of
+    // its own above the chart.
+    expect(hint.closest('[data-testid="timeline-corner"]')).toBeInTheDocument();
   });
 });

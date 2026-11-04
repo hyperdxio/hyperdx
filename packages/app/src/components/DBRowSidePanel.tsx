@@ -82,7 +82,6 @@ import {
 } from './DrawerUtils';
 import { eventRowWhereParser } from './eventRowWhere';
 import LogLevel from './LogLevel';
-import { getBreadcrumbMaxLabelLength } from './sidePanelBreadcrumbLimits';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
 import TraceLogsPanel from './TraceLogsPanel';
@@ -239,6 +238,11 @@ const SPAN_KIND_LABELS: Record<string, string> = {
   SPAN_KIND_PRODUCER: 'Producer',
   SPAN_KIND_CONSUMER: 'Consumer',
 };
+
+// Longest span name the header trusts the title breadcrumb to show in full.
+// The crumb is ellipsized by CSS as well as by its character cap, so a longer
+// name can be cut off in a narrow drawer; those keep the body paper.
+const TITLE_FITS_MAX_LENGTH = 40;
 
 type DBRowSidePanelProps = {
   source: TSource;
@@ -869,16 +873,16 @@ export const DBRowSidePanelInner = ({
   ]);
 
   // The current (last) breadcrumb is the panel title. On a trace panel it is
-  // usually the span name; when it shows that name without truncating, a body
-  // paper would only repeat the title, so the header skips it. Longer names,
-  // and hops where the current crumb carries another frame's label (View
-  // Trace from a log), keep the paper so the full span name stays readable.
-  const titleCrumbIndex = allBreadcrumbs.length - 1;
+  // usually the span name; when the name is short enough to show in full, a
+  // body paper would only repeat the title, so the header skips it. Longer
+  // names, and hops where the current crumb carries another frame's label
+  // (View Trace from a log), keep the paper so the full span name stays
+  // readable.
   const isBodyShownInTitle =
     sourceIsTrace &&
-    allBreadcrumbs[titleCrumbIndex]?.label === mainContent &&
-    mainContent.length <=
-      getBreadcrumbMaxLabelLength(titleCrumbIndex, allBreadcrumbs.length);
+    mainContent != null &&
+    mainContent.length <= TITLE_FITS_MAX_LENGTH &&
+    allBreadcrumbs.at(-1)?.label === mainContent;
 
   const availableTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = [];

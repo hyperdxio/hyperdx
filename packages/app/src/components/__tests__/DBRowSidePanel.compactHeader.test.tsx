@@ -199,9 +199,28 @@ describe('DBRowSidePanelInner: compact header', () => {
     expect(mockHeaderProps.current.bodyShownInTitle).toBe(true);
   });
 
-  it('keeps the body paper when the span name is too long for the title', () => {
+  it('skips the body paper for a 40 character span name', () => {
+    mockUseRowData.mockReturnValue(rowResult({ __hdx_body: 'x'.repeat(40) }));
+    renderPanel(makeTraceSource());
+
+    expect(mockHeaderProps.current.bodyShownInTitle).toBe(true);
+  });
+
+  it('keeps the body paper for a 41 character span name', () => {
+    mockUseRowData.mockReturnValue(rowResult({ __hdx_body: 'x'.repeat(41) }));
+    renderPanel(makeTraceSource());
+
+    expect(mockHeaderProps.current.bodyShownInTitle).toBe(false);
+  });
+
+  it('keeps the body paper for a name the title can cut off in a narrow drawer', () => {
+    // Under the breadcrumb's 120 character cap, but long enough that CSS can
+    // ellipsize it, so the paper stays to keep the full name readable.
     mockUseRowData.mockReturnValue(
-      rowResult({ __hdx_body: `SELECT ${'column, '.repeat(30)}id FROM t` }),
+      rowResult({
+        __hdx_body:
+          'GET /api/v1/inventory/warehouses/{warehouseId}/low-stock-items',
+      }),
     );
     renderPanel(makeTraceSource());
 
@@ -215,19 +234,6 @@ describe('DBRowSidePanelInner: compact header', () => {
     });
 
     expect(mockHeaderProps.current.bodyShownInTitle).toBe(true);
-  });
-
-  it('keeps the body paper when the trail truncates the span name', () => {
-    // Longer than the current crumb's limit in a trail, shorter than a lone
-    // title's limit.
-    mockUseRowData.mockReturnValue(
-      rowResult({ __hdx_body: `GET /api/${'segment/'.repeat(6)}id` }),
-    );
-    renderPanel(makeTraceSource(), {
-      parentBreadcrumbs: [{ label: 'Session' }],
-    });
-
-    expect(mockHeaderProps.current.bodyShownInTitle).toBe(false);
   });
 
   it('keeps the body paper after View Trace, where the title is the log', () => {
@@ -247,6 +253,33 @@ describe('DBRowSidePanelInner: compact header', () => {
     renderPanel(makeLogSource());
 
     expect(mockHeaderProps.current.mainContent).toBe('GET /checkout');
+    expect(mockHeaderProps.current.bodyShownInTitle).toBe(false);
+  });
+
+  it('skips the body paper when a stack frame lands on the span name', () => {
+    const traceSource = makeTraceSource();
+    mockStackSource.current = traceSource;
+    mockQueryStore.sidePanelStackRoot = 'row-1';
+    mockQueryStore.sidePanelSourceStack = [
+      {
+        sourceId: traceSource.id,
+        rowId: 'span-row',
+        aliasWith: [],
+        label: 'GET /checkout',
+        sourceKind: traceSource.kind,
+      },
+    ];
+    mockUseRowData.mockReturnValue(rowResult({ __hdx_body: 'GET /checkout' }));
+    renderPanel(makeLogSource());
+
+    expect(mockHeaderProps.current.bodyShownInTitle).toBe(true);
+  });
+
+  it('keeps the body paper when the span has no body value', () => {
+    mockUseRowData.mockReturnValue(rowResult({}));
+    renderPanel(makeTraceSource());
+
+    expect(mockHeaderProps.current.mainContent).toBeUndefined();
     expect(mockHeaderProps.current.bodyShownInTitle).toBe(false);
   });
 
