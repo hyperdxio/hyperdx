@@ -883,13 +883,19 @@ Lucene field:value does NOT mean exact equality. It translates to ilike(field, '
      ServiceName:api*    does NOT mean "starts with api". It means "contains a substring starting with api".
                          In practice this often works for prefix matching, but it is NOT equivalent to SQL LIKE 'api%'.
 
-  For exact matching or true prefix/suffix/contains patterns, use SQL instead:
+  For exact matching in Lucene, quote the value: SpanKind:"Server" compiles to SpanKind = 'Server'.
+
+  For true prefix/suffix/contains patterns, use SQL instead:
      Exact:    whereLanguage: "sql", where: "SpanKind = 'Server'"
      Prefix:   whereLanguage: "sql", where: "ServiceName LIKE 'api%'"
-     Contains: whereLanguage: "sql", where: "Body LIKE '%timeout%'"
+     Contains: whereLanguage: "sql", where: "StatusMessage LIKE '%timeout%'"
      Regex:    whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
 
-  When Lucene substring matching is FINE: free-text columns like Body, StatusMessage where substring is the intent.
+  For text in the log body, write a bare Lucene term or phrase (timeout, "connection refused"). It uses the
+  source's token/text index on the body; Body:timeout, Body LIKE and Body ILIKE read the whole column, and
+  Body:"..." is exact equality on the whole body.
+
+  When Lucene substring matching is FINE: free-text columns like StatusMessage where substring is the intent.
   When Lucene substring matching is WRONG: enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact or true prefix match.
 
 *** MAP-ATTRIBUTE GOTCHA ***
@@ -1562,8 +1568,9 @@ Example: find top patterns for production services over the last 4 hours:
     Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "ServerStreaming", "InternalServer", etc.)
     Wrong:   where: "ServiceName:api*"            (whereLanguage: "lucene"; NOT a true prefix match -- it is prefix-within-substring)
     Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql"; exact match)
+    Correct: where: 'SpanKind:"Server"'            (whereLanguage: "lucene"; a quoted value is an exact match)
     Correct: where: "ServiceName LIKE 'api%'"      (whereLanguage: "sql"; true prefix match)
-    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (Body, StatusMessage); wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Use SQL for exact match (=), prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
+    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (StatusMessage; for Body use a bare term or phrase, which uses the index); wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Use SQL for exact match (=), prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
 
 16. Forgetting that map-attribute values are often empty strings
     Wrong:   groupBy on SpanAttributes['db.collection.name'] without filtering empty values; the result has an empty-string bucket alongside the real ones, which renders as a blank row in tables and an unlabelled slice in pies.
