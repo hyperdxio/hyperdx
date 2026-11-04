@@ -50,6 +50,9 @@ describe('default masking', () => {
     ['Nov  4 06:12:12 host sshd', '<*> host sshd'],
     ['I1104 06:12:12.345678 1 main.go', 'I1104 <*> 1 main.go'],
     ['partition 2026-11-04 loaded', 'partition <*> loaded'],
+    ['wrote backup_2026-11-04.tar', 'wrote backup_<*>.tar'],
+    ['span_4bf92f3577b34da6a3ce929d0e0e4736 ok', 'span_<*> ok'],
+    ['req_123e4567-e89b-12d3-a456-426614174000 done', 'req_<*> done'],
     ['id 123e4567-e89b-12d3-a456-426614174000 ok', 'id <*> ok'],
     ['trace 4bf92f3577b34da6a3ce929d0e0e4736 ok', 'trace <*> ok'],
   ])('masks %s', (input, expected) => {

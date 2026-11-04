@@ -9,7 +9,8 @@ const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
  * Values that differ on every line but say nothing about the pattern. They are
  * masked to `<*>` before Drain sees the line, so dated lines from different
  * days (or runs) land in the same cluster. Order matters: whole timestamps
- * before their date and time parts.
+ * before their date and time parts. The bare date, time, UUID and hex masks
+ * treat `_` as a separator (no `\b`), so `backup_2026-11-04` and `span_<hex>` mask too.
  */
 export const DEFAULT_MASKING_INSTRUCTIONS: MaskingInstructionConfig[] = [
   // ISO-8601 / RFC-3339, `T` or space, optional fraction and zone
@@ -34,16 +35,22 @@ export const DEFAULT_MASKING_INSTRUCTIONS: MaskingInstructionConfig[] = [
     maskWith: '*',
   },
   // A date or a time on its own
-  { pattern: '\\b\\d{4}-\\d{2}-\\d{2}\\b', maskWith: '*' },
-  { pattern: '\\b\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?\\b', maskWith: '*' },
+  {
+    pattern: '(?<![0-9A-Za-z])\\d{4}-\\d{2}-\\d{2}(?![0-9A-Za-z])',
+    maskWith: '*',
+  },
+  {
+    pattern: '(?<![0-9A-Za-z])\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?(?![0-9A-Za-z])',
+    maskWith: '*',
+  },
   // UUIDs
   {
     pattern:
-      '\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b',
+      '(?<![0-9A-Za-z])[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![0-9A-Za-z])',
     maskWith: '*',
   },
   // Long hex ids: trace/span ids, hashes, container ids
-  { pattern: '\\b[0-9a-fA-F]{16,}\\b', maskWith: '*' },
+  { pattern: '(?<![0-9A-Za-z])[0-9a-fA-F]{16,}(?![0-9A-Za-z])', maskWith: '*' },
 ];
 
 export class TemplateMinerConfig {
