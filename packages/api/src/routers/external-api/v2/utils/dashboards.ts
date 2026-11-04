@@ -478,6 +478,8 @@ export const convertToExternalTileChartConfig = (
         seriesLimit: config.seriesLimit ?? undefined,
         ...externalFormulaFields,
         ...externalShowOperandSeriesField,
+        enableExemplars: config.enableExemplars,
+        exemplarTraceSourceId: config.exemplarTraceSourceId,
       };
     case DisplayType.StackedBar:
     case DisplayType.StackedLine: {
@@ -499,6 +501,8 @@ export const convertToExternalTileChartConfig = (
         seriesLimit: config.seriesLimit ?? undefined,
         ...externalFormulaFields,
         ...externalShowOperandSeriesField,
+        enableExemplars: config.enableExemplars,
+        exemplarTraceSourceId: config.exemplarTraceSourceId,
       };
       return config.displayType === DisplayType.StackedLine
         ? {
@@ -1014,6 +1018,8 @@ export function convertToInternalTileConfig(
             // validated the expressions against `select`.
             'formulas',
             'showOperandSeries',
+            'enableExemplars',
+            'exemplarTraceSourceId',
           ]),
           displayType:
             TIME_SERIES_DISPLAY_TYPE_BY_NAME[externalConfig.displayType],
@@ -1298,6 +1304,9 @@ function getMissingSources(
       if ('sourceId' in tile.config && tile.config.sourceId) {
         sourceIds.add(tile.config.sourceId);
       }
+      // exemplarTraceSourceId is deliberately NOT collected here: it is checked
+      // separately so the same unchanged-tile exemption can apply to it. See
+      // getExemplarTraceSourceIssues.
     }
 
     // Include source IDs referenced by OnClick link-outs (mode=id, type=search)
@@ -1456,6 +1465,46 @@ function filterChangedFormulaTiles(
 }
 
 /**
+ * Both problems an exemplar trace source can have: it does not exist, or it
+ * exists and is not a Trace source.
+ *
+ * Checked here rather than folding existence into getMissingSources so one
+ * unchanged-tile exemption covers both. Splitting them meant a deleted source
+ * blocked an update while a source whose kind had changed did not, which is not a
+ * distinction anyone could predict.
+ *
+ * Unlike a tile's `sourceId`, this reference is optional decoration: the chart
+ * renders the same without it, only a marker's "view trace" link goes dead. That
+ * is not worth refusing an edit made elsewhere on the dashboard over.
+ */
+function getExemplarTraceSourceIssues(
+  sources: SourceForValidation[],
+  tiles: ExternalDashboardTileWithId[],
+): { missing: string[]; notTrace: string[] } {
+  const traceSourceIds = new Set<string>();
+  for (const tile of tiles) {
+    if (
+      isConfigTile(tile) &&
+      'exemplarTraceSourceId' in tile.config &&
+      tile.config.exemplarTraceSourceId
+    ) {
+      traceSourceIds.add(tile.config.exemplarTraceSourceId);
+    }
+  }
+  if (traceSourceIds.size === 0) return { missing: [], notTrace: [] };
+
+  const sourceById = new Map(sources.map(s => [s._id.toString(), s]));
+  const missing: string[] = [];
+  const notTrace: string[] = [];
+  for (const id of traceSourceIds) {
+    const source = sourceById.get(id);
+    if (source === undefined) missing.push(id);
+    else if (!isTraceSource(source)) notTrace.push(id);
+  }
+  return { missing, notTrace };
+}
+
+/**
  * For a PUT (update) request, return only the heatmap tiles that need
  * to be re-validated against the source-kind gate. A heatmap tile that
  * was already on the same source in the existing dashboard is kept as
@@ -1499,6 +1548,51 @@ function filterChangedHeatmapTiles(
     return (
       existingConfig.source?.toString() !== tile.config.sourceId ||
       getHeatmapMode(existingConfig) !== getExternalHeatmapMode(tile.config)
+    );
+  });
+}
+
+/**
+ * For a PUT (update), return only the tiles whose exemplar trace source needs
+ * re-checking: new tiles, and existing ones where the id actually changed.
+ *
+ * Same reasoning as filterChangedHeatmapTiles. Without it, a tile whose trace
+ * source was later deleted or changed kind would fail the gate on every
+ * subsequent save, so an unrelated edit elsewhere on the dashboard could not be
+ * persisted at all.
+ */
+function filterChangedExemplarTiles(
+  requestTiles: ExternalDashboardTileWithId[],
+  existingTiles: DashboardDocument['tiles'],
+): ExternalDashboardTileWithId[] {
+  const existingTilesById = new Map<string, DashboardDocument['tiles'][number]>(
+    existingTiles.map(t => [t.id, t]),
+  );
+  return requestTiles.filter(tile => {
+    if (
+      !isConfigTile(tile) ||
+      !('exemplarTraceSourceId' in tile.config) ||
+      !tile.config.exemplarTraceSourceId
+    ) {
+      return false;
+    }
+    const existing = tile.id ? existingTilesById.get(tile.id) : undefined;
+    // A new tile, or one that had no exemplar trace source before: validate.
+    if (existing === undefined) return true;
+    const existingConfig = existing.config;
+    if (isRawSqlSavedChartConfig(existingConfig)) return true;
+    if (
+      existingConfig.exemplarTraceSourceId !== tile.config.exemplarTraceSourceId
+    ) {
+      return true;
+    }
+    // The id is unchanged, but a reference nobody was following is not the same
+    // as one that is about to draw markers. While exemplars were off the source
+    // could have been deleted or stopped being a Trace source with no effect, so
+    // switching them on has to be checked as if the reference were new.
+    return (
+      tile.config.enableExemplars === true &&
+      existingConfig.enableExemplars !== true
     );
   });
 }
@@ -1831,6 +1925,23 @@ export async function validateDashboardTiles(
     'PROMETHEUS_LABEL filters',
   );
   if (promqlLabelFilterError != null) return promqlLabelFilterError;
+
+  // Scoped to changed tiles on update, like the heatmap gate above: an unchanged
+  // tile whose trace source has since been deleted must not block edits made
+  // elsewhere on the dashboard.
+  const exemplarTilesToCheck = existingTiles
+    ? filterChangedExemplarTiles(tiles, existingTiles)
+    : tiles;
+  const exemplarTraceSourceIssues = getExemplarTraceSourceIssues(
+    sources,
+    exemplarTilesToCheck,
+  );
+  if (exemplarTraceSourceIssues.missing.length > 0) {
+    return `Could not find the following exemplarTraceSourceId source IDs: ${exemplarTraceSourceIssues.missing.join(', ')}`;
+  }
+  if (exemplarTraceSourceIssues.notTrace.length > 0) {
+    return `exemplarTraceSourceId must reference a Trace source. The following source IDs are not Trace sources: ${exemplarTraceSourceIssues.notTrace.join(', ')}`;
+  }
 
   if (missingOnClickDashboards.length > 0) {
     return `Could not find the following onClick dashboard IDs: ${missingOnClickDashboards.join(', ')}`;
