@@ -6,7 +6,9 @@ import {
   DisplayType,
   type TSource,
 } from '@hyperdx/common-utils/dist/types';
+import { Text, Tooltip } from '@mantine/core';
 import {
+  IconAlertTriangle,
   IconChartAreaLine,
   IconChartBar,
   IconChartLine,
@@ -25,6 +27,7 @@ type UseChartToolbarItemsArgs = {
   builderQueriedConfig: BuilderChartConfigWithDateRange | undefined;
   config: ChartConfigWithDateRange;
   displayType: DisplayType | undefined;
+  exemplarNotice: string | null;
   handleSetDisplayType: (displayType: DisplayType) => void;
   /** Series materialized but dropped by the chart's render cap. */
   hiddenSeriesCount: number;
@@ -46,7 +49,7 @@ type UseChartToolbarItemsArgs = {
 /**
  * Assemble the chart's toolbar: caller-supplied prefix/suffix items plus the
  * indicators the chart owns (materialized-view optimization, effective date
- * range) and the display-type switcher.
+ * range, exemplar status) and the display-type switcher.
  *
  * Extracted from DBTimeChart because it is a long, purely presentational list
  * build with no bearing on the chart's data or interaction state.
@@ -55,6 +58,7 @@ export function useChartToolbarItems({
   builderQueriedConfig,
   config,
   displayType,
+  exemplarNotice,
   handleSetDisplayType,
   hiddenSeriesCount,
   loadAllHandler,
@@ -161,12 +165,29 @@ export function useChartToolbarItems({
       );
     }
 
+    if (exemplarNotice) {
+      allToolbarItems.push(
+        <Tooltip
+          key="db-time-chart-exemplar-notice"
+          label={exemplarNotice}
+          withArrow
+          multiline
+          w={280}
+        >
+          <Text component="span" c="dimmed" data-testid="exemplar-notice">
+            <IconAlertTriangle size={14} />
+          </Text>
+        </Tooltip>,
+      );
+    }
+
     if (toolbarSuffix && toolbarSuffix.length > 0) {
       allToolbarItems.push(...toolbarSuffix);
     }
 
     return allToolbarItems;
   }, [
+    exemplarNotice,
     builderQueriedConfig,
     config,
     displayType,
