@@ -3,6 +3,7 @@ import {
   FormEventHandler,
   Fragment,
   memo,
+  ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -101,6 +102,12 @@ import ResourceTerraformPopover from '@/components/Iac/ResourceTerraformPopover'
 import { InlineNameInput } from '@/components/InlineNameInput/InlineNameInput';
 import { InputControlled } from '@/components/InputControlled';
 import OnboardingModal from '@/components/OnboardingModal';
+import {
+  isCustomSearchGroupBy,
+  resolveSearchGroupBy,
+  retainGroupByByColumns,
+} from '@/components/SearchGroupBy/searchGroupBy';
+import { SearchGroupBySelect } from '@/components/SearchGroupBy/SearchGroupBySelect';
 import SearchWhereInput, {
   getStoredLanguage,
 } from '@/components/SearchInput/SearchWhereInput';
@@ -336,24 +343,29 @@ function ExpandFiltersButton({ onExpand }: { onExpand: () => void }) {
 function SearchResultsCountGroup({
   isFilterSidebarCollapsed,
   onExpandFilters,
-  histogramTimeChartConfig,
+  totalCountConfig,
   enableParallelQueries,
+  children,
 }: {
   isFilterSidebarCollapsed: boolean;
   onExpandFilters: () => void;
-  histogramTimeChartConfig: BuilderChartConfigWithDateRange;
+  totalCountConfig: BuilderChartConfigWithDateRange;
   enableParallelQueries?: boolean;
+  children?: ReactNode;
 }) {
   return (
-    <Group gap={4} align="center">
-      {isFilterSidebarCollapsed && (
-        <ExpandFiltersButton onExpand={onExpandFilters} />
-      )}
-      <SearchTotalCountChart
-        config={histogramTimeChartConfig}
-        queryKeyPrefix={QUERY_KEY_PREFIX}
-        enableParallelQueries={enableParallelQueries}
-      />
+    <Group gap="sm" align="center">
+      <Group gap={4} align="center">
+        {isFilterSidebarCollapsed && (
+          <ExpandFiltersButton onExpand={onExpandFilters} />
+        )}
+        <SearchTotalCountChart
+          config={totalCountConfig}
+          queryKeyPrefix={QUERY_KEY_PREFIX}
+          enableParallelQueries={enableParallelQueries}
+        />
+      </Group>
+      {children}
     </Group>
   );
 }
@@ -898,6 +910,11 @@ function formatDroppedFiltersMessage(count: number): string {
   return `${count} ${noun} didn't apply to this source and ${verb} removed.`;
 }
 
+function formatDroppedGroupByMessage(dropped: string[]): string {
+  const verb = dropped.length === 1 ? 'was' : 'were';
+  return `Group by ${dropped.join(', ')} didn't apply to this source and ${verb} removed.`;
+}
+
 // This is outside as it needs to be a stable reference
 const queryStateMap = {
   source: parseAsString,
@@ -1093,6 +1110,12 @@ function DBSearchPageContent() {
       'delta',
       'pattern',
     ]).withDefault('results'),
+  );
+
+  // URL-only, not saved with the search: null uses the source default.
+  const [groupByParam, setGroupByParam] = useQueryState(
+    'groupBy',
+    parseAsStringEncoded,
   );
 
   const [patternColumn, setPatternColumn] = useQueryState(
@@ -1421,6 +1444,9 @@ function DBSearchPageContent() {
   // effect waits for the new source's columns to load and then drops any
   // sidebar filters that don't apply to the new schema.
   const pendingFilterReconcileRef = useRef<string | null>(null);
+  // Same, for the histogram group by. Also set when a saved search switches the
+  // source, since the group by isn't part of the saved search.
+  const pendingGroupByReconcileRef = useRef<string | null>(null);
 
   const watchedSourceObj = useMemo(
     () => inputSourceObjs?.find(s => s.id === watchedSource),
@@ -1482,6 +1508,7 @@ function DBSearchPageContent() {
         // bookmarked or refreshed. The submit below still runs, since that is how
         // a freshly loaded page pushes its defaults into the search config.
         if (!isCatchingUpToConfig) {
+          pendingGroupByReconcileRef.current = watchedSource ?? null;
           // If the user isn't in a saved search (or the source is different from the saved search source), reset fields
           if (savedSearchId == null || savedSearch?.source !== watchedSource) {
             setValue('select', '');
@@ -1514,29 +1541,44 @@ function DBSearchPageContent() {
     setSearchedConfig,
   ]);
 
-  const retainCompatibleFilters = useStableCallback((columns: ColumnMeta[]) => {
-    pendingFilterReconcileRef.current = null;
+  const retainCompatibleFiltersAndGroupBy = useStableCallback(
+    (columns: ColumnMeta[]) => {
+      const allowed = new Set(columns.map(c => c.name));
 
-    const allowed = new Set(columns.map(c => c.name));
+      if (pendingFilterReconcileRef.current === watchedSource) {
+        pendingFilterReconcileRef.current = null;
+        const dropped = searchFilters.retainFiltersByColumns(allowed);
+        if (dropped.length > 0) {
+          notifications.show({
+            color: 'yellow',
+            message: formatDroppedFiltersMessage(dropped.length),
+          });
+        }
+      }
 
-    const dropped = searchFilters.retainFiltersByColumns(allowed);
-
-    if (dropped.length > 0) {
-      notifications.show({
-        color: 'yellow',
-        message: formatDroppedFiltersMessage(dropped.length),
-      });
-    }
-  });
+      if (pendingGroupByReconcileRef.current === watchedSource) {
+        pendingGroupByReconcileRef.current = null;
+        const { kept, dropped } = retainGroupByByColumns(groupByParam, allowed);
+        if (dropped.length > 0) {
+          setGroupByParam(kept);
+          notifications.show({
+            color: 'yellow',
+            message: formatDroppedGroupByMessage(dropped),
+          });
+        }
+      }
+    },
+  );
 
   useEffect(() => {
     if (
-      pendingFilterReconcileRef.current === watchedSource &&
-      watchedSourceColumns
+      watchedSourceColumns &&
+      (pendingFilterReconcileRef.current === watchedSource ||
+        pendingGroupByReconcileRef.current === watchedSource)
     ) {
-      retainCompatibleFilters(watchedSourceColumns);
+      retainCompatibleFiltersAndGroupBy(watchedSourceColumns);
     }
-  }, [watchedSource, watchedSourceColumns, retainCompatibleFilters]);
+  }, [watchedSource, watchedSourceColumns, retainCompatibleFiltersAndGroupBy]);
 
   const onTableScroll = useCallback(
     (scrollTop: number) => {
@@ -1953,18 +1995,6 @@ function DBSearchPageContent() {
       return undefined;
     }
 
-    const variableConfig: Partial<
-      Pick<BuilderChartConfigWithDateRange, 'groupBy'>
-    > = {};
-    switch (searchedSource?.kind) {
-      case SourceKind.Log:
-        variableConfig.groupBy = searchedSource?.severityTextExpression;
-        break;
-      case SourceKind.Trace:
-        variableConfig.groupBy = searchedSource?.statusCodeExpression;
-        break;
-    }
-
     return {
       ...chartConfig,
       select: [
@@ -1990,7 +2020,7 @@ function DBSearchPageContent() {
       alignDateRangeToGranularity: false,
       // Make sure the end date is inclusive so that the histogram and table counts match
       dateRangeEndInclusive: true,
-      ...variableConfig,
+      groupBy: resolveSearchGroupBy(groupByParam, searchedSource),
     } satisfies BuilderChartConfigWithDateRange;
   }, [
     chartConfig,
@@ -1998,7 +2028,35 @@ function DBSearchPageContent() {
     aliasWith,
     searchedTimeRange,
     searchedConfig.select,
+    groupByParam,
   ]);
+
+  // The default severity/status grouping reads without a legend.
+  const isCustomGroupBy = isCustomSearchGroupBy(groupByParam, searchedSource);
+
+  // A high-cardinality custom group by can exceed the count query's row limit
+  // and truncate the summed total, so totals use the default grouping. Without
+  // a custom group by, this is the histogram config itself so the two share one
+  // query.
+  const totalCountConfig = useMemo(
+    () =>
+      isCustomGroupBy && histogramTimeChartConfig != null
+        ? {
+            ...histogramTimeChartConfig,
+            groupBy: resolveSearchGroupBy(null, searchedSource),
+          }
+        : histogramTimeChartConfig,
+    [isCustomGroupBy, histogramTimeChartConfig, searchedSource],
+  );
+
+  const histogramGroupBySelect = (
+    <SearchGroupBySelect
+      source={searchedSource}
+      value={groupByParam}
+      onApply={setGroupByParam}
+      dateRange={searchedTimeRange}
+    />
+  );
 
   const onFormSubmit = useCallback<FormEventHandler<HTMLFormElement>>(
     e => {
@@ -2038,9 +2096,8 @@ function DBSearchPageContent() {
     [onTimeRangeSelect, setIsLive],
   );
 
-  // Focus a chart series into the actual search. The histogram is grouped by
-  // severity/status, so a focused series maps to a real column value; applying
-  // it as an "only" filter re-queries both the chart and the results table so
+  // Focus a chart series into the actual search. Applying each group-by value
+  // as an "only" filter re-queries both the chart and the results table so
   // they stay in sync (the chart-only visual focus wouldn't touch the table).
   const handleFocusSeries = useCallback(
     (groupFilters: SeriesGroupFilter[]) => {
@@ -2648,7 +2705,8 @@ function DBSearchPageContent() {
               }
             >
               {analysisMode === 'pattern' &&
-                histogramTimeChartConfig != null && (
+                histogramTimeChartConfig != null &&
+                totalCountConfig != null && (
                   <Flex direction="column" w="100%" gap="0px" mih="0" miw={0}>
                     <Box className={searchPageStyles.searchStatsContainer}>
                       <Group
@@ -2659,8 +2717,10 @@ function DBSearchPageContent() {
                         <SearchResultsCountGroup
                           isFilterSidebarCollapsed={filtersCollapsed}
                           onExpandFilters={expandFilters}
-                          histogramTimeChartConfig={histogramTimeChartConfig}
-                        />
+                          totalCountConfig={totalCountConfig}
+                        >
+                          {histogramGroupBySelect}
+                        </SearchResultsCountGroup>
                         <SearchNumRows
                           config={{
                             ...chartConfig,
@@ -2685,7 +2745,7 @@ function DBSearchPageContent() {
                       >
                         <DBTimeChart
                           sourceId={searchedConfig.source ?? undefined}
-                          showLegend={false}
+                          showLegend={isCustomGroupBy}
                           config={histogramTimeChartConfig}
                           enabled={isReady}
                           showDisplaySwitcher={false}
@@ -2719,7 +2779,7 @@ function DBSearchPageContent() {
                         draftPatternColumn={draftPatternColumn}
                         onDraftPatternColumnChange={setDraftPatternColumn}
                         onSubmit={onSubmit}
-                        totalCountConfig={histogramTimeChartConfig}
+                        totalCountConfig={totalCountConfig}
                         totalCountQueryKeyPrefix={QUERY_KEY_PREFIX}
                       />
                     </Box>
@@ -2750,67 +2810,73 @@ function DBSearchPageContent() {
                 )}
               {analysisMode === 'results' && (
                 <Flex direction="column" mih="0" miw={0}>
-                  {chartConfig && histogramTimeChartConfig && (
-                    <>
-                      <Box className={searchPageStyles.searchStatsContainer}>
-                        <Group
-                          justify="space-between"
-                          align="center"
-                          style={{ width: '100%' }}
-                        >
-                          <SearchResultsCountGroup
-                            isFilterSidebarCollapsed={filtersCollapsed}
-                            onExpandFilters={expandFilters}
-                            histogramTimeChartConfig={histogramTimeChartConfig}
-                            enableParallelQueries
-                          />
-                          <Group gap="sm" align="center">
-                            {shouldShowLiveModeHint &&
-                              denoiseResults != true && (
-                                <ResumeLiveTailButton
-                                  handleResumeLiveTail={handleResumeLiveTail}
-                                />
-                              )}
-                            <SearchNumRows
-                              config={{
-                                ...chartConfig,
-                                dateRange: searchedTimeRange,
-                              }}
-                              sqlConfig={histogramTimeChartConfig ?? undefined}
-                              enabled={isReady}
-                              searchElapsedMs={searchElapsedMs}
-                              isSearching={isAnyQueryFetching}
-                              isLiveTail={isLive ?? false}
-                            />
+                  {chartConfig &&
+                    histogramTimeChartConfig &&
+                    totalCountConfig && (
+                      <>
+                        <Box className={searchPageStyles.searchStatsContainer}>
+                          <Group
+                            justify="space-between"
+                            align="center"
+                            style={{ width: '100%' }}
+                          >
+                            <SearchResultsCountGroup
+                              isFilterSidebarCollapsed={filtersCollapsed}
+                              onExpandFilters={expandFilters}
+                              totalCountConfig={totalCountConfig}
+                              enableParallelQueries
+                            >
+                              {histogramGroupBySelect}
+                            </SearchResultsCountGroup>
+                            <Group gap="sm" align="center">
+                              {shouldShowLiveModeHint &&
+                                denoiseResults != true && (
+                                  <ResumeLiveTailButton
+                                    handleResumeLiveTail={handleResumeLiveTail}
+                                  />
+                                )}
+                              <SearchNumRows
+                                config={{
+                                  ...chartConfig,
+                                  dateRange: searchedTimeRange,
+                                }}
+                                sqlConfig={
+                                  histogramTimeChartConfig ?? undefined
+                                }
+                                enabled={isReady}
+                                searchElapsedMs={searchElapsedMs}
+                                isSearching={isAnyQueryFetching}
+                                isLiveTail={isLive ?? false}
+                              />
+                            </Group>
                           </Group>
-                        </Group>
-                      </Box>
-                      {!hasQueryError && (
-                        <Box
-                          className={
-                            isCompact
-                              ? `${searchPageStyles.timeChartContainer} ${searchPageStyles.timeChartContainerCompact}`
-                              : searchPageStyles.timeChartContainer
-                          }
-                          mih="0"
-                        >
-                          <DBTimeChart
-                            sourceId={searchedConfig.source ?? undefined}
-                            showLegend={false}
-                            config={histogramTimeChartConfig}
-                            enabled={isReady}
-                            showDisplaySwitcher={false}
-                            showMVOptimizationIndicator={false}
-                            showDateRangeIndicator={false}
-                            queryKeyPrefix={QUERY_KEY_PREFIX}
-                            onTimeRangeSelect={handleTimeRangeSelect}
-                            onFocusSeries={handleFocusSeries}
-                            enableParallelQueries
-                          />
                         </Box>
-                      )}
-                    </>
-                  )}
+                        {!hasQueryError && (
+                          <Box
+                            className={
+                              isCompact
+                                ? `${searchPageStyles.timeChartContainer} ${searchPageStyles.timeChartContainerCompact}`
+                                : searchPageStyles.timeChartContainer
+                            }
+                            mih="0"
+                          >
+                            <DBTimeChart
+                              sourceId={searchedConfig.source ?? undefined}
+                              showLegend={isCustomGroupBy}
+                              config={histogramTimeChartConfig}
+                              enabled={isReady}
+                              showDisplaySwitcher={false}
+                              showMVOptimizationIndicator={false}
+                              showDateRangeIndicator={false}
+                              queryKeyPrefix={QUERY_KEY_PREFIX}
+                              onTimeRangeSelect={handleTimeRangeSelect}
+                              onFocusSeries={handleFocusSeries}
+                              enableParallelQueries
+                            />
+                          </Box>
+                        )}
+                      </>
+                    )}
                   {hasQueryError && queryError ? (
                     <>
                       <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">

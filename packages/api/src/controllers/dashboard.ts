@@ -1,3 +1,4 @@
+import { savedChartConfigSupportsAlerts } from '@hyperdx/common-utils/dist/core/utils';
 import {
   DashboardWithoutIdSchema,
   resolveChartPaletteToken,
@@ -20,10 +21,19 @@ import type { AlertDocument, IAlert } from '@/models/alert';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import { resolveAlertDisplayFields } from '@/utils/alerts';
 
+// Drop alerts on tiles the alert checker cannot evaluate (e.g. PromQL), so
+// they are never stored and any existing ones are deleted on save.
+function getSupportedTileAlert(tile: Tile) {
+  return savedChartConfigSupportsAlerts(tile.config)
+    ? tile.config.alert
+    : undefined;
+}
+
 function pickAlertsByTile(tiles: Tile[]) {
   return tiles.reduce((acc, tile) => {
-    if (tile.config.alert) {
-      acc[tile.id] = tile.config.alert;
+    const alert = getSupportedTileAlert(tile);
+    if (alert) {
+      acc[tile.id] = alert;
     }
     return acc;
   }, {});
@@ -94,7 +104,7 @@ async function syncDashboardAlerts(
 
   const newTilesForAlertSync: TileForAlertSync[] = newTiles.map(t => ({
     id: t.id,
-    config: { alert: t.config.alert },
+    config: { alert: getSupportedTileAlert(t) },
   }));
   const { tileIds: newTileIds, tileIdsWithAlerts: newTileIdsWithAlerts } =
     extractTileAlertData(newTilesForAlertSync);
@@ -239,6 +249,19 @@ export async function updateDashboard(
   updates: Partial<z.infer<typeof DashboardWithoutIdSchema>>,
   userId?: ObjectId,
 ) {
+  // Defense-in-depth: callers pass spread objects into the update doc below.
+  // A smuggled `team`/`createdBy` here would move the document between
+  // tenants / forge ownership (the model marks them immutable, but the
+  // write below reaches Mongo directly).
+  const {
+    team: _ignoredTeam,
+    createdBy: _ignoredCreatedBy,
+    ...safeUpdates
+  } = updates as Record<string, unknown>;
+  if (_ignoredTeam !== undefined || _ignoredCreatedBy !== undefined) {
+    throw new Error('updateDashboard: team/createdBy are not updatable');
+  }
+
   const oldDashboard = await getDashboard(dashboardId, teamId);
 
   if (oldDashboard == null) {
@@ -251,7 +274,7 @@ export async function updateDashboard(
       team: teamId,
     },
     {
-      ...updates,
+      ...safeUpdates,
       tags: updates.tags && uniq(updates.tags),
       updatedBy: userId,
     },

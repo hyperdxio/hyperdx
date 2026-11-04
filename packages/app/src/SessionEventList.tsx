@@ -16,7 +16,16 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import useRowWhere, { RowWhereResult } from '@/hooks/useRowWhere';
 
 import { useQueriedChartConfig } from './hooks/useChartConfig';
-import { SessionRow, sessionRowSchema } from './utils/sessions';
+import { useLogEventRows } from './hooks/useSessionLogEvents';
+import type {
+  SessionEventOpen,
+  SessionLogEvents,
+} from './utils/sessionLogEvents';
+import {
+  getSessionRowHttp,
+  SessionRow,
+  sessionRowSchema,
+} from './utils/sessions';
 import { useFormatTime } from './useFormatTime';
 import { formatmmss, getShortUrl } from './utils';
 
@@ -24,7 +33,7 @@ import styles from '@styles/SessionSubpanelV2.module.scss';
 
 type SessionEvent = {
   id: string;
-  row: SessionRow; // original row object
+  open: SessionEventOpen;
   isError: boolean;
   isSuccess: boolean;
   eventSource: 'navigation' | 'chat' | 'network' | 'custom' | 'log';
@@ -92,6 +101,7 @@ const EventRow = ({
 export const SessionEventList = ({
   queriedConfig,
   aliasMap,
+  logEvents,
   onClick,
   onTimeClick,
   focus,
@@ -101,6 +111,7 @@ export const SessionEventList = ({
 }: {
   queriedConfig: ChartConfigWithOptDateRange;
   aliasMap: Record<string, string>;
+  logEvents: SessionLogEvents;
   // highlightedResultId: string | undefined;
   focus: { ts: number; setBy: string } | undefined;
   minTs: number;
@@ -126,7 +137,7 @@ export const SessionEventList = ({
 
   const getRowWhere = useRowWhere({ meta: data?.meta, aliasMap });
 
-  const rows = React.useMemo(() => {
+  const spanRows = React.useMemo(() => {
     return (
       events.map(event => {
         const { timestamp, durationInMs } = event;
@@ -135,9 +146,7 @@ export const SessionEventList = ({
         const startOffset = new Date(timestamp).getTime();
         const endOffset = new Date(startOffset).getTime() + durationInMs;
 
-        const url = event['http.url'] ?? '';
-        const statusCode = Number(event['http.status_code'] ?? '');
-        const method = event['http.method'] ?? '';
+        const { url, method, statusCode, label } = getSessionRowHttp(event);
         const shortUrl = getShortUrl(url);
 
         const isNetworkRequest =
@@ -165,7 +174,7 @@ export const SessionEventList = ({
 
         return {
           id: event.id,
-          row: event,
+          open: { kind: 'span', row: event },
           isError,
           isSuccess,
           eventSource: isNavigation
@@ -186,7 +195,7 @@ export const SessionEventList = ({
                 : spanName === 'console.warn'
                   ? 'console.warn'
                   : url.length > 0
-                    ? `${statusCode} ${method}`
+                    ? label
                     : spanName === 'intercom.onShow'
                       ? 'Intercom Chat Opened'
                       : isCustomEvent
@@ -214,6 +223,7 @@ export const SessionEventList = ({
       }) ?? []
     );
   }, [events, showRelativeTime, minTs, formatTime]);
+  const rows = useLogEventRows(spanRows, logEvents, showRelativeTime, minTs);
 
   const parentRef = React.useRef<HTMLDivElement>(null);
 
@@ -242,7 +252,7 @@ export const SessionEventList = ({
     }
   }, [currentEventIndex, eventsFollowPlayerPosition, rowVirtualizer]);
 
-  if (isLoading) {
+  if (isLoading || (logEvents.isLoading && spanRows.length === 0)) {
     return (
       <Stack p="sm" gap="xs">
         <Skeleton height={36} />
@@ -283,7 +293,11 @@ export const SessionEventList = ({
                   dataIndex={virtualItem.index}
                   isHighlighted={currentEventIndex === virtualItem.index}
                   ref={rowVirtualizer.measureElement}
-                  onClick={() => onClick(getRowWhere(row.row))}
+                  onClick={() =>
+                    row.open.kind === 'span'
+                      ? onClick(getRowWhere(row.open.row))
+                      : logEvents.open(row.open.event)
+                  }
                   onTimeClick={() => onTimeClick(row.timestamp.getTime())}
                 />
               </div>

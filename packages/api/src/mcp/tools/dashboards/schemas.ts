@@ -12,10 +12,18 @@ import {
   DASHBOARD_VARIABLE_NAME_PATTERN_ANCHORED,
   DashboardContainerSchema,
   DashboardFilterType,
+  HeatmapScaleTypeSchema,
   LineInterpolationSchema,
+  MAX_LEGEND_TEMPLATE_LENGTH,
+  MAX_PROMQL_EXPRESSIONS,
   MetricsDataType,
   NumberTileColorConditionSchema,
+  PromqlHeatmapModeSchema,
+  PromqlLabelDashboardFilterSchema,
+  PromqlQueryTypeSchema,
+  PromqlReducerSchema,
   SearchConditionTrimmedLanguageSchema,
+  SQLIntervalSchema,
   StaticListDashboardFilterSchema,
 } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
@@ -25,7 +33,12 @@ import {
   mcpQuantileLevelSchema,
 } from '@/mcp/tools/query/schemas';
 import { QUERYABLE_METRIC_KINDS } from '@/mcp/tools/sources/metricKinds';
-import { objectIdSchema, tagsSchema } from '@/utils/zod';
+import {
+  externalSqlSavedFilterValueSchema,
+  externalVariableSavedFilterValueSchema,
+  objectIdSchema,
+  tagsSchema,
+} from '@/utils/zod';
 
 /**
  * Metric type values exposed on dashboard tile select items. Restricted to
@@ -1272,6 +1285,150 @@ GROUP BY ServiceName, ts
     .describe('Raw SQL tile query and display settings.'),
 });
 
+const PROMQL_TIME_CHARTS = '"line", "stacked_bar" or "stacked_line"';
+
+const promqlOnlyFor = (displayTypes: string) =>
+  `Valid only when displayType is ${displayTypes}, ignored otherwise.`;
+
+const mcpPromqlExpressionSchema = z.object({
+  expression: z
+    .string()
+    .max(10000)
+    .describe(
+      'PromQL expression. Supports dashboard variables in label matchers ' +
+        '(e.g. {job=~"$job"}) and the $__interval, $__rate_interval and ' +
+        '$__range macros. Example: ' +
+        'sum by (job) (rate(http_requests_total[$__rate_interval]))',
+    ),
+  alias: z
+    .string()
+    .max(10000)
+    .optional()
+    .describe('Legend label for this series.'),
+  queryType: PromqlQueryTypeSchema.optional().describe(
+    '"instant" evaluates the expression once at the end of the time range; ' +
+      `"range" (the default) evaluates it over the range. ${promqlOnlyFor('"table", "number", "pie" or "bar"')}`,
+  ),
+  reducer: PromqlReducerSchema.optional().describe(
+    'How a range query reduces each series to a single value. ' +
+      promqlOnlyFor('"number", "pie" or "bar"'),
+  ),
+});
+
+// One flat config for every display type, like the save_source schema: the
+// external API tile schema applies the per-display-type rules on save.
+const mcpPromqlTileSchema = mcpTileLayoutSchema.extend({
+  config: z
+    .object({
+      configType: z
+        .literal('promql')
+        .describe('Marks this as a PromQL tile. Requires a promql source.'),
+      displayType: z.enum([
+        'line',
+        'stacked_bar',
+        'stacked_line',
+        'table',
+        'number',
+        'pie',
+        'bar',
+        'heatmap',
+      ]),
+      sourceId: z
+        .string()
+        .describe(
+          'ID of a source whose kind is "promql" – call clickstack_list_sources',
+        ),
+      expressions: z
+        .array(mcpPromqlExpressionSchema)
+        .min(1)
+        .max(MAX_PROMQL_EXPRESSIONS)
+        .describe(
+          'PromQL queries. Line and stacked charts plot every expression; ' +
+            'other display types query only the first.',
+        ),
+      granularity: z
+        .union([SQLIntervalSchema, z.literal('auto')])
+        .optional()
+        .describe(
+          'Step of range queries and the value of $__interval, as "<n> <unit>" ' +
+            'with unit second, minute, hour or day (e.g. "1 minute"), or "auto". ' +
+            'Omit for auto.',
+        ),
+      numberFormat: mcpNumberFormatSchema
+        .optional()
+        .describe(tileLevelNumberFormatDescription),
+      legendTemplate: z
+        .string()
+        .max(MAX_LEGEND_TEMPLATE_LENGTH)
+        .optional()
+        .describe(
+          'Series name built from label values, e.g. "{{job}} {{instance}}". ' +
+            'Ignored when displayType is "table" or "number".',
+        ),
+      fillNulls: z
+        .boolean()
+        .optional()
+        .describe(
+          `${timeChartFillNullsDescription} ${promqlOnlyFor(PROMQL_TIME_CHARTS)}`,
+        ),
+      alignDateRangeToGranularity: z
+        .boolean()
+        .optional()
+        .describe(
+          `${timeChartAlignDateRangeDescription} ${promqlOnlyFor(PROMQL_TIME_CHARTS)}`,
+        ),
+      seriesLimit: seriesLimitSchema.describe(
+        'Maximum number of series to show. Omit for the default cap; 0 means ' +
+          `unlimited. ${promqlOnlyFor(PROMQL_TIME_CHARTS)}`,
+      ),
+      compareToPreviousPeriod: z
+        .boolean()
+        .optional()
+        .describe(
+          'Overlay the previous period as a dashed comparison series. ' +
+            promqlOnlyFor('"line"'),
+        ),
+      lineInterpolation: LineInterpolationSchema.optional().describe(
+        'How points are connected: "smooth", "linear", or "step". ' +
+          promqlOnlyFor('"line" or "stacked_line"'),
+      ),
+      color: ChartPaletteTokenSchema.optional().describe(
+        `${numberTileColorDescription} ${promqlOnlyFor('"number"')}`,
+      ),
+      colorRules: z
+        .array(NumberTileColorConditionSchema)
+        .max(10)
+        .optional()
+        .describe(
+          `${numberTileColorRulesDescription} ${promqlOnlyFor('"number"')}`,
+        ),
+      backgroundChart: BackgroundChartSchema.optional().describe(
+        'Background trend sparkline drawn behind the number. ' +
+          promqlOnlyFor('"number"'),
+      ),
+      limit: z
+        .number()
+        .int()
+        .nonnegative()
+        .optional()
+        .describe(
+          'Maximum number of slices or bars, one per series. Omit for the ' +
+            `default cap; 0 means unlimited. ${promqlOnlyFor('"pie" or "bar"')}`,
+        ),
+      heatmapMode: PromqlHeatmapModeSchema.optional().describe(
+        '"distribution" (the default) buckets sample values, "series" shows ' +
+          'one row per series, "histogram" plots Prometheus histogram ' +
+          `buckets (_bucket series by le). ${promqlOnlyFor('"heatmap"')}`,
+      ),
+      heatmapScaleType: HeatmapScaleTypeSchema.optional().describe(
+        `Scale of the y axis. ${promqlOnlyFor('"heatmap"')}`,
+      ),
+    })
+    .describe(
+      'PromQL tile query and display settings. PromQL tiles cannot have alerts.',
+    ),
+});
+
 const mcpTileSchema = z.union([
   mcpLineTileSchema,
   mcpBarTileSchema,
@@ -1380,7 +1537,11 @@ const mcpPatchTileSchema = z.union([
   mcpPatchTileLayoutSchema.extend({ config: mcpSqlTileSchema.shape.config }),
 ]);
 
-export const mcpTilesParam = z
+const mcpPromqlPatchTileSchema = mcpPatchTileLayoutSchema.extend({
+  config: mcpPromqlTileSchema.shape.config,
+});
+
+const mcpTilesParam = z
   .array(mcpTileSchema)
   .describe(
     'Array of dashboard tiles. Each tile needs a name, optional layout (x/y/w/h), and a config block. ' +
@@ -1401,6 +1562,20 @@ export const mcpTilesParam = z
       '"select": [{ "valueExpression": "Duration" }], ' +
       '"numberFormat": { "output": "duration", "factor": 0.000000001 } } }',
   );
+
+const PROMQL_TILE_EXAMPLE =
+  '\n6. PromQL line chart (promql sources only): { "name": "Request Rate", "config": { "configType": "promql", ' +
+  '"displayType": "line", "sourceId": "<promql source id>", ' +
+  '"expressions": [{ "expression": "sum by (job) (rate(http_requests_total{job=~\\"$job\\"}[$__rate_interval]))" }], ' +
+  '"legendTemplate": "{{job}}" } }';
+
+/** PromQL tiles are offered only while PromQL is enabled. */
+export function buildMcpTilesParam(promqlEnabled: boolean) {
+  if (!promqlEnabled) return mcpTilesParam;
+  return z
+    .array(z.union([...mcpTileSchema.options, mcpPromqlTileSchema]))
+    .describe(`${mcpTilesParam.description}${PROMQL_TILE_EXAMPLE}`);
+}
 
 const VARIABLE_NAME_DESCRIPTION =
   "Token that tiles reference this filter's selected value by, eg. $variableName. " +
@@ -1590,6 +1765,32 @@ const mcpStaticListFilterSchema = z
       'with the column passed explicitly, since the filter has no expression of its own.',
   );
 
+const mcpPromqlLabelFilterSchema = z
+  .object({
+    ...mcpDashboardFilterBaseShape,
+    type: z
+      .literal(DashboardFilterType.enum.PROMETHEUS_LABEL)
+      .describe(
+        "Filter type discriminator for a filter whose dropdown lists a Prometheus label's values.",
+      ),
+    sourceId: objectIdSchema.describe(
+      'ID of a source whose kind is "promql". Get IDs from clickstack_list_sources.',
+    ),
+    label: PromqlLabelDashboardFilterSchema.shape.label.describe(
+      'Label whose values fill the dropdown, e.g. "job". ' +
+        'clickstack_describe_source lists the label names of a promql source.',
+    ),
+    match: PromqlLabelDashboardFilterSchema.shape.match.describe(
+      'Optional series selector narrowing which series the values come from, ' +
+        'e.g. up{env="prod"}.',
+    ),
+  })
+  .describe(
+    "A variable-only filter whose dropdown lists a Prometheus label's values. " +
+      'PromQL tiles reference it in a label matcher: {job=~"$job"} for the ' +
+      'default multi-select, or {job="$job"} with maxSelections: 1.',
+  );
+
 const mcpDashboardFilterSchema = z
   .discriminatedUnion('type', [
     mcpQueryExpressionFilterSchema,
@@ -1601,9 +1802,23 @@ const mcpDashboardFilterSchema = z
       'STATIC_LIST declares them inline and is always variable-only.',
   );
 
-export type McpDashboardFilter = z.infer<typeof mcpDashboardFilterSchema>;
+const mcpPromqlDashboardFilterSchema = z
+  .discriminatedUnion('type', [
+    mcpQueryExpressionFilterSchema,
+    mcpStaticListFilterSchema,
+    mcpPromqlLabelFilterSchema,
+  ])
+  .describe(
+    'A dashboard-level filter the user can adjust in the dashboard filter bar. ' +
+      'QUERY_EXPRESSION queries its dropdown values from a source column; ' +
+      'STATIC_LIST declares them inline and is always variable-only; ' +
+      'PROMETHEUS_LABEL lists the values of a label on a promql source and is ' +
+      'always variable-only.',
+  );
 
-export const mcpFiltersParam = z
+export type McpDashboardFilter = z.infer<typeof mcpPromqlDashboardFilterSchema>;
+
+const mcpFiltersParam = z
   .array(mcpDashboardFilterSchema)
   .describe(
     'Optional dashboard-level filters. These define the dropdowns in the dashboard filter ' +
@@ -1667,7 +1882,67 @@ export const mcpFiltersParam = z
       'Endpoint dropdown, not by a tile, so the value is never applied twice.',
   );
 
-export const mcpPatchDashboardSchema = z.object({
+const PROMQL_FILTERS_EXAMPLE =
+  '\n\nA third type, PROMETHEUS_LABEL, lists the values of a label on a promql source ' +
+  'and is always variable-only.\n\n' +
+  'Example (PROMETHEUS_LABEL):\n' +
+  '[\n' +
+  '  { "type": "PROMETHEUS_LABEL", "name": "Job", "sourceId": "<promql-source-id>",\n' +
+  '    "label": "job", "variableName": "job" }\n' +
+  ']\n' +
+  'A PromQL tile references it as rate(http_requests_total{job=~"$job"}[$__rate_interval]).';
+
+/** PROMETHEUS_LABEL filters are offered only while PromQL is enabled. */
+export function buildMcpFiltersParam(promqlEnabled: boolean) {
+  if (!promqlEnabled) return mcpFiltersParam;
+  return z
+    .array(mcpPromqlDashboardFilterSchema)
+    .describe(`${mcpFiltersParam.description}${PROMQL_FILTERS_EXAMPLE}`);
+}
+
+// Validation rules come from the external schemas so MCP and REST stay in
+// lockstep; only the descriptions live here.
+const sqlValueShape = externalSqlSavedFilterValueSchema.shape;
+const mcpSqlSavedFilterValueSchema = externalSqlSavedFilterValueSchema.extend({
+  type: sqlValueShape.type.describe(
+    'Entry kind. Defaults to "sql"; a predicate broadcast to tiles.',
+  ),
+  condition: sqlValueShape.condition.describe(
+    'Raw SQL predicate applied to every tile (SQL, not Lucene). Example: ' +
+      '"ServiceName IN (\'api\')".',
+  ),
+});
+
+const variableValueShape = externalVariableSavedFilterValueSchema.shape;
+const mcpVariableSavedFilterValueSchema =
+  externalVariableSavedFilterValueSchema.extend({
+    type: variableValueShape.type.describe(
+      'Entry kind: a selection for a variable-enabled filter.',
+    ),
+    name: variableValueShape.name.describe(
+      'The variableName of the variable-enabled filter this selection belongs ' +
+        "to. Must match a filter's variableName declared in `filters` (see " +
+        'clickstack_get_dashboard for the resolved names); an unknown name is ' +
+        'ignored when the dashboard loads.',
+    ),
+    values: variableValueShape.values.describe(
+      'Selected values for the variable, e.g. ["api", "web"].',
+    ),
+  });
+
+export const mcpSavedFilterValuesParam = z
+  .array(
+    z.union([mcpSqlSavedFilterValueSchema, mcpVariableSavedFilterValueSchema]),
+  )
+  .describe(
+    'Default filter selections restored every time the dashboard is opened. ' +
+      'Replaces the whole saved set on write; pass [] to clear the defaults. ' +
+      'Omit to leave the saved defaults untouched.',
+  );
+
+export type McpSavedFilterValues = z.infer<typeof mcpSavedFilterValuesParam>;
+
+const mcpPatchDashboardSchema = z.object({
   dashboardId: objectIdSchema.describe(
     'ID of the dashboard to patch, from clickstack_get_dashboard (no id lists ' +
       'dashboards) or clickstack_search_dashboards.',
@@ -1680,6 +1955,7 @@ export const mcpPatchDashboardSchema = z.object({
   tags: tagsSchema.describe(
     'New tag list; replaces all existing tags. Omit to keep the current tags.',
   ),
+  savedFilterValues: mcpSavedFilterValuesParam.optional(),
   tileId: z
     .string()
     .optional()
@@ -1696,6 +1972,17 @@ export const mcpPatchDashboardSchema = z.object({
         'complete config, since omitted config fields are not carried over.',
     ),
 });
+
+/** PromQL tiles are offered only while PromQL is enabled. */
+export function buildMcpPatchDashboardSchema(promqlEnabled: boolean) {
+  if (!promqlEnabled) return mcpPatchDashboardSchema;
+  return mcpPatchDashboardSchema.extend({
+    tile: z
+      .union([...mcpPatchTileSchema.options, mcpPromqlPatchTileSchema])
+      .optional()
+      .describe(mcpPatchDashboardSchema.shape.tile.description ?? ''),
+  });
+}
 
 export const mcpSearchDashboardsSchema = z.object({
   query: z

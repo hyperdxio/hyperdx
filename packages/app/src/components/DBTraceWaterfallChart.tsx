@@ -1,16 +1,10 @@
-import {
-  ReactNode,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import _, { omit } from 'lodash';
 import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { isErrorStatusCode } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
@@ -59,6 +53,10 @@ import {
 } from '@/components/traceWaterfallLimits';
 import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
+import {
+  RowHighlightHint,
+  useRowHighlightHint,
+} from '@/hooks/useRowHighlightHint';
 import useRowWhere, { WithClause } from '@/hooks/useRowWhere';
 import useWaterfallSearchState from '@/hooks/useWaterfallSearchState';
 import {
@@ -157,7 +155,7 @@ function getRowSeverity(
       severityText: row.SeverityText,
     });
   }
-  return row.StatusCode === 'Error' ? 'error' : undefined;
+  return isErrorStatusCode(row.StatusCode) ? 'error' : undefined;
 }
 
 // Per-service span palette: the full categorical palette minus the two hues we
@@ -686,11 +684,7 @@ export function DBTraceWaterfallChartContainer({
     aliasWith: WithClause[];
   }) => void;
   highlightedRowWhere?: string | null;
-  initialRowHighlightHint?: {
-    timestamp: string;
-    spanId: string;
-    body: string;
-  };
+  initialRowHighlightHint?: RowHighlightHint;
   emptyState?: ReactNode;
   /** Extra controls rendered in the waterfall controls bar (e.g. the correlated logs source selector). */
   controlsExtra?: ReactNode;
@@ -967,53 +961,13 @@ export function DBTraceWaterfallChartContainer({
     logRowsMeta,
   ]);
 
-  // Auto-select the originating span once when the panel opens — but only if
-  // nothing is already selected. Two cases must NOT trigger a (re-)select:
-  //   - the user explicitly cleared the selection (closing the span detail), and
-  //   - a selection was restored from the URL on load (deep link / reload).
-  // We mark the hint applied as soon as a selection exists or we apply it
-  // ourselves, so it never fires twice for the same hint; it re-fires only when
-  // the hint genuinely changes (different originating span / trace).
-  const appliedHighlightHintRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    appliedHighlightHintRef.current = null;
-  }, [traceId]);
-
-  useEffect(() => {
-    if (!initialRowHighlightHint || !onClick) {
-      return;
-    }
-
-    const hintKey = `${initialRowHighlightHint.timestamp}|${initialRowHighlightHint.spanId}|${initialRowHighlightHint.body}`;
-    if (appliedHighlightHintRef.current === hintKey) {
-      return;
-    }
-
-    // A selection already exists (restored from the URL, or user-chosen). Honor
-    // it and record the hint so we never override it — now or later.
-    if (highlightedRowWhere != null) {
-      appliedHighlightHintRef.current = hintKey;
-      return;
-    }
-
-    const initialRowHighlightIndex = rows.findIndex(row => {
-      return (
-        row.Timestamp === initialRowHighlightHint.timestamp &&
-        row.SpanId === initialRowHighlightHint.spanId &&
-        row.Body === initialRowHighlightHint.body
-      );
-    });
-
-    if (initialRowHighlightIndex !== -1) {
-      appliedHighlightHintRef.current = hintKey;
-      onClick({
-        id: rows[initialRowHighlightIndex].id,
-        type: rows[initialRowHighlightIndex].type ?? '',
-        aliasWith: rows[initialRowHighlightIndex].aliasWith,
-      });
-    }
-  }, [initialRowHighlightHint, rows, onClick, highlightedRowWhere]);
+  useRowHighlightHint({
+    traceId,
+    initialRowHighlightHint,
+    highlightedRowWhere,
+    rows,
+    onClick,
+  });
 
   // 3 Edge-cases
   // 1. No spans, just logs (ex. sampling)
@@ -1255,9 +1209,6 @@ export function DBTraceWaterfallChartContainer({
               })
             : [];
 
-        // Extract status logic
-        // TODO: Legacy schemas will have STATUS_CODE_ERROR
-        // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
         const severity = getRowSeverity(result);
         const isError = severity === 'error';
         const status = result.StatusCode || result.SeverityText;

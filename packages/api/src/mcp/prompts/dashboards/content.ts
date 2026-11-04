@@ -120,6 +120,8 @@ Apply these before calling clickstack_save_dashboard. Each rule is enforced by t
 
 9f. MAKE A FILTER SINGLE-SELECT WHEN A TILE ONLY MAKES SENSE FOR ONE VALUE. maxSelections: 1 limits the dropdown to one value at a time, for example a host picker feeding a per-host detail view.
 
+9g. SET savedFilterValues TO GIVE THE DASHBOARD A DEFAULT SELECTION. Pass savedFilterValues on clickstack_save_dashboard or clickstack_patch_dashboard to pre-select filter values whenever the dashboard opens. Pair this with a required filter (9e) so the dashboard opens scoped rather than blocked.
+
 10. UPDATE IS REPLACE, NOT MERGE. clickstack_save_dashboard with an id overwrites tiles, containers, and filters in their entirety. Call clickstack_get_dashboard first when you only want to add or rename one entry; do not send a partial set or you will silently drop everything you omitted.
 
 11. GROUP RELATED TILES INTO CONTAINERS. REQUIRED at five or more tiles, no exceptions. An ungrouped wall of nine or ten tiles is a readability failure even when each tile is correct in isolation. Containers are the right way to introduce structure; markdown tiles for section labels are not.

@@ -60,10 +60,14 @@ export function updateSavedSearch(
   savedSearch: SavedSearchWithoutId,
   userId?: string,
 ) {
+  // Callers may pass a merged stored document, which carries `createdBy`.
+  // Drop it so a spread can never rewrite ownership attribution.
+  const { createdBy: _createdBy, ...safeSavedSearch } =
+    savedSearch as SavedSearchWithoutId & { createdBy?: unknown };
   return SavedSearch.findOneAndUpdate(
     { _id: savedSearchId, team: teamId },
     {
-      ...savedSearch,
+      ...safeSavedSearch,
       team: teamId,
       updatedBy: userId,
     },

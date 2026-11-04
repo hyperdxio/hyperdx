@@ -2,6 +2,7 @@ import router from 'next/router';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
 import {
+  buildServiceMapErrorWhere,
   deriveDisplayMetrics,
   ERROR_RATE_HIGH,
   formatApproximateNumber,
@@ -24,6 +25,21 @@ jest.mock('next/router', () => ({
     push: jest.fn(),
   },
 }));
+
+describe('buildServiceMapErrorWhere', () => {
+  it('includes legacy STATUS_CODE_ERROR spans in the error drill-down', () => {
+    expect(
+      buildServiceMapErrorWhere({
+        serviceNameExpression: 'ServiceName',
+        serviceName: 'api',
+        spanKindExpression: 'SpanKind',
+        statusCodeExpression: 'StatusCode',
+      }),
+    ).toBe(
+      "ServiceName = 'api' AND SpanKind IN ('Server', 'Consumer') AND lower(StatusCode) IN ('error', 'status_code_error')",
+    );
+  });
+});
 
 describe('navigateToTraceSearch', () => {
   const mockSource: TTraceSource = {

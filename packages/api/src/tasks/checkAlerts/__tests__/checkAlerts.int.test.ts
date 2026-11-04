@@ -1488,13 +1488,13 @@ describe('checkAlerts', () => {
         buildAlertMessageTemplateTitle({
           view: defaultSearchView,
         }),
-      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
+      ).toMatchInlineSnapshot(`"Alert for "My Search" - 10 lines found"`);
       expect(
         buildAlertMessageTemplateTitle({
           view: defaultChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
+        `"Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
       );
       // Inline alerts default to the chart config's name
       expect(
@@ -1502,41 +1502,7 @@ describe('checkAlerts', () => {
           view: defaultInlineAlertView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
-      );
-    });
-
-    it('buildAlertMessageTemplateTitle with state parameter', () => {
-      // Test ALERT state (should have 🚨 emoji)
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultSearchView,
-          state: AlertState.ALERT,
-        }),
-      ).toMatchInlineSnapshot(`"🚨 Alert for "My Search" - 10 lines found"`);
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultChartView,
-          state: AlertState.ALERT,
-        }),
-      ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
-      );
-
-      // Test OK state (should have ✅ emoji)
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultSearchView,
-          state: AlertState.OK,
-        }),
-      ).toMatchInlineSnapshot(`"✅ Alert for "My Search" - 10 lines found"`);
-      expect(
-        buildAlertMessageTemplateTitle({
-          view: defaultChartView,
-          state: AlertState.OK,
-        }),
-      ).toMatchInlineSnapshot(
-        `"✅ Alert for "My Dashboard - Test Chart" - 5 meets or exceeds 1"`,
+        `"Alert for "Chart Alert Query" - 5 meets or exceeds 1"`,
       );
     });
 
@@ -1556,7 +1522,7 @@ describe('checkAlerts', () => {
           view: decimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 1111.1 meets or exceeds 1.5"`,
+        `"Alert for "My Dashboard - Test Chart" - 1111.1 meets or exceeds 1.5"`,
       );
 
       // Test with multiple decimal places
@@ -1574,7 +1540,7 @@ describe('checkAlerts', () => {
           view: multiDecimalChartView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 1.1235 meets or exceeds 0.1234"`,
+        `"Alert for "My Dashboard - Test Chart" - 1.1235 meets or exceeds 0.1234"`,
       );
 
       // Test with integer value and decimal threshold
@@ -1592,7 +1558,7 @@ describe('checkAlerts', () => {
           view: integerValueView,
         }),
       ).toMatchInlineSnapshot(
-        `"🚨 Alert for "My Dashboard - Test Chart" - 10.00 meets or exceeds 0.12"`,
+        `"Alert for "My Dashboard - Test Chart" - 10.00 meets or exceeds 0.12"`,
       );
     });
 
@@ -1728,7 +1694,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -1789,7 +1755,7 @@ describe('checkAlerts', () => {
             webhookName: 'My_Webhook',
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -1875,7 +1841,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById,
       });
@@ -1900,7 +1866,7 @@ describe('checkAlerts', () => {
             host: 'web2',
           },
         },
-        title: '🚨 Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById,
       });
@@ -1990,7 +1956,7 @@ describe('checkAlerts', () => {
             },
           },
         },
-        title: '✅ Alert for "My Search" - 10 lines found',
+        title: 'Alert for "My Search" - 10 lines found',
         teamId: team._id.toString(),
         teamWebhooksById: new Map<string, typeof webhook>([
           [webhook._id.toString(), webhook],
@@ -2070,7 +2036,7 @@ describe('checkAlerts', () => {
     const setupSavedSearchAlertTest = async ({
       webhookSettings,
     }: Partial<{
-      webhookSettings: IWebhook;
+      webhookSettings: Partial<IWebhook>;
     }> = {}) => {
       const team = await createTeam({ name: 'My Team' });
 
@@ -2475,6 +2441,103 @@ describe('checkAlerts', () => {
           ],
         },
       );
+    });
+
+    it('SAVED_SEARCH alert - titleEmoji is applied per webhook on fired and resolved titles', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+      webhook.titleEmoji = false;
+      await webhook.save();
+      const emojiWebhook = await new Webhook({
+        team: team._id,
+        service: 'slack',
+        url: 'https://hooks.slack.com/services/456',
+        name: 'Emoji_Webhook',
+      }).save();
+      const teamWebhooksById = new Map<string, typeof webhook>([
+        [webhook._id.toString(), webhook],
+        [emojiWebhook._id.toString(), emojiWebhook],
+      ]);
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 1,
+          savedSearchId: savedSearch.id,
+          message: '@webhook-Emoji_Webhook',
+        },
+        {
+          taskType: AlertTaskType.SAVED_SEARCH,
+          savedSearch,
+        },
+      );
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:05:00.000Z'),
+          SeverityText: 'error',
+          Body: 'Oh no! Something went wrong!',
+        },
+      ]);
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      await processAlertAtTime(
+        new Date('2023-11-16T22:20:00.000Z'),
+        details,
+        clickhouseClient,
+        connection.id,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      const textsFor = (url: string) =>
+        jest
+          .mocked(slack.postMessageToWebhook)
+          .mock.calls.filter(([calledUrl]) => calledUrl === url)
+          .map(([, payload]) => payload.text);
+
+      const [plainFired, plainResolved] = textsFor(
+        'https://hooks.slack.com/services/123',
+      );
+      expect(plainFired).toBe('Alert for "My Search" - 2 lines found');
+      expect(plainResolved).toMatch(/^Alert for "My Search"/);
+
+      const [emojiFired, emojiResolved] = textsFor(
+        'https://hooks.slack.com/services/456',
+      );
+      expect(emojiFired).toBe('🚨 Alert for "My Search" - 2 lines found');
+      expect(emojiResolved).toMatch(/^✅ Alert for "My Search"/);
     });
 
     // The scheduled alert task and the app search page both go through
@@ -5744,6 +5807,208 @@ describe('checkAlerts', () => {
       expect(renderedBody).toContain('Group: "ServiceName:web"');
     });
 
+    // Fires a grouped raw SQL alert for one service, then evaluates again once
+    // the only event has left the window so the group has no rows.
+    const fireThenVanish = async ({
+      alias,
+      serviceName = 'web',
+      setup,
+      name,
+      message,
+    }: {
+      alias: string;
+      serviceName?: string;
+      setup?: Parameters<typeof setupSavedSearchAlertTest>[0];
+      name?: string;
+      message?: string;
+    }) => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest(setup);
+
+      const firedAt = new Date('2023-11-16T22:12:00.000Z');
+      const eventMs = firedAt.getTime() - ms('5m');
+
+      await bulkInsertLogs(
+        [1, 2].map(i => ({
+          ServiceName: serviceName,
+          Timestamp: new Date(eventMs),
+          SeverityText: 'error',
+          Body: `error ${i}`,
+        })),
+      );
+
+      const dashboard = await new Dashboard({
+        name: 'Raw SQL Vanished Group Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'rawsql-vanished',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'line',
+              sqlTemplate: `
+        SELECT
+          toStartOfInterval(Timestamp, INTERVAL {intervalSeconds:Int64} second) AS ts,
+          ServiceName AS "${alias}",
+          count() AS cnt
+        FROM default.otel_logs
+        WHERE Timestamp >= fromUnixTimestamp64Milli({startDateMilliseconds:Int64})
+          AND Timestamp < fromUnixTimestamp64Milli({endDateMilliseconds:Int64})
+        GROUP BY ts, "${alias}"
+        ORDER BY ts`,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find(t => t.id === 'rawsql-vanished');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          dashboardId: dashboard.id,
+          tileId: 'rawsql-vanished',
+          name,
+          message,
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      const evaluateAt = (at: Date) =>
+        processAlertAtTime(
+          at,
+          details,
+          clickhouseClient,
+          connection,
+          alertProvider,
+          teamWebhooksById,
+        );
+
+      await evaluateAt(firedAt);
+      expect((await Alert.findById(details.alert.id))!.state).toBe('ALERT');
+
+      const firedRow = await AlertHistory.findOne({
+        alert: details.alert.id,
+        group: `${alias}:${serviceName}`,
+      }).lean();
+
+      return {
+        details,
+        firedRow,
+        resolve: async () => {
+          await evaluateAt(new Date(firedAt.getTime() + ms('10m')));
+          expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+        },
+      };
+    };
+
+    // Alert titles and messages read the nested `attributes` view, so a dotted
+    // alias is addressed by its path; `var` exists only in webhook bodies.
+    it.each([
+      ['ServiceName', 'attributes.ServiceName'],
+      ['service.name', 'attributes.service.name'],
+    ])(
+      'TILE alert (raw SQL) - a vanished group keyed by %s persists and resolves with its values',
+      async (alias, ref) => {
+        const { firedRow, resolve } = await fireThenVanish({
+          alias,
+          name: `Errors for {{${ref}}}`,
+          message: `Affected service: {{${ref}}}`,
+        });
+        expect(firedRow?.groupValues).toEqual([{ key: alias, value: 'web' }]);
+
+        await resolve();
+
+        expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+        const [, resolvePayload] = jest.mocked(slack.postMessageToWebhook).mock
+          .calls[1];
+        expect(resolvePayload.text).toContain('Errors for web');
+        expect(JSON.stringify(resolvePayload.blocks)).toContain(
+          'Affected service: web',
+        );
+      },
+    );
+
+    it('TILE alert (raw SQL) - a vanished group resolves with its values in a generic webhook body', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        text: jest.fn().mockResolvedValue(''),
+      });
+      global.fetch = fetchMock;
+
+      const { resolve } = await fireThenVanish({
+        alias: 'service.name',
+        setup: {
+          webhookSettings: {
+            service: WebhookService.Generic,
+            url: 'https://webhook.site/123',
+            name: 'Generic Webhook',
+            body: JSON.stringify({
+              state: '{{state}}',
+              service: '{{var.[service.name]}}',
+            }),
+          },
+        },
+      });
+      await resolve();
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      const resolveBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(resolveBody).toEqual({ state: 'OK', service: 'web' });
+    });
+
+    it('TILE alert (raw SQL) - a vanished group with an empty value persists and resolves', async () => {
+      const { firedRow, resolve } = await fireThenVanish({
+        alias: 'ServiceName',
+        serviceName: '',
+      });
+      expect(firedRow?.groupValues).toEqual([
+        { key: 'ServiceName', value: '' },
+      ]);
+
+      await resolve();
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+    });
+
+    it('TILE alert (raw SQL) - a previous ALERT row without groupValues still resolves with empty attributes', async () => {
+      const { details, resolve } = await fireThenVanish({
+        alias: 'ServiceName',
+        name: 'Errors for {{attributes.ServiceName}}',
+      });
+      await AlertHistory.updateMany(
+        { alert: details.alert.id },
+        { $unset: { groupValues: 1 } },
+      );
+
+      await resolve();
+
+      expect(slack.postMessageToWebhook).toHaveBeenCalledTimes(2);
+      const [, resolvePayload] = jest.mocked(slack.postMessageToWebhook).mock
+        .calls[1];
+      expect(resolvePayload.text).toContain('Errors for');
+      expect(resolvePayload.text).not.toContain('web');
+    });
+
     it('TILE alert (raw SQL) - alert is evaluated using the last numeric column', async () => {
       const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
         await setupSavedSearchAlertTest();
@@ -7221,6 +7486,68 @@ describe('checkAlerts', () => {
         call[1].text.includes('My Search'),
       );
       expect(resolutionCall).toBeDefined();
+    });
+
+    it('Group-by alerts keep the group values on the resolve notification', async () => {
+      const {
+        team,
+        webhook,
+        connection,
+        source,
+        savedSearch,
+        teamWebhooksById,
+        clickhouseClient,
+      } = await setupSavedSearchAlertTest();
+
+      const details = await createAlertDetails(
+        team,
+        source,
+        {
+          source: AlertSource.SAVED_SEARCH,
+          channel: { type: 'webhook', webhookId: webhook._id.toString() },
+          interval: '5m',
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 2,
+          savedSearchId: savedSearch.id,
+          groupBy: 'ServiceName',
+          name: 'Errors for {{attributes.ServiceName}}',
+        },
+        { taskType: AlertTaskType.SAVED_SEARCH, savedSearch },
+      );
+
+      const error = (Timestamp: Date) => ({
+        ServiceName: 'service-b',
+        Timestamp,
+        SeverityText: 'error',
+        Body: 'Error from service-b',
+      });
+      const firstWindow = new Date('2023-11-16T22:05:00.000Z');
+      // One error in the next window: still present in the data, but below threshold.
+      await bulkInsertLogs([
+        error(firstWindow),
+        error(firstWindow),
+        error(new Date('2023-11-16T22:10:00.000Z')),
+      ]);
+
+      for (const at of [
+        '2023-11-16T22:12:00.000Z',
+        '2023-11-16T22:16:00.000Z',
+      ]) {
+        await processAlertAtTime(
+          new Date(at),
+          details,
+          clickhouseClient,
+          connection.id,
+          alertProvider,
+          teamWebhooksById,
+        );
+      }
+
+      const texts = jest
+        .mocked(slack.postMessageToWebhook)
+        .mock.calls.map(call => call[1].text);
+      expect(texts).toHaveLength(2);
+      expect(texts[1]).toBe('✅ Errors for service-b');
     });
 
     it('TILE alert (metrics) - slack webhook', async () => {

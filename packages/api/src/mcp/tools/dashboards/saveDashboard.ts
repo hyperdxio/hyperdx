@@ -1,3 +1,9 @@
+import {
+  getFilterVariableName,
+  isFilterVariableEnabled,
+  isPrometheusLabelFilter,
+} from '@hyperdx/common-utils/dist/filters';
+import { isPromqlSavedChartConfig } from '@hyperdx/common-utils/dist/guards';
 import type { DashboardContainer } from '@hyperdx/common-utils/dist/types';
 import { uniq } from 'lodash';
 import mongoose from 'mongoose';
@@ -8,6 +14,7 @@ import { recordDashboardOnboardingIfHasTiles } from '@/controllers/dashboard';
 import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { formatZodIssues, mcpUserError } from '@/mcp/utils/errors';
+import { isPromqlEnabled } from '@/mcp/utils/promql';
 import Dashboard, { IDashboard } from '@/models/dashboard';
 import {
   cleanupDashboardAlerts,
@@ -22,12 +29,18 @@ import {
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
 import { objectIdSchema, tagsSchema } from '@/utils/zod';
 
-import type { McpDashboardFilter } from './schemas';
-import { mcpContainersParam, mcpFiltersParam, mcpTilesParam } from './schemas';
+import type { McpDashboardFilter, McpSavedFilterValues } from './schemas';
+import {
+  buildMcpFiltersParam,
+  buildMcpTilesParam,
+  mcpContainersParam,
+  mcpSavedFilterValuesParam,
+} from './schemas';
 import {
   getFilterVariableWarnings,
   getRawSqlMissingSourceError,
   getRawSqlTileMacroWarnings,
+  getSavedFilterValueWarnings,
   getTileVariableWarnings,
 } from './validation';
 import { withResolvedFilterVariableNames } from './variables';
@@ -38,6 +51,7 @@ export function registerSaveDashboard({
 }: ToolRegistrar): void {
   const { teamId, userId } = context;
   const frontendUrl = config.FRONTEND_URL;
+  const promqlEnabled = isPromqlEnabled(context);
 
   registerTool(
     'clickstack_save_dashboard',
@@ -59,12 +73,13 @@ export function registerSaveDashboard({
             'Dashboard ID. Omit to create a new dashboard, provide to update an existing one.',
           ),
         name: z.string().describe('Dashboard name'),
-        tiles: mcpTilesParam,
+        tiles: buildMcpTilesParam(promqlEnabled),
         tags: tagsSchema.describe(
           'Labels for organizing the dashboard; clickstack_search_dashboards can filter by them.',
         ),
         containers: mcpContainersParam.optional(),
-        filters: mcpFiltersParam.optional(),
+        filters: buildMcpFiltersParam(promqlEnabled).optional(),
+        savedFilterValues: mcpSavedFilterValuesParam.optional(),
       }),
     },
     async ({
@@ -74,29 +89,34 @@ export function registerSaveDashboard({
       tags,
       containers,
       filters: inputFilters,
+      savedFilterValues,
     }) => {
       if (!dashboardId) {
         return createDashboard({
           teamId,
           userId,
           frontendUrl,
+          promqlEnabled,
           name,
           inputTiles,
           tags,
           containers,
           inputFilters,
+          savedFilterValues,
         });
       }
       return updateDashboard({
         teamId,
         userId,
         frontendUrl,
+        promqlEnabled,
         dashboardId,
         name,
         inputTiles,
         tags,
         containers,
         inputFilters,
+        savedFilterValues,
       });
     },
   );
@@ -137,20 +157,24 @@ async function createDashboard({
   teamId,
   userId,
   frontendUrl,
+  promqlEnabled,
   name,
   inputTiles,
   tags,
   containers,
   inputFilters,
+  savedFilterValues,
 }: {
   teamId: string;
   userId: string | undefined;
   frontendUrl: string | undefined;
+  promqlEnabled: boolean;
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
   inputFilters: McpDashboardFilter[] | undefined;
+  savedFilterValues: McpSavedFilterValues | undefined;
 }) {
   const parsed = createDashboardBodySchema.safeParse({
     name,
@@ -158,6 +182,7 @@ async function createDashboard({
     tags,
     containers,
     filters: stripFilterIds(inputFilters),
+    savedFilterValues,
   });
   if (!parsed.success) {
     return mcpUserError(`Validation error:\n${formatZodIssues(parsed.error)}`);
@@ -185,6 +210,7 @@ async function createDashboard({
     ...getRawSqlTileMacroWarnings(tilesWithId),
     ...getTileVariableWarnings(tilesWithId, filters),
     ...getFilterVariableWarnings(filters),
+    ...getSavedFilterValueWarnings(parsed.data.savedFilterValues, filters),
   ];
 
   const internalTiles = convertExternalTilesToInternal(tilesWithId);
@@ -208,7 +234,9 @@ async function createDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, newDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(newDashboard);
+  const externalDashboard = convertToExternalDashboard(newDashboard, {
+    hidePromql: !promqlEnabled,
+  });
   return {
     content: [
       {
@@ -239,22 +267,26 @@ async function updateDashboard({
   teamId,
   userId,
   frontendUrl,
+  promqlEnabled,
   dashboardId,
   name,
   inputTiles,
   tags,
   containers,
   inputFilters,
+  savedFilterValues,
 }: {
   teamId: string;
   userId: string | undefined;
   frontendUrl: string | undefined;
+  promqlEnabled: boolean;
   dashboardId: string;
   name: string;
   inputTiles: unknown[];
   tags: string[] | undefined;
   containers: DashboardContainer[] | undefined;
   inputFilters: McpDashboardFilter[] | undefined;
+  savedFilterValues: McpSavedFilterValues | undefined;
 }) {
   const parsed = updateDashboardBodySchema.safeParse({
     name,
@@ -262,6 +294,7 @@ async function updateDashboard({
     tags,
     containers,
     filters: assignFilterIds(inputFilters),
+    savedFilterValues,
   });
   if (!parsed.success) {
     return mcpUserError(`Validation error:\n${formatZodIssues(parsed.error)}`);
@@ -307,6 +340,10 @@ async function updateDashboard({
     // persisted dependent filter the agent did not touch is noise it cannot
     // act on from a tiles-only update.
     ...getFilterVariableWarnings(filters),
+    ...getSavedFilterValueWarnings(
+      parsed.data.savedFilterValues,
+      effectiveFilters,
+    ),
   ];
 
   const existingTileIds = new Set(
@@ -316,10 +353,25 @@ async function updateDashboard({
     (existingDashboard.filters ?? []).map((f: { id: string }) => f.id),
   );
 
-  const internalTiles = convertExternalTilesToInternal(
+  const requestTiles = convertExternalTilesToInternal(
     tilesWithId,
     existingTileIds,
   );
+  // With PromQL disabled, reads hide PromQL tiles and PROMETHEUS_LABEL
+  // filters, so the agent's lists never contain them. Keep them rather than
+  // delete what it could not see. A request tile that reuses a hidden tile's
+  // id replaces it.
+  const requestTileIds = new Set(requestTiles.map(tile => tile.id));
+  const internalTiles = promqlEnabled
+    ? requestTiles
+    : [
+        ...requestTiles,
+        ...(existingDashboard.tiles ?? []).filter(
+          tile =>
+            isPromqlSavedChartConfig(tile.config) &&
+            !requestTileIds.has(tile.id),
+        ),
+      ];
 
   // Typed as `Partial<IDashboard>` (the canonical Mongo doc shape) so
   // misnamed or wrong-shape fields fail at compile time, mirroring the
@@ -332,10 +384,35 @@ async function updateDashboard({
   };
 
   if (filters !== undefined) {
-    setPayload.filters = convertExternalFiltersToInternal(
+    const requestFilters = convertExternalFiltersToInternal(
       filters,
       existingFilterIds,
     );
+    const requestFilterIds = new Set(requestFilters.map(filter => filter.id));
+    const hiddenFilters = promqlEnabled
+      ? []
+      : (existingDashboard.filters ?? []).filter(
+          filter =>
+            isPrometheusLabelFilter(filter) && !requestFilterIds.has(filter.id),
+        );
+
+    // The body schema checks that variable names are unique only across the
+    // request, so check the hidden filters added back here.
+    const requestVariableNames = new Set(
+      requestFilters.filter(isFilterVariableEnabled).map(getFilterVariableName),
+    );
+    const clashingName = hiddenFilters
+      .filter(isFilterVariableEnabled)
+      .map(getFilterVariableName)
+      .find(name => name !== undefined && requestVariableNames.has(name));
+    if (clashingName !== undefined) {
+      return mcpUserError(
+        `Variable name "$${clashingName}" is already used by a filter this ` +
+          'tool cannot show. Choose a different variableName.',
+      );
+    }
+
+    setPayload.filters = [...requestFilters, ...hiddenFilters];
   }
 
   const normalizedSavedQueryLanguage = resolveSavedQueryLanguage({
@@ -373,7 +450,9 @@ async function updateDashboard({
 
   recordDashboardOnboardingIfHasTiles(userId, updatedDashboard.tiles);
 
-  const externalDashboard = convertToExternalDashboard(updatedDashboard);
+  const externalDashboard = convertToExternalDashboard(updatedDashboard, {
+    hidePromql: !promqlEnabled,
+  });
   return {
     content: [
       {

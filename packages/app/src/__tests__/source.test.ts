@@ -1,4 +1,5 @@
 import { ColumnMetaType } from '@hyperdx/common-utils/dist/clickhouse';
+import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   ChartConfigWithOptTimestamp,
   NumberFormat,
@@ -14,6 +15,7 @@ import {
   getEventBody,
   getSourceValidationNotificationId,
   getTraceDurationNumberFormat,
+  inferTableSourceConfig,
   pickTimeSeriesTable,
   useChartNumberFormats,
   useSingleSeriesNumberFormat,
@@ -107,6 +109,65 @@ describe('pickTimeSeriesTable', () => {
 
   it('picks nothing from no tables', () => {
     expect(pickTimeSeriesTable([])).toBeUndefined();
+  });
+});
+
+describe('inferTableSourceConfig', () => {
+  const inferOtelLogConfig = (
+    severityNumberType: string,
+    extraColumns: ColumnMetaType[] = [],
+  ) => {
+    const columns = [
+      'Timestamp',
+      'Body',
+      'SeverityText',
+      'TraceId',
+      'SpanId',
+      'ServiceName',
+      'LogAttributes',
+      'ResourceAttributes',
+    ].map(name => ({ name, type: 'String' }));
+    columns.push({ name: 'SeverityNumber', type: severityNumberType });
+    columns.push(...extraColumns);
+
+    return inferTableSourceConfig({
+      databaseName: 'default',
+      tableName: 'otel_logs',
+      connectionId: 'test-connection',
+      kind: SourceKind.Log,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+      metadata: {
+        getColumns: async () => columns,
+        getTableMetadata: async () => undefined,
+      } as unknown as Metadata,
+    });
+  };
+
+  it('sets severityNumberExpression only for an integer SeverityNumber column', async () => {
+    for (const type of ['UInt8', 'Int32', 'LowCardinality(Nullable(UInt8))']) {
+      expect(await inferOtelLogConfig(type)).toHaveProperty(
+        'severityNumberExpression',
+        'SeverityNumber',
+      );
+    }
+    expect(await inferOtelLogConfig('String')).not.toHaveProperty(
+      'severityNumberExpression',
+    );
+  });
+
+  it('sets eventNameExpression only for a string EventName column', async () => {
+    for (const type of [
+      'String',
+      'LowCardinality(String)',
+      'Nullable(String)',
+    ]) {
+      expect(
+        await inferOtelLogConfig('UInt8', [{ name: 'EventName', type }]),
+      ).toHaveProperty('eventNameExpression', 'EventName');
+    }
+    expect(
+      await inferOtelLogConfig('UInt8', [{ name: 'EventName', type: 'UInt8' }]),
+    ).not.toHaveProperty('eventNameExpression');
   });
 });
 

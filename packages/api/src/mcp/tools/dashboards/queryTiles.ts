@@ -5,6 +5,7 @@ import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { isPromqlEnabled } from '@/mcp/utils/promql';
 import { runWithTimeout } from '@/mcp/utils/timeout';
 import Dashboard from '@/models/dashboard';
 import {
@@ -224,7 +225,9 @@ export function registerQueryTiles({
         return mcpUserError('Dashboard not found');
       }
 
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromql: !isPromqlEnabled(context),
+      });
       const allTiles = externalDashboard.tiles;
 
       const resolved = resolveDashboardVariables(
