@@ -63,9 +63,29 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
     await card.click();
 
     await expect(sessionsPage.sessionSidePanel).toBeVisible();
-    await expect(
-      sessionsPage.getSessionEventRows().filter({ hasText: '500 GET' }),
-    ).toBeVisible({ timeout: 15000 });
+    const span = sessionsPage
+      .getSessionEventRows()
+      .filter({ hasText: '500 GET' });
+    await expect(span).toBeVisible({ timeout: 15000 });
+
+    await test.step('Its trace shows the triggering click and the request timings', async () => {
+      await span.click();
+      const trace = page.getByTestId('side-panel-tab-trace');
+      const trigger = trace.getByText(
+        'Triggered by: Clicked testid=checkout · 3ms before',
+      );
+      await expect(trigger).toBeVisible({ timeout: 15000 });
+      await expect(trace.getByTestId('span-event-marker')).toHaveCount(4);
+      // The timing log is drawn as the dots, so it isn't counted as a log.
+      await expect(trace.getByText(/^1 span, 1 error/)).toBeVisible();
+
+      await trigger.click();
+      await expect(
+        trace
+          .getByText('#root > main > button.checkout', { exact: true })
+          .first(),
+      ).toBeVisible();
+    });
   });
 
   test('shows browser log events from the OpenTelemetry SDK and opens them', async ({
