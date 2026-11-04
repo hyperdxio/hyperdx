@@ -15,6 +15,18 @@ import {
 } from '@/types';
 
 /**
+ * The source's `tableFilterExpression` as a SQL filter, or `[]` when it has
+ * none. Log sources are the only kind that carries the field. Every path
+ * that queries a source's rows should apply this so they all see the same
+ * row set (see `buildSearchChartConfig`).
+ */
+export function getSourceTableFilters(source: TSource): Filter[] {
+  return isLogSource(source) && source.tableFilterExpression
+    ? [{ type: 'sql', condition: source.tableFilterExpression }]
+    : [];
+}
+
+/**
  * Return type for `buildSearchChartConfig`.
  *
  * The full `BuilderChartConfig` (with required `timestampValueExpression`,
@@ -131,10 +143,7 @@ export function buildSearchChartConfig(
   // For hard isolation, configure a ClickHouse ROW POLICY at the DB level
   // instead. Existing values are still honored here for backward
   // compatibility; new sources should not set the field.
-  const tableFilter: Filter[] =
-    isLogSource(source) && source.tableFilterExpression != null
-      ? [{ type: 'sql', condition: source.tableFilterExpression }]
-      : [];
+  const tableFilter = getSourceTableFilters(source);
   const userFilters: Filter[] = input.filters ?? [];
   const mergedFilters: Filter[] = [...tableFilter, ...userFilters];
 
