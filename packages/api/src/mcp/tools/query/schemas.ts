@@ -20,7 +20,8 @@ const WHERE_DESCRIPTION =
   'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")\n\n' +
   'SUBSTRING TRAP: Lucene field:value matches ANY row containing "value" as a substring, not exact equality.\n' +
   '  SpanKind:Server matches "Server", "ServerStreaming", "InternalServer", etc.\n' +
-  "  For exact match, use SQL: SpanKind = 'Server'";
+  '  For an exact match stay in Lucene and QUOTE the value: SpanKind:"Server" (= SpanKind = \'Server\').\n' +
+  "  For exact match in SQL: SpanKind = 'Server'";
 
 const WHERE_LANGUAGE_DESCRIPTION =
   'Query language for the "where" filter. Default: lucene.\n' +
@@ -31,7 +32,9 @@ const WHERE_LANGUAGE_DESCRIPTION =
   'and map attributes via dot notation. Use "sql" for IN(...) lists, complex expressions, or function calls.\n' +
   'IMPORTANT: Lucene field:value is a SUBSTRING match (ilike), not exact equality. ' +
   'field:val* is prefix-within-substring, not a true prefix match. ' +
-  "For exact matching or reliable wildcards, use SQL: WHERE field = 'value' or WHERE field LIKE 'val%'.\n\n" +
+  'For an exact match in Lucene, quote the value: field:"value" compiles to field = \'value\' and can use the primary key. ' +
+  "For reliable wildcards, use SQL: WHERE field = 'value' or WHERE field LIKE 'val%'.\n" +
+  "For free-text body/message columns, prefer a bare Lucene term (e.g. timeout) or SQL hasToken(lower(Body), 'timeout') over LIKE: they use the text index instead of scanning the whole column.\n\n" +
   'Common mistake: writing Column:value (Lucene) but setting whereLanguage to "sql". ' +
   'If your filter uses colon syntax, leave whereLanguage as "lucene" (the default).';
 

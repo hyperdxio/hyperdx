@@ -881,11 +881,13 @@ Lucene field:value does NOT mean exact equality. It translates to ilike(field, '
      ServiceName:api*    does NOT mean "starts with api". It means "contains a substring starting with api".
                          In practice this often works for prefix matching, but it is NOT equivalent to SQL LIKE 'api%'.
 
-  For exact matching or true prefix/suffix/contains patterns, use SQL instead:
-     Exact:    whereLanguage: "sql", where: "SpanKind = 'Server'"
-     Prefix:   whereLanguage: "sql", where: "ServiceName LIKE 'api%'"
-     Contains: whereLanguage: "sql", where: "Body LIKE '%timeout%'"
-     Regex:    whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
+  For exact matching or true prefix/suffix/contains patterns:
+     Exact (stay in Lucene, QUOTE the value): SpanKind:"Server"   (compiles to SpanKind = 'Server', uses the primary key)
+     Exact (SQL):    whereLanguage: "sql", where: "SpanKind = 'Server'"
+     Prefix:         whereLanguage: "sql", where: "ServiceName LIKE 'api%'"
+     Body text:      prefer a bare Lucene term (timeout) or SQL hasToken(lower(Body), 'timeout') over LIKE '%timeout%' --
+                     the token path uses the text index; Body:term still compiles to substring ILIKE and scans the whole column.
+     Regex:          whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
 
   When Lucene substring matching is FINE: free-text columns like Body, StatusMessage where substring is the intent.
   When Lucene substring matching is WRONG: enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact or true prefix match.
@@ -901,7 +903,7 @@ Lucene queries that reference map-attribute keys via dotted paths (http.status_c
 
   Reliable in Lucene (top-level columns only):
     Duration:>1000000000      (top-level numeric range)
-    ServiceName:checkout      (top-level string -- but remember this is a substring match, not exact!)
+    ServiceName:"checkout"    (top-level string, quoted for exact match; unquoted ServiceName:checkout is substring!)
 
 Workaround: switch to SQL with bracket access. Map values are stored as strings, so quote the comparison value.
 
