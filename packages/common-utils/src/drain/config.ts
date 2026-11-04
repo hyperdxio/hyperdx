@@ -3,6 +3,49 @@ export interface MaskingInstructionConfig {
   maskWith: string;
 }
 
+const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
+
+/**
+ * Values that differ on every line but say nothing about the pattern. They are
+ * masked to `<*>` before Drain sees the line, so dated lines from different
+ * days (or runs) land in the same cluster. Order matters: whole timestamps
+ * before their date and time parts.
+ */
+export const DEFAULT_MASKING_INSTRUCTIONS: MaskingInstructionConfig[] = [
+  // ISO-8601 / RFC-3339, `T` or space, optional fraction and zone
+  {
+    pattern:
+      '\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?',
+    maskWith: '*',
+  },
+  // RFC-1123 (HTTP dates): Wed, 04 Nov 2026 06:12:12 GMT
+  {
+    pattern: `(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \\d{2} ${MONTH} \\d{4} \\d{2}:\\d{2}:\\d{2}(?: (?:GMT|UTC|[+-]\\d{4}))?`,
+    maskWith: '*',
+  },
+  // Access-log dates: 04/Nov/2026:06:12:12 +0000
+  {
+    pattern: `\\d{2}/${MONTH}/\\d{4}:\\d{2}:\\d{2}:\\d{2}(?: [+-]\\d{4})?`,
+    maskWith: '*',
+  },
+  // Syslog: Nov  4 06:12:12
+  {
+    pattern: `\\b${MONTH} +\\d{1,2} \\d{2}:\\d{2}:\\d{2}\\b`,
+    maskWith: '*',
+  },
+  // A date or a time on its own
+  { pattern: '\\b\\d{4}-\\d{2}-\\d{2}\\b', maskWith: '*' },
+  { pattern: '\\b\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?\\b', maskWith: '*' },
+  // UUIDs
+  {
+    pattern:
+      '\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\b',
+    maskWith: '*',
+  },
+  // Long hex ids: trace/span ids, hashes, container ids
+  { pattern: '\\b[0-9a-fA-F]{16,}\\b', maskWith: '*' },
+];
+
 export class TemplateMinerConfig {
   drainDepth: number = 4;
   drainSimTh: number = 0.4;
@@ -11,7 +54,9 @@ export class TemplateMinerConfig {
   drainExtraDelimiters: string[] = [];
   maskPrefix: string = '<';
   maskSuffix: string = '>';
-  maskingInstructions: MaskingInstructionConfig[] = [];
+  maskingInstructions: MaskingInstructionConfig[] = [
+    ...DEFAULT_MASKING_INSTRUCTIONS,
+  ];
   parametrizeNumericTokens: boolean = true;
   parameterExtractionCacheCapacity: number = 3000;
 

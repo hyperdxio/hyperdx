@@ -3,6 +3,7 @@ import {
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
+import type { TemplateMiner } from '@hyperdx/common-utils/dist/drain';
 import { minePatterns } from '@hyperdx/common-utils/dist/drain';
 import type {
   ChartConfigWithDateRange,
@@ -50,6 +51,8 @@ export async function mineWindowPatterns(
     abortSignal?: AbortSignal;
     /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
     variables?: ChartVariable[];
+    /** Shared Drain miner, so cluster ids are comparable across windows. */
+    miner?: TemplateMiner;
   },
 ): Promise<
   | { error: McpErrorResult }
@@ -237,6 +240,7 @@ export async function mineWindowPatterns(
       endDate,
       trendBuckets,
       maxSamples: 5,
+      miner: options?.miner,
       getBody: row => {
         const raw = row.__hdx_pattern_body;
         return raw != null ? String(raw) : '';
@@ -258,25 +262,6 @@ export async function mineWindowPatterns(
     sampledCount: sampleRows.length,
     bodyColumn,
   };
-}
-
-// ─── Drain template normalization (emerging_signals cross-window keying) ─────
-
-/**
- * Normalize a Drain template so the same logical pattern matches across
- * windows despite Drain assigning different cluster ids each run. We collapse
- * runs of whitespace and treat the placeholder token uniformly. Distinct
- * placeholder PLACEMENTS remain distinct (only the placeholder glyph is
- * unified, its position is preserved), so unrelated templates do not collapse.
- *
- * Pure string logic — used by the emerging_signals MCP tool.
- */
-export function normalizeTemplate(pattern: string): string {
-  return pattern
-    .replace(/<\*>/g, '\u0001') // stable placeholder marker
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
 }
 
 // ─── Event pattern mining ────────────────────────────────────────────────────

@@ -1,3 +1,7 @@
+import {
+  TemplateMiner,
+  TemplateMinerConfig,
+} from '@hyperdx/common-utils/dist/drain';
 import { z } from 'zod';
 
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
@@ -6,7 +10,7 @@ import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { parseTimeRange } from './helpers';
-import { mineWindowPatterns, normalizeTemplate } from './runEventPatterns';
+import { mineWindowPatterns } from './runEventPatterns';
 import { sourceIdSchema, whereLanguageSchema, whereSchema } from './schemas';
 
 // ─── Classification ────────────────────────────────────────────────────────
@@ -195,12 +199,17 @@ export function registerEmergingSignals({
         );
       }
 
+      // One Drain tree for both windows: the same line lands in the same
+      // cluster in either window, so the windows are compared by cluster id.
+      // Separate trees keep tokens that were constant in one window literal
+      // and generalize them in the other, which splits the same pattern.
       const opts = {
         where: input.where,
         whereLanguage: input.whereLanguage,
         bodyExpression: input.bodyExpression,
         sampleSize: input.sampleSize,
         trendBuckets: 0,
+        miner: new TemplateMiner(new TemplateMinerConfig()),
       };
 
       const [curRes, baseRes] = await Promise.all([
@@ -211,18 +220,20 @@ export function registerEmergingSignals({
           cur.endDate,
           opts,
         ),
+        // Window queries include both ends; end the baseline 1 ms early so a
+        // row at the shared boundary isn't counted in both windows.
         mineWindowPatterns(
           teamId.toString(),
           input.sourceId,
           base.startDate,
-          base.endDate,
+          new Date(base.endDate.getTime() - 1),
           opts,
         ),
       ]);
       if ('error' in curRes) return curRes.error;
       if ('error' in baseRes) return baseRes.error;
 
-      // Build share-of-window maps keyed by normalized template.
+      // Build share-of-window maps keyed by cluster id.
       type Agg = {
         pattern: string;
         curShare: number;
@@ -236,7 +247,7 @@ export function registerEmergingSignals({
       const ingest = (res: typeof curRes, which: 'cur' | 'base') => {
         const sampled = res.sampledCount || 1;
         for (const p of res.patterns) {
-          const key = normalizeTemplate(p.pattern);
+          const key = p.id;
           let a = byKey.get(key);
           if (!a) {
             a = {
@@ -252,11 +263,7 @@ export function registerEmergingSignals({
             byKey.set(key, a);
           }
           const share = p.sampleCount / sampled;
-          // Accumulate rather than overwrite: if two Drain clusters in ONE
-          // window normalize to the same key, both contribute their share/count
-          // instead of the second silently clobbering the first. Each window is
-          // ingested exactly once and all fields init to 0, so additive merge is
-          // correct for both colliding and non-colliding keys.
+          // Each window is ingested once and the fields start at 0.
           if (which === 'cur') {
             a.curShare += share;
             a.curCount += p.estimatedCount;
