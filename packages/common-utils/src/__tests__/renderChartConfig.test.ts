@@ -673,6 +673,50 @@ describe('renderChartConfig', () => {
     expect(actual).not.toContain('TopGroups');
   });
 
+  it('should not emit a rank CTE when aggFn=increase has a whitespace/comma-only string groupBy', async () => {
+    const config: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Line,
+      connection: 'test-connection',
+      metricTables: {
+        gauge: 'otel_metrics_gauge',
+        histogram: 'otel_metrics_histogram',
+        sum: 'otel_metrics_sum',
+        summary: 'otel_metrics_summary',
+        'exponential histogram': 'otel_metrics_exponential_histogram',
+      },
+      from: {
+        databaseName: 'default',
+        tableName: '',
+      },
+      select: [
+        {
+          aggFn: 'increase',
+          aggCondition: '',
+          aggConditionLanguage: 'lucene',
+          valueExpression: 'Value',
+          metricName: 'db.client.connections.usage',
+          metricType: MetricsDataType.Sum,
+        },
+      ],
+      groupBy: ' , ',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'TimeUnix',
+      dateRange: [new Date('2025-02-12'), new Date('2025-12-14')],
+      granularity: '5 minute',
+      limit: { limit: 10 },
+    };
+
+    const generatedSql = await renderChartConfig(
+      config,
+      mockMetadata,
+      querySettings,
+    );
+    const actual = parameterizedQueryToSql(generatedSql);
+    expect(actual).not.toContain('TopGroups');
+    expect(actual).not.toContain('IN (SELECT `group`');
+  });
+
   it('renders bound values (not template macros) when generateSqlTemplate is unset', async () => {
     // Regression guard for the generateSqlTemplate flag threaded through
     // timeFilterExpr / timeBucketExpr / renderFrom / renderWhere: real query
