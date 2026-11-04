@@ -27,6 +27,11 @@ export type UserPreferences = {
   timeFormat: '12h' | '24h';
   /** Color mode preference (light/dark/system). */
   colorMode: ColorModePreference;
+  /**
+   * Left in the stored shape so preferences saved before the font picker
+   * was removed still parse. The UI always uses Inter and does not read this.
+   * The default stays the historical value so a read does not rewrite storage.
+   */
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;
   /**
