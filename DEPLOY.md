@@ -11,6 +11,24 @@ HyperDX can be deployed in a few different ways:
 - [All-in-one Docker Compose Stack](#all-in-one-docker-compose-stack)
 - [Local Development Mode](#local-development-mode)
 
+## Container image names
+
+ClickStack images are published to Docker Hub under the `clickhouse` namespace
+and are also served from `docker.clickhouse.com`:
+
+| Image                       | Name                                   |
+| --------------------------- | -------------------------------------- |
+| HyperDX (UI + API)          | `clickhouse/clickstack`                |
+| All-in-one (with auth)      | `clickhouse/clickstack-all-in-one`     |
+| Local (all-in-one, no auth) | `clickhouse/clickstack-local`          |
+| OpenTelemetry collector     | `clickhouse/clickstack-otel-collector` |
+
+The legacy `hyperdx/hyperdx`, `hyperdx/hyperdx-all-in-one`,
+`hyperdx/hyperdx-local` and `hyperdx/hyperdx-otel-collector` names (also served
+from `docker.hyperdx.io`) keep receiving the same tags for a transition period.
+Switch to the `clickhouse/clickstack-*` names now; the date the legacy names
+stop updating will be announced in the changelog.
+
 ## Bring Your Own ClickHouse
 
 If you already have an existing ClickHouse cluster, you can simply deploy a
@@ -81,5 +99,5 @@ authentication or configuration persistence.
 To get started, spin up the local mode container:
 
 ```bash
-docker run -p 8080:8080 docker.hyperdx.io/hyperdx/hyperdx-local:2-beta
+docker run -p 8080:8080 docker.clickhouse.com/clickhouse/clickstack-local:2
 ```
