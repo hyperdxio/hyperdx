@@ -9,6 +9,13 @@ import { renderHook } from '@testing-library/react';
 import { useDashboards } from '@/dashboard';
 import { useOnClickLinkBuilder } from '@/hooks/useOnClickLinkBuilder';
 import { useSources } from '@/source';
+import { TimeZoneOverrideProvider } from '@/timeZoneOverride';
+
+let mockTz: string | null = null;
+jest.mock('nuqs', () => ({
+  parseAsString: {},
+  useQueryState: () => [mockTz, jest.fn()],
+}));
 
 jest.mock('@/source', () => ({
   useSources: jest.fn(),
@@ -84,6 +91,37 @@ describe('useOnClickLinkBuilder', () => {
     const action = result.current!({});
     expect(action.description).toBe('Open dashboard "API Latency Drilldown"');
     expect(action.url!.startsWith('/dashboards/dash_1?')).toBe(true);
+  });
+
+  it("adds the page's time zone override to search and dashboard links", () => {
+    mockTz = 'Asia/Tokyo';
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <TimeZoneOverrideProvider>{children}</TimeZoneOverrideProvider>
+    );
+    const tzOf = (onClick: OnClickSearch | OnClickDashboard) => {
+      const { result } = renderHook(
+        () => useOnClickLinkBuilder({ onClick, dateRange }),
+        { wrapper },
+      );
+      const url = result.current!({}).url!;
+      return new URLSearchParams(url.split('?')[1]).get('tz');
+    };
+
+    expect(
+      tzOf({
+        type: 'search',
+        target: { mode: 'id', id: 'src_1' },
+        whereLanguage: 'sql',
+      }),
+    ).toBe('Asia/Tokyo');
+    expect(
+      tzOf({
+        type: 'dashboard',
+        target: { mode: 'id', id: 'dash_1' },
+        whereLanguage: 'sql',
+      }),
+    ).toBe('Asia/Tokyo');
+    mockTz = null;
   });
 
   it('resolves an external link to an absolute URL marked external', () => {
