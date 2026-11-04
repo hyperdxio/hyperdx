@@ -1448,12 +1448,7 @@ export function DBTraceWaterfallChartContainer({
   return (
     <>
       {showMinimap && (
-        <Box mb="md">
-          <TimelineMinimap
-            rows={timelineRows}
-            controller={viewportController}
-          />
-        </Box>
+        <TimelineMinimap rows={timelineRows} controller={viewportController} />
       )}
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
@@ -1672,7 +1667,11 @@ export function DBTraceWaterfallChartContainer({
         </Group>
       </Group>
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
-        <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
+        <Box mb="xs">
+          <DBHighlightedAttributesList
+            attributes={highlightedAttributeValues}
+          />
+        </Box>
       )}
       <div
         ref={timelineWrapperRef}

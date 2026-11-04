@@ -61,6 +61,7 @@ import {
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useResultColumnFilterKeys } from '@/hooks/useResultColumnFilterKeys';
 import { useChartNumberFormats, useSource } from '@/source';
+import { useTimeZoneLinkParam } from '@/timeZoneOverride';
 import type { NumberFormat, TileFilterHandler } from '@/types';
 
 import ChartContainer from './charts/ChartContainer';
@@ -786,6 +787,7 @@ function DBTimeChartComponent({
       : undefined;
   }, [activeClickPayload]);
 
+  const addTimeZone = useTimeZoneLinkParam();
   const buildSearchUrl = useCallback(
     (seriesKey?: string, seriesValue?: number) => {
       // Raw SQL charts are not supported for drill-down as we don't know the source which is being used.
@@ -901,15 +903,17 @@ function DBTimeChartComponent({
         seconds: convertGranularityToSeconds(granularity),
       });
 
-      return buildEventsSearchUrl({
+      const url = buildEventsSearchUrl({
         source,
         config: expandedConfig,
         dateRange: [from, to],
         groupFilters,
         valueRangeFilter,
       });
+      return url && addTimeZone(url);
     },
     [
+      addTimeZone,
       clickedActiveLabelDate,
       config,
       granularity,
