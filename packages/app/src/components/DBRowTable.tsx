@@ -395,6 +395,7 @@ export const RawLogTable = memo(
     getRowWhere,
     variant = 'default',
     onRemoveColumn,
+    noResultsMessage,
   }: {
     wrapLines?: boolean;
     displayedColumns: string[];
@@ -438,6 +439,7 @@ export const RawLogTable = memo(
     getRowWhere?: (row: Record<string, any>) => RowWhereResult;
     variant?: DBRowTableVariant;
     onRemoveColumn?: (column: string) => void;
+    noResultsMessage?: React.ReactNode;
   }) => {
     const dedupedRows = useMemo(() => {
       const lIds = new Set();
@@ -1440,11 +1442,15 @@ export const RawLogTable = memo(
                           className="my-3"
                           data-testid="db-row-table-no-results"
                         >
-                          No results found.
-                          <Text mt="sm">
-                            Try checking the query explainer in the search bar
-                            if there are any search syntax issues.
-                          </Text>
+                          {noResultsMessage ?? (
+                            <>
+                              No results found.
+                              <Text mt="sm">
+                                Try checking the query explainer in the search
+                                bar if there are any search syntax issues.
+                              </Text>
+                            </>
+                          )}
                           {dateRange?.[0] != null && dateRange?.[1] != null ? (
                             <Text mt="sm">
                               Searched Time Range:{' '}
@@ -1732,6 +1738,7 @@ function DBSqlRowTableComponent({
   tableId,
   errorVariant,
   onResolvedColumnsChange,
+  noResultsMessage,
 }: {
   config: BuilderChartConfigWithDateRange;
   sourceId?: string;
@@ -1765,6 +1772,7 @@ function DBSqlRowTableComponent({
   tableId?: string;
   errorVariant?: ChartErrorStateVariant;
   onResolvedColumnsChange?: (meta: ColumnMetaType[]) => void;
+  noResultsMessage?: React.ReactNode;
 }) {
   const { data: me } = api.useMe();
   const { toggleColumn, displayedColumns: contextDisplayedColumns } =
@@ -2089,6 +2097,7 @@ function DBSqlRowTableComponent({
         variant={variant}
         onRemoveColumn={toggleColumn ? onRemoveColumnFromTable : undefined}
         tableId={tableId}
+        noResultsMessage={noResultsMessage}
       />
     </>
   );
