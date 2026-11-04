@@ -364,6 +364,81 @@ describe('MCP Query Tools', () => {
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
     });
+
+    describe('having, limit and the default order', () => {
+      const now = Date.now();
+      const tableArgs = () => ({
+        sourceId: logSource._id.toString(),
+        select: [{ aggFn: 'count', alias: 'n' }],
+        groupBy: 'ServiceName',
+        startTime: new Date(now - 60 * 60 * 1000).toISOString(),
+        endTime: new Date(now + 60 * 1000).toISOString(),
+      });
+      const rows = (result: Awaited<ReturnType<typeof callTool>>) => {
+        const parsed: { result: { data: { ServiceName: string }[] } } =
+          JSON.parse(getFirstText(result));
+        return parsed.result.data;
+      };
+
+      beforeEach(async () => {
+        // a: 1 row, b: 5 rows, c: 3 rows
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+        for (const [service, count] of [
+          ['a', 1],
+          ['b', 5],
+          ['c', 3],
+        ] as const) {
+          for (let i = 0; i < count; i++) {
+            logs.push({
+              Body: `event ${i}`,
+              ServiceName: service,
+              SeverityText: 'INFO',
+              Timestamp: new Date(now - 60 * 1000 + i),
+            });
+          }
+        }
+        await bulkInsertLogs(logs);
+      });
+
+      it('orders by the first select item, descending, when orderBy is omitted', async () => {
+        const result = await callTool(client, 'clickstack_table', tableArgs());
+        expect(result.isError).toBeFalsy();
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c', 'a']);
+      });
+
+      it('orders by position when the first select item has no alias', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          select: [{ aggFn: 'count' }],
+        });
+        expect(result.isError).toBeFalsy();
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c', 'a']);
+      });
+
+      it('keeps an explicit orderBy', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          orderBy: 'ServiceName ASC',
+        });
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['a', 'b', 'c']);
+      });
+
+      it('applies limit after ordering', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          limit: 2,
+        });
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c']);
+      });
+
+      it('applies having to the groups', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          having: 'n > 1',
+        });
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c']);
+      });
+    });
   });
 
   // ─── clickstack_search ─────────────────────────────────────────────────────────
