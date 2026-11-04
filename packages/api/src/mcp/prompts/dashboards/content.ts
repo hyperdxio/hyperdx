@@ -862,7 +862,7 @@ Used in the "where" field of select items and search tiles.
   OR:                 level:error OR level:fatal
   NOT:                NOT level:debug
   Wildcard:           ServiceName:front*
-  Phrase:             Body:"connection refused"
+  Phrase:             "connection refused"   (body text, uses the text index)
   Exists:             _exists_:http.route
   Range (numeric):    Duration:>1000000000
   Range (inclusive):  http.status_code:[400 TO 499]
@@ -929,7 +929,7 @@ Alternative to Lucene. Set whereLanguage: "sql" when using SQL syntax.
   Basic:              SeverityText = 'error'
   AND/OR:             ServiceName = 'api' AND StatusCode = 'STATUS_CODE_ERROR'
   IN:                 ServiceName IN ('api', 'web', 'worker')
-  LIKE:               Body LIKE '%timeout%'
+  LIKE:               StatusMessage LIKE '%timeout%'
   Comparison:         Duration > 1000000000
   Map access:         SpanAttributes['http.status_code'] = '500'
 

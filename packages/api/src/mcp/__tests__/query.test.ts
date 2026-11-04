@@ -28,6 +28,8 @@ import {
   getMetricSelectIssues,
   mcpQuantileLevelSchema,
   validateMetricSelectItems,
+  whereLanguageSchema,
+  whereSchema,
 } from '@/mcp/tools/query/schemas';
 import { resolveOrderBy } from '@/mcp/tools/query/table';
 import { getErrorCategory } from '@/mcp/utils/errors';
@@ -1412,5 +1414,19 @@ describe('mcpQuantileLevelSchema', () => {
 
     expect(optional.parse(undefined)).toBeUndefined();
     expect(optional.safeParse('0.97').success).toBe(false);
+  });
+});
+
+describe('where / whereLanguage descriptions', () => {
+  it('steer exact matches to the quoted Lucene form and body text to bare terms', () => {
+    expect(whereSchema.description).toContain(
+      'quote the value: SpanKind:"Server"',
+    );
+    expect(whereSchema.description).toContain(
+      'BODY TEXT: write the term or phrase without a field name',
+    );
+    expect(whereLanguageSchema.description).toContain(
+      'quote the value (field:"value")',
+    );
   });
 });
