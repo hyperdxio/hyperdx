@@ -1,3 +1,4 @@
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import mongoose from 'mongoose';
 
@@ -9,6 +10,7 @@ import {
 } from '@/fixtures';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
+import { Source } from '@/models/source';
 
 import { callTool, createTestClient, getFirstText } from './mcpTestUtils';
 
@@ -192,6 +194,70 @@ describe('clickstack_describe_table', () => {
         query: `ALTER TABLE ${DATABASE}.events DROP INDEX idx_svc`,
       });
     }
+  });
+
+  it('points to clickstack_describe_source when the table backs a source', async () => {
+    const source = await Source.create({
+      kind: SourceKind.Log,
+      team: connection.team,
+      from: { databaseName: DATABASE, tableName: 'events' },
+      timestampValueExpression: 'Timestamp',
+      connection: connection._id,
+      name: 'Events',
+    });
+    const metricSource = await Source.create({
+      kind: SourceKind.Metric,
+      team: connection.team,
+      from: { databaseName: DATABASE, tableName: '' },
+      metricTables: { gauge: 'events' },
+      timestampValueExpression: 'Timestamp',
+      resourceAttributesExpression: 'ResourceAttributes',
+      connection: connection._id,
+      name: 'Event metrics',
+    });
+
+    const output = JSON.parse(
+      getFirstText(await call({ database: DATABASE, table: 'events' })),
+    );
+    expect(output.sources).toEqual(
+      expect.arrayContaining([
+        { id: source._id.toString(), name: 'Events', kind: SourceKind.Log },
+        {
+          id: metricSource._id.toString(),
+          name: 'Event metrics',
+          kind: SourceKind.Metric,
+        },
+      ]),
+    );
+    expect(output.nextSteps.describeSource).toMatch(
+      /clickstack_describe_source/,
+    );
+    expect(output.nextSteps.query).toBeUndefined();
+    expect(output.columns.length).toBeGreaterThan(0);
+  });
+
+  it('does not match a source on another connection', async () => {
+    const otherConnection = await Connection.create({
+      team: connection.team,
+      name: 'Other',
+      host: config.CLICKHOUSE_HOST,
+      username: config.CLICKHOUSE_USER,
+      password: config.CLICKHOUSE_PASSWORD,
+    });
+    await Source.create({
+      kind: SourceKind.Log,
+      team: connection.team,
+      from: { databaseName: DATABASE, tableName: 'events' },
+      timestampValueExpression: 'Timestamp',
+      connection: otherConnection._id,
+      name: 'Events',
+    });
+
+    const output = JSON.parse(
+      getFirstText(await call({ database: DATABASE, table: 'events' })),
+    );
+    expect(output.sources).toBeUndefined();
+    expect(output.nextSteps.query).toMatch(/clickstack_save_source/);
   });
 
   it('returns a capped sample of rows when asked', async () => {

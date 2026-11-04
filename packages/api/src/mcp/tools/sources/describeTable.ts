@@ -1,4 +1,5 @@
 import { quoteIdentifierIfNeeded } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { trace } from '@opentelemetry/api';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -18,6 +19,7 @@ import {
   validateObjectId,
 } from '@/mcp/utils/errors';
 import { MCP_TOOL_TIMEOUT_MS, runWithTimeout } from '@/mcp/utils/timeout';
+import { Source } from '@/models/source';
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
@@ -158,14 +160,55 @@ async function sampleTableRows(
   }
 }
 
+/** Sources on this connection that read the table, so callers can be sent to clickstack_describe_source. */
+async function findSourcesForTable(args: {
+  teamId: string;
+  connectionId: string;
+  database: string;
+  table: string;
+}) {
+  try {
+    const sources = await Source.find({
+      team: args.teamId,
+      connection: args.connectionId,
+      'from.databaseName': args.database,
+      kind: { $ne: SourceKind.Promql },
+    }).lean();
+    return sources
+      .filter(
+        s =>
+          s.from?.tableName === args.table ||
+          ('metricTables' in s &&
+            Object.values(s.metricTables ?? {}).includes(args.table)),
+      )
+      .map(s => ({ id: s._id.toString(), name: s.name, kind: s.kind }));
+  } catch (e) {
+    // The schema is still worth returning without the source hint.
+    logger.warn(
+      { err: e, teamId: args.teamId, connectionId: args.connectionId },
+      'clickstack_describe_table source lookup failed',
+    );
+    return [];
+  }
+}
+
 async function describeTable(
   ctx: TableQueryContext,
-  input: DescribeTableInput & { table: string },
+  input: DescribeTableInput & { table: string; teamId: string },
 ): Promise<ToolResult> {
   const { database, table } = input;
   let details;
+  let sources;
   try {
-    details = await fetchTableDetails(ctx, { database, table });
+    [details, sources] = await Promise.all([
+      fetchTableDetails(ctx, { database, table }),
+      findSourcesForTable({
+        teamId: input.teamId,
+        connectionId: ctx.connectionId,
+        database,
+        table,
+      }),
+    ]);
   } catch (e) {
     return tableQueryErrorResult(e, 'Failed to describe table');
   }
@@ -203,10 +246,28 @@ async function describeTable(
     'mcp.describe_table.column_count': columns.length,
     'mcp.describe_table.index_count': description.dataSkippingIndices.length,
     'mcp.describe_table.engine': description.table.engine,
+    'mcp.describe_table.source_count': sources.length,
   });
+
+  const qualifiedName = `${quoteIdentifierIfNeeded(database)}.${quoteIdentifierIfNeeded(table)}`;
+  const nextSteps =
+    sources.length > 0
+      ? {
+          describeSource:
+            `This table backs ${sources.length === 1 ? 'a source' : 'sources'}. ` +
+            `Call clickstack_describe_source with sourceId "${sources[0].id}" for attribute keys and sampled values, ` +
+            'then query it with the builder tools (clickstack_table, clickstack_timeseries, clickstack_search) rather than clickstack_sql.',
+        }
+      : {
+          query:
+            `Query it with clickstack_sql using connectionId "${ctx.connectionId}" and ` +
+            `FROM ${qualifiedName}. ` +
+            'To query it with the builder tools, register it as a source with clickstack_save_source.',
+        };
 
   const rest = {
     ...description,
+    ...(sources.length > 0 && { sources }),
     ...(localTableUnavailable && {
       localTableHint:
         'Could not read the local table through cluster() (missing REMOTE grant, unknown cluster, or unreachable shard), so keys and key flags come from the Distributed table itself and may be empty.',
@@ -216,12 +277,7 @@ async function describeTable(
         'Could not read system.data_skipping_indices for this table (missing grant, or the local table was unreachable), so indices are not listed.',
     }),
     ...sample,
-    nextSteps: {
-      query:
-        `Query it with clickstack_sql using connectionId "${ctx.connectionId}" and ` +
-        `FROM ${quoteIdentifierIfNeeded(database)}.${quoteIdentifierIfNeeded(table)}. ` +
-        'To query it with the builder tools, register it as a source with clickstack_save_source.',
-    },
+    nextSteps,
   };
   // Trim only the column list, against what the rest of the response leaves,
   // so a large sample cannot push columns out.
@@ -305,7 +361,7 @@ export function registerDescribeTable({
             signal,
           };
           return input.table
-            ? describeTable(ctx, { ...input, table: input.table })
+            ? describeTable(ctx, { ...input, table: input.table, teamId })
             : listTables(ctx, input);
         },
         { timeoutMs: MCP_TOOL_TIMEOUT_MS },
