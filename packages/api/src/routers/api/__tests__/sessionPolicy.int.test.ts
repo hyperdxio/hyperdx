@@ -88,6 +88,13 @@ describe('configured session lifetime', () => {
       const active = await agent.get('/me').expect(200);
       const cookie = active.headers['set-cookie'][0].split(';')[0];
       const updated = await store.findOne({ _id: session._id });
+      expect(updated?.expires.getTime()).toBeGreaterThan(
+        session.expires.getTime(),
+      );
+      expect(updated?.expires.getTime()).toBe(now + 40 * 60 * 1000);
+      expect(active.headers['set-cookie'][0]).toContain(
+        `Expires=${new Date(now + 40 * 60 * 1000).toUTCString()}`,
+      );
       expect(JSON.parse(updated?.session).authExpiresAt).toBe(
         data.authExpiresAt,
       );
@@ -106,6 +113,26 @@ describe('configured session lifetime', () => {
         { $set: { expires: new Date(Date.now() - 1) } },
       );
       await agent.get('/me').expect(401);
+    },
+  );
+
+  it.each(['password', 'keycloak'] as const)(
+    'requires same-origin logout and revokes the %s session before its deadline',
+    async method => {
+      const { agent, store, session } = await login(method);
+      const active = await agent.get('/me').expect(200);
+      const cookie = active.headers['set-cookie'][0].split(';')[0];
+      await agent.post('/logout').expect(403);
+      await agent.get('/me').expect(200);
+      const logout = await agent
+        .post('/logout?redirect=https://evil.example')
+        .set('Sec-Fetch-Site', 'same-origin')
+        .expect(303);
+      expect(new URL(logout.headers.location).origin).toBe(
+        method === 'keycloak' ? provider.issuer : config.FRONTEND_URL,
+      );
+      expect(await store.findOne({ _id: session._id })).toBeNull();
+      await request(app).get('/me').set('Cookie', cookie).expect(401);
     },
   );
 

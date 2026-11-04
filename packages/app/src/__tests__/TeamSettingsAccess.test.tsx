@@ -39,13 +39,35 @@ jest.mock('@/components/TeamSettings/TeamMembersSection', () => () => null);
 jest.mock('@/components/TeamSettings/TeamQueryConfigSection', () => () => null);
 
 describe('team settings tabs', () => {
-  beforeEach(() => mockRouter.replace.mockClear());
-
-  it('preserves an administrator deep link until permissions have loaded', () => {
-    mockMe.mockReturnValue(undefined);
-    renderWithMantine(<TeamPage />);
-    expect(mockRouter.replace).not.toHaveBeenCalled();
+  beforeEach(() => {
+    mockRouter.replace.mockClear();
+    mockRouter.query = { tab: 'team' };
   });
+
+  it.each([
+    ['team', 'Members'],
+    ['data', 'Data'],
+    ['integrations', 'Integrations'],
+  ])(
+    'preserves the %s deep link while administrator permissions load',
+    (tab, name) => {
+      mockRouter.query = { tab };
+      mockMe.mockReturnValue(undefined);
+      const { rerender } = renderWithMantine(<TeamPage />);
+      expect(mockRouter.replace).not.toHaveBeenCalled();
+      mockMe.mockReturnValue({ canManageTeamSettings: true });
+      rerender(
+        <TestProviders>
+          <TeamPage />
+        </TestProviders>,
+      );
+      expect(screen.getByRole('tab', { name })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      expect(mockRouter.replace).not.toHaveBeenCalled();
+    },
+  );
   it.each([false, undefined])(
     'hides restricted tabs without granted access (%s), including direct links',
     allowed => {
@@ -69,5 +91,35 @@ describe('team settings tabs', () => {
     for (const name of ['Members', 'Data', 'Integrations']) {
       expect(screen.getByRole('tab', { name })).toBeInTheDocument();
     }
+  });
+
+  it.each([
+    ['team', 'Members'],
+    ['data', 'Data'],
+    ['integrations', 'Integrations'],
+  ])('leaves the active %s tab when permission is revoked', (tab, name) => {
+    mockRouter.query = { tab };
+    mockMe.mockReturnValue({ canManageTeamSettings: true });
+    const { rerender } = renderWithMantine(<TeamPage />);
+    expect(screen.getByRole('tab', { name })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    mockMe.mockReturnValue({ canManageTeamSettings: false });
+    rerender(
+      <TestProviders>
+        <TeamPage />
+      </TestProviders>,
+    );
+    expect(screen.queryByRole('tab', { name })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'API & Agents' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(mockRouter.replace).toHaveBeenCalledWith(
+      expect.objectContaining({ query: { tab: 'api-agents' } }),
+      undefined,
+      { shallow: true, scroll: false },
+    );
   });
 });

@@ -131,6 +131,49 @@ describe('Keycloak OIDC routes with real provider, Passport, and Mongo sessions'
     expect(JSON.stringify(members.body)).not.toMatch(/hash|salt/);
   });
 
+  it('accepts an invited member without granting restricted team settings access', async () => {
+    const team = await Team.create({
+      name: 'Restricted team',
+      settingsAdminIds: [new mongoose.Types.ObjectId()],
+    });
+    await TeamInvite.create({
+      teamId: team._id,
+      email: provider.account.email,
+      token: 'member-invite',
+    });
+    const { agent } = await login(request.agent(app), '?token=member-invite');
+    const me = await agent.get('/me').expect(200);
+    expect(me.body.team._id).toBe(team.id);
+    expect(me.body.canManageTeamSettings).toBe(false);
+    await agent.get('/team/members').expect(403);
+    await agent.get('/dashboards').expect(200);
+    expect((await Team.findById(team._id))?.settingsAdminIds).toEqual(
+      team.settingsAdminIds,
+    );
+  });
+
+  it.each(['removed', 'issuer', 'subject', 'deleted user'])(
+    'revokes an existing browser session after identity change: %s',
+    async change => {
+      const user = await mappedUser();
+      const { agent, result } = await login();
+      const cookie = result.headers['set-cookie'][0].split(';')[0];
+      await agent.get('/me').expect(200);
+      if (change === 'deleted user') {
+        await User.deleteOne({ _id: user._id });
+      } else {
+        await User.updateOne(
+          { _id: user._id },
+          change === 'removed'
+            ? { $unset: { keycloak: '' } }
+            : { $set: { [`keycloak.${change}`]: 'different-identity' } },
+        );
+      }
+      await agent.get('/me').expect(401);
+      await request(app).get('/dashboards').set('Cookie', cookie).expect(401);
+    },
+  );
+
   it.each(['nonce', 'codeVerifier', 'createdAt'])(
     'rejects a callback with invalid stored %s',
     async field => {
@@ -257,6 +300,19 @@ describe('Keycloak OIDC routes with real provider, Passport, and Mongo sessions'
     const { agent, callback } = await login();
     const replay = await agent.get(callback).expect(303);
     expect(replay.headers.location).toContain('err=keycloak');
+  });
+
+  it('consumes a failed callback so correcting its state cannot reuse the transaction', async () => {
+    await mappedUser();
+    const agent = request.agent(app);
+    const start = await agent.get('/login/keycloak').expect(302);
+    const callback = await provider.authorize(start.headers.location);
+    const invalid = new URL(callback, config.FRONTEND_URL);
+    invalid.searchParams.set('state', 'incorrect');
+    await agent.get(invalid.pathname + invalid.search).expect(303);
+    const retry = await agent.get(callback).expect(303);
+    expect(retry.headers.location).toContain('err=keycloak');
+    await agent.get('/me').expect(401);
   });
 
   it('enforces absolute session expiry even when the Mongo cookie is still live', async () => {

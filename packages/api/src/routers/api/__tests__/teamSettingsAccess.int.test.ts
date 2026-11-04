@@ -10,6 +10,7 @@ import {
 } from '@/mcp/__tests__/mcpTestUtils';
 import Team from '@/models/team';
 import User from '@/models/user';
+import Webhook from '@/models/webhook';
 
 describe('team settings access', () => {
   beforeAll(connectDB);
@@ -75,6 +76,70 @@ describe('team settings access', () => {
     });
     await agent.get('/team/members').expect(403);
   });
+
+  it.each(['', '/api/v2'])(
+    'allows administrator writes through %s and preserves resources after access is revoked',
+    async prefix => {
+      const { agent, user } = await login();
+      await Team.updateOne(
+        { _id: user.team },
+        { $set: { settingsAdminIds: [user._id] } },
+      );
+      const client = prefix ? request(app) : agent;
+      const webhook = {
+        name: 'Alerts',
+        service: 'generic',
+        url: 'https://example.com/hook',
+      };
+      await client
+        .post(`${prefix}/webhooks`)
+        .set('Authorization', `Bearer ${user.accessKey}`)
+        .send(webhook)
+        .expect(200);
+      const stored = await Webhook.findOne({ team: user.team }).orFail();
+      expect(stored.url).toBe(webhook.url);
+      const path = `${prefix}/webhooks/${stored.id}`;
+      await client
+        .put(path)
+        .set('Authorization', `Bearer ${user.accessKey}`)
+        .send({ ...webhook, name: 'Renamed' })
+        .expect(200);
+      expect((await Webhook.findById(stored._id))?.name).toBe('Renamed');
+
+      await Team.updateOne(
+        { _id: user.team },
+        { $set: { settingsAdminIds: [] } },
+      );
+      await client
+        .put(path)
+        .set('Authorization', `Bearer ${user.accessKey}`)
+        .send({ ...webhook, name: 'Forbidden change' })
+        .expect(403);
+      await client
+        .delete(path)
+        .set('Authorization', `Bearer ${user.accessKey}`)
+        .expect(403);
+      expect((await Webhook.findById(stored._id))?.name).toBe('Renamed');
+      const catalog = await client
+        .get(`${prefix}/webhooks`)
+        .query({ service: 'generic' })
+        .set('Authorization', `Bearer ${user.accessKey}`)
+        .expect(200);
+      expect(catalog.body.data).toEqual([
+        expect.objectContaining({ name: 'Renamed' }),
+      ]);
+
+      await Team.updateOne(
+        { _id: user.team },
+        { $set: { settingsAdminIds: [user._id] } },
+      );
+      await client
+        .delete(path)
+        .set('Authorization', `Bearer ${user.accessKey}`)
+        .expect(200);
+      expect(await Webhook.findById(stored._id)).toBeNull();
+    },
+  );
 
   it.each(['', '/api/v2'])(
     'blocks membership and configuration writes through %s',
@@ -161,6 +226,50 @@ describe('team settings access', () => {
         expect(result.isError).toBe(true);
         expect(getFirstText(result)).toContain('Forbidden');
       }
+    } finally {
+      await client.close();
+    }
+  });
+
+  it('rechecks permissions on an existing MCP connection before changing stored resources', async () => {
+    const { user } = await login();
+    await Team.updateOne(
+      { _id: user.team },
+      { $set: { settingsAdminIds: [user._id] } },
+    );
+    const client = await createTestClient({
+      teamId: user.team.toString(),
+      userId: user.id,
+    });
+    try {
+      const created = await callTool(client, 'clickstack_save_webhook', {
+        name: 'MCP alerts',
+        service: 'generic',
+        url: 'https://example.com/hook',
+      });
+      expect(created.isError).toBeFalsy();
+      const stored = await Webhook.findOne({ team: user.team }).orFail();
+      expect(stored.name).toBe('MCP alerts');
+      await Team.updateOne(
+        { _id: user.team },
+        { $set: { settingsAdminIds: [] } },
+      );
+      const denied = await callTool(client, 'clickstack_delete_webhook', {
+        id: stored.id,
+      });
+      expect(denied.isError).toBe(true);
+      expect(getFirstText(denied)).toContain('Forbidden');
+      expect(await Webhook.findById(stored._id)).not.toBeNull();
+
+      await Team.updateOne(
+        { _id: user.team },
+        { $set: { settingsAdminIds: [user._id] } },
+      );
+      const deleted = await callTool(client, 'clickstack_delete_webhook', {
+        id: stored.id,
+      });
+      expect(deleted.isError).toBeFalsy();
+      expect(await Webhook.findById(stored._id)).toBeNull();
     } finally {
       await client.close();
     }

@@ -43,6 +43,43 @@ ClickHouse).
 <br/>
 <img alt="Search logs and traces all in one place" src="./.github/images/search_splash.png" title="Search logs and traces all in one place">
 
+## Authentication changes in this fork
+
+This fork adds Keycloak OIDC login to HyperDX's existing Passport and MongoDB
+sessions. It also adds configurable session limits and an optional team settings
+allowlist for Members, Data, and Integrations, enforced by the API and MCP as
+well as the UI. Existing authentication and team access remain unchanged until
+these options are configured.
+
+Set the following on the API server (keep secrets out of frontend variables):
+
+```dotenv
+FRONTEND_URL=https://hyperdx.example.com
+KEYCLOAK_ISSUER=https://identity.example.com/realms/hyperdx
+KEYCLOAK_CLIENT_ID=hyperdx
+KEYCLOAK_CLIENT_SECRET=<client secret>
+KEYCLOAK_REQUIRED=false
+SESSION_MAX_AGE_SECONDS=86400
+SESSION_IDLE_TIMEOUT_SECONDS=1800
+```
+
+Configure the Keycloak client with the exact callback
+`https://hyperdx.example.com/api/login/keycloak/callback` and post-logout URI
+`https://hyperdx.example.com/login`. Users need an explicitly linked HyperDX
+account or a valid team invitation; matching email addresses never link accounts
+automatically. Verify login before setting `KEYCLOAK_REQUIRED=true` to disable
+password login and existing password sessions.
+
+The sample session policy is a 24-hour maximum with a 30-minute idle timeout.
+Configure Keycloak's session limits separately. Keycloak and HyperDX sessions
+are independent; back-channel logout is not implemented.
+
+See the [Keycloak setup guide](./docs/keycloak.md) for client settings, account
+migration, proxy configuration, settings permissions, and
+[regression test commands](./docs/keycloak.md#regression-tests). Build images
+from this branch to use these changes; the upstream images below do not include
+this fork's additions.
+
 ## Spinning Up HyperDX
 
 HyperDX can be deployed as part of ClickStack, which includes ClickHouse,

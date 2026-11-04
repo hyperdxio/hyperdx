@@ -144,3 +144,38 @@ Keep auth query strings, request bodies, and redirect headers out of reverse
 proxy/APM logs. Application request logs redact the new auth URLs and never log
 protocol error objects. To roll back, disable required mode first; removing all
 Keycloak variables also disables its routes and invalidates its browser sessions.
+
+## Regression tests
+
+Use Node.js 22.16 or later and the repository's pinned Yarn version. After
+`yarn install` and `yarn build:common-utils`, run the focused unit/UI suites
+from the repository root:
+
+```bash
+yarn workspace @hyperdx/api ci:unit --runInBand keycloakConfig sessionPolicyConfig logger
+yarn workspace @hyperdx/app ci:unit --runInBand KeycloakAuth TeamSettingsAccess
+```
+
+The authentication integration suites use real Passport sessions, MongoDB and
+the existing `oidc-provider` test fixture. They need no running Keycloak or
+ClickHouse server. Start a disposable MongoDB and run from the repository root:
+
+```bash
+docker run -d --rm --name hdx-auth-test-mongo \
+  -p 127.0.0.1:27080:27017 mongo:7.0.45
+cd packages/api
+NODE_ENV=test DOTENV_CONFIG_PATH=/dev/null \
+  MONGO_URI=mongodb://127.0.0.1:27080/hdx_auth_test \
+  yarn jest --config jest.int.config.js --runInBand --forceExit \
+  keycloak.int.test.ts sessionPolicy.int.test.ts teamSettingsAccess.int.test.ts
+docker stop hdx-auth-test-mongo
+```
+
+Wait for MongoDB to accept connections before running Jest. Use only a
+disposable database: the fixtures clear collections and drop it during cleanup.
+The suites cover callback validation and replay, safe identity mapping and
+invitation provisioning, session rotation/expiry/logout, password and required
+modes, and settings permissions through browser sessions, API keys and MCP. UI
+tests cover login choices and restricted tab deep links and permission changes.
+These checks do not replace verifying the deployed Keycloak client, HTTPS proxy,
+and logout flow in a browser.

@@ -61,6 +61,22 @@ describe('Keycloak identity and invitation authorization', () => {
     expect(await TeamInvite.findById(invitation._id)).not.toBeNull();
   });
 
+  it('does not authenticate the same subject from a different issuer', async () => {
+    const { team } = await invite();
+    await User.create({
+      email: claims.email,
+      team: team._id,
+      keycloak: identity,
+    });
+    expect(
+      await resolveKeycloakUser({
+        ...claims,
+        iss: 'https://other.example.com',
+      }),
+    ).toBeNull();
+    expect(await User.countDocuments()).toBe(1);
+  });
+
   it('provisions only the team named in a valid invitation', async () => {
     const { team, invitation } = await invite();
     const user = await resolveKeycloakUser(claims, invitation.token);
