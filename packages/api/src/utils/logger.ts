@@ -61,6 +61,7 @@ const getTransport = () => {
 export const REDACTED_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
+  'req.headers.referer',
   'res.headers["set-cookie"]',
   // A redirect can carry a token in its target.
   'res.headers.location',
@@ -73,7 +74,9 @@ export const REDACTED_PATHS = [
 const TOKEN_PATH_RE = /\/(team\/setup)\/[^/?#]+/g;
 
 export const scrubUrlTokens = (url: string): string =>
-  url.replace(TOKEN_PATH_RE, '/$1/[REDACTED]');
+  url
+    .replace(TOKEN_PATH_RE, '/$1/[REDACTED]')
+    .replace(/(\/login\/keycloak(?:\/callback)?)\?.*$/, '$1?[REDACTED]');
 
 // pino-http wraps a user-supplied `req` serializer with
 // `wrapRequestSerializer` (its `wrapSerializers` option defaults to true), so

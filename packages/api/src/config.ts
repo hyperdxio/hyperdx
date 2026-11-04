@@ -51,6 +51,57 @@ export const HYPERDX_LOG_LEVEL = env.HYPERDX_LOG_LEVEL as string;
 export const IS_CI = NODE_ENV === 'test';
 export const IS_DEV = NODE_ENV === 'development';
 export const IS_PROD = NODE_ENV === 'production';
+export const KEYCLOAK_REQUIRED = env.KEYCLOAK_REQUIRED === 'true';
+export const KEYCLOAK = (() => {
+  if (
+    env.KEYCLOAK_REQUIRED &&
+    !['true', 'false'].includes(env.KEYCLOAK_REQUIRED)
+  ) {
+    throw new Error('Keycloak: KEYCLOAK_REQUIRED must be true or false');
+  }
+  if (
+    !env.KEYCLOAK_ISSUER &&
+    !env.KEYCLOAK_CLIENT_ID &&
+    !env.KEYCLOAK_CLIENT_SECRET &&
+    !KEYCLOAK_REQUIRED
+  )
+    return;
+
+  if (!env.KEYCLOAK_ISSUER || !env.KEYCLOAK_CLIENT_ID || IS_LOCAL_APP_MODE) {
+    throw new Error(
+      'Keycloak requires an issuer, client ID, and authenticated app mode',
+    );
+  }
+  try {
+    const issuer = new URL(env.KEYCLOAK_ISSUER);
+    const frontend = new URL(FRONTEND_URL);
+    for (const url of [issuer, frontend]) {
+      const localHttp =
+        !IS_PROD &&
+        url.protocol === 'http:' &&
+        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+      if (
+        (url.protocol !== 'https:' && !localHttp) ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      )
+        throw new Error();
+    }
+    if (frontend.pathname !== '/') throw new Error();
+    return {
+      issuer: env.KEYCLOAK_ISSUER,
+      clientId: env.KEYCLOAK_CLIENT_ID,
+      clientSecret: env.KEYCLOAK_CLIENT_SECRET,
+      callbackUrl: new URL('/api/login/keycloak/callback', frontend).href,
+    };
+  } catch {
+    throw new Error(
+      'Keycloak requires an HTTPS issuer and FRONTEND_URL origin (HTTP loopback allowed outside production)',
+    );
+  }
+})();
 export const MONGO_URI = env.MONGO_URI;
 export const OTEL_SERVICE_NAME = env.OTEL_SERVICE_NAME as string;
 export const PORT = Number.parseInt(env.PORT as string);

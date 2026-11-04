@@ -15,6 +15,7 @@ export interface IUser {
   createdAt: Date;
   email: string;
   name: string;
+  keycloak?: { issuer: string; subject: string };
   // Optional for docs predating this field; the `me` route defaults it.
   onboardingData?: OnboardingData;
   team: ObjectId;
@@ -25,6 +26,15 @@ export type UserDocument = mongoose.HydratedDocument<IUser>;
 const UserSchema = new Schema(
   {
     name: String,
+    keycloak: {
+      type: new Schema(
+        {
+          issuer: { type: String, required: true },
+          subject: { type: String, required: true },
+        },
+        { _id: false },
+      ),
+    },
     email: {
       type: String,
       required: true,
@@ -56,8 +66,8 @@ const UserSchema = new Schema(
   },
 );
 
-UserSchema.virtual('hasPasswordAuth').get(function (this: IUser) {
-  return true;
+UserSchema.virtual('hasPasswordAuth').get(function (this: UserDocument) {
+  return Boolean(this.get('hash'));
 });
 
 UserSchema.plugin(passportLocalMongoose, {
@@ -68,5 +78,15 @@ UserSchema.plugin(passportLocalMongoose, {
 
 UserSchema.index({ email: 1 }, { unique: true });
 UserSchema.index({ accessKey: 1 }, { unique: true });
+UserSchema.index(
+  { 'keycloak.issuer': 1, 'keycloak.subject': 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      'keycloak.issuer': { $type: 'string' },
+      'keycloak.subject': { $type: 'string' },
+    },
+  },
+);
 
 export default mongoose.model<IUser>('User', UserSchema);

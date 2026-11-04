@@ -32,7 +32,9 @@ export function findUserByEmail(email: string) {
 }
 
 export function findUsersByTeam(team: string | ObjectId) {
-  return User.find({ team }).sort({ createdAt: 1 });
+  // Member endpoints whitelist response fields; the hash is only used by the
+  // hasPasswordAuth virtual and must never be included in their responses.
+  return User.find({ team }).select('+hash').sort({ createdAt: 1 });
 }
 
 // Type-guard wrapper over the shared 24-hex check; rejects the synthetic

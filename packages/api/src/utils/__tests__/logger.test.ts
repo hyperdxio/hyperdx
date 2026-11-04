@@ -77,6 +77,14 @@ describe('logger redaction', () => {
  */
 describe('scrubUrlTokens', () => {
   it.each([
+    '/login/keycloak?token=invitation-secret',
+    '/login/keycloak/callback?code=code-secret&state=state-secret',
+    '/api/login/keycloak/callback?error=denied&error_description=secret',
+  ])('scrubs Keycloak credentials from %s', url => {
+    expect(scrubUrlTokens(url)).not.toContain('secret');
+    expect(scrubUrlTokens(url)).toContain('[REDACTED]');
+  });
+  it.each([
     ['/team/setup/tok-xyz', '/team/setup/[REDACTED]'],
     ['/api/team/setup/tok-xyz', '/api/team/setup/[REDACTED]'],
     // Query strings and fragments must not be swallowed into the token.

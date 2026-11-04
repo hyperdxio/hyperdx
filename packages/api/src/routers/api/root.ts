@@ -15,6 +15,8 @@ import passport from '@/utils/passport';
 import { isMongoConnected, mongoReadyStateName } from '@/utils/readiness';
 import { passwordSchema } from '@/utils/validators';
 
+import keycloakRouter from './keycloak';
+
 const registrationSchema = z
   .object({
     email: z.string().email(),
@@ -27,6 +29,14 @@ const registrationSchema = z
   });
 
 const router = express.Router();
+router.use(keycloakRouter);
+
+const requirePasswordAuth: express.RequestHandler = (_req, res, next) => {
+  if (config.KEYCLOAK_REQUIRED) {
+    return res.status(403).json({ error: 'passwordAuthNotAllowed' });
+  }
+  next();
+};
 
 // Liveness: 200 whenever the process can serve HTTP. Deliberately checks no
 // external dependencies — restarting the pod does not fix a Mongo outage.
@@ -62,6 +72,8 @@ router.get('/installation', async (_, res: InstallationEspRes, next) => {
     const _isTeamExisting = await isTeamExisting();
     return res.json({
       isTeamExisting: _isTeamExisting,
+      keycloakEnabled: Boolean(config.KEYCLOAK),
+      keycloakRequired: config.KEYCLOAK_REQUIRED,
     });
   } catch (e) {
     next(e);
@@ -70,6 +82,7 @@ router.get('/installation', async (_, res: InstallationEspRes, next) => {
 
 router.post(
   '/login/password',
+  requirePasswordAuth,
   passport.authenticate('local', {
     failWithError: true,
     failureMessage: true,
@@ -80,6 +93,7 @@ router.post(
 
 router.post(
   '/register/password',
+  requirePasswordAuth,
   validateRequest({ body: registrationSchema }),
   async (req, res, next) => {
     try {
@@ -140,6 +154,7 @@ router.post(
 );
 
 router.get('/logout', (req, res, next) => {
+  if (req.session.keycloak) return res.sendStatus(405);
   req.logout(function (err) {
     if (err) {
       return next(err);
@@ -149,58 +164,62 @@ router.get('/logout', (req, res, next) => {
 });
 
 // TODO: rename this ?
-router.post('/team/setup/:token', async (req, res, next) => {
-  try {
-    const { password } = req.body;
-    const { token } = req.params;
+router.post(
+  '/team/setup/:token',
+  requirePasswordAuth,
+  async (req, res, next) => {
+    try {
+      const { password } = req.body;
+      const { token } = req.params;
 
-    const passwordResult = passwordSchema.safeParse(password);
-    if (!passwordResult.success) {
-      // Emit one `reason` query param per failed requirement so the Join Team
-      // page can render them as a readable list rather than one run-on line.
-      const reasonParams = passwordResult.error.issues
-        .map(issue => `reason=${encodeURIComponent(issue.message)}`)
-        .join('&');
-      return res.redirect(
-        `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&${reasonParams}&token=${token}`,
-      );
-    }
+      const passwordResult = passwordSchema.safeParse(password);
+      if (!passwordResult.success) {
+        // Emit one `reason` query param per failed requirement so the Join Team
+        // page can render them as a readable list rather than one run-on line.
+        const reasonParams = passwordResult.error.issues
+          .map(issue => `reason=${encodeURIComponent(issue.message)}`)
+          .join('&');
+        return res.redirect(
+          `${config.FRONTEND_REDIRECT_BASE}/join-team?err=invalid&${reasonParams}&token=${token}`,
+        );
+      }
 
-    const teamInvite = await TeamInvite.findOne({
-      token: req.params.token,
-    });
-    if (!teamInvite) {
-      return res.status(401).send('Invalid token');
-    }
+      const teamInvite = await TeamInvite.findOne({
+        token: req.params.token,
+      });
+      if (!teamInvite) {
+        return res.status(401).send('Invalid token');
+      }
 
-    (User as any).register(
-      new User({
-        email: teamInvite.email,
-        name: teamInvite.email,
-        team: teamInvite.teamId,
-      }),
-      password,
-      async (err: Error, user: any) => {
-        if (err) {
-          logger.error({ err: serializeError(err) }, 'Team setup error');
-          return res.redirect(
-            `${config.FRONTEND_REDIRECT_BASE}/join-team?token=${token}&err=500`,
-          );
-        }
-
-        await TeamInvite.findByIdAndRemove(teamInvite._id);
-
-        req.login(user, err => {
+      (User as any).register(
+        new User({
+          email: teamInvite.email,
+          name: teamInvite.email,
+          team: teamInvite.teamId,
+        }),
+        password,
+        async (err: Error, user: any) => {
           if (err) {
-            return next(err);
+            logger.error({ err: serializeError(err) }, 'Team setup error');
+            return res.redirect(
+              `${config.FRONTEND_REDIRECT_BASE}/join-team?token=${token}&err=500`,
+            );
           }
-          redirectToDashboard(req, res);
-        });
-      },
-    );
-  } catch (e) {
-    next(e);
-  }
-});
+
+          await TeamInvite.findByIdAndRemove(teamInvite._id);
+
+          req.login(user, err => {
+            if (err) {
+              return next(err);
+            }
+            redirectToDashboard(req, res);
+          });
+        },
+      );
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 export default router;

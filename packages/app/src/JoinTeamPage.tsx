@@ -11,6 +11,7 @@ import {
 } from '@mantine/core';
 
 import { usePageTitle } from './theme/ThemeProvider';
+import api from './api';
 import { PasswordCheck } from './PasswordCheck';
 
 export default function JoinTeam() {
@@ -18,6 +19,7 @@ export default function JoinTeam() {
   const title = usePageTitle('Join Team');
   const { err, reason, token } = router.query;
   const [password, setPassword] = useState('');
+  const { data: installation } = api.useInstallation();
 
   const invalidReasons =
     err === 'invalid'
@@ -39,63 +41,76 @@ export default function JoinTeam() {
           </div>
           <Paper p="xl" withBorder>
             <div className="text-center">
-              <form
-                className="text-start"
-                action={`/api/team/setup/${token}`}
-                method="POST"
-              >
-                <TextInput
-                  id="password"
-                  name="password"
-                  type="password"
-                  label="Password"
-                  value={password}
-                  onChange={event => setPassword(event.currentTarget.value)}
-                  styles={{
-                    label: {
-                      fontSize: '0.875rem',
-                      color: 'var(--color-text-muted)',
-                      marginBottom: 4,
-                    },
-                  }}
-                />
-                <Notification withCloseButton={false} mt="sm">
-                  <PasswordCheck password={password} />
-                </Notification>
-                {err != null && (
-                  <div
-                    data-test-id="auth-error-msg"
-                    style={{ overflowWrap: 'anywhere' }}
-                  >
-                    {err !== 'invalid' ? (
-                      <Text c="red" mt="sm">
-                        Unknown error occurred, please try again later.
-                      </Text>
-                    ) : invalidReasons.length > 1 ? (
-                      <List c="red" size="sm" mt="sm" spacing={4}>
-                        {invalidReasons.map(r => (
-                          <List.Item key={r}>{r}</List.Item>
-                        ))}
-                      </List>
-                    ) : (
-                      <Text c="red" mt="sm">
-                        {invalidReasons[0] ??
-                          'Password does not meet the requirements.'}
-                      </Text>
-                    )}
+              {installation?.keycloakEnabled && typeof token === 'string' && (
+                <Button
+                  component="a"
+                  href={`/api/login/keycloak?token=${encodeURIComponent(token)}`}
+                  variant="secondary"
+                  fullWidth
+                  mb="md"
+                >
+                  Sign in with Keycloak
+                </Button>
+              )}
+              {!installation?.keycloakRequired && (
+                <form
+                  className="text-start"
+                  action={`/api/team/setup/${token}`}
+                  method="POST"
+                >
+                  <TextInput
+                    id="password"
+                    name="password"
+                    type="password"
+                    label="Password"
+                    value={password}
+                    onChange={event => setPassword(event.currentTarget.value)}
+                    styles={{
+                      label: {
+                        fontSize: '0.875rem',
+                        color: 'var(--color-text-muted)',
+                        marginBottom: 4,
+                      },
+                    }}
+                  />
+                  <Notification withCloseButton={false} mt="sm">
+                    <PasswordCheck password={password} />
+                  </Notification>
+                  {err != null && (
+                    <div
+                      data-test-id="auth-error-msg"
+                      style={{ overflowWrap: 'anywhere' }}
+                    >
+                      {err !== 'invalid' ? (
+                        <Text c="red" mt="sm">
+                          Unknown error occurred, please try again later.
+                        </Text>
+                      ) : invalidReasons.length > 1 ? (
+                        <List c="red" size="sm" mt="sm" spacing={4}>
+                          {invalidReasons.map(r => (
+                            <List.Item key={r}>{r}</List.Item>
+                          ))}
+                        </List>
+                      ) : (
+                        <Text c="red" mt="sm">
+                          {invalidReasons[0] ??
+                            'Password does not meet the requirements.'}
+                        </Text>
+                      )}
+                    </div>
+                  )}
+                  <div className="text-center mt-4">
+                    <Button
+                      variant="primary"
+                      className="px-6"
+                      type="submit"
+                      data-test-id="submit"
+                    >
+                      Setup a password
+                    </Button>
                   </div>
-                )}
-                <div className="text-center mt-4">
-                  <Button
-                    variant="primary"
-                    className="px-6"
-                    type="submit"
-                    data-test-id="submit"
-                  >
-                    Setup a password
-                  </Button>
-                </div>
-              </form>
+                </form>
+              )}
             </div>
           </Paper>
         </div>

@@ -23,7 +23,7 @@ module.exports = {
   moduleFileExtensions: ['js', 'mjs', 'json', 'ts', 'tsx', 'node'],
   // Superset of the unit config's list (AI SDK packages) plus the proxy deps.
   transformIgnorePatterns: [
-    '/node_modules/(?!(ai|@ai-sdk|@workflow/serde|http-proxy-middleware|httpxy|is-plain-obj)/)',
+    '/node_modules/(?!(ai|@ai-sdk|@workflow/serde|http-proxy-middleware|httpxy|is-plain-obj|openid-client|oauth4webapi|jose|oidc-provider)/)',
   ],
   testMatch: ['**/__tests__/**/*.int.test.ts?(x)'],
   // Override the unit config's ignore list: it excludes `.int.test.ts`, which

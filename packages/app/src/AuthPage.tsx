@@ -153,66 +153,80 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
             <Stack gap="xl">
               <Paper p={34} shadow="md" radius="md">
                 <Stack gap="lg">
-                  <TextInput
-                    label="Email"
-                    size="md"
-                    withAsterisk={false}
-                    placeholder="you@company.com"
-                    type="email"
-                    leftSection={<IconAt size={18} />}
-                    error={errors.email?.message}
-                    required
-                    {...form.email}
-                  />
-                  <PasswordInput
-                    size="md"
-                    label="Password"
-                    withAsterisk={false}
-                    leftSection={<IconLock size={16} />}
-                    error={errors.password?.message}
-                    required
-                    placeholder="Password"
-                    {...form.password}
-                  />
-                  {isRegister && (
+                  {installation?.keycloakEnabled && (
+                    <Button
+                      component="a"
+                      href="/api/login/keycloak"
+                      variant="secondary"
+                      size="md"
+                    >
+                      Sign in with Keycloak
+                    </Button>
+                  )}
+                  {!installation?.keycloakRequired && (
                     <>
-                      <PasswordInput
-                        label={
-                          <CheckOrX
-                            handler={confirmPass}
-                            password={currentPassword}
-                          >
-                            Confirm Password
-                          </CheckOrX>
-                        }
+                      <TextInput
+                        label="Email"
                         size="md"
+                        withAsterisk={false}
+                        placeholder="you@company.com"
+                        type="email"
+                        leftSection={<IconAt size={18} />}
+                        error={errors.email?.message}
                         required
+                        {...form.email}
+                      />
+                      <PasswordInput
+                        size="md"
+                        label="Password"
                         withAsterisk={false}
                         leftSection={<IconLock size={16} />}
-                        error={errors.confirmPassword?.message}
-                        placeholder="Confirm Password"
-                        {...form.confirmPassword}
+                        error={errors.password?.message}
+                        required
+                        placeholder="Password"
+                        {...form.password}
                       />
-                      <Notification withCloseButton={false}>
-                        <PasswordCheck password={currentPassword} />
-                      </Notification>
+                      {isRegister && (
+                        <>
+                          <PasswordInput
+                            label={
+                              <CheckOrX
+                                handler={confirmPass}
+                                password={currentPassword}
+                              >
+                                Confirm Password
+                              </CheckOrX>
+                            }
+                            size="md"
+                            required
+                            withAsterisk={false}
+                            leftSection={<IconLock size={16} />}
+                            error={errors.confirmPassword?.message}
+                            placeholder="Confirm Password"
+                            {...form.confirmPassword}
+                          />
+                          <Notification withCloseButton={false}>
+                            <PasswordCheck password={currentPassword} />
+                          </Notification>
+                        </>
+                      )}
+                      <Button
+                        mt={4}
+                        type="submit"
+                        variant="primary"
+                        size="md"
+                        disabled={isSubmitting || verificationSent}
+                        loading={isSubmitting}
+                        data-test-id="submit"
+                      >
+                        {config.IS_OSS && isRegister
+                          ? 'Create'
+                          : isRegister
+                            ? 'Register'
+                            : 'Login'}
+                      </Button>
                     </>
                   )}
-                  <Button
-                    mt={4}
-                    type="submit"
-                    variant="primary"
-                    size="md"
-                    disabled={isSubmitting || verificationSent}
-                    loading={isSubmitting}
-                    data-test-id="submit"
-                  >
-                    {config.IS_OSS && isRegister
-                      ? 'Create'
-                      : isRegister
-                        ? 'Register'
-                        : 'Login'}
-                  </Button>
                 </Stack>
               </Paper>
 
@@ -223,17 +237,19 @@ export default function AuthPage({ action }: { action: 'register' | 'login' }) {
                   color="red"
                   data-test-id="auth-error-msg"
                 >
-                  {err === 'missing'
-                    ? 'Please provide a valid email and password'
-                    : err === 'invalid'
-                      ? 'Email or password is invalid'
-                      : err === 'authFail'
-                        ? 'Failed to login with email and password, please try again.'
-                        : err === 'passwordAuthNotAllowed'
-                          ? 'Password authentication is not allowed by your team admin.'
-                          : err === 'teamAlreadyExists'
-                            ? 'Team already exists, please login instead.'
-                            : 'Unknown error occurred, please try again later.'}
+                  {err === 'keycloak'
+                    ? 'Keycloak sign-in failed. Try your invitation link or contact your administrator if your account is not linked.'
+                    : err === 'missing'
+                      ? 'Please provide a valid email and password'
+                      : err === 'invalid'
+                        ? 'Email or password is invalid'
+                        : err === 'authFail'
+                          ? 'Failed to login with email and password, please try again.'
+                          : err === 'passwordAuthNotAllowed'
+                            ? 'Password authentication is not allowed by your team admin.'
+                            : err === 'teamAlreadyExists'
+                              ? 'Team already exists, please login instead.'
+                              : 'Unknown error occurred, please try again later.'}
                 </Notification>
               )}
 

@@ -26,5 +26,5 @@ module.exports = {
     '@/(.*)$': '<rootDir>/$1',
   },
   // Keep in sync with jest.int.config.js.
-  transformIgnorePatterns: ['/node_modules/(?!(ai|@ai-sdk|@workflow/serde)/)'],
+  transformIgnorePatterns: ['/node_modules/(?!(ai|@ai-sdk|@workflow/serde|openid-client|oauth4webapi|jose)/)'],
 };
