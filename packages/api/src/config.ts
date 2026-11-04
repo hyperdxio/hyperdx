@@ -40,6 +40,32 @@ export const IS_LOCAL_IMAGE = HYPERDX_IMAGE === 'all-in-one-noauth';
 // hosts, so absolute URLs anchored at FRONTEND_URL are required.
 export const IS_INLINE_API = env.HDX_PREVIEW_INLINE_API === 'true';
 export const FRONTEND_REDIRECT_BASE = IS_INLINE_API ? '' : FRONTEND_URL;
+export const SESSION_MAX_AGE_SECONDS =
+  env.SESSION_MAX_AGE_SECONDS === undefined
+    ? undefined
+    : Number(env.SESSION_MAX_AGE_SECONDS);
+export const SESSION_IDLE_TIMEOUT_SECONDS = Number(
+  env.SESSION_IDLE_TIMEOUT_SECONDS ?? 2592000,
+);
+for (const [name, value] of Object.entries({
+  SESSION_MAX_AGE_SECONDS,
+  SESSION_IDLE_TIMEOUT_SECONDS,
+})) {
+  if (
+    value !== undefined &&
+    (!Number.isSafeInteger(value) || value <= 0 || value > 2592000)
+  ) {
+    throw new Error(`${name} must be an integer between 1 and 2592000 seconds`);
+  }
+}
+if (
+  SESSION_MAX_AGE_SECONDS &&
+  SESSION_IDLE_TIMEOUT_SECONDS > SESSION_MAX_AGE_SECONDS
+) {
+  throw new Error(
+    'SESSION_IDLE_TIMEOUT_SECONDS must not exceed SESSION_MAX_AGE_SECONDS',
+  );
+}
 export const INGESTION_API_KEY = env.INGESTION_API_KEY ?? '';
 // Opt-in: emit the contrib `datadogreceiver` on the collector so a
 // Datadog Agent can ship APM traces (DD trace API -> OTLP -> ClickHouse).

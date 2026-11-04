@@ -5,6 +5,7 @@ import { deleteWebhook } from '@/controllers/webhook';
 import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { canManageTeamSettings } from '@/middleware/teamSettings';
 import { objectIdSchema } from '@/utils/zod';
 
 export function registerDeleteWebhook({
@@ -29,6 +30,9 @@ export function registerDeleteWebhook({
       }),
     },
     async ({ id: webhookId }) => {
+      if (!(await canManageTeamSettings(context.teamId, context.userId))) {
+        return mcpUserError('Forbidden: team settings access required');
+      }
       const result = await deleteWebhook(
         new mongoose.Types.ObjectId(teamId),
         webhookId,

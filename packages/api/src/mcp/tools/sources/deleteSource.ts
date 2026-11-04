@@ -5,6 +5,7 @@ import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import { isHiddenSource } from '@/mcp/utils/promql';
+import { canManageTeamSettings } from '@/middleware/teamSettings';
 import { objectIdSchema } from '@/utils/zod';
 
 export function registerDeleteSource({
@@ -30,6 +31,9 @@ export function registerDeleteSource({
       }),
     },
     async ({ id: sourceId }) => {
+      if (!(await canManageTeamSettings(context.teamId, context.userId))) {
+        return mcpUserError('Forbidden: team settings access required');
+      }
       const source = await getSource(teamId, sourceId);
       if (source && isHiddenSource(context, source)) {
         return mcpUserError('Source not found');

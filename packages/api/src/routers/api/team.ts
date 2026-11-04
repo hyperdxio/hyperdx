@@ -30,11 +30,17 @@ import {
   findUsersByTeam,
 } from '@/controllers/user';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
+import { requireTeamSettingsAccess } from '@/middleware/teamSettings';
 import TeamInvite from '@/models/teamInvite';
 import { sendJson } from '@/utils/serialization';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
+
+router.use(
+  ['/members', '/member', '/invitation', '/invitations'],
+  requireTeamSettingsAccess,
+);
 
 type TeamApiExpRes = express.Response<TeamApiResponse>;
 router.get('/', async (req, res: TeamApiExpRes, next) => {

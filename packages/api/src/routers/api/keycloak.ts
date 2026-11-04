@@ -90,7 +90,11 @@ router.get('/login/keycloak/callback', async (req, res) => {
       keycloak: {
         issuer: claims.iss,
         subject: claims.sub,
-        expiresAt: claims.exp * 1000,
+        // The ID token is validated at login. An explicitly configured app
+        // session has its own lifetime; this does not extend any OIDC token.
+        expiresAt: config.SESSION_MAX_AGE_SECONDS
+          ? Date.now() + config.SESSION_MAX_AGE_SECONDS * 1000
+          : claims.exp * 1000,
       },
     };
     loginStarted = true;

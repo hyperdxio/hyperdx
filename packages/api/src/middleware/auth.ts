@@ -32,6 +32,7 @@ declare global {
 
 declare module 'express-session' {
   interface SessionData {
+    authExpiresAt?: number;
     oidc?: {
       state: string;
       nonce: string;
@@ -171,6 +172,11 @@ export function isUserAuthenticated(
   if (req.isAuthenticated()) {
     const keycloak = req.session.keycloak;
     if (
+      (req.session.cookie.originalMaxAge ?? 0) >
+        config.SESSION_IDLE_TIMEOUT_SECONDS * 1000 ||
+      (config.SESSION_MAX_AGE_SECONDS &&
+        (!req.session.authExpiresAt ||
+          req.session.authExpiresAt <= Date.now())) ||
       (config.KEYCLOAK_REQUIRED && !keycloak) ||
       (keycloak &&
         (keycloak.expiresAt <= Date.now() ||

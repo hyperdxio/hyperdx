@@ -12,6 +12,7 @@ import {
   validateObjectId,
 } from '@/mcp/utils/errors';
 import { isPromqlEnabled } from '@/mcp/utils/promql';
+import { canManageTeamSettings } from '@/middleware/teamSettings';
 import { isDuplicateKeyError } from '@/utils/errors';
 
 import { buildMcpSaveSourceSchema, buildSourceInput } from './schemas';
@@ -44,6 +45,9 @@ export function registerSaveSource({
       inputSchema: buildMcpSaveSourceSchema(isPromqlEnabled(context)),
     },
     async input => {
+      if (!(await canManageTeamSettings(context.teamId, context.userId))) {
+        return mcpUserError('Forbidden: team settings access required');
+      }
       const sourceId = input.id;
       if (sourceId != null) {
         const idError = validateObjectId(sourceId, 'source ID');

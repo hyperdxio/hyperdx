@@ -90,10 +90,29 @@ Login validates state, nonce, PKCE, issuer, audience, signature, and expiry usin
 session ID. Only issuer, subject, and expiry are stored alongside the existing
 Passport user ID; no access, refresh, or ID tokens are persisted.
 
-Keycloak sessions have an absolute deadline at ID token expiry, capped by
-HyperDX's existing 30-day session limit. Activity cannot extend that deadline;
-after it, the user must sign in again (Keycloak may still have an SSO session).
-Password sessions retain their existing rolling 30-day behavior.
+By default, HyperDX's Keycloak sessions end at ID token expiry, capped at 30
+days, and password sessions retain their rolling 30-day behavior. To apply a
+24-hour absolute limit and 30-minute idle timeout to both login methods, set on
+the API:
+
+```dotenv
+SESSION_MAX_AGE_SECONDS=86400
+SESSION_IDLE_TIMEOUT_SECONDS=1800
+```
+
+Both values must be positive whole seconds, at most 30 days, with idle no
+greater than maximum. Enabling the maximum requires existing users to sign in
+again. The server enforces the absolute deadline even if the browser replays a
+cookie; MongoDB session expiry enforces inactivity. Dashboard polling counts as
+activity.
+
+With an explicit maximum, HyperDX creates an application session after
+validating the ID token; token expiry does not end that session. Keep Keycloak
+tokens short (for example 5 minutes). Set Keycloak's SSO Session Max to 24 hours
+and SSO Session Idle to 30 minutes separately; those realm settings affect other
+clients too. The two session timers are independent: HyperDX traffic does not
+renew Keycloak's idle timer, and an existing SSO session may let users sign back
+in without a credential prompt. No refresh tokens are stored.
 
 The logout menu submits a same-origin POST, destroys the local session, then
 uses the discovered end-session endpoint. Keycloak may ask for confirmation
@@ -106,6 +125,20 @@ invalidate an existing HyperDX session. It remains usable until its deadline.
 Deleting the HyperDX user or removing its mapping revokes browser access on the
 next protected request. Personal API keys retain existing behavior and must be
 revoked separately; required mode governs interactive login.
+
+## Team settings access
+
+Operators can set `settingsAdminIds` on the existing MongoDB team document to an
+array of that team's HyperDX user ObjectIds. Only those users see the Members,
+Data, and Integrations tabs or manage members, invitations, connections,
+sources, and webhooks through the internal API, personal API keys, or MCP.
+Permission changes take effect on the next request. New invitees do not inherit
+access.
+
+An absent field preserves upstream access for all members; an empty array grants
+nobody. Verify team membership and keep at least one administrator when setting
+the array. Read access needed for searches, dashboards, and alert configuration
+is preserved. This is a settings permission, not a ClickHouse query sandbox.
 
 Keep auth query strings, request bodies, and redirect headers out of reverse
 proxy/APM logs. Application request logs redact the new auth URLs and never log

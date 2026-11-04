@@ -36,7 +36,7 @@ import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
 import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
-import { IS_IAC_EXPORT_ENABLED } from './config';
+import { IS_IAC_EXPORT_ENABLED, IS_LOCAL_MODE } from './config';
 import { APP_CONTENT_SCROLL_CONTAINER_ID, withAppNav } from './layout';
 
 type TeamTab = {
@@ -77,6 +77,9 @@ export default function TeamPage() {
   const router = useRouter();
   const { data: team, refetch: refetchTeam, isLoading } = api.useTeam();
   const setTeamName = api.useSetTeamName();
+  const { data: me } = api.useMe();
+  const canManageTeamSettings =
+    IS_LOCAL_MODE || me?.canManageTeamSettings === true;
   const allowedAuthMethods = team?.allowedAuthMethods ?? [];
   const hasAllowedAuthMethods = allowedAuthMethods.length > 0;
 
@@ -204,7 +207,11 @@ export default function TeamPage() {
         },
       ],
     },
-  ];
+  ].filter(
+    tab =>
+      canManageTeamSettings ||
+      !['team', 'data', 'integrations'].includes(tab.value),
+  );
 
   const queryTab =
     typeof router.query.tab === 'string' ? router.query.tab : null;
@@ -213,7 +220,12 @@ export default function TeamPage() {
     : tabs[0]?.value;
 
   useEffect(() => {
-    if (!router.isReady || !activeTab || queryTab === activeTab) {
+    if (
+      (!IS_LOCAL_MODE && !me) ||
+      !router.isReady ||
+      !activeTab ||
+      queryTab === activeTab
+    ) {
       return;
     }
 
@@ -236,7 +248,7 @@ export default function TeamPage() {
         scroll: false,
       },
     );
-  }, [activeTab, queryTab, router]);
+  }, [activeTab, queryTab, router, me]);
 
   const handleTabChange = useCallback(
     (value: string | null) => {

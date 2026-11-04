@@ -18,6 +18,7 @@ import {
   rotateUserAccessKey,
   setOnboardingDismissed,
 } from '@/controllers/user';
+import { canManageTeamSettings } from '@/middleware/teamSettings';
 import { Api404Error } from '@/utils/errors';
 import { sendJson } from '@/utils/serialization';
 
@@ -55,6 +56,7 @@ router.get('/', async (req, res: express.Response<MeApiResponse>, next) => {
       team,
       usageStatsEnabled: USAGE_STATS_ENABLED,
       aiAssistantEnabled: !!(AI_API_KEY || ANTHROPIC_API_KEY),
+      canManageTeamSettings: await canManageTeamSettings(teamId, id),
     });
   } catch (e) {
     next(e);

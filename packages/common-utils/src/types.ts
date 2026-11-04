@@ -3349,6 +3349,7 @@ export const MeApiResponseSchema = z.object({
   }).merge(TeamClickHouseSettingsSchema),
   usageStatsEnabled: z.boolean(),
   aiAssistantEnabled: z.boolean(),
+  canManageTeamSettings: z.boolean().optional(),
 });
 
 export type MeApiResponse = z.infer<typeof MeApiResponseSchema>;

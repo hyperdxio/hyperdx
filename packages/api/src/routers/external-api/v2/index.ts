@@ -2,6 +2,7 @@ import express from 'express';
 
 import { EXTERNAL_API_RATE_LIMIT_MAX } from '@/config';
 import { validateUserAccessKey } from '@/middleware/auth';
+import { requireTeamSettingsWriteAccess } from '@/middleware/teamSettings';
 import alertsRouter from '@/routers/external-api/v2/alerts';
 import chartsRouter from '@/routers/external-api/v2/charts';
 import connectionsRouter from '@/routers/external-api/v2/connections';
@@ -38,6 +39,7 @@ router.use(
   '/connections',
   defaultRateLimiter,
   validateUserAccessKey,
+  requireTeamSettingsWriteAccess,
   connectionsRouter,
 );
 
@@ -52,6 +54,7 @@ router.use(
   '/sources',
   defaultRateLimiter,
   validateUserAccessKey,
+  requireTeamSettingsWriteAccess,
   sourcesRouter,
 );
 
@@ -68,6 +71,7 @@ router.use(
   '/webhooks',
   defaultRateLimiter,
   validateUserAccessKey,
+  requireTeamSettingsWriteAccess,
   webhooksRouter,
 );
 

@@ -10,6 +10,7 @@ import {
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
+import { canManageTeamSettings } from '@/middleware/teamSettings';
 import { isDuplicateKeyError } from '@/utils/errors';
 import { isWebhookValidationError } from '@/utils/validators';
 import { externalWebhookCreateSchema } from '@/utils/zod';
@@ -121,6 +122,9 @@ export function registerSaveWebhook({
       inputSchema: mcpSaveWebhookSchema,
     },
     async input => {
+      if (!(await canManageTeamSettings(context.teamId, context.userId))) {
+        return mcpUserError('Forbidden: team settings access required');
+      }
       const webhookId = input.id;
       if (webhookId != null) {
         const idError = validateObjectId(webhookId, 'webhook ID');

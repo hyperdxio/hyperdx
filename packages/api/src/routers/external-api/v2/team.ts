@@ -9,10 +9,16 @@ import {
   findUserByEmail,
   findUsersByTeam,
 } from '@/controllers/user';
+import { requireTeamSettingsAccess } from '@/middleware/teamSettings';
 import TeamInvite from '@/models/teamInvite';
 import { objectIdSchema } from '@/utils/zod';
 
 const router = express.Router();
+
+router.use(
+  ['/members', '/member', '/invitation', '/invitations'],
+  requireTeamSettingsAccess,
+);
 
 /**
  * @openapi

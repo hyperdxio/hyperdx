@@ -6,6 +6,7 @@ type ObjectId = mongoose.Types.ObjectId;
 
 export interface ITeam extends Team {
   _id: ObjectId;
+  settingsAdminIds?: ObjectId[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -17,6 +18,10 @@ export default mongoose.model<ITeam>(
   new Schema<ITeam>(
     {
       name: String,
+      settingsAdminIds: {
+        type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+        default: undefined,
+      },
       allowedAuthMethods: [String],
       hookId: {
         type: String,

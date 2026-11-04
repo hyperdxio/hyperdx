@@ -4,6 +4,8 @@ import express from 'express';
 import session from 'express-session';
 import onHeaders from 'on-headers';
 
+import { requireTeamSettingsWriteAccess } from '@/middleware/teamSettings';
+
 import * as config from './config';
 import mcpRouter from './mcp/app';
 import { isUserAuthenticated } from './middleware/auth';
@@ -40,7 +42,7 @@ const sess: session.SessionOptions & { cookie: session.CookieOptions } = {
   cookie: {
     secure: false,
     sameSite: 'lax',
-    maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
+    maxAge: config.SESSION_IDLE_TIMEOUT_SECONDS * 1000,
   },
   rolling: true,
   store: new MongoStore({ mongoUrl: config.MONGO_URI }),
@@ -112,9 +114,24 @@ app.use('/alerts', isUserAuthenticated, routers.alertsRouter);
 app.use('/dashboards', isUserAuthenticated, routers.dashboardRouter);
 app.use('/me', isUserAuthenticated, routers.meRouter);
 app.use('/team', isUserAuthenticated, routers.teamRouter);
-app.use('/webhooks', isUserAuthenticated, routers.webhooksRouter);
-app.use('/connections', isUserAuthenticated, connectionsRouter);
-app.use('/sources', isUserAuthenticated, sourcesRouter);
+app.use(
+  '/webhooks',
+  isUserAuthenticated,
+  requireTeamSettingsWriteAccess,
+  routers.webhooksRouter,
+);
+app.use(
+  '/connections',
+  isUserAuthenticated,
+  requireTeamSettingsWriteAccess,
+  connectionsRouter,
+);
+app.use(
+  '/sources',
+  isUserAuthenticated,
+  requireTeamSettingsWriteAccess,
+  sourcesRouter,
+);
 app.use('/saved-search', isUserAuthenticated, savedSearchRouter);
 app.use('/favorites', isUserAuthenticated, favoritesRouter);
 app.use('/pinned-filters', isUserAuthenticated, pinnedFiltersRouter);
