@@ -292,7 +292,7 @@ router.delete(
       }
 
       // People can't remove themselves, so only a key can empty the team.
-      if (req.user?.isServiceAccount) {
+      if (req.user?.isVirtual) {
         const result = await deleteTeamMemberKeepingOne(
           teamId.toString(),
           req.params.id,

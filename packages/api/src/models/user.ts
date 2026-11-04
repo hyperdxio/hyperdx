@@ -17,8 +17,14 @@ export interface IUser {
   name: string;
   // Optional for docs predating this field; the `me` route defaults it.
   onboardingData?: OnboardingData;
-  // The user behind an org API key: no sign-in, not listed as a team member.
-  isServiceAccount?: boolean;
+  // A service account: no sign-in, not listed as a team member.
+  isVirtual: boolean;
+  // Set only on virtual users backing an org API key, whose accessKey holds the
+  // key's SHA-256. createdBy is what marks a virtual user as one.
+  expiresAt?: Date | null;
+  lastUsedAt?: Date | null;
+  revokedAt?: Date | null;
+  createdBy?: ObjectId;
   team: ObjectId;
 }
 
@@ -32,13 +38,20 @@ const UserSchema = new Schema(
       required: true,
     },
     team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
-    isServiceAccount: { type: Boolean, default: false },
     accessKey: {
       type: String,
       default: function genUUID() {
         return uuidv4();
       },
     },
+    isVirtual: {
+      type: Boolean,
+      default: false,
+    },
+    expiresAt: Date,
+    lastUsedAt: Date,
+    revokedAt: Date,
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     onboardingData: {
       type: new Schema<OnboardingData>(
         {

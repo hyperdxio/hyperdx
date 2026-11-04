@@ -2,21 +2,20 @@ import mongoose from 'mongoose';
 
 import {
   createOrgApiKey,
-  deleteOrgApiKey,
-  findActiveOrgApiKey,
-  hashOrgApiKey,
   listOrgApiKeys,
+  revokeOrgApiKey,
   touchOrgApiKeyLastUsed,
   updateOrgApiKeyDescription,
 } from '@/controllers/orgApiKey';
 import { createTeam } from '@/controllers/team';
 import {
+  createVirtualUser,
   deleteTeamMemberKeepingOne,
   findUserByAccessKey,
   findUsersByTeam,
+  hashOrgApiKey,
 } from '@/controllers/user';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
-import OrgApiKey from '@/models/orgApiKey';
 import User from '@/models/user';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -50,8 +49,8 @@ describe('orgApiKey controller', () => {
     const { doc, key } = await create(team._id);
 
     expect(key).toMatch(/^hdx_org_[A-Za-z0-9_-]{43}$/);
-    const stored = await OrgApiKey.findById(doc._id).lean();
-    expect(stored?.keyHash).toBe(hashOrgApiKey(key));
+    const stored = await User.findById(doc._id).lean();
+    expect(stored?.accessKey).toBe(hashOrgApiKey(key));
     expect(Object.values(stored ?? {})).not.toContain(key);
   });
 
@@ -76,14 +75,16 @@ describe('orgApiKey controller', () => {
     const team = await createTeam({ name: 'A' });
     const { doc, key } = await create(team._id);
 
-    expect((await findActiveOrgApiKey(key))?.orgApiKey._id).toEqual(doc._id);
+    expect((await findUserByAccessKey(key))?._id).toEqual(doc._id);
     expect(
-      await findActiveOrgApiKey(key, doc.expiresAt ?? new Date(0)),
+      await findUserByAccessKey(key, doc.expiresAt ?? new Date(0)),
     ).toBeNull();
-    expect(await findActiveOrgApiKey(`hdx_org_${'x'.repeat(43)}`)).toBeNull();
+    expect(await findUserByAccessKey(`hdx_org_${'x'.repeat(43)}`)).toBeNull();
     expect(
-      await findActiveOrgApiKey('4b9e3c1a-7f2d-4e8b-9a6c-1d2e3f4a5b6c'),
+      await findUserByAccessKey('4b9e3c1a-7f2d-4e8b-9a6c-1d2e3f4a5b6c'),
     ).toBeNull();
+    // The stored hash is not a credential.
+    expect(await findUserByAccessKey(hashOrgApiKey(key))).toBeNull();
   });
 
   it('scopes list and delete to the team', async () => {
@@ -93,8 +94,20 @@ describe('orgApiKey controller', () => {
     const { doc } = await create(teamA._id);
 
     expect(await listOrgApiKeys(teamB)).toHaveLength(0);
-    expect(await deleteOrgApiKey(teamB, doc._id.toString())).toBeNull();
-    expect(await OrgApiKey.findById(doc._id)).not.toBeNull();
+    expect(await revokeOrgApiKey(teamB, doc._id.toString())).toBeNull();
+    expect(await listOrgApiKeys(teamA._id)).toHaveLength(1);
+  });
+
+  it('leaves virtual users that are not org keys alone', async () => {
+    const team = await createTeam({ name: 'A' });
+    const other = await createVirtualUser({
+      teamId: team._id,
+      name: 'actor',
+      email: 'actor@example.com',
+    });
+
+    expect(await listOrgApiKeys(team._id)).toHaveLength(0);
+    expect(await revokeOrgApiKey(team._id, other._id.toString())).toBeNull();
   });
 
   it('writes lastUsedAt at most once per 5 minutes', async () => {
@@ -105,13 +118,13 @@ describe('orgApiKey controller', () => {
     const lastUsed = async () => {
       // Writes are fire-and-forget; give them a moment to land.
       await new Promise(r => setTimeout(r, 100));
-      return (await OrgApiKey.findById(doc._id))?.lastUsedAt?.getTime();
+      return (await User.findById(doc._id))?.lastUsedAt?.getTime();
     };
 
     touchOrgApiKeyLastUsed(doc, t0);
     expect(await lastUsed()).toBe(t0.getTime());
 
-    const fresh = (await OrgApiKey.findById(doc._id))!;
+    const fresh = (await User.findById(doc._id))!;
     touchOrgApiKeyLastUsed(fresh, new Date(t0.getTime() + 60_000));
     expect(await lastUsed()).toBe(t0.getTime());
 
@@ -124,10 +137,10 @@ describe('orgApiKey controller', () => {
     it('creates a service account user for each key', async () => {
       const team = await createTeam({ name: 'A' });
       const { doc } = await create(team._id);
-      const account = await User.findById(doc.serviceAccount);
+      const account = await User.findById(doc._id);
 
       expect(account).toMatchObject({
-        isServiceAccount: true,
+        isVirtual: true,
         name: 'terraform',
       });
       expect(account?.team).toEqual(team._id);
@@ -136,35 +149,26 @@ describe('orgApiKey controller', () => {
       );
     });
 
-    it('resolves the key to its service account', async () => {
+    it('keeps service accounts out of members', async () => {
       const team = await createTeam({ name: 'A' });
-      const { doc, key } = await create(team._id);
-      const found = await findActiveOrgApiKey(key);
-      expect(found?.serviceAccount._id).toEqual(doc.serviceAccount);
-    });
-
-    it('keeps service accounts out of members and personal-key auth', async () => {
-      const team = await createTeam({ name: 'A' });
-      const { doc } = await create(team._id);
-      const account = await User.findById(doc.serviceAccount);
-
+      await create(team._id);
       expect(await findUsersByTeam(team._id)).toHaveLength(0);
-      expect(await findUserByAccessKey(account!.accessKey)).toBeNull();
     });
 
     it('renames the service account with the key', async () => {
       const team = await createTeam({ name: 'A' });
       const { doc } = await create(team._id);
       await updateOrgApiKeyDescription(team._id, doc._id.toString(), 'ci');
-      expect((await User.findById(doc.serviceAccount))?.name).toBe('ci');
+      expect((await User.findById(doc._id))?.name).toBe('ci');
     });
 
     it('keeps the service account when the key is revoked', async () => {
       const team = await createTeam({ name: 'A' });
       const { doc, key } = await create(team._id);
-      await deleteOrgApiKey(team._id, doc._id.toString());
-      expect(await findActiveOrgApiKey(key)).toBeNull();
-      expect(await User.findById(doc.serviceAccount)).not.toBeNull();
+      await revokeOrgApiKey(team._id, doc._id.toString());
+      expect(await findUserByAccessKey(key)).toBeNull();
+      expect(await listOrgApiKeys(team._id)).toHaveLength(0);
+      expect(await User.findById(doc._id)).not.toBeNull();
     });
   });
 
@@ -177,7 +181,7 @@ describe('orgApiKey controller', () => {
           User.create({ email: `p${i}@example.com`, team: team._id }),
         ),
       );
-      return { team, serviceAccount: doc.serviceAccount, users };
+      return { team, serviceAccount: doc._id, users };
     };
 
     afterEach(() => jest.restoreAllMocks());

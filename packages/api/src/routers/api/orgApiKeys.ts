@@ -13,9 +13,9 @@ import { processRequest, validateRequest } from 'zod-express-middleware';
 
 import {
   createOrgApiKey,
-  deleteOrgApiKey,
   formatOrgApiKey,
   listOrgApiKeys,
+  revokeOrgApiKey,
   updateOrgApiKeyDescription,
 } from '@/controllers/orgApiKey';
 import { getNonNullUserWithTeam } from '@/middleware/auth';
@@ -32,7 +32,7 @@ const router = express.Router();
 // Session-only, and service accounts can't hold a session; this keeps them out
 // even if that ever changes.
 router.use((req, res, next) => {
-  if (req.user?.team == null || req.user.isServiceAccount) {
+  if (req.user?.team == null || req.user.isVirtual) {
     return res.sendStatus(403);
   }
   next();
@@ -95,7 +95,7 @@ router.delete(
   validateRequest({ params: z.object({ id: objectIdSchema }) }),
   async (req, res, next) => {
     try {
-      const doc = await deleteOrgApiKey(
+      const doc = await revokeOrgApiKey(
         getNonNullUserWithTeam(req).teamId,
         req.params.id,
       );

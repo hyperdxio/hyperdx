@@ -4,12 +4,8 @@ import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
-import {
-  findActiveOrgApiKey,
-  ORG_API_KEY_PREFIX,
-  touchOrgApiKeyLastUsed,
-} from '@/controllers/orgApiKey';
-import { findUserByAccessKey } from '@/controllers/user';
+import { touchOrgApiKeyLastUsed } from '@/controllers/orgApiKey';
+import { findUserByAccessKey, ORG_API_KEY_PREFIX } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import {
   getActiveTraceId,
@@ -106,10 +102,16 @@ export async function validateUserAccessKey(
   try {
     const user = await findUserByAccessKey(key);
     if (!user) {
-      return await authenticateOrgApiKey(key, req, res, next);
+      if (key.startsWith(ORG_API_KEY_PREFIX)) {
+        orgApiKeyAuthFailures.add(1);
+      }
+      return res.sendStatus(401);
     }
 
     req.user = user;
+    if (user.isVirtual) {
+      touchOrgApiKeyLastUsed(user);
+    }
 
     // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
     // with team/user context so their traces are searchable during incidents.
@@ -117,6 +119,7 @@ export async function validateUserAccessKey(
       teamId: user.team?.toString(),
       userId: user._id?.toString(),
       email: user.email,
+      'hyperdx.user.is_virtual': user.isVirtual || undefined,
       ...getStaticFeatureFlags(),
     });
   } catch (err) {
@@ -130,35 +133,6 @@ const orgApiKeyAuthFailures = getCounter('hyperdx.org_api_key.auth_failures', {
   description:
     'Bearer requests with an org API key that is unknown, revoked, or expired.',
 });
-
-async function authenticateOrgApiKey(
-  key: string,
-  req: Request,
-  res: Response,
-  next: NextFunction,
-) {
-  const found = await findActiveOrgApiKey(key);
-  if (!found) {
-    if (key.startsWith(ORG_API_KEY_PREFIX)) {
-      orgApiKeyAuthFailures.add(1);
-    }
-    return res.sendStatus(401);
-  }
-
-  const { orgApiKey, serviceAccount } = found;
-  req.user = serviceAccount;
-  touchOrgApiKeyLastUsed(orgApiKey);
-
-  setBusinessContext({
-    teamId: orgApiKey.team.toString(),
-    userId: serviceAccount._id.toString(),
-    'hyperdx.service_account': true,
-    'hyperdx.org_api_key.id': orgApiKey._id.toString(),
-    ...getStaticFeatureFlags(),
-  });
-
-  nextWithQueryAttribution(req, next);
-}
 
 /**
  * Continue the request with its route recorded on any ClickHouse queries it

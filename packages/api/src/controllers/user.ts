@@ -1,6 +1,7 @@
 import type { OnboardingTaskId } from '@hyperdx/common-utils/dist/types';
 import { isPersistableUserId as isPersistableUserIdHex } from '@hyperdx/common-utils/dist/types';
 import opentelemetry from '@opentelemetry/api';
+import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -9,11 +10,34 @@ import Alert from '@/models/alert';
 import User, { type IUser } from '@/models/user';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-export const NOT_SERVICE_ACCOUNT = { isServiceAccount: { $ne: true } };
 
-export function findUserByAccessKey(accessKey: string) {
-  // Service accounts authenticate only through their hashed org API key.
-  return User.findOne({ accessKey, ...NOT_SERVICE_ACCOUNT });
+export const NOT_VIRTUAL = { isVirtual: { $ne: true } };
+
+export const ORG_API_KEY_PREFIX = 'hdx_org_';
+
+// Virtual users with no createdBy (such as EE's role and CHC actor accounts)
+// are not org keys, so they never authenticate as one or show up in key management.
+export const ACTIVE_ORG_API_KEY = {
+  isVirtual: true,
+  createdBy: { $ne: null },
+  revokedAt: null,
+} as const;
+
+export function hashOrgApiKey(key: string) {
+  return crypto.createHash('sha256').update(key).digest('hex');
+}
+
+export function findUserByAccessKey(accessKey: string, now = new Date()) {
+  // Org keys are stored hashed; only the prefixed plaintext reaches a service
+  // account, so presenting the stored hash itself never authenticates.
+  if (accessKey.startsWith(ORG_API_KEY_PREFIX)) {
+    return User.findOne({
+      accessKey: hashOrgApiKey(accessKey),
+      ...ACTIVE_ORG_API_KEY,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+    });
+  }
+  return User.findOne({ accessKey, ...NOT_VIRTUAL });
 }
 
 /**
@@ -31,13 +55,32 @@ export function findUserById(id: string) {
   return User.findById(id);
 }
 
+export function createVirtualUser({
+  name,
+  accessKey,
+  teamId,
+  ...fields
+}: {
+  name: string;
+  accessKey?: string;
+  teamId: string | ObjectId;
+} & Pick<IUser, 'email' | 'expiresAt' | 'createdBy'>) {
+  return User.create({
+    name,
+    team: teamId,
+    isVirtual: true,
+    accessKey,
+    ...fields,
+  });
+}
+
 export function findUserByEmail(email: string) {
   // Case-insensitive email search - lowercase the email since User model stores emails in lowercase
   return User.findOne({ email: email.toLowerCase() });
 }
 
 export function findUsersByTeam(team: string | ObjectId) {
-  return User.find({ team, ...NOT_SERVICE_ACCOUNT }).sort({ createdAt: 1 });
+  return User.find({ team, ...NOT_VIRTUAL }).sort({ createdAt: 1 });
 }
 
 // Type-guard wrapper over the shared 24-hex check; rejects the synthetic
@@ -92,7 +135,7 @@ export function recordOnboardingTaskCompletion(
   void User.updateOne(
     {
       _id: userId,
-      ...NOT_SERVICE_ACCOUNT,
+      ...NOT_VIRTUAL,
       'onboardingData.completedTasks': { $ne: taskId },
     },
     { $addToSet: { 'onboardingData.completedTasks': taskId } },
@@ -114,7 +157,7 @@ export async function deleteTeamMember(
   const deletedUser = await User.findOneAndDelete({
     team: teamId,
     _id: userIdToDelete,
-    ...NOT_SERVICE_ACCOUNT,
+    ...NOT_VIRTUAL,
   });
   if (deletedUser == null) {
     return null;
@@ -139,8 +182,8 @@ export async function deleteTeamMemberKeepingOne(
   serviceAccountId: ObjectId,
 ): Promise<'deleted' | 'not_found' | 'last_member'> {
   const countPeople = () =>
-    User.countDocuments({ team: teamId, ...NOT_SERVICE_ACCOUNT });
-  const target = { team: teamId, _id: userIdToDelete, ...NOT_SERVICE_ACCOUNT };
+    User.countDocuments({ team: teamId, ...NOT_VIRTUAL });
+  const target = { team: teamId, _id: userIdToDelete, ...NOT_VIRTUAL };
   if ((await User.exists(target)) == null) {
     return 'not_found';
   }

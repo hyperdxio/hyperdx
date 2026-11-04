@@ -15,7 +15,7 @@ passport.deserializeUser(function (id: string, done) {
   findUserById(id)
     .then(user => {
       // A session can never belong to a service account.
-      if (user == null || user.isServiceAccount) {
+      if (user == null || user.isVirtual) {
         // The session outlived the user, e.g. the account was deleted. That is
         // not a server fault, and reporting it as one turned every request
         // still carrying the cookie into a 500, public routes included, so the
@@ -42,7 +42,7 @@ passport.use(
           username,
           password,
         );
-        if (user?.isServiceAccount) {
+        if (user?.isVirtual) {
           logger.info({
             message: `Login for "${username}" rejected, service account`,
             type: 'user_login',

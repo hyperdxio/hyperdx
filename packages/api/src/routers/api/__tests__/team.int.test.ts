@@ -4,7 +4,6 @@ import mongoose from 'mongoose';
 
 import { getAgent, getLoggedInAgent, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
-import OrgApiKey from '@/models/orgApiKey';
 import Team from '@/models/team';
 import TeamInvite from '@/models/teamInvite';
 import User from '@/models/user';
@@ -495,12 +494,12 @@ describe('team router', () => {
     it('hides other teams keys', async () => {
       const { agent } = await getLoggedInAgent(server);
       // OSS allows a single team, so plant a key under a different team id.
-      const other = await OrgApiKey.create({
+      const other = await User.create({
         team: new mongoose.Types.ObjectId(),
-        keyHash: 'other',
-        description: 'other team',
+        email: 'sa@service-accounts.hyperdx.invalid',
+        name: 'other team',
+        isVirtual: true,
         createdBy: new mongoose.Types.ObjectId(),
-        serviceAccount: new mongoose.Types.ObjectId(),
       });
       const list = await agent.get('/team/api-keys').expect(200);
       expect(list.body.data).toHaveLength(0);
@@ -509,7 +508,7 @@ describe('team router', () => {
         .send({ description: 'mine now' })
         .expect(404);
       await agent.delete(`/team/api-keys/${other._id}`).expect(404);
-      expect(await OrgApiKey.findById(other._id)).not.toBeNull();
+      expect((await User.findById(other._id))?.revokedAt).toBeUndefined();
     });
 
     it('keeps working after the creator is deleted', async () => {
@@ -520,7 +519,7 @@ describe('team router', () => {
         .expect(200);
       await User.deleteOne({ _id: user._id });
 
-      const key = await OrgApiKey.findById(created.id).populate('createdBy');
+      const key = await User.findById(created.id).populate('createdBy');
       expect(key?.createdBy).toBeNull();
       await getAgent(server)
         .get('/api/v2')
@@ -546,12 +545,11 @@ describe('team router', () => {
         .post('/team/api-keys')
         .send(body)
         .expect(200);
-      const key = await OrgApiKey.findById(created.id);
       // Give the service account the signed-in user's password hash, so a
       // correct password is presented and only the service-account check stops it.
       const human = await User.findById(user._id).select('+hash +salt');
       const account = await User.findByIdAndUpdate(
-        key?.serviceAccount,
+        created.id,
         { hash: human?.get('hash'), salt: human?.get('salt') },
         { new: true },
       );

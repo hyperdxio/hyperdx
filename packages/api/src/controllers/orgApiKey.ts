@@ -5,14 +5,18 @@ import type {
 } from '@hyperdx/common-utils/dist/types';
 import opentelemetry from '@opentelemetry/api';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 
+import {
+  ACTIVE_ORG_API_KEY,
+  createVirtualUser,
+  hashOrgApiKey,
+  ORG_API_KEY_PREFIX,
+} from '@/controllers/user';
 import type { ObjectId } from '@/models';
-import OrgApiKey, { type OrgApiKeyDocument } from '@/models/orgApiKey';
 import User, { type IUser, type UserDocument } from '@/models/user';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-
-export const ORG_API_KEY_PREFIX = 'hdx_org_';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const LAST_USED_WRITE_INTERVAL_MS = 5 * 60 * 1000;
@@ -33,10 +37,6 @@ function expiresAtFor(expiry: OrgApiKeyExpiry, now: number): Date | null {
   }
 }
 
-export function hashOrgApiKey(key: string) {
-  return crypto.createHash('sha256').update(key).digest('hex');
-}
-
 export async function createOrgApiKey(
   teamId: string | ObjectId,
   createdBy: string | ObjectId,
@@ -44,78 +44,47 @@ export async function createOrgApiKey(
 ) {
   const key = `${ORG_API_KEY_PREFIX}${crypto.randomBytes(32).toString('base64url')}`;
   // `.invalid` is reserved, so the email can never reach a real inbox.
-  const serviceAccount = await User.create({
-    team: teamId,
+  const doc = await createVirtualUser({
+    teamId,
     name: description,
     email: `sa-${crypto.randomBytes(12).toString('hex')}@service-accounts.hyperdx.invalid`,
-    isServiceAccount: true,
+    accessKey: hashOrgApiKey(key),
+    expiresAt: expiresAtFor(expiry, Date.now()),
+    createdBy: new mongoose.Types.ObjectId(createdBy),
   });
-  try {
-    const doc = await OrgApiKey.create({
-      team: teamId,
-      keyHash: hashOrgApiKey(key),
-      description,
-      expiresAt: expiresAtFor(expiry, Date.now()),
-      createdBy,
-      serviceAccount: serviceAccount._id,
-    });
-    return { doc, key };
-  } catch (err) {
-    // Don't leave a service account behind that no key points to.
-    await User.deleteOne({ _id: serviceAccount._id });
-    throw err;
-  }
+  return { doc, key };
 }
 
 export function listOrgApiKeys(teamId: string | ObjectId) {
-  return OrgApiKey.find({ team: teamId })
+  return User.find({ team: teamId, ...ACTIVE_ORG_API_KEY })
     .sort({ createdAt: -1 })
     .populate<{ createdBy: IUser | null }>('createdBy', 'name email');
 }
 
-export async function updateOrgApiKeyDescription(
+export function updateOrgApiKeyDescription(
   teamId: string | ObjectId,
   id: string,
   description: string,
 ) {
-  const doc = await OrgApiKey.findOneAndUpdate(
-    { _id: id, team: teamId },
-    { description },
+  return User.findOneAndUpdate(
+    { _id: id, team: teamId, ...ACTIVE_ORG_API_KEY },
+    { name: description },
     { new: true },
   ).populate<{ createdBy: IUser | null }>('createdBy', 'name email');
-  if (doc != null) {
-    await User.updateOne(
-      { _id: doc.serviceAccount, team: teamId },
-      { name: description },
-    );
-  }
-  return doc;
 }
 
-// Keeps the service account so anything it created still shows who made it.
-export function deleteOrgApiKey(teamId: string | ObjectId, id: string) {
-  return OrgApiKey.findOneAndDelete({ _id: id, team: teamId });
-}
-
-export async function findActiveOrgApiKey(key: string, now = new Date()) {
-  if (!key.startsWith(ORG_API_KEY_PREFIX)) {
-    return null;
-  }
-  const doc = await OrgApiKey.findOne({
-    keyHash: hashOrgApiKey(key),
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
-  }).populate<{ serviceAccount: UserDocument | null }>('serviceAccount');
-  const serviceAccount = doc?.serviceAccount;
-  if (doc == null || serviceAccount == null) {
-    return null;
-  }
-  return { orgApiKey: doc, serviceAccount };
+// Marks rather than deletes, so anything the account created keeps its author.
+export function revokeOrgApiKey(teamId: string | ObjectId, id: string) {
+  return User.findOneAndUpdate(
+    { _id: id, team: teamId, ...ACTIVE_ORG_API_KEY },
+    { revokedAt: new Date() },
+  );
 }
 
 // Fire-and-forget so auth never waits on or fails because of this write. The
 // conditional filter stops concurrent requests from all writing at once.
 export function touchOrgApiKeyLastUsed(
-  doc: Pick<OrgApiKeyDocument, '_id' | 'lastUsedAt'>,
+  doc: Pick<IUser, '_id' | 'lastUsedAt'>,
   now = new Date(),
 ) {
   const staleBefore = new Date(now.getTime() - LAST_USED_WRITE_INTERVAL_MS);
@@ -124,7 +93,7 @@ export function touchOrgApiKeyLastUsed(
   }
   // Captured now: the write settles after the request may have moved on.
   const span = opentelemetry.trace.getActiveSpan();
-  void OrgApiKey.updateOne(
+  void User.updateOne(
     {
       _id: doc._id,
       $or: [{ lastUsedAt: null }, { lastUsedAt: { $lt: staleBefore } }],
@@ -141,15 +110,15 @@ export function touchOrgApiKeyLastUsed(
 }
 
 export function formatOrgApiKey(
-  doc: Omit<OrgApiKeyDocument, 'createdBy'> & {
-    createdBy: IUser | ObjectId | null;
+  doc: Omit<UserDocument, 'createdBy'> & {
+    createdBy?: IUser | ObjectId | null;
   },
 ): OrgApiKeyApiResponse {
   const creator =
     doc.createdBy != null && 'email' in doc.createdBy ? doc.createdBy : null;
   return {
     id: doc._id.toString(),
-    description: doc.description,
+    description: doc.name,
     createdAt: doc.createdAt.toISOString(),
     expiresAt: doc.expiresAt?.toISOString() ?? null,
     lastUsedAt: doc.lastUsedAt?.toISOString() ?? null,

@@ -28,8 +28,8 @@ router.get('/', validateUserAccessKey, (req, res) => {
   const user = req.user?.toJSON();
   res.json({
     version: 'v2',
-    // A service account's personal key never authenticates; don't hand it out.
-    user: user?.isServiceAccount ? omit(user, 'accessKey') : user,
+    // A service account's accessKey is its org key hash; don't hand it out.
+    user: user?.isVirtual ? omit(user, 'accessKey') : user,
   });
 });
 

@@ -1,8 +1,7 @@
-import * as orgApiKeyController from '@/controllers/orgApiKey';
 import { createOrgApiKey } from '@/controllers/orgApiKey';
+import * as userController from '@/controllers/user';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Dashboard from '@/models/dashboard';
-import OrgApiKey from '@/models/orgApiKey';
 import User from '@/models/user';
 
 describe('external api v2', () => {
@@ -49,20 +48,19 @@ describe('external api v2', () => {
         .set('Authorization', `Bearer ${key}`)
         .expect(200);
       expect(resp.body.user).toMatchObject({
-        _id: doc.serviceAccount.toString(),
+        _id: doc._id.toString(),
         team: team._id.toString(),
         name: 'terraform',
-        isServiceAccount: true,
+        isVirtual: true,
       });
       expect(resp.body.user).not.toHaveProperty('accessKey');
     });
 
-    it("rejects the service account's personal access key", async () => {
+    it('rejects the stored key hash as a bearer token', async () => {
       const { agent, doc } = await setup();
-      const account = await User.findById(doc.serviceAccount);
       await agent
         .get('/api/v2')
-        .set('Authorization', `Bearer ${account?.accessKey}`)
+        .set('Authorization', `Bearer ${doc.accessKey}`)
         .expect(401);
     });
 
@@ -85,7 +83,7 @@ describe('external api v2', () => {
 
     it('rejects expired and revoked keys', async () => {
       const { agent, doc, key } = await setup();
-      await OrgApiKey.updateOne(
+      await User.updateOne(
         { _id: doc._id },
         { expiresAt: new Date(Date.now() - 1000) },
       );
@@ -94,7 +92,7 @@ describe('external api v2', () => {
         .set('Authorization', `Bearer ${key}`)
         .expect(401);
 
-      await OrgApiKey.deleteOne({ _id: doc._id });
+      await User.updateOne({ _id: doc._id }, { revokedAt: new Date() });
       await agent
         .get('/api/v2')
         .set('Authorization', `Bearer ${key}`)
@@ -110,7 +108,7 @@ describe('external api v2', () => {
       let lastUsedAt: Date | null | undefined = null;
       for (let i = 0; i < 20 && lastUsedAt == null; i++) {
         await new Promise(r => setTimeout(r, 50));
-        lastUsedAt = (await OrgApiKey.findById(doc._id))?.lastUsedAt;
+        lastUsedAt = (await User.findById(doc._id))?.lastUsedAt;
       }
       expect(lastUsedAt).toBeInstanceOf(Date);
     });
@@ -128,14 +126,14 @@ describe('external api v2', () => {
       expect(ok.status).toBe(200);
       expect(ok.text).toContain('clickstack_save_alert');
 
-      await OrgApiKey.deleteOne({ _id: doc._id });
+      await User.updateOne({ _id: doc._id }, { revokedAt: new Date() });
       expect((await listTools()).status).toBe(401);
     });
 
     it('responds with an error when the key lookup fails', async () => {
       const { agent, key } = await setup();
       jest
-        .spyOn(orgApiKeyController, 'findActiveOrgApiKey')
+        .spyOn(userController, 'findUserByAccessKey')
         .mockRejectedValueOnce(new Error('mongo unavailable'));
       await agent
         .get('/api/v2')

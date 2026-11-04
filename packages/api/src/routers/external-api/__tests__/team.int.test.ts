@@ -175,7 +175,7 @@ describe('External API v2 Team', () => {
       ).expect(200);
       expect(await User.findById(member._id)).toBeNull();
       const stored = await Alert.findById(alert._id).lean();
-      const account = await User.findOne({ isServiceAccount: true });
+      const account = await User.findOne({ isVirtual: true });
       expect(stored?.createdBy).toEqual(account?._id);
     });
 
@@ -204,7 +204,7 @@ describe('External API v2 Team', () => {
       expect(
         await User.countDocuments({
           team: team._id,
-          isServiceAccount: { $ne: true },
+          isVirtual: { $ne: true },
         }),
       ).toBeGreaterThan(0);
     });
@@ -219,7 +219,7 @@ describe('External API v2 Team', () => {
 
     it('hides service accounts from members and member removal', async () => {
       await createKey();
-      const account = await User.findOne({ isServiceAccount: true });
+      const account = await User.findOne({ isVirtual: true });
 
       const list = await authRequest('get', `${TEAM_BASE_URL}/members`).expect(
         200,

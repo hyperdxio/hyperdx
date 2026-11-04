@@ -215,7 +215,7 @@ describe('External API Alerts', () => {
         .expect(200);
 
       const stored = await Alert.findById(response.body.data.id).lean();
-      expect(stored?.createdBy).toEqual(doc.serviceAccount);
+      expect(stored?.createdBy).toEqual(doc._id);
     });
   });
 
