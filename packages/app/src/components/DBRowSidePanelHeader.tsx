@@ -24,6 +24,10 @@ export default function DBRowSidePanelHeader({
   // source has neither body nor implicit column configured), the body
   // paper is suppressed entirely; the highlighted attributes still render.
   bodyConfigured = true,
+  // When `true`, the panel title already shows `mainContent` in full (a
+  // trace span's name, for example), so the body paper is omitted rather
+  // than repeating the title directly below it.
+  bodyShownInTitle = false,
   // Rows that never carry a body, such as browser events, skip the empty state.
   hideEmptyBody = false,
   severityText,
@@ -32,6 +36,7 @@ export default function DBRowSidePanelHeader({
   mainContent?: string;
   mainContentHeader?: string;
   bodyConfigured?: boolean;
+  bodyShownInTitle?: boolean;
   hideEmptyBody?: boolean;
   attributes?: HighlightedAttribute[];
   severityText?: string;
@@ -89,6 +94,7 @@ export default function DBRowSidePanelHeader({
   return (
     <>
       {!bodyConfigured ||
+      bodyShownInTitle ||
       (hideEmptyBody && !mainContent) ? null : mainContent ? (
         <Paper
           p="xs"
@@ -139,9 +145,11 @@ export default function DBRowSidePanelHeader({
         </Paper>
       )}
       <AISummarizeButton rowData={rowData} severityText={severityText} />
-      <Box mt="xs">
-        <DBHighlightedAttributesList attributes={attributesWithDefault} />
-      </Box>
+      {attributesWithDefault.length > 0 && (
+        <Box mt="xs">
+          <DBHighlightedAttributesList attributes={attributesWithDefault} />
+        </Box>
+      )}
     </>
   );
 }

@@ -862,7 +862,7 @@ Used in the "where" field of select items and search tiles.
   OR:                 level:error OR level:fatal
   NOT:                NOT level:debug
   Wildcard:           ServiceName:front*
-  Phrase:             Body:"connection refused"
+  Phrase:             "connection refused"   (default search column, e.g. the log body)
   Exists:             _exists_:http.route
   Range (numeric):    Duration:>1000000000
   Range (inclusive):  http.status_code:[400 TO 499]
@@ -883,13 +883,22 @@ Lucene field:value does NOT mean exact equality. It translates to ilike(field, '
      ServiceName:api*    does NOT mean "starts with api". It means "contains a substring starting with api".
                          In practice this often works for prefix matching, but it is NOT equivalent to SQL LIKE 'api%'.
 
-  For exact matching or true prefix/suffix/contains patterns, use SQL instead:
+  For exact matching in Lucene, quote the value: SpanKind:"Server" compiles to SpanKind = 'Server'
+  (case-sensitive, unlike the unquoted form).
+
+  For true prefix/suffix/contains patterns, use SQL instead:
      Exact:    whereLanguage: "sql", where: "SpanKind = 'Server'"
      Prefix:   whereLanguage: "sql", where: "ServiceName LIKE 'api%'"
-     Contains: whereLanguage: "sql", where: "Body LIKE '%timeout%'"
+     Contains: whereLanguage: "sql", where: "StatusMessage LIKE '%timeout%'"
      Regex:    whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
 
-  When Lucene substring matching is FINE: free-text columns like Body, StatusMessage where substring is the intent.
+  For text in the log body, write a bare Lucene term or phrase (timeout, "connection refused"). It searches the
+  source's default search column (the body for logs) and uses its text index when the source has one. With an
+  index it matches whole tokens (timeout does not match ConnectionTimeoutException); for a substring inside a word, use
+  SQL ILIKE. Body:timeout, Body LIKE and Body ILIKE read the whole column, and Body:"..." is exact equality on
+  the whole body.
+
+  When Lucene substring matching is FINE: free-text columns like StatusMessage where substring is the intent.
   When Lucene substring matching is WRONG: enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact or true prefix match.
 
 *** MAP-ATTRIBUTE GOTCHA ***
@@ -923,7 +932,7 @@ Alternative to Lucene. Set whereLanguage: "sql" when using SQL syntax.
   Basic:              SeverityText = 'error'
   AND/OR:             ServiceName = 'api' AND StatusCode = 'STATUS_CODE_ERROR'
   IN:                 ServiceName IN ('api', 'web', 'worker')
-  LIKE:               Body LIKE '%timeout%'
+  LIKE:               StatusMessage LIKE '%timeout%'
   Comparison:         Duration > 1000000000
   Map access:         SpanAttributes['http.status_code'] = '500'
 
@@ -986,6 +995,11 @@ For configType: "sql" tiles, write ClickHouse SQL with template macros:
     LIMIT 50
 
   IMPORTANT: Always include a LIMIT clause in table / number / pie / bar SQL queries.
+
+  BATCHING WITH clickstack_sql: to run several independent queries at once, pass
+  queries: [{ id, sql, sourceId?, connectionId? }, ...] (max 10) instead of sql. They run
+  in parallel over one shared time range, and each result reports status ok, error, or
+  timeout. Re-run a timed-out query on its own.
 
 == PER-TILE TYPE CONSTRAINTS ==
 
@@ -1557,8 +1571,9 @@ Example: find top patterns for production services over the last 4 hours:
     Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "ServerStreaming", "InternalServer", etc.)
     Wrong:   where: "ServiceName:api*"            (whereLanguage: "lucene"; NOT a true prefix match -- it is prefix-within-substring)
     Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql"; exact match)
+    Correct: where: 'SpanKind:"Server"'            (whereLanguage: "lucene"; a quoted value is an exact match)
     Correct: where: "ServiceName LIKE 'api%'"      (whereLanguage: "sql"; true prefix match)
-    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (Body, StatusMessage); wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Use SQL for exact match (=), prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
+    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (StatusMessage; for Body use a bare term or phrase, which uses the index); wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Use SQL for exact match (=), prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
 
 16. Forgetting that map-attribute values are often empty strings
     Wrong:   groupBy on SpanAttributes['db.collection.name'] without filtering empty values; the result has an empty-string bucket alongside the real ones, which renders as a blank row in tables and an unlabelled slice in pies.

@@ -12,6 +12,10 @@ import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
 import { getBrowserEventKind, isBrowserEventRow } from '@/utils/browserEvents';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import {
+  isJavaScriptRuntime,
+  parseJavaScriptException,
+} from '@/utils/javascriptStack';
 import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
 import { getRequestPanelTitle } from '@/utils/rpcSpanAttributes';
 import { isSet } from '@/utils/spanAttributeReaders';
@@ -209,18 +213,36 @@ export function RowOverviewPanel({
       // do nothing
     }
 
+    const exception = {
+      stacktrace: parsedStacktrace,
+      type: parsedEvents?.['exception.type'],
+      value:
+        typeof parsedEvents?.['exception.message'] !== 'string'
+          ? JSON.stringify(parsedEvents?.['exception.message'])
+          : parsedEvents?.['exception.message'],
+      mechanism: parsedEvents?.['exception.mechanism'],
+    };
+
+    const parsed =
+      typeof parsedStacktrace === 'string' &&
+      isJavaScriptRuntime(resourceAttributes)
+        ? parseJavaScriptException(parsedStacktrace)
+        : undefined;
+    if (parsed == null) {
+      return [exception];
+    }
     return [
       {
-        stacktrace: parsedStacktrace,
-        type: parsedEvents?.['exception.type'],
-        value:
-          typeof parsedEvents?.['exception.message'] !== 'string'
-            ? JSON.stringify(parsedEvents?.['exception.message'])
-            : parsedEvents?.['exception.message'],
-        mechanism: parsedEvents?.['exception.mechanism'],
+        ...exception,
+        stacktrace: { frames: parsed.frames },
+        rawStacktrace: parsedStacktrace,
       },
+      ...parsed.causes.map(({ frames, ...cause }) => ({
+        ...cause,
+        stacktrace: { frames },
+      })),
     ];
-  }, [exceptionAttributes]);
+  }, [exceptionAttributes, resourceAttributes]);
 
   const hasException = exceptionAttributes != null;
 

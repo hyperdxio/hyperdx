@@ -4127,6 +4127,66 @@ describe('quoteResultColumnNameIfNeeded', () => {
       '`x-host-header`',
     );
   });
+
+  it('quotes non-identifier segments of a dotted JSON path', () => {
+    expect(quoteResultColumnNameIfNeeded('event.@request_id')).toBe(
+      'event.`@request_id`',
+    );
+    expect(quoteResultColumnNameIfNeeded('event.my key')).toBe(
+      'event.`my key`',
+    );
+    expect(quoteResultColumnNameIfNeeded('a.b.@c')).toBe('a.b.`@c`');
+  });
+
+  it('quotes the path but preserves a JSON type cast', () => {
+    // ClickHouse reports `event.foo.:String` as event.foo.:`String`.
+    expect(quoteResultColumnNameIfNeeded('event.foo.:`String`')).toBe(
+      'event.foo.:`String`',
+    );
+    expect(quoteResultColumnNameIfNeeded('event.@request_id.:`String`')).toBe(
+      'event.`@request_id`.:`String`',
+    );
+    expect(quoteResultColumnNameIfNeeded('event.@id.:`Decimal(10, 2)`')).toBe(
+      'event.`@id`.:`Decimal(10, 2)`',
+    );
+    expect(quoteResultColumnNameIfNeeded('event.@id.:`Int64`.null')).toBe(
+      'event.`@id`.:`Int64`.null',
+    );
+  });
+
+  it('quotes a key that starts with `:`', () => {
+    expect(quoteResultColumnNameIfNeeded('event.:k')).toBe('event.`:k`');
+  });
+
+  it('quotes a dotted-path segment that itself contains a colon', () => {
+    expect(quoteResultColumnNameIfNeeded('event.k8s:pod')).toBe(
+      'event.`k8s:pod`',
+    );
+  });
+
+  it('quotes an all-digit JSON key (unquoted it errors in ClickHouse)', () => {
+    // `event.200` unquoted is parsed as tuple-element access and rejected for a
+    // JSON column; backticks make it a key reference. Tuple positional access
+    // is reported by ClickHouse as `tupleElement(...)`, never a bare `t.1`.
+    expect(quoteResultColumnNameIfNeeded('event.200')).toBe('event.`200`');
+    expect(quoteResultColumnNameIfNeeded('tup.1')).toBe('tup.`1`');
+  });
+
+  it('preserves a sub-object accessor', () => {
+    // ClickHouse reports `event.^sub` as event.^`sub`.
+    expect(quoteResultColumnNameIfNeeded('event.^`sub`')).toBe('event.^`sub`');
+    expect(quoteResultColumnNameIfNeeded('event.@a.^`b.c`')).toBe(
+      'event.`@a`.^`b.c`',
+    );
+  });
+
+  it('quotes a key that starts with `^`', () => {
+    expect(quoteResultColumnNameIfNeeded('event.^k')).toBe('event.`^k`');
+  });
+
+  it('leaves a malformed path with an empty segment untouched', () => {
+    expect(quoteResultColumnNameIfNeeded('a..b')).toBe('a..b');
+  });
 });
 
 describe('parametric aggregate arguments are inlined as literals', () => {
