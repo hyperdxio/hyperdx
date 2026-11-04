@@ -10,6 +10,7 @@ import { notifications } from '@mantine/notifications';
 
 import { useDashboards } from '@/dashboard';
 import { useSources } from '@/source';
+import { useTimeZoneLinkParam } from '@/timeZoneOverride';
 
 /**
  * The action a row click should take. `url` is set when the row's
@@ -54,6 +55,7 @@ export function useOnClickLinkBuilder({
 }): ((row: Record<string, unknown>) => RowAction) | null {
   const { data: sources } = useSources();
   const { data: dashboards } = useDashboards();
+  const addTimeZone = useTimeZoneLinkParam();
 
   const [sourceIdsByName, sourceIds, sourceNamesById] = useMemo(() => {
     const idsByName = new Map<string, string[]>();
@@ -124,7 +126,8 @@ export function useOnClickLinkBuilder({
 
       if (renderResult.ok) {
         return {
-          url: renderResult.url,
+          // Search and dashboards take the same override; other sites don't.
+          url: isExternal ? renderResult.url : addTimeZone(renderResult.url),
           description: isExternal ? renderResult.url : description,
           external: isExternal,
         };
@@ -154,6 +157,7 @@ export function useOnClickLinkBuilder({
       return result;
     };
   }, [
+    addTimeZone,
     onClick,
     sourceIds,
     sourceIdsByName,
