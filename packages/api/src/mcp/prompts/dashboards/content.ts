@@ -862,7 +862,7 @@ Used in the "where" field of select items and search tiles.
   OR:                 level:error OR level:fatal
   NOT:                NOT level:debug
   Wildcard:           ServiceName:front*
-  Phrase:             "connection refused"   (body text, uses the text index)
+  Phrase:             "connection refused"   (default search column, e.g. the log body)
   Exists:             _exists_:http.route
   Range (numeric):    Duration:>1000000000
   Range (inclusive):  http.status_code:[400 TO 499]
@@ -883,7 +883,8 @@ Lucene field:value does NOT mean exact equality. It translates to ilike(field, '
      ServiceName:api*    does NOT mean "starts with api". It means "contains a substring starting with api".
                          In practice this often works for prefix matching, but it is NOT equivalent to SQL LIKE 'api%'.
 
-  For exact matching in Lucene, quote the value: SpanKind:"Server" compiles to SpanKind = 'Server'.
+  For exact matching in Lucene, quote the value: SpanKind:"Server" compiles to SpanKind = 'Server'
+  (case-sensitive, unlike the unquoted form).
 
   For true prefix/suffix/contains patterns, use SQL instead:
      Exact:    whereLanguage: "sql", where: "SpanKind = 'Server'"
@@ -891,9 +892,11 @@ Lucene field:value does NOT mean exact equality. It translates to ilike(field, '
      Contains: whereLanguage: "sql", where: "StatusMessage LIKE '%timeout%'"
      Regex:    whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
 
-  For text in the log body, write a bare Lucene term or phrase (timeout, "connection refused"). It uses the
-  source's token/text index on the body; Body:timeout, Body LIKE and Body ILIKE read the whole column, and
-  Body:"..." is exact equality on the whole body.
+  For text in the log body, write a bare Lucene term or phrase (timeout, "connection refused"). It searches the
+  source's default search column (the body for logs) and uses its text index when the source has one. With an
+  index it matches whole tokens (timeout does not match ConnectionTimeoutException); for a substring inside a word, use
+  SQL ILIKE. Body:timeout, Body LIKE and Body ILIKE read the whole column, and Body:"..." is exact equality on
+  the whole body.
 
   When Lucene substring matching is FINE: free-text columns like StatusMessage where substring is the intent.
   When Lucene substring matching is WRONG: enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact or true prefix match.

@@ -1426,7 +1426,7 @@ describe('where / whereLanguage descriptions', () => {
       'BODY TEXT: write the term or phrase without a field name',
     );
     expect(whereLanguageSchema.description).toContain(
-      'quote the value (field:"value")',
+      'quote the value (field:"value", case-sensitive)',
     );
   });
 });
