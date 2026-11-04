@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/@hyperdx/cli.svg)](https://www.npmjs.com/package/@hyperdx/cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
-Terminal UI and CLI for [HyperDX](https://github.com/hyperdxio/hyperdx) —
+Terminal UI and CLI for [HyperDX](https://github.com/ClickHouse/ClickStack) —
 search, tail, chart, and query your logs, traces, and metrics without leaving
 the terminal.
 
@@ -257,11 +257,11 @@ The CLI is built to be driven by scripts and AI agents:
 
 ## Links
 
-- [HyperDX repository](https://github.com/hyperdxio/hyperdx)
+- [HyperDX repository](https://github.com/ClickHouse/ClickStack)
 - [ClickStack documentation](https://clickhouse.com/docs/use-cases/observability/clickstack/overview)
-- [Report an issue](https://github.com/hyperdxio/hyperdx/issues)
-- [Contributing](https://github.com/hyperdxio/hyperdx/tree/main/packages/cli/CONTRIBUTING.md)
+- [Report an issue](https://github.com/ClickHouse/ClickStack/issues)
+- [Contributing](https://github.com/ClickHouse/ClickStack/tree/main/packages/cli/CONTRIBUTING.md)
 
 ## License
 
-[MIT](https://github.com/hyperdxio/hyperdx/blob/main/LICENSE)
+[MIT](https://github.com/ClickHouse/ClickStack/blob/main/LICENSE)

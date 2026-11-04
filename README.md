@@ -7,9 +7,9 @@
 <h1 align="center">HyperDX</h1>
 
 <p align="center">
-  <a href="https://github.com/hyperdxio/hyperdx/stargazers"><img src="https://badgen.net/github/stars/hyperdxio/hyperdx?label=%E2%98%85" alt="GitHub stars" /></a>
-  <img src="https://badgen.net/github/license/hyperdxio/hyperdx" alt="License" />
-  <a href="https://github.com/hyperdxio/hyperdx/actions/workflows/release.yml"><img src="https://github.com/hyperdxio/hyperdx/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
+  <a href="https://github.com/ClickHouse/ClickStack/stargazers"><img src="https://badgen.net/github/stars/ClickHouse/ClickStack?label=%E2%98%85" alt="GitHub stars" /></a>
+  <img src="https://badgen.net/github/license/ClickHouse/ClickStack" alt="License" />
+  <a href="https://github.com/ClickHouse/ClickStack/actions/workflows/release.yml"><img src="https://github.com/ClickHouse/ClickStack/actions/workflows/release.yml/badge.svg" alt="Release" /></a>
   <a href="https://hyperdx.io/discord"><img src="https://img.shields.io/badge/Discord-5865F2?logo=discord&logoColor=white" alt="Join the HyperDX Discord" /></a>
 </p>
 
@@ -24,7 +24,7 @@ visualize logs and traces on top of any ClickHouse cluster (imagine Kibana, for
 ClickHouse).
 
 <p align="center">
-  <a href="https://clickhouse.com/docs/use-cases/observability/clickstack/overview">Documentation</a> • <a href="https://hyperdx.io/discord">Chat on Discord</a>  • <a href="https://play.hyperdx.io/search">Live Demo</a>  • <a href="https://github.com/hyperdxio/hyperdx/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a> • <a href="https://clickhouse.com/use-cases/observability">Website</a>
+  <a href="https://clickhouse.com/docs/use-cases/observability/clickstack/overview">Documentation</a> • <a href="https://hyperdx.io/discord">Chat on Discord</a>  • <a href="https://play.hyperdx.io/search">Live Demo</a>  • <a href="https://github.com/ClickHouse/ClickStack/issues/new">Bug Reports</a> • <a href="./CONTRIBUTING.md">Contributing</a> • <a href="https://clickhouse.com/use-cases/observability">Website</a>
 </p>
 
 - 🕵️ Correlate/search logs, metrics, session replays and traces all in one place
@@ -136,9 +136,9 @@ We welcome all contributions! There's many ways to contribute to the project,
 including but not limited to:
 
 - Opening a PR ([Contribution Guide](./CONTRIBUTING.md))
-- [Submitting feature requests or bugs](https://github.com/hyperdxio/hyperdx/issues/new)
+- [Submitting feature requests or bugs](https://github.com/ClickHouse/ClickStack/issues/new)
 - Improving our product or contribution documentation
-- Voting on [open issues](https://github.com/hyperdxio/hyperdx/issues) or
+- Voting on [open issues](https://github.com/ClickHouse/ClickStack/issues) or
   contributing use cases to a feature request
 
 **Pull requests.** Issues, bug reports and discussion stay open to everyone. For
@@ -170,7 +170,7 @@ We hope you give HyperDX in ClickStack a try and let us know how we're doing!
 
 ## Contact
 
-- [Open an Issue](https://github.com/hyperdxio/hyperdx/issues/new)
+- [Open an Issue](https://github.com/ClickHouse/ClickStack/issues/new)
 - [Discord](https://discord.gg/FErRRKU78j)
 - [Email](mailto:support@hyperdx.io)
 

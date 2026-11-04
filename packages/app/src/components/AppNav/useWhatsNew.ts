@@ -2,7 +2,7 @@ import { useRouter } from 'next/router';
 import { z } from 'zod';
 import { useQuery } from '@tanstack/react-query';
 
-const REPO_URL = 'https://github.com/hyperdxio/hyperdx';
+const REPO_URL = 'https://github.com/ClickHouse/ClickStack';
 
 /**
  * Link to the root changelog — the release-level summary written during each

@@ -14,7 +14,7 @@
  * buffers chunks per event id and joins them sorted by chunk index, so a
  * replay can never be corrupted by out-of-order or interleaved chunks —
  * which previously scrambled the concatenation, made JSON.parse throw, and
- * silently dropped the event (https://github.com/hyperdxio/hyperdx/issues/2569).
+ * silently dropped the event (https://github.com/ClickHouse/ClickStack/issues/2569).
  *
  * ClickHouse returns the attributes as strings (or `''` when absent), so all
  * fields are coerced before use.

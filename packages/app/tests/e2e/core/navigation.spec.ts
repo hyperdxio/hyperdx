@@ -271,7 +271,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
       );
       await expect(drawer.getByTestId('drawer-github-link')).toHaveAttribute(
         'href',
-        /github\.com\/hyperdxio\/hyperdx.*CHANGELOG\.md/,
+        /github\.com\/ClickHouse\/ClickStack.*CHANGELOG\.md/,
       );
 
       // Opening the drawer closes the menu.
@@ -442,7 +442,7 @@ test.describe('Navigation', { tag: ['@core'] }, () => {
     ).toBeVisible();
     await expect(drawer.getByRole('link')).toHaveAttribute(
       'href',
-      /github\.com\/hyperdxio\/hyperdx.*CHANGELOG\.md/,
+      /github\.com\/ClickHouse\/ClickStack.*CHANGELOG\.md/,
     );
   });
 

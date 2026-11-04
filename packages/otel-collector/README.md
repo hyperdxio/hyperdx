@@ -606,7 +606,7 @@ codebase without needing to publish a Go module tag on every change.
    ```yaml
    receivers:
      - gomod:
-         github.com/hyperdxio/hyperdx/packages/otel-collector/receiver/myreceiver
+         github.com/ClickHouse/ClickStack/packages/otel-collector/receiver/myreceiver
          v0.0.0
        path: ./receiver/myreceiver
    ```

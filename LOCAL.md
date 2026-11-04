@@ -61,7 +61,7 @@ docker.clickhouse.com/clickhouse/clickstack-local
 
 ## Open Source & Cloud Versions (Beyond Local)
 
-If you're looking to deploy HyperDX to monitor a production environment (or anything outside your local environment), you can check out the [regular open source version](https://github.com/hyperdxio/hyperdx) or the [cloud hosted version](https://hyperdx.io/).
+If you're looking to deploy HyperDX to monitor a production environment (or anything outside your local environment), you can check out the [regular open source version](https://github.com/ClickHouse/ClickStack) or the [cloud hosted version](https://hyperdx.io/).
 
 ### Local vs Non-Local Versions
 
