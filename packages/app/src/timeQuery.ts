@@ -555,3 +555,30 @@ export function useDefaultTimeRange(query: string): [Date, Date] {
 
   return state.range;
 }
+
+/**
+ * Text for an editable time range input. It is re-formatted from `range` when
+ * the display time zone changes, so it never holds clock times from another
+ * zone that the picker would then read in the new one.
+ */
+export function useTimeRangeInputText(
+  range: [Date, Date],
+): [string, (text: string) => void] {
+  const timeZone = useDisplayTimeZone();
+  const [state, setState] = useState(() => ({
+    text: dateRangeToString(range, timeZone),
+    timeZone,
+  }));
+  const setText = useCallback(
+    (text: string) => setState(prev => ({ ...prev, text })),
+    [],
+  );
+
+  if (state.timeZone !== timeZone) {
+    const next = { text: dateRangeToString(range, timeZone), timeZone };
+    setState(next);
+    return [next.text, setText];
+  }
+
+  return [state.text, setText];
+}

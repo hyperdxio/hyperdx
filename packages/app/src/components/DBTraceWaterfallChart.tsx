@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { isErrorStatusCode } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
@@ -154,7 +155,7 @@ function getRowSeverity(
       severityText: row.SeverityText,
     });
   }
-  return row.StatusCode === 'Error' ? 'error' : undefined;
+  return isErrorStatusCode(row.StatusCode) ? 'error' : undefined;
 }
 
 // Per-service span palette: the full categorical palette minus the two hues we
@@ -1208,9 +1209,6 @@ export function DBTraceWaterfallChartContainer({
               })
             : [];
 
-        // Extract status logic
-        // TODO: Legacy schemas will have STATUS_CODE_ERROR
-        // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
         const severity = getRowSeverity(result);
         const isError = severity === 'error';
         const status = result.StatusCode || result.SeverityText;
@@ -1396,12 +1394,7 @@ export function DBTraceWaterfallChartContainer({
   return (
     <>
       {showMinimap && (
-        <Box mb="md">
-          <TimelineMinimap
-            rows={timelineRows}
-            controller={viewportController}
-          />
-        </Box>
+        <TimelineMinimap rows={timelineRows} controller={viewportController} />
       )}
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
@@ -1620,7 +1613,11 @@ export function DBTraceWaterfallChartContainer({
         </Group>
       </Group>
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
-        <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
+        <Box mb="xs">
+          <DBHighlightedAttributesList
+            attributes={highlightedAttributeValues}
+          />
+        </Box>
       )}
       <div
         ref={timelineWrapperRef}

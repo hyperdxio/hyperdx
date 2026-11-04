@@ -1,7 +1,16 @@
 import {
   aggregateServiceMapData,
+  serviceMapErrorCountSql,
   SpanAggregationRow,
 } from '@/hooks/useServiceMap';
+
+describe('serviceMapErrorCountSql', () => {
+  it('counts short and legacy error statuses, not only Error', () => {
+    expect(serviceMapErrorCountSql()).toBe(
+      "countIf(lower(ServerSpans.statusCode) IN ('error', 'status_code_error'))",
+    );
+  });
+});
 
 // Convenience builders for the GROUPING SETS row shapes.
 function nodeRow(

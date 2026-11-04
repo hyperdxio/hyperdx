@@ -78,7 +78,11 @@ import {
   useRenderedSqlChartConfig,
 } from '@/hooks/useChartConfig';
 import { CsvColumn, useCsvExport } from '@/hooks/useCsvExport';
-import { useColumns, useTableMetadata } from '@/hooks/useMetadata';
+import {
+  useColumns,
+  useMergeTreeSettings,
+  useTableMetadata,
+} from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
 import { useRowSelection } from '@/hooks/useRowSelection';
@@ -1535,15 +1539,36 @@ export function appendSelectWithAdditionalKeys(
 // (incl. a nanosecond timestamp) plus the same insert block or the same offset
 // within their blocks. So a table that persists only one of them still skips
 // the slow full-row lookup.
-export function getPersistedBlockColumns(engineFull: string): string[] {
-  const columns: string[] = [];
-  if (engineFull.includes('enable_block_number_column = 1')) {
-    columns.push('_block_number');
-  }
-  if (engineFull.includes('enable_block_offset_column = 1')) {
-    columns.push('_block_offset');
-  }
-  return columns;
+const BLOCK_COLUMN_SETTINGS = [
+  { column: '_block_number', setting: 'enable_block_number_column' },
+  { column: '_block_offset', setting: 'enable_block_offset_column' },
+];
+
+// engine_full ends with the SETTINGS clause.
+function getEngineSetting(engineFull: string, name: string) {
+  const settingsClause = engineFull.match(/ SETTINGS (.*)$/)?.[1] ?? '';
+  return splitAndTrimWithBracket(settingsClause)
+    .map(setting => setting.split(' = '))
+    .find(([key]) => key === name)?.[1];
+}
+
+function omitsBlockColumnSetting(engineFull: string) {
+  return BLOCK_COLUMN_SETTINGS.some(
+    ({ setting }) => getEngineSetting(engineFull, setting) == null,
+  );
+}
+
+// Falls back to server values for omitted settings; pass them for MergeTree.
+export function getPersistedBlockColumns(
+  engineFull: string,
+  serverMergeTreeSettings?: Map<string, string> | null,
+): string[] {
+  return BLOCK_COLUMN_SETTINGS.filter(({ setting }) => {
+    const value =
+      getEngineSetting(engineFull, setting) ??
+      serverMergeTreeSettings?.get(setting);
+    return value === '1' || value === 'true';
+  }).map(({ column }) => column);
 }
 
 function getSelectLength(select: SelectList): number {
@@ -1575,11 +1600,27 @@ export function useConfigWithAdditionalSelect(
     { enabled: !!sourceId },
   );
 
+  const engineFull = tableMetadata?.engine_full ?? '';
+  const needsMergeTreeSettings =
+    !!sourceId &&
+    !!tableMetadata?.engine?.includes('MergeTree') &&
+    omitsBlockColumnSetting(engineFull);
+
+  const { data: mergeTreeSettings, isLoading: isMergeTreeSettingsLoading } =
+    useMergeTreeSettings(config.connection, {
+      enabled: needsMergeTreeSettings && !!config.connection,
+    });
+
   const primaryKey = tableMetadata?.primary_key;
   const partitionKey = tableMetadata?.partition_key;
 
   return useMemo(() => {
-    if (primaryKey == null || partitionKey == null) {
+    // Wait for settings to avoid querying twice.
+    if (
+      primaryKey == null ||
+      partitionKey == null ||
+      isMergeTreeSettingsLoading
+    ) {
       return undefined;
     }
 
@@ -1588,7 +1629,8 @@ export function useConfigWithAdditionalSelect(
 
     if (sourceId) {
       const blockColumns = getPersistedBlockColumns(
-        tableMetadata?.engine_full ?? '',
+        engineFull,
+        needsMergeTreeSettings ? mergeTreeSettings : undefined,
       );
 
       if (blockColumns.length > 0) {
@@ -1623,7 +1665,17 @@ export function useConfigWithAdditionalSelect(
       : undefined;
 
     return { ...config, select, additionalKeysLength, rowKeyColumns };
-  }, [primaryKey, partitionKey, config, tableMetadata, columns, sourceId]);
+  }, [
+    primaryKey,
+    partitionKey,
+    isMergeTreeSettingsLoading,
+    config,
+    engineFull,
+    needsMergeTreeSettings,
+    columns,
+    mergeTreeSettings,
+    sourceId,
+  ]);
 }
 
 function selectColumnMapWithoutAdditionalKeys(
@@ -1849,7 +1901,8 @@ function DBSqlRowTableComponent({
         if (columnMap.get(c)?._type === JSDataType.JSON) {
           // special rule for json
           // for json {SomePath: /c}, CH will return {SomePath: \/c}
-          // add this to make sure md5 get correct result
+          // add this to make sure SHA256 gets the correct result... slashes are escaped so the
+          // client-side JSON string matches ClickHouse's serialization before hashing.
           newRow[c] = JSON.stringify(row[c]).replace(/\//g, '\\/');
         } else {
           newRow[c] = JSON.stringify(row[c]);
