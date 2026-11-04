@@ -1,11 +1,16 @@
 import { use, useCallback, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
+import { getBrowserEventKind, isBrowserEventRow } from '@/utils/browserEvents';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import {
   isJavaScriptRuntime,
@@ -15,6 +20,7 @@ import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
 import { getRequestPanelTitle } from '@/utils/rpcSpanAttributes';
 import { isSet } from '@/utils/spanAttributeReaders';
 
+import { BrowserEventSubpanel } from './BrowserEventSubpanel';
 import {
   getJSONColumnNames,
   getMapColumnNames,
@@ -98,6 +104,7 @@ export function RowOverviewPanel({
   // assume OTel column names for now
   const topLevelAttributeKeys = [
     'ServiceName',
+    'EventName',
     'SpanName',
     'Duration',
     'SeverityText',
@@ -110,7 +117,16 @@ export function RowOverviewPanel({
     'ScopeName',
     'ScopeVersion',
   ];
-  const topLevelAttributes = pickBy(firstRow, (value, key) => {
+  // `*` leaves out an ALIAS or MATERIALIZED EventName, so `useRowData` only
+  // returns it under its alias.
+  const rowWithEventName =
+    isLogSource(source) &&
+    source.eventNameExpression?.trim() === 'EventName' &&
+    firstRow?.EventName == null &&
+    firstRow?.__hdx_event_name != null
+      ? { ...firstRow, EventName: firstRow.__hdx_event_name }
+      : firstRow;
+  const topLevelAttributes = pickBy(rowWithEventName, (value, key) => {
     if (value === '') {
       return false;
     }
@@ -150,6 +166,24 @@ export function RowOverviewPanel({
     () => getRequestPanelTitle(flattenedEventAttributes),
     [flattenedEventAttributes],
   );
+
+  // Only log sources select the event name, and gating here keeps every trace
+  // row out whatever attributes it carries.
+  const { browserEventKind, isBrowserRow } = useMemo(() => {
+    if (!isLogSource(source)) {
+      return { browserEventKind: undefined, isBrowserRow: false };
+    }
+
+    const row = {
+      eventName: firstRow?.__hdx_event_name,
+      attributes: flattenedEventAttributes,
+    };
+
+    return {
+      browserEventKind: getBrowserEventKind(row),
+      isBrowserRow: isBrowserEventRow(row),
+    };
+  }, [source, firstRow?.__hdx_event_name, flattenedEventAttributes]);
 
   const exceptionAttributes = useMemo(() => {
     const spanEventAttributes = firstRow?.__hdx_events_exception_attributes;
@@ -271,6 +305,7 @@ export function RowOverviewPanel({
             // In that case suppress the body paper entirely instead of
             // rendering an "[Empty]" placeholder.
             bodyConfigured={mainContentColumn !== undefined}
+            hideEmptyBody={isBrowserRow}
             severityText={firstRow?.__hdx_severity_text}
             rowData={firstRow}
           />
@@ -280,6 +315,7 @@ export function RowOverviewPanel({
         mt="sm"
         defaultValue={[
           'exception',
+          'browserEvent',
           'spanEvents',
           'spanLinks',
           'linkedFrom',
@@ -311,7 +347,29 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {requestPanelTitle != null && (
+        {browserEventKind != null && (
+          <Accordion.Item
+            value="browserEvent"
+            data-testid="browser-event-section"
+          >
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Browser event
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <BrowserEventSubpanel
+                  kind={browserEventKind}
+                  attributes={flattenedEventAttributes}
+                  body={mainContent}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {requestPanelTitle != null && browserEventKind == null && (
           <Accordion.Item value="network">
             <Accordion.Control>
               <Text size="sm" ps={contentPx}>

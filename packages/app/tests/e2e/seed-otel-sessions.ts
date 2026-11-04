@@ -23,7 +23,35 @@ function replayRows(
     {
       type: 2,
       data: {
-        node: { type: 0, childNodes: [], id: 1 },
+        // rrweb inserts its style rules into <html>, so replay throws without one.
+        node: {
+          type: 0,
+          id: 1,
+          childNodes: [
+            {
+              type: 2,
+              tagName: 'html',
+              attributes: {},
+              id: 2,
+              childNodes: [
+                {
+                  type: 2,
+                  tagName: 'head',
+                  attributes: {},
+                  childNodes: [],
+                  id: 3,
+                },
+                {
+                  type: 2,
+                  tagName: 'body',
+                  attributes: {},
+                  childNodes: [],
+                  id: 4,
+                },
+              ],
+            },
+          ],
+        },
         initialOffset: { left: 0, top: 0 },
       },
     },
@@ -74,7 +102,8 @@ const RESOURCE_TIMING = {
 
 /**
  * OTel SDK log events around the +500 ms span: the click 3 ms before it that
- * triggers its trace, its request timing, and a console error.
+ * triggers its trace, its request timing, a same-document navigation, and a
+ * console error.
  */
 export function generateOtelSessionLogEvents(seedRef: number): string {
   const ns = (offsetMs: number) =>
@@ -89,6 +118,7 @@ export function generateOtelSessionLogEvents(seedRef: number): string {
   return [
     click(newSdk),
     `('${ns(520)}', '${newSdk}-trace', '${newSdk}-span', 0, '', 9, '${SERVICE}', '', '', ${resource}, '', '@opentelemetry/browser-instrumentation/resource-timing', '', {}, {'session.id':'${newSdk}','browser.document.url.full':'${PAGE_URL}','url.full':'${PAGE_URL}api/error',${timing}}, 'browser.resource_timing')`,
+    `('${ns(700)}', '', '', 0, '', 9, '${SERVICE}', '', '', ${resource}, '', '', '', {}, {'session.id':'${newSdk}','url.full':'${PAGE_URL}checkout','browser.document.url.full':'${PAGE_URL}checkout','browser.navigation.same_document':'true','browser.navigation.hash_change':'false','browser.navigation.type':'push'}, 'browser.navigation')`,
     `('${ns(800)}', '', '', 0, 'error', 17, '${SERVICE}', 'Error: checkout failed', '', ${resource}, '', '', '', {}, {'session.id':'${newSdk}','browser.console.method':'error','browser.document.url.full':'${PAGE_URL}'}, 'browser.console')`,
     click(bothKeys),
   ].join(',\n');
