@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import cx from 'classnames';
-import { Flex, Kbd, Text } from '@mantine/core';
+import { Flex, Text } from '@mantine/core';
 import { useVirtualizer } from '@tanstack/react-virtual';
 
 import {
@@ -426,7 +426,9 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
             />
 
             {/* The corner above the label column is otherwise empty, so the
-                zoom hint lives here instead of in its own row above the chart. */}
+                zoom hint lives here instead of in its own row above the chart.
+                It reuses the tick label class and inherits the axis font so it
+                reads as part of the axis header. */}
             <div
               className={styles.timelineCorner}
               data-testid="timeline-corner"
@@ -437,15 +439,13 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
               }}
             >
               <Text
-                size="xxs"
+                inherit
                 c="dimmed"
-                lh={`${axisHeight}px`}
-                ps="xs"
                 truncate="end"
+                className={styles.xAxisTickLabel}
                 data-testid="timeline-zoom-hint"
               >
-                <Kbd size="xs">⌘/Ctrl</Kbd> + <Kbd size="xs">scroll</Kbd> to
-                zoom
+                ⌘/Ctrl + scroll to zoom
               </Text>
             </div>
 
