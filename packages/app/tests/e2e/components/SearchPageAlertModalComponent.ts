@@ -25,13 +25,13 @@ export class SearchPageAlertModalComponent {
       'add-new-webhook-button',
     );
     this.createAlertButtonLocator = page.getByRole('button', {
-      name: 'Create Alert',
+      name: 'Create alert',
     });
     this.saveAlertButtonLocator = page.getByRole('button', {
-      name: 'Save Alert',
+      name: 'Save alert',
     });
     this.deleteAlertButtonLocator = page.getByRole('button', {
-      name: 'Delete Alert',
+      name: 'Delete alert',
     });
     this.webhookSelector = page.getByTestId('select-webhook');
     this.webhookAlertModal = new WebhookAlertModalComponent(page);
@@ -157,7 +157,7 @@ export class SearchPageAlertModalComponent {
   /**
    * Select an existing alert's tab by its zero-based index. Existing alerts
    * render as tabs labeled "Alert 1", "Alert 2", ... in the order returned by
-   * the saved search. The "New Alert" tab is separate.
+   * the saved search. The "New alert" tab is separate.
    */
   async selectExistingAlertTab(index: number) {
     await this.modal.getByRole('tab', { name: `Alert ${index + 1}` }).click();
@@ -181,7 +181,7 @@ export class SearchPageAlertModalComponent {
   }
 
   /**
-   * Submit edits to an existing alert via "Save Alert". Waits for the
+   * Submit edits to an existing alert via "Save alert". Waits for the
    * PUT /api/alerts/:id so the test fails if the request is never sent, then
    * waits for the modal to close.
    */
@@ -198,7 +198,7 @@ export class SearchPageAlertModalComponent {
   }
 
   /**
-   * Delete the currently open existing alert via "Delete Alert". Waits for the
+   * Delete the currently open existing alert via "Delete alert". Waits for the
    * DELETE request and the modal to close.
    */
   async deleteAlert() {
