@@ -30,15 +30,20 @@ const eventPatternsSchema = z.object({
     .default(10_000)
     .describe(
       'Random rows to sample for pattern mining. ' +
-        'Higher values produce more accurate patterns but take longer.',
+        'Higher values produce more accurate patterns but take longer. ' +
+        'Patterns rarer than about 1/sampleSize of matching rows may not appear at all.',
     ),
   bodyExpression: z
     .string()
     .optional()
     .describe(
-      'Column expression to mine patterns from. ' +
+      'Expression to mine patterns from: a column or map reference, or JSONExtractString ' +
+        'over one with string-literal keys to mine a field inside a JSON body. ' +
         'Auto-detected from the source if omitted (Body for logs, SpanName for traces). ' +
-        'Example: "Body", "SpanName", "SpanAttributes[\'http.url\']"',
+        'Examples: "Body", "SpanName", "LogAttributes[\'exception.type\']", ' +
+        "\"JSONExtractString(Body, 'error', 'message')\". Other function calls are rejected. " +
+        "Rows where the value is '' (missing key, invalid JSON) are mined as an empty " +
+        'pattern; add where "<expression> != \'\'" (whereLanguage:"sql") to exclude them.',
     ),
   topN: z
     .number()
@@ -54,9 +59,12 @@ const eventPatternsSchema = z.object({
     .optional()
     .default(24)
     .describe(
-      'Number of time buckets for per-pattern trend sparklines. ' +
-        'Compare bucket counts at start vs end to spot patterns that started or stopped mid-window. ' +
-        'Set to 0 to disable trend computation (smaller response).',
+      'Maximum number of time buckets for per-pattern trends. The bucket width is rounded ' +
+        'up to a standard interval (15s, 1m, 5m, 15m, 30m, 1h, ...) and aligned to it, so ' +
+        'fewer buckets can come back and the first can start before startTime; ' +
+        'summary.trend reports the actual interval and boundaries. ' +
+        'Trend counts are extrapolated from the sample, so sparse buckets read 0 even when ' +
+        'events occurred. Set to 0 to disable trends (smaller response).',
     ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
@@ -76,24 +84,28 @@ export function registerEventPatterns({
       title: 'Event Pattern Mining',
       annotations: READ_ONLY_TOOL,
       description:
-        'Discover the most common log messages and event patterns. ' +
-        'Samples random events, clusters them using the Drain algorithm, and returns ' +
-        'patterns sorted by frequency with estimated counts and time trends.\n\n' +
-        'PREFER THIS TOOL over clickstack_search or clickstack_table when the goal is to ' +
-        'understand what kinds of messages, errors, or events exist — e.g. "sample logs", ' +
-        '"what errors are happening", "show me common messages", "what does this service log". ' +
-        'It returns frequency-ranked patterns instead of raw rows, giving a much better overview.\n\n' +
-        'Also use when asked about "top patterns", "common logs", "noisy services", ' +
-        '"recurring messages", or log noise analysis.\n\n' +
-        'Each pattern includes a "whereSnippet" — use it as the "where" parameter in ' +
-        'a follow-up clickstack_search call to browse matching raw events.\n\n' +
+        'Discover what kinds of messages, errors, or events exist. Samples random events, ' +
+        'clusters them into templates (Drain), and returns patterns ranked by frequency with ' +
+        'sampled and estimated counts, optional trends, and raw samples. Use for "what errors ' +
+        'are happening", common or noisy logs, recurring messages.\n\n' +
+        'Examples:\n' +
+        '  - "What kinds of errors is checkout producing?" → where:"ServiceName:checkout AND ' +
+        'SeverityText:error", topN:5, sampleSize:1000 (trends on by default)\n' +
+        '  - "What messages dominate this service?" → where:"ServiceName:api", trendBuckets:0\n' +
+        '  - Patterns in a map attribute → bodyExpression:"LogAttributes[\'exception.type\']", ' +
+        'where:"LogAttributes[\'exception.type\'] != \'\'", whereLanguage:"sql"\n' +
+        '  - A field inside JSON bodies → bodyExpression:"JSONExtractString(Body, \'message\')", ' +
+        'where:"JSONExtractString(Body, \'message\') != \'\'", whereLanguage:"sql"\n\n' +
+        'Use instead: exact counts or breakdowns by a known field → clickstack_table / ' +
+        'clickstack_timeseries; raw rows → clickstack_search; patterns new or gone vs an ' +
+        'earlier window → clickstack_emerging_signals.\n\n' +
+        'Counts come from a sample: estimatedCount is an extrapolation, and a pattern with ' +
+        '0 sampled events may still exist.\n\n' +
+        'Drill down: call clickstack_search with the same sourceId and time range, ' +
+        'where = a pattern\'s whereSnippet, whereLanguage = "sql". whereSnippet already ' +
+        'includes your where filter unless summary.drilldown.includesFilters is false.\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
-        PREFER_BUILDER_OVER_SQL_NUDGE +
-        '\n\n' +
-        'When to use which tool:\n' +
-        '  - clickstack_event_patterns: clustering / recurring shapes / noise analysis\n' +
-        '  - clickstack_search: raw individual rows\n' +
-        '  - clickstack_table: aggregated metrics / counts / top-N',
+        PREFER_BUILDER_OVER_SQL_NUDGE,
       inputSchema: eventPatternsSchema,
     },
     async input => {

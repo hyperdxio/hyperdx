@@ -21,6 +21,7 @@ import {
   INCREASE_TOP_N_CAP,
   isServerError,
   mergeWhereIntoSelectItems,
+  normalizeBodyExpression,
   parseTimeRange,
 } from '@/mcp/tools/query/helpers';
 import {
@@ -31,7 +32,7 @@ import {
   whereLanguageSchema,
   whereSchema,
 } from '@/mcp/tools/query/schemas';
-import { resolveOrderBy } from '@/mcp/tools/query/table';
+import { defaultOrderBy, resolveOrderBy } from '@/mcp/tools/query/table';
 import { getErrorCategory } from '@/mcp/utils/errors';
 
 describe('parseTimeRange', () => {
@@ -108,6 +109,60 @@ describe('parseTimeRange', () => {
 });
 
 // ─── mergeWhereIntoSelectItems ───────────────────────────────────────────────
+
+describe('normalizeBodyExpression', () => {
+  it.each([
+    ['Body', 'Body'],
+    ['SpanName', 'SpanName'],
+    ["SpanAttributes['http.url']", "SpanAttributes['http.url']"],
+    [
+      "JSONExtractString(Body, 'message')",
+      "JSONExtractString(Body, 'message')",
+    ],
+    [
+      "JSONExtractString(Body,'error',  'message')",
+      "JSONExtractString(Body, 'error', 'message')",
+    ],
+    [
+      "JSONExtractString(Body, 'app.user.currency')",
+      "JSONExtractString(Body, 'app.user.currency')",
+    ],
+    [
+      "JSONExtractString(LogAttributes['object'], 'regarding', 'kind')",
+      "JSONExtractString(LogAttributes['object'], 'regarding', 'kind')",
+    ],
+    [
+      String.raw`JSONExtractString(Body, 'it\'s, ok')`,
+      String.raw`JSONExtractString(Body, 'it\'s, ok')`,
+    ],
+    [
+      "JSONExtractString(Body, 'it''s, ok')",
+      "JSONExtractString(Body, 'it''s, ok')",
+    ],
+  ])('accepts %s', (expr, expected) => {
+    expect(normalizeBodyExpression(expr)).toBe(expected);
+  });
+
+  it.each([
+    'Body) OR (1=1',
+    'lower(Body)',
+    "JSONExtract(Body, 'message', 'String')",
+    'JSONExtractString(Body)',
+    'JSONExtractString(Body, message)',
+    "JSONExtractString(lower(Body), 'message')",
+    "JSONExtractString(Body, 'm') OR 1=1",
+    "JSONExtractString(Body, 'm'), Body",
+    "JSONExtractString(Body, 'm' || 'x')",
+    "JSONExtractString(Body, 'm')) OR (lower(Body)",
+    "JSONExtractString(LogAttributes['a'], 'm') OR (1=1",
+    "JSONExtractString(Body, 'm', (SELECT 1))",
+    // A stray quote in the column would pair with a key's quotes.
+    "JSONExtractString(Body', ' OR 1=1 --')",
+    "JSONExtractString(Body, 'm'' OR 1=1)",
+  ])('rejects %s', expr => {
+    expect(normalizeBodyExpression(expr)).toBeNull();
+  });
+});
 
 describe('mergeWhereIntoSelectItems', () => {
   it('should return items unchanged when topWhere is empty', () => {
@@ -1428,5 +1483,41 @@ describe('where / whereLanguage descriptions', () => {
     expect(whereLanguageSchema.description).toContain(
       'quote the value (field:"value", case-sensitive)',
     );
+  });
+});
+
+describe('defaultOrderBy', () => {
+  it('orders a grouped table by the first select item, descending', () => {
+    expect(defaultOrderBy([{}, {}], 'SpanName', 'table')).toBe(
+      '1 DESC, SpanName ASC',
+    );
+  });
+
+  it('uses the first select item alias when it has one', () => {
+    expect(defaultOrderBy([{ alias: 'Errors' }], 'SpanName', 'table')).toBe(
+      'Errors DESC, SpanName ASC',
+    );
+    expect(
+      defaultOrderBy([{ alias: 'P95 Latency' }], 'SpanName', 'table'),
+    ).toBe('"P95 Latency" DESC, SpanName ASC');
+  });
+
+  it('quotes an alias with surrounding spaces as SELECT renders it', () => {
+    expect(defaultOrderBy([{ alias: ' Errors' }], 'SpanName', 'table')).toBe(
+      '" Errors" DESC, SpanName ASC',
+    );
+    expect(defaultOrderBy([{ alias: '  ' }], 'SpanName', 'table')).toBe(
+      '1 DESC, SpanName ASC',
+    );
+  });
+
+  it('adds no order without a groupBy, for other shapes, or for metric selects', () => {
+    expect(defaultOrderBy([{}], undefined, 'table')).toBeUndefined();
+    expect(defaultOrderBy([{}], ' ', 'table')).toBeUndefined();
+    expect(defaultOrderBy([{}], 'SpanName', 'pie')).toBeUndefined();
+    expect(defaultOrderBy([{}], 'SpanName', 'number')).toBeUndefined();
+    expect(
+      defaultOrderBy([{ metricType: 'gauge' }], 'SpanName', 'table'),
+    ).toBeUndefined();
   });
 });
