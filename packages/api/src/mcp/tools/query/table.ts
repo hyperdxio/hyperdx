@@ -59,7 +59,32 @@ const tableSchema = z.object({
   ),
   whereLanguage: whereLanguageSchema,
   groupBy: groupBySchema,
-  orderBy: orderBySchema,
+  having: z
+    .string()
+    .trim()
+    .max(10000)
+    .optional()
+    .describe(
+      'Post-aggregation SQL HAVING condition, applied after grouping. ' +
+        'Give the select item an alias and reference it, e.g. alias "Errors" and having "Errors > 10". ' +
+        'A bare aggregate such as count() ignores the top-level where.',
+    ),
+  orderBy: orderBySchema.describe(
+    'Sort results by this column. For shape "table" on a non-metric source with groupBy set, ' +
+      'defaults to the first select item descending, then the groupBy columns. ' +
+      'When ordering by an alias that contains spaces or special characters, ' +
+      `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+  ),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(10000)
+    .optional()
+    .describe(
+      'Maximum number of rows (SQL LIMIT), applied after ordering. Omit to return every group. ' +
+        'Metric sources get no default order, so set orderBy as well, or the kept groups are arbitrary.',
+    ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
 });
@@ -196,6 +221,38 @@ export function resolveOrderBy(
   return orderBy;
 }
 
+/**
+ * Default ORDER BY for grouped tables when the caller sets none: the first
+ * select item, descending, so trimmed or limited results keep the largest
+ * groups. MCP only; dashboard tiles and the app are unchanged.
+ *
+ * Unaliased select items have no name to refer to, so the first one is
+ * referenced by position (`1`): the rendered SELECT lists the select items
+ * first, then the groupBy columns. Metric sources are skipped: their SQL is
+ * built from CTEs, and `increase` already orders its top-N groups.
+ *
+ * The groupBy columns follow as a tiebreak, so a `limit` keeps the same groups
+ * on every call, as convertToCategoricalChartConfig does for pie/bar.
+ *
+ * @internal Exported for testing only.
+ */
+export function defaultOrderBy(
+  selectItems: { alias?: string; metricType?: string }[],
+  groupBy: string | undefined,
+  displayType: 'table' | 'number' | 'pie' | 'bar',
+): string | undefined {
+  if (displayType !== 'table' || !groupBy?.trim()) return undefined;
+  if (selectItems.length === 0 || selectItems.some(s => s.metricType)) {
+    return undefined;
+  }
+  // Quote the alias exactly as SELECT renders it; trim only to test emptiness.
+  const alias = selectItems[0].alias;
+  const first = alias?.trim()
+    ? `${quoteAliasForOrderBy(alias)} DESC`
+    : '1 DESC';
+  return `${first}, ${groupBy.trim()} ASC`;
+}
+
 // ─── Tool registration ───────────────────────────────────────────────────────
 
 export function registerTable({ context, registerTool }: ToolRegistrar) {
@@ -270,12 +327,15 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
       const { items: selectItems, warnings: mergeWarnings } =
         mergeWhereIntoSelectItems(select, input.where, input.whereLanguage);
 
+      const groupBy = displayType === 'number' ? undefined : input.groupBy;
       const tile = buildTile('MCP Table', 12, 4, {
         displayType,
         sourceId: input.sourceId,
         select: selectItems,
-        groupBy: displayType === 'number' ? undefined : input.groupBy,
-        orderBy: resolveOrderBy(input.orderBy, selectItems),
+        groupBy,
+        orderBy:
+          resolveOrderBy(input.orderBy, selectItems) ??
+          defaultOrderBy(selectItems, groupBy, displayType),
       });
 
       const result = await runConfigTile(
@@ -283,6 +343,7 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         tile,
         startDate,
         endDate,
+        { having: input.having, limit: input.limit },
       );
 
       // Surface language-mismatch warnings so the agent knows the top-level
