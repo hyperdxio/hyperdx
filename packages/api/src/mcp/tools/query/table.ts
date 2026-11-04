@@ -61,16 +61,17 @@ const tableSchema = z.object({
   groupBy: groupBySchema,
   having: z
     .string()
+    .trim()
     .max(10000)
     .optional()
     .describe(
       'Post-aggregation SQL HAVING condition, applied after grouping. ' +
-        'Example: "count() > 100" to drop small groups. ' +
-        'Reference a select item by its alias (e.g. "Errors > 10") or repeat the aggregate.',
+        'Reference a select item by its alias, e.g. "Errors > 10" to drop small groups. ' +
+        'A bare aggregate such as count() ignores the top-level where, so prefer the alias.',
     ),
   orderBy: orderBySchema.describe(
-    'Sort results by this column. Defaults to the first select item, descending, ' +
-      'when groupBy is set. ' +
+    'Sort results by this column. For shape "table" on a non-metric source with groupBy set, ' +
+      'defaults to the first select item descending, then the groupBy columns. ' +
       'When ordering by an alias that contains spaces or special characters, ' +
       `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
   ),
@@ -227,8 +228,12 @@ export function resolveOrderBy(
  * referenced by position (`1`): the rendered SELECT lists the select items
  * first, then the groupBy columns. Metric sources are skipped: their SQL is
  * built from CTEs, and `increase` already orders its top-N groups.
+ *
+ * The groupBy columns follow as a tiebreak, so a `limit` keeps the same groups
+ * on every call, as convertToCategoricalChartConfig does for pie/bar.
+ *
+ * @internal Exported for testing only.
  */
-/** @internal Exported for testing only. */
 export function defaultOrderBy(
   selectItems: { alias?: string; metricType?: string }[],
   groupBy: string | undefined,
@@ -239,7 +244,8 @@ export function defaultOrderBy(
     return undefined;
   }
   const alias = selectItems[0].alias?.trim();
-  return alias ? `${quoteAliasForOrderBy(alias)} DESC` : '1 DESC';
+  const first = alias ? `${quoteAliasForOrderBy(alias)} DESC` : '1 DESC';
+  return `${first}, ${groupBy.trim()} ASC`;
 }
 
 // ─── Tool registration ───────────────────────────────────────────────────────

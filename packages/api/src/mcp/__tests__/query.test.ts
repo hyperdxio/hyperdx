@@ -1433,16 +1433,18 @@ describe('where / whereLanguage descriptions', () => {
 
 describe('defaultOrderBy', () => {
   it('orders a grouped table by the first select item, descending', () => {
-    expect(defaultOrderBy([{}, {}], 'SpanName', 'table')).toBe('1 DESC');
+    expect(defaultOrderBy([{}, {}], 'SpanName', 'table')).toBe(
+      '1 DESC, SpanName ASC',
+    );
   });
 
   it('uses the first select item alias when it has one', () => {
     expect(defaultOrderBy([{ alias: 'Errors' }], 'SpanName', 'table')).toBe(
-      'Errors DESC',
+      'Errors DESC, SpanName ASC',
     );
     expect(
       defaultOrderBy([{ alias: 'P95 Latency' }], 'SpanName', 'table'),
-    ).toBe('"P95 Latency" DESC');
+    ).toBe('"P95 Latency" DESC, SpanName ASC');
   });
 
   it('adds no order without a groupBy, for other shapes, or for metric selects', () => {
