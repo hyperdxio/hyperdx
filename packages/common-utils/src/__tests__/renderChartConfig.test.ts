@@ -1600,6 +1600,123 @@ describe('renderChartConfig', () => {
         mockMetadata.getMaterializedColumnsLookupTable,
       ).not.toHaveBeenCalled();
     });
+
+    it('rewrites string groupBy, count_distinct, and orderBy to use materialized columns', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([
+            [
+              "ResourceAttributes['k8s.pod.name']",
+              '__otel_materialized_k8s.pod.name',
+            ],
+          ]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: { databaseName: 'otel', tableName: 'otel_logs' },
+        select: [
+          {
+            aggFn: 'count_distinct',
+            valueExpression: "ResourceAttributes['k8s.pod.name']",
+          },
+        ],
+        where: "ResourceAttributes['k8s.pod.name'] LIKE 'api-%'",
+        whereLanguage: 'sql',
+        groupBy: "ResourceAttributes['k8s.pod.name']",
+        orderBy: "ResourceAttributes['k8s.pod.name'] DESC",
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date('2026-11-04T00:00:00Z'),
+          new Date('2026-11-04T06:00:00Z'),
+        ],
+      };
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, undefined),
+      );
+
+      expect(sql).toContain(
+        'SELECT COUNT(DISTINCT __otel_materialized_k8s.pod.name),__otel_materialized_k8s.pod.name',
+      );
+      expect(sql).toContain("__otel_materialized_k8s.pod.name LIKE 'api-%'");
+      expect(sql).toContain('GROUP BY __otel_materialized_k8s.pod.name');
+      expect(sql).toContain('ORDER BY __otel_materialized_k8s.pod.name DESC');
+      expect(sql).not.toContain("ResourceAttributes['k8s.pod.name']");
+    });
+
+    it('rewrites aggregate functions (avg, sum, min, max, quantile) and array orderBy to use materialized columns', async () => {
+      mockMetadata.getMaterializedColumnsLookupTable = jest
+        .fn()
+        .mockResolvedValue(
+          new Map([
+            [
+              "SpanAttributes['http.response_content_length']",
+              '__otel_materialized_http_length',
+            ],
+            [
+              "ResourceAttributes['k8s.pod.name']",
+              '__otel_materialized_k8s.pod.name',
+            ],
+          ]),
+        );
+
+      const config: ChartConfigWithOptDateRange = {
+        connection: 'test-connection',
+        from: { databaseName: 'otel', tableName: 'otel_traces' },
+        select: [
+          {
+            aggFn: 'avg',
+            valueExpression: "SpanAttributes['http.response_content_length']",
+          },
+          {
+            aggFn: 'quantile',
+            level: 0.95,
+            valueExpression: "SpanAttributes['http.response_content_length']",
+          },
+        ],
+        where: '',
+        whereLanguage: 'sql',
+        groupBy: "ServiceName, ResourceAttributes['k8s.pod.name']",
+        orderBy: [
+          {
+            valueExpression: "ResourceAttributes['k8s.pod.name']",
+            ordering: 'ASC',
+          },
+        ],
+        granularity: '5 minute',
+        seriesLimit: 10,
+        timestampValueExpression: 'Timestamp',
+        dateRange: [
+          new Date('2026-11-04T00:00:00Z'),
+          new Date('2026-11-04T06:00:00Z'),
+        ],
+      };
+
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(config, mockMetadata, undefined),
+      );
+
+      expect(sql).toContain(
+        'AVG(toFloat64OrDefault(toString(__otel_materialized_http_length)))',
+      );
+      expect(sql).toContain(
+        'quantile(0.95)(toFloat64OrDefault(toString(__otel_materialized_http_length)))',
+      );
+      expect(sql).toContain(
+        'GROUP BY ServiceName, __otel_materialized_k8s.pod.name',
+      );
+      expect(sql).toContain(
+        'tuple(ServiceName,__otel_materialized_k8s.pod.name)',
+      );
+      expect(sql).toContain('__otel_materialized_k8s.pod.name IS NOT NULL');
+      expect(sql).toContain('__otel_materialized_k8s.pod.name ASC');
+      expect(sql).not.toContain(
+        "SpanAttributes['http.response_content_length']",
+      );
+      expect(sql).not.toContain("ResourceAttributes['k8s.pod.name']");
+    });
   });
 
   describe('Event Patterns query with select-alias filter (HDX-1879)', () => {

@@ -336,6 +336,12 @@ const fastifySQL = ({
 
           break;
         }
+        case 'aggr_func': {
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
+          const _n = node as SQLParser.AggrFunc;
+          traverse(_n.args?.expr);
+          break;
+        }
         default:
           // ignore other types
           break;
@@ -716,16 +722,29 @@ type RenderSelectListOptions = {
   mergeRatio: boolean;
 };
 
+function rewriteSelectExprWithMaterializedFields(
+  expr: string,
+  materializedFields: Map<string, string> | undefined,
+): string {
+  if (
+    !materializedFields ||
+    materializedFields.size === 0 ||
+    expr.trim() === ''
+  ) {
+    return expr;
+  }
+  const rawSQL = `SELECT ${expr} FROM \`t\``;
+  return fastifySQL({ materializedFields, rawSQL })
+    .replace(/^SELECT\s+/i, '') // Remove 'SELECT ' from the start
+    .replace(/\s+FROM `t`$/i, ''); // Remove ' FROM t' from the end
+}
+
 async function renderSelectList(
   selectList: SelectList,
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
   metadata: Metadata,
   { mergeRatio }: RenderSelectListOptions,
 ) {
-  if (typeof selectList === 'string') {
-    return chSql`${{ UNSAFE_RAW_SQL: selectList }}`;
-  }
-
   // This metadata query is executed in an attempt tp optimize the selects by favoring materialized fields
   // on a view/table that already perform the computation in select. This optimization is not currently
   // supported for queries using subquery CTEs so skip the metadata fetch if there are subquery CTE
@@ -744,6 +763,14 @@ async function renderSelectList(
           });
   } catch {
     // ignore
+  }
+
+  if (typeof selectList === 'string') {
+    const resolvedSelectList = rewriteSelectExprWithMaterializedFields(
+      selectList,
+      materializedFields,
+    );
+    return chSql`${{ UNSAFE_RAW_SQL: resolvedSelectList }}`;
   }
 
   const isRatio = mergeRatio && isRatioChartConfig(selectList, chartConfig);
@@ -765,6 +792,21 @@ async function renderSelectList(
           })
         : chSql``;
 
+      const needsPreAggRewrite =
+        select.aggFn != null &&
+        select.valueExpressionLanguage !== 'lucene' &&
+        (select.aggFn.startsWith('quantile') ||
+          select.aggFn.startsWith('histogram') ||
+          (select.aggFn === 'count_distinct' &&
+            isNonEmptyWhereExpr(select.aggCondition)));
+
+      const valueExpression = needsPreAggRewrite
+        ? rewriteSelectExprWithMaterializedFields(
+            select.valueExpression,
+            materializedFields,
+          )
+        : select.valueExpression;
+
       let expr: ChSql;
       if (select.aggFn == null) {
         expr =
@@ -781,14 +823,14 @@ async function renderSelectList(
                 connectionId: chartConfig.connection,
                 with: chartConfig.with,
               })
-            : chSql`${{ UNSAFE_RAW_SQL: select.valueExpression }}`;
+            : chSql`${{ UNSAFE_RAW_SQL: valueExpression }}`;
       } else if (
         select.aggFn.startsWith('quantile') ||
         select.aggFn.startsWith('histogram')
       ) {
         expr = aggFnExpr({
           fn: select.aggFn,
-          expr: select.valueExpression,
+          expr: valueExpression,
           // @ts-expect-error (TS doesn't know that we've already checked for quantile)
           level: select.level,
           where: whereClause.sql,
@@ -797,14 +839,14 @@ async function renderSelectList(
       } else {
         expr = aggFnExpr({
           fn: select.aggFn,
-          expr: select.valueExpression,
+          expr: valueExpression,
           where: whereClause.sql,
           sampleWeightExpression: chartConfig.sampleWeightExpression,
         });
       }
 
       const rawSQL = `SELECT ${expr.sql} FROM \`t\``;
-      if (materializedFields) {
+      if (materializedFields && !needsPreAggRewrite) {
         expr.sql = fastifySQL({ materializedFields, rawSQL })
           .replace(/^SELECT\s+/i, '') // Remove 'SELECT ' from the start
           .replace(/\s+FROM `t`$/i, ''); // Remove ' FROM t' from the end
@@ -825,13 +867,41 @@ async function renderSelectList(
 
 function renderSortSpecificationList(
   sortSpecificationList: SortSpecificationList,
+  materializedFields?: Map<string, string>,
 ) {
   if (typeof sortSpecificationList === 'string') {
-    return chSql`${{ UNSAFE_RAW_SQL: sortSpecificationList }}`;
+    if (
+      !materializedFields ||
+      materializedFields.size === 0 ||
+      sortSpecificationList.trim() === ''
+    ) {
+      return chSql`${{ UNSAFE_RAW_SQL: sortSpecificationList }}`;
+    }
+    const resolvedSortList = splitAndTrimWithBracket(sortSpecificationList)
+      .map(item => {
+        const match = item.match(/^(.*?)\s+(ASC|DESC)$/i);
+        if (match) {
+          const rewritten = rewriteSelectExprWithMaterializedFields(
+            match[1],
+            materializedFields,
+          );
+          return `${rewritten} ${match[2]}`;
+        }
+        return rewriteSelectExprWithMaterializedFields(
+          item,
+          materializedFields,
+        );
+      })
+      .join(', ');
+    return chSql`${{ UNSAFE_RAW_SQL: resolvedSortList }}`;
   }
 
   return sortSpecificationList.map(sortSpecification => {
-    return chSql`${{ UNSAFE_RAW_SQL: sortSpecification.valueExpression }} ${
+    const valueExpression = rewriteSelectExprWithMaterializedFields(
+      sortSpecification.valueExpression,
+      materializedFields,
+    );
+    return chSql`${{ UNSAFE_RAW_SQL: valueExpression }} ${
       sortSpecification.ordering === 'DESC' ? 'DESC' : 'ASC'
     }`;
   });
@@ -1594,8 +1664,14 @@ async function renderSeriesLimitCte(
   // inside Map['a,b']; the per-column null filter below needs them separated.
   let groupByCols: ChSql[];
   if (typeof chartConfig.groupBy === 'string') {
-    groupByCols = splitAndTrimWithBracket(chartConfig.groupBy).map(
-      col => chSql`${{ UNSAFE_RAW_SQL: col }}`,
+    groupByCols = await Promise.all(
+      splitAndTrimWithBracket(chartConfig.groupBy).map(
+        async col =>
+          // renderSelectList returns a single ChSql when given a string
+          (await renderSelectList(col, chartConfig, metadata, {
+            mergeRatio: false,
+          })) as ChSql,
+      ),
     );
   } else {
     // Strip aliases: these go inside tuple(...)/`IS NOT NULL`, where an
@@ -1686,13 +1762,30 @@ async function renderHaving(
   });
 }
 
-function renderOrderBy(
+async function renderOrderBy(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,
-): ChSql | undefined {
+  metadata: Metadata,
+): Promise<ChSql | undefined> {
   const isIncludingTimeBucket = isUsingGranularity(chartConfig);
 
   if (chartConfig.orderBy == null && !isIncludingTimeBucket) {
     return undefined;
+  }
+
+  let materializedFields: Map<string, string> | undefined;
+  if (chartConfig.orderBy != null) {
+    try {
+      materializedFields =
+        hasSubqueryCte(chartConfig.with) || !chartConfig.from.databaseName
+          ? undefined
+          : await metadata.getMaterializedColumnsLookupTable({
+              connectionId: chartConfig.connection,
+              databaseName: chartConfig.from.databaseName,
+              tableName: chartConfig.from.tableName,
+            });
+    } catch {
+      // ignore
+    }
   }
 
   return concatChSql(
@@ -1709,7 +1802,7 @@ function renderOrderBy(
         })
       : [],
     chartConfig.orderBy != null
-      ? renderSortSpecificationList(chartConfig.orderBy)
+      ? renderSortSpecificationList(chartConfig.orderBy, materializedFields)
       : [],
   );
 }
@@ -3335,7 +3428,7 @@ export async function renderChartConfig(
   let where = await renderWhere(chartConfig, metadata);
   const groupBy = await renderGroupBy(chartConfig, metadata);
   const having = await renderHaving(chartConfig, metadata);
-  const orderBy = renderOrderBy(chartConfig);
+  const orderBy = await renderOrderBy(chartConfig, metadata);
   // TODO: WITH FILL (gap-filling for time buckets) was removed as dead code; it
   // broke heatmaps and some charts. Reintroduce a fill renderer if we revisit this.
   const limit = renderLimit(chartConfig);
