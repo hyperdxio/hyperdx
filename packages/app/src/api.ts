@@ -59,6 +59,8 @@ type ServicesResponse = {
   >;
 };
 
+let loginRedirectStarted = false;
+
 function loginHook(request: Request, options: any, response: Response) {
   // marketing pages
   const WHITELIST_PATHS = [
@@ -69,13 +71,20 @@ function loginHook(request: Request, options: any, response: Response) {
     '/register',
     '/reset-password',
   ];
-  if (!WHITELIST_PATHS.includes(Router.pathname) && response.status === 401) {
+  if (
+    !loginRedirectStarted &&
+    !WHITELIST_PATHS.includes(Router.pathname) &&
+    response.status === 401
+  ) {
+    loginRedirectStarted = true;
     try {
       window.sessionStorage.setItem('hdx-login-redirect-url', Router.asPath);
     } catch (e: any) {
       console.error(e);
     }
-    Router.push('/login');
+    // A client-side redirect retains cached team data, which makes AuthPage
+    // send an expired session back into the app. Reset that state on login.
+    window.location.replace(`${Router.basePath}/login`);
   }
 }
 
