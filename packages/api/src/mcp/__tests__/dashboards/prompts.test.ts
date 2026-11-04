@@ -175,7 +175,8 @@ describe('MCP Dashboard Prompts', () => {
       const luceneBody = prompt.slice(luceneIdx);
       expect(luceneBody).toMatch(/SUBSTRING MATCHING/);
       expect(luceneBody).toMatch(/ilike\(field, '%value%'\)/);
-      // The canonical fix is SQL with =.
+      // Exact equality uses quoted Lucene or SQL with =.
+      expect(luceneBody).toMatch(/SpanKind:"Server"/);
       expect(luceneBody).toMatch(/SpanKind = 'Server'/);
       // Wildcard limitation is documented alongside substring matching.
       expect(luceneBody).toMatch(/prefix-within-substring/);
@@ -185,6 +186,7 @@ describe('MCP Dashboard Prompts', () => {
       const mistakesIdx = prompt.indexOf('== COMMON MISTAKES ==');
       const mistakesBody = prompt.slice(mistakesIdx);
       expect(mistakesBody).toMatch(/Lucene field:value and field:value\*/);
+      expect(mistakesBody).toMatch(/SpanKind:"Server"/);
     });
 
     it('documents the empty-string trap for map-attribute groupBy', () => {

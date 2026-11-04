@@ -858,7 +858,8 @@ JSON-type columns (dot notation, access nested keys via dot path):
 Used in the "where" field of select items and search tiles.
 
   Basic match:        level:error
-  AND:                service.name:api AND http.status_code:>=500
+  Exact match:        ServiceName:"api"
+  AND:                ServiceName:"api" AND http.status_code:>=500
   OR:                 level:error OR level:fatal
   NOT:                NOT level:debug
   Wildcard:           ServiceName:front*
@@ -866,16 +867,16 @@ Used in the "where" field of select items and search tiles.
   Exists:             _exists_:http.route
   Range (numeric):    Duration:>1000000000
   Range (inclusive):  http.status_code:[400 TO 499]
-  Grouped:            (level:error OR level:fatal) AND service.name:api
+  Grouped:            (level:error OR level:fatal) AND ServiceName:"api"
 
 NOTE: In Lucene filters, use dot notation for attribute keys (service.name, http.method).
 This is different from valueExpression and groupBy which require bracket syntax (SpanAttributes['http.method']).
 
 *** SUBSTRING MATCHING (field:value and field:value*) ***
 
-Lucene field:value does NOT mean exact equality. It translates to ilike(field, '%value%') -- a case-insensitive SUBSTRING match. This has two major consequences:
+Unquoted Lucene field:value does NOT mean exact equality. It translates to ilike(field, '%value%') -- a case-insensitive SUBSTRING match (which also prevents ClickHouse from using primary-key index pruning on sort-key columns like ServiceName, SpanKind, SeverityText, StatusCode). This has two major consequences:
 
-  1. Plain value is a substring search:
+  1. Unquoted value is a substring search:
      SpanKind:Server     matches "Server", "ServerStreaming", "InternalServer", etc.
      SeverityText:error  matches "error", "error_timeout", "critical_error", etc.
 
@@ -883,14 +884,15 @@ Lucene field:value does NOT mean exact equality. It translates to ilike(field, '
      ServiceName:api*    does NOT mean "starts with api". It means "contains a substring starting with api".
                          In practice this often works for prefix matching, but it is NOT equivalent to SQL LIKE 'api%'.
 
-  For exact matching or true prefix/suffix/contains patterns, use SQL instead:
-     Exact:    whereLanguage: "sql", where: "SpanKind = 'Server'"
-     Prefix:   whereLanguage: "sql", where: "ServiceName LIKE 'api%'"
-     Contains: whereLanguage: "sql", where: "Body LIKE '%timeout%'"
-     Regex:    whereLanguage: "sql", where: "match(ServiceName, '^api-v[0-9]+')"
+  For exact equality, quote the value in Lucene (which compiles to = and uses the primary key) or use SQL; for true prefix/suffix/contains patterns, use SQL:
+     Exact (Lucene): whereLanguage: "lucene", where: 'SpanKind:"Server"'
+     Exact (SQL):    whereLanguage: "sql",    where: "SpanKind = 'Server'"
+     Prefix:         whereLanguage: "sql",    where: "ServiceName LIKE 'api%'"
+     Contains:       whereLanguage: "sql",    where: "Body LIKE '%timeout%'"
+     Regex:          whereLanguage: "sql",    where: "match(ServiceName, '^api-v[0-9]+')"
 
-  When Lucene substring matching is FINE: free-text columns like Body, StatusMessage where substring is the intent.
-  When Lucene substring matching is WRONG: enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact or true prefix match.
+  When unquoted Lucene substring matching is FINE: free-text columns like Body, StatusMessage where substring is the intent.
+  When unquoted Lucene substring matching is WRONG: sort-key and enum-like columns (SpanKind, SeverityText, StatusCode, ServiceName) where you want exact equality (use field:"value" or SQL =) or true prefix match (use SQL LIKE 'val%').
 
 *** MAP-ATTRIBUTE GOTCHA ***
 
@@ -1559,11 +1561,12 @@ Example: find top patterns for production services over the last 4 hours:
     Lucene parses dotted-path queries happily at save time but the translator does not reliably map them to bracket access. Behavior varies by column and operator. Treat any Lucene filter on a map-attribute key as a save-time bug and use SQL with bracket access for ALL map-attribute filtering. Map values are stored as strings; quote the comparison value.
 
 15. Lucene field:value and field:value* (substring matching, not exact or true prefix)
-    Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%') and matches "ServerStreaming", "InternalServer", etc.)
+    Wrong:   where: "SpanKind:Server"             (whereLanguage: "lucene"; translates to ilike(SpanKind, '%Server%'), skips primary-key index, and matches "ServerStreaming", "InternalServer", etc.)
     Wrong:   where: "ServiceName:api*"            (whereLanguage: "lucene"; NOT a true prefix match -- it is prefix-within-substring)
+    Correct: where: 'SpanKind:"Server"'           (whereLanguage: "lucene"; quoted value compiles to exact =)
     Correct: where: "SpanKind = 'Server'"          (whereLanguage: "sql"; exact match)
     Correct: where: "ServiceName LIKE 'api%'"      (whereLanguage: "sql"; true prefix match)
-    Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (Body, StatusMessage); wrong for enum-like columns where exact match matters (SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Use SQL for exact match (=), prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
+    Unquoted Lucene field:value is a substring match (ilike with surrounding wildcards), not exact equality. Lucene field:value* is prefix-within-substring, not SQL LIKE 'value%'. Fine for free-text columns (Body, StatusMessage); wrong for sort-key and enum-like columns where exact match and index pruning matter (ServiceName, SpanKind, SeverityText, StatusCode) and wrong when true prefix matching is needed. Quote the value in Lucene (field:"value") or use SQL (=) for exact match, and use SQL for prefix (LIKE 'x%'), contains (LIKE '%x%'), or regex (match(col, 'pattern')).
 
 16. Forgetting that map-attribute values are often empty strings
     Wrong:   groupBy on SpanAttributes['db.collection.name'] without filtering empty values; the result has an empty-string bucket alongside the real ones, which renders as a blank row in tables and an unlabelled slice in pies.

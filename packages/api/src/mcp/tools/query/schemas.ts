@@ -9,7 +9,8 @@ import { mcpUserError } from '@/mcp/utils/errors';
 const WHERE_DESCRIPTION =
   'Row filter.\n\n' +
   'FIRST: pick a language (whereLanguage):\n' +
-  '  Lucene:           Column:value          e.g. level:error\n' +
+  '  Lucene (exact):   Column:"value"        e.g. ServiceName:"api"\n' +
+  '  Lucene (substr):  Column:value          e.g. Body:timeout\n' +
   '  Lucene map attrs: Column.key:value      e.g. SpanAttributes.http.method:GET\n' +
   "  SQL:              Column = 'value'       e.g. StatusCode = 500\n" +
   "  SQL map attrs:    SpanAttributes['key'] = 'value'\n\n" +
@@ -18,19 +19,20 @@ const WHERE_DESCRIPTION =
   "  SQL uses BRACKET notation:   SpanAttributes['http.method'] = 'GET'\n\n" +
   "WRONG: SpanAttributes['key']:value   (Lucene cannot parse bracket syntax)\n" +
   'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")\n\n' +
-  'SUBSTRING TRAP: Lucene field:value matches ANY row containing "value" as a substring, not exact equality.\n' +
+  "SUBSTRING TRAP: Unquoted Lucene field:value compiles to ILIKE '%value%' (substring match that skips primary-key index on sort-key columns like ServiceName/SpanKind).\n" +
   '  SpanKind:Server matches "Server", "ServerStreaming", "InternalServer", etc.\n' +
-  "  For exact match, use SQL: SpanKind = 'Server'";
+  '  For exact equality (=), quote the value in Lucene (SpanKind:"Server") or use SQL (SpanKind = \'Server\').';
 
 const WHERE_LANGUAGE_DESCRIPTION =
   'Language of the "where" filter. The syntax in "where" MUST match this setting.\n' +
-  '  Lucene: Column:value, Column.mapKey:value, Column:>100\n' +
+  '  Lucene: Column:"value" (exact), Column:value (substring), Column.mapKey:value, Column:>100\n' +
   "  SQL:    Column = 'value', SpanAttributes['key'] = 'value'\n\n" +
   'Lucene supports comparisons (>= > < <=), wildcards (field:val*), ranges ([1 TO 5]), ' +
   'and map attributes via dot notation. Use "sql" for IN(...) lists, complex expressions, or function calls.\n' +
-  'IMPORTANT: Lucene field:value is a SUBSTRING match (ilike), not exact equality. ' +
+  'IMPORTANT: Unquoted Lucene field:value is a SUBSTRING match (ilike), not exact equality. ' +
   'field:val* is prefix-within-substring, not a true prefix match. ' +
-  "For exact matching or reliable wildcards, use SQL: WHERE field = 'value' or WHERE field LIKE 'val%'.\n\n" +
+  'For exact matching, quote the value in Lucene (field:"value") or use SQL (field = \'value\'). ' +
+  "For reliable prefix/wildcard matching, use SQL: WHERE field LIKE 'val%'.\n\n" +
   'Common mistake: writing Column:value (Lucene) but setting whereLanguage to "sql". ' +
   'If your filter uses colon syntax, use "lucene".';
 
