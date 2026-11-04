@@ -2,6 +2,7 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { MantineProvider } from '@mantine/core';
 import { fireEvent, render, screen } from '@testing-library/react';
 
+import { getBreadcrumbMaxLabelLength } from '@/components/sidePanelBreadcrumbLimits';
 import SidePanelBreadcrumbs, {
   BreadcrumbItem,
 } from '@/components/SidePanelBreadcrumbs';
@@ -68,5 +69,29 @@ describe('SidePanelBreadcrumbs', () => {
   ])('renders the %s source icon on the first item', (kind, iconClass) => {
     const { container } = renderCrumbs([{ label: 'First', sourceKind: kind }]);
     expect(container.querySelector(`.${iconClass}`)).toBeInTheDocument();
+  });
+
+  it('shows a lone label in full up to the single-crumb limit', () => {
+    const max = getBreadcrumbMaxLabelLength(0, 1);
+    renderCrumbs([{ label: 'z'.repeat(max) }]);
+    expect(screen.getByText('z'.repeat(max))).toBeInTheDocument();
+  });
+
+  it('truncates a lone label one character past the single-crumb limit', () => {
+    const max = getBreadcrumbMaxLabelLength(0, 1);
+    renderCrumbs([{ label: 'z'.repeat(max + 1) }]);
+    expect(screen.getByText(`${'z'.repeat(max)}…`)).toBeInTheDocument();
+  });
+});
+
+describe('getBreadcrumbMaxLabelLength', () => {
+  it('gives a lone crumb the most room', () => {
+    expect(getBreadcrumbMaxLabelLength(0, 1)).toBe(120);
+  });
+
+  it('gives the current crumb of a trail more room than its ancestors', () => {
+    expect(getBreadcrumbMaxLabelLength(2, 3)).toBe(40);
+    expect(getBreadcrumbMaxLabelLength(0, 3)).toBe(20);
+    expect(getBreadcrumbMaxLabelLength(1, 3)).toBe(20);
   });
 });

@@ -15,9 +15,7 @@ import {
   IconLogs,
 } from '@tabler/icons-react';
 
-const MAX_LABEL_LENGTH_SINGLE = 120;
-const MAX_LABEL_LENGTH_CURRENT = 40;
-const MAX_LABEL_LENGTH_PREVIOUS = 20;
+import { getBreadcrumbMaxLabelLength } from './sidePanelBreadcrumbLimits';
 
 export type BreadcrumbItem = {
   label: string;
@@ -53,12 +51,7 @@ function SidePanelBreadcrumbs({
   const breadcrumbElements = useMemo(() => {
     return items.map((item, i) => {
       const isLast = i === items.length - 1;
-      const isSingle = items.length === 1;
-      const maxLen = isSingle
-        ? MAX_LABEL_LENGTH_SINGLE
-        : isLast
-          ? MAX_LABEL_LENGTH_CURRENT
-          : MAX_LABEL_LENGTH_PREVIOUS;
+      const maxLen = getBreadcrumbMaxLabelLength(i, items.length);
       const truncatedLabel = truncate(item.label, maxLen);
       const needsTooltip = item.label.length > maxLen;
 

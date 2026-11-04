@@ -77,7 +77,10 @@ type TimelineChartProps = {
 const MIN_VIEWPORT_FRAC = 0.02;
 
 const axisHeight = 24;
-const rowsMarginTop = 32;
+// Gap between the axis and the first row. The hover time label
+// (TimelineMouseCursor) reaches about 37px below the top of the chart, so the
+// first row starts at axisHeight + rowsMarginTop = 40px to stay clear of it.
+const rowsMarginTop = 16;
 const maxScale = 100;
 
 export const TimelineChart = memo(function (props: TimelineChartProps) {
@@ -404,12 +407,6 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
 
   return (
     <Flex h={maxHeight} mah={maxHeight} direction="column">
-      <Flex justify="end" mb="sm">
-        <Text>
-          <Kbd>⌘/Ctrl</Kbd> + <Kbd>scroll</Kbd> to zoom
-        </Text>
-      </Flex>
-
       <div className={styles.timelineViewport}>
         <div className={styles.timelineContainer} ref={timelineRef}>
           <div
@@ -426,15 +423,28 @@ export const TimelineChart = memo(function (props: TimelineChartProps) {
               labelWidth={labelWidth}
             />
 
+            {/* The corner above the label column is otherwise empty, so the
+                zoom hint lives here instead of in its own row above the chart. */}
             <div
-              aria-hidden
               className={styles.timelineCorner}
               style={{
                 width: labelWidth,
                 height: `${axisHeight + rowsMarginTop}px`,
                 marginTop: `-${axisHeight + rowsMarginTop}px`,
               }}
-            />
+            >
+              <Text
+                size="xxs"
+                c="dimmed"
+                lh={`${axisHeight}px`}
+                ps="xs"
+                truncate="end"
+                data-testid="timeline-zoom-hint"
+              >
+                <Kbd size="xs">⌘/Ctrl</Kbd> + <Kbd size="xs">scroll</Kbd> to
+                zoom
+              </Text>
+            </div>
 
             {rowVirtualizer.getVirtualItems().map(virtualRow => {
               const row = rows[virtualRow.index];

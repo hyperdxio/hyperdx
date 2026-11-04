@@ -82,6 +82,7 @@ import {
 } from './DrawerUtils';
 import { eventRowWhereParser } from './eventRowWhere';
 import LogLevel from './LogLevel';
+import { getBreadcrumbMaxLabelLength } from './sidePanelBreadcrumbLimits';
 import SidePanelBreadcrumbs, { BreadcrumbItem } from './SidePanelBreadcrumbs';
 import { SpanLinkData } from './SpanLinksSubpanel';
 import TraceLogsPanel from './TraceLogsPanel';
@@ -508,12 +509,11 @@ export const DBRowSidePanelInner = ({
       attributeExpressions.push(...source.highlightedRowAttributeExpressions);
     }
 
-    // Add service name expression to all sources, to maintain compatibility with
-    // the behavior prior to the addition of highlightedRowAttributeExpressions
-    if (
-      (isLogSource(source) || isTraceSource(source)) &&
-      source.serviceNameExpression
-    ) {
+    // Add service name expression to log sources, to maintain compatibility
+    // with the behavior prior to the addition of
+    // highlightedRowAttributeExpressions. Trace panels skip it: the metadata
+    // row already shows the service, and the waterfall below needs the room.
+    if (isLogSource(source) && source.serviceNameExpression) {
       attributeExpressions.push({
         sqlExpression: source.serviceNameExpression,
       });
@@ -868,6 +868,18 @@ export const DBRowSidePanelInner = ({
     clearSpanSelection,
   ]);
 
+  // The current (last) breadcrumb is the panel title. On a trace panel it is
+  // usually the span name; when it shows that name without truncating, a body
+  // paper would only repeat the title, so the header skips it. Longer names,
+  // and hops where the current crumb carries another frame's label (View
+  // Trace from a log), keep the paper so the full span name stays readable.
+  const titleCrumbIndex = allBreadcrumbs.length - 1;
+  const isBodyShownInTitle =
+    sourceIsTrace &&
+    allBreadcrumbs[titleCrumbIndex]?.label === mainContent &&
+    mainContent.length <=
+      getBreadcrumbMaxLabelLength(titleCrumbIndex, allBreadcrumbs.length);
+
   const availableTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = [];
     if (hasOverviewPanel && !sourceIsTrace) tabs.push(Tab.Overview);
@@ -1075,6 +1087,7 @@ export const DBRowSidePanelInner = ({
           attributes={highlightedAttributeValues}
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
+          bodyShownInTitle={isBodyShownInTitle}
           severityText={severityText}
           rowData={normalizedRow}
         />
