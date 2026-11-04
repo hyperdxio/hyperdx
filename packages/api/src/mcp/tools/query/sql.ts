@@ -109,13 +109,12 @@ export function registerSql({ context, registerTool }: ToolRegistrar) {
         'ONLY use raw SQL when the query genuinely cannot be expressed by a builder tool — ' +
         `i.e. it requires ${SQL_FALLBACK_CRITERIA}. ` +
         'A single-table aggregation, top-N, time-series, or row browse is ALWAYS a ' +
-        'builder-tool job, never raw SQL. If you are unsure, try the builder tool first and only ' +
-        'fall back to SQL if it cannot express what you need.\n\n' +
+        'builder-tool job, never raw SQL.\n\n' +
         'Requires connectionId — call clickstack_list_sources to find connections. Pass sourceId ' +
         'too when querying a source, so $__sourceTable resolves to its table. ' +
-        'Call clickstack_describe_source to discover column names before writing SQL. ' +
-        'For tables that are not sources, call clickstack_describe_table instead of ' +
-        'querying system.columns / system.tables directly.\n\n' +
+        'Before writing SQL, get column names from clickstack_describe_source, or ' +
+        'clickstack_describe_table for tables that are not sources (instead of ' +
+        'querying system.columns / system.tables).\n\n' +
         'Results are always returned as table rows — for time-series semantics, ' +
         'include a time column and ORDER BY it in your SQL.\n\n' +
         'To run several independent queries at once (e.g. comparing sources), pass ' +
