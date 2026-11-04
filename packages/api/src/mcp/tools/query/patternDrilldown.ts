@@ -1,9 +1,6 @@
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { renderWhereExpressionStr } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
-import {
-  CustomSchemaSQLSerializerV2,
-  SearchQueryBuilder,
-} from '@hyperdx/common-utils/dist/queryParser';
 import type {
   ChartVariable,
   UseTextIndex,
@@ -70,8 +67,9 @@ export function andSql(...conditions: Array<string | undefined>): string {
 
 /**
  * Render the caller's filter as SQL so it can be ANDed with a pattern
- * predicate in one clickstack_search `where`. Dashboard variables are
- * expanded first because the search tool has no variable context.
+ * predicate in one clickstack_search `where`. Uses the same rendering as the
+ * mining query. Dashboard variables are expanded first because the search
+ * tool has no variable context.
  */
 export async function userWhereAsSql({
   where,
@@ -98,14 +96,13 @@ export async function userWhereAsSql({
   const expanded = variables
     ? substituteVariables(where, { variables, inputLanguage: whereLanguage })
     : where;
-  if (whereLanguage === 'sql') return expanded;
-  const serializer = new CustomSchemaSQLSerializerV2({
+  return renderWhereExpressionStr({
+    condition: expanded,
+    language: whereLanguage,
     metadata,
-    databaseName,
-    tableName,
+    from: { databaseName, tableName },
     connectionId,
     implicitColumnExpression,
     useTextIndexForImplicitColumn,
   });
-  return new SearchQueryBuilder(expanded, serializer).build();
 }

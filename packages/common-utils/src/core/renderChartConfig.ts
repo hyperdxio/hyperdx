@@ -1274,7 +1274,13 @@ function renderFrom({
   );
 }
 
-async function renderWhereExpressionStr({
+/**
+ * Render a where condition as a SQL string: Lucene is serialized against the
+ * table's schema, and the result is rewritten to use materialized columns
+ * where the table has them. Used by chart rendering and by any caller that
+ * needs the same SQL outside a chart config.
+ */
+export async function renderWhereExpressionStr({
   condition,
   language,
   metadata,

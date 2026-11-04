@@ -1,4 +1,5 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { getSourceTableFilters } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   convertGranularityToSeconds,
   getFirstTimestampValueExpression,
@@ -10,7 +11,7 @@ import type {
   ChartConfigWithDateRange,
   ChartVariable,
 } from '@hyperdx/common-utils/dist/types';
-import { DisplayType, isLogSource } from '@hyperdx/common-utils/dist/types';
+import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { trace } from '@opentelemetry/api';
 
 import { ClickhouseClient } from '@/clickhouse';
@@ -149,11 +150,10 @@ export async function mineWindowPatterns(
     };
   }
 
-  const tableFilterSql =
-    (isLogSource(source) && source.tableFilterExpression) || undefined;
-  const filters = tableFilterSql
-    ? [{ type: 'sql' as const, condition: tableFilterSql }]
-    : [];
+  const filters = getSourceTableFilters(source);
+  const tableFilterSql = andSql(
+    ...filters.map(f => ('condition' in f ? f.condition : undefined)),
+  );
 
   const clickhouseClient = new ClickhouseClient({
     host: connection.host,
