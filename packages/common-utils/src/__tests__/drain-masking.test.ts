@@ -4,7 +4,6 @@ import {
 } from '@/drain/config';
 import { LogMasker, MaskingInstruction } from '@/drain/masking';
 import { minePatterns } from '@/drain/mine-patterns';
-import { TemplateMiner } from '@/drain/template-miner';
 
 type Row = { body: string };
 
@@ -17,7 +16,7 @@ const mask = (s: string) =>
     '>',
   ).mask(s);
 
-const mine = (bodies: string[], miner?: TemplateMiner) =>
+const mine = (bodies: string[]) =>
   minePatterns<Row>(
     bodies.map(body => ({ body })),
     {
@@ -27,7 +26,6 @@ const mine = (bodies: string[], miner?: TemplateMiner) =>
       trendBuckets: 1,
       getBody: r => r.body,
       getTimestamp: () => null,
-      miner,
     },
   ).patterns;
 
@@ -48,9 +46,18 @@ describe('default masking', () => {
     ['Date: Wed, 04 Nov 2026 06:12:12 GMT', 'Date: <*>'],
     ['[04/Nov/2026:06:12:12 +0000] "GET /"', '[<*>] "GET /"'],
     ['Nov  4 06:12:12 host sshd', '<*> host sshd'],
-    ['I1104 06:12:12.345678 1 main.go', 'I1104 <*> 1 main.go'],
+    ['I1104 06:12:12.345678 1 main.go', '<*> <*> 1 main.go'],
+    [
+      '26/11/04 16:09:18 WARN KafkaOffsetReader: retry',
+      '<*> <*> WARN KafkaOffsetReader: retry',
+    ],
+    ['04 Nov 2026 06:12:12,345 INFO job done', '<*> INFO job done'],
     ['partition 2026-11-04 loaded', 'partition <*> loaded'],
     ['wrote backup_2026-11-04.tar', 'wrote backup_<*>.tar'],
+    ['Wed Nov  4 06:12:12 2026 job done', '<*> job done'],
+    ['at Wed Nov 04 06:12:12 UTC 2026 done', 'at <*> done'],
+    ['Date: Wed, 4 Nov 2026 06:12:12 GMT', 'Date: <*>'],
+    ['2026/11/04 06:12:12 server started', '<*> <*> server started'],
     ['span_4bf92f3577b34da6a3ce929d0e0e4736 ok', 'span_<*> ok'],
     ['req_123e4567-e89b-12d3-a456-426614174000 done', 'req_<*> done'],
     ['id 123e4567-e89b-12d3-a456-426614174000 ok', 'id <*> ok'],
@@ -73,6 +80,10 @@ describe('default masking', () => {
       DEFAULT_MASKING_INSTRUCTIONS,
     );
   });
+
+  it('is off for a drain3 JSON config that lists no masks, as in drain3', () => {
+    expect(TemplateMinerConfig.fromJSON({}).maskingInstructions).toEqual([]);
+  });
 });
 
 describe('patterns across days', () => {
@@ -83,45 +94,5 @@ describe('patterns across days', () => {
     expect(day2).toHaveLength(1);
     expect(day1[0].pattern).toBe(day2[0].pattern);
     expect(day1[0].pattern).not.toContain('2026-11-0');
-  });
-
-  it('puts a token that varies in only one window into one cluster with a shared miner', () => {
-    const constant = Array.from(
-      { length: 20 },
-      () => 'connect failed host=db-1 retry later',
-    );
-    const varying = Array.from(
-      { length: 20 },
-      (_, i) => `connect failed host=db-${i} retry later`,
-    );
-    // Separate trees: the token stays literal in one window and becomes <*>
-    // in the other, so the templates differ.
-    expect(mine(constant)[0].pattern).not.toBe(mine(varying)[0].pattern);
-
-    const miner = new TemplateMiner(new TemplateMinerConfig());
-    const baseline = mine(constant, miner);
-    const current = mine(varying, miner);
-    expect(miner.drain.clusterCount).toBe(1);
-    expect(current.map(p => p.id)).toEqual(baseline.map(p => p.id));
-  });
-
-  it('still tells new and gone patterns apart with one shared miner', () => {
-    const miner = new TemplateMiner(new TemplateMinerConfig());
-    const baseline = mine(
-      [...linesOn('2026-11-03'), 'cache warmed in 120 ms'],
-      miner,
-    );
-    const current = mine(
-      [...linesOn('2026-11-04'), 'disk quota exceeded on /data volume'],
-      miner,
-    );
-    const baseIds = new Set(baseline.map(p => p.id));
-    const curIds = new Set(current.map(p => p.id));
-    const onlyCur = current.filter(p => !baseIds.has(p.id));
-    const onlyBase = baseline.filter(p => !curIds.has(p.id));
-    expect(onlyCur.map(p => p.pattern)).toEqual([
-      'disk quota exceeded on /data volume',
-    ]);
-    expect(onlyBase.map(p => p.pattern)).toEqual(['cache warmed in 120 ms']);
   });
 });

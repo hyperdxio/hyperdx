@@ -4,6 +4,7 @@ export interface MaskingInstructionConfig {
 }
 
 const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
+const WEEKDAY = '(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)';
 
 /**
  * Values that differ on every line but say nothing about the pattern. They are
@@ -19,9 +20,19 @@ export const DEFAULT_MASKING_INSTRUCTIONS: MaskingInstructionConfig[] = [
       '\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?',
     maskWith: '*',
   },
-  // RFC-1123 (HTTP dates): Wed, 04 Nov 2026 06:12:12 GMT
+  // RFC-1123 (HTTP dates): Wed, 04 Nov 2026 06:12:12 GMT (also a 1-digit day)
   {
-    pattern: `(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \\d{2} ${MONTH} \\d{4} \\d{2}:\\d{2}:\\d{2}(?: (?:GMT|UTC|[+-]\\d{4}))?`,
+    pattern: `${WEEKDAY}, \\d{1,2} ${MONTH} \\d{4} \\d{2}:\\d{2}:\\d{2}(?: (?:GMT|UTC|[+-]\\d{4}))?`,
+    maskWith: '*',
+  },
+  // ctime / Java Date.toString / Go UnixDate: Wed Nov  4 06:12:12 [UTC] 2026
+  {
+    pattern: `${WEEKDAY} ${MONTH} +\\d{1,2} \\d{2}:\\d{2}:\\d{2}(?: [A-Z]{2,5})? \\d{4}`,
+    maskWith: '*',
+  },
+  // Log4j / Java: 04 Nov 2026 06:12:12,345
+  {
+    pattern: `(?<![0-9A-Za-z])\\d{1,2} ${MONTH} \\d{4} \\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?`,
     maskWith: '*',
   },
   // Access-log dates: 04/Nov/2026:06:12:12 +0000
@@ -34,9 +45,19 @@ export const DEFAULT_MASKING_INSTRUCTIONS: MaskingInstructionConfig[] = [
     pattern: `\\b${MONTH} +\\d{1,2} \\d{2}:\\d{2}:\\d{2}\\b`,
     maskWith: '*',
   },
+  // A date that only shows with a time after it: Spark/log4j yy/MM/dd and the
+  // klog/glog severity+MMDD prefix (I1104 06:12:12.345678)
+  {
+    pattern: '(?<![0-9A-Za-z/])\\d{2}/\\d{2}/\\d{2}(?= \\d{2}:\\d{2}:\\d{2})',
+    maskWith: '*',
+  },
+  {
+    pattern: '(?<![0-9A-Za-z])[IWEF]\\d{4}(?= \\d{2}:\\d{2}:\\d{2})',
+    maskWith: '*',
+  },
   // A date or a time on its own
   {
-    pattern: '(?<![0-9A-Za-z])\\d{4}-\\d{2}-\\d{2}(?![0-9A-Za-z])',
+    pattern: '(?<![0-9A-Za-z])\\d{4}[-/]\\d{2}[-/]\\d{2}(?![0-9A-Za-z])',
     maskWith: '*',
   },
   {
@@ -69,6 +90,8 @@ export class TemplateMinerConfig {
 
   static fromJSON(json: Record<string, unknown>): TemplateMinerConfig {
     const config = new TemplateMinerConfig();
+    // drain3 applies no masks unless the JSON lists them.
+    config.maskingInstructions = [];
     if (typeof json.drain_depth === 'number')
       config.drainDepth = json.drain_depth;
     if (typeof json.drain_sim_th === 'number')

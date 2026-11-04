@@ -3,7 +3,6 @@ import {
   getFirstTimestampValueExpression,
   splitAndTrimWithBracket,
 } from '@hyperdx/common-utils/dist/core/utils';
-import type { TemplateMiner } from '@hyperdx/common-utils/dist/drain';
 import { minePatterns } from '@hyperdx/common-utils/dist/drain';
 import type {
   ChartConfigWithDateRange,
@@ -30,49 +29,40 @@ import {
 
 // ─── Reusable window mining ──────────────────────────────────────────────────
 
-// Shared by runEventPatterns (single window) and emerging_signals (two-window
-// diff). Each returns either an error result (MCP shape) or the data.
-
-type WindowOptions = {
-  where?: string;
-  whereLanguage?: 'lucene' | 'sql';
-  bodyExpression?: string;
-  sampleSize?: number;
-  trendBuckets?: number;
-  abortSignal?: AbortSignal;
-  /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
-  variables?: ChartVariable[];
-  /** Shared Drain miner, so cluster ids are comparable across windows. */
-  miner?: TemplateMiner;
-  /** Exclude rows at exactly endDate (half-open window), so two adjacent windows don't share a row. */
-  endExclusive?: boolean;
-};
-
-type WindowSample = {
-  sampleRows: Record<string, unknown>[];
-  totalCount: number;
-  bodyColumn: string;
-  startDate: Date;
-  endDate: Date;
-};
-
-type MinedWindow = {
-  patterns: ReturnType<typeof minePatterns>['patterns'];
-  sampleMultiplier: number;
-  totalCount: number;
-  sampledCount: number;
-  bodyColumn: string;
-};
-
-/** Sample rows and count the total for one window, without mining. */
-export async function fetchWindowSample(
+/**
+ * Sample + Drain-mine one time window and return the raw pattern groups
+ * (template + counts), without MCP response formatting. Shared by
+ * runEventPatterns (single window) and emerging_signals (two-window diff).
+ *
+ * Returns either an error result (MCP shape) or the mined patterns.
+ */
+export async function mineWindowPatterns(
   teamId: string,
   sourceId: string,
   startDate: Date,
   endDate: Date,
-  options?: WindowOptions,
-): Promise<{ error: McpErrorResult } | WindowSample> {
+  options?: {
+    where?: string;
+    whereLanguage?: 'lucene' | 'sql';
+    bodyExpression?: string;
+    sampleSize?: number;
+    trendBuckets?: number;
+    abortSignal?: AbortSignal;
+    /** Dashboard variables and their selected values. Omitted outside a dashboard context. */
+    variables?: ChartVariable[];
+  },
+): Promise<
+  | { error: McpErrorResult }
+  | {
+      patterns: ReturnType<typeof minePatterns>['patterns'];
+      sampleMultiplier: number;
+      totalCount: number;
+      sampledCount: number;
+      bodyColumn: string;
+    }
+> {
   const sampleSize = options?.sampleSize ?? 10_000;
+  const trendBuckets = options?.trendBuckets ?? 0;
 
   const source = await getSource(teamId, sourceId);
   if (!source) {
@@ -162,7 +152,6 @@ export async function fetchWindowSample(
     orderBy: [{ ordering: 'DESC' as const, valueExpression: 'rand()' }],
     limit: { limit: sampleSize, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
-    ...(options?.endExclusive ? { dateRangeEndInclusive: false } : {}),
     variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
@@ -182,7 +171,6 @@ export async function fetchWindowSample(
     useTextIndexForImplicitColumn,
     limit: { limit: 1, offset: 0 },
     dateRange: [startDate, endDate] as [Date, Date],
-    ...(options?.endExclusive ? { dateRangeEndInclusive: false } : {}),
     variables: options?.variables,
   } satisfies ChartConfigWithDateRange;
 
@@ -225,16 +213,6 @@ export async function fetchWindowSample(
 
   const sampleRows = sampleResult.data ?? [];
   const totalCount = Number(countResult.data?.[0]?.total ?? 0);
-  return { sampleRows, totalCount, bodyColumn, startDate, endDate };
-}
-
-/** Drain-mine a fetched window. Synchronous, so callers control the order windows enter a shared miner. */
-export function mineWindowSample(
-  sample: WindowSample,
-  options?: Pick<WindowOptions, 'trendBuckets' | 'miner'>,
-): { error: McpErrorResult } | MinedWindow {
-  const { sampleRows, totalCount, bodyColumn, startDate, endDate } = sample;
-  const trendBuckets = options?.trendBuckets ?? 0;
   if (sampleRows.length === 0) {
     return {
       patterns: [],
@@ -245,8 +223,11 @@ export function mineWindowSample(
     };
   }
 
-  // Return a Drain error as an {error} result instead of throwing, so callers
-  // that only inspect the union get a clean MCP error rather than a 500.
+  // Wrap the synchronous Drain mining in try/catch. Without this a thrown
+  // Drain error escapes the helper — and since callers (emerging_signals)
+  // await it inside Promise.all and only inspect the returned {error} union
+  // AFTER the await, an unwrapped throw becomes an unhandled rejection / 500
+  // instead of a clean MCP error result.
   let patterns: ReturnType<typeof minePatterns>['patterns'];
   let sampleMultiplier: number;
   try {
@@ -256,7 +237,6 @@ export function mineWindowSample(
       endDate,
       trendBuckets,
       maxSamples: 5,
-      miner: options?.miner,
       getBody: row => {
         const raw = row.__hdx_pattern_body;
         return raw != null ? String(raw) : '';
@@ -280,26 +260,23 @@ export function mineWindowSample(
   };
 }
 
+// ─── Drain template normalization (emerging_signals cross-window keying) ─────
+
 /**
- * Sample + Drain-mine one time window and return the raw pattern groups
- * (template + counts), without MCP response formatting.
+ * Normalize a Drain template so the same logical pattern matches across
+ * windows despite Drain assigning different cluster ids each run. We collapse
+ * runs of whitespace and treat the placeholder token uniformly. Distinct
+ * placeholder PLACEMENTS remain distinct (only the placeholder glyph is
+ * unified, its position is preserved), so unrelated templates do not collapse.
+ *
+ * Pure string logic — used by the emerging_signals MCP tool.
  */
-export async function mineWindowPatterns(
-  teamId: string,
-  sourceId: string,
-  startDate: Date,
-  endDate: Date,
-  options?: WindowOptions,
-): Promise<{ error: McpErrorResult } | MinedWindow> {
-  const sample = await fetchWindowSample(
-    teamId,
-    sourceId,
-    startDate,
-    endDate,
-    options,
-  );
-  if ('error' in sample) return sample;
-  return mineWindowSample(sample, options);
+export function normalizeTemplate(pattern: string): string {
+  return pattern
+    .replace(/<\*>/g, '\u0001') // stable placeholder marker
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
 }
 
 /**
