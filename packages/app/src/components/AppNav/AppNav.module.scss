@@ -123,6 +123,8 @@ $transition-slow: 0.2s ease;
 }
 
 .collapseButton {
+  /* Click UI token names are camelCase. */
+  /* stylelint-disable custom-property-pattern */
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
@@ -157,6 +159,7 @@ $transition-slow: 0.2s ease;
   &Collapsed {
     transform: rotate(180deg);
   }
+  /* stylelint-enable custom-property-pattern */
 }
 
 .scrollContainer {
