@@ -15,6 +15,11 @@ export type McpContext = {
    * Identity of the calling MCP client application, parsed from User-Agent.
    */
   mcpClient?: McpClientInfo;
+  /**
+   * Whether PromQL sources, tiles and filters are exposed. Defaults to the
+   * deployment's ENABLE_PROMQL; read it through `isPromqlEnabled`.
+   */
+  promqlEnabled?: boolean;
 };
 
 /**
