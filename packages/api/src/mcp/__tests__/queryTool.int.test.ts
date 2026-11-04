@@ -438,6 +438,57 @@ describe('MCP Query Tools', () => {
         });
         expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c']);
       });
+
+      it('orders by a quoted alias with a space, by default and explicitly', async () => {
+        const select = [{ aggFn: 'count', alias: 'Line Count' }];
+        const byDefault = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          select,
+        });
+        expect(byDefault.isError).toBeFalsy();
+        expect(rows(byDefault).map(r => r.ServiceName)).toEqual([
+          'b',
+          'c',
+          'a',
+        ]);
+        const explicit = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          select,
+          orderBy: '"Line Count" ASC',
+        });
+        expect(explicit.isError).toBeFalsy();
+        expect(rows(explicit).map(r => r.ServiceName)).toEqual(['a', 'c', 'b']);
+      });
+
+      it.each(['pie', 'bar'] as const)(
+        'keeps the largest groups with limit on shape "%s"',
+        async shape => {
+          const result = await callTool(client, 'clickstack_table', {
+            ...tableArgs(),
+            shape,
+            limit: 2,
+          });
+          expect(result.isError).toBeFalsy();
+          expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c']);
+        },
+      );
+
+      it.each(['pie', 'bar'] as const)(
+        'applies having on shape "%s"',
+        async shape => {
+          const result = await callTool(client, 'clickstack_table', {
+            ...tableArgs(),
+            shape,
+            having: 'n > 1',
+          });
+          expect(result.isError).toBeFalsy();
+          expect(
+            rows(result)
+              .map(r => r.ServiceName)
+              .sort(),
+          ).toEqual(['b', 'c']);
+        },
+      );
     });
   });
 

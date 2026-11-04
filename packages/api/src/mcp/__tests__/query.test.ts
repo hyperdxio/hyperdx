@@ -1447,6 +1447,15 @@ describe('defaultOrderBy', () => {
     ).toBe('"P95 Latency" DESC, SpanName ASC');
   });
 
+  it('quotes an alias with surrounding spaces as SELECT renders it', () => {
+    expect(defaultOrderBy([{ alias: ' Errors' }], 'SpanName', 'table')).toBe(
+      '" Errors" DESC, SpanName ASC',
+    );
+    expect(defaultOrderBy([{ alias: '  ' }], 'SpanName', 'table')).toBe(
+      '1 DESC, SpanName ASC',
+    );
+  });
+
   it('adds no order without a groupBy, for other shapes, or for metric selects', () => {
     expect(defaultOrderBy([{}], undefined, 'table')).toBeUndefined();
     expect(defaultOrderBy([{}], ' ', 'table')).toBeUndefined();

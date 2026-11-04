@@ -66,8 +66,8 @@ const tableSchema = z.object({
     .optional()
     .describe(
       'Post-aggregation SQL HAVING condition, applied after grouping. ' +
-        'Reference a select item by its alias, e.g. "Errors > 10" to drop small groups. ' +
-        'A bare aggregate such as count() ignores the top-level where, so prefer the alias.',
+        'Give the select item an alias and reference it, e.g. alias "Errors" and having "Errors > 10". ' +
+        'A bare aggregate such as count() ignores the top-level where.',
     ),
   orderBy: orderBySchema.describe(
     'Sort results by this column. For shape "table" on a non-metric source with groupBy set, ' +
@@ -79,9 +79,11 @@ const tableSchema = z.object({
     .number()
     .int()
     .positive()
+    .max(10000)
     .optional()
     .describe(
-      'Maximum number of rows (SQL LIMIT), applied after ordering. Omit to return every group.',
+      'Maximum number of rows (SQL LIMIT), applied after ordering. Omit to return every group. ' +
+        'Metric sources get no default order, so set orderBy as well, or the kept groups are arbitrary.',
     ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
@@ -237,14 +239,17 @@ export function resolveOrderBy(
 export function defaultOrderBy(
   selectItems: { alias?: string; metricType?: string }[],
   groupBy: string | undefined,
-  displayType: string,
+  displayType: 'table' | 'number' | 'pie' | 'bar',
 ): string | undefined {
   if (displayType !== 'table' || !groupBy?.trim()) return undefined;
   if (selectItems.length === 0 || selectItems.some(s => s.metricType)) {
     return undefined;
   }
-  const alias = selectItems[0].alias?.trim();
-  const first = alias ? `${quoteAliasForOrderBy(alias)} DESC` : '1 DESC';
+  // Quote the alias exactly as SELECT renders it; trim only to test emptiness.
+  const alias = selectItems[0].alias;
+  const first = alias?.trim()
+    ? `${quoteAliasForOrderBy(alias)} DESC`
+    : '1 DESC';
   return `${first}, ${groupBy.trim()} ASC`;
 }
 
