@@ -1,0 +1,2 @@
+"replay event copied from rum.sessionId","abc","abc","abc"
+"replay event own session.id wins","app1","app1","abc"

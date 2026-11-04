@@ -1,0 +1,5 @@
+"copied from rum.sessionId",1,"abc","abc"
+"own session.id wins",1,"app1","app1"
+"{""session.id"":""body1"",""message"":""json body session.id wins""}",1,"body1","body1"
+"new sdk session.id unchanged",1,"xyz","xyz"
+"no session",0,"",""
