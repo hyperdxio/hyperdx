@@ -284,7 +284,8 @@ describe('toPromqlTileResult', () => {
       { instance: 'checkout-1', job: 'checkout', Value: 0 },
     ]);
     expect(result.meta.map(m => m.name)).toEqual(['instance', 'job', 'Value']);
-    expect(result.seriesLabels).toBeUndefined();
+    // An undefined key would break trimToolResponse on large results.
+    expect(result).not.toHaveProperty('seriesLabels');
   });
 
   it('keys a histogram heatmap by bucket', () => {
@@ -310,5 +311,6 @@ describe('toPromqlTileResult', () => {
       { __hdx_time_bucket: '2026-11-02T10:00:00.000Z', le: '0.5', value: 2 },
       { __hdx_time_bucket: '2026-11-02T10:00:00.000Z', le: '+Inf', value: 3 },
     ]);
+    expect(result).not.toHaveProperty('seriesLabels');
   });
 });

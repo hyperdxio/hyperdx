@@ -100,6 +100,20 @@ describe('trimToolResponse', () => {
       expect(isTrimmed).toBe(false);
       expect(result).toEqual(obj);
     });
+
+    it('should drop undefined values instead of throwing', () => {
+      const obj = {
+        data: Array.from({ length: 100 }, (_, i) => ({ id: i })),
+        rows: 100,
+        seriesLabels: undefined,
+      };
+
+      const { data: result, isTrimmed } = trimToolResponse(obj, 200);
+      expect(isTrimmed).toBe(true);
+      expect(result).not.toHaveProperty('seriesLabels');
+      expect(result.rows).toBe(100);
+      expect(result.data.length).toBeLessThan(100);
+    });
   });
 
   describe('getAIMetadata structure', () => {

@@ -82,7 +82,11 @@ export function toPromqlTileResult(
     expressions,
   );
   if (!displayTypeSupportsReducer(config)) {
-    return { ...rows, seriesLabels: promqlSeriesLabels };
+    // Table and histogram rows carry no per-series labels; leave the key out.
+    return {
+      ...rows,
+      ...(promqlSeriesLabels ? { seriesLabels: promqlSeriesLabels } : {}),
+    };
   }
   const reduced = reducePromqlChartRows(
     rows,
