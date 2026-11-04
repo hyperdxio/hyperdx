@@ -4,6 +4,7 @@ import {
 } from '@/drain/config';
 import { LogMasker, MaskingInstruction } from '@/drain/masking';
 import { minePatterns } from '@/drain/mine-patterns';
+import { TemplateMiner } from '@/drain/template-miner';
 
 type Row = { body: string };
 
@@ -16,7 +17,7 @@ const mask = (s: string) =>
     '>',
   ).mask(s);
 
-const mine = (bodies: string[]) =>
+const mine = (bodies: string[], miner?: TemplateMiner) =>
   minePatterns<Row>(
     bodies.map(body => ({ body })),
     {
@@ -26,6 +27,7 @@ const mine = (bodies: string[]) =>
       trendBuckets: 1,
       getBody: r => r.body,
       getTimestamp: () => null,
+      miner,
     },
   ).patterns;
 
@@ -94,5 +96,73 @@ describe('patterns across days', () => {
     expect(day2).toHaveLength(1);
     expect(day1[0].pattern).toBe(day2[0].pattern);
     expect(day1[0].pattern).not.toContain('2026-11-0');
+  });
+
+  it('puts a token that varies in only one window into one cluster with a shared miner', () => {
+    const constant = Array.from(
+      { length: 20 },
+      () => 'connect failed host=db-1 retry later',
+    );
+    const varying = Array.from(
+      { length: 20 },
+      (_, i) => `connect failed host=db-${i} retry later`,
+    );
+    // Separate trees: the token stays literal in one window and becomes <*>
+    // in the other, so the templates differ.
+    expect(mine(constant)[0].pattern).not.toBe(mine(varying)[0].pattern);
+
+    const miner = new TemplateMiner(new TemplateMinerConfig());
+    const baseline = mine(constant, miner);
+    const current = mine(varying, miner);
+    expect(miner.drain.clusterCount).toBe(1);
+    expect(current.map(p => p.id)).toEqual(baseline.map(p => p.id));
+  });
+
+  it('still tells new and gone patterns apart with one shared miner', () => {
+    const miner = new TemplateMiner(new TemplateMinerConfig());
+    const baseline = mine(
+      [...linesOn('2026-11-03'), 'cache warmed in 120 ms'],
+      miner,
+    );
+    const current = mine(
+      [...linesOn('2026-11-04'), 'disk quota exceeded on /data volume'],
+      miner,
+    );
+    const baseIds = new Set(baseline.map(p => p.id));
+    const curIds = new Set(current.map(p => p.id));
+    const onlyCur = current.filter(p => !baseIds.has(p.id));
+    const onlyBase = baseline.filter(p => !curIds.has(p.id));
+    expect(onlyCur.map(p => p.pattern)).toEqual([
+      'disk quota exceeded on /data volume',
+    ]);
+    expect(onlyBase.map(p => p.pattern)).toEqual(['cache warmed in 120 ms']);
+  });
+});
+
+describe('row cluster ids and tokens', () => {
+  it('returns the cluster id of each row, in input order', () => {
+    const rows = ['a b c', 'x y z', 'a b d'].map(body => ({ body }));
+    const opts = {
+      totalCount: 3,
+      startDate: new Date('2026-11-03T00:00:00Z'),
+      endDate: new Date('2026-11-05T00:00:00Z'),
+      trendBuckets: 1,
+      getBody: (r: Row) => r.body,
+      getTimestamp: () => null,
+    };
+    const res = minePatterns<Row>(rows, opts);
+    const idOf = (prefix: string) =>
+      Number(res.patterns.find(p => p.pattern.startsWith(prefix))?.id);
+    expect(res.rowClusterIds).toEqual([idOf('a'), idOf('x'), idOf('a')]);
+    expect(minePatterns<Row>([], opts).rowClusterIds).toEqual([]);
+  });
+
+  it('tokenizes a message the way Drain sees it, masks applied', () => {
+    const miner = new TemplateMiner(new TemplateMinerConfig());
+    expect(miner.tokenize('2026-11-04T06:12:12Z sync  failed')).toEqual([
+      '<*>',
+      'sync',
+      'failed',
+    ]);
   });
 });

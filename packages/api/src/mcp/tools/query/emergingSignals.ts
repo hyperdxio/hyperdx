@@ -1,3 +1,8 @@
+import {
+  flattenBody,
+  TemplateMiner,
+  TemplateMinerConfig,
+} from '@hyperdx/common-utils/dist/drain';
 import { z } from 'zod';
 
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
@@ -6,7 +11,7 @@ import { mcpUserError } from '@/mcp/utils/errors';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
 import { parseTimeRange } from './helpers';
-import { mineWindowPatterns, normalizeTemplate } from './runEventPatterns';
+import { fetchWindowSample, mineWindowSample } from './runEventPatterns';
 import { sourceIdSchema, whereLanguageSchema, whereSchema } from './schemas';
 
 // ─── Classification ────────────────────────────────────────────────────────
@@ -151,7 +156,8 @@ export function registerEmergingSignals({
         'event patterns (Drain) in BOTH windows and set-differences them:\n' +
         '  - emerging:    patterns whose share of the window is >= minShareRatio× ' +
         'higher now than in baseline (includes brand-new templates absent from ' +
-        'baseline)\n' +
+        'baseline, and new messages that merged into a baseline pattern: ' +
+        'status "new_variant")\n' +
         '  - disappeared: patterns that were common in baseline but >= ' +
         'minShareRatio× rarer (or absent) now\n\n' +
         'WHY NOT clickstack_event_deltas: event_deltas compares ATTRIBUTE VALUE ' +
@@ -195,34 +201,63 @@ export function registerEmergingSignals({
         );
       }
 
-      const opts = {
+      // One Drain tree for both windows: the same line lands in the same
+      // cluster in either window, so the windows are compared by cluster id.
+      // Separate trees keep tokens that were constant in one window literal
+      // and generalize them in the other, which splits the same pattern.
+      const fetchOpts = {
         where: input.where,
         whereLanguage: input.whereLanguage,
         bodyExpression: input.bodyExpression,
         sampleSize: input.sampleSize,
-        trendBuckets: 0,
       };
-
-      const [curRes, baseRes] = await Promise.all([
-        mineWindowPatterns(
+      // The earlier window is half-open, so a row at the shared boundary is
+      // counted only once (the baseline is usually first, but may come after).
+      const baselineFirst = base.endDate <= cur.startDate;
+      const [curSample, baseSample] = await Promise.all([
+        fetchWindowSample(
           teamId.toString(),
           input.sourceId,
           cur.startDate,
           cur.endDate,
-          opts,
+          { ...fetchOpts, endExclusive: !baselineFirst },
         ),
-        mineWindowPatterns(
+        fetchWindowSample(
           teamId.toString(),
           input.sourceId,
           base.startDate,
           base.endDate,
-          opts,
+          { ...fetchOpts, endExclusive: baselineFirst },
         ),
       ]);
-      if ('error' in curRes) return curRes.error;
-      if ('error' in baseRes) return baseRes.error;
+      if ('error' in curSample) return curSample.error;
+      if ('error' in baseSample) return baseSample.error;
 
-      // Build share-of-window maps keyed by normalized template.
+      // Mine in a fixed order (baseline, then current): Drain depends on
+      // insertion order, so this keeps the result independent of which query
+      // finished first.
+      const miner = new TemplateMiner(new TemplateMinerConfig());
+      const baseRes = mineWindowSample(baseSample, { trendBuckets: 0, miner });
+      if ('error' in baseRes) return baseRes.error;
+      // Each baseline cluster as it was before the current window is added
+      // (token copies, so later template changes don't reach them).
+      const baseline = new Map<
+        string,
+        { tokens: string[]; rows: number; sample: string }
+      >();
+      for (const p of baseRes.patterns) {
+        const cluster = miner.drain.getCluster(Number(p.id));
+        if (cluster)
+          baseline.set(p.id, {
+            tokens: [...cluster.logTemplateTokens],
+            rows: p.sampleCount,
+            sample: String(p.samples?.[0]?.__hdx_pattern_body ?? p.pattern),
+          });
+      }
+      const curRes = mineWindowSample(curSample, { trendBuckets: 0, miner });
+      if ('error' in curRes) return curRes.error;
+
+      // Build share-of-window maps keyed by cluster id.
       type Agg = {
         pattern: string;
         curShare: number;
@@ -230,13 +265,15 @@ export function registerEmergingSignals({
         curCount: number;
         baseCount: number;
         sample: string;
+        // Set on a new message that Drain merged into a baseline pattern.
+        variant?: { baselinePattern: string; share: number };
       };
       const byKey = new Map<string, Agg>();
 
       const ingest = (res: typeof curRes, which: 'cur' | 'base') => {
         const sampled = res.sampledCount || 1;
         for (const p of res.patterns) {
-          const key = normalizeTemplate(p.pattern);
+          const key = p.id;
           let a = byKey.get(key);
           if (!a) {
             a = {
@@ -252,11 +289,7 @@ export function registerEmergingSignals({
             byKey.set(key, a);
           }
           const share = p.sampleCount / sampled;
-          // Accumulate rather than overwrite: if two Drain clusters in ONE
-          // window normalize to the same key, both contribute their share/count
-          // instead of the second silently clobbering the first. Each window is
-          // ingested exactly once and all fields init to 0, so additive merge is
-          // correct for both colliding and non-colliding keys.
+          // Each window is ingested once and the fields start at 0.
           if (which === 'cur') {
             a.curShare += share;
             a.curCount += p.estimatedCount;
@@ -268,6 +301,42 @@ export function registerEmergingSignals({
       };
       ingest(curRes, 'cur');
       ingest(baseRes, 'base');
+      // A cluster's template can still generalize after a window first sees
+      // it, so report each cluster's template from the finished tree.
+      for (const [key, a] of byKey) {
+        a.pattern =
+          miner.drain.getCluster(Number(key))?.getTemplate() ?? a.pattern;
+      }
+
+      // One tree merges a new message into a similar baseline pattern (e.g.
+      // "login failed: invalid password" absorbs "login failed: account
+      // locked"). A current row is a new variant when Drain put it in a
+      // baseline cluster whose template the current window changed, and its
+      // masked tokens don't fit the cluster's baseline template (the same
+      // compare Drain's match() uses). Baseline clusters with fewer than 3
+      // sampled rows are skipped: too rare to know which tokens are constant.
+      const changed = new Map<string, string[]>();
+      for (const [key, b] of baseline) {
+        const now = miner.drain.getCluster(Number(key))?.getTemplate();
+        if (b.rows >= 3 && now !== undefined && now !== b.tokens.join(' '))
+          changed.set(key, b.tokens);
+      }
+      const variants = new Map<string, { rows: number; sample: string }>();
+      curSample.sampleRows.forEach((row, i) => {
+        const key = String(curRes.rowClusterIds.at(i));
+        const tmpl = changed.get(key);
+        if (!tmpl) return;
+        const raw = String(row.__hdx_pattern_body ?? '');
+        const tokens = miner.tokenize(flattenBody(raw));
+        if (
+          tokens.length === tmpl.length &&
+          miner.drain.getSeqDistance(tmpl, tokens, true)[0] === 1
+        )
+          return;
+        const v = variants.get(key);
+        if (v) v.rows++;
+        else variants.set(key, { rows: 1, sample: raw });
+      });
 
       const ratio = input.minShareRatio;
       // Minimum share for a BRAND-NEW pattern (absent from baseline) to count
@@ -280,15 +349,48 @@ export function registerEmergingSignals({
         curRes.sampledCount > 0 ? 2 / curRes.sampledCount : 0;
       const emerging: Agg[] = [];
       const disappeared: Agg[] = [];
-      for (const a of byKey.values()) {
-        const verdict = classifyShift(a, ratio, newPatternShareFloor);
-        if (verdict === 'emerging') emerging.push(a);
-        else if (verdict === 'disappeared') disappeared.push(a);
+      const sampled = curRes.sampledCount || 1;
+      for (const [key, a] of byKey) {
+        const v = variants.get(key);
+        // Below the floor (e.g. one sampled row) a variant is noise, like a
+        // one-row new pattern: classify the cluster as a whole.
+        if (!v || v.rows / sampled < newPatternShareFloor) {
+          const verdict = classifyShift(a, ratio, newPatternShareFloor);
+          if (verdict === 'emerging') emerging.push(a);
+          else if (verdict === 'disappeared') disappeared.push(a);
+          continue;
+        }
+        // The new message is its own emerging entry; the rest of the cluster
+        // (the baseline message) is listed only if it disappeared, so one
+        // cluster never takes two emerging slots.
+        const b = baseline.get(key);
+        const baselinePattern = (b?.tokens ?? []).join(' ');
+        const variantCount = Math.round(v.rows * curRes.sampleMultiplier);
+        emerging.push({
+          pattern: a.pattern,
+          curShare: v.rows / sampled,
+          baseShare: 0,
+          curCount: variantCount,
+          baseCount: 0,
+          sample: v.sample,
+          variant: { baselinePattern, share: v.rows / sampled },
+        });
+        const rest = {
+          pattern: baselinePattern,
+          curShare:
+            Math.max(Math.round(a.curShare * sampled) - v.rows, 0) / sampled,
+          baseShare: a.baseShare,
+          curCount: Math.max(a.curCount - variantCount, 0),
+          baseCount: a.baseCount,
+          sample: b?.sample ?? baselinePattern,
+        };
+        if (classifyShift(rest, ratio, newPatternShareFloor) === 'disappeared')
+          disappeared.push(rest);
       }
-      // Rank by absolute share swing.
-      emerging.sort(
-        (x, y) => y.curShare - y.baseShare - (x.curShare - x.baseShare),
-      );
+      // Rank by absolute share swing (a variant entry has baseShare 0, so its
+      // swing is its own share, the same unit as a brand-new pattern).
+      const swing = (a: Agg) => a.curShare - a.baseShare;
+      emerging.sort((x, y) => swing(y) - swing(x));
       disappeared.sort(
         (x, y) => y.baseShare - y.curShare - (x.baseShare - x.curShare),
       );
@@ -299,9 +401,20 @@ export function registerEmergingSignals({
         baselineShare: Math.round(a.baseShare * 10000) / 10000,
         currentEstimatedCount: a.curCount,
         baselineEstimatedCount: a.baseCount,
-        status:
-          a.baseShare === 0 ? 'new' : a.curShare === 0 ? 'gone' : 'shifted',
+        status: a.variant
+          ? 'new_variant'
+          : a.baseShare === 0
+            ? 'new'
+            : a.curShare === 0
+              ? 'gone'
+              : 'shifted',
         sample: a.sample.slice(0, 300),
+        ...(a.variant
+          ? {
+              baselinePattern: a.variant.baselinePattern,
+              variantShare: Math.round(a.variant.share * 10000) / 10000,
+            }
+          : {}),
       });
 
       const output = {
@@ -336,7 +449,11 @@ export function registerEmergingSignals({
         usage:
           'emerging = patterns newly present or >= minShareRatio× more frequent ' +
           '(by share of window) now vs baseline; status "new" means absent from ' +
-          'baseline entirely. disappeared = the reverse. Shares are fractions of ' +
+          'baseline entirely; status "new_variant" means new messages that ' +
+          'merged into a baseline pattern (baselinePattern is the old ' +
+          'template, sample a new line, variantShare their share); if the ' +
+          'old message dropped, it is listed in disappeared. ' +
+          'disappeared = the reverse. Shares are fractions of ' +
           "each window's sampled rows, so they are comparable across windows of " +
           'different volume. An empty emerging list means nothing novel crossed ' +
           'the threshold — a valid finding.',

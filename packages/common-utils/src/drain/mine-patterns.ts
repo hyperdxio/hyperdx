@@ -53,6 +53,8 @@ export interface PatternGroup<TRow = Record<string, unknown>> {
 export interface MinePatternResult<TRow = Record<string, unknown>> {
   patterns: PatternGroup<TRow>[];
   sampleMultiplier: number;
+  /** The Drain cluster id of each input row, in input order. */
+  rowClusterIds: number[];
 }
 
 export interface MinePatternOptions<TRow extends Record<string, unknown>> {
@@ -76,6 +78,11 @@ export interface MinePatternOptions<TRow extends Record<string, unknown>> {
    * Falls back to startDate if the extractor returns null/undefined.
    */
   getTimestamp: (row: TRow) => number | null | undefined;
+  /**
+   * Drain miner to add the rows to. Default: a new one. Pass the same miner
+   * to several calls to get cluster ids that are comparable across them.
+   */
+  miner?: TemplateMiner;
 }
 
 // ─── Core mining function ────────────────────────────────────────────────────
@@ -100,15 +107,12 @@ export function minePatterns<TRow extends Record<string, unknown>>(
     maxSamples = 5,
     getBody,
     getTimestamp,
+    miner = new TemplateMiner(new TemplateMinerConfig()),
   } = options;
 
   if (rows.length === 0) {
-    return { patterns: [], sampleMultiplier: 1 };
+    return { patterns: [], sampleMultiplier: 1, rowClusterIds: [] };
   }
-
-  // ── Set up Drain miner ──
-  const drainConfig = new TemplateMinerConfig();
-  const miner = new TemplateMiner(drainConfig);
 
   // ── Compute time buckets using shared helpers ──
   const granularity = convertDateRangeToGranularityString(
@@ -200,5 +204,9 @@ export function minePatterns<TRow extends Record<string, unknown>>(
 
   patterns.sort((a, b) => b.estimatedCount - a.estimatedCount);
 
-  return { patterns, sampleMultiplier };
+  return {
+    patterns,
+    sampleMultiplier,
+    rowClusterIds: clustered.map(c => c.clusterId),
+  };
 }
