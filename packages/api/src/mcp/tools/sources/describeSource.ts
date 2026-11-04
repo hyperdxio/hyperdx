@@ -514,7 +514,11 @@ function formatDescribeResult({
     ? `For more metric names than the sample above, call clickstack_list_metrics with sourceId "${sourceId}". For per-metric attribute keys + sampled values, call clickstack_describe_metric with sourceId and metricName.`
     : undefined;
 
-  const { data: output, isTrimmed } = trimToolResponse({
+  const {
+    data: output,
+    isTrimmed,
+    notes: trimNotes,
+  } = trimToolResponse({
     source,
     usage: {
       topLevelColumns:
@@ -542,6 +546,7 @@ function formatDescribeResult({
     ? {
         ...output,
         note: 'Result was trimmed for context size. Some columns or sampled values may be omitted.',
+        trimNotes,
       }
     : output;
 

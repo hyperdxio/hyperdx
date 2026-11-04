@@ -342,7 +342,16 @@ export function registerEmergingSignals({
           'the threshold — a valid finding.',
       };
 
-      const { data, isTrimmed } = trimToolResponse(output);
+      const {
+        data,
+        isTrimmed,
+        notes: trimNotes,
+      } = trimToolResponse(output, undefined, {
+        reductions: [
+          { path: 'emerging[].pattern', maxChars: 2000 },
+          { path: 'disappeared[].pattern', maxChars: 2000 },
+        ],
+      });
       return {
         content: [
           {
@@ -352,6 +361,7 @@ export function registerEmergingSignals({
                 ? {
                     ...data,
                     note: 'Trimmed for context size — lower topN or narrow windows.',
+                    trimNotes,
                   }
                 : data,
               null,

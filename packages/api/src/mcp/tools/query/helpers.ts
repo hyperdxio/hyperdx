@@ -297,10 +297,11 @@ function isEmptyResult(result: unknown): boolean {
 }
 
 function formatQueryResult(result: unknown, maxResponseChars?: number) {
-  const { data: trimmedResult, isTrimmed } = trimToolResponse(
-    result,
-    maxResponseChars,
-  );
+  const {
+    data: trimmedResult,
+    isTrimmed,
+    notes: trimNotes,
+  } = trimToolResponse(result, maxResponseChars);
   const empty = isEmptyResult(result);
   return {
     content: [
@@ -312,6 +313,7 @@ function formatQueryResult(result: unknown, maxResponseChars?: number) {
             ...(isTrimmed
               ? {
                   note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+                  trimNotes,
                 }
               : {}),
             ...(empty

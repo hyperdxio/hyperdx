@@ -427,12 +427,27 @@ export async function runEventPatterns(
       'Use whereSnippet as the "where" parameter in a clickstack_search call to browse matching raw events.',
   };
 
-  const { data: trimmedOutput, isTrimmed } = trimToolResponse(output);
+  // Shrink samples, then long text, before the generic trim cuts whole patterns,
+  // so topN patterns survive when they can.
+  const {
+    data: trimmedOutput,
+    isTrimmed,
+    notes: trimNotes,
+  } = trimToolResponse(output, undefined, {
+    reductions: [
+      { path: 'patterns[].samples', keep: 3 },
+      { path: 'patterns[].samples', keep: 1 },
+      { path: 'patterns[].samples[]', maxChars: 2000 },
+      { path: 'patterns[].pattern', maxChars: 2000 },
+      { path: 'patterns[].trend', drop: true },
+    ],
+  });
 
   const finalOutput = isTrimmed
     ? {
         ...trimmedOutput,
         note: 'Result was trimmed for context size. Narrow the time range, add filters, or reduce topN to reduce data.',
+        trimNotes,
       }
     : trimmedOutput;
 

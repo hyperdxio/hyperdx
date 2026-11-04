@@ -150,7 +150,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
           'denoiseSearchResults failed; returning raw results',
         );
 
-        const { data: trimmedResult, isTrimmed } = trimToolResponse(resultData);
+        const {
+          data: trimmedResult,
+          isTrimmed,
+          notes: trimNotes,
+        } = trimToolResponse(resultData);
         return {
           content: [
             {
@@ -167,6 +171,7 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
                   ...(isTrimmed
                     ? {
                         note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+                        trimNotes,
                       }
                     : {}),
                 },
@@ -185,8 +190,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
         ...resultData,
         data: denoised.rows,
       };
-      const { data: trimmedResult, isTrimmed } =
-        trimToolResponse(denoisedResult);
+      const {
+        data: trimmedResult,
+        isTrimmed,
+        notes: trimNotes,
+      } = trimToolResponse(denoisedResult);
 
       return {
         content: [
@@ -206,6 +214,7 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
                 ...(isTrimmed
                   ? {
                       note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+                      trimNotes,
                     }
                   : {}),
                 ...(denoised.rows.length === 0 && !denoised.skipped

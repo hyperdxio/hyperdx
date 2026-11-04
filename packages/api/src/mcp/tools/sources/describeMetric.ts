@@ -682,7 +682,11 @@ async function describeMetricImpl(
     },
   };
 
-  const { data: trimmed, isTrimmed } = trimToolResponse(responseObj);
+  const {
+    data: trimmed,
+    isTrimmed,
+    notes: trimNotes,
+  } = trimToolResponse(responseObj);
   return {
     content: [
       {
@@ -692,6 +696,7 @@ async function describeMetricImpl(
             ? {
                 ...trimmed,
                 note: 'Result was trimmed for context size. Set sampleValues:false or narrow startTime/endTime.',
+                trimNotes,
               }
             : trimmed,
           null,
