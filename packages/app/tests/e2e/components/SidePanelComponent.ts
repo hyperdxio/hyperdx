@@ -330,6 +330,27 @@ export class SidePanelComponent {
   }
 
   /**
+   * The "Column Values" (parsed) tab's content panel, which renders the full
+   * fetched row via the JSON viewer.
+   */
+  get columnValuesContent() {
+    return this.panelContainer.getByTestId('side-panel-tab-parsed');
+  }
+
+  /** Open the "Column Values" (parsed) tab. */
+  async openColumnValues() {
+    await this.clickTab('parsed');
+  }
+
+  /**
+   * A line in the "Column Values" tab matching `text` (substring). Used to
+   * assert a fetched row's value is shown.
+   */
+  columnValue(text: string) {
+    return this.columnValuesContent.getByText(text, { exact: false });
+  }
+
+  /**
    * Close the side panel (if it has a close button)
    */
   async close() {

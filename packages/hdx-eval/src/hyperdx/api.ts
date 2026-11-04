@@ -325,6 +325,10 @@ export class HyperdxApiClient {
       };
     }
 
+    if (!content.text.trim()) {
+      return { success: true, hasData: false };
+    }
+
     try {
       const inner = JSON.parse(content.text);
       const result = inner.result;
@@ -368,8 +372,14 @@ export class HyperdxApiClient {
         groupCount,
         sampleRows: rows.slice(0, 5),
       };
-    } catch {
-      return { success: true, hasData: content.text.length > 0 };
+    } catch (error) {
+      return {
+        success: false,
+        hasData: false,
+        error: `Invalid MCP content: ${
+          error instanceof Error ? error.message : String(error)
+        }`.slice(0, 300),
+      };
     }
   }
 }

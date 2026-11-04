@@ -163,8 +163,11 @@ describe('MCP Query Tools', () => {
       expect(props).toContain('sql');
       expect(props).toContain('startTime');
       expect(props).toContain('endTime');
+      expect(props).toContain('queries');
       expect(tool!.inputSchema.required).toContain('connectionId');
-      expect(tool!.inputSchema.required).toContain('sql');
+      // sql and queries are alternatives, so neither is required by the schema.
+      expect(tool!.inputSchema.required).not.toContain('sql');
+      expect(tool!.inputSchema.required).not.toContain('queries');
     });
 
     it('exposes an optional sourceId on clickstack_sql', async () => {
@@ -361,6 +364,132 @@ describe('MCP Query Tools', () => {
 
       expect(result.isError).toBeFalsy();
       expect(result.content).toHaveLength(1);
+    });
+
+    describe('having, limit and the default order', () => {
+      const now = Date.now();
+      const tableArgs = () => ({
+        sourceId: logSource._id.toString(),
+        select: [{ aggFn: 'count', alias: 'n' }],
+        groupBy: 'ServiceName',
+        startTime: new Date(now - 60 * 60 * 1000).toISOString(),
+        endTime: new Date(now + 60 * 1000).toISOString(),
+      });
+      const rows = (result: Awaited<ReturnType<typeof callTool>>) => {
+        const parsed: { result: { data: { ServiceName: string }[] } } =
+          JSON.parse(getFirstText(result));
+        return parsed.result.data;
+      };
+
+      beforeEach(async () => {
+        // a: 1 row, b: 5 rows, c: 3 rows
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+        for (const [service, count] of [
+          ['a', 1],
+          ['b', 5],
+          ['c', 3],
+        ] as const) {
+          for (let i = 0; i < count; i++) {
+            logs.push({
+              Body: `event ${i}`,
+              ServiceName: service,
+              SeverityText: 'INFO',
+              Timestamp: new Date(now - 60 * 1000 + i),
+            });
+          }
+        }
+        await bulkInsertLogs(logs);
+      });
+
+      it('orders by the first select item, descending, when orderBy is omitted', async () => {
+        const result = await callTool(client, 'clickstack_table', tableArgs());
+        expect(result.isError).toBeFalsy();
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c', 'a']);
+      });
+
+      it('orders by position when the first select item has no alias', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          select: [{ aggFn: 'count' }],
+        });
+        expect(result.isError).toBeFalsy();
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c', 'a']);
+      });
+
+      it('keeps an explicit orderBy', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          orderBy: 'ServiceName ASC',
+        });
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['a', 'b', 'c']);
+      });
+
+      it('applies limit after ordering', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          limit: 2,
+        });
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c']);
+      });
+
+      it('applies having to the groups', async () => {
+        const result = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          having: 'n > 1',
+        });
+        expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c']);
+      });
+
+      it('orders by a quoted alias with a space, by default and explicitly', async () => {
+        const select = [{ aggFn: 'count', alias: 'Line Count' }];
+        const byDefault = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          select,
+        });
+        expect(byDefault.isError).toBeFalsy();
+        expect(rows(byDefault).map(r => r.ServiceName)).toEqual([
+          'b',
+          'c',
+          'a',
+        ]);
+        const explicit = await callTool(client, 'clickstack_table', {
+          ...tableArgs(),
+          select,
+          orderBy: '"Line Count" ASC',
+        });
+        expect(explicit.isError).toBeFalsy();
+        expect(rows(explicit).map(r => r.ServiceName)).toEqual(['a', 'c', 'b']);
+      });
+
+      it.each(['pie', 'bar'] as const)(
+        'keeps the largest groups with limit on shape "%s"',
+        async shape => {
+          const result = await callTool(client, 'clickstack_table', {
+            ...tableArgs(),
+            shape,
+            limit: 2,
+          });
+          expect(result.isError).toBeFalsy();
+          expect(rows(result).map(r => r.ServiceName)).toEqual(['b', 'c']);
+        },
+      );
+
+      it.each(['pie', 'bar'] as const)(
+        'applies having on shape "%s"',
+        async shape => {
+          const result = await callTool(client, 'clickstack_table', {
+            ...tableArgs(),
+            shape,
+            having: 'n > 1',
+          });
+          expect(result.isError).toBeFalsy();
+          expect(
+            rows(result)
+              .map(r => r.ServiceName)
+              .sort(),
+          ).toEqual(['b', 'c']);
+        },
+      );
     });
   });
 
@@ -1397,6 +1526,108 @@ describe('MCP Query Tools', () => {
       expect(JSON.parse(getFirstText(result)).result.data).toEqual([
         { value: 1, label: 'a' },
       ]);
+    });
+
+    describe('queries (batch mode)', () => {
+      it('runs each query and reports its own status', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          queries: [
+            { id: 'one', sql: 'SELECT 1 AS value' },
+            { id: 'bad', sql: 'SELECTT 1' },
+            { id: 'two', sql: 'SELECT 2 AS value' },
+          ],
+        });
+
+        expect(result.isError).toBeFalsy();
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.summary).toEqual({
+          total: 3,
+          ok: 2,
+          error: 1,
+          timeout: 0,
+        });
+        const [one, bad, two] = parsed.results;
+        expect(one).toMatchObject({ index: 0, id: 'one', status: 'ok' });
+        expect(one.result.data).toEqual([{ value: 1 }]);
+        expect(bad).toMatchObject({ index: 1, id: 'bad', status: 'error' });
+        expect(bad.error).toMatch(/syntax/i);
+        expect(two.result.data).toEqual([{ value: 2 }]);
+      });
+
+      it("expands $__sourceTable per query from that query's sourceId", async () => {
+        const now = Date.now();
+        await bulkInsertLogs(
+          [1, 2].map(minutesAgo => ({
+            Body: 'batch source',
+            ServiceName: 'sql-batch-source',
+            SeverityText: 'INFO',
+            Timestamp: new Date(now - minutesAgo * 60 * 1000),
+          })),
+        );
+
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          queries: [
+            {
+              id: 'logs',
+              sourceId: logSource._id.toString(),
+              sql:
+                'SELECT count() AS n FROM $__sourceTable ' +
+                "WHERE $__timeFilter(Timestamp) AND ServiceName = 'sql-batch-source'",
+            },
+            { id: 'noSource', sql: 'SELECT count() FROM $__sourceTable' },
+          ],
+          startTime: new Date(now - 60 * 60 * 1000).toISOString(),
+          endTime: new Date(now).toISOString(),
+        });
+
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.results[0].result.data).toEqual([{ n: '2' }]);
+        expect(parsed.results[1].status).toBe('error');
+        expect(parsed.results[1].error).toContain(
+          '$__sourceTable needs a sourceId',
+        );
+      });
+
+      it('keeps readonly enforcement for every query', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          queries: [
+            {
+              sql: `INSERT INTO ${DEFAULT_DATABASE}.${DEFAULT_LOGS_TABLE} (Body) VALUES ('x')`,
+            },
+          ],
+        });
+
+        expect(result.isError).toBe(true);
+        const parsed = JSON.parse(getFirstText(result));
+        expect(parsed.results[0].status).toBe('error');
+        expect(parsed.results[0].error).toMatch(/readonly/i);
+      });
+
+      it('rejects passing both sql and queries', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          sql: 'SELECT 1',
+          queries: [{ sql: 'SELECT 2' }],
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('exactly one of sql');
+      });
+
+      it('rejects more than 10 queries at the schema', async () => {
+        const result = await callTool(client, 'clickstack_sql', {
+          connectionId: connection._id.toString(),
+          queries: Array.from({ length: 11 }, (_, i) => ({
+            sql: `SELECT ${i}`,
+          })),
+        });
+
+        expect(result.isError).toBe(true);
+        expect(getFirstText(result)).toContain('Input validation error');
+      });
     });
   });
 
