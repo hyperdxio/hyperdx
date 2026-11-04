@@ -156,7 +156,8 @@ export function registerEmergingSignals({
         'event patterns (Drain) in BOTH windows and set-differences them:\n' +
         '  - emerging:    patterns whose share of the window is >= minShareRatio× ' +
         'higher now than in baseline (includes brand-new templates absent from ' +
-        'baseline)\n' +
+        'baseline, and new messages that merged into a baseline pattern: ' +
+        'status "new_variant")\n' +
         '  - disappeared: patterns that were common in baseline but >= ' +
         'minShareRatio× rarer (or absent) now\n\n' +
         'WHY NOT clickstack_event_deltas: event_deltas compares ATTRIBUTE VALUE ' +
@@ -237,6 +238,13 @@ export function registerEmergingSignals({
       const miner = new TemplateMiner(new TemplateMinerConfig());
       const baseRes = mineWindowSample(baseSample, { trendBuckets: 0, miner });
       if ('error' in baseRes) return baseRes.error;
+      // Each baseline cluster's template before the current window is added.
+      const baseTemplates = new Map(
+        baseRes.patterns.map(p => [
+          p.id,
+          miner.drain.getCluster(Number(p.id))?.getTemplate() ?? p.pattern,
+        ]),
+      );
       const curRes = mineWindowSample(curSample, { trendBuckets: 0, miner });
       if ('error' in curRes) return curRes.error;
 
@@ -248,6 +256,9 @@ export function registerEmergingSignals({
         curCount: number;
         baseCount: number;
         sample: string;
+        // Set when current-window rows generalized a baseline cluster's
+        // template: a new message that Drain merged into an old pattern.
+        variant?: { baselinePattern: string; share: number; sample: string };
       };
       const byKey = new Map<string, Agg>();
 
@@ -284,10 +295,44 @@ export function registerEmergingSignals({
       ingest(baseRes, 'base');
       // A cluster's template can still generalize after a window first sees
       // it, so report each cluster's template from the finished tree.
-      for (const a of byKey.values()) {
+      for (const [key, a] of byKey) {
         a.pattern =
-          miner.match(flattenBody(a.sample), 'fallback')?.getTemplate() ??
-          a.pattern;
+          miner.drain.getCluster(Number(key))?.getTemplate() ?? a.pattern;
+      }
+
+      // One tree merges a new message into a similar baseline pattern (e.g.
+      // "login failed: invalid password" absorbs "login failed: account
+      // locked"). Where the current window changed a baseline template, the
+      // current rows that fit the new template but not the old one are a new
+      // variant. Masked dates and ids don't change templates, so they don't
+      // count.
+      const curBodies = curSample.sampleRows.map(r =>
+        flattenBody(String(r.__hdx_pattern_body ?? '')),
+      );
+      // extractParameters returns null for a template without parameters even
+      // when it matches, so compare those directly.
+      const fits = (template: string, body: string) =>
+        template.includes('<*>')
+          ? miner.extractParameters(template, body) !== null
+          : body.split(/\s+/).join(' ') === template;
+      for (const [key, a] of byKey) {
+        const baselinePattern = baseTemplates.get(key);
+        if (baselinePattern === undefined || baselinePattern === a.pattern)
+          continue;
+        let rows = 0;
+        let sample: string | undefined;
+        for (const body of curBodies) {
+          if (fits(a.pattern, body) && !fits(baselinePattern, body)) {
+            rows++;
+            sample ??= body;
+          }
+        }
+        if (sample)
+          a.variant = {
+            baselinePattern,
+            share: rows / (curRes.sampledCount || 1),
+            sample,
+          };
       }
 
       const ratio = input.minShareRatio;
@@ -302,14 +347,16 @@ export function registerEmergingSignals({
       const emerging: Agg[] = [];
       const disappeared: Agg[] = [];
       for (const a of byKey.values()) {
-        const verdict = classifyShift(a, ratio, newPatternShareFloor);
+        const verdict =
+          a.variant && a.variant.share >= newPatternShareFloor
+            ? 'emerging'
+            : classifyShift(a, ratio, newPatternShareFloor);
         if (verdict === 'emerging') emerging.push(a);
         else if (verdict === 'disappeared') disappeared.push(a);
       }
       // Rank by absolute share swing.
-      emerging.sort(
-        (x, y) => y.curShare - y.baseShare - (x.curShare - x.baseShare),
-      );
+      const swing = (a: Agg) => a.variant?.share ?? a.curShare - a.baseShare;
+      emerging.sort((x, y) => swing(y) - swing(x));
       disappeared.sort(
         (x, y) => y.baseShare - y.curShare - (x.baseShare - x.curShare),
       );
@@ -320,9 +367,20 @@ export function registerEmergingSignals({
         baselineShare: Math.round(a.baseShare * 10000) / 10000,
         currentEstimatedCount: a.curCount,
         baselineEstimatedCount: a.baseCount,
-        status:
-          a.baseShare === 0 ? 'new' : a.curShare === 0 ? 'gone' : 'shifted',
-        sample: a.sample.slice(0, 300),
+        status: a.variant
+          ? 'new_variant'
+          : a.baseShare === 0
+            ? 'new'
+            : a.curShare === 0
+              ? 'gone'
+              : 'shifted',
+        sample: (a.variant?.sample ?? a.sample).slice(0, 300),
+        ...(a.variant
+          ? {
+              baselinePattern: a.variant.baselinePattern,
+              variantShare: Math.round(a.variant.share * 10000) / 10000,
+            }
+          : {}),
       });
 
       const output = {
@@ -357,7 +415,10 @@ export function registerEmergingSignals({
         usage:
           'emerging = patterns newly present or >= minShareRatio× more frequent ' +
           '(by share of window) now vs baseline; status "new" means absent from ' +
-          'baseline entirely. disappeared = the reverse. Shares are fractions of ' +
+          'baseline entirely; status "new_variant" means new messages that ' +
+          'merged into a baseline pattern (baselinePattern is the old ' +
+          'template, sample a new line, variantShare their share). ' +
+          'disappeared = the reverse. Shares are fractions of ' +
           "each window's sampled rows, so they are comparable across windows of " +
           'different volume. An empty emerging list means nothing novel crossed ' +
           'the threshold — a valid finding.',

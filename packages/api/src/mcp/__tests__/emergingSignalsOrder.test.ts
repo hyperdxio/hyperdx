@@ -46,15 +46,8 @@ const lines = (day: string, account: string, n: number) =>
     (_, i) =>
       `${day} 06:${String(i % 60).padStart(2, '0')}:12 ERROR Sync failed for account ${account}: HTTP 500`,
   );
-
-const baselineRows = [
-  ...lines('2026-11-03', 'acme', 20),
-  ...Array.from({ length: 10 }, () => 'cache warmed in 3 regions'),
-];
-const currentRows = [
-  ...lines('2026-11-04', 'globex', 20),
-  ...Array.from({ length: 10 }, () => 'disk almost full on volume data'),
-];
+const repeat = (line: string, n: number) =>
+  Array.from({ length: n }, () => line);
 
 function sample(rows: string[], startDate: Date, endDate: Date) {
   return {
@@ -69,7 +62,18 @@ function sample(rows: string[], startDate: Date, endDate: Date) {
   };
 }
 
-async function run(slowWindow: 'baseline' | 'current') {
+type Pattern = {
+  pattern: string;
+  status: string;
+  sample: string;
+  baselinePattern?: string;
+};
+
+async function run(
+  baselineRows: string[],
+  currentRows: string[],
+  slowWindow: 'baseline' | 'current' = 'baseline',
+): Promise<{ emerging: Pattern[]; disappeared: Pattern[] }> {
   mockFetchWindowSample.mockImplementation(
     async (
       _teamId: string,
@@ -99,17 +103,27 @@ async function run(slowWindow: 'baseline' | 'current') {
   return JSON.parse(textOf(result));
 }
 
-describe('clickstack_emerging_signals window order', () => {
+const allPatterns = (out: { emerging: Pattern[]; disappeared: Pattern[] }) => [
+  ...out.emerging,
+  ...out.disappeared,
+];
+
+describe('clickstack_emerging_signals with one Drain tree', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('gives the same result whichever window query finishes first', async () => {
-    const baselineLast = await run('baseline');
-    const currentLast = await run('current');
+    // Insertion order matters here: the account is constant in the baseline
+    // and different in the current window.
+    const baseline = lines('2026-11-03', 'acme', 20);
+    const current = lines('2026-11-04', 'globex', 20);
+    const baselineLast = await run(baseline, current, 'baseline');
+    const currentLast = await run(baseline, current, 'current');
     expect(baselineLast).toEqual(currentLast);
+    expect(baselineLast.emerging.map(p => p.status)).toEqual(['new_variant']);
   });
 
   it('fetches the baseline as a half-open window', async () => {
-    await run('current');
+    await run(['a'], ['b'], 'current');
     const baselineCall = mockFetchWindowSample.mock.calls.find(
       call => call[4]?.endExclusive === true,
     );
@@ -117,16 +131,63 @@ describe('clickstack_emerging_signals window order', () => {
   });
 
   it('treats the same dated line in both windows as one pattern', async () => {
-    const out = await run('baseline');
-    const all = [...out.emerging, ...out.disappeared].map(
-      (p: { pattern: string }) => p.pattern,
+    const out = await run(
+      [
+        ...lines('2026-11-03', 'acme', 20),
+        ...repeat('cache warmed in 3 regions', 10),
+      ],
+      [
+        ...lines('2026-11-04', 'acme', 20),
+        ...repeat('disk almost full on volume data', 10),
+      ],
     );
-    expect(all.some(p => p.includes('Sync failed'))).toBe(false);
-    expect(all).toEqual(
+    const patterns = allPatterns(out).map(p => p.pattern);
+    expect(patterns.some(p => p.includes('Sync failed'))).toBe(false);
+    expect(patterns).toEqual(
       expect.arrayContaining([
         expect.stringContaining('disk almost full'),
         expect.stringContaining('cache warmed'),
       ]),
     );
+  });
+
+  it('reports a new message that merged into a similar baseline pattern', async () => {
+    const out = await run(repeat('user login failed: invalid password', 20), [
+      ...repeat('user login failed: invalid password', 10),
+      ...repeat('user login failed: account locked', 10),
+    ]);
+    expect(out.emerging).toEqual([
+      expect.objectContaining({
+        status: 'new_variant',
+        baselinePattern: 'user login failed: invalid password',
+        sample: 'user login failed: account locked',
+      }),
+    ]);
+    expect(out.disappeared).toEqual([]);
+  });
+
+  it('reports a token that was constant in the baseline and changed now', async () => {
+    // A different account in the same message is a real change: one
+    // new_variant entry instead of a "new" + "gone" pair.
+    const out = await run(
+      lines('2026-11-03', 'acme', 20),
+      lines('2026-11-04', 'globex', 20),
+    );
+    expect(out.emerging).toHaveLength(1);
+    expect(out.emerging[0]).toMatchObject({
+      status: 'new_variant',
+      sample: expect.stringContaining('account globex'),
+    });
+    expect(out.disappeared).toEqual([]);
+  });
+
+  it('reports nothing for identical windows', async () => {
+    const rows = [
+      ...repeat('user login failed: invalid password', 10),
+      ...repeat('cache warmed in 3 regions', 10),
+    ];
+    const out = await run(rows, rows);
+    expect(out.emerging).toEqual([]);
+    expect(out.disappeared).toEqual([]);
   });
 });
