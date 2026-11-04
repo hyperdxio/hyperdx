@@ -142,10 +142,9 @@ export const AllChartColors = () => (
         fontSize: 13,
       }}
     >
-      Semantic chart colors are unified across HyperDX and ClickStack —
-      `success` aliases categorical `chart-green` and `info` aliases
-      `chart-blue`. Brand identity for charts is carried by non-chart UI chrome
-      (Mantine accent, sidebar gradient), not by these tokens.
+      Semantic chart colors alias the categorical palette: `success` uses
+      `chart-green` and `info` uses `chart-blue`. The yellow accent stays in
+      non-chart chrome (Mantine accent, sidebar), not in these tokens.
     </p>
     <div style={{ marginBottom: 32 }}>
       {SEMANTIC_CHART_COLORS.map(({ name, hex, label }) => (

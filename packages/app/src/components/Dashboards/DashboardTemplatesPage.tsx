@@ -13,9 +13,9 @@ import {
 } from '@mantine/core';
 import { IconUpload } from '@tabler/icons-react';
 
+import { usePageTitle } from '@/brand';
 import { DASHBOARD_TEMPLATES } from '@/dashboardTemplates';
 import { withAppNav } from '@/layout';
-import { usePageTitle } from '@/theme/ThemeProvider';
 
 export default function DashboardTemplatesPage() {
   const title = usePageTitle('Dashboard Templates');

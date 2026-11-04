@@ -18,13 +18,13 @@ import { DateInput } from '@mantine/dates';
 import { notifications } from '@mantine/notifications';
 import { IconCirclePlus, IconHelpCircle, IconTrash } from '@tabler/icons-react';
 
+import { useBrandDisplayName } from '@/brand';
 import { DatabaseSelectControlled } from '@/components/DatabaseSelect';
 import { DBTableSelectControlled } from '@/components/DBTableSelect';
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
 import SelectControlled from '@/components/SelectControlled';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   inferMaterializedViewConfig,
   MV_GRANULARITY_OPTIONS,

@@ -48,11 +48,11 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { useBrandDisplayName } from '@/brand';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,

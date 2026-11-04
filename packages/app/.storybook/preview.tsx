@@ -10,8 +10,6 @@ import {
 } from '../src/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '../src/fonts';
 import { meHandler } from '../src/mocks/handlers';
-import { AppThemeProvider } from '../src/theme/ThemeProvider';
-import { ThemeName } from '../src/theme/types';
 import { ThemeWrapper } from '../src/ThemeWrapper';
 
 import '@mantine/core/styles.css';
@@ -49,19 +47,6 @@ export const globalTypes = {
       items: [
         { value: 'light', title: 'Light' },
         { value: 'dark', title: 'Dark' },
-      ],
-    },
-  },
-  brand: {
-    name: 'Brand',
-    description: 'Brand theme',
-    defaultValue: 'hyperdx',
-    toolbar: {
-      icon: 'paintbrush',
-      title: 'Brand',
-      items: [
-        { value: 'hyperdx', title: 'HyperDX' },
-        { value: 'clickstack', title: 'ClickStack' },
       ],
     },
   },
@@ -142,7 +127,6 @@ const preview: Preview = {
       const font =
         fontMap[selectedFont as keyof typeof fontMap] ?? fontMap.inter;
       const fontFamily = MANTINE_FONT_MAP[font.name] ?? MANTINE_FONT_MAP.Inter;
-      const brandTheme = (context.globals.brand || 'hyperdx') as ThemeName;
 
       const layout = context.parameters.layout ?? 'centered';
 
@@ -166,14 +150,12 @@ const preview: Preview = {
             fontClassName={font.nextFont.className}
           />
           <QueryClientProvider client={queryClient}>
-            <AppThemeProvider themeName={brandTheme}>
-              <ThemeWrapper
-                colorScheme={context.globals.theme || 'light'}
-                fontFamily={fontFamily}
-              >
-                <Story />
-              </ThemeWrapper>
-            </AppThemeProvider>
+            <ThemeWrapper
+              colorScheme={context.globals.theme || 'light'}
+              fontFamily={fontFamily}
+            >
+              <Story />
+            </ThemeWrapper>
           </QueryClientProvider>
         </div>
       );

@@ -29,6 +29,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useLogomark, useWordmark } from '@/brand';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
 import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
@@ -39,7 +40,6 @@ import { setHdxIdentity } from '@/hdxDebug';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
-import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { getTimeZoneShortName } from '@/timeZone';
 import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { UserPreferencesModal } from '@/UserPreferencesModal';

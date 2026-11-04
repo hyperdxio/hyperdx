@@ -10,8 +10,8 @@ import {
 
 /**
  * Showcases the semantic component variants wired to the `--color-text-*`
- * design tokens. Use the Brand (HyperDX / ClickStack) and Theme (Light / Dark)
- * toolbar toggles to verify each variant across all four combinations.
+ * design tokens. Use the Theme (Light / Dark) toolbar toggle to verify each
+ * variant in both color modes.
  */
 const story = {
   title: 'Design tokens/Semantic variants',

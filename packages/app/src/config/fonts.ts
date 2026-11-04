@@ -43,14 +43,6 @@ export const MANTINE_FONT_MAP = Object.entries(FONT_CONFIG).reduce(
 
 export const DEFAULT_FONT_VAR = DEFAULT_FONT_CONFIG.variable;
 
-// UI options for font selection
-export const OPTIONS_FONTS = [
-  'IBM Plex Mono',
-  'Roboto Mono',
-  'Inter',
-  'Roboto',
-];
-
 export type ContentFontSize = 'sm' | 'md' | 'lg';
 
 /**

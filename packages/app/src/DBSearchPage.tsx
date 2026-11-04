@@ -87,6 +87,7 @@ import { SortingState } from '@tanstack/react-table';
 import CodeMirror from '@uiw/react-codemirror';
 
 import api, { useCompleteOnboardingTask } from '@/api';
+import { usePageTitle } from '@/brand';
 import { ActiveFilterPills } from '@/components/ActiveFilterPills';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { ResponsiveSidePanel } from '@/components/CompactViewport/ResponsiveSidePanel';
@@ -133,7 +134,6 @@ import {
 } from '@/savedSearch';
 import { useSearchPageFilterState } from '@/searchFilters';
 import { getEventBody, useSource, useSources } from '@/source';
-import { useAppTheme, usePageTitle } from '@/theme/ThemeProvider';
 import {
   parseRelativeTimeQuery,
   useDefaultTimeRange,
@@ -291,13 +291,10 @@ function ResumeLiveTailButton({
 }: {
   handleResumeLiveTail: () => void;
 }) {
-  const { themeName } = useAppTheme();
-  const variant = themeName === 'clickstack' ? 'secondary' : 'primary';
-
   return (
     <Button
       size="compact-xs"
-      variant={variant}
+      variant="secondary"
       onClick={handleResumeLiveTail}
       leftSection={<IconBolt size={14} />}
     >

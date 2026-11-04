@@ -10,7 +10,7 @@ import {
   TextInput,
 } from '@mantine/core';
 
-import { usePageTitle } from './theme/ThemeProvider';
+import { usePageTitle } from './brand';
 import { PasswordCheck } from './PasswordCheck';
 
 export default function JoinTeam() {

@@ -25,7 +25,7 @@ export type UserPreferences = {
    */
   timeZone: string;
   timeFormat: '12h' | '24h';
-  /** Color mode preference (light/dark/system). Separate from brand theme (hyperdx/clickstack). */
+  /** Color mode preference (light/dark/system). */
   colorMode: ColorModePreference;
   font: 'IBM Plex Mono' | 'Roboto Mono' | 'Inter' | 'Roboto';
   expandSidebarHeader?: boolean;

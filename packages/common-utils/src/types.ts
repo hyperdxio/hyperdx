@@ -259,9 +259,9 @@ export const RootValueExpressionSchema = z
  * number-tile colors, reference lines, and threshold rules.
  *
  * Tokens map to CSS variables in
- * `packages/app/src/theme/themes/<theme>/_tokens.scss`:
- *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues, unified across themes)
- *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic; unified across brands)
+ * `packages/app/src/theme/_tokens.scss`:
+ *   chart-{hue}                 -> --color-chart-{hue}                    (10 hues)
+ *   chart-success/warning/error -> --color-chart-{success|warning|error}  (semantic)
  *
  * `chart-info` is a render-time CSS variable (defined in the shared
  * `chart-semantic-tokens` SCSS mixin) but is intentionally *not* in the
@@ -269,7 +269,7 @@ export const RootValueExpressionSchema = z
  * brand-primary (e.g. info-level log series, `getChartColorInfo()`).
  *
  * Storing tokens (not hex) lets user choices reflow correctly across
- * themes and color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
+ * color modes; see notes/repo-conventions/hyperdx/tile-styling.md.
  *
  * Lives in common-utils because the schema is shared between the app
  * and the API; the theme-aware CSS resolver (`getColorFromCSSToken`)

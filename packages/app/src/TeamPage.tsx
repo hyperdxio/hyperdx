@@ -34,8 +34,8 @@ import SecurityPoliciesSection from './components/TeamSettings/SecurityPoliciesS
 import SourcesSection from './components/TeamSettings/SourcesSection';
 import TeamMembersSection from './components/TeamSettings/TeamMembersSection';
 import TeamQueryConfigSection from './components/TeamSettings/TeamQueryConfigSection';
-import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
+import { usePageTitle } from './brand';
 import { IS_IAC_EXPORT_ENABLED } from './config';
 import { APP_CONTENT_SCROLL_CONTAINER_ID, withAppNav } from './layout';
 

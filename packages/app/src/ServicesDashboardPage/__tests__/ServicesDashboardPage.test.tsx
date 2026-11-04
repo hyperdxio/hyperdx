@@ -162,10 +162,11 @@ jest.mock('@/layout', () => ({
   withAppNavForSurface: () => (page: unknown) => page,
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
+jest.mock('@/brand', () => ({
   __esModule: true,
-  useBrandDisplayName: () => 'HyperDX',
-  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
+  useBrandDisplayName: () => 'ClickStack',
+  usePageTitle: (page?: string) =>
+    page ? `${page} - ClickStack` : 'ClickStack',
 }));
 
 import ServicesDashboardPage from '@/ServicesDashboardPage';

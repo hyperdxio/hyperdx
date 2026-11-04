@@ -53,7 +53,7 @@ import OnboardingModal from './components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
 } from './components/SearchInput/SearchWhereInput';
-import { useBrandDisplayName, usePageTitle } from './theme/ThemeProvider';
+import { useBrandDisplayName, usePageTitle } from './brand';
 import { withAppNavForSurface } from './layout';
 import { Session, useSessions } from './sessions';
 import SessionSidePanel from './SessionSidePanel';

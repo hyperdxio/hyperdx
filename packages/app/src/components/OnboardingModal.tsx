@@ -14,6 +14,7 @@ import { Button, Divider, Flex, Loader, Modal, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { IconArrowLeft } from '@tabler/icons-react';
 
+import { useBrandDisplayName } from '@/brand';
 import { ConnectionForm } from '@/components/ConnectionForm';
 import {
   IS_CLICKHOUSE_BUILD,
@@ -35,7 +36,6 @@ import {
   useSources,
   useUpdateSource,
 } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { TableSourceForm } from './Sources/SourceForm';
 import { SourcesList } from './Sources/SourcesList';
