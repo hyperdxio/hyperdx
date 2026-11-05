@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import Router, { useRouter } from 'next/router';
 import Script from 'next/script';
@@ -7,7 +7,7 @@ import { Badge } from '@clickhouse/click-ui';
 import HyperDX from '@hyperdx/browser';
 import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Collapse, Flex, Group, ScrollArea, Text } from '@mantine/core';
-import { useDisclosure, useLocalStorage } from '@mantine/hooks';
+import { useDisclosure, useFocusTrap, useLocalStorage } from '@mantine/hooks';
 import {
   IconBell,
   IconChartDots,
@@ -23,6 +23,7 @@ import api from '@/api';
 import { useLogomark, useWordmark } from '@/brand';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
+import { useMobileNavOverlay } from '@/components/AppNav/useMobileNavOverlay';
 import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
 import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
@@ -70,6 +71,9 @@ type NavLinkConfig = {
   isBeta?: boolean;
   cloudOnly?: boolean; // Only show when not in local mode
 };
+
+const RAIL_WIDTH = 50;
+const FULL_NAV_WIDTH = 250;
 
 const NAV_LINKS: NavLinkConfig[] = [
   {
@@ -182,9 +186,37 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     defaultValue: false,
   });
 
-  const isCollapsed = useCompactViewport() || isPreferCollapsed;
+  const isCompact = useCompactViewport();
+  const {
+    isOpen: isMobileNavOpen,
+    toggle: toggleMobileNav,
+    close: closeMobileNav,
+  } = useMobileNavOverlay(isCompact);
+  const collapseButtonRef = useRef<HTMLButtonElement>(null);
+  const wasMobileNavOpenRef = useRef(false);
+  // Traps Tab inside the open overlay so keys do not reach the page under the scrim.
+  const navFocusTrapRef = useFocusTrap(isMobileNavOpen);
 
-  const navWidth = isCollapsed ? 50 : 250;
+  // The toggle stays mounted when the overlay closes, so keyboard focus can
+  // return to it after Escape or the scrim removes itself.
+  useEffect(() => {
+    if (wasMobileNavOpenRef.current && !isMobileNavOpen) {
+      collapseButtonRef.current?.focus();
+    }
+    wasMobileNavOpenRef.current = isMobileNavOpen;
+  }, [isMobileNavOpen]);
+
+  // The page layout reserves the rail width even while the overlay is open,
+  // so opening the nav does not shift the content.
+  const isRail = isCompact || isPreferCollapsed;
+  const isCollapsed = isRail && !isMobileNavOpen;
+  const navWidth = isCollapsed ? RAIL_WIDTH : FULL_NAV_WIDTH;
+  const reservedWidth = isRail ? RAIL_WIDTH : FULL_NAV_WIDTH;
+  // The in-flow rail is border-box, so its 1px border is already inside
+  // reservedWidth. The fixed nav's ghost keeps the extra pixel it had
+  // before. The overlay ghost must not, or the page shifts when it opens.
+  const ghostWidth =
+    isMobileNavOpen && !fixed ? reservedWidth : reservedWidth + 1;
 
   useEffect(() => {
     HyperDX.addAction('user navigated', {
@@ -321,24 +353,35 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   return (
     <AppNavContext value={{ isCollapsed, pathname }}>
-      {fixed && (
+      {(fixed || isMobileNavOpen) && (
         <div
           className={styles.navGhost}
           style={{
-            width: navWidth + 1,
-            minWidth: navWidth + 1,
+            width: ghostWidth,
+            minWidth: ghostWidth,
           }}
         ></div>
+      )}
+      {isMobileNavOpen && (
+        <button
+          type="button"
+          className={styles.navScrim}
+          aria-label="Close navigation"
+          onClick={closeMobileNav}
+        />
       )}
       <InstallInstructionModal
         show={showInstallInstructions}
         onHide={closeInstallInstructions}
       />
       <div
+        ref={navFocusTrapRef}
         data-testid="app-nav"
         className={cx(styles.nav, {
-          [styles.navFixed]: fixed,
+          [styles.navFixed]: fixed || isMobileNavOpen,
+          [styles.navOverlay]: isMobileNavOpen,
           [styles.navCollapsed]: isCollapsed,
+          [styles.navCompactRail]: isCompact && !isMobileNavOpen,
         })}
         style={{ width: navWidth }}
       >
@@ -380,13 +423,20 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
             {/* click-ui 0.12 has no sidebar-left icon, so the glyph is
                 inlined. Chrome matches IconButton type="primary" size="sm". */}
             <button
+              ref={collapseButtonRef}
               type="button"
               className={cx(styles.collapseButton, {
                 [styles.collapseButtonCollapsed]: isCollapsed,
               })}
               title="Collapse/expand navigation"
               aria-label="Collapse/expand navigation"
-              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
+              aria-expanded={!isCollapsed}
+              data-autofocus={isMobileNavOpen ? true : undefined}
+              onClick={() =>
+                isCompact
+                  ? toggleMobileNav()
+                  : setIsPreferCollapsed((v: boolean) => !v)
+              }
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
