@@ -8,8 +8,9 @@ jobs:
     # 8-core runner so the 4 Playwright workers (see playwright.config.ts) have
     # CPU headroom alongside the app + ClickHouse + MongoDB — 4 workers
     # over-subscribed the 4-vCPU ubuntu-24.04 runner and caused timeouts.
-    # On a smaller runner, set the E2E_WORKERS variable to 2 as well.
-    runs-on: ${{ vars.RUNNER_E2E || '8-core-playwright' }}
+    # RUNNER_E2E is JSON (a quoted label or an array of labels). On a smaller
+    # runner, set the E2E_WORKERS variable to 2 as well.
+    runs-on: ${{ fromJSON(vars.RUNNER_E2E || '"8-core-playwright"') }}
     timeout-minutes: 15
     permissions:
       contents: read

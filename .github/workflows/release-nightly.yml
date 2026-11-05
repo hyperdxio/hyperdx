@@ -20,14 +20,16 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
+        # runner values are JSON: a quoted label or an array of labels, so the
+        # RUNNER_* repo variables can target self-hosted label sets.
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ubuntu-latest
+            runner: '"ubuntu-latest"'
           - arch: arm64
             platform: linux/arm64
-            runner: ${{ vars.RUNNER_ARM64 || 'ubuntu-latest-arm64' }}
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_ARM64 || '"ubuntu-latest-arm64"' }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -92,11 +94,11 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
+            runner: ${{ vars.RUNNER_LARGE_X64 || '"Large-Runner-x64-32"' }}
           - arch: arm64
             platform: linux/arm64
-            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || '"Large-Runner-ARM64-32"' }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -167,11 +169,11 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
+            runner: ${{ vars.RUNNER_LARGE_X64 || '"Large-Runner-x64-32"' }}
           - arch: arm64
             platform: linux/arm64
-            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || '"Large-Runner-ARM64-32"' }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -244,11 +246,11 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
+            runner: ${{ vars.RUNNER_LARGE_X64 || '"Large-Runner-x64-32"' }}
           - arch: arm64
             platform: linux/arm64
-            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || '"Large-Runner-ARM64-32"' }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
