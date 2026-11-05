@@ -465,12 +465,14 @@ function SaveSearchModalComponent({
   searchedConfig,
   opened,
   onClose,
+  onCreate,
   isUpdate,
   savedSearchId,
 }: {
   searchedConfig: SearchConfig;
   opened: boolean;
   onClose: () => void;
+  onCreate: (savedSearchId: string) => Promise<void>;
   isUpdate: boolean;
   savedSearchId: string | undefined | null;
 }) {
@@ -576,18 +578,8 @@ function SaveSearchModalComponent({
             tags: tags,
           });
 
-          // useQueryStates can restore the previous search URL during a
-          // client-side transition. Reload the saved-search route instead so
-          // the newly created search hydrates from its stored configuration,
-          // rather than stale query state from the previous search. Preserve
-          // only the independent time range, which is not saved-search config.
-          window.location.assign(
-            buildSavedSearchNavigationUrl(
-              router.basePath,
-              savedSearch.id,
-              window.location.search,
-            ),
-          );
+          await onCreate(savedSearch.id);
+          onClose();
         } catch (error) {
           console.error('Error creating saved search:', error);
           notifications.show({
@@ -926,8 +918,14 @@ const queryStateMap = {
   orderBy: parseAsStringEncoded,
 };
 
+/**
+ * Route for a newly created saved search. The saved-search config params are
+ * dropped so the page hydrates from the stored configuration; only the time
+ * range is carried over, since it is not part of a saved search.
+ *
+ * Returned without `router.basePath` — `router.push` prepends it.
+ */
 export function buildSavedSearchNavigationUrl(
-  basePath: string,
   savedSearchId: string,
   currentSearch: string,
 ) {
@@ -940,15 +938,15 @@ export function buildSavedSearchNavigationUrl(
     timeRangeParams.set('from', from);
     timeRangeParams.set('to', to);
 
-    // An explicit absolute range must remain in range mode after the saved
-    // search reload; otherwise the default live-tail mode can take over.
+    // An explicit absolute range must stay in range mode on the saved search;
+    // otherwise the default live-tail mode can take over.
     if (currentParams.get('isLive') === 'false') {
       timeRangeParams.set('isLive', 'false');
     }
   }
 
   const timeRangeSearch = timeRangeParams.toString();
-  return `${basePath}/search/${savedSearchId}${
+  return `/search/${savedSearchId}${
     timeRangeSearch ? `?${timeRangeSearch}` : ''
   }`;
 }
@@ -1769,7 +1767,14 @@ function DBSearchPageContent() {
     interval,
     refreshFrequency,
     onTimeRangeSelect,
-    pause: isAnyQueryFetching || !queryReady || !isTabVisible,
+    // The save modal captures the search as it stands, so refreshing the time
+    // range underneath it is both surprising and a source of query-string
+    // writes that would race the navigation to the new saved search.
+    pause:
+      isAnyQueryFetching ||
+      !queryReady ||
+      !isTabVisible ||
+      saveSearchModalState != null,
   });
 
   // This ensures we only render this conditionally on the client
@@ -2246,6 +2251,21 @@ function DBSearchPageContent() {
     [setSaveSearchModalState],
   );
 
+  const onSavedSearchCreated = useCallback(
+    async (newSavedSearchId: string) => {
+      // nuqs batches query-string writes and flushes them onto whatever path
+      // the router reports at flush time, which during a client-side
+      // transition is still the old one. Draining the queue first keeps a
+      // pending write (live tail refreshes the time range on a timer) from
+      // landing after the push and sending us back to /search.
+      await setSearchedConfig({});
+      router.push(
+        buildSavedSearchNavigationUrl(newSavedSearchId, window.location.search),
+      );
+    },
+    [setSearchedConfig],
+  );
+
   const onModelFormExpandClose = useCallback(() => {
     setModelFormExpanded(false);
   }, [setModelFormExpanded]);
@@ -2649,6 +2669,7 @@ function DBSearchPageContent() {
         <SaveSearchModal
           opened={saveSearchModalState != null}
           onClose={clearSaveSearchModalState}
+          onCreate={onSavedSearchCreated}
           searchedConfig={searchedConfig}
           isUpdate={saveSearchModalState === 'update'}
           savedSearchId={savedSearchId}
