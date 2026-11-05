@@ -720,6 +720,11 @@ function formatExternalSource(source: SourceDocument) {
  *           description: HyperDX Source for logs associated with metrics. Optional
  *           nullable: true
  *           example: 507f1f77bcf86cd799439011
+ *         minAutoGranularity:
+ *           type: string
+ *           description: Floor for the auto-inferred chart granularity. Set it to the scrape/report interval of the metrics so a short time range does not produce buckets smaller than that interval (sparse, steppy series). Only constrains "Auto" granularity; an explicit granularity picked on a tile is never overridden. Omit for no minimum. Uses the SQL interval format (a positive integer followed by second, minute, hour, or day), not the short form of the materialized view granularity fields.
+ *           pattern: '^\d+ (second|minute|hour|day)$'
+ *           example: 1 minute
  *     SessionSource:
  *       type: object
  *       required:
@@ -830,6 +835,11 @@ function formatExternalSource(source: SourceDocument) {
  *           type: string
  *           description: Required by the API for all source kinds; not used by PromQL queries.
  *           example: timestamp
+ *         minAutoGranularity:
+ *           type: string
+ *           description: Floor for the auto-inferred chart granularity, and the scrape interval that `$__rate_interval` is computed from. Set it to the Prometheus scrape interval so a short time range does not produce buckets smaller than that interval. Only constrains "Auto" granularity; an explicit granularity picked on a tile is never overridden. Omit for no minimum. Uses the SQL interval format (a positive integer followed by second, minute, hour, or day), not the short form of the materialized view granularity fields.
+ *           pattern: '^\d+ (second|minute|hour|day)$'
+ *           example: 1 minute
  *     Source:
  *       oneOf:
  *         - $ref: '#/components/schemas/LogSource'

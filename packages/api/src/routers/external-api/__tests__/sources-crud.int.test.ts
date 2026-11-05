@@ -90,6 +90,16 @@ describe('External API v2 Sources CRUD', () => {
     connection: connection._id.toString(),
   });
 
+  const metricSourceBody = () => ({
+    kind: SourceKind.Metric,
+    name: 'Created Metric Source',
+    from: { databaseName: DEFAULT_DATABASE, tableName: '' },
+    timestampValueExpression: 'TimeUnix',
+    resourceAttributesExpression: 'ResourceAttributes',
+    metricTables: { gauge: 'otel_metrics_gauge' },
+    connection: connection._id.toString(),
+  });
+
   const createOtherTeamConnection = (otherTeamId: mongoose.Types.ObjectId) =>
     Connection.create({
       team: otherTeamId,
@@ -255,6 +265,25 @@ describe('External API v2 Sources CRUD', () => {
 
       const persisted = await Source.findById(response.body.data.id);
       expect(persisted!.kind).toBe(SourceKind.Promql);
+    });
+
+    it('should round-trip minAutoGranularity in the SQL interval format', async () => {
+      const response = await authRequest('post', BASE_URL)
+        .send({ ...metricSourceBody(), minAutoGranularity: '1 minute' })
+        .expect(200);
+
+      expect(response.body.data.minAutoGranularity).toBe('1 minute');
+
+      const persisted = await Source.findById(response.body.data.id);
+      expect(persisted!.get('minAutoGranularity')).toBe('1 minute');
+    });
+
+    it('should reject a short-form minAutoGranularity', async () => {
+      // Unlike materializedViews[].minGranularity, this field is not mapped
+      // from the short form, so the documented contract is the SQL interval.
+      await authRequest('post', BASE_URL)
+        .send({ ...metricSourceBody(), minAutoGranularity: '1m' })
+        .expect(400);
     });
 
     it('should return 400 when connection is not a valid id', async () => {
