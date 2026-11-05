@@ -29,7 +29,9 @@ jobs:
           - arch: arm64
             platform: linux/arm64
             runner: ${{ vars.RUNNER_ARM64 || 'ubuntu-latest-arm64' }}
-    runs-on: ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) || matrix.runner }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -98,7 +100,9 @@ jobs:
           - arch: arm64
             platform: linux/arm64
             runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
-    runs-on: ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) || matrix.runner }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -173,7 +177,9 @@ jobs:
           - arch: arm64
             platform: linux/arm64
             runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
-    runs-on: ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) || matrix.runner }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -250,7 +256,9 @@ jobs:
           - arch: arm64
             platform: linux/arm64
             runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
-    runs-on: ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) || matrix.runner }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
