@@ -1,4 +1,4 @@
-// Mock OpenTelemetry + the HyperDX SDK before importing the module under test.
+// Mock OpenTelemetry before importing the module under test.
 
 const mockSpan = {
   setAttribute: jest.fn(),
@@ -6,6 +6,11 @@ const mockSpan = {
   setStatus: jest.fn(),
   recordException: jest.fn(),
   end: jest.fn(),
+};
+
+const mockServerSpan = {
+  setAttributes: jest.fn(),
+  isRecording: jest.fn(() => true),
 };
 
 const mockTracer = {
@@ -23,11 +28,15 @@ const mockMeter = {
   createHistogram: jest.fn(() => mockHistogram),
 };
 
-const mockSetTraceAttributes = jest.fn();
+const mockActiveContext = {};
+const mockGetRPCMetadata = jest.fn();
 
 jest.mock('@opentelemetry/api', () => ({
   __esModule: true,
   default: {
+    context: {
+      active: () => mockActiveContext,
+    },
     trace: {
       getTracer: () => mockTracer,
       getActiveSpan: () => mockSpan,
@@ -40,9 +49,8 @@ jest.mock('@opentelemetry/api', () => ({
   SpanKind: { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 },
 }));
 
-jest.mock('@hyperdx/node-opentelemetry', () => ({
-  __esModule: true,
-  setTraceAttributes: (...args: unknown[]) => mockSetTraceAttributes(...args),
+jest.mock('@opentelemetry/core', () => ({
+  getRPCMetadata: (...args: unknown[]) => mockGetRPCMetadata(...args),
 }));
 
 jest.mock('@/config', () => ({
@@ -109,40 +117,76 @@ describe('instrumentation', () => {
   });
 
   describe('setBusinessContext', () => {
-    it('maps team/user/email to standardized keys on trace and span', () => {
+    const expected = {
+      'hyperdx.team.id': 'team-1',
+      'user.id': 'user-1',
+      'user.email': 'a@b.com',
+    };
+
+    it('maps team/user/email to standardized keys on the active and server spans', () => {
+      mockGetRPCMetadata.mockReturnValue({ span: mockServerSpan });
+
       setBusinessContext({
         teamId: 'team-1',
         userId: 'user-1',
         email: 'a@b.com',
       });
 
-      const expected = {
-        'hyperdx.team.id': 'team-1',
-        'user.id': 'user-1',
-        'user.email': 'a@b.com',
-      };
-      expect(mockSetTraceAttributes).toHaveBeenCalledWith(expected);
+      expect(mockGetRPCMetadata).toHaveBeenCalledWith(mockActiveContext);
       expect(mockSpan.setAttributes).toHaveBeenCalledWith(expected);
+      expect(mockServerSpan.setAttributes).toHaveBeenCalledWith(expected);
+    });
+
+    it('sets the attributes once when the server span is the active span', () => {
+      mockGetRPCMetadata.mockReturnValue({ span: mockSpan });
+
+      setBusinessContext({ teamId: 'team-1' });
+
+      expect(mockSpan.setAttributes).toHaveBeenCalledTimes(1);
+    });
+
+    it('sets only the active span outside an HTTP request', () => {
+      mockGetRPCMetadata.mockReturnValue(undefined);
+
+      setBusinessContext({ teamId: 'team-1' });
+
+      expect(mockSpan.setAttributes).toHaveBeenCalledWith({
+        'hyperdx.team.id': 'team-1',
+      });
+      expect(mockServerSpan.setAttributes).not.toHaveBeenCalled();
+    });
+
+    it('skips a server span that has already ended', () => {
+      mockGetRPCMetadata.mockReturnValue({ span: mockServerSpan });
+      mockServerSpan.isRecording.mockReturnValueOnce(false);
+
+      setBusinessContext({ teamId: 'team-1' });
+
+      expect(mockServerSpan.setAttributes).not.toHaveBeenCalled();
     });
 
     it('passes through extra attributes and skips nullish values', () => {
+      mockGetRPCMetadata.mockReturnValue({ span: mockServerSpan });
+
       setBusinessContext({
         teamId: 'team-1',
         userId: null,
         'feature_flag.local_app_mode': true,
       });
 
-      expect(mockSetTraceAttributes).toHaveBeenCalledWith({
+      expect(mockServerSpan.setAttributes).toHaveBeenCalledWith({
         'hyperdx.team.id': 'team-1',
         'feature_flag.local_app_mode': true,
       });
     });
 
     it('is a no-op when there is nothing to set', () => {
+      mockGetRPCMetadata.mockReturnValue({ span: mockServerSpan });
+
       setBusinessContext({});
 
-      expect(mockSetTraceAttributes).not.toHaveBeenCalled();
       expect(mockSpan.setAttributes).not.toHaveBeenCalled();
+      expect(mockServerSpan.setAttributes).not.toHaveBeenCalled();
     });
   });
 

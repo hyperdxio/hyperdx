@@ -6,11 +6,13 @@ const mockRecordException = jest.fn();
 const mockSetAttribute = jest.fn();
 const mockLogger = { warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
 
-jest.mock('@hyperdx/node-opentelemetry', () => ({
-  recordException: (...args: unknown[]) => mockRecordException(...args),
-}));
 jest.mock('@opentelemetry/api', () => ({
-  trace: { getActiveSpan: () => ({ setAttribute: mockSetAttribute }) },
+  trace: {
+    getActiveSpan: () => ({
+      setAttribute: mockSetAttribute,
+      recordException: mockRecordException,
+    }),
+  },
 }));
 jest.mock('@/config', () => ({ IS_PROD: false }));
 jest.mock('@/utils/instrumentation', () => ({
@@ -59,11 +61,6 @@ describe('appErrorHandler', () => {
       });
     });
 
-    it('skips recordException (benign background noise)', () => {
-      invoke(abortErr);
-      expect(mockRecordException).not.toHaveBeenCalled();
-    });
-
     it('records how far the upload got on the span', () => {
       invoke(abortErr);
       expect(mockSetAttribute).toHaveBeenCalledWith(
@@ -83,12 +80,17 @@ describe('appErrorHandler', () => {
       code: 'ECONNABORTED',
     });
 
-    it('stays a non-operational error: logged at error, recorded', () => {
+    it('stays a non-operational error: logged at error, counted', () => {
       invoke(timeoutErr);
       expect(mockLogger.error).toHaveBeenCalledTimes(1);
       expect(mockLogger.debug).not.toHaveBeenCalled();
-      expect(mockRecordException).toHaveBeenCalledTimes(1);
       expect(lastCounterAttrs()).toMatchObject({ operational: false });
+    });
+
+    it('leaves exception recording to the Express instrumentation', () => {
+      // Recording here too would put the exception on the trace twice.
+      invoke(timeoutErr);
+      expect(mockRecordException).not.toHaveBeenCalled();
     });
   });
 

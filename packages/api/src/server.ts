@@ -1,3 +1,4 @@
+import { shutdown as shutdownTelemetry } from '@clickhouse/clickstack-node';
 import http from 'http';
 import gracefulShutdown from 'http-graceful-shutdown';
 import { serializeError } from 'serialize-error';
@@ -80,10 +81,19 @@ export default class Server {
           preShutdown: async () => {
             // needed operation before httpConnections are shutted down
           },
-          onShutdown: this.shutdown,
-          finally: () => {
-            logger.info('Server gracefully shut down...');
-          }, // finally function (sync) - e.g. for logging
+          onShutdown: async signal => {
+            try {
+              await this.shutdown(signal);
+              // Logged here rather than in the `finally` option, which runs
+              // after the SDK has stopped and so would not be exported.
+              logger.info('Server gracefully shut down...');
+            } finally {
+              // forceExit calls process.exit(), which skips the SDK's own
+              // exit-time flush. Before init (no key set) this resolves at
+              // once.
+              await shutdownTelemetry();
+            }
+          },
         });
       });
     }

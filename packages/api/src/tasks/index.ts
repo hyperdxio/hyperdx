@@ -1,3 +1,4 @@
+import { shutdown } from '@clickhouse/clickstack-node';
 import { CronJob } from 'cron';
 import minimist from 'minimist';
 import { serializeError } from 'serialize-error';
@@ -54,6 +55,13 @@ async function main(argv: TaskArgs): Promise<void> {
   });
 }
 
+// process.exit() skips the SDK's exit-time flush, so a one-shot task would
+// drop its own span and duration metric. Before init shutdown() resolves at
+// once.
+const exitAfterShutdown = (code: number) => {
+  void shutdown().finally(() => process.exit(code));
+};
+
 // Entry point
 const argv = asTaskArgs(minimist(process.argv.slice(2)));
 
@@ -83,23 +91,23 @@ if (!RUN_SCHEDULED_TASKS_EXTERNALLY) {
   logger.warn('In-app cron job is disabled');
   instrumentedMain(argv)
     .then(() => {
-      process.exit(0);
+      exitAfterShutdown(0);
     })
     .catch(err => {
       console.log(err);
       logger.error({ err: serializeError(err) }, 'Task execution failed');
-      process.exit(1);
+      exitAfterShutdown(1);
     });
 }
 
 process.on('uncaughtException', (err: Error) => {
   console.log(err);
   logger.error({ err: serializeError(err) }, 'Uncaught exception');
-  process.exit(1);
+  exitAfterShutdown(1);
 });
 
 process.on('unhandledRejection', (err: any) => {
   console.log(err);
   logger.error({ err: serializeError(err) }, 'Unhandled rejection');
-  process.exit(1);
+  exitAfterShutdown(1);
 });

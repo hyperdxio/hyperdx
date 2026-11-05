@@ -359,7 +359,7 @@ export const NullableSecret: Story = {
  */
 export const NoSecrets: Story = {
   render: () => (
-    <RevealSnippet value="npm install @hyperdx/node-opentelemetry">
+    <RevealSnippet value="npm install @clickhouse/clickstack-node">
       <Stack gap="xs">
         <Group justify="space-between" align="center">
           <Text size="sm" fw={500}>
