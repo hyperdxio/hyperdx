@@ -45,6 +45,12 @@ load 'test_helpers/assertions.bash'
     assert_test_data "data/severity-inference/skip-infer"
 }
 
+@test "should derive severity text from severity number when only the number is set" {
+    emit_otel_data "http://localhost:4318" "data/severity-inference/infer-text-from-number"
+    sleep 1
+    assert_test_data "data/severity-inference/infer-text-from-number"
+}
+
 @test "should not infer severity from keywords embedded mid-word" {
     emit_otel_data "http://localhost:4318" "data/severity-inference/no-infer-substring"
     sleep 1
