@@ -18,13 +18,13 @@ import { notifications } from '@mantine/notifications';
 import { IconHelpCircle, IconPencil } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/brand';
 import SelectControlled from '@/components/SelectControlled';
 import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 type ClickhouseSettingType = 'number' | 'boolean';
 

@@ -5,7 +5,6 @@ on:
   workflow_dispatch:
 permissions:
   contents: write
-  packages: write
   pull-requests: write
   actions: read
   id-token: write
@@ -799,14 +798,18 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
+        # runner is a label, or a JSON array of labels so the RUNNER_* repo
+        # variables can target self-hosted label sets.
         include:
           - arch: amd64
             platform: linux/amd64
             runner: ubuntu-latest
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-latest-arm64
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_ARM64 || 'ubuntu-latest-arm64' }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -817,12 +820,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Build and Push
@@ -882,11 +879,13 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: Large-Runner-x64-32
+            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
           - arch: arm64
             platform: linux/arm64
-            runner: Large-Runner-ARM64-32
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -897,12 +896,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Build and Push
@@ -919,6 +912,7 @@ jobs:
             CODE_VERSION=${{ env.CODE_VERSION }}
           tags: |
             ${{ env.IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
+            ${{ env.NEXT_IMAGE_NAME_DOCKERHUB }}:${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}-${{ matrix.arch }}
           push: true
           sbom: true
           provenance: true
@@ -943,18 +937,19 @@ jobs:
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
-      - name: Create multi-arch manifest
+      - name: Create multi-arch manifests
         run: |
           VERSION="${{ env.IMAGE_VERSION }}${{ env.IMAGE_VERSION_SUB_TAG }}"
           MAJOR="${{ env.IMAGE_VERSION }}"
           LATEST="${{ env.IMAGE_LATEST_TAG }}"
-          IMAGE="${{ env.IMAGE_NAME_DOCKERHUB }}"
-          docker buildx imagetools create \
-            -t "${IMAGE}:${VERSION}" \
-            -t "${IMAGE}:${MAJOR}" \
-            -t "${IMAGE}:${LATEST}" \
-            "${IMAGE}:${VERSION}-amd64" \
-            "${IMAGE}:${VERSION}-arm64"
+          for IMAGE in "${{ env.IMAGE_NAME_DOCKERHUB }}" "${{ env.NEXT_IMAGE_NAME_DOCKERHUB }}"; do
+            docker buildx imagetools create \
+              -t "${IMAGE}:${VERSION}" \
+              -t "${IMAGE}:${MAJOR}" \
+              -t "${IMAGE}:${LATEST}" \
+              "${IMAGE}:${VERSION}-amd64" \
+              "${IMAGE}:${VERSION}-arm64"
+          done
 
   # ---------------------------------------------------------------------------
   # Local (all-in-one-noauth) – build each arch natively, then merge
@@ -969,11 +964,13 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: Large-Runner-x64-32
+            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
           - arch: arm64
             platform: linux/arm64
-            runner: Large-Runner-ARM64-32
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -984,12 +981,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Build and Push
@@ -1081,11 +1072,13 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: Large-Runner-x64-32
+            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
           - arch: arm64
             platform: linux/arm64
-            runner: Large-Runner-ARM64-32
-    runs-on: ${{ matrix.runner }}
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
+    runs-on:
+      ${{ startsWith(matrix.runner, '[') && fromJSON(matrix.runner) ||
+      matrix.runner }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -1096,12 +1089,6 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Load Environment Variables from .env
         uses: xom9ikk/dotenv@v2
       - name: Build and Push

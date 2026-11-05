@@ -1,12 +1,7 @@
-import { Group, Paper, Stack, Text } from '@mantine/core';
+import { Group, Stack, Text } from '@mantine/core';
 
+import { BRAND_DISPLAY_NAME, useLogomark, useWordmark } from '@/brand';
 import { CopySnippet } from '@/components/ClickStackOnboarding/CopySnippet';
-import {
-  useBrandDisplayName,
-  useLogomark,
-  useThemeName,
-  useWordmark,
-} from '@/theme/ThemeProvider';
 
 import { AssetCard } from './AssetCard';
 
@@ -18,7 +13,7 @@ const story = {
 };
 export default story;
 
-const USAGE = `import { useWordmark, useLogomark } from '@/theme/ThemeProvider';
+const USAGE = `import { useLogomark, useWordmark } from '@/brand';
 
 function TopBar() {
   const logo = useLogomark({ size: 24 });
@@ -32,32 +27,28 @@ function TopBar() {
 }`;
 
 export const Logos = () => {
-  const brand = useBrandDisplayName();
-  const themeName = useThemeName();
   const logomark16 = useLogomark({ size: 16 });
   const logomark24 = useLogomark({ size: 24 });
   const logomark48 = useLogomark({ size: 48 });
   const logomarkDownload = useLogomark({ size: 48 });
   const wordmark = useWordmark();
-  const wordmarkIsSvg = themeName === 'clickstack';
 
   return (
     <Stack gap="xl" maw={720} mx="auto">
       <div>
         <Text size="lg" fw={700}>
-          {brand} logo
+          {BRAND_DISPLAY_NAME} logo
         </Text>
         <Text size="sm" c="var(--color-text-muted)">
-          Use the Brand toolbar to switch HyperDX and ClickStack, and the Theme
-          toolbar for light and dark. Prefer{' '}
+          Use the Theme toolbar for light and dark. Read the marks from{' '}
           <Text span ff="monospace" size="sm">
             useLogomark
           </Text>{' '}
           and{' '}
           <Text span ff="monospace" size="sm">
             useWordmark
-          </Text>{' '}
-          so the active brand is used automatically.
+          </Text>
+          .
         </Text>
       </div>
 
@@ -90,9 +81,9 @@ export const Logos = () => {
           </Stack>
         </Group>
         <AssetCard
-          title={`${brand} logomark`}
+          title={`${BRAND_DISPLAY_NAME} logomark`}
           description="Download the SVG as authored (brand fills or currentColor)."
-          filename={`${themeName}-logomark.svg`}
+          filename="clickstack-logomark.svg"
         >
           {logomarkDownload}
         </AssetCard>
@@ -103,22 +94,14 @@ export const Logos = () => {
           Wordmark
         </Text>
         <Text size="xs" c="var(--color-text-muted)" mb="sm">
-          {wordmarkIsSvg
-            ? 'Full brand lockup as a single SVG.'
-            : 'Logomark plus the HyperDX label in UI type. Download the logomark SVG above; the wordmark is not a standalone SVG.'}
+          Full brand lockup as a single SVG.
         </Text>
-        {wordmarkIsSvg ? (
-          <AssetCard
-            title={`${brand} wordmark`}
-            filename={`${themeName}-wordmark.svg`}
-          >
-            {wordmark}
-          </AssetCard>
-        ) : (
-          <Paper p="md" withBorder radius="md">
-            {wordmark}
-          </Paper>
-        )}
+        <AssetCard
+          title={`${BRAND_DISPLAY_NAME} wordmark`}
+          filename="clickstack-wordmark.svg"
+        >
+          {wordmark}
+        </AssetCard>
       </div>
 
       <div>

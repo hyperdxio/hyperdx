@@ -19,7 +19,7 @@ Instead of stuffing all instructions into `AGENTS.md` (which goes into every con
 - **`page_layout.md`** - PageHeader, PageLayout, and consistent page chrome (titles, actions, tool pages)
 - **`naming_objects.md`** - How users name and rename objects (dashboards, saved searches, tiles) with `InlineNameInput`. Read before adding or changing any place where something gets a name.
 - **`data_viz_colors.md`** - Chart, heatmap, and semantic status colors. Read before adding or changing any color in a chart, sparkline, heatmap, legend, or status pill.
-- **`themes.md`** - How the brand theme system (HyperDX vs ClickStack) and color mode (light/dark/system) work. Read before changing anything in `packages/app/src/theme/`, adding semantic CSS variables, or touching brand-conditional UI.
+- **`themes.md`** - ClickStack appearance and color mode (light/dark/system). Read before changing anything in `packages/app/src/theme/`, adding semantic CSS variables, or hard-coding a color, logo, or favicon.
 - **`observability.md`** - Instrumentation standards (tracing, metrics, context) and the shared helpers. Read when adding or changing a feature.
 - **`evals.md`** - MCP eval framework: dual-slot setup, running A/B comparisons between branches, interpreting results. Read before running evals or benchmarking MCP changes.
 

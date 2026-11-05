@@ -3,11 +3,11 @@ import { useWatch } from 'react-hook-form';
 import { Stack } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
+import { useBrandDisplayName } from '@/brand';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { isValidSessionsTable } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { DEFAULT_DATABASE } from './constants';
 import { FormRow } from './FormRow';

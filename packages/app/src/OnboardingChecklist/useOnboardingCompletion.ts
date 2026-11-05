@@ -3,11 +3,11 @@ import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import { isPersistableUserId } from '@hyperdx/common-utils/dist/types';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/brand';
 import { NOW } from '@/config';
 import { useConnections } from '@/connection';
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import { useSources } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import {
   OnboardingStep,

@@ -26,6 +26,7 @@ import {
 } from '@mantine/core';
 import { IconInfoCircle } from '@tabler/icons-react';
 
+import { usePageTitle } from '@/brand';
 import OnboardingModal from '@/components/OnboardingModal';
 import SearchWhereInput, {
   getStoredLanguage,
@@ -39,7 +40,6 @@ import {
 } from '@/llm/hooks/useLLMDashboardExpressions';
 import { getEffectiveTraceSourceId } from '@/ServicesDashboardPage';
 import { useSource, useSources } from '@/source';
-import { usePageTitle } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 
 import { AgentToolCharts } from './AgentToolCharts';

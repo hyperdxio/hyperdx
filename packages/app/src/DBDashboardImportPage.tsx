@@ -74,8 +74,8 @@ import {
 
 import SelectControlled from './components/SelectControlled';
 import { SourceMultiSelectControlled } from './components/SourceMultiSelect';
-import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
+import { usePageTitle } from './brand';
 import { useConnections } from './connection';
 import {
   normalizeRawDashboardTileColors,

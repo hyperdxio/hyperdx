@@ -32,6 +32,7 @@ export function AlertDisplayFields<T extends FieldValues>({
   displayNameName,
   tagsName,
   derivedDisplayName,
+  displayNameLabel = 'Name',
   displayNameRequired = false,
   tagsInherit = true,
   labelMarginTop = 'xs',
@@ -41,6 +42,12 @@ export function AlertDisplayFields<T extends FieldValues>({
   tagsName: Path<T>;
   /** Name the server will derive when the field is left empty. */
   derivedDisplayName?: string | null;
+  /**
+   * Label for the name field. Override where the surface already shows the
+   * name of what the alert watches, and a bare "Name" would read as that
+   * object's name rather than the alert's.
+   */
+  displayNameLabel?: string;
   /**
    * Whether the alert must be named here. Set for alerts with no parent to
    * inherit a name from, where leaving it blank names the alert after
@@ -59,7 +66,7 @@ export function AlertDisplayFields<T extends FieldValues>({
     <Group gap="xs" align="flex-start" wrap="nowrap" mt={labelMarginTop}>
       <div style={{ flex: 1, minWidth: 0 }}>
         <Text size="xxs" opacity={0.5} mb={4}>
-          Name
+          {displayNameLabel}
           {displayNameRequired && (
             <Text span c="red" ms={2} aria-hidden="true">
               *
