@@ -494,9 +494,16 @@ test.describe('Saved Search Functionality', () => {
       await test.step('Navigate to sessions page', async () => {
         await page.goto('/sessions');
         await expect(page.getByTestId('sessions-page')).toBeVisible();
+        // Settling the sessions page before going back keeps this
+        // deterministic: it writes its default time range to the URL as a
+        // *pushed* history entry shortly after mount, so whether Back lands on
+        // the saved search or on bare /sessions otherwise comes down to which
+        // happens first.
+        await page.waitForURL(/\/sessions\?.*\bfrom=/);
       });
 
       await test.step('Use browser back button', async () => {
+        await page.goBack(); // undoes the sessions time-range entry
         await page.goBack();
         await expect(page.getByTestId('search-page')).toBeVisible();
       });
