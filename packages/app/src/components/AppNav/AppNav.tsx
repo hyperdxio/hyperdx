@@ -23,6 +23,7 @@ import api from '@/api';
 import { useLogomark, useWordmark } from '@/brand';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
+import { useMobileNavOverlay } from '@/components/AppNav/useMobileNavOverlay';
 import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
 import { APP_VERSION, IS_LOCAL_MODE } from '@/config';
 import { Dashboard, useDashboards } from '@/dashboard';
@@ -182,9 +183,19 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     defaultValue: false,
   });
 
-  const isCollapsed = useCompactViewport() || isPreferCollapsed;
+  const isCompact = useCompactViewport();
+  const {
+    isOpen: isMobileNavOpen,
+    toggle: toggleMobileNav,
+    close: closeMobileNav,
+  } = useMobileNavOverlay(isCompact);
 
+  // The page layout reserves the rail width even while the overlay is open,
+  // so opening the nav does not shift the content.
+  const isRail = isCompact || isPreferCollapsed;
+  const isCollapsed = isRail && !isMobileNavOpen;
   const navWidth = isCollapsed ? 50 : 250;
+  const reservedWidth = isRail ? 50 : 250;
 
   useEffect(() => {
     HyperDX.addAction('user navigated', {
@@ -321,14 +332,22 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
 
   return (
     <AppNavContext value={{ isCollapsed, pathname }}>
-      {fixed && (
+      {(fixed || isMobileNavOpen) && (
         <div
           className={styles.navGhost}
           style={{
-            width: navWidth + 1,
-            minWidth: navWidth + 1,
+            width: reservedWidth + 1,
+            minWidth: reservedWidth + 1,
           }}
         ></div>
+      )}
+      {isMobileNavOpen && (
+        <button
+          type="button"
+          className={styles.navScrim}
+          aria-label="Close navigation"
+          onClick={closeMobileNav}
+        />
       )}
       <InstallInstructionModal
         show={showInstallInstructions}
@@ -337,7 +356,8 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
       <div
         data-testid="app-nav"
         className={cx(styles.nav, {
-          [styles.navFixed]: fixed,
+          [styles.navFixed]: fixed || isMobileNavOpen,
+          [styles.navOverlay]: isMobileNavOpen,
           [styles.navCollapsed]: isCollapsed,
         })}
         style={{ width: navWidth }}
@@ -386,7 +406,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
               })}
               title="Collapse/expand navigation"
               aria-label="Collapse/expand navigation"
-              onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
+              aria-expanded={!isCollapsed}
+              onClick={() =>
+                isCompact
+                  ? toggleMobileNav()
+                  : setIsPreferCollapsed((v: boolean) => !v)
+              }
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
