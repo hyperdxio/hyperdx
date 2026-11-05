@@ -2,7 +2,7 @@ import { TemplateMinerConfig } from './config';
 import { Drain } from './drain';
 import { LogCluster } from './log-cluster';
 import { LruCache } from './lru-cache';
-import { LogMasker, MaskingInstruction } from './masking';
+import { LogMasker } from './masking';
 
 export interface ExtractedParameter {
   value: string;
@@ -30,15 +30,7 @@ export class TemplateMiner {
     const cfg = config ?? new TemplateMinerConfig();
     const paramStr = cfg.maskPrefix + '*' + cfg.maskSuffix;
 
-    const maskingInstructions = cfg.maskingInstructions.map(
-      mi => new MaskingInstruction(mi.pattern, mi.maskWith),
-    );
-
-    this.masker = new LogMasker(
-      maskingInstructions,
-      cfg.maskPrefix,
-      cfg.maskSuffix,
-    );
+    this.masker = LogMasker.fromConfig(cfg);
 
     this.drain = new Drain(
       cfg.drainDepth,
@@ -136,7 +128,8 @@ export class TemplateMiner {
         if (exactMatching && maskName !== '*') {
           const instructions = this.masker.instructionsByMaskName(maskName);
           for (const mi of instructions) {
-            allowedPatterns.push(mi.pattern);
+            // A per-word mask stands for one word of its pattern's match.
+            allowedPatterns.push(mi.perWord ? '\\S+' : mi.pattern);
           }
         }
         if (!exactMatching || maskName === '*') {

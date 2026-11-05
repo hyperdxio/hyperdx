@@ -1,87 +1,72 @@
 export interface MaskingInstructionConfig {
   pattern: string;
   maskWith: string;
+  /** Mask each word of a match separately (default: the whole match once). */
+  perWord?: boolean;
 }
 
 const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)';
 const WEEKDAY = '(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)';
+const DAY = '(?:0?[1-9]|[12]\\d|3[01])';
+const TIME = '\\d{1,2}:\\d{2}:\\d{2}';
+const NOT_WORD_BEFORE = '(?<![0-9A-Za-z])';
+const NOT_WORD_AFTER = '(?![0-9A-Za-z])';
 
 /**
- * Mask names for the default masks: a masked timestamp reads `<TS>` in a
- * template (it can stand for several words, e.g. `2026-11-04 06:12:12,345`),
- * a masked UUID or hex id reads `<ID>` (always one word).
+ * Mask name for the date parts of a timestamp; a masked date reads `<DATE>`
+ * in a template.
  */
-export const TIMESTAMP_MASK = 'TS';
-export const ID_MASK = 'ID';
+export const DATE_MASK = 'DATE';
 
 /**
- * Values that differ on every line but say nothing about the pattern. They are
- * masked to `<TS>` / `<ID>` before Drain sees the line, so dated lines from different
- * days (or runs) land in the same cluster. Order matters: whole timestamps
- * before their date and time parts. The bare date, time, UUID and hex masks
- * treat `_` as a separator (no `\b`), so `backup_2026-11-04` and `span_<hex>` mask too.
+ * Masks the date of a timestamp (weekday, day, month, year), so the same
+ * message gets the same template on any day. Every line of a day shares its
+ * date and `<DATE>` matches itself the same way, so within one day lines group
+ * as without masks. Times and ids are left alone: they differ between lines on
+ * any day, and Drain already treats them as variables. No mask changes a
+ * line's token count.
  */
 export const DEFAULT_MASKING_INSTRUCTIONS: MaskingInstructionConfig[] = [
-  // ISO-8601 / RFC-3339, `T` or space, optional fraction and zone
+  // 2026-11-04, 2026/11/04, also before an ISO-8601 time: 2026-11-04T06:12:12Z
   {
-    pattern:
-      '\\d{4}-\\d{2}-\\d{2}[T ]\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?',
-    maskWith: TIMESTAMP_MASK,
+    pattern: `${NOT_WORD_BEFORE}\\d{4}[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\\d|3[01])(?:(?=T\\d)|${NOT_WORD_AFTER})`,
+    maskWith: DATE_MASK,
   },
-  // RFC-1123 (HTTP dates): Wed, 04 Nov 2026 06:12:12 GMT (also a 1-digit day)
+  // Month-name dates before a time: (Wed, )04 Nov 2026
   {
-    pattern: `${WEEKDAY}, \\d{1,2} ${MONTH} \\d{4} \\d{2}:\\d{2}:\\d{2}(?: (?:GMT|UTC|[+-]\\d{4}))?`,
-    maskWith: TIMESTAMP_MASK,
+    pattern: `${NOT_WORD_BEFORE}(?:${WEEKDAY},?\\s+)?${DAY}\\s+${MONTH}\\s+\\d{4}(?=\\s+${TIME})`,
+    maskWith: DATE_MASK,
+    perWord: true,
   },
-  // ctime / Java Date.toString / Go UnixDate: Wed Nov  4 06:12:12 [UTC] 2026
+  // The year after a ctime / Java Date time: Nov  4 06:12:12 [UTC] 2026.
+  // Before the next mask, which rewrites the month and day it looks for. The
+  // lookahead runs the lookbehind only where a year starts, keeping it linear
+  // on long runs of whitespace.
   {
-    pattern: `${WEEKDAY} ${MONTH} +\\d{1,2} \\d{2}:\\d{2}:\\d{2}(?: [A-Z]{2,5})? \\d{4}`,
-    maskWith: TIMESTAMP_MASK,
+    pattern: `(?=(?:19|20)\\d{2}${NOT_WORD_AFTER})(?<=${MONTH}\\s+${DAY}\\s+${TIME}(?:[.,]\\d+)?(?:\\s+(?:[A-Z]{2,5}|[+-]\\d{4}))?\\s+)(?:19|20)\\d{2}`,
+    maskWith: DATE_MASK,
   },
-  // Log4j / Java: 04 Nov 2026 06:12:12,345
+  // (Wed )Nov  4, and with the year first: Wed Nov 04 2026 (JavaScript),
+  // Nov 4, 2026 (java.util.logging)
   {
-    pattern: `(?<![0-9A-Za-z])\\d{1,2} ${MONTH} \\d{4} \\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?`,
-    maskWith: TIMESTAMP_MASK,
+    pattern: `${NOT_WORD_BEFORE}(?:${WEEKDAY}\\s+)?${MONTH}\\s+${DAY}(?:,?\\s+\\d{4})?(?=\\s+${TIME})`,
+    maskWith: DATE_MASK,
+    perWord: true,
   },
-  // Access-log dates: 04/Nov/2026:06:12:12 +0000
+  // Access log and Tomcat: [04/Nov/2026:06:12:12, 04-Nov-2026 06:12:12
   {
-    pattern: `\\d{2}/${MONTH}/\\d{4}:\\d{2}:\\d{2}:\\d{2}(?: [+-]\\d{4})?`,
-    maskWith: TIMESTAMP_MASK,
+    pattern: `${NOT_WORD_BEFORE}\\d{2}(?:/${MONTH}/|-${MONTH}-)\\d{4}(?=:\\d|\\s+${TIME})`,
+    maskWith: DATE_MASK,
   },
-  // Syslog: Nov  4 06:12:12
+  // dd/MM/yyyy, MM/dd/yyyy, dd.MM.yyyy and yy/MM/dd before a time
   {
-    pattern: `\\b${MONTH} +\\d{1,2} \\d{2}:\\d{2}:\\d{2}\\b`,
-    maskWith: TIMESTAMP_MASK,
+    pattern: `(?<![0-9A-Za-z/.])\\d{2}(?:/\\d{2}/|\\.\\d{2}\\.)\\d{2}(?:\\d{2})?(?=\\s+${TIME})`,
+    maskWith: DATE_MASK,
   },
-  // A date that only shows with a time after it: Spark/log4j yy/MM/dd and the
-  // klog/glog severity+MMDD prefix (I1104 06:12:12.345678)
+  // klog / glog MMDD after the severity letter: I1104 06:12:12.345678
   {
-    pattern: '(?<![0-9A-Za-z/])\\d{2}/\\d{2}/\\d{2}(?= \\d{2}:\\d{2}:\\d{2})',
-    maskWith: TIMESTAMP_MASK,
-  },
-  {
-    pattern: '(?<![0-9A-Za-z])[IWEF]\\d{4}(?= \\d{2}:\\d{2}:\\d{2})',
-    maskWith: TIMESTAMP_MASK,
-  },
-  // A date or a time on its own
-  {
-    pattern: '(?<![0-9A-Za-z])\\d{4}[-/]\\d{2}[-/]\\d{2}(?![0-9A-Za-z])',
-    maskWith: TIMESTAMP_MASK,
-  },
-  {
-    pattern: '(?<![0-9A-Za-z])\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?(?![0-9A-Za-z])',
-    maskWith: TIMESTAMP_MASK,
-  },
-  // UUIDs
-  {
-    pattern:
-      '(?<![0-9A-Za-z])[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?![0-9A-Za-z])',
-    maskWith: ID_MASK,
-  },
-  // Long hex ids: trace/span ids, hashes, container ids
-  {
-    pattern: '(?<![0-9A-Za-z])[0-9a-fA-F]{16,}(?![0-9A-Za-z])',
-    maskWith: ID_MASK,
+    pattern: `(?<=${NOT_WORD_BEFORE}[IWEF])(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\\d|3[01])(?=\\s+${TIME})`,
+    maskWith: DATE_MASK,
   },
 ];
 

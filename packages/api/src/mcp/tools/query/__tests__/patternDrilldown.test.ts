@@ -97,22 +97,21 @@ describe('templateToRegex', () => {
     expect(matches('id <*> ok', 'id 日本 語 ok')).toBe(false);
   });
 
-  it('a masked id is one word, also inside a token; a masked timestamp can span spaces', () => {
-    expect(matches('span trace_id=<ID> ok', 'span trace_id=4bf92f35 ok')).toBe(
-      true,
-    );
-    expect(matches('span trace_id=<ID> ok', 'span trace_id= ok')).toBe(false);
-    expect(matches('span trace_id=<ID> ok', 'span span_id=4bf92f35 ok')).toBe(
-      false,
-    );
-    expect(matches('span trace_id=<ID> ok', 'span trace_id=a b ok')).toBe(
-      false,
-    );
+  it('a masked date is one word, also inside a token', () => {
     expect(
-      matches('[<TS>] "GET /"', '[04/Nov/2026:06:12:12 +0000] "GET /"'),
+      matches('wrote backup_<DATE>.tar', 'wrote backup_2026-11-04.tar'),
     ).toBe(true);
-    expect(matches('<TS> INFO x', '2026-11-04 06:12:12,345 INFO x')).toBe(true);
-    expect(matches('<TS> INFO x', 'INFO x')).toBe(false);
+    expect(matches('wrote backup_<DATE>.tar', 'wrote backup_.tar')).toBe(false);
+    expect(
+      matches('wrote backup_<DATE>.tar', 'wrote backup_2026-11-04.tar.gz'),
+    ).toBe(false);
+    expect(
+      matches('I<DATE> <*> sync done', 'I1104 06:12:12.345678 sync done'),
+    ).toBe(true);
+    expect(
+      matches('<DATE> <*> INFO x', '2026-11-04\n06:12:12,345 INFO x'),
+    ).toBe(true);
+    expect(matches('<DATE> <*> INFO x', '2026-11-04 INFO x')).toBe(false);
   });
 
   it('turns an empty template into a whitespace-only match', () => {
@@ -195,6 +194,39 @@ describe('templateToRegex', () => {
       for (const o of patterns.filter(o => o !== p).flatMap(o => o.samples)) {
         expect(re.test(o.body)).toBe(false);
       }
+    }
+  });
+});
+
+describe('templateToRegex with mined templates', () => {
+  it('matches every sample when a masked timestamp and a word share a position', () => {
+    const messages = [
+      'Started job at 2026-11-04 06:12:12',
+      'Started job at boot',
+      'Started job at shutdown',
+      'Started job at 2026-11-04T06:12:13Z',
+    ];
+    const { patterns } = minePatterns(
+      messages.map(body => ({ body })),
+      {
+        totalCount: messages.length,
+        startDate: new Date(0),
+        endDate: new Date(1000),
+        trendBuckets: 0,
+        maxSamples: messages.length,
+        getBody: r => r.body,
+        getTimestamp: () => 0,
+      },
+    );
+    // The space-separated timestamp is two words, so it can't share a cluster
+    // with the one-word lines; the one-word timestamp can, as <*>.
+    expect(patterns.map(p => p.pattern).sort()).toEqual([
+      'Started job at <*>',
+      'Started job at <DATE> 06:12:12',
+    ]);
+    for (const p of patterns) {
+      const re = toJsRegex(templateToRegex(p.pattern));
+      for (const sample of p.samples) expect(re.test(sample.body)).toBe(true);
     }
   });
 });
