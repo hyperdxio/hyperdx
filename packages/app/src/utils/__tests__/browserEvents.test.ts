@@ -1,6 +1,8 @@
 import {
   BROWSER_EVENT_NAMES,
+  getBrowserEventKind,
   getBrowserEventLabel,
+  isBrowserEventRow,
 } from '@/utils/browserEvents';
 
 const { CLICK, NAVIGATION, CONSOLE, EXCEPTION } = BROWSER_EVENT_NAMES;
@@ -121,4 +123,33 @@ describe('getBrowserEventLabel', () => {
       ).toMatchObject({ title, description, timelineText, isError: true });
     },
   );
+});
+
+describe('getBrowserEventKind', () => {
+  it.each([
+    [CLICK, {}, 'click'],
+    [NAVIGATION, {}, 'navigation'],
+    [CONSOLE, {}, 'console'],
+    [EXCEPTION, { 'exception.type': 'TypeError' }, undefined],
+    [undefined, { 'browser.tag_name': 'BUTTON' }, 'click'],
+    ['', { 'browser.console.method': 'log' }, 'console'],
+    // JSON columns keep the Bool, Map columns hold the string.
+    [undefined, { 'browser.navigation.same_document': false }, 'navigation'],
+    [undefined, { 'browser.navigation.same_document': 'false' }, 'navigation'],
+    [undefined, { 'url.full': 'http://localhost:5173/' }, undefined],
+    [undefined, undefined, undefined],
+  ])('reads event %p with %p as %p', (eventName, attributes, kind) => {
+    expect(getBrowserEventKind({ eventName, attributes })).toBe(kind);
+  });
+});
+
+describe('isBrowserEventRow', () => {
+  it.each([
+    ['browser.web_vital', {}, true],
+    [EXCEPTION, {}, false],
+    [undefined, { 'browser.tag_name': 'BUTTON' }, true],
+    [undefined, { 'service.name': 'api' }, false],
+  ])('reads event %p with %p as %p', (eventName, attributes, expected) => {
+    expect(isBrowserEventRow({ eventName, attributes })).toBe(expected);
+  });
 });

@@ -18,21 +18,28 @@ describe('buildSavedSearchNavigationUrl', () => {
   it('drops saved-search query state when the source uses the default relative range', () => {
     expect(
       buildSavedSearchNavigationUrl(
-        '/clickstack',
         'saved-search-id',
         '?where=service%3Aapi&orderBy=timestamp',
       ),
-    ).toBe('/clickstack/search/saved-search-id');
+    ).toBe('/search/saved-search-id');
   });
 
   it('keeps an absolute range out of live-tail mode', () => {
     expect(
       buildSavedSearchNavigationUrl(
-        '/clickstack',
         'saved-search-id',
         '?from=100&to=200&isLive=false&where=service%3Aapi&orderBy=timestamp',
       ),
-    ).toBe('/clickstack/search/saved-search-id?from=100&to=200&isLive=false');
+    ).toBe('/search/saved-search-id?from=100&to=200&isLive=false');
+  });
+
+  it('carries a live-tail range over without pinning it out of live mode', () => {
+    expect(
+      buildSavedSearchNavigationUrl(
+        'saved-search-id',
+        '?from=100&to=200&isLive=true&where=service%3Aapi',
+      ),
+    ).toBe('/search/saved-search-id?from=100&to=200');
   });
 });
 
