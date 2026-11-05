@@ -19,6 +19,7 @@ import {
   IconCopy,
 } from '@tabler/icons-react';
 
+import { useBrandDisplayName } from '@/brand';
 import { useLocalStorage } from '@/utils';
 
 import { DISPLAY_TYPE_INSTRUCTIONS } from './constants';
@@ -33,6 +34,7 @@ export function RawSqlChartInstructions({
   displayType: DisplayType;
   variables?: ChartVariable[];
 }) {
+  const brandName = useBrandDisplayName();
   const [helpOpened, setHelpOpened] = useLocalStorage<boolean>(
     HELP_OPENED_KEY,
     true,
@@ -79,7 +81,7 @@ export function RawSqlChartInstructions({
                 href="https://clickhouse.com/docs/use-cases/observability/clickstack/dashboards/sql-visualizations"
                 target="_blank"
               >
-                ClickStack documentation
+                {brandName} documentation
               </Anchor>{' '}
               for an exhaustive list.
             </Text>
