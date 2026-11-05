@@ -1381,6 +1381,11 @@ export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
 // --------------------------
 // SAVED SEARCH
 // --------------------------
+// Single source of truth for the span-vs-trace search scope. Imported wherever
+// the union is needed so the enum has one canonical definition.
+export const SearchScopeSchema = z.enum(['span', 'trace']);
+export type SearchScope = z.infer<typeof SearchScopeSchema>;
+
 export const SavedSearchSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -1392,6 +1397,9 @@ export const SavedSearchSchema = z.object({
   orderBy: z.string().optional(),
   filters: z.array(FilterSchema).optional(),
   alerts: z.array(AlertSchema).optional(),
+  // Persist the span-vs-trace search scope so a saved Trace search reloads as
+  // Trace (and alerts built from it evaluate Trace), not Span.
+  searchScope: SearchScopeSchema.optional(),
 });
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
@@ -1805,11 +1813,6 @@ const SharedChartSettingsSchema = z.object({
 // total is that row's denominator).
 export const RatioModeSchema = z.enum(['per_group', 'share_of_total']);
 export type RatioMode = z.infer<typeof RatioModeSchema>;
-
-// Single source of truth for the span-vs-trace search scope. Imported wherever
-// the union is needed so the enum has one canonical definition.
-export const SearchScopeSchema = z.enum(['span', 'trace']);
-export type SearchScope = z.infer<typeof SearchScopeSchema>;
 
 // Heatmap y-axis may be a numeric distribution or series/groups.
 export const HeatmapModeSchema = z.enum(['distribution', 'series']);

@@ -1153,7 +1153,7 @@ export const SearchScopeControl = ({
         aria-label="Search scope"
         aria-describedby={!traceApplicable ? reasonId : undefined}
         value={scopeValue}
-        onChange={scope => onChange(scope as SearchScope)}
+        onChange={scope => onChange(scope === 'trace' ? 'trace' : 'span')}
         data={[
           { label: 'Span', value: 'span' },
           { label: 'Trace', value: 'trace', disabled: !traceApplicable },

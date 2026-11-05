@@ -569,6 +569,7 @@ function SaveSearchModalComponent({
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
+            searchScope: resolveSearchScope(searchedConfig.searchScope),
             tags: tags,
           },
           {
@@ -597,6 +598,7 @@ function SaveSearchModalComponent({
             source: searchedConfig.source ?? '',
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
+            searchScope: resolveSearchScope(searchedConfig.searchScope),
             tags: tags,
           });
 
@@ -1337,6 +1339,7 @@ function DBSearchPageContent() {
         whereLanguage: savedSearch.whereLanguage as 'sql' | 'lucene',
         filters: savedSearch.filters ?? [],
         orderBy: savedSearch.orderBy ?? '',
+        searchScope: resolveSearchScope(savedSearch.searchScope),
       });
       return;
     }
@@ -2956,28 +2959,29 @@ function DBSearchPageContent() {
                   {hasQueryError && queryError ? (
                     <>
                       <div className="h-100 w-100 px-4 mt-4 align-items-center justify-content-center text-muted overflow-auto">
-                        {traceScopeActive && (
-                          <Alert
-                            variant="danger"
-                            title="Query failed"
-                            mb="md"
-                            data-testid="search-query-error"
-                          >
-                            <Group justify="space-between" align="center">
-                              <Text size="sm">
-                                The query didn't complete, so this is not a
-                                zero-result. {getScopeIndicatorLabel('trace')}.
-                              </Text>
-                              <Button
-                                variant="secondary"
-                                size="xs"
-                                onClick={() => onSubmit()}
-                              >
-                                Retry
-                              </Button>
-                            </Group>
-                          </Alert>
-                        )}
+                        <Alert
+                          variant="danger"
+                          title="Query failed"
+                          mb="md"
+                          data-testid="search-query-error"
+                        >
+                          <Group justify="space-between" align="center">
+                            <Text size="sm">
+                              {traceScopeActive
+                                ? `The query didn't complete, so this is not a zero-result. ${getScopeIndicatorLabel(
+                                    'trace',
+                                  )}.`
+                                : "The query didn't complete, so this is not a zero-result."}
+                            </Text>
+                            <Button
+                              variant="secondary"
+                              size="xs"
+                              onClick={() => onSubmit()}
+                            >
+                              Retry
+                            </Button>
+                          </Group>
+                        </Alert>
                         {whereSuggestions && whereSuggestions.length > 0 && (
                           <Box mb="xl">
                             <Text size="lg">

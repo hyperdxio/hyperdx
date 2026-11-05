@@ -7,7 +7,7 @@ import {
 } from '@/DBSearchPage';
 
 jest.mock('@/layout', () => ({
-  withAppNav: (component: any) => component,
+  withAppNav: <T,>(component: T): T => component,
 }));
 
 describe('SearchConfigSchema searchScope', () => {
