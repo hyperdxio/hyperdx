@@ -49,6 +49,28 @@ test.describe('Saved Search Functionality', () => {
     await searchPage.goto();
   });
 
+  test(
+    'should open a newly saved search without reloading the page',
+    { tag: ['@search', '@full-stack'] },
+    async () => {
+      /**
+       * Saving used to leave the page through `window.location`, which reloads
+       * the whole app and 404s on the static ClickStack export, where
+       * /search/<id> has no exported document.
+       */
+      await searchPage.performSearch('ServiceName:frontend');
+      await searchPage.markDocument();
+
+      await searchPage.openSaveSearchModal();
+      await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+        `Client Side Nav ${Date.now()}`,
+      );
+
+      expect(await searchPage.hasSurvivedReload()).toBe(true);
+      await searchPage.table.waitForRowsToPopulate(true);
+    },
+  );
+
   // TODO: Expand this test to include:
   // - Add tags
   // - Verify search appears in sidebar
