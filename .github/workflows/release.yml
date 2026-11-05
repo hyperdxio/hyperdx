@@ -804,7 +804,7 @@ jobs:
             runner: ubuntu-latest
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-latest-arm64
+            runner: ${{ vars.RUNNER_ARM64 || 'ubuntu-latest-arm64' }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -875,10 +875,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: Large-Runner-x64-32
+            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
           - arch: arm64
             platform: linux/arm64
-            runner: Large-Runner-ARM64-32
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -958,10 +958,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: Large-Runner-x64-32
+            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
           - arch: arm64
             platform: linux/arm64
-            runner: Large-Runner-ARM64-32
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
@@ -1064,10 +1064,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: Large-Runner-x64-32
+            runner: ${{ vars.RUNNER_LARGE_X64 || 'Large-Runner-x64-32' }}
           - arch: arm64
             platform: linux/arm64
-            runner: Large-Runner-ARM64-32
+            runner: ${{ vars.RUNNER_LARGE_ARM64 || 'Large-Runner-ARM64-32' }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout
