@@ -290,6 +290,8 @@ function trimArray(
   return result;
 }
 
+const TRIMMED_FLAG_LENGTH = '"__hdx_trimmed":true'.length;
+
 // Keys in trimObject come exclusively from Object.entries() on internal tool
 // response data — never from user-supplied HTTP input — so bracket-notation
 // writes are not an injection risk; see inline eslint-disable comments below.
@@ -306,8 +308,17 @@ function trimObject(
 
   // Give each key an equal share of the budget so that no single large value
   // crowds out the rest (e.g. a large array at key[0] eating all the budget
-  // before key[1] gets a chance to appear).
-  const perKeyBudget = Math.floor(maxSize / entries.length);
+  // before key[1] gets a chance to appear). The shares exclude what the
+  // values don't control: braces, quoted keys, colons, commas and the
+  // `"__hdx_trimmed":true` flag added below.
+  const overhead = entries.reduce(
+    (sum, [key]) => sum + JSON.stringify(key).length + 2,
+    2 + TRIMMED_FLAG_LENGTH,
+  );
+  const perKeyBudget = Math.max(
+    0,
+    Math.floor((maxSize - overhead) / entries.length),
+  );
   let trimmed = false;
 
   for (const [key, value] of entries) {

@@ -211,6 +211,34 @@ describe('trimToolResponse', () => {
       },
     );
 
+    it('counts key names, separators and the trim flag in an object budget', () => {
+      const longKeys = {
+        first_long_column_name_aaaaaaaaaa: 'x'.repeat(5000),
+        second_long_column_name_bbbbbbbbb: 'y'.repeat(5000),
+      };
+      const wide = Object.fromEntries(
+        Array.from({ length: 40 }, (_, i) => [
+          `column_with_a_long_name_${i}`,
+          'v'.repeat(300),
+        ]),
+      );
+      // Narrow enough that the 10 rows trimArray always keeps can fit.
+      const rows = Array.from({ length: 30 }, () =>
+        Object.fromEntries(
+          Array.from({ length: 4 }, (_, i) => [
+            `column_with_a_long_name_${i}`,
+            'v'.repeat(300),
+          ]),
+        ),
+      );
+      for (const max of [2000, 3000, 5000, 8000]) {
+        for (const data of [longKeys, wide, rows]) {
+          const { data: out } = trimToolResponse(data, max);
+          expect(JSON.stringify(out).length).toBeLessThanOrEqual(max);
+        }
+      }
+    });
+
     it('returns an array unchanged when only separators push it over', () => {
       // 10 items of 10 JSON chars: share 11, so none is large; 111 > 110.
       const arr = Array(10).fill('12345678');
