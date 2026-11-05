@@ -83,6 +83,12 @@ $transition-slow: 0.2s ease;
     box-shadow: 4px 0 16px rgb(0 0 0 / 25%);
   }
 
+  // Closing the overlay drops the nav back into the flow. Animating its width
+  // from the overlay width would push the page content sideways first.
+  &CompactRail {
+    transition: none;
+  }
+
   &Collapsed {
     .navLinks {
       padding-inline: 0;

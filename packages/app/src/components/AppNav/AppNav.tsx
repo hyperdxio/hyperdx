@@ -381,6 +381,7 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
           [styles.navFixed]: fixed || isMobileNavOpen,
           [styles.navOverlay]: isMobileNavOpen,
           [styles.navCollapsed]: isCollapsed,
+          [styles.navCompactRail]: isCompact && !isMobileNavOpen,
         })}
         style={{ width: navWidth }}
       >
