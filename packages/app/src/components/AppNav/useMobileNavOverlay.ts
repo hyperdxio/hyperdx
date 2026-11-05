@@ -19,7 +19,12 @@ export function useMobileNavOverlay(isCompact: boolean) {
   }
 
   const close = useCallback(() => setIsOpenRequested(false), []);
-  const toggle = useCallback(() => setIsOpenRequested(open => !open), []);
+  const toggle = useCallback(() => {
+    // A click while the viewport is wide must not stick, or the overlay
+    // would appear the next time the window shrinks.
+    if (!isCompact) return;
+    setIsOpenRequested(open => !open);
+  }, [isCompact]);
 
   useEffect(() => {
     Router.events.on('routeChangeStart', close);
@@ -28,12 +33,40 @@ export function useMobileNavOverlay(isCompact: boolean) {
 
   useEffect(() => {
     if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    // The scrim covers the page but does not catch wheel or touch scrolling.
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close();
+      if (shouldCloseOnEscape(event)) close();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, close]);
 
   return { isOpen, toggle, close };
+}
+
+// Escape also dismisses a menu, modal, or field opened from the nav. Those
+// handlers run first and either stop the event or leave focus inside their
+// own popup, so this overlay must not close on the same keypress.
+function shouldCloseOnEscape(event: KeyboardEvent): boolean {
+  if (event.key !== 'Escape' || event.defaultPrevented) return false;
+  const target = event.target;
+  if (!(target instanceof Element)) return true;
+  if (
+    (target instanceof HTMLElement && target.isContentEditable) ||
+    target.closest(
+      'input, textarea, select, [role="dialog"], [role="menu"], [role="listbox"]',
+    )
+  ) {
+    return false;
+  }
+  return true;
 }

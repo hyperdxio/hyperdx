@@ -73,7 +73,9 @@ $transition-slow: 0.2s ease;
     position: fixed;
   }
 
-  // Top-level drawers use z-index 10 (see PageHeader.module.scss).
+  // Same layer as a top-level drawer (`contextZIndex + 10` from
+  // ZIndexContext, see DBRowSidePanel). The scrim is one below. PageHeader
+  // itself is z-index 2, so this covers the page chrome.
   &Overlay {
     top: 0;
     left: 0;
