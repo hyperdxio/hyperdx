@@ -1043,6 +1043,40 @@ describe('useConfigWithAdditionalSelect', () => {
     expect(result.current?.rowKeyColumns).toBeUndefined();
   });
 
+  it('keeps __hdx_id alongside a lone block column in the full-row lookup', () => {
+    mockMetadata({
+      engineFull:
+        'MergeTree ORDER BY Timestamp SETTINGS enable_block_offset_column = 1',
+      columns: [{ name: '__hdx_id', type: 'String' }],
+    });
+
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id'),
+    );
+
+    expect(result.current?.select).toBe(
+      'Timestamp,ServiceName,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_offset,__hdx_id',
+    );
+    expect(result.current?.rowKeyColumns).toBeUndefined();
+  });
+
+  it('does not add __hdx_id when both block columns are persisted', () => {
+    mockMetadata({
+      engineFull:
+        'MergeTree ORDER BY Timestamp SETTINGS enable_block_number_column = 1, enable_block_offset_column = 1',
+      columns: [{ name: '__hdx_id', type: 'String' }],
+    });
+
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id'),
+    );
+
+    expect(result.current?.select).toBe(
+      'Timestamp,ServiceName,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_number,_block_offset',
+    );
+    expect(result.current?.rowKeyColumns?.has('__hdx_id')).toBe(false);
+  });
+
   it('falls back to __hdx_id and the full row when no block column is persisted', () => {
     mockMetadata({
       engineFull:

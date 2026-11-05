@@ -1634,12 +1634,13 @@ export function useConfigWithAdditionalSelect(
         needsMergeTreeSettings ? mergeTreeSettings : undefined,
       );
 
-      if (blockColumns.length > 0) {
-        extraKeys = blockColumns;
-        hasBothBlockColumns =
-          blockColumns.length === BLOCK_COLUMN_SETTINGS.length;
-      } else if (columns?.some(c => c.name === '__hdx_id')) {
-        extraKeys = ['__hdx_id'];
+      hasBothBlockColumns =
+        blockColumns.length === BLOCK_COLUMN_SETTINGS.length;
+      extraKeys = [...blockColumns];
+      // Without a unique block pair, the full-row lookup takes every
+      // tiebreaker it can get.
+      if (!hasBothBlockColumns && columns?.some(c => c.name === '__hdx_id')) {
+        extraKeys.push('__hdx_id');
       }
     }
 
