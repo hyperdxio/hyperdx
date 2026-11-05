@@ -148,31 +148,58 @@ export function renderLegend(
   series: Pick<TimeChartSeries, 'displayName' | 'color'>[],
   width: number,
   maxLines = 2,
+  /** Series left out before layout (e.g. never drawn), counted in the tail */
+  hiddenCount = 0,
 ): string {
-  const lines: string[] = [];
-  let current = '';
-  let currentLen = 0;
-  let shown = 0;
-
-  for (const s of series) {
-    const label = `● ${truncate(s.displayName, 40)}`;
-    const sep = currentLen > 0 ? '  ' : '';
-    if (currentLen + sep.length + label.length > width) {
-      lines.push(current);
-      if (lines.length >= maxLines) {
-        const remaining = series.length - shown;
-        if (remaining > 0) {
-          lines[lines.length - 1] += chalk.dim(`  +${remaining} more`);
-        }
-        return lines.join('\n');
-      }
-      current = '';
-      currentLen = 0;
+  const labels = series.map(s => ({
+    text: `● ${truncate(s.displayName, 40)}`,
+    color: s.color,
+  }));
+  const lines: (typeof labels)[] = [[]];
+  const lineLen = (line: typeof labels) =>
+    line.reduce((n, l, i) => n + (i > 0 ? 2 : 0) + l.text.length, 0);
+  for (const label of labels) {
+    const last = lines[lines.length - 1];
+    if (last.length > 0 && lineLen(last) + 2 + label.text.length > width) {
+      if (lines.length >= maxLines) break;
+      lines.push([]);
     }
-    current += (currentLen > 0 ? '  ' : '') + chalkColor(s.color)(label);
-    currentLen += (currentLen > 0 ? 2 : 0) + label.length;
-    shown++;
+    lines[lines.length - 1].push(label);
   }
-  if (current) lines.push(current);
-  return lines.join('\n');
+
+  // The tail must fit on the last line, so drop labels until it does.
+  const tail = (listed: number) => {
+    const missing = series.length - listed + hiddenCount;
+    if (missing <= 0) return '';
+    return hiddenCount > 0 ? `+${missing} not shown` : `+${missing} more`;
+  };
+  const listed = () => lines.reduce((n, l) => n + l.length, 0);
+  const fits = (line: typeof labels) =>
+    lineLen(line) + (line.length > 0 ? 2 : 0) + tail(listed()).length <= width;
+  if (
+    tail(listed()) &&
+    !fits(lines[lines.length - 1]) &&
+    lines.length < maxLines
+  ) {
+    lines.push([]);
+  }
+  const last = lines[lines.length - 1];
+  while (
+    tail(listed()) &&
+    last.length > 0 &&
+    lineLen(last) + 2 + tail(listed()).length > width
+  ) {
+    last.pop();
+  }
+
+  const text = lines.map(line =>
+    line.map(l => chalkColor(l.color)(l.text)).join('  '),
+  );
+  const tailText = tail(listed());
+  if (tailText) {
+    text[text.length - 1] = [text[text.length - 1], chalk.dim(tailText)]
+      .filter(Boolean)
+      .join('  ');
+  }
+  return text.filter(Boolean).join('\n');
 }
