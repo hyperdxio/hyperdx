@@ -949,7 +949,7 @@ describe('useConfigWithAdditionalSelect', () => {
     mockUseMergeTreeSettings.mockReset();
   });
 
-  it('restricts the row lookup to PK + _block_offset when only the offset column is persisted', () => {
+  it('keeps the full-row lookup, with _block_offset as a tiebreaker, when only the offset column is persisted', () => {
     mockMetadata({
       engineFull:
         'MergeTree PARTITION BY toDate(Timestamp) ORDER BY (toStartOfFiveMinutes(Timestamp), ServiceName, Timestamp) SETTINGS index_granularity = 8192, enable_block_offset_column = 1',
@@ -963,19 +963,10 @@ describe('useConfigWithAdditionalSelect', () => {
       'Timestamp,ServiceName,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_offset',
     );
     expect(result.current?.additionalKeysLength).toBe(3);
-    expect(result.current?.rowKeyColumns).toEqual(
-      new Set([
-        'toDate(Timestamp)',
-        'toStartOfFiveMinutes(Timestamp)',
-        'ServiceName',
-        'Timestamp',
-        '_block_offset',
-      ]),
-    );
-    expect(result.current?.rowKeyColumns?.has('Body')).toBe(false);
+    expect(result.current?.rowKeyColumns).toBeUndefined();
   });
 
-  it('restricts the row lookup to PK + _block_number when only the number column is persisted', () => {
+  it('keeps the full-row lookup, with _block_number as a tiebreaker, when only the number column is persisted', () => {
     mockMetadata({
       engineFull:
         'MergeTree ORDER BY Timestamp SETTINGS enable_block_number_column = 1',
@@ -988,11 +979,10 @@ describe('useConfigWithAdditionalSelect', () => {
     expect(result.current?.select).toBe(
       'Timestamp,ServiceName,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_number',
     );
-    expect(result.current?.rowKeyColumns?.has('_block_number')).toBe(true);
-    expect(result.current?.rowKeyColumns?.has('Body')).toBe(false);
+    expect(result.current?.rowKeyColumns).toBeUndefined();
   });
 
-  it('uses both block columns when both are persisted', () => {
+  it('restricts the row lookup to PK + both block columns when both are persisted', () => {
     mockMetadata({
       engineFull:
         'MergeTree ORDER BY Timestamp SETTINGS enable_block_number_column = 1, enable_block_offset_column = 1',
@@ -1005,8 +995,52 @@ describe('useConfigWithAdditionalSelect', () => {
     expect(result.current?.select).toBe(
       'Timestamp,ServiceName,Body,toDate(Timestamp),toStartOfFiveMinutes(Timestamp),_block_number,_block_offset',
     );
-    expect(result.current?.rowKeyColumns?.has('_block_number')).toBe(true);
-    expect(result.current?.rowKeyColumns?.has('_block_offset')).toBe(true);
+    expect(result.current?.rowKeyColumns).toEqual(
+      new Set([
+        'toDate(Timestamp)',
+        'toStartOfFiveMinutes(Timestamp)',
+        'ServiceName',
+        'Timestamp',
+        '_block_number',
+        '_block_offset',
+      ]),
+    );
+    expect(result.current?.rowKeyColumns?.has('Body')).toBe(false);
+  });
+
+  // The OTel exporter's default otel_logs omits both settings and keys on a
+  // second-precision TimestampTime, so PK + a server-enabled _block_offset is
+  // not unique.
+  it('keeps the full-row lookup when only the server enables _block_offset', () => {
+    mockUseTableMetadata.mockReturnValue({
+      data: {
+        primary_key: 'ServiceName, TimestampTime',
+        partition_key: 'toDate(TimestampTime)',
+        engine: 'SharedMergeTree',
+        engine_full:
+          "SharedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}') PARTITION BY toDate(TimestampTime) PRIMARY KEY (ServiceName, TimestampTime) ORDER BY (ServiceName, TimestampTime, Timestamp) SETTINGS index_granularity = 8192, ttl_only_drop_parts = 1",
+      },
+    });
+    mockUseColumns.mockReturnValue({ data: [] });
+    mockUseMergeTreeSettings.mockReturnValue({
+      data: new Map([
+        ['enable_block_number_column', '0'],
+        ['enable_block_offset_column', '1'],
+      ]),
+      isLoading: false,
+    });
+
+    const { result } = renderHook(() =>
+      useConfigWithAdditionalSelect(config, 'source-id'),
+    );
+
+    expect(mockUseMergeTreeSettings).toHaveBeenCalledWith('conn', {
+      enabled: true,
+    });
+    expect(result.current?.select).toBe(
+      'Timestamp,ServiceName,Body,TimestampTime,toDate(TimestampTime),_block_offset',
+    );
+    expect(result.current?.rowKeyColumns).toBeUndefined();
   });
 
   it('falls back to __hdx_id and the full row when no block column is persisted', () => {

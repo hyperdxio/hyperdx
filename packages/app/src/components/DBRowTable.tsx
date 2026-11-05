@@ -1534,11 +1534,12 @@ export function appendSelectWithAdditionalKeys(
 }
 
 // Block columns are only stable row identifiers when the table persists them
-// (the virtual versions are renumbered on merge). Either one combined with the
-// primary key is unique enough: two rows would need identical key values
-// (incl. a nanosecond timestamp) plus the same insert block or the same offset
-// within their blocks. So a table that persists only one of them still skips
-// the slow full-row lookup.
+// (the virtual versions are renumbered on merge). Only the pair identifies a
+// row: _block_offset repeats across insert blocks and _block_number across the
+// rows of one block, and the primary key often does not break the tie (the
+// OTel exporter's default otel_logs keys on a second-precision TimestampTime).
+// A lone block column is still worth adding to the full-row lookup as a
+// tiebreaker for visually identical rows.
 const BLOCK_COLUMN_SETTINGS = [
   { column: '_block_number', setting: 'enable_block_number_column' },
   { column: '_block_offset', setting: 'enable_block_offset_column' },
@@ -1625,7 +1626,7 @@ export function useConfigWithAdditionalSelect(
     }
 
     let extraKeys: string[] = [];
-    let hasBlockColumns = false;
+    let hasBothBlockColumns = false;
 
     if (sourceId) {
       const blockColumns = getPersistedBlockColumns(
@@ -1635,7 +1636,8 @@ export function useConfigWithAdditionalSelect(
 
       if (blockColumns.length > 0) {
         extraKeys = blockColumns;
-        hasBlockColumns = true;
+        hasBothBlockColumns =
+          blockColumns.length === BLOCK_COLUMN_SETTINGS.length;
       } else if (columns?.some(c => c.name === '__hdx_id')) {
         extraKeys = ['__hdx_id'];
       }
@@ -1648,13 +1650,13 @@ export function useConfigWithAdditionalSelect(
       extraKeys,
     );
 
-    // When block columns are available, the PK + partition + block columns
-    // uniquely identify a row. Compute the full set of key column names
+    // When both block columns are available, the PK + partition + block
+    // columns uniquely identify a row. Compute the full set of key column names
     // (both raw expressions like toStartOfFiveMinutes(Timestamp) and bare
     // column references like Timestamp, ServiceName) so the row WHERE clause
     // can use only these, avoiding expensive index loading on large columns
-    // like Body.
-    const rowKeyColumns = hasBlockColumns
+    // like Body. Otherwise the WHERE clause uses every selected column.
+    const rowKeyColumns = hasBothBlockColumns
       ? new Set([
           ...splitAndTrimWithBracket(partitionKey),
           ...splitAndTrimWithBracket(primaryKey),
