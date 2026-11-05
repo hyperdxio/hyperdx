@@ -184,7 +184,7 @@ function parseProject(projectName) {
 // compose service name (ch-server, db, otel-collector, …).
 const COMPOSE_SERVICE_ALIASES = {
   'ch-server': 'clickhouse',
-  db: 'mongodb',
+  db: 'documentdb',
 };
 
 function canonicalServiceName(labels) {
@@ -457,7 +457,7 @@ async function buildDashboardData() {
     'alerts',
     'common-utils',
     'clickhouse',
-    'mongodb',
+    'documentdb',
     'otel-collector',
     'otel-collector-json',
   ];
@@ -517,7 +517,7 @@ const ENV_LOG_DIRS = {
 // Map canonical service names to Docker Compose service names
 const DOCKER_SERVICE_NAMES = {
   clickhouse: 'ch-server',
-  mongodb: 'db',
+  documentdb: 'db',
   'otel-collector': 'otel-collector',
   'otel-collector-json': 'otel-collector-json',
 };

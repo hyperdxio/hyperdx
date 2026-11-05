@@ -2,13 +2,13 @@
  * Global setup for full-stack E2E tests
  *
  * This setup:
- * 1. Clears MongoDB database to ensure clean state
+ * 1. Clears the database to ensure clean state
  * 2. Creates a test user and team
  * 3. Applies DEFAULT_SOURCES from .env.e2e
  * 4. Saves authentication state for tests
  *
  * Full-stack mode uses:
- * - MongoDB (local) for authentication, teams, users, persistence
+ * - DocumentDB (local) for authentication, teams, users, persistence
  * - API server (local) for backend logic
  * - Demo ClickHouse (remote) for telemetry data (logs, traces, metrics, K8s)
  */
@@ -17,7 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { chromium, FullConfig } from '@playwright/test';
 
-import { runMongoshScript } from './utils/db-helpers';
+import { dropE2eDatabase, ObjectId, withE2eDb } from './utils/db-helpers';
 import { seedClickHouse } from './seed-clickhouse';
 
 // Configuration constants
@@ -63,14 +63,14 @@ export const SEEDED_ERROR_ALERT = {
 };
 
 /**
- * Clears the MongoDB database to ensure a clean slate for tests
+ * Clears the database to ensure a clean slate for tests
  */
-function clearDatabase() {
-  console.log('Clearing MongoDB database for fresh test run...');
+async function clearDatabase() {
+  console.log('Clearing the e2e database for a fresh test run...');
 
   try {
-    runMongoshScript("use('hyperdx-e2e'); db.dropDatabase();");
-    console.log('  ✓ Database cleared successfully (via Docker)');
+    await dropE2eDatabase();
+    console.log('  ✓ Database cleared successfully');
   } catch (error) {
     console.warn('  ⚠ Warning: Could not clear database');
     console.warn(`  ${error instanceof Error ? error.message : String(error)}`);
@@ -85,7 +85,7 @@ function clearDatabase() {
 
 async function globalSetup(_config: FullConfig) {
   console.log('Setting up full-stack E2E environment');
-  console.log('  MongoDB: local (auth, teams, persistence)');
+  console.log('  DocumentDB: local (auth, teams, persistence)');
   console.log('  ClickHouse: local instance (telemetry data)');
 
   // Set timezone
@@ -138,8 +138,8 @@ async function globalSetup(_config: FullConfig) {
     );
   }
 
-  // Clear MongoDB database to ensure DEFAULT_SOURCES is applied
-  clearDatabase();
+  // Clear the database to ensure DEFAULT_SOURCES is applied
+  await clearDatabase();
 
   // Create test user and save auth state
   console.log('Creating test user and logging in');
@@ -302,7 +302,7 @@ async function globalSetup(_config: FullConfig) {
  * Seeds an alert with a recorded execution error. The alert is created via the
  * API (so all referenced documents — saved search, webhook — exist and the
  * alerts list endpoint populates correctly), then the `errors` array is
- * patched in directly via mongosh since it's only ever set by the check-alerts
+ * patched in directly via the driver since it's only ever set by the check-alerts
  * background job in normal operation.
  */
 async function seedAlertWithErrors(
@@ -379,7 +379,7 @@ async function seedAlertWithErrors(
   const alert = (await alertRes.json()).data;
   const alertId: string = alert._id ?? alert.id;
 
-  // 4) Patch the `executionErrors` array directly via mongosh. The
+  // 4) Patch the `executionErrors` array directly in the database. The
   // check-alerts job is the only code that writes this field in normal
   // operation, so we write it here to avoid having to run that job during
   // setup.
@@ -390,51 +390,53 @@ async function seedAlertWithErrors(
   const errorWindowStart = Math.floor(Date.now() / windowMs) * windowMs;
   const okWindowStart = errorWindowStart - windowMs;
 
-  const patchScript = `
-use('hyperdx-e2e');
-db.alerts.updateOne(
-  { _id: ObjectId(${JSON.stringify(alertId)}) },
-  {
-    $set: {
-      executionErrors: [
-        {
-          timestamp: new Date(),
-          type: ${JSON.stringify(SEEDED_ERROR_ALERT.errorType)},
-          message: ${JSON.stringify(SEEDED_ERROR_ALERT.errorMessage)}
-        }
-      ],
-      state: 'OK'
-    }
-  }
-);
-db.alerthistories.deleteMany({ alert: ObjectId(${JSON.stringify(alertId)}) });
-db.alerthistories.insertMany([
-  {
-    alert: ObjectId(${JSON.stringify(alertId)}),
-    createdAt: new Date(${okWindowStart}),
-    state: 'OK',
-    counts: 0,
-    lastValues: [{ startTime: new Date(${okWindowStart - windowMs}), count: 0 }]
-  },
-  {
-    alert: ObjectId(${JSON.stringify(alertId)}),
-    createdAt: new Date(${errorWindowStart}),
-    state: 'ERROR',
-    counts: 0,
-    lastValues: [],
-    errors: [
-      {
-        timestamp: new Date(),
-        type: ${JSON.stringify(SEEDED_ERROR_ALERT.historyErrorType)},
-        message: ${JSON.stringify(SEEDED_ERROR_ALERT.historyErrorMessage)}
-      }
-    ]
-  }
-]);
-`;
-
   try {
-    runMongoshScript(patchScript);
+    const alertObjectId = new ObjectId(alertId);
+    await withE2eDb(async db => {
+      await db.collection('alerts').updateOne(
+        { _id: alertObjectId },
+        {
+          $set: {
+            executionErrors: [
+              {
+                timestamp: new Date(),
+                type: SEEDED_ERROR_ALERT.errorType,
+                message: SEEDED_ERROR_ALERT.errorMessage,
+              },
+            ],
+            state: 'OK',
+          },
+        },
+      );
+      await db
+        .collection('alerthistories')
+        .deleteMany({ alert: alertObjectId });
+      await db.collection('alerthistories').insertMany([
+        {
+          alert: alertObjectId,
+          createdAt: new Date(okWindowStart),
+          state: 'OK',
+          counts: 0,
+          lastValues: [
+            { startTime: new Date(okWindowStart - windowMs), count: 0 },
+          ],
+        },
+        {
+          alert: alertObjectId,
+          createdAt: new Date(errorWindowStart),
+          state: 'ERROR',
+          counts: 0,
+          lastValues: [],
+          errors: [
+            {
+              timestamp: new Date(),
+              type: SEEDED_ERROR_ALERT.historyErrorType,
+              message: SEEDED_ERROR_ALERT.historyErrorMessage,
+            },
+          ],
+        },
+      ]);
+    });
     console.log(
       `  ✓ Seeded alert "${alert.name}" (${alertId}) with a ${SEEDED_ERROR_ALERT.errorType}`,
     );

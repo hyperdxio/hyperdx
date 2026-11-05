@@ -3,7 +3,7 @@ description: |
   Shared setup for E2E test workflows: sets the HDX_E2E_* port env vars and
   common Playwright env vars, then runs Node.js setup, dependency install,
   build, Playwright browser install, and starts the E2E Docker Compose stack
-  (MongoDB + ClickHouse) with health checks. The caller is responsible for
+  (DocumentDB + ClickHouse) with health checks. The caller is responsible for
   `actions/checkout`, running Playwright, uploading artifacts, and tearing
   down the Docker stack.
 runs:
@@ -22,7 +22,7 @@ runs:
         echo "HDX_E2E_MONGO_PORT=$MONGO_PORT" >> $GITHUB_ENV
         echo "HDX_E2E_APP_LOCAL_PORT=21200" >> $GITHUB_ENV
         echo "HDX_E2E_APP_PORT=21300" >> $GITHUB_ENV
-        echo "MONGO_URI=mongodb://localhost:$MONGO_PORT/hyperdx-e2e" >> $GITHUB_ENV
+        echo "MONGO_URI=mongodb://hyperdx:hyperdx@localhost:$MONGO_PORT/hyperdx-e2e?tls=true&tlsAllowInvalidCertificates=true&authMechanism=SCRAM-SHA-256" >> $GITHUB_ENV
         echo "E2E_FULLSTACK=true" >> $GITHUB_ENV
         echo "E2E_UNIQUE_USER=true" >> $GITHUB_ENV
         echo "E2E_API_HEALTH_CHECK_MAX_RETRIES=60" >> $GITHUB_ENV
@@ -68,12 +68,23 @@ runs:
       shell: bash
       run: cd packages/app && npx playwright install chromium
 
+    - name: Expose GitHub Runtime
+      uses: crazy-max/ghaction-github-runtime@v4
+
+    # DocumentDB is built from source; the GHA cache keeps that to the first run.
+    # The tag must match the e2e compose `db` image so `up` reuses it instead of rebuilding.
+    - name: Build DocumentDB image
+      shell: bash
+      run: |
+        docker buildx create --use --driver=docker-container
+        docker buildx build docker/documentdb -t hyperdx/documentdb:local --cache-to "type=gha,mode=max,scope=documentdb" --cache-from "type=gha,scope=documentdb" --load
+
     - name: Start E2E Docker Compose
       shell: bash
       run: |
         # Pre-pull images with retries to handle transient Docker Hub timeouts
         for attempt in 1 2 3; do
-          if docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml pull; then
+          if docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml pull --ignore-buildable; then
             echo "Docker images pulled successfully on attempt $attempt"
             break
           fi
@@ -84,20 +95,12 @@ runs:
           echo "Docker pull failed (attempt $attempt/3), retrying in 10s..."
           sleep 10
         done
-        docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml up -d
-        echo "Waiting for MongoDB..."
-        for i in $(seq 1 30); do
-          if docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml exec -T db mongosh --quiet --eval "db.adminCommand({ping:1})" >/dev/null 2>&1; then
-            echo "MongoDB is ready"
-            break
-          fi
-          if [ "$i" -eq 30 ]; then
-            echo "MongoDB failed to become ready after 30 seconds"
-            exit 1
-          fi
-          echo "Waiting for MongoDB... ($i/30)"
-          sleep 1
-        done
+        # --wait blocks on the DocumentDB healthcheck (gateway accepting connections).
+        if ! docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml up -d --wait --wait-timeout 300; then
+          echo "E2E services failed to become healthy"
+          docker compose -p e2e-0 -f packages/app/tests/e2e/docker-compose.yml logs db | tail -30
+          exit 1
+        fi
         echo "Waiting for ClickHouse..."
         for i in $(seq 1 60); do
           if curl -sf http://localhost:${HDX_E2E_CH_PORT}/ping >/dev/null 2>&1; then

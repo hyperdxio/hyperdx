@@ -44,7 +44,8 @@ yarn dev            # Start full stack with worktree-isolated ports
 ```
 
 The project uses **Yarn 4.13.0** workspaces. Docker Compose manages ClickHouse,
-MongoDB, and the OTel Collector.
+DocumentDB (the local metadata store, which the API reaches over the Mongo wire
+protocol), and the OTel Collector.
 
 **This repo is multi-agent friendly.** `yarn dev`, `make dev-int`, and
 `make dev-e2e` all use slot-based port isolation so multiple worktrees can run
@@ -461,7 +462,7 @@ default `/workspace` directory, the slot is **76**, so services are at:
 - **App**: http://localhost:30276
 - **API**: http://localhost:30176
 - **ClickHouse**: http://localhost:30576
-- **MongoDB**: localhost:30476
+- **DocumentDB**: localhost:30476
 
 ### Key commands reference
 
@@ -475,7 +476,7 @@ reference. Quick summary:
 
 ### First-time registration
 
-When the dev stack starts fresh (empty MongoDB), the app shows a registration
+When the dev stack starts fresh (empty DocumentDB), the app shows a registration
 page. Create any account to get started — no external auth provider is needed.
 
 ---

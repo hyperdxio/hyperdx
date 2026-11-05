@@ -120,7 +120,7 @@ function parseArgs(argv: string[]): Args {
 }
 
 /**
- * Mongo URI of this worktree's dev stack. `yarn seed:alerts` runs through
+ * URI of this worktree's dev DocumentDB. `yarn seed:alerts` runs through
  * scripts/with-slots.sh, which sets HDX_DEV_MONGO_PORT.
  */
 function devSlotMongoUri(): string {
@@ -130,7 +130,7 @@ function devSlotMongoUri(): string {
       'HDX_DEV_MONGO_PORT is not set. Run this with `yarn seed:alerts`, or pass --mongo-uri.',
     );
   }
-  return `mongodb://localhost:${port}/hyperdx`;
+  return `mongodb://hyperdx:hyperdx@localhost:${port}/hyperdx?tls=true&tlsAllowInvalidCertificates=true&authMechanism=SCRAM-SHA-256`;
 }
 
 function randomInt(minInclusive: number, maxInclusive: number): number {

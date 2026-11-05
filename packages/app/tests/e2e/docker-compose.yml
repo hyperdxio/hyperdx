@@ -1,9 +1,13 @@
 name: hdx-e2e
 services:
   db:
-    image: mongo:5.0.32-focal
+    image: hyperdx/documentdb:local
+    build: ../../../../docker/documentdb
+    environment:
+      DOCDB_USER: hyperdx
+      DOCDB_PASSWORD: hyperdx
     ports:
-      - ${HDX_E2E_MONGO_PORT:-21100}:27017
+      - ${HDX_E2E_MONGO_PORT:-21100}:10260
     networks:
       - internal
     deploy:
