@@ -236,7 +236,12 @@ import {
   parseRelativeTimeQuery,
   useDefaultTimeRange,
   useNewTimeQuery,
+  useTimeRangeInputText,
 } from './timeQuery';
+import {
+  TimeZoneOverrideProvider,
+  useTimeZoneLinkParam,
+} from './timeZoneOverride';
 import { useConfirm } from './useConfirm';
 import { useDisplayTimeZone } from './useDisplayTimeZone';
 import { FormatTime } from './useFormatTime';
@@ -278,6 +283,7 @@ function HeatmapTile({
   );
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const addTimeZone = useTimeZoneLinkParam();
   const eventDeltasUrl = useMemo(() => {
     // Search page event deltas only supports trace sources and distribution mode
     if (
@@ -294,8 +300,8 @@ function HeatmapTile({
     });
     if (!url) return null;
     const separator = url.includes('?') ? '&' : '?';
-    return `${url}${separator}mode=delta`;
-  }, [source, mode, queriedConfig, dateRange]);
+    return addTimeZone(`${url}${separator}mode=delta`);
+  }, [source, mode, queriedConfig, dateRange, addTimeZone]);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -540,9 +546,8 @@ const Tile = ({
   // changing them does not propagate up to the dashboard.
   const [fullscreenDateRange, setFullscreenDateRange] =
     useState<[Date, Date]>(dateRange);
-  const [fullscreenInputValue, setFullscreenInputValue] = useState<string>(() =>
-    dateRangeToString(dateRange, timeZone),
-  );
+  const [fullscreenInputValue, setFullscreenInputValue] =
+    useTimeRangeInputText(fullscreenDateRange);
   const [fullscreenGranularity, setFullscreenGranularity] = useState<
     Granularity | 'auto' | undefined
   >(() => (granularity as Granularity | undefined) ?? 'auto');
@@ -556,7 +561,7 @@ const Tile = ({
       (granularity as Granularity | undefined) ?? 'auto',
     );
     setIsFullscreen(true);
-  }, [dateRange, granularity, timeZone]);
+  }, [dateRange, granularity, timeZone, setFullscreenInputValue]);
 
   const handleFullscreenSearch = useCallback(
     (value: string) => {
@@ -914,13 +919,15 @@ const Tile = ({
     );
   }, [sqlFilters, queriedConfig, source]);
 
+  const addTimeZone = useTimeZoneLinkParam();
   const replaySearchUrl = useMemo(() => {
-    return buildDashboardReplaySearchUrl({
+    const url = buildDashboardReplaySearchUrl({
       source,
       config: queriedConfig,
       dateRange,
     });
-  }, [dateRange, queriedConfig, source]);
+    return url && addTimeZone(url);
+  }, [dateRange, queriedConfig, source, addTimeZone]);
 
   const hoverToolbar = useMemo(() => {
     if (readOnly) return null;
@@ -1311,13 +1318,15 @@ const Tile = ({
                     variant="default"
                     getRowSearchLink={
                       isBuilderChartConfig(effectiveQueriedConfig)
-                        ? row =>
-                            buildTableRowSearchUrl({
+                        ? row => {
+                            const url = buildTableRowSearchUrl({
                               row,
                               source,
                               config: effectiveQueriedConfig,
                               dateRange: effectiveDateRange,
-                            })
+                            });
+                            return url && addTimeZone(url);
+                          }
                         : undefined
                     }
                     onFilter={onFilter}
@@ -1478,6 +1487,7 @@ const Tile = ({
       );
     },
     [
+      addTimeZone,
       hoverToolbar,
       queriedConfig,
       title,
@@ -3568,9 +3578,19 @@ function DBDashboardPageGuarded({
   );
 }
 
-const DBDashboardPageDynamic = dynamic(async () => DBDashboardPageGuarded, {
-  ssr: false,
-});
+// Outside DBDashboardPageGuarded, which formats the saved range in the zone.
+function DBDashboardPageWithTimeZone(props: { presetConfig?: Dashboard }) {
+  return (
+    <TimeZoneOverrideProvider>
+      <DBDashboardPageGuarded {...props} />
+    </TimeZoneOverrideProvider>
+  );
+}
+
+const DBDashboardPageDynamic = dynamic(
+  async () => DBDashboardPageWithTimeZone,
+  { ssr: false },
+);
 
 // @ts-expect-error for getLayout
 DBDashboardPageDynamic.getLayout = withAppNavForSurface('dashboard');

@@ -8,6 +8,18 @@ export type RowHighlightHint = {
   body: string;
 };
 
+export function matchesRowHighlightHint(
+  row: { Timestamp?: unknown; SpanId?: unknown; Body?: unknown },
+  hint: RowHighlightHint | undefined,
+): boolean {
+  return (
+    hint != null &&
+    row.Timestamp === hint.timestamp &&
+    row.SpanId === hint.spanId &&
+    row.Body === hint.body
+  );
+}
+
 type HighlightRow = {
   id: string;
   type?: string;
@@ -63,13 +75,9 @@ export function useRowHighlightHint({
       return;
     }
 
-    const initialRowHighlightIndex = rows.findIndex(row => {
-      return (
-        row.Timestamp === initialRowHighlightHint.timestamp &&
-        row.SpanId === initialRowHighlightHint.spanId &&
-        row.Body === initialRowHighlightHint.body
-      );
-    });
+    const initialRowHighlightIndex = rows.findIndex(row =>
+      matchesRowHighlightHint(row, initialRowHighlightHint),
+    );
 
     if (initialRowHighlightIndex !== -1) {
       appliedHighlightHintRef.current = hintKey;

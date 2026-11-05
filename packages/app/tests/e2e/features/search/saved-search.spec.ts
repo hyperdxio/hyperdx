@@ -49,6 +49,28 @@ test.describe('Saved Search Functionality', () => {
     await searchPage.goto();
   });
 
+  test(
+    'should open a newly saved search without reloading the page',
+    { tag: ['@search', '@full-stack'] },
+    async () => {
+      /**
+       * Saving used to leave the page through `window.location`, which reloads
+       * the whole app and 404s on the static ClickStack export, where
+       * /search/<id> has no exported document.
+       */
+      await searchPage.performSearch('ServiceName:frontend');
+      await searchPage.markDocument();
+
+      await searchPage.openSaveSearchModal();
+      await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+        `Client Side Nav ${Date.now()}`,
+      );
+
+      expect(await searchPage.hasSurvivedReload()).toBe(true);
+      await searchPage.table.waitForRowsToPopulate(true);
+    },
+  );
+
   // TODO: Expand this test to include:
   // - Add tags
   // - Verify search appears in sidebar
@@ -472,9 +494,16 @@ test.describe('Saved Search Functionality', () => {
       await test.step('Navigate to sessions page', async () => {
         await page.goto('/sessions');
         await expect(page.getByTestId('sessions-page')).toBeVisible();
+        // Settling the sessions page before going back keeps this
+        // deterministic: it writes its default time range to the URL as a
+        // *pushed* history entry shortly after mount, so whether Back lands on
+        // the saved search or on bare /sessions otherwise comes down to which
+        // happens first.
+        await page.waitForURL(/\/sessions\?.*\bfrom=/);
       });
 
       await test.step('Use browser back button', async () => {
+        await page.goBack(); // undoes the sessions time-range entry
         await page.goBack();
         await expect(page.getByTestId('search-page')).toBeVisible();
       });

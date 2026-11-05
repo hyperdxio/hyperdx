@@ -24,13 +24,13 @@ receivers:
 # service:
 #   pipelines:
 #     traces:
-#       processors: [memory_limiter/custom, batch]
+#       processors: [memory_limiter/custom, transform/session_id, batch]
 #     metrics:
 #       processors: [memory_limiter/custom, batch]
 #     logs/out-default:
-#       processors: [memory_limiter/custom, transform, batch]
+#       processors: [memory_limiter/custom, transform, transform/session_id, batch]
 #     logs/out-rrweb:
-#       processors: [memory_limiter/custom, batch]
+#       processors: [memory_limiter/custom, transform/session_id, batch]
 #
 # Example: tune `batch` for lower-latency exports.
 # (See packages/otel-collector/README.md for env-var alternatives.)
@@ -44,15 +44,15 @@ receivers:
 # service:
 #   pipelines:
 #     traces:
-#       processors: [memory_limiter, batch/lowlatency]
+#       processors: [memory_limiter, transform/session_id, batch/lowlatency]
 #     logs/out-default:
-#       processors: [memory_limiter, transform, batch/lowlatency]
+#       processors: [memory_limiter, transform, transform/session_id, batch/lowlatency]
 exporters:
   # fork data to otel-collector-json service (DEV ONLY)
   otlphttp/json:
     endpoint: http://otel-collector-json:4318
     headers:
-      authorization: "super-secure-ingestion-api-key"
+      authorization: 'super-secure-ingestion-api-key'
     compression: gzip
 service:
   pipelines:

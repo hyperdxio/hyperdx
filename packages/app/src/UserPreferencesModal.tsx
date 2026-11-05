@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Badge } from '@clickhouse/click-ui';
 import { Divider, Group, Modal, Select, Stack, Text } from '@mantine/core';
 
-import { TimeZoneSelect } from './components/TimeZoneSelect';
+import { TimeZoneSelect, TimeZoneShortcuts } from './components/TimeZoneSelect';
 import { isContentFontSize, OPTIONS_CONTENT_FONT_SIZE } from './config/fonts';
 import {
   DEFAULT_ROW_CLICK_ACTION,
@@ -92,11 +92,17 @@ export const UserPreferencesModal = ({
           label="Time zone"
           description="Times are displayed and input in this zone."
         >
-          <TimeZoneSelect
-            data-testid="time-zone-select"
-            value={userPreferences.timeZone}
-            onChange={timeZone => setUserPreference({ timeZone })}
-          />
+          <Stack gap={4}>
+            <TimeZoneSelect
+              data-testid="time-zone-select"
+              value={userPreferences.timeZone}
+              onChange={timeZone => timeZone && setUserPreference({ timeZone })}
+            />
+            <TimeZoneShortcuts
+              testIdPrefix="time-zone"
+              onSelect={timeZone => setUserPreference({ timeZone })}
+            />
+          </Stack>
         </SettingContainer>
 
         <Divider label="Search results" labelPosition="left" mt="sm" />

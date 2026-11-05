@@ -1,0 +1,75 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "session-id-copy"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "replay"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "old-browser-sdk"
+            }
+          },
+          {
+            "key": "rum.sessionId",
+            "value": {
+              "stringValue": "abc"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999590000000000",
+              "body": {
+                "stringValue": "replay event copied from rum.sessionId"
+              },
+              "attributes": [
+                {
+                  "key": "rr-web.event",
+                  "value": {
+                    "stringValue": "2"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1901999590000000001",
+              "body": {
+                "stringValue": "replay event own session.id wins"
+              },
+              "attributes": [
+                {
+                  "key": "rr-web.event",
+                  "value": {
+                    "stringValue": "3"
+                  }
+                },
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "app1"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
