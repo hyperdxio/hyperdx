@@ -52,6 +52,7 @@ import TabBar from '@/TabBar';
 import { SearchConfig } from '@/types';
 import { FormatTime } from '@/useFormatTime';
 import { formatDistanceToNowStrictShort } from '@/utils';
+import { isBrowserEventRow } from '@/utils/browserEvents';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
 import {
   getRowLookupWindow,
@@ -238,6 +239,54 @@ const SPAN_KIND_LABELS: Record<string, string> = {
   SPAN_KIND_PRODUCER: 'Producer',
   SPAN_KIND_CONSUMER: 'Consumer',
 };
+
+// Longest span name the header trusts a lone title breadcrumb to show in full.
+// Kept well under that crumb's 120 character cap (MAX_LABEL_LENGTH_SINGLE in
+// SidePanelBreadcrumbs.tsx) because CSS can still ellipsize a long title in a
+// narrow drawer; longer names keep the body paper.
+const TITLE_FITS_MAX_LENGTH = 40;
+
+/**
+ * Attribute expressions shown as chips in the side panel header. Log panels
+ * also get the service name, kept from before highlightedRowAttributeExpressions
+ * existed; trace panels skip it because the metadata row already shows it.
+ */
+export function getHeaderHighlightExpressions(source: TSource) {
+  const expressions: NonNullable<
+    (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
+  > = [];
+  if (
+    (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
+    source.highlightedRowAttributeExpressions
+  ) {
+    expressions.push(...source.highlightedRowAttributeExpressions);
+  }
+  if (isLogSource(source) && source.serviceNameExpression) {
+    expressions.push({ sqlExpression: source.serviceNameExpression });
+  }
+  return expressions;
+}
+
+/**
+ * Whether the panel title already shows a trace span's name in full, so the
+ * header can skip the body paper that would only repeat it. Only a lone
+ * breadcrumb counts: in a trail the crumbs share one row and can cut the name
+ * off, and after View Trace the title is the originating log. Long names keep
+ * the paper too.
+ */
+export function isSpanNameShownInTitle(
+  source: TSource,
+  spanName: string | undefined,
+  breadcrumbLabels: string[],
+) {
+  return (
+    source.kind === SourceKind.Trace &&
+    spanName != null &&
+    spanName.length <= TITLE_FITS_MAX_LENGTH &&
+    breadcrumbLabels.length === 1 &&
+    breadcrumbLabels[0] === spanName
+  );
+}
 
 type DBRowSidePanelProps = {
   source: TSource;
@@ -498,31 +547,10 @@ export const DBRowSidePanelInner = ({
   }, [activeRowId, mainContent, resolvedFrameLabels]);
 
   const highlightedAttributeValues = useMemo(() => {
-    const attributeExpressions: NonNullable<
-      (TLogSource | TTraceSource)['highlightedRowAttributeExpressions']
-    > = [];
-    if (
-      (source.kind === SourceKind.Trace || source.kind === SourceKind.Log) &&
-      source.highlightedRowAttributeExpressions
-    ) {
-      attributeExpressions.push(...source.highlightedRowAttributeExpressions);
-    }
-
-    // Add service name expression to all sources, to maintain compatibility with
-    // the behavior prior to the addition of highlightedRowAttributeExpressions
-    if (
-      (isLogSource(source) || isTraceSource(source)) &&
-      source.serviceNameExpression
-    ) {
-      attributeExpressions.push({
-        sqlExpression: source.serviceNameExpression,
-      });
-    }
-
     return rowData
       ? getHighlightedAttributesFromData(
           source,
-          attributeExpressions,
+          getHeaderHighlightExpressions(source),
           rowData.data || [],
           rowData.meta || [],
         )
@@ -868,6 +896,12 @@ export const DBRowSidePanelInner = ({
     clearSpanSelection,
   ]);
 
+  const isBodyShownInTitle = isSpanNameShownInTitle(
+    source,
+    mainContent,
+    allBreadcrumbs.map(crumb => crumb.label),
+  );
+
   const availableTabs = useMemo<Tab[]>(() => {
     const tabs: Tab[] = [];
     if (hasOverviewPanel && !sourceIsTrace) tabs.push(Tab.Overview);
@@ -1075,6 +1109,14 @@ export const DBRowSidePanelInner = ({
           attributes={highlightedAttributeValues}
           mainContent={mainContent}
           mainContentHeader={mainContentColumn}
+          bodyShownInTitle={isBodyShownInTitle}
+          hideEmptyBody={
+            isLogSource(source) &&
+            isBrowserEventRow({
+              eventName: normalizedRow?.[ROW_DATA_ALIASES.EVENT_NAME],
+              attributes: normalizedRow?.[ROW_DATA_ALIASES.EVENT_ATTRIBUTES],
+            })
+          }
           severityText={severityText}
           rowData={normalizedRow}
         />

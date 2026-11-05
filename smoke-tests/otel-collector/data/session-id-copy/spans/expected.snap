@@ -1,0 +1,3 @@
+"copied from rum.sessionId",1,"abc","abc"
+"own session.id wins",1,"app1","abc"
+"no session",0,"",""

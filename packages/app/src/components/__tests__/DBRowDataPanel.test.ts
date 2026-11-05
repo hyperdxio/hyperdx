@@ -13,6 +13,19 @@ jest.mock('@/hooks/useChartConfig', () => ({
   useQueriedChartConfig: jest.fn(),
 }));
 
+type ColumnsResult = {
+  data?: { name: string; default_type: string }[];
+  isLoading: boolean;
+};
+let mockColumns: ColumnsResult;
+const mockUseColumns = jest.fn(
+  (_table: unknown, _options: { enabled?: boolean }) => mockColumns,
+);
+jest.mock('@/hooks/useMetadata', () => ({
+  useColumns: (table: unknown, options: { enabled?: boolean }) =>
+    mockUseColumns(table, options),
+}));
+
 const mockUseQueriedChartConfig = useQueriedChartConfig as jest.Mock;
 const showMaterializedAliasColumns = () =>
   localStorage.setItem('hdx-row-show-materialized-alias-columns', 'true');
@@ -32,6 +45,7 @@ describe('DBRowDataPanel', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     localStorage.clear();
+    mockColumns = { data: undefined, isLoading: false };
     mockUseQueriedChartConfig.mockReturnValue({
       data: {
         data: [],
@@ -124,6 +138,154 @@ describe('DBRowDataPanel', () => {
       valueExpression: 'Timestamp, Body, ServiceName',
     });
     expect(config.select).not.toContainEqual({ valueExpression: '*' });
+  });
+
+  describe('event name', () => {
+    const eventNameAlias = expect.objectContaining({
+      alias: '__hdx_event_name',
+    });
+    const eventNameColumn = (default_type: string) => [
+      { name: 'Body', default_type: '' },
+      { name: 'EventName', default_type },
+    ];
+    const lookUp = (
+      overrides: Partial<TLogSource>,
+      row: Record<string, unknown> = {},
+    ) => {
+      mockUseQueriedChartConfig.mockReturnValue({
+        data: { data: [row], meta: [], rows: 1, isComplete: true },
+        isLoading: false,
+        isError: false,
+        isSuccess: true,
+      });
+      const { result } = renderHook(() =>
+        useRowData({ source: { ...source, ...overrides }, rowId: "id='a'" }),
+      );
+      const [[{ select }, { queryKey }]] = mockUseQueriedChartConfig.mock.calls;
+      return {
+        select,
+        queryKey,
+        row: result.current.data?.data[0],
+        checksColumns: mockUseColumns.mock.calls[0][1].enabled,
+      };
+    };
+
+    it('reads a plain column from the row instead of selecting it', () => {
+      mockColumns = { data: eventNameColumn(''), isLoading: false };
+      const { select, row, checksColumns } = lookUp(
+        { eventNameExpression: 'EventName' },
+        { EventName: 'browser.navigation' },
+      );
+      expect(checksColumns).toBe(true);
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBe('browser.navigation');
+    });
+
+    it.each(['ALIAS', 'MATERIALIZED'])(
+      'selects a %s column, which `*` leaves out',
+      kind => {
+        mockColumns = { data: eventNameColumn(kind), isLoading: false };
+        const { select, row } = lookUp(
+          { eventNameExpression: 'EventName' },
+          { __hdx_event_name: 'browser.resource_timing' },
+        );
+        expect(select).toContainEqual({
+          valueExpression: 'EventName',
+          alias: '__hdx_event_name',
+        });
+        expect(row?.__hdx_event_name).toBe('browser.resource_timing');
+      },
+    );
+
+    it('keys the lookup by whether it selects the column', () => {
+      mockColumns = { data: eventNameColumn(''), isLoading: false };
+      const plain = lookUp({ eventNameExpression: 'EventName' }).queryKey;
+      mockUseQueriedChartConfig.mockClear();
+      mockColumns = { data: eventNameColumn('ALIAS'), isLoading: false };
+      const alias = lookUp({ eventNameExpression: 'EventName' }).queryKey;
+      expect(alias).not.toEqual(plain);
+    });
+
+    it('leaves the event name unset when the table has no such column', () => {
+      mockColumns = {
+        data: [{ name: 'Body', default_type: '' }],
+        isLoading: false,
+      };
+      const { select, row } = lookUp({ eventNameExpression: 'EventName' });
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBeUndefined();
+    });
+
+    it('reads the row when the table columns fail to load', () => {
+      const { select, row } = lookUp(
+        { eventNameExpression: 'EventName' },
+        { EventName: 'browser.navigation' },
+      );
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBe('browser.navigation');
+    });
+
+    it.each<{ lookup: string; dateRange?: [Date, Date] }>([
+      { lookup: 'unbounded' },
+      { lookup: 'bounded', dateRange: [new Date(0), new Date(1000)] },
+    ])(
+      'waits for the table columns before the $lookup lookup',
+      ({ dateRange }) => {
+        mockColumns = { data: undefined, isLoading: true };
+        const { result } = renderHook(() =>
+          useRowData({
+            source: { ...source, eventNameExpression: 'EventName' },
+            rowId: "id='a'",
+            dateRange,
+          }),
+        );
+        for (const [, options] of mockUseQueriedChartConfig.mock.calls) {
+          expect(options.enabled).toBe(false);
+        }
+        expect(result.current.isLoading).toBe(true);
+      },
+    );
+
+    // Columns another page cached must not add a select that the Known
+    // Columns List leaves out.
+    it('selects nothing that a Known Columns List leaves out', () => {
+      mockColumns = { data: eventNameColumn('ALIAS'), isLoading: false };
+      const { select, row, checksColumns } = lookUp({
+        eventNameExpression: 'EventName',
+        knownColumnsListExpression: 'Timestamp, Body',
+      });
+      expect(checksColumns).toBe(false);
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBeUndefined();
+    });
+
+    it('reads a column that a Known Columns List names from the row', () => {
+      const { row } = lookUp(
+        {
+          eventNameExpression: 'EventName',
+          knownColumnsListExpression: 'Timestamp, Body, EventName',
+        },
+        { EventName: 'browser.navigation' },
+      );
+      expect(row?.__hdx_event_name).toBe('browser.navigation');
+    });
+
+    it('selects any other expression under the alias', () => {
+      const { select, checksColumns } = lookUp({
+        eventNameExpression: "LogAttributes['event.name']",
+      });
+      expect(checksColumns).toBe(false);
+      expect(select).toContainEqual({
+        valueExpression: "LogAttributes['event.name']",
+        alias: '__hdx_event_name',
+      });
+    });
+
+    it('reads no event name when the expression is unset', () => {
+      const { select, row } = lookUp({}, { EventName: 'browser.navigation' });
+      expect(select).not.toContainEqual(eventNameAlias);
+      expect(row?.__hdx_event_name).toBeUndefined();
+    });
   });
 
   it('adds no query settings while the viewer option is off', () => {
