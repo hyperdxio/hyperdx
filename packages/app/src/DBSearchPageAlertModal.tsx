@@ -50,13 +50,13 @@ import {
 } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { useBrandDisplayName } from '@/brand';
 import { InlineNameInputControlled } from '@/components/InlineNameInput/InlineNameInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { Tags } from '@/components/Tags';
 import { useCreateSavedSearch } from '@/savedSearch';
 import { useSavedSearch } from '@/savedSearch';
 import { useSource } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   ALERT_CHANNEL_OPTIONS,
   ALERT_INTERVAL_OPTIONS,

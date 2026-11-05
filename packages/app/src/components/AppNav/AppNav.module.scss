@@ -123,15 +123,43 @@ $transition-slow: 0.2s ease;
 }
 
 .collapseButton {
-  margin-right: -$spacing-xs;
-  margin-left: -$spacing-xs;
+  /* Click UI token names are camelCase. */
+  /* stylelint-disable custom-property-pattern */
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--click-button-iconButton-sm-space-y)
+    var(--click-button-iconButton-sm-space-x);
+  border: var(--click-button-stroke) solid
+    var(--click-button-iconButton-color-primary-stroke-default);
+  border-radius: var(--click-button-iconButton-radii-all);
+  background: var(--click-button-iconButton-color-primary-background-default);
+  color: var(--click-button-iconButton-color-primary-text-default);
+  cursor: pointer;
+  line-height: 0;
+
+  svg {
+    width: var(--click-image-sm-size-width);
+    height: var(--click-image-sm-size-height);
+  }
+
+  &:hover {
+    border-color: var(--click-button-iconButton-color-primary-stroke-hover);
+    background: var(--click-button-iconButton-color-primary-background-hover);
+    color: var(--click-button-iconButton-color-primary-text-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--click-global-color-outline-default);
+    outline-offset: 2px;
+  }
 
   &Collapsed {
     transform: rotate(180deg);
-    margin-top: 0;
-    margin-right: 0;
-    margin-left: 0;
   }
+  /* stylelint-enable custom-property-pattern */
 }
 
 .scrollContainer {

@@ -45,8 +45,8 @@ jest.mock('@/components/alerts/EditInlineAlertModal', () => ({
 
 const confirm = jest.fn().mockResolvedValue(true);
 jest.mock('@/useConfirm', () => ({ useConfirm: () => confirm }));
-jest.mock('@/theme/ThemeProvider', () => ({
-  useBrandDisplayName: () => 'HyperDX',
+jest.mock('@/brand', () => ({
+  useBrandDisplayName: () => 'ClickStack',
 }));
 
 // ObjectId hex: buildImportBlock refuses to emit Terraform for anything else,

@@ -30,8 +30,8 @@ import { TimePicker } from '@/components/TimePicker';
 import { IS_ALERT_DETAILS_ENABLED } from '@/config';
 import { getAlertSourceLabel, getAlertSourceUrl } from '@/utils/alerts';
 
-import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
+import { usePageTitle } from './brand';
 import { withAppNavForSurface } from './layout';
 import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 import type { AlertsPageItem } from './types';

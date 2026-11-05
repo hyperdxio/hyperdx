@@ -18,7 +18,7 @@ import { notifications } from '@mantine/notifications';
 import { IconLock, IconUserPlus } from '@tabler/icons-react';
 
 import api from '@/api';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { useBrandDisplayName } from '@/brand';
 
 export default function TeamMembersSection() {
   const brandName = useBrandDisplayName();

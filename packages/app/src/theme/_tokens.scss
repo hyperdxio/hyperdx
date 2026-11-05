@@ -1,6 +1,6 @@
-/* ClickStack Theme Design Tokens */
+/* Design tokens */
 
-/* Yellow/Gold accent theme for ClickStack branding */
+/* Yellow/Gold accent */
 
 /* Uses Click UI design tokens */
 
@@ -14,7 +14,7 @@
  * `chart-categorical-tokens` partial (two mixins: hues, then semantics).
  */
 
-@use '../chart-categorical-tokens' as shared-chart;
+@use './chart-categorical-tokens' as shared-chart;
 
 @mixin chart-tokens {
   @include shared-chart.chart-categorical-tokens;
@@ -22,7 +22,7 @@
 }
 
 /* Dark Mode */
-.theme-clickstack[data-mantine-color-scheme='dark'] {
+[data-mantine-color-scheme='dark'] {
   /* Brand Palette - Yellow/Gold */
   --palette-brand-50: #ffffe8;
   --palette-brand-100: #feffba;
@@ -249,7 +249,7 @@
 }
 
 /* Light Mode */
-.theme-clickstack[data-mantine-color-scheme='light'] {
+[data-mantine-color-scheme='light'] {
   /* Brand Palette - Yellow/Gold */
   --palette-brand-50: #ffffe8;
   --palette-brand-100: #feffc2;
@@ -499,8 +499,8 @@
  * keeps this independent of Mantine's auto-generated CSS module class
  * names. `--click-global-color-background-default` is already
  * scheme-aware: dark in dark mode, white in light mode, so the same
- * declaration handles both themes. */
-.theme-clickstack input[role='switch'][data-checked='true'] + * {
+ * declaration handles both color modes. */
+input[role='switch'][data-checked='true'] + * {
   --switch-text-color: var(--click-global-color-background-default);
   --switch-thumb-bg: var(--click-global-color-background-default);
 }

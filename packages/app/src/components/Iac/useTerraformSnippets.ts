@@ -54,7 +54,7 @@ export function useTerraformSnippets({
         // The tile-alert caveat is the bulk file's, cut to one line. This is
         // the likelier path for someone who just made a tile alert, and the
         // generated config it produces is only durable after a hand edit.
-        hint: `Add to your Terraform project, then run \`terraform plan -generate-config-out=generated.tf\` and review before applying. The address is derived from this resource’s id, so it survives a rename in HyperDX.${
+        hint: `Add to your Terraform project, then run \`terraform plan -generate-config-out=generated.tf\` and review before applying. The address is derived from this resource’s id, so it survives a rename in ClickStack.${
           tileAlert
             ? ' The generated config pins dashboard_id and tile_id as literals — replace them with clickhouse_clickstack_dashboard references before you apply, or a later dashboard apply re-mints the tile id and deletes this alert with the tile it pointed at.'
             : ''

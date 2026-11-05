@@ -63,9 +63,10 @@ jest.mock('@/favorites', () => ({
 jest.mock('@/layout', () => ({
   withAppNav: (component: unknown) => component,
 }));
-jest.mock('@/theme/ThemeProvider', () => ({
-  useBrandDisplayName: () => 'HyperDX',
-  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
+jest.mock('@/brand', () => ({
+  useBrandDisplayName: () => 'ClickStack',
+  usePageTitle: (page?: string) =>
+    page ? `${page} - ClickStack` : 'ClickStack',
 }));
 jest.mock('@/useConfirm', () => ({
   useConfirm: () => jest.fn(),

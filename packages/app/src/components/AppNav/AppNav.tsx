@@ -6,18 +6,9 @@ import cx from 'classnames';
 import { Badge } from '@clickhouse/click-ui';
 import HyperDX from '@hyperdx/browser';
 import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
-import {
-  ActionIcon,
-  Anchor,
-  Collapse,
-  Flex,
-  Group,
-  ScrollArea,
-  Text,
-} from '@mantine/core';
+import { Anchor, Collapse, Flex, Group, ScrollArea, Text } from '@mantine/core';
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
-  IconArrowBarToLeft,
   IconBell,
   IconChartDots,
   IconDeviceFloppy,
@@ -29,6 +20,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useLogomark, useWordmark } from '@/brand';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
 import { useCompactViewport } from '@/components/CompactViewport/useCompactViewport';
@@ -39,7 +31,6 @@ import { setHdxIdentity } from '@/hdxDebug';
 import InstallInstructionModal from '@/InstallInstructionsModal';
 import OnboardingChecklist from '@/OnboardingChecklist';
 import { useSavedSearches } from '@/savedSearch';
-import { useLogomark, useWordmark } from '@/theme/ThemeProvider';
 import { getTimeZoneShortName } from '@/timeZone';
 import { useDisplayTimeZone } from '@/useDisplayTimeZone';
 import { UserPreferencesModal } from '@/UserPreferencesModal';
@@ -386,17 +377,33 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 </Group>
               )}
             </Link>
-            <ActionIcon
-              variant="subtle"
-              size="sm"
+            {/* click-ui 0.12 has no sidebar-left icon, so the glyph is
+                inlined. Chrome matches IconButton type="primary" size="sm". */}
+            <button
+              type="button"
               className={cx(styles.collapseButton, {
                 [styles.collapseButtonCollapsed]: isCollapsed,
               })}
               title="Collapse/expand navigation"
+              aria-label="Collapse/expand navigation"
               onClick={() => setIsPreferCollapsed((v: boolean) => !v)}
             >
-              <IconArrowBarToLeft size={16} />
-            </ActionIcon>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-hidden
+              >
+                <path
+                  fill="currentColor"
+                  d="M20.25 5C20.25 4.30921 19.6908 3.75 19 3.75H10.752H9.25195H5C4.30921 3.75 3.75 4.30921 3.75 5V19C3.75 19.6908 4.30921 20.25 5 20.25H9.25195H10.752H19C19.6908 20.25 20.25 19.6908 20.25 19V5ZM21.75 19C21.75 20.5192 20.5192 21.75 19 21.75H5C3.48079 21.75 2.25 20.5192 2.25 19V5C2.25 3.48079 3.48079 2.25 5 2.25H19C20.5192 2.25 21.75 3.48079 21.75 5V19Z"
+                />
+                <path
+                  fill="currentColor"
+                  d="M9.25195 3.75V20.25H10.752V3.75H9.25195Z"
+                />
+              </svg>
+            </button>
           </div>
         </div>
         <ScrollArea
