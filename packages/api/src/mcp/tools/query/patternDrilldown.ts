@@ -1,13 +1,19 @@
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderWhereExpressionStr } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
+import { ID_MASK, TIMESTAMP_MASK } from '@hyperdx/common-utils/dist/drain';
 import type {
   ChartVariable,
   UseTextIndex,
 } from '@hyperdx/common-utils/dist/types';
 import { substituteVariables } from '@hyperdx/common-utils/dist/variables';
 
-const PATTERN_WILDCARD = '<*>';
+// Masks applied before Drain (common-utils drain/config.ts). A masked
+// timestamp can stand for several words; a masked id is one word.
+const TIMESTAMP_TOKEN = `<${TIMESTAMP_MASK}>`;
+const ID_TOKEN = `<${ID_MASK}>`;
+// eslint-disable-next-line security/detect-non-literal-regexp -- built from constants
+const PLACEHOLDERS = new RegExp(`(<\\*>|${TIMESTAMP_TOKEN}|${ID_TOKEN})`);
 
 /**
  * Templates longer than this get no predicate: the regex (and the SQL that
@@ -19,7 +25,8 @@ export const MAX_PREDICATE_TEMPLATE_LENGTH = 4000;
 export const PATTERN_MATCH_SEMANTICS =
   'whereSnippet matches values with the same whitespace-separated token count as the ' +
   'template, the same literal tokens (case-sensitive) in the same positions, and exactly ' +
-  'one non-whitespace token at each <*>. Every sampled member of the cluster matches. ' +
+  'one non-whitespace token at each <*> or <ID> (also inside a token), and any text at a masked timestamp <TS>. ' +
+  'Every sampled member of the cluster matches. ' +
   'It can also match unsampled events whose shape fits, including ones Drain would have ' +
   'put in a more specific cluster, so the drill-down is a superset of cluster membership.';
 
@@ -39,7 +46,20 @@ function escapeRe2Literal(token: string): string {
 export function templateToRegex(template: string): string {
   const tokens = template.split(/\s+/).filter(t => t.length > 0);
   const body = tokens
-    .map(t => (t === PATTERN_WILDCARD ? `${NON_WS}+` : escapeRe2Literal(t)))
+    // <*> and <ID> are one or more non-whitespace characters, as a whole token
+    // or inside one (`trace_id=<ID>`); <TS> can span spaces.
+    .map(t =>
+      t
+        .split(PLACEHOLDERS)
+        .map((piece, i) =>
+          i % 2 === 0
+            ? escapeRe2Literal(piece)
+            : piece === TIMESTAMP_TOKEN
+              ? '.+?'
+              : `${NON_WS}+`,
+        )
+        .join(''),
+    )
     .join(`${WS}+`);
   return `^${WS}*${body}${WS}*$`;
 }

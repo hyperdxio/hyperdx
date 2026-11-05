@@ -1,5 +1,5 @@
 export type { MaskingInstructionConfig } from './config';
-export { TemplateMinerConfig } from './config';
+export { ID_MASK, TemplateMinerConfig, TIMESTAMP_MASK } from './config';
 export { Drain } from './drain';
 export { LogCluster } from './log-cluster';
 export { LruCache } from './lru-cache';

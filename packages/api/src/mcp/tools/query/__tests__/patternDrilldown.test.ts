@@ -97,6 +97,24 @@ describe('templateToRegex', () => {
     expect(matches('id <*> ok', 'id 日本 語 ok')).toBe(false);
   });
 
+  it('a masked id is one word, also inside a token; a masked timestamp can span spaces', () => {
+    expect(matches('span trace_id=<ID> ok', 'span trace_id=4bf92f35 ok')).toBe(
+      true,
+    );
+    expect(matches('span trace_id=<ID> ok', 'span trace_id= ok')).toBe(false);
+    expect(matches('span trace_id=<ID> ok', 'span span_id=4bf92f35 ok')).toBe(
+      false,
+    );
+    expect(matches('span trace_id=<ID> ok', 'span trace_id=a b ok')).toBe(
+      false,
+    );
+    expect(
+      matches('[<TS>] "GET /"', '[04/Nov/2026:06:12:12 +0000] "GET /"'),
+    ).toBe(true);
+    expect(matches('<TS> INFO x', '2026-11-04 06:12:12,345 INFO x')).toBe(true);
+    expect(matches('<TS> INFO x', 'INFO x')).toBe(false);
+  });
+
   it('turns an empty template into a whitespace-only match', () => {
     expect(matches('', '')).toBe(true);
     expect(matches('', '  \n')).toBe(true);
@@ -142,6 +160,40 @@ describe('templateToRegex', () => {
           // of this one (same shape); none of these fixtures overlap.
           throw new Error(`"${p.pattern}" unexpectedly matched "${o}"`);
         }
+      }
+    }
+  });
+  it('matches the samples of patterns mined from dated lines with the default masks', () => {
+    const messages = [
+      ...[1, 2, 3].map(
+        n =>
+          `2026-11-0${n} 06:12:1${n},345 INFO [main] c.e.Job - Sync ok for 10${n}`,
+      ),
+      ...[4, 5].map(n => `[0${n}/Nov/2026:06:12:12 +0000] "GET /health" 200`),
+      ...[
+        '4bf92f3577b34da6a3ce929d0e0e4736',
+        '00f067aa0ba902b7a3ce929d0e0e4736',
+      ].map(id => `exported span trace_id=${id} status=ok`),
+      ...[3, 4].map(n => `Nov  ${n} 06:12:12 host sshd[42]: session opened`),
+    ];
+    const { patterns } = minePatterns(
+      messages.map(body => ({ body })),
+      {
+        totalCount: messages.length,
+        startDate: new Date(0),
+        endDate: new Date(1000),
+        trendBuckets: 0,
+        maxSamples: messages.length,
+        getBody: r => r.body,
+        getTimestamp: () => 0,
+      },
+    );
+    expect(patterns).toHaveLength(4);
+    for (const p of patterns) {
+      const re = toJsRegex(templateToRegex(p.pattern));
+      for (const s of p.samples) expect(re.test(s.body)).toBe(true);
+      for (const o of patterns.filter(o => o !== p).flatMap(o => o.samples)) {
+        expect(re.test(o.body)).toBe(false);
       }
     }
   });
