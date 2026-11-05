@@ -56,7 +56,8 @@ export function trimToolResponse<T = any>(
     current = structuredClone(data);
     for (const reduction of reductions) {
       const note = applyReduction(current, reduction);
-      if (note) notes.push(note);
+      if (!note) continue; // nothing changed, so the size didn't either
+      notes.push(note);
       const size = JSON.stringify(current).length;
       if (size <= maxSize) {
         return {
@@ -69,7 +70,12 @@ export function trimToolResponse<T = any>(
   }
 
   // Fallback: per-key budget split and array cuts.
-  const stats: FallbackStats = { arrays: [], strings: 0, charsRemoved: 0 };
+  const stats: FallbackStats = {
+    arrays: [],
+    strings: 0,
+    charsRemoved: 0,
+    markers: 0,
+  };
   let trimmed: unknown = current;
   if (Array.isArray(current)) {
     trimmed = trimArray(current, maxSize, '', stats);
@@ -81,14 +87,31 @@ export function trimToolResponse<T = any>(
     return { data: current, isTrimmed: notes.length > 0, notes };
   }
 
+  // One line per path: a nested array is cut once per parent item.
+  const cuts = new Map<string, { items: number; from: number; to: number }>();
   for (const a of stats.arrays) {
+    const c = cuts.get(a.path) ?? { items: 0, from: 0, to: 0 };
+    cuts.set(a.path, {
+      items: c.items + 1,
+      from: c.from + a.from,
+      to: c.to + a.to,
+    });
+  }
+  for (const [path, c] of cuts) {
     notes.push(
-      `${a.path || 'result'}: cut from ${fmt(a.from)} to ${fmt(a.to)} items`,
+      c.items === 1
+        ? `${path || 'result'}: cut from ${fmt(c.from)} to ${fmt(c.to)} items`
+        : `${path}: cut in ${fmt(c.items)} items, from ${fmt(c.from)} to ${fmt(c.to)} elements in total`,
     );
   }
   if (stats.strings > 0) {
     notes.push(
       `${fmt(stats.strings)} long value(s) shortened (${fmt(stats.charsRemoved)} chars removed)`,
+    );
+  }
+  if (stats.markers > 0) {
+    notes.push(
+      `${fmt(stats.markers)} value(s) too large to shorten replaced by {"__hdx_trimmed":true,"originalSize":N}`,
     );
   }
   const finalSize = JSON.stringify(trimmed).length;
@@ -104,6 +127,7 @@ interface FallbackStats {
   arrays: { path: string; from: number; to: number }[];
   strings: number;
   charsRemoved: number;
+  markers: number;
 }
 
 const fmt = (n: number) => n.toLocaleString('en-US');
@@ -111,10 +135,18 @@ const fmt = (n: number) => n.toLocaleString('en-US');
 const sizeNote = (from: number, to: number, max: number) =>
   `Response trimmed from ${fmt(from)} to ${fmt(to)} chars (limit ${fmt(max)}).`;
 
-/** `s` cut to `maxChars`, followed by "…(+N chars)". */
+/**
+ * `s` cut to `maxChars`, followed by "…(+N chars)". Returned unchanged when the
+ * suffix would make it no shorter. Unlike `truncateString` (utils/common), the
+ * suffix says how much was cut, which the agent needs to judge the value.
+ */
 export function shortenString(s: string, maxChars: number): string {
   if (s.length <= maxChars) return s;
-  return `${s.slice(0, Math.max(0, maxChars))}…(+${fmt(s.length - Math.max(0, maxChars))} chars)`;
+  let keep = Math.max(0, maxChars);
+  // Don't split a surrogate pair (JSON would carry a lone \udXXX escape).
+  if (/[\uD800-\uDBFF]/.test(s.charAt(keep - 1))) keep--;
+  const out = `${s.slice(0, keep)}…(+${fmt(s.length - keep)} chars)`;
+  return out.length < s.length ? out : s;
 }
 
 // Shorten so that the JSON-encoded string fits `budget` (escaping can make it
@@ -130,12 +162,10 @@ function shortenToFit(s: string, budget: number, stats: FallbackStats): string {
   }
   if (out !== s) {
     stats.strings++;
-    stats.charsRemoved += s.length - keep;
+    stats.charsRemoved += s.length - out.length;
   }
   return out;
 }
-
-// ─── Ordered reductions ──────────────────────────────────────────────────────
 
 // Calls `onTarget(container, key)` for every value the path points at.
 function visit(
@@ -181,10 +211,13 @@ function applyReduction(root: any, reduction: Reduction): string | undefined {
         container[key] = value.slice(0, reduction.keep); // eslint-disable-line security/detect-object-injection
         items++;
       }
-    } else if (typeof value === 'string' && value.length > reduction.maxChars) {
-      amount += value.length - reduction.maxChars;
-      container[key] = shortenString(value, reduction.maxChars); // eslint-disable-line security/detect-object-injection
-      items++;
+    } else if (typeof value === 'string') {
+      const out = shortenString(value, reduction.maxChars);
+      if (out !== value) {
+        amount += value.length - out.length;
+        container[key] = out; // eslint-disable-line security/detect-object-injection
+        items++;
+      }
     }
   });
 
@@ -193,10 +226,8 @@ function applyReduction(root: any, reduction: Reduction): string | undefined {
     return `${reduction.path}: removed (${fmt(items)} items)`;
   if ('keep' in reduction)
     return `${reduction.path}: kept the first ${fmt(reduction.keep)} (${fmt(amount)} elements removed from ${fmt(items)} items)`;
-  return `${reduction.path}: ${fmt(items)} value(s) shortened to ${fmt(reduction.maxChars)} chars (${fmt(amount)} chars removed)`;
+  return `${reduction.path}: ${fmt(items)} value(s) cut to the first ${fmt(reduction.maxChars)} chars (${fmt(amount)} chars removed)`;
 }
-
-// ─── Generic fallback ────────────────────────────────────────────────────────
 
 function trimArray(
   arr: any[],
@@ -231,9 +262,11 @@ function trimArray(
       0,
     );
     const largeCount = sizes.filter(s => s > share).length;
-    const itemBudget = Math.max(
-      share,
-      Math.floor((maxSize - smallTotal - result.length) / largeCount),
+    // Over budget only through separators: no single item to shorten.
+    if (largeCount === 0) return result;
+    // n-1 commas and 2 brackets
+    const itemBudget = Math.floor(
+      (maxSize - smallTotal - (result.length + 1)) / largeCount,
     );
     result = result.map((item, i) => {
       if (sizes[i] <= itemBudget) return item; // eslint-disable-line security/detect-object-injection
@@ -249,6 +282,7 @@ function trimArray(
           : trimObject(item, itemBudget, `${path}[]`, stats);
       }
       // Non-string scalar that is itself too large — return a truncation marker
+      stats.markers++;
       return { __hdx_trimmed: true, originalSize: sizes[i] }; // eslint-disable-line security/detect-object-injection
     });
   }
@@ -293,6 +327,7 @@ function trimObject(
       } else if (typeof value === 'string') {
         result[key] = shortenToFit(value, perKeyBudget, stats); // eslint-disable-line security/detect-object-injection
       } else {
+        stats.markers++;
         result[key] = { __hdx_trimmed: true, originalSize: valueStr.length }; // eslint-disable-line security/detect-object-injection
       }
       trimmed = true;

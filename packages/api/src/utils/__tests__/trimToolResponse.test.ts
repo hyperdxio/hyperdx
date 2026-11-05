@@ -140,7 +140,7 @@ describe('trimToolResponse', () => {
 
   describe('shortening instead of replacing', () => {
     it('shortens an oversized string with a "…(+N chars)" suffix', () => {
-      expect(shortenString('a'.repeat(10), 4)).toBe('aaaa…(+6 chars)');
+      expect(shortenString('a'.repeat(100), 4)).toBe('aaaa…(+96 chars)');
       expect(shortenString('a'.repeat(8000), 1000)).toBe(
         `${'a'.repeat(1000)}…(+7,000 chars)`,
       );
@@ -167,6 +167,83 @@ describe('trimToolResponse', () => {
       expect(notes).toEqual(
         expect.arrayContaining([
           expect.stringMatching(/^rows: cut from 100 to \d+ items$/),
+        ]),
+      );
+    });
+
+    it('never makes a value longer, and keeps surrogate pairs whole', () => {
+      // Cutting 5 chars would add a 13-char suffix.
+      const s = 'x'.repeat(105);
+      expect(shortenString(s, 100)).toBe(s);
+      const emoji = `${'a'.repeat(9)}😀${'b'.repeat(100)}`;
+      expect(shortenString(emoji, 10)).toBe(`${'a'.repeat(9)}…(+102 chars)`);
+    });
+
+    it('counts the suffix when reporting removed chars', () => {
+      const { notes } = trimToolResponse({ a: 'q'.repeat(3000) }, 50_000, {
+        reductions: [{ path: 'a', maxChars: 1000 }],
+      });
+      expect(notes).toHaveLength(0); // fits as-is, nothing applied
+      const r = trimToolResponse({ a: 'q'.repeat(3000) }, 2000, {
+        reductions: [{ path: 'a', maxChars: 1000 }],
+      });
+      const out = r.data.a as string;
+      expect(r.notes[1]).toBe(
+        `a: 1 value(s) cut to the first 1,000 chars (${(3000 - out.length).toLocaleString('en-US')} chars removed)`,
+      );
+    });
+
+    it.each([
+      ['quotes', '"'],
+      ['control chars', '\u0001'],
+      ['non-ASCII', 'ä😀'],
+      ['the … marker', '…'],
+    ])(
+      'stays within the budget with %s that expand in JSON',
+      (_label, unit) => {
+        const big = unit.repeat(4000);
+        for (const max of [500, 2000, 8000]) {
+          const asObject = trimToolResponse({ a: big, b: big, c: 'ok' }, max);
+          expect(JSON.stringify(asObject.data).length).toBeLessThanOrEqual(max);
+          const asArray = trimToolResponse(Array(12).fill(big), max);
+          expect(JSON.stringify(asArray.data).length).toBeLessThanOrEqual(max);
+        }
+      },
+    );
+
+    it('returns an array unchanged when only separators push it over', () => {
+      // 10 items of 10 JSON chars: share 11, so none is large; 111 > 110.
+      const arr = Array(10).fill('12345678');
+      const { data } = trimToolResponse(arr, 110);
+      expect(data).toEqual(arr);
+    });
+
+    it('notes a nested array cut once per path', () => {
+      const data = {
+        patterns: Array.from({ length: 10 }, () => ({
+          samples: Array.from({ length: 50 }, () => 's'.repeat(100)),
+        })),
+      };
+      const { notes } = trimToolResponse(data, 8000);
+      const sampleNotes = notes.filter(n => n.startsWith('patterns[].samples'));
+      expect(sampleNotes).toHaveLength(1);
+      expect(sampleNotes[0]).toMatch(
+        /^patterns\[\]\.samples: cut in 10 items, from 500 to \d+ elements in total$/,
+      );
+    });
+
+    it('notes values replaced by a size marker', () => {
+      // A number can't be shortened: over its budget it becomes a marker.
+      const { data, notes } = trimToolResponse(
+        { n: 1e300, s: 'p'.repeat(500) },
+        8,
+      );
+      expect(data.n).toEqual({ __hdx_trimmed: true, originalSize: 6 });
+      expect(notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(
+            /^1 value\(s\) too large to shorten replaced by/,
+          ),
         ]),
       );
     });
@@ -203,8 +280,8 @@ describe('trimToolResponse', () => {
       expect(notes).toEqual(
         expect.arrayContaining([
           'patterns[].samples: kept the first 2 (12 elements removed from 4 items)',
-          'patterns[].samples[]: 8 value(s) shortened to 10 chars (7,920 chars removed)',
-          'patterns[].pattern: 4 value(s) shortened to 20 chars (11,920 chars removed)',
+          'patterns[].samples[]: 8 value(s) cut to the first 10 chars (7,816 chars removed)',
+          'patterns[].pattern: 4 value(s) cut to the first 20 chars (11,860 chars removed)',
           'patterns[].trend: removed (4 items)',
         ]),
       );
@@ -227,6 +304,15 @@ describe('trimToolResponse', () => {
       expect(data.patterns[0].pattern).toHaveLength(3000); // second step not needed
       expect(data.patterns[0].samples).toHaveLength(1);
       expect(notes).toHaveLength(2); // size note + the one reduction
+    });
+
+    it('ignores drop on array elements (only object keys are removed)', () => {
+      const data = { a: Array(50).fill('w'.repeat(100)) };
+      const { data: out, notes } = trimToolResponse(data, 3000, {
+        reductions: [{ path: 'a[]', drop: true }],
+      });
+      expect(notes.some(n => n.startsWith('a[]'))).toBe(false);
+      expect(Array.isArray(out.a)).toBe(true);
     });
 
     it('returns the input unchanged when it fits', () => {

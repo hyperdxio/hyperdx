@@ -555,7 +555,9 @@ export async function runEventPatterns(
   };
 
   // Shrink samples, then long text, before the generic trim cuts whole patterns,
-  // so topN patterns survive when they can.
+  // so topN patterns survive when they can. whereSnippet is dropped, never
+  // shortened: a cut snippet is invalid SQL. Dropping it is the last step, so
+  // the generic fallback (which shortens strings) never sees one.
   const {
     data: trimmedOutput,
     isTrimmed,
@@ -567,13 +569,21 @@ export async function runEventPatterns(
       { path: 'patterns[].samples[]', maxChars: 2000 },
       { path: 'patterns[].pattern', maxChars: 2000 },
       { path: 'patterns[].trend', drop: true },
+      { path: 'patterns[].whereSnippet', drop: true },
     ],
   });
 
+  const snippetsDropped = trimmedOutput.patterns.some(
+    p => !('whereSnippet' in p),
+  );
   const finalOutput = isTrimmed
     ? {
         ...trimmedOutput,
-        note: 'Result was trimmed for context size. Narrow the time range, add filters, or reduce topN to reduce data.',
+        note:
+          'Result was trimmed for context size. Narrow the time range, add filters, or reduce topN to reduce data.' +
+          (snippetsDropped
+            ? ' whereSnippet was removed from the patterns to fit, so the usage steps for it do not apply; narrow the time range or filters, or lower topN, to get it back.'
+            : ''),
         trimNotes,
       }
     : trimmedOutput;

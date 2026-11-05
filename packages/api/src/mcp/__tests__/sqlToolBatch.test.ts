@@ -320,7 +320,10 @@ describe('clickstack_sql batch mode', () => {
       content: [
         {
           type: 'text' as const,
-          text: JSON.stringify({ result: { data: Array(10).fill(bigRow) } }),
+          text: JSON.stringify({
+            result: { data: Array(10).fill(bigRow) },
+            trimNotes: ['data: cut from 500 to 10 items'],
+          }),
         },
       ],
     });
@@ -338,6 +341,11 @@ describe('clickstack_sql batch mode', () => {
       expect(entry.result.data.length).toBeGreaterThan(0);
       expect(entry.result.data.length).toBeLessThan(10);
       expect(entry.note).toContain('batch response size budget');
+      // The batch cut is appended to the per-query notes.
+      expect(entry.trimNotes).toEqual([
+        'data: cut from 500 to 10 items',
+        `Rows cut to ${entry.result.data.length} to fit the batch response size budget.`,
+      ]);
     }
   });
 

@@ -645,6 +645,55 @@ describe('MCP Query Tools', () => {
   // ─── clickstack_event_patterns ─────────────────────────────────────────────────
 
   describe('clickstack_event_patterns', () => {
+    describe('when the response is over the size limit', () => {
+      const now = new Date();
+
+      beforeEach(async () => {
+        // 30 unrelated patterns of ~60 tokens, 4 rows each: the samples and
+        // drill-down predicates push the response well past 50,000 chars.
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+        for (let p = 0; p < 30; p++) {
+          const words = Array.from({ length: 60 }, (_, k) => `f${p}x${k}`);
+          for (let r = 0; r < 4; r++) {
+            logs.push({
+              Body: `Failure${p} ${words.join(' ')} id${p}_${r}`,
+              ServiceName: 'big-service',
+              SeverityText: 'ERROR',
+              Timestamp: new Date(now.getTime() - (p * 4 + r + 1) * 1000),
+            });
+          }
+        }
+        await bulkInsertLogs(logs);
+      });
+
+      it('keeps all topN patterns and drops, never cuts, whereSnippet', async () => {
+        const result = await callTool(client, 'clickstack_event_patterns', {
+          sourceId: logSource._id.toString(),
+          topN: 30,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const text = getFirstText(result);
+        const output = JSON.parse(text);
+        expect(output.patterns).toHaveLength(30);
+        expect(text).not.toContain('__hdx_trimmed');
+        expect(output.trimNotes).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(/^Response trimmed from /),
+            expect.stringMatching(/^patterns\[\]\.samples: kept the first/),
+            expect.stringMatching(/^patterns\[\]\.whereSnippet: removed/),
+          ]),
+        );
+        expect(output.note).toContain('whereSnippet was removed');
+        for (const p of output.patterns) {
+          expect(p).not.toHaveProperty('whereSnippet');
+          expect(p.pattern).toMatch(/^Failure\d+ /);
+        }
+      });
+    });
+
     it('should execute an event_patterns query on a log source', async () => {
       const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: logSource._id.toString(),

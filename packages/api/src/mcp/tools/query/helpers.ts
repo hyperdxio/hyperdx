@@ -355,11 +355,12 @@ function isEmptyResult(result: unknown): boolean {
 }
 
 function formatQueryResult(result: unknown, maxResponseChars?: number) {
+  // Trimmed under its response key, so note paths read `result.data…`.
   const {
-    data: trimmedResult,
+    data: { result: trimmedResult },
     isTrimmed,
     notes: trimNotes,
-  } = trimToolResponse(result, maxResponseChars);
+  } = trimToolResponse({ result }, maxResponseChars);
   const empty = isEmptyResult(result);
   return {
     content: [

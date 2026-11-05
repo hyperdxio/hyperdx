@@ -114,7 +114,10 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
       const resultText = result.content?.[0]?.text;
       if (!resultText) return result;
 
-      let parsed: { result?: { data?: Record<string, unknown>[] } };
+      let parsed: {
+        result?: { data?: Record<string, unknown>[] };
+        trimNotes?: string[];
+      };
       try {
         parsed = JSON.parse(resultText);
       } catch {
@@ -122,6 +125,8 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
       }
 
       const resultData = parsed.result;
+      // runConfigTile may already have trimmed the rows; keep its notes.
+      const firstPassNotes = parsed.trimNotes ?? [];
       const rows = (resultData as Record<string, unknown> | undefined)?.data as
         | Record<string, unknown>[]
         | undefined;
@@ -151,10 +156,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
         );
 
         const {
-          data: trimmedResult,
+          data: { result: trimmedResult },
           isTrimmed,
-          notes: trimNotes,
-        } = trimToolResponse(resultData);
+          notes,
+        } = trimToolResponse({ result: resultData });
+        const trimNotes = [...firstPassNotes, ...notes];
         return {
           content: [
             {
@@ -168,7 +174,7 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
                     filteredRowCount: rows.length,
                     skipped: 'denoise_failed',
                   },
-                  ...(isTrimmed
+                  ...(isTrimmed || trimNotes.length > 0
                     ? {
                         note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
                         trimNotes,
@@ -191,10 +197,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
         data: denoised.rows,
       };
       const {
-        data: trimmedResult,
+        data: { result: trimmedResult },
         isTrimmed,
-        notes: trimNotes,
-      } = trimToolResponse(denoisedResult);
+        notes,
+      } = trimToolResponse({ result: denoisedResult });
+      const trimNotes = [...firstPassNotes, ...notes];
 
       return {
         content: [
@@ -211,7 +218,7 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
                   filteredRowCount: denoised.rows.length,
                   ...(denoised.skipped ? { skipped: denoised.skipped } : {}),
                 },
-                ...(isTrimmed
+                ...(isTrimmed || trimNotes.length > 0
                   ? {
                       note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
                       trimNotes,
