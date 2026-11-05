@@ -121,7 +121,11 @@ jobs:
       - name: Spin up docker services
         run: |
           docker buildx create --use --driver=docker-container
-          docker buildx bake -f ./docker-compose.ci.yml --set *.cache-to="type=gha,mode=max,scope=ci-integration" --set *.cache-from="type=gha,scope=ci-integration" --load
+          # One cache scope per image (a scope holds one manifest); db reuses the e2e job's documentdb scope.
+          docker buildx bake -f ./docker-compose.ci.yml \
+            --set otel-collector.cache-to="type=gha,mode=max,scope=ci-integration" --set otel-collector.cache-from="type=gha,scope=ci-integration" \
+            --set db.cache-to="type=gha,mode=max,scope=documentdb" --set db.cache-from="type=gha,scope=documentdb" \
+            --load
       - name: Build dependencies
         run: make ci-build
       # Integration tests boot a MockServer on fixed ports and share a single
