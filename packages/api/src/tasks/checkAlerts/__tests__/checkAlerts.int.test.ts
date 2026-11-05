@@ -6535,6 +6535,118 @@ describe('checkAlerts', () => {
       expect(alertHistories[0].lastValues[0].count).toBe(0);
     });
 
+    // A missed tick extends the next run's date range back to the last
+    // evaluated window. Time-series alerts bucket that range per interval,
+    // but a Number chart runs its SQL once over the whole range and compares
+    // the total against the per-window threshold.
+    it('TILE alert (raw SQL Number chart) - catch-up after a missed tick compares each window to the threshold', async () => {
+      const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
+        await setupSavedSearchAlertTest();
+
+      await bulkInsertLogs([
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:01:00.000Z'),
+          SeverityText: 'error',
+          Body: 'window 1 event 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:02:00.000Z'),
+          SeverityText: 'error',
+          Body: 'window 1 event 2',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:06:00.000Z'),
+          SeverityText: 'error',
+          Body: 'window 2 event 1',
+        },
+        {
+          ServiceName: 'api',
+          Timestamp: new Date('2023-11-16T22:07:00.000Z'),
+          SeverityText: 'error',
+          Body: 'window 2 event 2',
+        },
+      ]);
+
+      const dashboard = await new Dashboard({
+        name: 'Number Chart Catchup Dashboard',
+        team: team._id,
+        tiles: [
+          {
+            id: 'number-catchup',
+            x: 0,
+            y: 0,
+            w: 6,
+            h: 4,
+            config: {
+              configType: 'sql',
+              displayType: 'number',
+              sqlTemplate: RAW_SQL_NUMBER_ALERT_TEMPLATE,
+              connection: connection.id,
+            },
+          },
+        ],
+      }).save();
+
+      const tile = dashboard.tiles?.find((t: any) => t.id === 'number-catchup');
+      if (!tile) throw new Error('tile not found');
+
+      const details = await createAlertDetails(
+        team,
+        undefined,
+        {
+          source: AlertSource.TILE,
+          channel: {
+            type: 'webhook',
+            webhookId: webhook._id.toString(),
+          },
+          interval: '5m',
+          // Each window has 2 events; only the two windows summed reach 3.
+          thresholdType: AlertThresholdType.ABOVE,
+          threshold: 3,
+          dashboardId: dashboard.id,
+          tileId: 'number-catchup',
+        },
+        {
+          taskType: AlertTaskType.TILE,
+          tile,
+          dashboard,
+        },
+      );
+
+      // Evaluates [21:55, 22:00) and writes a history at 22:00.
+      await processAlertAtTime(
+        new Date('2023-11-16T22:02:00.000Z'),
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+
+      // The 22:05 tick is skipped, so this run covers [22:00, 22:10).
+      await processAlertAtTime(
+        new Date('2023-11-16T22:12:00.000Z'),
+        details,
+        clickhouseClient,
+        connection,
+        alertProvider,
+        teamWebhooksById,
+      );
+
+      const catchupHistory = await AlertHistory.findOne({
+        alert: details.alert.id,
+        createdAt: new Date('2023-11-16T22:10:00.000Z'),
+      });
+      expect(catchupHistory).not.toBeNull();
+      expect(catchupHistory!.lastValues.map(v => v.count)).toEqual([2, 2]);
+      expect(catchupHistory!.state).toBe('OK');
+      expect((await Alert.findById(details.alert.id))!.state).toBe('OK');
+    });
+
     it('TILE alert (raw SQL Number chart) - threshold compares with last numeric column', async () => {
       const { team, webhook, connection, teamWebhooksById, clickhouseClient } =
         await setupSavedSearchAlertTest();
