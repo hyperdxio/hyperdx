@@ -1,0 +1,44 @@
+{
+  "name": "@hyperdx/claude-plugin",
+  "version": "0.0.0",
+  "description": "Claude Code plugin that draws ClickStack MCP query results as terminal charts",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyperdxio/hyperdx.git",
+    "directory": "packages/claude-plugin"
+  },
+  "homepage": "https://github.com/hyperdxio/hyperdx/tree/main/packages/claude-plugin#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    ".claude-plugin/plugin.json",
+    "hooks/*",
+    "types/*",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "prepublishOnly": "yarn build",
+    "validate": "claude plugin validate .",
+    "lint": "npx eslint . --max-warnings 0",
+    "lint:fix": "npx eslint . --fix",
+    "ci:build": "tsup",
+    "ci:lint": "yarn lint && yarn tsc --noEmit",
+    "ci:unit": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand --ci",
+    "dev:unit": "NODE_OPTIONS=--experimental-vm-modules jest --watchAll --runInBand"
+  },
+  "devDependencies": {
+    "@hyperdx/cli": "workspace:*",
+    "@hyperdx/common-utils": "^0.31.0",
+    "@jest/globals": "^30.2.0",
+    "@types/jest": "^29.5.14",
+    "chalk": "^5.3.0",
+    "jest": "^30.2.0",
+    "ts-jest": "^29.4.11",
+    "tsup": "^8.4.0",
+    "typescript": "^6.0.3"
+  }
+}
