@@ -433,13 +433,13 @@ processors:
 service:
   pipelines:
     traces:
-      processors: [memory_limiter/custom, batch]
+      processors: [memory_limiter/custom, transform/session_id, batch]
     metrics:
       processors: [memory_limiter/custom, batch]
     logs/out-default:
-      processors: [memory_limiter/custom, transform, batch]
+      processors: [memory_limiter/custom, transform, transform/session_id, batch]
     logs/out-rrweb:
-      processors: [memory_limiter/custom, batch]
+      processors: [memory_limiter/custom, transform/session_id, batch]
 ```
 
 After restart, the collector instantiates `memory_limiter/custom` (and not
@@ -466,9 +466,9 @@ processors:
 service:
   pipelines:
     traces:
-      processors: [memory_limiter, batch/lowlatency]
+      processors: [memory_limiter, transform/session_id, batch/lowlatency]
     logs/out-default:
-      processors: [memory_limiter, transform, batch/lowlatency]
+      processors: [memory_limiter, transform, transform/session_id, batch/lowlatency]
 ```
 
 Notes:

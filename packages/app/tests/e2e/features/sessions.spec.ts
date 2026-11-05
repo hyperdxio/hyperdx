@@ -63,9 +63,29 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
     await card.click();
 
     await expect(sessionsPage.sessionSidePanel).toBeVisible();
-    await expect(
-      sessionsPage.getSessionEventRows().filter({ hasText: '500 GET' }),
-    ).toBeVisible({ timeout: 15000 });
+    const span = sessionsPage
+      .getSessionEventRows()
+      .filter({ hasText: '500 GET' });
+    await expect(span).toBeVisible({ timeout: 15000 });
+
+    await test.step('Its trace shows the triggering click and the request timings', async () => {
+      await span.click();
+      const trace = page.getByTestId('side-panel-tab-trace');
+      const trigger = trace.getByText(
+        'Triggered by: Clicked testid=checkout · 3ms before',
+      );
+      await expect(trigger).toBeVisible({ timeout: 15000 });
+      await expect(trace.getByTestId('span-event-marker')).toHaveCount(4);
+      // The timing log is drawn as the dots, so it isn't counted as a log.
+      await expect(trace.getByText(/^1 span, 1 error/)).toBeVisible();
+
+      await trigger.click();
+      await expect(
+        trace
+          .getByText('#root > main > button.checkout', { exact: true })
+          .first(),
+      ).toBeVisible();
+    });
   });
 
   test('shows browser log events from the OpenTelemetry SDK and opens them', async ({
@@ -73,6 +93,7 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
   }) => {
     const panel = sessionsPage.sessionSidePanel;
     const rows = sessionsPage.getSessionEventRows();
+    const section = panel.getByTestId('browser-event-section');
 
     await test.step('Highlighted shows the console error but not the click', async () => {
       await page.goto('/search');
@@ -96,9 +117,26 @@ test.describe('Client Sessions Functionality', { tag: ['@sessions'] }, () => {
       await click.getByText('Clicked button').click();
       await expect(panel.getByTestId('side-panel-tab-overview')).toBeVisible();
       await expect(page.getByTestId('row-side-panel')).toHaveCount(0);
+      // The Log Attributes viewer below repeats these values verbatim.
+      await expect(
+        section.getByText('data-otel-testid', { exact: true }),
+      ).toBeVisible();
+      await expect(
+        section.getByText('#root > main > button.checkout', { exact: true }),
+      ).toBeVisible();
+      await expect(panel.getByText('No body for this event.')).toHaveCount(0);
     });
 
     await test.step('Escape returns to the event list', async () => {
+      await page.keyboard.press('Escape');
+      await expect(rows.first()).toBeVisible();
+    });
+
+    await test.step('A navigation opens as a browser event, not an HTTP request', async () => {
+      const navigation = rows.filter({ hasText: 'Navigated' });
+      await navigation.getByText('Navigated').click();
+      await expect(section.getByText('push', { exact: true })).toBeVisible();
+      await expect(panel.getByText('HTTP Request')).toHaveCount(0);
       await page.keyboard.press('Escape');
       await expect(rows.first()).toBeVisible();
     });

@@ -718,6 +718,37 @@ func removeCompatTracesSchema(tempDir string) error {
 	return nil
 }
 
+// swapSessionsSchemaForCompat replaces the full-text-search sessions schema
+// with the compatibility variant (bloom_filter session id indexes) in the
+// processed temp directory. It removes 00004_hyperdx_sessions.sql and renames
+// 00004_hyperdx_sessions_compat.sql to take its place, so goose runs the
+// compat schema instead.
+func swapSessionsSchemaForCompat(tempDir string) error {
+	fullTextPath := filepath.Join(tempDir, "00004_hyperdx_sessions.sql")
+	compatPath := filepath.Join(tempDir, "00004_hyperdx_sessions_compat.sql")
+
+	if err := os.Remove(fullTextPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove full text sessions schema: %w", err)
+	}
+
+	if err := os.Rename(compatPath, fullTextPath); err != nil {
+		return fmt.Errorf("failed to rename compat sessions schema: %w", err)
+	}
+
+	return nil
+}
+
+// removeCompatSessionsSchema removes the compat sessions schema file from the
+// temp directory when full text search is supported, so goose doesn't run both
+// schemas.
+func removeCompatSessionsSchema(tempDir string) error {
+	compatPath := filepath.Join(tempDir, "00004_hyperdx_sessions_compat.sql")
+	if err := os.Remove(compatPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to remove compat sessions schema: %w", err)
+	}
+	return nil
+}
+
 // listSQLFiles lists all SQL files in a directory for logging purposes
 func listSQLFiles(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
@@ -796,7 +827,7 @@ func main() {
 	}
 	defer os.RemoveAll(tempDir)
 
-	// Select the appropriate logs and traces schemas based on ClickHouse version
+	// Select the appropriate logs, traces and sessions schemas based on ClickHouse version
 	if supportsFullTextSearch(chMajor, chMinor) {
 		if err := removeCompatLogsSchema(tempDir); err != nil {
 			log.Fatalf("Failed to remove compat logs schema: %v", err)
@@ -804,13 +835,19 @@ func main() {
 		if err := removeCompatTracesSchema(tempDir); err != nil {
 			log.Fatalf("Failed to remove compat traces schema: %v", err)
 		}
+		if err := removeCompatSessionsSchema(tempDir); err != nil {
+			log.Fatalf("Failed to remove compat sessions schema: %v", err)
+		}
 	} else {
-		log.Printf("ClickHouse %d.%d < 26.2, falling back to compatibility logs and traces schemas", chMajor, chMinor)
+		log.Printf("ClickHouse %d.%d < 26.2, falling back to compatibility logs, traces and sessions schemas", chMajor, chMinor)
 		if err := swapLogsSchemaForCompat(tempDir); err != nil {
 			log.Fatalf("Failed to swap logs schema: %v", err)
 		}
 		if err := swapTracesSchemaForCompat(tempDir); err != nil {
 			log.Fatalf("Failed to swap traces schema: %v", err)
+		}
+		if err := swapSessionsSchemaForCompat(tempDir); err != nil {
+			log.Fatalf("Failed to swap sessions schema: %v", err)
 		}
 	}
 

@@ -175,8 +175,13 @@ describe('MCP Dashboard Prompts', () => {
       const luceneBody = prompt.slice(luceneIdx);
       expect(luceneBody).toMatch(/SUBSTRING MATCHING/);
       expect(luceneBody).toMatch(/ilike\(field, '%value%'\)/);
-      // The canonical fix is SQL with =.
+      // The canonical fix is SQL with =, or a quoted Lucene value.
       expect(luceneBody).toMatch(/SpanKind = 'Server'/);
+      expect(luceneBody).toMatch(
+        /SpanKind:"Server" compiles to SpanKind = 'Server'/,
+      );
+      // Body text goes through the token/text index as a bare term, not Body:term.
+      expect(luceneBody).toMatch(/bare Lucene term or phrase/);
       // Wildcard limitation is documented alongside substring matching.
       expect(luceneBody).toMatch(/prefix-within-substring/);
       expect(luceneBody).toMatch(/LIKE 'api%'/);
