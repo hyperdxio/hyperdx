@@ -451,7 +451,9 @@ describe('useOffsetPaginatedQuery', () => {
         expect(
           jest
             .mocked(renderChartConfig)
-            .mock.calls.map(([config]) => config.limit),
+            .mock.calls.map(([config]) =>
+              isBuilderChartConfig(config) ? config.limit : undefined,
+            ),
         ).toEqual([
           { limit, offset: 0 },
           { limit, offset: 0 },
@@ -554,7 +556,7 @@ describe('useOffsetPaginatedQuery', () => {
         expect(
           jest.mocked(renderChartConfig).mock.calls.map(([config]) => ({
             dateRange: config.dateRange,
-            limit: config.limit,
+            limit: isBuilderChartConfig(config) ? config.limit : undefined,
           })),
         ).toEqual(
           Array.from({ length: fullPages + 1 }, (_, page) => ({
@@ -629,7 +631,9 @@ describe('useOffsetPaginatedQuery', () => {
         expect(
           jest
             .mocked(renderChartConfig)
-            .mock.calls.map(([config]) => config.limit),
+            .mock.calls.map(([config]) =>
+              isBuilderChartConfig(config) ? config.limit : undefined,
+            ),
         ).toEqual([
           { limit: 2, offset: 0 },
           { limit: 2, offset: 2 },
