@@ -5,6 +5,9 @@
 
 const KODIAK_LOGIN = 'kodiakhq[bot]';
 const AUTOMERGE_LABEL = 'automerge';
+// Runs this workflow approves are recorded with this triggering actor. No other
+// workflow here approves or re-runs fork runs, so only this one produces it.
+const APPROVER_LOGIN = 'github-actions[bot]';
 const WRITE_PERMISSIONS = new Set(['admin', 'write']);
 
 // Latest decisive review per reviewer. COMMENTED does not replace an earlier
@@ -37,7 +40,7 @@ function decideApproval({
   headCommit,
   mergeParentOnMain,
   reviews,
-  reviewerPermissions,
+  permissions,
   beforeRuns,
 }) {
   const no = reason => ({ approve: false, reason });
@@ -66,7 +69,7 @@ function decideApproval({
     return no(`merged-in parent ${parents[1]} is not on the base branch`);
 
   const states = latestReviewStates(reviews);
-  const writer = login => WRITE_PERMISSIONS.has(reviewerPermissions[login]);
+  const writer = login => WRITE_PERMISSIONS.has(permissions[login]);
   const blocking = [...states].filter(
     ([login, s]) => s === 'CHANGES_REQUESTED' && writer(login),
   );
@@ -76,12 +79,27 @@ function decideApproval({
     return no('no approving review from someone with write access');
   }
 
-  // The previous head is the code a maintainer let run. If its runs are still
-  // held (or never existed), nobody has vouched for running it.
+  // The approving review is not tied to a commit, so trust comes from the
+  // previous head's runs: a writer approved them, or this workflow did on an
+  // earlier Kodiak update. Requiring that positively matters because held runs
+  // can leave `action_required` without approval (expired after 30 days,
+  // cancelled, startup failure), and those keep the contributor as actor.
   if (beforeRuns.length === 0)
     return no(`no pull_request runs found for previous head ${before}`);
-  if (beforeRuns.some(r => r.conclusion === 'action_required')) {
-    return no(`runs for previous head ${before} were never approved`);
+  const unvouched = beforeRuns.filter(r => {
+    const actor = r.triggering_actor?.login;
+    return (
+      r.conclusion === 'action_required' ||
+      !(actor === APPROVER_LOGIN || writer(actor))
+    );
+  });
+  if (unvouched.length > 0) {
+    const actors = [
+      ...new Set(unvouched.map(r => r.triggering_actor?.login ?? 'unknown')),
+    ];
+    return no(
+      `runs for previous head ${before} were not approved by a maintainer (triggered by ${actors.join(', ')})`,
+    );
   }
 
   return {

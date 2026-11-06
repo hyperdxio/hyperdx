@@ -19,20 +19,29 @@ module.exports = async ({ github, context, core }) => {
   const { owner, repo } = context.repo;
   const { pull_request: eventPr, before, after, sender } = context.payload;
 
-  const listRuns = head_sha =>
-    github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
-      owner,
-      repo,
-      head_sha,
-      event: 'pull_request',
-      per_page: 100,
-    });
-
   const { data: pr } = await github.rest.pulls.get({
     owner,
     repo,
     pull_number: eventPr.number,
   });
+
+  // head_sha matches runs from any PR with that commit, including a second PR
+  // the contributor opens from another branch. `pull_requests` is empty for
+  // fork runs, so scope by head repo and branch instead.
+  const listRuns = async head_sha =>
+    (
+      await github.paginate(github.rest.actions.listWorkflowRunsForRepo, {
+        owner,
+        repo,
+        head_sha,
+        event: 'pull_request',
+        per_page: 100,
+      })
+    ).filter(
+      r =>
+        r.head_repository?.full_name === pr.head.repo.full_name &&
+        r.head_branch === pr.head.ref,
+    );
   const { data: headCommit } = await github.rest.repos.getCommit({
     owner,
     repo,
@@ -57,9 +66,13 @@ module.exports = async ({ github, context, core }) => {
     pull_number: pr.number,
     per_page: 100,
   });
-  const reviewerPermissions = {};
+  const beforeRuns = await listRuns(before);
+  const permissions = {};
   for (const login of new Set(
-    reviews.map(r => r.user?.login).filter(Boolean),
+    [
+      ...reviews.map(r => r.user?.login),
+      ...beforeRuns.map(r => r.triggering_actor?.login),
+    ].filter(Boolean),
   )) {
     try {
       const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
@@ -67,10 +80,10 @@ module.exports = async ({ github, context, core }) => {
         repo,
         username: login,
       });
-      reviewerPermissions[login] = data.permission;
+      permissions[login] = data.permission;
     } catch (err) {
       if (err.status !== 404) throw err;
-      reviewerPermissions[login] = 'none';
+      permissions[login] = 'none';
     }
   }
 
@@ -82,8 +95,8 @@ module.exports = async ({ github, context, core }) => {
     headCommit,
     mergeParentOnMain,
     reviews,
-    reviewerPermissions,
-    beforeRuns: await listRuns(before),
+    permissions,
+    beforeRuns,
   });
   core.info(decision.reason);
   if (!decision.approve) return;
@@ -101,7 +114,8 @@ module.exports = async ({ github, context, core }) => {
         run_id: run.id,
       });
       approved.add(run.id);
-      core.info(`Approved "${run.name}" (${run.html_url})`);
+      // run.name comes from the PR's workflow files, so don't log it.
+      core.info(`Approved run ${run.id} (${run.html_url})`);
     }
     if (
       held.length === 0 &&

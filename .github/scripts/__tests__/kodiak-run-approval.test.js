@@ -14,6 +14,10 @@ const BEFORE = 'b'.repeat(40);
 const AFTER = 'a'.repeat(40);
 const MAIN_SHA = 'c'.repeat(40);
 
+function run(conclusion, actor) {
+  return { conclusion, triggering_actor: { login: actor } };
+}
+
 function makeInput(overrides = {}) {
   return {
     sender: 'kodiakhq[bot]',
@@ -27,8 +31,11 @@ function makeInput(overrides = {}) {
     headCommit: { sha: AFTER, parents: [{ sha: BEFORE }, { sha: MAIN_SHA }] },
     mergeParentOnMain: true,
     reviews: [{ user: { login: 'maintainer' }, state: 'APPROVED' }],
-    reviewerPermissions: { maintainer: 'write' },
-    beforeRuns: [{ conclusion: 'success' }, { conclusion: 'failure' }],
+    permissions: { maintainer: 'write' },
+    beforeRuns: [
+      run('success', 'maintainer'),
+      run('failure', 'github-actions[bot]'),
+    ],
     ...overrides,
   };
 }
@@ -70,14 +77,14 @@ describe('decideApproval', () => {
     'merged-in parent not on main': { mergeParentOnMain: false },
     'no reviews': { reviews: [] },
     'approval from someone without write access': {
-      reviewerPermissions: { maintainer: 'read' },
+      permissions: { maintainer: 'read' },
     },
     'outstanding change request from a writer': {
       reviews: [
         { user: { login: 'maintainer' }, state: 'APPROVED' },
         { user: { login: 'other' }, state: 'CHANGES_REQUESTED' },
       ],
-      reviewerPermissions: { maintainer: 'write', other: 'admin' },
+      permissions: { maintainer: 'write', other: 'admin' },
     },
     'approval later dismissed': {
       reviews: [
@@ -88,9 +95,25 @@ describe('decideApproval', () => {
     'no runs for the previous head': { beforeRuns: [] },
     'previous head runs still held': {
       beforeRuns: [
-        { conclusion: 'success' },
-        { conclusion: 'action_required' },
+        run('success', 'maintainer'),
+        run('action_required', 'contributor'),
       ],
+    },
+    'previous head runs expired without approval': {
+      beforeRuns: [run('failure', 'contributor')],
+    },
+    'previous head runs cancelled without approval': {
+      beforeRuns: [run('cancelled', 'contributor')],
+    },
+    'previous head runs started by Kodiak, not approved': {
+      beforeRuns: [run('failure', 'kodiakhq[bot]')],
+    },
+    'previous head runs started by someone with read access': {
+      beforeRuns: [run('success', 'maintainer'), run('success', 'reader')],
+      permissions: { maintainer: 'write', reader: 'read' },
+    },
+    'previous head run with no triggering actor': {
+      beforeRuns: [{ conclusion: 'success' }],
     },
   };
 
@@ -109,7 +132,7 @@ describe('decideApproval', () => {
           { user: { login: 'maintainer' }, state: 'APPROVED' },
           { user: { login: 'drive-by' }, state: 'CHANGES_REQUESTED' },
         ],
-        reviewerPermissions: { maintainer: 'write', 'drive-by': 'none' },
+        permissions: { maintainer: 'write', 'drive-by': 'none' },
       }),
     );
     assert.equal(decision.approve, true);

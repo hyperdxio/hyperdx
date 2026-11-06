@@ -6,8 +6,9 @@ name: Approve Kodiak update runs
 # approves those held runs so `automerge` PRs merge without a second click.
 #
 # It approves only when the new head is Kodiak's merge of the base branch onto
-# the previous head, that previous head's runs were already approved, and the
-# PR carries `automerge` plus an approving review from someone with write
+# the previous head, every run on that previous head was started by someone
+# with write access (or by this workflow on an earlier update), and the PR
+# carries `automerge` plus an approving review from someone with write
 # access. Any commit the contributor pushes still waits for a maintainer.
 #
 # pull_request_target so the token can approve runs for fork PRs. It checks
