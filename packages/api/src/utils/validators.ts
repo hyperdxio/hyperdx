@@ -34,6 +34,8 @@ const IPV4_COMPATIBLE_SUBNET = new Address6('::/96');
 const IPV4_MAPPED_SUBNET = new Address6('::ffff:0:0/96');
 const IPV6_LINK_LOCAL_SUBNET = new Address6('fe80::/10');
 const IPV6_DISCARD_ONLY_SUBNET = new Address6('100::/64');
+const NAT64_WELL_KNOWN_SUBNET = new Address6('64:ff9b::/96'); // RFC 6052
+const NAT64_LOCAL_USE_SUBNET = new Address6('64:ff9b:1::/48'); // RFC 8215
 
 // Returns true for private/reserved IPv4 and IPv6 addresses that must not be
 // reachable from outbound requests (SSRF protection).
@@ -52,10 +54,12 @@ export function isPrivateIp(ip: string): boolean {
   }
   if (Address6.isValid(ip)) {
     const addr = new Address6(ip);
-    // Check the embedded address in mapped and deprecated compatible forms.
+    // Check the embedded address in mapped, deprecated compatible, and NAT64
+    // forms; a NAT64 gateway forwards 64:ff9b::7f00:1 to 127.0.0.1.
     if (
       addr.isInSubnet(IPV4_MAPPED_SUBNET) ||
-      addr.isInSubnet(IPV4_COMPATIBLE_SUBNET)
+      addr.isInSubnet(IPV4_COMPATIBLE_SUBNET) ||
+      addr.isInSubnet(NAT64_WELL_KNOWN_SUBNET)
     ) {
       const v4 = addr.to4();
       if (v4 && Address4.isValid(v4.address)) {
@@ -70,7 +74,9 @@ export function isPrivateIp(ip: string): boolean {
       addr.isMulticast() ||
       addr.isUnspecified() ||
       addr.isDocumentation() ||
-      addr.isInSubnet(IPV6_DISCARD_ONLY_SUBNET)
+      addr.isInSubnet(IPV6_DISCARD_ONLY_SUBNET) ||
+      // Operator-defined prefixes embed the IPv4 at varying offsets; block all.
+      addr.isInSubnet(NAT64_LOCAL_USE_SUBNET)
     );
   }
   return false;

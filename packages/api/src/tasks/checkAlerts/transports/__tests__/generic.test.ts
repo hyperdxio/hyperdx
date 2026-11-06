@@ -4,7 +4,6 @@ import {
 } from '@hyperdx/common-utils/dist/types';
 import dns from 'dns';
 import { ObjectId } from 'mongodb';
-import { fetch as undiciFetch } from 'undici';
 
 import { AlertState } from '@/models/alert';
 import {
@@ -98,9 +97,10 @@ describe('handleSendGenericWebhook — DNS resolution', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('blocks a public hostname that resolves to loopback, without retrying', async () => {
-    // undici's fetch, not the host one: Jest's host-realm fetch stringifies
-    // errors thrown from the test realm, which breaks the instanceof unwrap.
-    jest.mocked(global.fetch).mockImplementationOnce(undiciFetch as any);
+    // The real undici fetch + Agent pair that production uses.
+    jest
+      .mocked(global.fetch)
+      .mockImplementationOnce(jest.requireActual('undici').fetch);
     const lookupSpy = jest
       .spyOn(dns, 'lookup')
       .mockImplementation(((_h: string, _o: unknown, cb: any) =>

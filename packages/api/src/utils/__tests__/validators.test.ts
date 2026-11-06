@@ -99,6 +99,10 @@ describe('validators', () => {
       ['mapped public address', '::ffff:8.8.8.8', false],
       ['mapped private address in hexadecimal form', '::ffff:ac10:1', true],
       ['mapped public address in hexadecimal form', '::ffff:808:808', false],
+      ['NAT64 loopback address', '64:ff9b::7f00:1', true],
+      ['NAT64 private address in dotted form', '64:ff9b::10.0.0.1', true],
+      ['NAT64 public address', '64:ff9b::808:808', false],
+      ['local-use NAT64 address', '64:ff9b:1::808:808', true],
       ['private IPv4 address with a CIDR suffix', '127.0.0.1/8', true],
       ['scoped IPv6 link-local address', 'fe80::1%lo0', true],
     ])('%s (%s)', (_description, ip, expected) => {
@@ -376,6 +380,7 @@ describe('validators', () => {
         'an IPv4-mapped private record',
         [{ address: '::ffff:192.168.1.1', family: 6 }],
       ],
+      ['a NAT64 loopback record', [{ address: '64:ff9b::7f00:1', family: 6 }]],
     ])('blocks %s', async (_name, addresses) => {
       mockLookup(null, addresses);
       await expect(lookup(validators, 'example.com', true)).rejects.toThrow(

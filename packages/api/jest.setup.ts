@@ -40,3 +40,10 @@ global.fetch = jest.fn().mockResolvedValue({
   text: jest.fn().mockResolvedValue(''),
   json: jest.fn().mockResolvedValue({}),
 } as any);
+
+// Webhook delivery uses undici's fetch; route it to the global mock so tests
+// stub and assert on `global.fetch` as before.
+jest.mock('undici', () => ({
+  ...jest.requireActual('undici'),
+  fetch: (...args: Parameters<typeof fetch>) => global.fetch(...args),
+}));

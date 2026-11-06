@@ -8,7 +8,7 @@ import Handlebars from 'handlebars';
 import _ from 'lodash';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
-import { Agent } from 'undici';
+import { Agent, fetch } from 'undici';
 
 import { IWebhook } from '@/models/webhook';
 import {
@@ -265,9 +265,8 @@ const sendGenericWebhook = async (
         headers,
         body,
         signal: attemptSignal,
-        // Node's fetch takes an undici dispatcher; the DOM RequestInit type omits it.
         dispatcher: webhookDispatcher,
-      } as RequestInit).catch(e => {
+      }).catch(e => {
         // Surface a connect-time block as the validation error (a 400), not "fetch failed".
         for (let c = e; c; c = c.cause) {
           if (c instanceof WebhookUrlValidationError) throw c;
