@@ -42,6 +42,19 @@ $transition-slow: 0.2s ease;
 .navGhost {
   transition: width 0.2s ease;
   will-change: width;
+  flex-shrink: 0;
+}
+
+// Covers the page while the rail's full nav is open on a compact viewport.
+// Dimming sits one layer below the nav, in the same layer as top-level drawers.
+.navScrim {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  border: 0;
+  padding: 0;
+  background: rgb(0 0 0 / 40%);
+  cursor: pointer;
 }
 
 .nav {
@@ -58,6 +71,22 @@ $transition-slow: 0.2s ease;
 
   &Fixed {
     position: fixed;
+  }
+
+  // Same layer as a top-level drawer (`contextZIndex + 10` from
+  // ZIndexContext, see DBRowSidePanel). The scrim is one below. PageHeader
+  // itself is z-index 2, so this covers the page chrome.
+  &Overlay {
+    top: 0;
+    left: 0;
+    z-index: 10;
+    box-shadow: 4px 0 16px rgb(0 0 0 / 25%);
+  }
+
+  // Closing the overlay drops the nav back into the flow. Animating its width
+  // from the overlay width would push the page content sideways first.
+  &CompactRail {
+    transition: none;
   }
 
   &Collapsed {

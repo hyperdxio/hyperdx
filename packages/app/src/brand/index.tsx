@@ -29,7 +29,7 @@ export function usePageTitle(page?: string): string {
 // during render. A downstream build replaces this module to change the
 // name and the marks without editing each call site.
 export function useWordmark() {
-  return useMemo(() => <Wordmark />, []);
+  return useMemo(() => <Wordmark name={BRAND_DISPLAY_NAME} />, []);
 }
 
 export function useLogomark(props?: { size?: number }) {

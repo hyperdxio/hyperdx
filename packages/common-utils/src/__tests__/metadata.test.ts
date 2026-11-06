@@ -547,15 +547,35 @@ describe('Metadata', () => {
   });
 
   describe('getMergeTreeSettings', () => {
-    it('returns the server MergeTree settings by name', async () => {
-      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
-      (mockClickhouseClient.query as jest.Mock).mockResolvedValue({
-        json: jest.fn().mockResolvedValue({
-          data: [
-            { name: 'enable_block_number_column', value: '1' },
-            { name: 'enable_block_offset_column', value: '0' },
-          ],
+    type SettingRow = { name: string; value: string };
+    const mockSettingsTables = ({
+      mergeTree,
+      sharedMergeTree = [],
+    }: {
+      mergeTree: SettingRow[];
+      sharedMergeTree?: SettingRow[];
+    }) =>
+      (mockClickhouseClient.query as jest.Mock).mockImplementation(
+        async ({ query }: { query: string }) => ({
+          json: async () => ({
+            data: query.includes('shared_merge_tree_settings')
+              ? sharedMergeTree
+              : mergeTree,
+          }),
         }),
+      );
+
+    beforeEach(() => {
+      mockCache.getOrFetch.mockImplementation((key, queryFn) => queryFn());
+    });
+
+    it('reads only merge_tree_settings outside Cloud', async () => {
+      jest.spyOn(metadata, 'isClickHouseCloud').mockResolvedValue(false);
+      mockSettingsTables({
+        mergeTree: [
+          { name: 'enable_block_number_column', value: '1' },
+          { name: 'enable_block_offset_column', value: '0' },
+        ],
       });
 
       const result = await metadata.getMergeTreeSettings({
@@ -568,6 +588,7 @@ describe('Metadata', () => {
           ['enable_block_offset_column', '0'],
         ]),
       );
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
       expect(mockClickhouseClient.query).toHaveBeenCalledWith(
         expect.objectContaining({
           query: 'SELECT name, value FROM system.merge_tree_settings',
@@ -575,11 +596,57 @@ describe('Metadata', () => {
       );
     });
 
+    it('prefers shared_merge_tree_settings per key on Cloud', async () => {
+      jest.spyOn(metadata, 'isClickHouseCloud').mockResolvedValue(true);
+      mockSettingsTables({
+        mergeTree: [
+          { name: 'enable_block_number_column', value: '0' },
+          { name: 'enable_block_offset_column', value: '1' },
+        ],
+        sharedMergeTree: [{ name: 'enable_block_number_column', value: '1' }],
+      });
+
+      const result = await metadata.getMergeTreeSettings({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toEqual(
+        new Map([
+          ['enable_block_number_column', '1'],
+          ['enable_block_offset_column', '1'],
+        ]),
+      );
+      expect(mockClickhouseClient.query).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: 'SELECT name, value FROM system.shared_merge_tree_settings',
+        }),
+      );
+    });
+
+    it('returns undefined when the shared read fails on Cloud', async () => {
+      jest.spyOn(metadata, 'isClickHouseCloud').mockResolvedValue(true);
+      (mockClickhouseClient.query as jest.Mock).mockImplementation(
+        async ({ query }: { query: string }) => {
+          if (query.includes('shared_merge_tree_settings')) {
+            throw new Error('timeout');
+          }
+          return { json: async () => ({ data: [] }) };
+        },
+      );
+
+      const result = await metadata.getMergeTreeSettings({
+        connectionId: 'test_connection',
+      });
+
+      expect(result).toBeUndefined();
+    });
+
     it('re-queries after a failure instead of caching it', async () => {
       const realMetadata = new Metadata(
         mockClickhouseClient,
         new MetadataCache(),
       );
+      jest.spyOn(realMetadata, 'isClickHouseCloud').mockResolvedValue(false);
       (mockClickhouseClient.query as jest.Mock)
         .mockRejectedValueOnce(new Error('Not enough privileges'))
         .mockResolvedValueOnce({
