@@ -1,6 +1,6 @@
 # Observability & Instrumentation
 
-HyperDX is an observability product, so our own code should be a shining example
+ClickStack is an observability product, so our own code should be a shining example
 of well-instrumented software. When you add or change a feature, instrument it
 as part of the change - not as an afterthought.
 
@@ -30,7 +30,7 @@ aligned with the
    already in flight, and put point-in-time / gauge-style values (sizes, counts,
    depths, current state) there rather than in a gauge. This is an internal
    engineering preference, not a rule against metrics — counters and histograms
-   remain first-class, feed alerts and SLOs, and many HyperDX deployments depend
+   remain first-class, feed alerts and SLOs, and many ClickStack deployments depend
    heavily on them. See [Wide events over gauges](#wide-events-over-gauges).
 5. **Use the shared helpers** in
    [`packages/api/src/utils/instrumentation.ts`](../packages/api/src/utils/instrumentation.ts).
@@ -57,7 +57,7 @@ types, so a single import is usually enough.
 
 ### Tracing
 
-Rely on the HyperDX SDK auto-instrumentation (HTTP, Express, Mongo, etc.) for
+Rely on the ClickStack SDK auto-instrumentation (HTTP, Express, Mongo, etc.) for
 the common path. Add a **manual span only for a meaningful unit of work** that
 auto-instrumentation can't see - a background job step, a fan-out, an expensive
 computation, an external tool invocation.
@@ -91,7 +91,7 @@ Span rules to follow (from the Instrumentation Score spec):
 ### Business context
 
 Attach team/user context as early as possible (at the auth boundary or the top
-of a job). `setBusinessContext` writes both to the whole trace (via the HyperDX
+of a job). `setBusinessContext` writes both to the whole trace (via the ClickStack
 SDK, requires `HDX_NODE_BETA_MODE=1`) and to the active span.
 
 ```ts
@@ -120,9 +120,9 @@ Standard attribute keys:
 
 ### Wide events over gauges
 
-> **Scope:** this is HyperDX's _internal_ instrumentation philosophy for the
+> **Scope:** this is ClickStack's _internal_ instrumentation philosophy for the
 > code in this repo — not a recommendation that users pick wide events over
-> metrics. Metrics are a first-class HyperDX signal that many operators rely on;
+> metrics. Metrics are a first-class ClickStack signal that many operators rely on;
 > nothing here discourages them. What follows is simply how _we_ prefer to
 > instrument our own services.
 
@@ -237,7 +237,7 @@ auto-instrumentation and error middleware already cover.
 
 ## Query attribution
 
-Every ClickHouse query HyperDX runs is tagged with what asked for it, so a row
+Every ClickHouse query ClickStack runs is tagged with what asked for it, so a row
 in the customer's `system.query_log` points back to a dashboard tile, a saved
 search, an alert, or an MCP tool. This is the one piece of our instrumentation
 that lands in *their* data rather than ours, so it stays small, carries no
