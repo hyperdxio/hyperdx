@@ -107,7 +107,7 @@ const NAV_LINKS: NavLinkConfig[] = [
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
   const brandName = useBrandDisplayName();
   const logomark = useLogomark({ size: 22 });
-  const expandedLogomark = useLogomark({ size: 20 });
+  const expandedLogomark = useLogomark({ size: 23 });
 
   useEffect(() => {
     let redirectUrl;
@@ -403,10 +403,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                   wrap="nowrap"
                   style={{ minWidth: 0 }}
                 >
-                  <div className={styles.logoIconWrapper}>
+                  <div className={styles.logoLockupMark}>
                     {expandedLogomark}
                   </div>
-                  <Text fz={20} fw={600} lts="-0.02em" truncate="end">
+                  <Text fz={18} fw={500} truncate="end">
                     {brandName}
                   </Text>
                   {/* Label and UTC badge are mutually exclusive - showing both

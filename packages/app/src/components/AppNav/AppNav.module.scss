@@ -151,6 +151,17 @@ $transition-slow: 0.2s ease;
   justify-content: center;
 }
 
+// The mark's box is square, but the hexagon is taller than it is wide.
+// Hug the graphic so the group's 8px gap is measured from the symbol.
+.logoLockupMark {
+  display: flex;
+
+  svg {
+    width: calc(23px * 38.7979 / 44.7998);
+    height: 23px;
+  }
+}
+
 .collapseButton {
   /* Click UI token names are camelCase. */
   /* stylelint-disable custom-property-pattern */
