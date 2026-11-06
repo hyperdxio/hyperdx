@@ -61,6 +61,7 @@
     "protobufjs": "^7.6.5",
     "serialize-error": "^8.1.0",
     "sqlstring": "^2.3.3",
+    "undici": "^7.29.0",
     "uuid": "^8.3.2",
     "zod": "3.25",
     "zod-express-middleware": "^1.4.0"

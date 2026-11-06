@@ -5037,6 +5037,7 @@ describe('checkAlerts', () => {
           'Idempotency-Key': expect.any(String),
         }),
         signal: expect.any(AbortSignal),
+        dispatcher: expect.anything(),
       });
     });
 

@@ -4817,6 +4817,7 @@ __metadata:
     tsc-alias: "npm:^1.8.8"
     tsconfig-paths: "npm:^4.2.0"
     typescript: "npm:^6.0.3"
+    undici: "npm:^7.29.0"
     uuid: "npm:^8.3.2"
     zod: "npm:3.25"
     zod-express-middleware: "npm:^1.4.0"

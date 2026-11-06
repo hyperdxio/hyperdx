@@ -6,7 +6,9 @@ import {
   PASSWORD_SPECIAL_CHARS,
   passwordValidators,
 } from '@hyperdx/common-utils/dist/validation';
+import dns from 'dns';
 import { Address4, Address6 } from 'ip-address';
+import type { LookupFunction } from 'net';
 import { z } from 'zod';
 
 import * as config from '@/config';
@@ -114,6 +116,9 @@ const BLOCKED_WEBHOOK_HOSTS = (() => {
 })();
 
 export class WebhookUrlValidationError extends Error {
+  // A 4xx status makes withRetry give up instead of retrying a blocked URL.
+  readonly status = 400;
+
   constructor(message: string) {
     super(message);
     this.name = 'WebhookUrlValidationError';
@@ -163,11 +168,36 @@ export function validateWebhookUrl(
     hostname === 'localhost' || hostname.endsWith('.localhost');
   const isAllowlistedHostname = isAllowlistedWebhookHostname(hostname);
   if (!isAllowlistedHostname && (isLocalhost || isPrivateIp(hostname))) {
-    throw new WebhookUrlValidationError(
-      `Webhook URL resolves to a private or reserved address.`,
-    );
+    throw new WebhookUrlValidationError(PRIVATE_ADDRESS_MESSAGE);
   }
 }
+
+const PRIVATE_ADDRESS_MESSAGE =
+  'Webhook URL resolves to a private or reserved address.';
+
+// validateWebhookUrl only sees the hostname, so a public name pointing at a
+// private IP (e.g. 127-0-0-1.nip.io) gets through it. Checking at connect time
+// also covers DNS rebinding, since the checked address is the one dialed.
+// Node skips lookup for IP literals; validateWebhookUrl covers those.
+export const webhookLookup: LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err, []);
+    const blocked =
+      !isAllowlistedWebhookHostname(normalizeWebhookHostname(hostname)) &&
+      addresses.some(
+        ({ address }) =>
+          isPrivateIp(address) && !isAllowlistedWebhookHostname(address),
+      );
+    if (blocked) {
+      return callback(
+        new WebhookUrlValidationError(PRIVATE_ADDRESS_MESSAGE),
+        [],
+      );
+    }
+    if (options.all) return callback(null, addresses);
+    callback(null, addresses[0].address, addresses[0].family);
+  });
+};
 
 /** A 400-worthy webhook config error whose message is safe to return. */
 export const isWebhookValidationError = (

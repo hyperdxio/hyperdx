@@ -2,7 +2,9 @@ import {
   DEFAULT_INCIDENT_IO_WEBHOOK_BODY,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
+import dns from 'dns';
 import { ObjectId } from 'mongodb';
+import { fetch as undiciFetch } from 'undici';
 
 import { AlertState } from '@/models/alert';
 import {
@@ -12,6 +14,7 @@ import {
   handleSendGenericWebhook,
 } from '@/tasks/checkAlerts/transports/generic';
 import type { Message } from '@/tasks/checkAlerts/transports/types';
+import { WebhookUrlValidationError } from '@/utils/validators';
 
 const message: Message = {
   hdxLink: 'https://example.test/alert',
@@ -89,6 +92,31 @@ describe('handleSendGenericWebhook — per-attempt timeout', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   }, 2000); // short test-level timeout: a regression here should fail fast, not stall on Jest's default 30s
+});
+
+describe('handleSendGenericWebhook — DNS resolution', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('blocks a public hostname that resolves to loopback, without retrying', async () => {
+    // undici's fetch, not the host one: Jest's host-realm fetch stringifies
+    // errors thrown from the test realm, which breaks the instanceof unwrap.
+    jest.mocked(global.fetch).mockImplementationOnce(undiciFetch as any);
+    const lookupSpy = jest
+      .spyOn(dns, 'lookup')
+      .mockImplementation(((_h: string, _o: unknown, cb: any) =>
+        cb(null, [{ address: '127.0.0.1', family: 4 }])) as any);
+
+    await expect(
+      handleSendGenericWebhook(
+        {
+          type: 'webhook',
+          channel: { ...webhook, url: 'http://127-0-0-1.nip.io/' },
+        } as any,
+        message,
+      ),
+    ).rejects.toThrow(WebhookUrlValidationError);
+    expect(lookupSpy).toHaveBeenCalledTimes(1);
+  }, 2000);
 });
 
 describe('buildWebhookTemplateVariables', () => {

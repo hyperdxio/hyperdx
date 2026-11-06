@@ -8,6 +8,7 @@ import Handlebars from 'handlebars';
 import _ from 'lodash';
 import { performance } from 'perf_hooks';
 import { serializeError } from 'serialize-error';
+import { Agent } from 'undici';
 
 import { IWebhook } from '@/models/webhook';
 import {
@@ -24,8 +25,11 @@ import logger from '@/utils/logger';
 import { withRetry } from '@/utils/retry';
 import {
   validateWebhookUrl,
+  webhookLookup,
   WebhookUrlValidationError,
 } from '@/utils/validators';
+
+const webhookDispatcher = new Agent({ connect: { lookup: webhookLookup } });
 
 // Webhook delivery is the last (and most failure-prone) hop of an alert. It
 // happens in the background task, so failures only show up in logs today.
@@ -261,6 +265,12 @@ const sendGenericWebhook = async (
         headers,
         body,
         signal: attemptSignal,
+        // Node's fetch takes an undici dispatcher; the DOM RequestInit type omits it.
+        dispatcher: webhookDispatcher,
+      } as RequestInit).catch(e => {
+        // Surface a connect-time block as the validation error (a 400), not "fetch failed".
+        if (e?.cause instanceof WebhookUrlValidationError) throw e.cause;
+        throw e;
       });
 
       // Disallow redirects to avoid redirect-based SSRF.
