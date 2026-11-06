@@ -18,6 +18,7 @@ import {
   getServer,
   seedExponentialHistogramMetric,
 } from '@/fixtures';
+import * as denoise from '@/mcp/tools/query/denoise';
 import * as patternDrilldown from '@/mcp/tools/query/patternDrilldown';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
@@ -659,14 +660,17 @@ describe('MCP Query Tools', () => {
         );
       });
 
-      it("keeps the first trim's row cut but not its stale size line", async () => {
-        const result = await callTool(client, 'clickstack_search', {
+      const search = () =>
+        callTool(client, 'clickstack_search', {
           sourceId: logSource._id.toString(),
           denoise: true,
           maxResults: 200,
           startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
           endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
         });
+
+      it("keeps the first trim's row cut but not its stale size line", async () => {
+        const result = await search();
 
         expect(result.isError).toBeFalsy();
         const output = JSON.parse(getFirstText(result));
@@ -681,6 +685,23 @@ describe('MCP Query Tools', () => {
             expect.stringMatching(/^result\.data: cut from 120 to \d+ items$/),
           ]),
         );
+      });
+
+      it('keeps the same notes when denoise fails', async () => {
+        const spy = jest
+          .spyOn(denoise, 'denoiseSearchResults')
+          .mockRejectedValueOnce(new Error('denoise down'));
+        try {
+          const result = await search();
+          expect(result.isError).toBeFalsy();
+          const output = JSON.parse(getFirstText(result));
+          expect(output.denoised.skipped).toBe('denoise_failed');
+          expect(output.trimNotes).toEqual([
+            `result.data: cut from 120 to ${output.result.data.length} items`,
+          ]);
+        } finally {
+          spy.mockRestore();
+        }
       });
     });
   });
