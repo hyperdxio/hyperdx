@@ -110,6 +110,18 @@ describe('opampController', () => {
     });
   });
 
+  describe('buildOtelCollectorConfig otlp/hyperdx CORS', () => {
+    it('lets browsers cache preflights for 10 minutes', () => {
+      const cfg = buildOtelCollectorConfig([]);
+
+      expect(cfg.receivers['otlp/hyperdx']?.protocols.http.cors).toEqual({
+        allowed_origins: ['*'],
+        allowed_headers: ['*'],
+        max_age: 600,
+      });
+    });
+  });
+
   describe('buildOtelCollectorConfig otlp/hyperdx authentication', () => {
     it('accepts bare and bearer-prefixed authorization values for each API key', () => {
       const cfg = buildOtelCollectorConfig([

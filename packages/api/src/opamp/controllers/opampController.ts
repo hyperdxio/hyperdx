@@ -63,6 +63,7 @@ type CollectorConfig = {
           cors: {
             allowed_origins: string[];
             allowed_headers: string[];
+            max_age: number;
           };
           include_metadata: boolean;
           auth?: {
@@ -206,6 +207,11 @@ export const buildOtelCollectorConfig = (
             cors: {
               allowed_origins: ['*'],
               allowed_headers: ['*'],
+              // Without Access-Control-Max-Age, Chrome caches a preflight for only 5 s, which is
+              // how often the browser SDK exports, so about half of its requests were preflights.
+              // Ten minutes already removes nearly all of them while keeping a policy change from
+              // lingering in browsers.
+              max_age: 600,
             },
             include_metadata: true,
           },
