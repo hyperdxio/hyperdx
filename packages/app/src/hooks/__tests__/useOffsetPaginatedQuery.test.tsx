@@ -394,12 +394,17 @@ describe('useOffsetPaginatedQuery', () => {
   });
 
   describe('Pagination Within Time Windows', () => {
-    it.each(['Timestamp DESC', 'Timestamp ASC'])(
-      'moves straight to the next window after a partial page (%s)',
-      async orderBy => {
+    it.each([
+      { orderBy: 'Timestamp DESC', limit: 100 },
+      { orderBy: 'Timestamp ASC', limit: 100 },
+      { orderBy: 'Timestamp DESC', limit: undefined },
+      { orderBy: 'Timestamp ASC', limit: undefined },
+    ])(
+      'moves straight to the next window after a nonempty page ($orderBy, limit: $limit)',
+      async ({ orderBy, limit }) => {
         const config = createMockChartConfig({
           orderBy,
-          limit: { limit: 100, offset: 0 },
+          limit: limit == null ? undefined : { limit, offset: 0 },
         });
         mockReader.read
           .mockResolvedValueOnce({
@@ -416,10 +421,22 @@ describe('useOffsetPaginatedQuery', () => {
           wrapper,
         });
         await waitFor(() => expect(result.current.isLoading).toBe(false));
-        expect(result.current.data?.data).toHaveLength(1);
+        expect(result.current.data?.window.windowIndex).toBe(0);
+        expect(result.current.data?.data).toEqual([
+          { message: 'first window' },
+        ]);
         expect(result.current.hasNextPage).toBe(true);
 
-        mockReader.read.mockResolvedValueOnce({ done: true });
+        mockReader.read
+          .mockResolvedValueOnce({
+            done: false,
+            value: [
+              { json: () => ['message'] },
+              { json: () => ['String'] },
+              { json: () => ['second window'] },
+            ],
+          })
+          .mockResolvedValueOnce({ done: true });
         await act(async () => {
           await result.current.fetchNextPage();
         });
@@ -427,9 +444,18 @@ describe('useOffsetPaginatedQuery', () => {
         await waitFor(() => {
           expect(result.current.data?.window.windowIndex).toBe(1);
         });
-        expect(jest.mocked(renderChartConfig).mock.calls[1][0]).toMatchObject({
-          limit: { limit: 100, offset: 0 },
-        });
+        expect(result.current.data?.data).toEqual([
+          { message: 'first window' },
+          { message: 'second window' },
+        ]);
+        expect(
+          jest
+            .mocked(renderChartConfig)
+            .mock.calls.map(([config]) => config.limit),
+        ).toEqual([
+          { limit, offset: 0 },
+          { limit, offset: 0 },
+        ]);
       },
     );
 
@@ -524,16 +550,21 @@ describe('useOffsetPaginatedQuery', () => {
       expect(result.current.hasNextPage).toBe(true);
     });
 
-    it.each(['Timestamp DESC', 'Timestamp ASC'])(
-      'moves to the next window after a full page then a partial page (%s)',
-      async orderBy => {
+    it.each([
+      { orderBy: 'Timestamp DESC', remainingMessages: ['third row'] },
+      { orderBy: 'Timestamp ASC', remainingMessages: ['third row'] },
+      { orderBy: 'Timestamp DESC', remainingMessages: [] },
+      { orderBy: 'Timestamp ASC', remainingMessages: [] },
+    ])(
+      'moves to the next window after a full page then an exhausted page ($orderBy, remaining: $remainingMessages)',
+      async ({ orderBy, remainingMessages }) => {
         const config = createMockChartConfig({
           orderBy,
           limit: { limit: 2, offset: 0 },
         });
         for (const messages of [
           ['first row', 'second row'],
-          ['third row'],
+          remainingMessages,
           ['next window'],
         ]) {
           mockReader.read
@@ -561,7 +592,7 @@ describe('useOffsetPaginatedQuery', () => {
           expect(result.current.data?.data).toEqual([
             { message: 'first row' },
             { message: 'second row' },
-            { message: 'third row' },
+            ...remainingMessages.map(message => ({ message })),
           ]);
         });
         expect(result.current.data?.window.windowIndex).toBe(0);
@@ -576,7 +607,7 @@ describe('useOffsetPaginatedQuery', () => {
         expect(result.current.data?.data).toEqual([
           { message: 'first row' },
           { message: 'second row' },
-          { message: 'third row' },
+          ...remainingMessages.map(message => ({ message })),
           { message: 'next window' },
         ]);
         expect(
