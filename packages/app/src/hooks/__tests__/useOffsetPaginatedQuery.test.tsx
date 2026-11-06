@@ -515,10 +515,81 @@ describe('useOffsetPaginatedQuery', () => {
       await waitFor(() => {
         expect(result.current.data?.data).toHaveLength(4);
       });
+      expect(jest.mocked(renderChartConfig).mock.calls[1][0]).toMatchObject({
+        limit: { limit: 2, offset: 2 },
+      });
+      expect(result.current.data?.window.windowIndex).toBe(0);
 
       // Should still have more pages available in current window
       expect(result.current.hasNextPage).toBe(true);
     });
+
+    it.each(['Timestamp DESC', 'Timestamp ASC'])(
+      'moves to the next window after a full page then a partial page (%s)',
+      async orderBy => {
+        const config = createMockChartConfig({
+          orderBy,
+          limit: { limit: 2, offset: 0 },
+        });
+        for (const messages of [
+          ['first row', 'second row'],
+          ['third row'],
+          ['next window'],
+        ]) {
+          mockReader.read
+            .mockResolvedValueOnce({
+              done: false,
+              value: [
+                { json: () => ['message'] },
+                { json: () => ['String'] },
+                ...messages.map(message => ({ json: () => [message] })),
+              ],
+            })
+            .mockResolvedValueOnce({ done: true });
+        }
+
+        const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+          wrapper,
+        });
+        await waitFor(() => expect(result.current.isLoading).toBe(false));
+        expect(result.current.data?.window.windowIndex).toBe(0);
+
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+        await waitFor(() => {
+          expect(result.current.data?.data).toEqual([
+            { message: 'first row' },
+            { message: 'second row' },
+            { message: 'third row' },
+          ]);
+        });
+        expect(result.current.data?.window.windowIndex).toBe(0);
+        expect(result.current.hasNextPage).toBe(true);
+
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+        await waitFor(() => {
+          expect(result.current.data?.window.windowIndex).toBe(1);
+        });
+        expect(result.current.data?.data).toEqual([
+          { message: 'first row' },
+          { message: 'second row' },
+          { message: 'third row' },
+          { message: 'next window' },
+        ]);
+        expect(
+          jest
+            .mocked(renderChartConfig)
+            .mock.calls.map(([config]) => config.limit),
+        ).toEqual([
+          { limit: 2, offset: 0 },
+          { limit: 2, offset: 2 },
+          { limit: 2, offset: 0 },
+        ]);
+      },
+    );
   });
 
   describe('Moving Between Time Windows', () => {

@@ -159,7 +159,6 @@ function getNextPageParam(
     0,
   );
 
-  // A short page, or a query without LIMIT, has exhausted this window.
   const requestedLimit = config.limit?.limit;
   if (
     lastPage.data.length > 0 &&
@@ -172,7 +171,7 @@ function getNextPageParam(
     };
   }
 
-  // If no more results in current window, move to next window (if windowing is being used)
+  // A short page, or a query without LIMIT, has exhausted this window.
   const shouldUseWindowing =
     isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
