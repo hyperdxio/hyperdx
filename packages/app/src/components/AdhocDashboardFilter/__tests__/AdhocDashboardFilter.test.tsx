@@ -252,6 +252,36 @@ describe('AdhocDashboardFilter', () => {
       expect(screen.queryByTestId(`${editorId}-key`)).not.toBeInTheDocument();
     });
 
+    it.each([
+      ['no condition', filter],
+      ['a condition that does not reference it', narrowed],
+      ['a PromQL source', { ...narrowed, sourceType: 'promql' as const }],
+    ])(
+      'is not blocked by an unreferenced global required filter with %s',
+      async (_label, definition) => {
+        renderFilter([], definition, {
+          variables: namespace(['ns-a']),
+          unsatisfiedRequiredFilters: [
+            {
+              ...namespaceFilter,
+              id: 'env',
+              name: 'Env',
+              variableName: 'env',
+              isGlobalRequirement: true,
+            },
+          ],
+        });
+
+        expect(
+          screen.queryByTestId('dashboard-filter-blocked-Conditions'),
+        ).not.toBeInTheDocument();
+        await userEvent.click(addButton());
+        expect(
+          await screen.findByTestId(`${editorId}-key`),
+        ).toBeInTheDocument();
+      },
+    );
+
     it('ignores a condition on a PromQL filter', async () => {
       renderFilter(
         [],

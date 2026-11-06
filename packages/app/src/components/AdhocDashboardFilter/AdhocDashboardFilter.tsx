@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { getBlockingRequiredFilters } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  getDashboardVariableFilters,
   getPendingFilterValuesVariables,
   isAdhocConditionSupported,
   resolveFilterValuesWhere,
@@ -65,24 +65,23 @@ export function AdhocDashboardFilter({
   const isAtLimit = conditions.length >= ADHOC_FILTER_MAX_CONDITIONS;
 
   // The `where` narrowing the suggestions, and what it is still waiting on.
-  // Blocked the way a tile is: by the required filters it references, or by
-  // one that blocks every tile.
+  // Blocked only by the required filters it references: a global requirement
+  // blocks tiles, not the filter bar, same as queried dropdown filters.
   const { suggestionsWhere, pendingVariables, blockingFilterNames } =
     useMemo(() => {
       const where = filter.sourceType === 'sql' ? filter.where : undefined;
       const query = { where, whereLanguage: filter.whereLanguage };
+      const referencedNames = new Set(
+        getVariableReferences(where ?? '').map(reference => reference.name),
+      );
       return {
         suggestionsWhere: resolveFilterValuesWhere(query, variables),
         pendingVariables: getPendingFilterValuesVariables(query, variables),
-        blockingFilterNames: getBlockingRequiredFilters(
-          unsatisfiedRequiredFilters ?? [],
-          {
-            referencedVariableNames: getVariableReferences(where ?? '').map(
-              reference => reference.name,
-            ),
-            consumesBroadcastFilters: false,
-          },
-        ).map(blocking => blocking.name),
+        blockingFilterNames: getDashboardVariableFilters(
+          unsatisfiedRequiredFilters,
+        )
+          .filter(({ name }) => referencedNames.has(name))
+          .map(({ filter: blocking }) => blocking.name),
       };
     }, [
       filter.sourceType,

@@ -804,7 +804,9 @@ export function validateDashboardFilterQueries(
 
   for (const filter of filters) {
     // Only ClickHouse-queried filters carry a values query to validate.
-    if (!isQueryExpressionFilter(filter) && !isAdhocFilter(filter)) continue;
+    // A PromQL ad hoc filter may store a `where`, but nothing reads it.
+    const isSqlAdhoc = isAdhocFilter(filter) && filter.sourceType === 'sql';
+    if (!isQueryExpressionFilter(filter) && !isSqlAdhoc) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';
