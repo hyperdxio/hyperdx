@@ -20,7 +20,7 @@
     "@ai-sdk/openai": "^4.0.78",
     "@ai-sdk/otel": "^1.0.116",
     "@braintree/sanitize-url": "^7.1.1",
-    "@clickhouse/clickstack-node": "^1.0.1",
+    "@clickhouse/clickstack-node": "^1.0.2",
     "@clickhouse/client-common": "1.23.0-head.fae5998.1",
     "@esm2cjs/p-queue": "^7.3.0",
     "@hyperdx/common-utils": "^0.33.0",

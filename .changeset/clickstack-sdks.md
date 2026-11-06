@@ -21,7 +21,11 @@ instead of `userEmail` and `userName`, keeps the team name as `teamName`, and no
 longer records a `user navigated` action. Browser fetch and XHR spans no longer
 record request and response headers or bodies. Browser sessions restart once
 after the upgrade. The per-signal browser endpoints and
-`NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES` work as before.
+`NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES` work as before. Browser traces and logs
+are now sent gzip-compressed every 5 seconds. If the browser sends to a
+collector other than ClickStack's, its CORS `allowed_headers` must be `"*"` or
+include `content-type` and `content-encoding` (and `authorization`), and a proxy
+in front of it must forward `Content-Encoding` unchanged.
 
 The Next.js server now sends its own telemetry in production builds too, not
 only under `next dev`, when `HYPERDX_API_KEY` or `OTEL_EXPORTER_OTLP_HEADERS` is

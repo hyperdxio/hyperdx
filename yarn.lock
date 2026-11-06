@@ -3287,28 +3287,30 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clickhouse/clickstack-browser@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "@clickhouse/clickstack-browser@npm:1.1.0"
+"@clickhouse/clickstack-browser@npm:^1.2.0":
+  version: 1.2.0
+  resolution: "@clickhouse/clickstack-browser@npm:1.2.0"
   dependencies:
     "@opentelemetry/api-logs": "npm:^0.223.0"
     "@opentelemetry/browser-instrumentation": "npm:^0.9.0"
     "@opentelemetry/core": "npm:^2.12.0"
     "@opentelemetry/instrumentation-long-task": "npm:^0.67.0"
+    "@opentelemetry/otlp-transformer": "npm:^0.223.0"
     "@opentelemetry/resources": "npm:^2.12.0"
     "@opentelemetry/sdk-logs": "npm:^0.223.0"
+    "@opentelemetry/sdk-trace": "npm:^2.12.0"
     "@opentelemetry/semantic-conventions": "npm:^1.43.0"
     "@rrweb/record": "npm:~2.2.0"
   peerDependencies:
     "@opentelemetry/api": ">=1.9.1 <1.10.0"
     "@opentelemetry/browser-sdk": ^0.6.0
-  checksum: 10c0/55e9c0dfdc41cadf2c9485bab5d898f3602e2b8dbe4fbd09ab55b8f4cde3b7b0700bde88383ff1c2ec985db4c372a794998d1b8b8c75c109dbbb0a1f1341c349
+  checksum: 10c0/794386d9d3675bd350d977ab5c6c7f4375313221fcf72911d6259683a61a28658c1393ab2ba615e45e589b55bd3774bc4661421b02c3d6a7c084940fcd85bc72
   languageName: node
   linkType: hard
 
-"@clickhouse/clickstack-node@npm:^1.0.1":
-  version: 1.0.1
-  resolution: "@clickhouse/clickstack-node@npm:1.0.1"
+"@clickhouse/clickstack-node@npm:^1.0.2":
+  version: 1.0.2
+  resolution: "@clickhouse/clickstack-node@npm:1.0.2"
   dependencies:
     "@opentelemetry/api-logs": "npm:^0.223.0"
     "@opentelemetry/auto-instrumentations-node": "npm:^0.81.0"
@@ -3321,7 +3323,7 @@ __metadata:
     import-in-the-middle: "npm:^3.5.2"
   peerDependencies:
     "@opentelemetry/api": ">=1.9.1 <1.10.0"
-  checksum: 10c0/29bcbb011bae596262cfd18876a158d0b2a721c06999a79f74262817daef0622afa2089ec314cf0e101a786a22232b34ec9b6fc5106491d66594a1f70a0b578e
+  checksum: 10c0/5bfe331b719ea11b69f131ca5b5072e3c58372bd4ab5c7582c5138a3141b1d2caf69fd8029f9567172558b6800147fc7503df9e711d69ff3546b585cd6f8f497
   languageName: node
   linkType: hard
 
@@ -4767,7 +4769,7 @@ __metadata:
     "@ai-sdk/openai": "npm:^4.0.78"
     "@ai-sdk/otel": "npm:^1.0.116"
     "@braintree/sanitize-url": "npm:^7.1.1"
-    "@clickhouse/clickstack-node": "npm:^1.0.1"
+    "@clickhouse/clickstack-node": "npm:^1.0.2"
     "@clickhouse/client-common": "npm:1.23.0-head.fae5998.1"
     "@esm2cjs/p-queue": "npm:^7.3.0"
     "@hyperdx/common-utils": "npm:^0.33.0"
@@ -4852,8 +4854,8 @@ __metadata:
   dependencies:
     "@chromatic-com/storybook": "npm:^4.1.3"
     "@clickhouse/click-ui": "npm:^0.12.0"
-    "@clickhouse/clickstack-browser": "npm:^1.1.0"
-    "@clickhouse/clickstack-node": "npm:^1.0.1"
+    "@clickhouse/clickstack-browser": "npm:^1.2.0"
+    "@clickhouse/clickstack-node": "npm:^1.0.2"
     "@codemirror/autocomplete": "npm:^6.0.0"
     "@codemirror/lang-json": "npm:^6.0.1"
     "@codemirror/lang-sql": "npm:^6.7.0"
@@ -7736,7 +7738,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@opentelemetry/otlp-transformer@npm:0.223.0":
+"@opentelemetry/otlp-transformer@npm:0.223.0, @opentelemetry/otlp-transformer@npm:^0.223.0":
   version: 0.223.0
   resolution: "@opentelemetry/otlp-transformer@npm:0.223.0"
   dependencies:

@@ -27,8 +27,8 @@
   },
   "dependencies": {
     "@clickhouse/click-ui": "^0.12.0",
-    "@clickhouse/clickstack-browser": "^1.1.0",
-    "@clickhouse/clickstack-node": "^1.0.1",
+    "@clickhouse/clickstack-browser": "^1.2.0",
+    "@clickhouse/clickstack-node": "^1.0.2",
     "@codemirror/autocomplete": "^6.0.0",
     "@codemirror/lang-json": "^6.0.1",
     "@codemirror/lang-sql": "^6.7.0",
