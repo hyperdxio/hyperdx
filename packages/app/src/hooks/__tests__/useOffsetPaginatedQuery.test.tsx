@@ -388,12 +388,84 @@ describe('useOffsetPaginatedQuery', () => {
       expect(result.current.data).toBeDefined();
       expect(result.current.data?.window.windowIndex).toBe(0);
 
-      // Should have more pages available due to large time range
-      expect(result.current.hasNextPage).toBe(true);
+      // The only window has fewer rows than the requested limit.
+      expect(result.current.hasNextPage).toBe(false);
     });
   });
 
   describe('Pagination Within Time Windows', () => {
+    it.each(['Timestamp DESC', 'Timestamp ASC'])(
+      'moves straight to the next window after a partial page (%s)',
+      async orderBy => {
+        const config = createMockChartConfig({
+          orderBy,
+          limit: { limit: 100, offset: 0 },
+        });
+        mockReader.read
+          .mockResolvedValueOnce({
+            done: false,
+            value: [
+              { json: () => ['message'] },
+              { json: () => ['String'] },
+              { json: () => ['first window'] },
+            ],
+          })
+          .mockResolvedValueOnce({ done: true });
+
+        const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+          wrapper,
+        });
+        await waitFor(() => expect(result.current.isLoading).toBe(false));
+        expect(result.current.data?.data).toHaveLength(1);
+        expect(result.current.hasNextPage).toBe(true);
+
+        mockReader.read.mockResolvedValueOnce({ done: true });
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+
+        await waitFor(() => {
+          expect(result.current.data?.window.windowIndex).toBe(1);
+        });
+        expect(jest.mocked(renderChartConfig).mock.calls[1][0]).toMatchObject({
+          limit: { limit: 100, offset: 0 },
+        });
+      },
+    );
+
+    it.each([
+      ['a search without windowing', { orderBy: 'message DESC' }],
+      ['a query without LIMIT', { orderBy: 'message DESC', limit: undefined }],
+      [
+        'the final time window',
+        {
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date('2024-01-01T00:05:00Z'),
+          ] as [Date, Date],
+        },
+      ],
+    ])('stops after a partial page for %s', async (_name, overrides) => {
+      const config = createMockChartConfig(overrides);
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['message'] },
+            { json: () => ['String'] },
+            { json: () => ['only result'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.data?.data).toHaveLength(1);
+      expect(result.current.hasNextPage).toBe(false);
+    });
+
     it('should paginate within the same time window', async () => {
       const config = createMockChartConfig({
         limit: { limit: 2, offset: 0 },

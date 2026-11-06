@@ -159,8 +159,13 @@ function getNextPageParam(
     0,
   );
 
-  // If we have results in the current window, continue paginating within it
-  if (lastPage.data.length > 0) {
+  // A short page, or a query without LIMIT, has exhausted this window.
+  const requestedLimit = config.limit?.limit;
+  if (
+    lastPage.data.length > 0 &&
+    requestedLimit != null &&
+    lastPage.data.length >= requestedLimit
+  ) {
     return {
       windowIndex: currentWindow.windowIndex,
       offset: currentWindowResults,
