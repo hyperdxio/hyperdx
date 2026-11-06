@@ -34,7 +34,7 @@ import DBRowTableFieldWithPopover, {
 import TableHeader from './components/DBTable/TableHeader';
 import { useCsvExport } from './hooks/useCsvExport';
 import type { RowAction } from './hooks/useOnClickLinkBuilder';
-import { useBrandDisplayName } from './theme/ThemeProvider';
+import { useBrandDisplayName } from './brand';
 import { UNDEFINED_WIDTH } from './tableUtils';
 import type { NumberFormat } from './types';
 import {

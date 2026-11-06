@@ -22,7 +22,7 @@ And it has all the features you would expect from HyperDX:
 To get started, simply run the Docker container with the appropriate ports forwarded:
 
 ```
-docker run -p 8000:8000 -p 4318:4318 -p 4317:4317 -p 8080:8080 -p 8002:8002 docker.hyperdx.io/hyperdx/hyperdx-local
+docker run -p 8000:8000 -p 4318:4318 -p 4317:4317 -p 8080:8080 -p 8002:8002 docker.clickhouse.com/clickhouse/clickstack-local
 ```
 
 Afterwards, you can visit `http://localhost:8080` and immediately jump into the HyperDX UI.
@@ -56,12 +56,12 @@ docker run \
 -p 4318:4318 -p 4317:4317 \
 -p $HYPERDX_APP_PORT:8080 \
 -p 8002:8002 \
-docker.hyperdx.io/hyperdx/hyperdx-local
+docker.clickhouse.com/clickhouse/clickstack-local
 ```
 
 ## Open Source & Cloud Versions (Beyond Local)
 
-If you're looking to deploy HyperDX to monitor a production environment (or anything outside your local environment), you can check out the [regular open source version](https://github.com/hyperdxio/hyperdx) or the [cloud hosted version](https://hyperdx.io/).
+If you're looking to deploy HyperDX to monitor a production environment (or anything outside your local environment), you can check out the [regular open source version](https://github.com/ClickHouse/ClickStack) or the [cloud hosted version](https://hyperdx.io/).
 
 ### Local vs Non-Local Versions
 

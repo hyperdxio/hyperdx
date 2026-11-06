@@ -4,10 +4,10 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Box, Button, Divider, Group, Stack } from '@mantine/core';
 import { IconSettings } from '@tabler/icons-react';
 
+import { useBrandDisplayName } from '@/brand';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useColumns } from '@/hooks/useMetadata';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import {
   DEFAULT_DATABASE,

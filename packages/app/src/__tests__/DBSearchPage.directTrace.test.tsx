@@ -129,10 +129,10 @@ jest.mock('@/hooks/useExplainQuery', () => ({
   useExplainQuery: () => ({}),
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
-  useAppTheme: () => ({ themeName: 'hyperdx' }),
-  useBrandDisplayName: () => 'HyperDX',
-  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
+jest.mock('@/brand', () => ({
+  useBrandDisplayName: () => 'ClickStack',
+  usePageTitle: (page?: string) =>
+    page ? `${page} - ClickStack` : 'ClickStack',
 }));
 
 jest.mock('../hooks/useMetadata', () => ({

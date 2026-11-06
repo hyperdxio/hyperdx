@@ -5,12 +5,12 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/hyperdxio/hyperdx.git",
+    "url": "git+https://github.com/ClickHouse/ClickStack.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/hyperdxio/hyperdx/tree/main/packages/cli#readme",
+  "homepage": "https://github.com/ClickHouse/ClickStack/tree/main/packages/cli#readme",
   "bugs": {
-    "url": "https://github.com/hyperdxio/hyperdx/issues"
+    "url": "https://github.com/ClickHouse/ClickStack/issues"
   },
   "publishConfig": {
     "access": "public"

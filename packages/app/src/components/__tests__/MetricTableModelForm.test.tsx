@@ -51,8 +51,8 @@ jest.mock('@/source', () => ({
   }),
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
-  useBrandDisplayName: () => 'HyperDX',
+jest.mock('@/brand', () => ({
+  useBrandDisplayName: () => 'ClickStack',
 }));
 
 jest.mock('@mantine/notifications', () => ({

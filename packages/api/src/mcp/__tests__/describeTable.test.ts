@@ -1,0 +1,649 @@
+const mockQuery = jest.fn();
+const mockGetConnectionById = jest.fn();
+
+jest.mock('@/models/source', () => ({}));
+jest.mock('@/controllers/sources', () => ({}));
+jest.mock('@/controllers/connection', () => ({
+  getConnectionById: (...args: unknown[]) => mockGetConnectionById(...args),
+}));
+jest.mock('@/clickhouse', () => ({
+  ClickhouseClient: jest.fn(() => ({ query: mockQuery })),
+}));
+
+import { ClickHouseError } from '@clickhouse/client-common';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+
+import { registerDescribeTable } from '@/mcp/tools/sources/describeTable';
+import {
+  shapeTableDescription,
+  shapeTableListEntry,
+} from '@/mcp/tools/sources/describeTableQueries';
+import {
+  describeTableSchema,
+  encodeTableListCursor,
+  validateDescribeTableInput,
+} from '@/mcp/tools/sources/describeTableSchema';
+import type { RegisterToolFn, ToolResult } from '@/mcp/tools/types';
+import { getErrorCategory, type McpErrorResult } from '@/mcp/utils/errors';
+
+const CONNECTION_ID = '65f5e4a3b9e77c001a567890';
+
+type QueryArgs = {
+  query: string;
+  query_params: Record<string, unknown>;
+  clickhouse_settings: Record<string, unknown>;
+};
+
+const queryCalls = (): QueryArgs[] =>
+  mockQuery.mock.calls.map(([args]: [QueryArgs]) => args);
+
+function respondWith(routes: Record<string, unknown[] | Error>) {
+  mockQuery.mockImplementation(async ({ query: sql }: QueryArgs) => {
+    const rows =
+      Object.entries(routes).find(([fragment]) =>
+        sql.includes(fragment),
+      )?.[1] ?? [];
+    if (rows instanceof Error) throw rows;
+    return { json: async () => ({ data: rows }) };
+  });
+}
+
+function getHandler() {
+  let handler:
+    | ((args: Record<string, unknown>) => Promise<ToolResult>)
+    | undefined;
+  const registerTool: RegisterToolFn = (_name, config, h) => {
+    handler = args => h(config.inputSchema.parse(args));
+  };
+  registerDescribeTable({
+    server: new McpServer({ name: 'test', version: '1.0.0' }),
+    context: { teamId: 'team-1', userId: 'user-1' },
+    registerTool,
+  });
+  return handler!;
+}
+
+function errorCategory(result: ToolResult) {
+  const isMcpError = (r: ToolResult): r is ToolResult & McpErrorResult =>
+    r.isError === true;
+  return isMcpError(result) ? getErrorCategory(result) : undefined;
+}
+
+const parseText = (result: ToolResult) => JSON.parse(result.content[0].text);
+
+const TABLE_ROW = {
+  name: 'events',
+  engine: 'MergeTree',
+  sorting_key: 'ServiceName, Timestamp',
+  primary_key: 'ServiceName',
+  partition_key: 'toDate(Timestamp)',
+  comment: '',
+  total_rows: '1200',
+  total_bytes: '34567',
+};
+
+const COLUMN_ROWS = [
+  {
+    name: 'Timestamp',
+    type: 'DateTime64(9)',
+    default_kind: '',
+    default_expression: '',
+    comment: '',
+    is_in_sorting_key: 1,
+    is_in_primary_key: 0,
+  },
+  {
+    name: 'Day',
+    type: 'Date',
+    default_kind: 'MATERIALIZED',
+    default_expression: 'toDate(Timestamp)',
+    comment: 'partition day',
+    is_in_sorting_key: 0,
+    is_in_primary_key: 0,
+  },
+];
+
+describe('clickstack_describe_table', () => {
+  beforeEach(() => {
+    mockQuery.mockReset();
+    mockGetConnectionById.mockReset().mockResolvedValue({
+      host: 'http://localhost:8123',
+      username: 'default',
+      password: '',
+    });
+  });
+
+  describe('input validation', () => {
+    it('caps sampleRows at 5 and defaults it to 0', () => {
+      expect(
+        describeTableSchema.safeParse({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 't',
+          sampleRows: 6,
+        }).success,
+      ).toBe(false);
+      const parsed = describeTableSchema.parse({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+      });
+      expect(parsed.sampleRows).toBe(0);
+      expect(parsed.limit).toBe(50);
+    });
+
+    it('rejects an empty database name', () => {
+      expect(
+        describeTableSchema.safeParse({
+          connectionId: CONNECTION_ID,
+          database: '',
+        }).success,
+      ).toBe(false);
+    });
+
+    it('rejects sampleRows without a table and cursor with a table', () => {
+      expect(
+        validateDescribeTableInput({ sampleRows: 2, cursor: undefined }),
+      ).toMatch(/sampleRows requires table/);
+      expect(
+        validateDescribeTableInput({ table: 't', sampleRows: 0, cursor: 'x' }),
+      ).toMatch(/cursor only applies when listing/);
+      expect(
+        validateDescribeTableInput({ table: 't', sampleRows: 3 }),
+      ).toBeNull();
+    });
+
+    it('returns a user error for a malformed connectionId without a lookup', async () => {
+      const result = await getHandler()({
+        connectionId: 'not-an-id',
+        database: 'default',
+      });
+      expect(result.isError).toBe(true);
+      expect(mockGetConnectionById).not.toHaveBeenCalled();
+    });
+
+    it('returns a user error when the connection is not in the team', async () => {
+      mockGetConnectionById.mockResolvedValue(null);
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+      });
+      expect(result.isError).toBe(true);
+      expect(mockGetConnectionById).toHaveBeenCalledWith(
+        'team-1',
+        CONNECTION_ID,
+        true,
+      );
+    });
+  });
+
+  describe('output shaping', () => {
+    it('shapes a table description from system table rows', () => {
+      expect(
+        shapeTableDescription({
+          database: 'default',
+          table: { ...TABLE_ROW, total_rows: null, total_bytes: null },
+          keys: TABLE_ROW,
+          columns: COLUMN_ROWS,
+          indices: [{ name: 'idx_day', type: 'minmax', expression: 'Day' }],
+        }),
+      ).toEqual({
+        table: {
+          database: 'default',
+          name: 'events',
+          engine: 'MergeTree',
+          sortingKey: 'ServiceName, Timestamp',
+          primaryKey: 'ServiceName',
+          partitionKey: 'toDate(Timestamp)',
+          approxTotalRows: null,
+          approxTotalBytes: null,
+        },
+        columns: [
+          {
+            name: 'Timestamp',
+            type: 'DateTime64(9)',
+            inSortingKey: true,
+            inPrimaryKey: false,
+          },
+          {
+            name: 'Day',
+            type: 'Date',
+            defaultKind: 'MATERIALIZED',
+            defaultExpression: 'toDate(Timestamp)',
+            comment: 'partition day',
+            inSortingKey: false,
+            inPrimaryKey: false,
+          },
+        ],
+        dataSkippingIndices: [
+          { name: 'idx_day', type: 'minmax', expression: 'Day' },
+        ],
+      });
+    });
+
+    it('converts quoted 64-bit row counts to numbers', () => {
+      expect(
+        shapeTableListEntry({
+          name: 'events',
+          engine: 'MergeTree',
+          total_rows: '42',
+        }),
+      ).toEqual({ name: 'events', engine: 'MergeTree', approxTotalRows: 42 });
+    });
+
+    it('binds database and table names as query parameters', async () => {
+      respondWith({ 'FROM system.tables': [TABLE_ROW] });
+      await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: "evil'db",
+        table: 'events`; DROP TABLE x',
+        sampleRows: 1,
+      });
+      const calls = queryCalls();
+      expect(calls.some(c => c.query.includes(':Identifier}'))).toBe(true);
+      for (const { query: sql, query_params } of calls) {
+        expect(sql).not.toContain('evil');
+        expect(sql).not.toContain('DROP');
+        expect(Object.values(query_params)).toEqual(
+          expect.arrayContaining(["evil'db", 'events`; DROP TABLE x']),
+        );
+      }
+    });
+
+    it('pages the table list with an opaque cursor', async () => {
+      respondWith({
+        'FROM system.tables': [
+          { name: 'a', engine: 'MergeTree', total_rows: '1' },
+          { name: 'b', engine: 'View', total_rows: null },
+          { name: 'c', engine: 'MergeTree', total_rows: '3' },
+        ],
+      });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          limit: 2,
+        }),
+      );
+      expect(output.tables).toEqual([
+        { name: 'a', engine: 'MergeTree', approxTotalRows: 1 },
+        { name: 'b', engine: 'View', approxTotalRows: null },
+      ]);
+      expect(output.nextCursor).toBe(encodeTableListCursor({ lastName: 'b' }));
+    });
+
+    it('rejects a malformed cursor', async () => {
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        cursor: 'garbage',
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/Invalid cursor/);
+    });
+
+    it('reports a missing database as a user error', async () => {
+      respondWith({});
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'nope',
+      });
+      expect(result.isError).toBe(true);
+      expect(errorCategory(result)).toBe('user');
+      expect(result.content[0].text).toMatch(/Database "nope" not found/);
+    });
+
+    it('reports a missing table as a user error', async () => {
+      respondWith({});
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'nope',
+      });
+      expect(result.isError).toBe(true);
+      expect(errorCategory(result)).toBe('user');
+      expect(result.content[0].text).toMatch(/default\.nope" not found/);
+    });
+
+    it('maps permission errors to user errors with a hint', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        'FROM system.columns': new Error(
+          'Code: 497. DB::Exception: default: Not enough privileges. (ACCESS_DENIED)',
+        ),
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+      });
+      expect(result.isError).toBe(true);
+      expect(errorCategory(result)).toBe('user');
+      expect(result.content[0].text).toMatch(/lacks the privileges/);
+    });
+
+    it('skips sampling by default', async () => {
+      respondWith({ 'FROM system.tables': [TABLE_ROW] });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+        }),
+      );
+      expect(output.sampleRows).toBeUndefined();
+      expect(queryCalls().some(q => q.query.includes(':Identifier}'))).toBe(
+        false,
+      );
+    });
+
+    it('trims oversized sample rows', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': [{ Body: 'x'.repeat(50_000) }, { Body: 'short' }],
+      });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+          sampleRows: 2,
+        }),
+      );
+      expect(output.sampleRows).toHaveLength(2);
+      expect(output.sampleRows[0].__hdx_trimmed).toBe(true);
+      expect(output.sampleRows[1]).toEqual({ Body: 'short' });
+    });
+
+    it('keeps the schema when sampling fails', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': new Error('ACCESS_DENIED'),
+      });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+          sampleRows: 1,
+        }),
+      );
+      expect(output.table.name).toBe('events');
+      expect(output.sampleRowsError).toBe('ACCESS_DENIED');
+      expect(output.sampleRowsHint).toMatch(/schema above is complete/);
+    });
+
+    it('lists an existing empty database without an error', async () => {
+      respondWith({ 'FROM system.databases': [{ name: 'empty' }] });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'empty',
+      });
+      expect(result.isError).toBeFalsy();
+      expect(parseText(result).tables).toEqual([]);
+    });
+
+    it('reports a missing database when a cursor is replayed against it', async () => {
+      respondWith({});
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'dropped',
+        cursor: encodeTableListCursor({ lastName: 'a' }),
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toMatch(/Database "dropped" not found/);
+    });
+
+    it('reads keys, indices, and key columns from the local table of a Distributed table', async () => {
+      respondWith({
+        'FROM system.tables': [
+          {
+            ...TABLE_ROW,
+            engine: 'Distributed',
+            engine_full:
+              "Distributed('prod', 'default', 'events_local', rand())",
+            sorting_key: '',
+            primary_key: '',
+            partition_key: '',
+            total_rows: null,
+          },
+        ],
+        ', system.tables)': [{ ...TABLE_ROW, engine: 'ReplicatedMergeTree' }],
+        ', system.data_skipping_indices)': [
+          { name: 'idx', type: 'minmax', expression: 'Day' },
+        ],
+        ', system.columns)': [
+          { name: 'Timestamp', is_in_sorting_key: 1, is_in_primary_key: 1 },
+        ],
+        'FROM system.columns': COLUMN_ROWS.map(c => ({
+          ...c,
+          is_in_sorting_key: 0,
+          is_in_primary_key: 0,
+        })),
+      });
+
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+        }),
+      );
+      expect(output.table).toMatchObject({
+        engine: 'Distributed',
+        localTable: {
+          cluster: 'prod',
+          database: 'default',
+          table: 'events_local',
+          engine: 'ReplicatedMergeTree',
+        },
+        sortingKey: 'ServiceName, Timestamp',
+        primaryKey: 'ServiceName',
+      });
+      expect(output.columns[0]).toMatchObject({
+        name: 'Timestamp',
+        inSortingKey: true,
+        inPrimaryKey: true,
+      });
+      expect(output.dataSkippingIndices).toEqual([
+        { name: 'idx', type: 'minmax', expression: 'Day' },
+      ]);
+      const localQueries = queryCalls().filter(c =>
+        c.query.includes('cluster('),
+      );
+      expect(localQueries).toHaveLength(3);
+      for (const { query_params } of localQueries) {
+        expect(Object.values(query_params)).toEqual(
+          expect.arrayContaining(['prod', 'events_local']),
+        );
+      }
+    });
+
+    it('falls back to the Distributed table when cluster() is not granted', async () => {
+      const denied = new Error(
+        'Code: 497. DB::Exception: Not enough privileges. To execute this query, it is necessary to have the grant REMOTE ON *.*. (ACCESS_DENIED)',
+      );
+      respondWith({
+        'FROM system.tables': [
+          {
+            ...TABLE_ROW,
+            engine: 'Distributed',
+            engine_full:
+              "Distributed('prod', 'default', 'events_local', rand())",
+            sorting_key: '',
+            primary_key: '',
+            partition_key: '',
+          },
+        ],
+        ', system.tables)': denied,
+        ', system.data_skipping_indices)': denied,
+        ', system.columns)': denied,
+        'FROM system.columns': COLUMN_ROWS,
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = parseText(result);
+      expect(output.table).toMatchObject({
+        engine: 'Distributed',
+        sortingKey: '',
+      });
+      expect(output.columns).toHaveLength(2);
+      expect(output.localTableHint).toMatch(/REMOTE grant/);
+      expect(output.table.localTable).toEqual({
+        cluster: 'prod',
+        database: 'default',
+        table: 'events_local',
+      });
+    });
+
+    it('falls back to the Distributed table when its cluster is unknown', async () => {
+      const unknownCluster = new Error(
+        "Code: 701. DB::Exception: Requested cluster 'prod' not found. (CLUSTER_DOESNT_EXIST)",
+      );
+      respondWith({
+        'FROM system.tables': [
+          {
+            ...TABLE_ROW,
+            engine: 'Distributed',
+            engine_full:
+              "Distributed('prod', 'default', 'events_local', rand())",
+          },
+        ],
+        ', system.tables)': unknownCluster,
+        ', system.data_skipping_indices)': unknownCluster,
+        ', system.columns)': unknownCluster,
+        'FROM system.columns': COLUMN_ROWS,
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = parseText(result);
+      expect(output.columns).toHaveLength(2);
+      expect(output.localTableHint).toMatch(/unknown cluster/);
+      expect(output.dataSkippingIndicesHint).toBeDefined();
+    });
+
+    it('keeps the schema when the sample times out', async () => {
+      const timeout = new Error('query failed', {
+        cause: new ClickHouseError({
+          message: 'Timeout exceeded: elapsed 30s',
+          code: '159',
+          type: 'TIMEOUT_EXCEEDED',
+        }),
+      });
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': timeout,
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+        sampleRows: 1,
+      });
+      expect(result.isError).toBeFalsy();
+      expect(parseText(result).sampleRowsError).toBeDefined();
+    });
+
+    it('still describes the table when skip indices are not readable', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        'FROM system.data_skipping_indices': new Error(
+          'Code: 497. DB::Exception: Not enough privileges. (ACCESS_DENIED)',
+        ),
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+      });
+      expect(result.isError).toBeFalsy();
+      const output = parseText(result);
+      expect(output.dataSkippingIndices).toEqual([]);
+      expect(output.dataSkippingIndicesHint).toMatch(/Could not read/);
+    });
+
+    it('reports a sample over the byte cap as sampleRowsError', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': new Error(
+          'Code: 396. DB::Exception: Limit for result exceeded, max bytes: 976.56 KiB. (TOO_MANY_ROWS_OR_BYTES)',
+        ),
+      });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+          sampleRows: 5,
+        }),
+      );
+      expect(output.columns).toBeDefined();
+      expect(output.sampleRowsError).toMatch(/TOO_MANY_ROWS_OR_BYTES/);
+    });
+
+    it('keeps several medium sample rows within the sample budget', async () => {
+      const columns = Array.from({ length: 200 }, (_, i) => ({
+        ...COLUMN_ROWS[0],
+        name: `Column_${i}`,
+      }));
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        'FROM system.columns': columns,
+        ':Identifier}': Array.from({ length: 5 }, () => ({
+          Body: 'x'.repeat(9_900),
+        })),
+      });
+      const output = parseText(
+        await getHandler()({
+          connectionId: CONNECTION_ID,
+          database: 'default',
+          table: 'events',
+          sampleRows: 5,
+        }),
+      );
+      expect(JSON.stringify(output.sampleRows).length).toBeLessThan(11_000);
+      expect(output.columns).toHaveLength(200);
+      expect(output.note).toMatch(/trimmed/);
+    });
+
+    it('caps the bytes ClickHouse returns for the sample', async () => {
+      respondWith({ 'FROM system.tables': [TABLE_ROW] });
+      await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+        sampleRows: 1,
+      });
+      const sampleCall = queryCalls().find(c =>
+        c.query.includes(':Identifier}'),
+      );
+      expect(sampleCall?.clickhouse_settings.max_result_bytes).toBeDefined();
+      // Below the 30s tool budget, so a slow sample fails on its own.
+      expect(sampleCall?.clickhouse_settings.max_execution_time).toBe(10);
+    });
+
+    it('reports an infrastructure failure while sampling as a server error', async () => {
+      respondWith({
+        'FROM system.tables': [TABLE_ROW],
+        ':Identifier}': Object.assign(new Error('connect ECONNREFUSED'), {
+          code: 'ECONNREFUSED',
+        }),
+      });
+      const result = await getHandler()({
+        connectionId: CONNECTION_ID,
+        database: 'default',
+        table: 'events',
+        sampleRows: 1,
+      });
+      expect(result.isError).toBe(true);
+      expect(errorCategory(result)).toBe('server');
+    });
+  });
+});

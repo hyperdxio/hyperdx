@@ -78,7 +78,11 @@ import {
   useRenderedSqlChartConfig,
 } from '@/hooks/useChartConfig';
 import { CsvColumn, useCsvExport } from '@/hooks/useCsvExport';
-import { useColumns, useTableMetadata } from '@/hooks/useMetadata';
+import {
+  useColumns,
+  useMergeTreeSettings,
+  useTableMetadata,
+} from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import { useGroupedPatterns } from '@/hooks/usePatterns';
 import { useRowSelection } from '@/hooks/useRowSelection';
@@ -1530,20 +1534,42 @@ export function appendSelectWithAdditionalKeys(
 }
 
 // Block columns are only stable row identifiers when the table persists them
-// (the virtual versions are renumbered on merge). Either one combined with the
-// primary key is unique enough: two rows would need identical key values
-// (incl. a nanosecond timestamp) plus the same insert block or the same offset
-// within their blocks. So a table that persists only one of them still skips
-// the slow full-row lookup.
-export function getPersistedBlockColumns(engineFull: string): string[] {
-  const columns: string[] = [];
-  if (engineFull.includes('enable_block_number_column = 1')) {
-    columns.push('_block_number');
-  }
-  if (engineFull.includes('enable_block_offset_column = 1')) {
-    columns.push('_block_offset');
-  }
-  return columns;
+// (the virtual versions are renumbered on merge). Only the pair identifies a
+// row: _block_offset repeats across insert blocks and _block_number across the
+// rows of one block, and the primary key often does not break the tie (the
+// OTel exporter's default otel_logs keys on a second-precision TimestampTime).
+// A lone block column is still worth adding to the full-row lookup as a
+// tiebreaker for visually identical rows.
+const BLOCK_COLUMN_SETTINGS = [
+  { column: '_block_number', setting: 'enable_block_number_column' },
+  { column: '_block_offset', setting: 'enable_block_offset_column' },
+];
+
+// engine_full ends with the SETTINGS clause.
+function getEngineSetting(engineFull: string, name: string) {
+  const settingsClause = engineFull.match(/ SETTINGS (.*)$/)?.[1] ?? '';
+  return splitAndTrimWithBracket(settingsClause)
+    .map(setting => setting.split(' = '))
+    .find(([key]) => key === name)?.[1];
+}
+
+function omitsBlockColumnSetting(engineFull: string) {
+  return BLOCK_COLUMN_SETTINGS.some(
+    ({ setting }) => getEngineSetting(engineFull, setting) == null,
+  );
+}
+
+// Falls back to server values for omitted settings; pass them for MergeTree.
+export function getPersistedBlockColumns(
+  engineFull: string,
+  serverMergeTreeSettings?: Map<string, string> | null,
+): string[] {
+  return BLOCK_COLUMN_SETTINGS.filter(({ setting }) => {
+    const value =
+      getEngineSetting(engineFull, setting) ??
+      serverMergeTreeSettings?.get(setting);
+    return value === '1' || value === 'true';
+  }).map(({ column }) => column);
 }
 
 function getSelectLength(select: SelectList): number {
@@ -1575,27 +1601,46 @@ export function useConfigWithAdditionalSelect(
     { enabled: !!sourceId },
   );
 
+  const engineFull = tableMetadata?.engine_full ?? '';
+  const needsMergeTreeSettings =
+    !!sourceId &&
+    !!tableMetadata?.engine?.includes('MergeTree') &&
+    omitsBlockColumnSetting(engineFull);
+
+  const { data: mergeTreeSettings, isLoading: isMergeTreeSettingsLoading } =
+    useMergeTreeSettings(config.connection, {
+      enabled: needsMergeTreeSettings && !!config.connection,
+    });
+
   const primaryKey = tableMetadata?.primary_key;
   const partitionKey = tableMetadata?.partition_key;
 
   return useMemo(() => {
-    if (primaryKey == null || partitionKey == null) {
+    // Wait for settings to avoid querying twice.
+    if (
+      primaryKey == null ||
+      partitionKey == null ||
+      isMergeTreeSettingsLoading
+    ) {
       return undefined;
     }
 
     let extraKeys: string[] = [];
-    let hasBlockColumns = false;
+    let hasBothBlockColumns = false;
 
     if (sourceId) {
       const blockColumns = getPersistedBlockColumns(
-        tableMetadata?.engine_full ?? '',
+        engineFull,
+        needsMergeTreeSettings ? mergeTreeSettings : undefined,
       );
 
-      if (blockColumns.length > 0) {
-        extraKeys = blockColumns;
-        hasBlockColumns = true;
-      } else if (columns?.some(c => c.name === '__hdx_id')) {
-        extraKeys = ['__hdx_id'];
+      hasBothBlockColumns =
+        blockColumns.length === BLOCK_COLUMN_SETTINGS.length;
+      extraKeys = [...blockColumns];
+      // Without a unique block pair, the full-row lookup takes every
+      // tiebreaker it can get.
+      if (!hasBothBlockColumns && columns?.some(c => c.name === '__hdx_id')) {
+        extraKeys.push('__hdx_id');
       }
     }
 
@@ -1606,13 +1651,13 @@ export function useConfigWithAdditionalSelect(
       extraKeys,
     );
 
-    // When block columns are available, the PK + partition + block columns
-    // uniquely identify a row. Compute the full set of key column names
+    // When both block columns are available, the PK + partition + block
+    // columns uniquely identify a row. Compute the full set of key column names
     // (both raw expressions like toStartOfFiveMinutes(Timestamp) and bare
     // column references like Timestamp, ServiceName) so the row WHERE clause
     // can use only these, avoiding expensive index loading on large columns
-    // like Body.
-    const rowKeyColumns = hasBlockColumns
+    // like Body. Otherwise the WHERE clause uses every selected column.
+    const rowKeyColumns = hasBothBlockColumns
       ? new Set([
           ...splitAndTrimWithBracket(partitionKey),
           ...splitAndTrimWithBracket(primaryKey),
@@ -1623,7 +1668,17 @@ export function useConfigWithAdditionalSelect(
       : undefined;
 
     return { ...config, select, additionalKeysLength, rowKeyColumns };
-  }, [primaryKey, partitionKey, config, tableMetadata, columns, sourceId]);
+  }, [
+    primaryKey,
+    partitionKey,
+    isMergeTreeSettingsLoading,
+    config,
+    engineFull,
+    needsMergeTreeSettings,
+    columns,
+    mergeTreeSettings,
+    sourceId,
+  ]);
 }
 
 function selectColumnMapWithoutAdditionalKeys(
@@ -1849,7 +1904,8 @@ function DBSqlRowTableComponent({
         if (columnMap.get(c)?._type === JSDataType.JSON) {
           // special rule for json
           // for json {SomePath: /c}, CH will return {SomePath: \/c}
-          // add this to make sure md5 get correct result
+          // add this to make sure SHA256 gets the correct result... slashes are escaped so the
+          // client-side JSON string matches ClickHouse's serialization before hashing.
           newRow[c] = JSON.stringify(row[c]).replace(/\//g, '\\/');
         } else {
           newRow[c] = JSON.stringify(row[c]);

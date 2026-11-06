@@ -283,6 +283,7 @@ build-app:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
+		-t ${NEXT_IMAGE_NAME_DOCKERHUB}:${IMAGE_VERSION}${IMAGE_VERSION_SUB_TAG} \
 		--target prod
 
 .PHONY: build-otel-collector-nightly
@@ -300,6 +301,7 @@ build-app-nightly:
 		--build-context app=./packages/app \
 		--build-arg CODE_VERSION=${CODE_VERSION} \
 		-t ${IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
+		-t ${NEXT_IMAGE_NAME_DOCKERHUB}:${IMAGE_NIGHTLY_TAG} \
 		--target prod
 
 .PHONY: build-local-nightly

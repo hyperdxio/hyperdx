@@ -138,7 +138,7 @@ export const DEFAULT_METRIC_NAMES_LIMIT = 500;
 const escapeLikePattern = (value: string): string =>
   value.replace(/[\\%_]/g, char => `\\${char}`);
 
-// See https://github.com/hyperdxio/hyperdx/issues/2163. Inlining a validated
+// See https://github.com/ClickHouse/ClickStack/issues/2163. Inlining a validated
 // integer literal avoids the `_CAST` wrapper entirely.
 const inlineNonNegativeInt = (value: number, label: string): string => {
   if (!Number.isInteger(value) || value < 0) {
@@ -194,19 +194,56 @@ export const quoteIdentifierIfNeeded = (identifier: string): string => {
     : quoteJsonPathSegment(unquoted);
 };
 
+// A single column or JSON path segment. No quoting/grouping characters, no `.` separator.
+const PLAIN_PATH_SEGMENT = /^[^`'"()[\],.]+/;
+
+// A JSON sub-object accessor or type cast. ClickHouse reports the operand
+// backticked (j.^`a`, j.a.:`Int64`).
+const OPERATOR_PATH_SEGMENT = /^[\^:]`(?:[^`]|``)*`/;
+
+// Split a name into `.`-separated path segments, or undefined when it isn't a
+// plain JSON path (function calls, literals, empty segments).
+const splitResultColumnPath = (name: string): string[] | undefined => {
+  const segments: string[] = [];
+  let rest = name;
+  while (true) {
+    const segment =
+      rest.match(OPERATOR_PATH_SEGMENT)?.[0] ??
+      rest.match(PLAIN_PATH_SEGMENT)?.[0];
+    if (segment == null) return undefined;
+    segments.push(segment);
+    rest = rest.slice(segment.length);
+    if (rest === '') return segments;
+    if (!rest.startsWith('.')) return undefined;
+    rest = rest.slice(1);
+  }
+};
+
+const quotePathSegment = (segment: string): string =>
+  OPERATOR_PATH_SEGMENT.test(segment)
+    ? segment
+    : quoteIdentifierIfNeeded(segment);
+
 /**
  * Quote a query result column name so it can be referenced in raw SQL.
  *
  * Most result column names do not need quoting:
  * - Bare identifiers (alphanumeric and underscore, starting with a letter or underscore)
  * - Numeric literals (e.g., `1`, `0x10`)
- * - Dotted column names (e.g., `my.col`)
  * - Function calls (e.g., `plus(a, b)`, `arrayElement(m, 'key')`)
+ *
+ * Dotted names are JSON/nested subcolumn paths (e.g. `event.@request_id`,
+ * which ClickHouse reports for the select `` event.`@request_id` ``). Each
+ * segment is quoted on its own. JSON type casts (eg. `` .:`String` ``) and
+ * `` ^`sub` `` sub-object accessors are preserved.
  */
-export const quoteResultColumnNameIfNeeded = (name: string): string =>
-  /^[^`'"()[\],.]+$/.test(name) && !Number.isFinite(Number(name))
-    ? quoteIdentifierIfNeeded(name)
-    : name;
+export const quoteResultColumnNameIfNeeded = (name: string): string => {
+  if (Number.isFinite(Number(name))) {
+    return name;
+  }
+  const segments = splitResultColumnPath(name);
+  return segments ? segments.map(quotePathSegment).join('.') : name;
+};
 
 const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
   const escaped = columnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -2236,6 +2273,53 @@ export class Metadata {
           }
 
           throw e;
+        }
+      },
+    );
+  }
+
+  /**
+   * Reads and caches MergeTree settings per connection; on Cloud,
+   * system.shared_merge_tree_settings overrides system.merge_tree_settings per
+   * key. Returns undefined on failure so the next call retries.
+   */
+  async getMergeTreeSettings({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<Map<string, string> | undefined> {
+    const readSettings = (query: string) =>
+      this.clickhouseClient
+        .query<'JSON'>({
+          connectionId,
+          query,
+          query_params: undefined,
+          clickhouse_settings: this.getClickHouseSettings(),
+        })
+        .then(res => res.json<{ name: string; value: string }>())
+        .then(json => json.data);
+
+    return this.cache.getOrFetch(
+      `${connectionId}.mergeTreeSettings`,
+      async () => {
+        try {
+          // OSS has no shared_merge_tree_settings; querying it fails.
+          const isCloud = await this.isClickHouseCloud({ connectionId });
+          const [mergeTreeRows, sharedMergeTreeRows] = await Promise.all([
+            readSettings('SELECT name, value FROM system.merge_tree_settings'),
+            isCloud
+              ? readSettings(
+                  'SELECT name, value FROM system.shared_merge_tree_settings',
+                )
+              : [],
+          ]);
+
+          // Later rows win.
+          const rows = [...mergeTreeRows, ...sharedMergeTreeRows];
+          return new Map(rows.map(row => [row.name, row.value]));
+        } catch (e) {
+          console.warn('Error fetching MergeTree settings:', e);
+          return undefined;
         }
       },
     );

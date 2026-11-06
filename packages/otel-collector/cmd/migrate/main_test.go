@@ -1133,6 +1133,81 @@ func TestRemoveCompatLogsSchema(t *testing.T) {
 	})
 }
 
+func TestSwapSessionsSchemaForCompat(t *testing.T) {
+	t.Run("swaps compat over full text", func(t *testing.T) {
+		dir := t.TempDir()
+		fullTextPath := filepath.Join(dir, "00004_hyperdx_sessions.sql")
+		compatPath := filepath.Join(dir, "00004_hyperdx_sessions_compat.sql")
+
+		if err := os.WriteFile(fullTextPath, []byte("FULL TEXT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(compatPath, []byte("COMPAT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := swapSessionsSchemaForCompat(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		got, err := os.ReadFile(fullTextPath)
+		if err != nil {
+			t.Fatalf("failed to read swapped file: %v", err)
+		}
+		if string(got) != "COMPAT SCHEMA" {
+			t.Errorf("expected compat content, got %q", string(got))
+		}
+		if _, err := os.Stat(compatPath); !os.IsNotExist(err) {
+			t.Error("compat file should have been renamed away")
+		}
+	})
+
+	t.Run("errors when compat file is missing", func(t *testing.T) {
+		dir := t.TempDir()
+		fullTextPath := filepath.Join(dir, "00004_hyperdx_sessions.sql")
+
+		if err := os.WriteFile(fullTextPath, []byte("FULL TEXT SCHEMA"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := swapSessionsSchemaForCompat(dir); err == nil {
+			t.Fatal("expected error when compat file is missing")
+		}
+	})
+}
+
+func TestRemoveCompatSessionsSchema(t *testing.T) {
+	t.Run("removes compat file and preserves others", func(t *testing.T) {
+		dir := t.TempDir()
+		fullTextPath := filepath.Join(dir, "00004_hyperdx_sessions.sql")
+		compatPath := filepath.Join(dir, "00004_hyperdx_sessions_compat.sql")
+
+		if err := os.WriteFile(fullTextPath, []byte("FULL TEXT"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(compatPath, []byte("COMPAT"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := removeCompatSessionsSchema(dir); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if _, err := os.Stat(compatPath); !os.IsNotExist(err) {
+			t.Error("compat file should have been removed")
+		}
+		if _, err := os.Stat(fullTextPath); err != nil {
+			t.Error("full text file should still exist")
+		}
+	})
+
+	t.Run("no error when compat file does not exist", func(t *testing.T) {
+		if err := removeCompatSessionsSchema(t.TempDir()); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // processSchemaDir
 // ---------------------------------------------------------------------------

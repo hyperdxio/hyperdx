@@ -25,7 +25,17 @@ export default mongoose.model<IDashboard>(
         required: true,
       },
       tiles: { type: mongoose.Schema.Types.Mixed, required: true },
-      team: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
+      // Immutable: `team` pins a dashboard to its owning tenant. Client PATCH
+      // bodies are re-parsed against DashboardWithoutIdSchema (which declares
+      // no `team`), so a smuggled key never reaches the update doc — this is
+      // defense-in-depth for any other caller that spreads into an update.
+      // The provisioner sets it via $setOnInsert only, which immutability
+      // permits.
+      team: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Team',
+        immutable: true,
+      },
       tags: {
         type: [String],
         default: [],
@@ -39,10 +49,13 @@ export default mongoose.model<IDashboard>(
         required: false,
       },
       containers: { type: mongoose.Schema.Types.Array, required: false },
+      // Immutable: ownership attribution is set once at creation; updates
+      // may only change `updatedBy`.
       createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: false,
+        immutable: true,
       },
       updatedBy: {
         type: mongoose.Schema.Types.ObjectId,

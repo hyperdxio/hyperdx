@@ -53,8 +53,8 @@ jest.mock('@/hooks/useMetadata', () => ({
   useMetadataWithSettings: () => mockMetadata,
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
-  useBrandDisplayName: () => 'HyperDX',
+jest.mock('@/brand', () => ({
+  useBrandDisplayName: () => 'ClickStack',
 }));
 jest.mock('@/components/ConnectionForm', () => ({
   ConnectionForm: () => null,

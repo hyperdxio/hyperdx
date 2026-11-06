@@ -18,10 +18,18 @@ processors:
 service:
   pipelines:
     traces:
-      processors: [memory_limiter/custom, batch/lowlatency]
+      processors:
+        [memory_limiter/custom, transform/session_id, batch/lowlatency]
     metrics:
       processors: [memory_limiter/custom, batch/lowlatency]
     logs/out-default:
-      processors: [memory_limiter/custom, transform, batch/lowlatency]
+      processors:
+        [
+          memory_limiter/custom,
+          transform,
+          transform/session_id,
+          batch/lowlatency,
+        ]
     logs/out-rrweb:
-      processors: [memory_limiter/custom, batch/lowlatency]
+      processors:
+        [memory_limiter/custom, transform/session_id, batch/lowlatency]

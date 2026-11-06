@@ -1,24 +1,9 @@
 import * as React from 'react';
 import { Badge } from '@clickhouse/click-ui';
-import {
-  Autocomplete,
-  Divider,
-  Group,
-  Modal,
-  Select,
-  Stack,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Divider, Group, Modal, Select, Stack, Text } from '@mantine/core';
 
-import { TimeZoneSelect } from './components/TimeZoneSelect';
-import {
-  isContentFontSize,
-  OPTIONS_CONTENT_FONT_SIZE,
-  OPTIONS_FONTS,
-} from './config/fonts';
-import { useAppTheme } from './theme/ThemeProvider';
-import { isValidThemeName, themes } from './theme';
+import { TimeZoneSelect, TimeZoneShortcuts } from './components/TimeZoneSelect';
+import { isContentFontSize, OPTIONS_CONTENT_FONT_SIZE } from './config/fonts';
 import {
   DEFAULT_ROW_CLICK_ACTION,
   RowClickAction,
@@ -37,12 +22,6 @@ const OPTIONS_ROW_CLICK_ACTION: { label: string; value: RowClickAction }[] = [
   { label: 'Open side panel', value: 'sidePanel' },
   { label: 'Expand inline', value: 'expand' },
 ];
-
-// Brand theme options (generated from theme registry)
-const OPTIONS_BRAND_THEMES = Object.values(themes).map(t => ({
-  label: t.displayName,
-  value: t.name,
-}));
 
 const SettingContainer = ({
   label,
@@ -77,7 +56,6 @@ export const UserPreferencesModal = ({
 }) => {
   const { userPreferences, setUserPreference } = useUserPreferences();
   const { contentFontSize } = useContentFontSize();
-  const { themeName, setTheme, isDev } = useAppTheme();
 
   return (
     <Modal
@@ -114,11 +92,17 @@ export const UserPreferencesModal = ({
           label="Time zone"
           description="Times are displayed and input in this zone."
         >
-          <TimeZoneSelect
-            data-testid="time-zone-select"
-            value={userPreferences.timeZone}
-            onChange={timeZone => setUserPreference({ timeZone })}
-          />
+          <Stack gap={4}>
+            <TimeZoneSelect
+              data-testid="time-zone-select"
+              value={userPreferences.timeZone}
+              onChange={timeZone => timeZone && setUserPreference({ timeZone })}
+            />
+            <TimeZoneShortcuts
+              testIdPrefix="time-zone"
+              onSelect={timeZone => setUserPreference({ timeZone })}
+            />
+          </Stack>
         </SettingContainer>
 
         <Divider label="Search results" labelPosition="left" mt="sm" />
@@ -185,70 +169,6 @@ export const UserPreferencesModal = ({
             allowDeselect={false}
           />
         </SettingContainer>
-
-        {/*
-          Brand Theme Selector - DEV MODE ONLY
-
-          This is intentionally NOT available in production. Brand theme (HyperDX vs ClickStack)
-          is deployment-configured via NEXT_PUBLIC_THEME environment variable.
-          Each deployment is branded for a specific product; users don't choose this.
-
-          This dev-only UI exists for testing theme implementations during development.
-        */}
-        {isDev && (
-          <SettingContainer
-            label={
-              <Group gap="xs">
-                Brand Theme
-                <Tooltip
-                  label="Only available in local/dev mode. Changes logo, colors, and branding."
-                  multiline
-                  w={220}
-                >
-                  <Badge
-                    size="sm"
-                    text="Dev only"
-                    state="neutral"
-                    icon="flask"
-                    iconDir="start"
-                  />
-                </Tooltip>
-              </Group>
-            }
-            description="Switch between HyperDX and ClickStack branding"
-          >
-            <Select
-              value={themeName}
-              onChange={value => {
-                if (value && isValidThemeName(value)) {
-                  setTheme(value);
-                }
-              }}
-              data={OPTIONS_BRAND_THEMES}
-              allowDeselect={false}
-            />
-          </SettingContainer>
-        )}
-
-        {/* Font selection is only available for HyperDX theme */}
-        {/* ClickStack theme always uses Inter font and doesn't show this setting */}
-        {themeName !== 'clickstack' && (
-          <SettingContainer
-            label="Font"
-            description="If using custom font, make sure it's installed on your system"
-          >
-            <Autocomplete
-              value={userPreferences.font}
-              filter={({ options }) => options}
-              onChange={value =>
-                setUserPreference({
-                  font: value as UserPreferences['font'],
-                })
-              }
-              data={OPTIONS_FONTS}
-            />
-          </SettingContainer>
-        )}
       </Stack>
     </Modal>
   );

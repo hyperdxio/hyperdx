@@ -5,13 +5,13 @@ import { Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/brand';
 import { useTablesDirect } from '@/clickhouse';
 import { DBTableSelectControlled } from '@/components/DBTableSelect';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMetricsSeriesTableAvailability } from '@/hooks/useMetricsSeriesTableAvailability';
 import { isValidMetricTable, useSource } from '@/source';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import {
   matchMetricTables,
   matchSeriesTable,

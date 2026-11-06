@@ -21,7 +21,7 @@ a HyperDX alert without parsing the human-readable message body.
 | `{{thresholdMax}}` | number | Upper bound of a `between`/`outside` condition. Always unset for every other comparator, even if the alert was once a range, so guard it (see below). |
 | `{{value}}` | number | The value that triggered or resolved the alert. |
 | `{{groupKey}}` | string | The breaching group, for a grouped alert. |
-| `{{var}}` | object | The breaching group's values by group-by column or SQL alias. Use one value at a time, e.g. `{{var.customer_id}}`, or `{{var.[service.name]}}` for a name with dots. Empty when not grouped, and on the resolve of a group that has no rows left. |
+| `{{var}}` | object | The breaching group's values by group-by column or SQL alias. Use one value at a time, e.g. `{{var.customer_id}}`, or `{{var.[service.name]}}` for a name with dots. Empty when not grouped. |
 | `{{sourceQuery}}` | string | The condition behind the alert — search expression or SQL (see below). |
 | `{{teamId}}` | string | Team the alert belongs to. |
 | `{{note}}` | string | The alert's freeform note — commonly a runbook link. |

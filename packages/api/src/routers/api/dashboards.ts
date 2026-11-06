@@ -212,9 +212,16 @@ router.patch(
         return res.sendStatus(404);
       }
 
-      // Only omit undefined values, keep null (which signals field removal)
-      // `provisioned` is server-owned — see the POST handler above.
-      const updates = _.omitBy(_.omit(req.body, 'provisioned'), _.isUndefined);
+      // Re-parse instead of omitting keys by name: DashboardWithoutIdSchema
+      // declares no `team`/`createdBy`/`provisioned`, so parsing drops them
+      // along with every other unknown key. All three are server-owned —
+      // `team`/`provisioned` for tenant isolation and the provisioner, and
+      // `createdBy` for ownership attribution (a smuggled `team` used to move
+      // a dashboard into another team's namespace; see the POST handler's
+      // comment for why validateRequest alone can't enforce this).
+      // Nulls survive: the schema's optional fields are `.nullable()`, and a
+      // null still signals field removal downstream.
+      const updates = DashboardWithoutIdSchema.partial().parse(req.body);
 
       const sourceError = await validateFilterSources(
         teamId,

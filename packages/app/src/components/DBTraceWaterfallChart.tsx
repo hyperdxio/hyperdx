@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import SqlString from 'sqlstring';
 import TimestampNano from 'timestamp-nano';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import { isErrorStatusCode } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import {
   ChartConfig,
   ChartConfigWithDateRange,
@@ -34,6 +35,7 @@ import {
   IconChevronsDown,
   IconChevronsRight,
   IconLogs,
+  IconPointer,
 } from '@tabler/icons-react';
 
 import { ContactSupportText } from '@/components/ContactSupportText';
@@ -50,6 +52,7 @@ import {
   TRACE_WATERFALL_FETCH_LIMIT,
   TRACE_WATERFALL_ROW_LIMIT,
 } from '@/components/traceWaterfallLimits';
+import { useBrowserTraceEvents } from '@/hooks/useBrowserTraceEvents';
 import { useColumns } from '@/hooks/useMetadata';
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 import {
@@ -106,6 +109,7 @@ export type SpanRow = {
     Attributes: Record<string, any>;
   }>;
   __hdx_hidden?: boolean | 1 | 0;
+  triggeredBy?: string;
 };
 
 type TimestampedRow = {
@@ -154,7 +158,7 @@ function getRowSeverity(
       severityText: row.SeverityText,
     });
   }
-  return row.StatusCode === 'Error' ? 'error' : undefined;
+  return isErrorStatusCode(row.StatusCode) ? 'error' : undefined;
 }
 
 // Per-service span palette: the full categorical palette minus the two hues we
@@ -784,11 +788,12 @@ export function DBTraceWaterfallChartContainer({
     logColumns?.some(column => column.name === 'SeverityNumber') ?? false;
 
   const {
-    rows: logRowsData,
+    rows: fetchedLogRows,
     isFetching: logIsFetching,
     meta: logRowsMeta,
     filterError: logFilterError,
     fatalError: logFatalError,
+    isTruncated: logIsTruncated,
   } = useFilteredEventsAroundFocus({
     // search data if logTableModel exist
     // search invalid date range if no logTableModel(react hook need execute no matter what)
@@ -815,8 +820,33 @@ export function DBTraceWaterfallChartContainer({
   // shown), otherwise the fatal error (no logs could be loaded at all).
   const logError = logFilterError ?? logFatalError;
 
+  const [showSpanEvents, setShowSpanEvents] = useState(true);
+  const [showSpans, setShowSpans] = useState(true);
+  const [showLogs, setShowLogs] = useState(true);
+
+  const {
+    logRows: logRowsData,
+    resourceTimingBySpanId,
+    triggerRow,
+  } = useBrowserTraceEvents({
+    traceRows: traceRowsData,
+    logRows: fetchedLogRows,
+    logSource: logTableSource,
+    traceId,
+    highlightedRowWhere,
+    initialRowHighlightHint,
+    // Only while the dots show. A log filter asks for the rows it matches. A
+    // capped list can keep a log that shares a timing log's key and drop the
+    // timing log, and the fold would then hide that other log.
+    foldTimingRows: showSpans && showSpanEvents && !logWhere && !logIsTruncated,
+    enabled: !traceIsFetching,
+  });
+
   const rows: any[] = useMemo(() => {
-    const nextRows: Array<(typeof traceRowsData)[number] & TimestampedRow> = [
+    // The trigger row goes first so a click with the same timestamp as the
+    // root span sorts before it (the sort is stable).
+    const nextRows: TimestampedRow[] = [
+      ...(triggerRow ? [triggerRow] : []),
       ...traceRowsData,
       ...logRowsData,
     ];
@@ -832,7 +862,7 @@ export function DBTraceWaterfallChartContainer({
     });
 
     return nextRows;
-  }, [traceRowsData, logRowsData]);
+  }, [triggerRow, traceRowsData, logRowsData]);
 
   const validSpanIDs = useMemo(() => {
     return new Set(
@@ -982,9 +1012,6 @@ export function DBTraceWaterfallChartContainer({
   };
 
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
-  const [showSpanEvents, setShowSpanEvents] = useState(true);
-  const [showSpans, setShowSpans] = useState(true);
-  const [showLogs, setShowLogs] = useState(true);
 
   const { nodesMap, flattenedNodes, parentIdsByLevel } = useMemo(() => {
     const rootNodes: Node[] = [];
@@ -1127,6 +1154,8 @@ export function DBTraceWaterfallChartContainer({
   const visibleNodes = useMemo(() => {
     if (showSpans && showLogs) return flattenedNodes;
     return flattenedNodes.filter(node => {
+      // The click belongs with the spans it started, not with the logs.
+      if (node.triggeredBy) return showSpans;
       if (node.type === SourceKind.Log) return showLogs;
       return showSpans;
     });
@@ -1136,7 +1165,7 @@ export function DBTraceWaterfallChartContainer({
     node => node.type !== SourceKind.Log,
   ).length;
   const logCount = visibleNodes.filter(
-    node => node.type === SourceKind.Log,
+    node => node.type === SourceKind.Log && !node.triggeredBy,
   ).length;
   const errorCount = visibleNodes.filter(
     node => getRowSeverity(node) === 'error',
@@ -1177,6 +1206,7 @@ export function DBTraceWaterfallChartContainer({
           id,
           type,
           aliasWith,
+          triggeredBy,
         } = result;
         let body = `${_body}`;
         try {
@@ -1192,12 +1222,16 @@ export function DBTraceWaterfallChartContainer({
         const httpUrl = isRpcSpan(spanAttributes)
           ? undefined
           : getHttpUrl(spanAttributes);
-        const displayText = httpUrl ? `${body} ${httpUrl}` : body;
+        const displayText =
+          triggeredBy ?? (httpUrl ? `${body} ${httpUrl}` : body);
+        const startedAt = !isNaN(startOffset)
+          ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}`
+          : '';
 
         // Process span events into markers (only if showSpanEvents is enabled)
-        const markers =
-          showSpanEvents && result.SpanEvents
-            ? result.SpanEvents.map(spanEvent => {
+        const markers = showSpanEvents
+          ? [
+              ...(result.SpanEvents ?? []).map(spanEvent => {
                 const epochMs = parseTimestampToMs(spanEvent.Timestamp);
                 return {
                   timestamp: epochMs - minOffset,
@@ -1205,12 +1239,18 @@ export function DBTraceWaterfallChartContainer({
                   name: spanEvent.Name,
                   attributes: spanEvent.Attributes || {},
                 };
-              })
-            : [];
+              }),
+              // Log rows carry their parent span's SpanId.
+              ...(type !== SourceKind.Log
+                ? (resourceTimingBySpanId.get(result.SpanId) ?? [])
+                : []
+              ).map(marker => ({
+                ...marker,
+                timestamp: marker.epochMs - minOffset,
+              })),
+            ]
+          : [];
 
-        // Extract status logic
-        // TODO: Legacy schemas will have STATUS_CODE_ERROR
-        // See: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/34799/files#diff-1ec84547ed93f2c8bfb21c371ca0b5304f01371e748d4b02bf397313a4b1dfa4L197
         const severity = getRowSeverity(result);
         const isError = severity === 'error';
         const status = result.StatusCode || result.SeverityText;
@@ -1318,7 +1358,13 @@ export function DBTraceWaterfallChartContainer({
                 )}
 
                 <Group gap={0} wrap="nowrap">
-                  {type === SourceKind.Log ? (
+                  {triggeredBy ? (
+                    <IconPointer
+                      size={14}
+                      className="align-middle me-2"
+                      aria-label="Triggering click"
+                    />
+                  ) : type === SourceKind.Log ? (
                     <IconLogs
                       size={14}
                       className="align-middle me-2"
@@ -1329,7 +1375,10 @@ export function DBTraceWaterfallChartContainer({
                     size="xxs"
                     truncate="end"
                     span
-                    title={`${serviceName}${httpUrl ? ` ${displayText}` : ''}`}
+                    title={
+                      triggeredBy ??
+                      `${serviceName}${httpUrl ? ` ${displayText}` : ''}`
+                    }
                     role="button"
                   >
                     {serviceName && <>{serviceName} </>}
@@ -1349,7 +1398,9 @@ export function DBTraceWaterfallChartContainer({
               aliasWith,
               start,
               end,
-              tooltip: `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${!isNaN(startOffset) ? ` | Started at ${formatTime(new Date(startOffset), { format: 'withMs' })}` : ''}`,
+              tooltip: triggeredBy
+                ? `${triggeredBy}${startedAt}`
+                : `${displayText} ${tookMs >= 0 ? `took ${tookMs.toFixed(4)}ms` : ''} ${status ? `| Status: ${status}` : ''}${startedAt}`,
               color: 'var(--color-text-inverted)',
               backgroundColor: barColor({
                 isHighlighted,
@@ -1375,6 +1426,7 @@ export function DBTraceWaterfallChartContainer({
       highlightedRowWhere,
       minOffset,
       onClick,
+      resourceTimingBySpanId,
       serviceColorMap,
       showSpanEvents,
       toggleCollapse,
@@ -1396,12 +1448,7 @@ export function DBTraceWaterfallChartContainer({
   return (
     <>
       {showMinimap && (
-        <Box mb="md">
-          <TimelineMinimap
-            rows={timelineRows}
-            controller={viewportController}
-          />
-        </Box>
+        <TimelineMinimap rows={timelineRows} controller={viewportController} />
       )}
       {isFilterExpanded && (
         <form onSubmit={handleSubmit(onSubmitFilters)}>
@@ -1620,7 +1667,11 @@ export function DBTraceWaterfallChartContainer({
         </Group>
       </Group>
       {!isFetching && !error && highlightedAttributeValues?.length > 0 && (
-        <DBHighlightedAttributesList attributes={highlightedAttributeValues} />
+        <Box mb="xs">
+          <DBHighlightedAttributesList
+            attributes={highlightedAttributeValues}
+          />
+        </Box>
       )}
       <div
         ref={timelineWrapperRef}

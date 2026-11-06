@@ -21,8 +21,8 @@ import EmptyState from '@/components/EmptyState';
 import { PageHeader } from '@/components/PageHeader';
 import { ALERT_STATE_FILTER_OPTIONS } from '@/utils/alerts';
 
-import { usePageTitle } from './theme/ThemeProvider';
 import api from './api';
+import { usePageTitle } from './brand';
 import { withAppNav } from './layout';
 
 const SEARCH_DEBOUNCE_MS = 300;

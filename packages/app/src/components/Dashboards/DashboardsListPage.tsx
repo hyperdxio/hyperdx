@@ -31,6 +31,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
+import { usePageTitle } from '@/brand';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { DashboardsListToolbar } from '@/components/Dashboards/DashboardsListToolbar';
 import {
@@ -55,7 +56,6 @@ import {
 } from '@/dashboard';
 import { useFavorites } from '@/favorites';
 import { withAppNav } from '@/layout';
-import { usePageTitle } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
 
 function getDashboardAlerts(tiles: Dashboard['tiles']) {

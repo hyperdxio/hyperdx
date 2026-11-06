@@ -122,6 +122,7 @@ with:
 | ----------------------------- | -------------------------------------------------------------------------------------------- |
 | `clickstack_list_sources`        | List all data sources and connections as a lightweight catalog (IDs, names, kinds)            |
 | `clickstack_describe_source`     | Full column schema, attribute keys, sampled low-cardinality values, and a round-trippable `config` block (the exact shape `clickstack_save_source` accepts, incl. correlation IDs) for a single source; for metric sources also returns a per-kind metric-name sample |
+| `clickstack_describe_table`      | Inspect a ClickHouse table that is not a registered source: columns, keys, engine, skipping indices, approximate size, and an optional row sample. Without a table, lists the tables in a database (paginated) |
 | `clickstack_save_source`         | Create (omit id) or update (provide id) a data source (log, trace, session, metric, or promql) so shipped telemetry becomes queryable. To clone a source, read its `config` from `clickstack_describe_source`, drop `id`, and pass it here |
 | `clickstack_delete_source`       | Permanently delete a data source by ID                                                        |
 | `clickstack_list_metrics`        | Paginated catalog of metric names on a metric source with optional kind / namePattern / time-window filters |
@@ -133,7 +134,7 @@ with:
 | `clickstack_event_patterns`      | Discover the most common log messages and event patterns using Drain clustering               |
 | `clickstack_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |
 | `clickstack_emerging_signals`    | Detect NEW or GONE log/event patterns between a baseline and a current window (two-window Drain novelty diff) |
-| `clickstack_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries)                   |
+| `clickstack_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries); pass `queries` to run up to 10 in parallel |
 | `clickstack_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
 | `clickstack_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
 | `clickstack_delete_dashboard`    | Permanently delete a dashboard and its attached alerts                                       |

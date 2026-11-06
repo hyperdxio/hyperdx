@@ -63,7 +63,7 @@ describe('createRrwebChunkAssembler', () => {
   });
 
   it('reassembles multi-chunk events arriving out of order', () => {
-    // The regression from hyperdxio/hyperdx#2569: all chunks of an event
+    // The regression from ClickHouse/ClickStack#2569: all chunks of an event
     // share one timestamp, so ClickHouse may return them in any order.
     const { assembler, events, errors } = makeAssembler();
     const event = { type: 2, timestamp: 4, data: { text: 'y'.repeat(500) } };

@@ -34,8 +34,8 @@ import ReactCodeMirror, {
 } from '@uiw/react-codemirror';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/brand';
 import { WebhookBodyValidationAlert } from '@/components/TeamSettings/WebhookBodyValidation';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import { isValidUrl } from '@/utils';
 
 // The default body and the variable list both come from common-utils, so this

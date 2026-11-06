@@ -20,7 +20,14 @@ const WHERE_DESCRIPTION =
   'WRONG: level = "error"               (SQL syntax with whereLanguage:"lucene")\n\n' +
   'SUBSTRING TRAP: Lucene field:value matches ANY row containing "value" as a substring, not exact equality.\n' +
   '  SpanKind:Server matches "Server", "ServerStreaming", "InternalServer", etc.\n' +
-  "  For exact match, use SQL: SpanKind = 'Server'";
+  '  For exact match, quote the value: SpanKind:"Server" (compiles to a case-sensitive =, so a sort-key\n' +
+  "  column such as ServiceName can use the primary key), or use SQL: SpanKind = 'Server'\n\n" +
+  'BODY TEXT: write the term or phrase without a field name, e.g. timeout or "connection refused".\n' +
+  "  That searches the source's default search column (the body for logs) and uses its text index\n" +
+  '  when the source has one. With an index it matches whole tokens: timeout does not match ConnectionTimeoutException.\n' +
+  "  For a substring inside a word, use SQL ILIKE '%timeout%' (reads the whole column).\n" +
+  '  Body:timeout, Body LIKE and Body ILIKE read the whole column, and Body:"..." is exact equality on the\n' +
+  '  whole body.';
 
 const WHERE_LANGUAGE_DESCRIPTION =
   'Language of the "where" filter. The syntax in "where" MUST match this setting.\n' +
@@ -30,7 +37,8 @@ const WHERE_LANGUAGE_DESCRIPTION =
   'and map attributes via dot notation. Use "sql" for IN(...) lists, complex expressions, or function calls.\n' +
   'IMPORTANT: Lucene field:value is a SUBSTRING match (ilike), not exact equality. ' +
   'field:val* is prefix-within-substring, not a true prefix match. ' +
-  "For exact matching or reliable wildcards, use SQL: WHERE field = 'value' or WHERE field LIKE 'val%'.\n\n" +
+  'For exact matching, quote the value (field:"value", case-sensitive) or use SQL: WHERE field = \'value\'. ' +
+  "For reliable wildcards, use SQL: WHERE field LIKE 'val%'.\n\n" +
   'Common mistake: writing Column:value (Lucene) but setting whereLanguage to "sql". ' +
   'If your filter uses colon syntax, use "lucene".';
 
@@ -102,7 +110,7 @@ const mcpMetricTypeSchema = z
  * Clients that forward MCP tool schemas straight to the provider therefore
  * get the ENTIRE tool list rejected because of this one field, and the user
  * sees a generic connectivity error that names neither the tool nor the
- * property. See https://github.com/hyperdxio/hyperdx/issues/2967.
+ * property. See https://github.com/ClickHouse/ClickStack/issues/2967.
  *
  * The wire type is the only thing that changes. Numeric input is still
  * accepted for callers working from a cached schema, the value is coerced
