@@ -78,6 +78,35 @@ describe('SearchWhereInput', () => {
   });
 
   describe('Lucene Mode', () => {
+    it('offers columns on empty focus and accepts a keyboard selection when enabled', async () => {
+      const user = userEvent.setup();
+      const onSubmit = jest.fn();
+      renderWithMantine(
+        <TestWrapper>
+          {({ control }) => (
+            <SearchWhereInput
+              tableConnection={mockTableConnection}
+              control={control}
+              name="where"
+              additionalSuggestions={['SrcAddr', 'Proto']}
+              showSuggestionsOnEmpty
+              onSubmit={onSubmit}
+            />
+          )}
+        </TestWrapper>,
+      );
+      const input = screen.getByPlaceholderText(
+        /Search your events w\/ Lucene/i,
+      );
+      await user.click(input);
+      expect(
+        await screen.findByText('SrcAddr', { selector: 'span' }),
+      ).toBeInTheDocument();
+      await user.keyboard('{ArrowDown}{Enter}');
+      expect(input).toHaveValue('SrcAddr');
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+
     it('renders Lucene input when whereLanguage is lucene', () => {
       const { container } = renderWithMantine(
         <TestWrapper defaultLanguage="lucene" />,

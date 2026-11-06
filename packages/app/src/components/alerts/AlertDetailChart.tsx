@@ -1,6 +1,7 @@
 import * as React from 'react';
 import Link from 'next/link';
 import { pick } from 'lodash';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import {
   Granularity,
   isTimeSeriesDisplayType,
@@ -167,12 +168,12 @@ export function buildAlertChartConfig({
       ...savedConfig,
       variables,
       ...pick(source, [
-        'implicitColumnExpression',
         'useTextIndexForImplicitColumn',
         'from',
         'metricTables',
       ]),
       ...(isLogSource(source) ? { bodyExpression: source.bodyExpression } : {}),
+      implicitColumnExpression: getSourceImplicitColumnExpression(source),
       sampleWeightExpression: getSampleWeightExpression(source),
       dateRange,
       granularity,
@@ -207,10 +208,7 @@ export function buildAlertChartConfig({
       databaseName: source.from?.databaseName || 'default',
       tableName: tableName || '',
     },
-    implicitColumnExpression:
-      isLogSource(source) || isTraceSource(source)
-        ? source.implicitColumnExpression
-        : undefined,
+    implicitColumnExpression: getSourceImplicitColumnExpression(source),
     useTextIndexForImplicitColumn:
       isLogSource(source) || isTraceSource(source)
         ? source.useTextIndexForImplicitColumn

@@ -5,6 +5,7 @@ import {
   optimizeFacetedKeyValuesConfig,
   optimizeGetKeyValuesCalls,
 } from '@hyperdx/common-utils/dist/core/materializedViews';
+import { getSourceImplicitColumnExpression } from '@hyperdx/common-utils/dist/core/searchChartConfig';
 import { FilterSelection } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
   FilterState,
@@ -221,10 +222,7 @@ function useOptimizedKeyValuesCalls({
             databaseName: source.from.databaseName,
             tableName,
           },
-          implicitColumnExpression:
-            isTraceSource(source) || isLogSource(source)
-              ? source.implicitColumnExpression
-              : undefined,
+          implicitColumnExpression: getSourceImplicitColumnExpression(source),
           // Logs-only body fallback for bare-text Lucene search.
           bodyExpression: isLogSource(source)
             ? source.bodyExpression

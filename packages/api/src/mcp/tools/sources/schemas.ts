@@ -9,17 +9,25 @@ import { sanitizeMetricTables } from './metricKinds';
 //
 // String literals (not SourceKind members) so z.enum narrows at the MCP SDK
 // boundary; the assertion keeps them in sync with the enum.
-const SOURCE_KINDS = ['log', 'trace', 'session', 'metric', 'promql'] as const;
-const _assertSourceKindsMatchEnum: readonly (typeof SOURCE_KINDS)[number][] = [
-  SourceKind.Log,
-  SourceKind.Trace,
-  SourceKind.Session,
-  SourceKind.Metric,
-  SourceKind.Promql,
-];
+const SOURCE_KINDS = [
+  'log',
+  'trace',
+  'session',
+  'metric',
+  'promql',
+  'netflow',
+] as const satisfies readonly `${SourceKind}`[];
+const _assertSourceKindsMatchEnum: readonly (typeof SOURCE_KINDS)[number][] =
+  Object.values(SourceKind);
 void _assertSourceKindsMatchEnum;
 
-const NON_PROMQL_SOURCE_KINDS = ['log', 'trace', 'session', 'metric'] as const;
+const NON_PROMQL_SOURCE_KINDS = [
+  'log',
+  'trace',
+  'session',
+  'metric',
+  'netflow',
+] as const;
 
 const KIND_DESCRIPTION =
   'Type of telemetry the table holds. Determines which other fields are ' +
@@ -234,8 +242,9 @@ const mcpSaveSourceSchema = z.object({
     .string()
     .optional()
     .describe(
-      'Log and trace sources. Column searched by full-text Lucene terms that ' +
-        'name no field, typically the log body (Body) or SpanName.',
+      'Log, trace and netflow sources. Column searched by full-text Lucene ' +
+        'terms that name no field, typically the log body (Body) or SpanName. ' +
+        'NetFlow defaults to mapped flow dimensions when omitted.',
     ),
   knownColumnsListExpression: z
     .string()
@@ -263,13 +272,14 @@ const mcpSaveSourceSchema = z.object({
         'Merge engine tables; "disabled" falls back to hasToken().',
     ),
 
-  // ── Log / Trace ──
+  // ── Log / Trace / NetFlow ──
   defaultTableSelectExpression: z
     .string()
     .optional()
     .describe(
       'Comma-separated columns shown in search results by default, e.g. ' +
-        '"Timestamp, ServiceName, Body". Required for log and trace sources.',
+        '"Timestamp, ServiceName, Body". Required for log, trace, and netflow ' +
+        'sources.',
     ),
   bodyExpression: z
     .string()
@@ -295,6 +305,53 @@ const mcpSaveSourceSchema = z.object({
       'Log sources. Expression for the OpenTelemetry log EventName, e.g. ' +
         'EventName. Omit if the table has no such column.',
     ),
+
+  bytesExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: observed byte counter expression.'),
+  packetsExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: observed packet counter expression.'),
+  srcAddrExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: source IP address expression.'),
+  dstAddrExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: destination IP address expression.'),
+  srcPortExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: source port expression.'),
+  dstPortExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: destination port expression.'),
+  protocolExpression: z
+    .string()
+    .optional()
+    .describe('Required for netflow: IP protocol number expression.'),
+  samplingRateExpression: z
+    .string()
+    .optional()
+    .describe(
+      'NetFlow sampling multiplier. Omit for unsampled or already scaled counters. Omitted mappings and null or non-positive row values use a multiplier of one.',
+    ),
+  exporterExpression: z
+    .string()
+    .optional()
+    .describe('NetFlow sources. Exporter (router) name or address expression.'),
+  inIfExpression: z
+    .string()
+    .optional()
+    .describe('NetFlow sources. Input interface expression.'),
+  outIfExpression: z
+    .string()
+    .optional()
+    .describe('NetFlow sources. Output interface expression.'),
 
   // ── Trace (required for trace kind) ──
   durationExpression: z

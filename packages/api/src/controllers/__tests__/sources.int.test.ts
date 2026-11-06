@@ -1,6 +1,7 @@
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import mongoose from 'mongoose';
 
-import { getSource } from '@/controllers/sources';
+import { createSource, getSource, updateSource } from '@/controllers/sources';
 import { clearDBCollections, closeDB, connectDB } from '@/fixtures';
 
 describe('sources controller', () => {
@@ -14,6 +15,45 @@ describe('sources controller', () => {
 
   afterAll(async () => {
     await closeDB();
+  });
+
+  it('creates and updates native NetFlow mappings without losing fields', async () => {
+    const team = new mongoose.Types.ObjectId().toString();
+    const input = {
+      team,
+      kind: SourceKind.Netflow as const,
+      name: 'Flows',
+      connection: new mongoose.Types.ObjectId().toString(),
+      from: { databaseName: 'default', tableName: 'flows' },
+      timestampValueExpression: 'TimeReceived',
+      defaultTableSelectExpression: 'SrcAddr, DstAddr',
+      bytesExpression: 'Bytes',
+      packetsExpression: 'Packets',
+      samplingRateExpression: 'SamplingRate',
+      srcAddrExpression: 'SrcAddr',
+      dstAddrExpression: 'DstAddr',
+      srcPortExpression: 'SrcPort',
+      dstPortExpression: 'DstPort',
+      protocolExpression: 'Proto',
+      exporterExpression: 'ExporterName',
+      inIfExpression: 'InIfName',
+      outIfExpression: 'OutIfName',
+    };
+    const created = await createSource(team, input);
+    expect(created).toBeTruthy();
+    const updated = await updateSource(team, String(created!._id), {
+      ...input,
+      bytesExpression: 'octets',
+    });
+    expect(updated?.get('bytesExpression')).toBe('octets');
+    expect(updated?.get('samplingRateExpression')).toBe('SamplingRate');
+    expect(updated?.get('outIfExpression')).toBe('OutIfName');
+    expect(
+      await getSource(
+        new mongoose.Types.ObjectId().toString(),
+        String(created!._id),
+      ),
+    ).toBeNull();
   });
 
   describe('getSource', () => {

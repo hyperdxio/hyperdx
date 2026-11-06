@@ -13,6 +13,7 @@ import {
   IconConnection,
   IconDeviceLaptop,
   IconLogs,
+  IconNetwork,
 } from '@tabler/icons-react';
 
 const MAX_LABEL_LENGTH_SINGLE = 120;
@@ -26,6 +27,9 @@ export type BreadcrumbItem = {
 };
 
 function SourceIcon({ kind }: { kind?: SourceKind }) {
+  if (kind === SourceKind.Netflow) {
+    return <IconNetwork size={14} style={{ flexShrink: 0 }} />;
+  }
   if (kind === SourceKind.Trace) {
     return <IconConnection size={14} style={{ flexShrink: 0 }} />;
   }

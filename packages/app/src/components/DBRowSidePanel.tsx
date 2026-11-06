@@ -839,7 +839,11 @@ export const DBRowSidePanelInner = ({
     const hasStack = crumbSourceStack.length > 0 || crumbNavStack.length > 0;
     const rootLabel =
       initialMainContent ||
-      (rootSource.kind === SourceKind.Trace ? 'Trace' : 'Log');
+      (rootSource.kind === SourceKind.Trace
+        ? 'Trace'
+        : rootSource.kind === SourceKind.Netflow
+          ? 'Flow'
+          : 'Log');
 
     if (hasStack) {
       items.push({

@@ -74,6 +74,8 @@ function flattenFilters(
 
 function SearchFilterPill({
   pill,
+  fieldLabel,
+  enableValueEditing,
   isInvalid,
   invalidReason,
   chartConfig,
@@ -82,6 +84,8 @@ function SearchFilterPill({
   onReplaceValue,
 }: {
   pill: PillItem;
+  fieldLabel?: string;
+  enableValueEditing: boolean;
   isInvalid?: boolean;
   invalidReason?: string;
   chartConfig: BuilderChartConfigWithDateRange;
@@ -92,7 +96,7 @@ function SearchFilterPill({
   const isExcluded = pill.type === 'excluded';
   // A range pill has no single value to copy or flip, and an unapplied filter
   // (column missing on the active source) can only be removed.
-  const isEditable = pill.type !== 'range' && !isInvalid;
+  const isEditable = enableValueEditing && pill.type !== 'range' && !isInvalid;
   const [opened, setOpened] = useState(false);
 
   // The picker lists values to switch this pill to, so it must not be scoped
@@ -118,7 +122,7 @@ function SearchFilterPill({
 
   return (
     <FilterPill
-      field={pill.field}
+      field={fieldLabel ?? pill.field}
       operator={isExcluded ? '!=' : pill.type === 'range' ? ':' : '='}
       value={pill.value}
       displayValue={pill.displayValue}
@@ -153,9 +157,14 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
   invalidFieldReason,
   chartConfig,
   dateTimeColumns = EMPTY_DATE_TIME_COLUMNS,
+  fieldLabel,
+  enableValueEditing = true,
   ...flexProps
 }: {
   searchFilters: FilterStateHook;
+  /** Display label only; filtering, removal and value lookup use the original field. */
+  fieldLabel?: (field: string) => string;
+  enableValueEditing?: boolean;
   /**
    * Map of DateTime/Date column name → ClickHouse type. Their pill values are
    * formatted to the user's locale/timezone for display, matching the results
@@ -277,6 +286,8 @@ export const ActiveFilterPills = memo(function ActiveFilterPills({
           <SearchFilterPill
             key={`${pill.field}-${pill.type}-${pill.value}-${i}`}
             pill={pill}
+            fieldLabel={fieldLabel?.(pill.field)}
+            enableValueEditing={enableValueEditing}
             isInvalid={isInvalid}
             invalidReason={
               isInvalid ? invalidFieldReason?.(pill.field) : undefined

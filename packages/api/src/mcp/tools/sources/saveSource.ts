@@ -39,7 +39,10 @@ export function registerSaveSource({
         'defaultTableSelectExpression; trace also needs durationExpression, ' +
         'traceIdExpression, spanIdExpression, parentSpanIdExpression, ' +
         'spanNameExpression, spanKindExpression; session needs traceSourceId; ' +
-        'metric needs metricTables and resourceAttributesExpression. Get ' +
+        'metric needs metricTables and resourceAttributesExpression; ' +
+        'netflow needs defaultTableSelectExpression, bytesExpression, ' +
+        'packetsExpression, srcAddrExpression, dstAddrExpression, ' +
+        'srcPortExpression, dstPortExpression, protocolExpression. Get ' +
         'connection and source IDs from clickstack_list_sources.',
       inputSchema: buildMcpSaveSourceSchema(isPromqlEnabled(context)),
     },
