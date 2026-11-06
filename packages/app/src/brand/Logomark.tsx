@@ -1,3 +1,7 @@
+// The hexagon is taller than it is wide. `size` is the height, and the
+// width follows the viewBox so the box hugs the symbol.
+const MARK_WIDTH_RATIO = 38.7979 / 44.7998;
+
 /**
  * ClickStack mark from the hexagon-and-bolt symbol.
  * The bolt uses the page background so it stays two-tone: white on the dark
@@ -6,7 +10,7 @@
 export default function Logomark({ size = 16 }: { size?: number }) {
   return (
     <svg
-      width={size}
+      width={size * MARK_WIDTH_RATIO}
       height={size}
       viewBox="0 0 38.7979 44.7998"
       fill="none"

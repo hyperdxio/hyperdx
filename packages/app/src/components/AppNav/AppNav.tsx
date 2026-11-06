@@ -20,7 +20,7 @@ import {
 } from '@tabler/icons-react';
 
 import api from '@/api';
-import { useBrandDisplayName, useLogomark } from '@/brand';
+import { useLogomark, useWordmark } from '@/brand';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import { InstanceLabel } from '@/components/AppNav/InstanceLabel';
 import { useMobileNavOverlay } from '@/components/AppNav/useMobileNavOverlay';
@@ -105,9 +105,8 @@ const NAV_LINKS: NavLinkConfig[] = [
 ];
 
 export default function AppNav({ fixed = false }: { fixed?: boolean }) {
-  const brandName = useBrandDisplayName();
+  const wordmark = useWordmark();
   const logomark = useLogomark({ size: 22 });
-  const expandedLogomark = useLogomark({ size: 23 });
 
   useEffect(() => {
     let redirectUrl;
@@ -398,17 +397,12 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
                 <div className={styles.logoIconWrapper}>{logomark}</div>
               ) : (
                 <Group
-                  gap={8}
+                  gap="xs"
                   align="center"
                   wrap="nowrap"
                   style={{ minWidth: 0 }}
                 >
-                  <div className={styles.logoLockupMark}>
-                    {expandedLogomark}
-                  </div>
-                  <Text fz={18} fw={500} truncate="end">
-                    {brandName}
-                  </Text>
+                  {wordmark}
                   {/* Label and UTC badge are mutually exclusive - showing both
                       would be redundant and crowd this already-tight row. */}
                   <InstanceLabel
