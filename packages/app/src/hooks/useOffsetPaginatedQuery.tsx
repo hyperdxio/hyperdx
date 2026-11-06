@@ -178,7 +178,7 @@ function getNextPageParam(
     };
   }
 
-  // Short pages prove exhaustion only when result caps cannot truncate them.
+  // Short pages prove exhaustion only when query limits cannot truncate them.
   // Without LIMIT, the rendered query has no OFFSET, so it cannot page.
   const shouldUseWindowing =
     isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
@@ -282,14 +282,54 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
         ?.filter(({ setting, value }) => setting.length && value.length)
         .map(({ setting, value }) => [setting, value]),
     );
+    // SQL SETTINGS override the timeout injected by the client, then server defaults.
     const getSetting = (name: string) =>
-      sourceSettings.get(name) ?? serverSettings.get(name);
-    canSkipShortPage =
-      getSetting('result_overflow_mode') === 'throw' ||
-      ['max_result_rows', 'max_result_bytes'].every(name => {
+      sourceSettings.get(name) ??
+      (name === 'max_execution_time' && (queryTimeout ?? 0) > 0
+        ? String(queryTimeout)
+        : serverSettings.get(name));
+    const cannotTruncate = (mode: string, limits: string[]) =>
+      getSetting(mode) === 'throw' ||
+      limits.every(name => {
         const value = getSetting(name);
         return value != null && parseToNumber(value) === 0;
       });
+    const limitsByMode: [string, string[]][] = [
+      ['result_overflow_mode', ['max_result_rows', 'max_result_bytes']],
+      ['read_overflow_mode', ['max_rows_to_read', 'max_bytes_to_read']],
+      ['timeout_overflow_mode', ['max_execution_time']],
+      ['sort_overflow_mode', ['max_rows_to_sort', 'max_bytes_to_sort']],
+      ['group_by_overflow_mode', ['max_rows_to_group_by']],
+      [
+        'distinct_overflow_mode',
+        ['max_rows_in_distinct', 'max_bytes_in_distinct'],
+      ],
+      ['set_overflow_mode', ['max_rows_in_set', 'max_bytes_in_set']],
+      ['join_overflow_mode', ['max_rows_in_join', 'max_bytes_in_join']],
+      [
+        'transfer_overflow_mode',
+        ['max_rows_to_transfer', 'max_bytes_to_transfer'],
+      ],
+    ];
+    canSkipShortPage = limitsByMode.every(([mode, limits]) =>
+      cannotTruncate(mode, limits),
+    );
+
+    // Older servers do not expose all of the leaf settings.
+    const leafLimitsByMode: [string, string[]][] = [
+      [
+        'read_overflow_mode_leaf',
+        ['max_rows_to_read_leaf', 'max_bytes_to_read_leaf'],
+      ],
+      ['timeout_overflow_mode_leaf', ['max_execution_time_leaf']],
+    ];
+    canSkipShortPage &&= leafLimitsByMode.every(([mode, limits]) => {
+      const names = [mode, ...limits];
+      return (
+        names.every(name => getSetting(name) == null) ||
+        cannotTruncate(mode, limits)
+      );
+    });
   }
 
   // Create abort signal from timeout if provided

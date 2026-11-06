@@ -14,12 +14,14 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 import useOffsetPaginatedQuery from '@/hooks/useOffsetPaginatedQuery';
 
+let mockQueryTimeout = 30;
+
 // Mock the API module
 jest.mock('@/api', () => ({
   useMe: () => ({
     data: {
       team: {
-        queryTimeout: 30,
+        queryTimeout: mockQueryTimeout,
       },
     },
   }),
@@ -102,6 +104,18 @@ const createMockChartConfig = (
     ...overrides,
   }) as ChartConfigWithDateRange;
 
+const nonTruncatingSettings = {
+  result_overflow_mode: 'throw',
+  read_overflow_mode: 'throw',
+  timeout_overflow_mode: 'throw',
+  sort_overflow_mode: 'throw',
+  group_by_overflow_mode: 'throw',
+  distinct_overflow_mode: 'throw',
+  set_overflow_mode: 'throw',
+  join_overflow_mode: 'throw',
+  transfer_overflow_mode: 'throw',
+};
+
 describe('useOffsetPaginatedQuery', () => {
   // Increase timeout for complex async operations
   jest.setTimeout(15000);
@@ -116,6 +130,7 @@ describe('useOffsetPaginatedQuery', () => {
   beforeEach(() => {
     // Reset mocks
     jest.clearAllMocks();
+    mockQueryTimeout = 30;
 
     // Create a new QueryClient for each test
     queryClient = new QueryClient({
@@ -163,13 +178,15 @@ describe('useOffsetPaginatedQuery', () => {
     // Mock metadata with getSetting returning null by default
     mockMetadata = {
       getSetting: jest.fn().mockResolvedValue(null),
-      getSettings: jest.fn().mockResolvedValue(
-        new Map([
-          ['result_overflow_mode', 'throw'],
-          ['max_result_rows', '0'],
-          ['max_result_bytes', '0'],
-        ]),
-      ),
+      getSettings: jest
+        .fn()
+        .mockResolvedValue(
+          new Map([
+            ...Object.entries(nonTruncatingSettings),
+            ['max_result_rows', '0'],
+            ['max_result_bytes', '0'],
+          ]),
+        ),
     };
     jest.mocked(useMetadataWithSettings).mockReturnValue(mockMetadata as any);
     jest.mocked(useSource).mockReturnValue({
@@ -437,6 +454,66 @@ describe('useOffsetPaginatedQuery', () => {
           server: { max_result_bytes: '1', result_overflow_mode: 'break' },
           source: {},
         },
+        ...[
+          ['read_overflow_mode', 'max_rows_to_read'],
+          ['read_overflow_mode', 'max_bytes_to_read'],
+          ['read_overflow_mode_leaf', 'max_rows_to_read_leaf'],
+          ['read_overflow_mode_leaf', 'max_bytes_to_read_leaf'],
+          ['timeout_overflow_mode', 'max_execution_time'],
+          ['timeout_overflow_mode_leaf', 'max_execution_time_leaf'],
+          ['sort_overflow_mode', 'max_rows_to_sort'],
+          ['sort_overflow_mode', 'max_bytes_to_sort'],
+          ['group_by_overflow_mode', 'max_rows_to_group_by'],
+          ['distinct_overflow_mode', 'max_rows_in_distinct'],
+          ['set_overflow_mode', 'max_rows_in_set'],
+          ['join_overflow_mode', 'max_rows_in_join'],
+          ['transfer_overflow_mode', 'max_rows_to_transfer'],
+        ].flatMap(([mode, limit]) =>
+          ['inherited', 'source'].map(location => ({
+            name: `${location} ${limit}`,
+            server: {
+              ...nonTruncatingSettings,
+              ...(location === 'inherited'
+                ? { [mode]: 'break', [limit]: '1' }
+                : {}),
+            },
+            source:
+              location === 'source' ? { [mode]: 'break', [limit]: '1' } : {},
+          })),
+        ),
+        {
+          name: 'inherited timeout without team injection',
+          queryTimeout: 0,
+          server: {
+            ...nonTruncatingSettings,
+            max_execution_time: '1',
+            timeout_overflow_mode: 'break',
+          },
+          source: {},
+        },
+        {
+          name: 'team timeout overriding inherited zero',
+          server: {
+            ...nonTruncatingSettings,
+            max_execution_time: '0',
+            timeout_overflow_mode: 'break',
+          },
+          source: {},
+        },
+        {
+          name: 'unknown read cap',
+          server: {
+            ...nonTruncatingSettings,
+            read_overflow_mode: 'break',
+            max_rows_to_read: '0',
+          },
+          source: {},
+        },
+        {
+          name: 'unknown leaf timeout mode',
+          server: { ...nonTruncatingSettings, max_execution_time_leaf: '1' },
+          source: {},
+        },
         { name: 'unknown settings', server: {}, source: {} },
         {
           name: 'unknown byte cap',
@@ -454,16 +531,24 @@ describe('useOffsetPaginatedQuery', () => {
         },
       ].flatMap(testCase =>
         ['Timestamp DESC', 'Timestamp ASC'].map(orderBy => ({
+          queryTimeout: 30,
           ...testCase,
           orderBy,
         })),
       ),
     )(
       'keeps offset paging after a short page with $name ($orderBy)',
-      async ({ orderBy, server, source }) => {
+      async ({ orderBy, server, source, queryTimeout }) => {
+        mockQueryTimeout = queryTimeout;
         const config = createMockChartConfig({ orderBy });
         mockMetadata.getSettings.mockResolvedValue(
-          new Map(Object.entries(server)),
+          new Map(
+            Object.entries(
+              Object.keys(server).length
+                ? { ...nonTruncatingSettings, ...server }
+                : server,
+            ),
+          ),
         );
         const querySettings: QuerySettings = Object.entries(source).map(
           ([setting, value]) => ({ setting, value }),
@@ -551,6 +636,51 @@ describe('useOffsetPaginatedQuery', () => {
 
     it.each([
       {
+        name: 'uncapped reads and sort with leaf limits unavailable',
+        server: {
+          read_overflow_mode: 'break',
+          max_rows_to_read: '0',
+          max_bytes_to_read: '0',
+          sort_overflow_mode: 'break',
+          max_rows_to_sort: '0',
+          max_bytes_to_sort: '0',
+        },
+        source: {},
+      },
+      {
+        name: 'source timeout disabled despite team timeout',
+        server: { timeout_overflow_mode: 'break', max_execution_time: '1' },
+        source: { max_execution_time: '0' },
+      },
+      {
+        name: 'source read caps disabled',
+        server: {
+          read_overflow_mode: 'break',
+          max_rows_to_read: '1',
+          max_bytes_to_read: '1',
+        },
+        source: { max_rows_to_read: '0', max_bytes_to_read: '0' },
+      },
+      {
+        name: 'leaf caps disabled',
+        server: {
+          read_overflow_mode_leaf: 'break',
+          max_rows_to_read_leaf: '0',
+          max_bytes_to_read_leaf: '0',
+          timeout_overflow_mode_leaf: 'break',
+          max_execution_time_leaf: '0',
+        },
+        source: {},
+      },
+      {
+        name: 'leaf throw modes',
+        server: {
+          read_overflow_mode_leaf: 'throw',
+          timeout_overflow_mode_leaf: 'throw',
+        },
+        source: {},
+      },
+      {
         name: 'uncapped break mode',
         server: {
           max_result_rows: '0',
@@ -585,7 +715,7 @@ describe('useOffsetPaginatedQuery', () => {
     ])('finishes a short page with $name', async ({ server, source }) => {
       const config = createMockChartConfig({ orderBy: 'message DESC' });
       mockMetadata.getSettings.mockResolvedValue(
-        new Map(Object.entries(server)),
+        new Map(Object.entries({ ...nonTruncatingSettings, ...server })),
       );
       jest.mocked(useSource).mockReturnValue({
         data: {
