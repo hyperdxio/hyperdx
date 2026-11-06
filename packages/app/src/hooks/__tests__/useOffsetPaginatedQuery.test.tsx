@@ -492,63 +492,79 @@ describe('useOffsetPaginatedQuery', () => {
       expect(result.current.hasNextPage).toBe(false);
     });
 
-    it('should paginate within the same time window', async () => {
-      const config = createMockChartConfig({
-        limit: { limit: 2, offset: 0 },
-      });
-
-      // Mock the reader to return first batch
-      mockReader.read
-        .mockResolvedValueOnce({
-          done: false,
-          value: [
-            { json: () => ['timestamp', 'message'] },
-            { json: () => ['DateTime', 'String'] },
-            { json: () => ['2024-01-01T01:00:00Z', 'test log 1'] },
-            { json: () => ['2024-01-01T02:00:00Z', 'test log 2'] },
+    it.each([
+      { orderBy: 'Timestamp DESC', fullPages: 1 },
+      { orderBy: 'Timestamp ASC', fullPages: 1 },
+      { orderBy: 'Timestamp DESC', fullPages: 3 },
+      { orderBy: 'Timestamp ASC', fullPages: 3 },
+    ])(
+      'stops after an empty probe in the final window ($orderBy, full pages: $fullPages)',
+      async ({ orderBy, fullPages }) => {
+        const config = createMockChartConfig({
+          orderBy,
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date('2024-01-01T00:05:00Z'),
           ],
-        })
-        .mockResolvedValueOnce({ done: true });
+          limit: { limit: 2, offset: 0 },
+        });
+        const messages = Array.from(
+          { length: fullPages * 2 },
+          (_, index) => `row ${index + 1}`,
+        );
+        for (let page = 0; page <= fullPages; page++) {
+          mockReader.read
+            .mockResolvedValueOnce({
+              done: false,
+              value: [
+                { json: () => ['message'] },
+                { json: () => ['String'] },
+                ...messages.slice(page * 2, page * 2 + 2).map(message => ({
+                  json: () => [message],
+                })),
+              ],
+            })
+            .mockResolvedValueOnce({ done: true });
+        }
 
-      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
-        wrapper,
-      });
+        const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+          wrapper,
+        });
+        await waitFor(() => expect(result.current.isLoading).toBe(false));
 
-      await waitFor(() => expect(result.current.isLoading).toBe(false));
+        for (let page = 0; page < fullPages; page++) {
+          await waitFor(() => {
+            expect(result.current.data?.data).toEqual(
+              messages.slice(0, (page + 1) * 2).map(message => ({ message })),
+            );
+          });
+          expect(result.current.data?.window.windowIndex).toBe(0);
+          expect(result.current.hasNextPage).toBe(true);
 
-      // Should have 2 results from first page
-      expect(result.current.data?.data).toHaveLength(2);
-      expect(result.current.hasNextPage).toBe(true);
+          await act(async () => {
+            await result.current.fetchNextPage();
+          });
+        }
 
-      // Mock next page data
-      mockReader.read
-        .mockResolvedValueOnce({
-          done: false,
-          value: [
-            { json: () => ['timestamp', 'message'] },
-            { json: () => ['DateTime', 'String'] },
-            { json: () => ['2024-01-01T03:00:00Z', 'test log 3'] },
-            { json: () => ['2024-01-01T04:00:00Z', 'test log 4'] },
-          ],
-        })
-        .mockResolvedValueOnce({ done: true });
-
-      // Fetch next page
-      await act(async () => {
-        await result.current.fetchNextPage();
-      });
-
-      await waitFor(() => {
-        expect(result.current.data?.data).toHaveLength(4);
-      });
-      expect(jest.mocked(renderChartConfig).mock.calls[1][0]).toMatchObject({
-        limit: { limit: 2, offset: 2 },
-      });
-      expect(result.current.data?.window.windowIndex).toBe(0);
-
-      // Should still have more pages available in current window
-      expect(result.current.hasNextPage).toBe(true);
-    });
+        await waitFor(() => expect(result.current.hasNextPage).toBe(false));
+        expect(result.current.data?.data).toEqual(
+          messages.map(message => ({ message })),
+        );
+        expect(result.current.data?.window.windowIndex).toBe(0);
+        expect(
+          jest.mocked(renderChartConfig).mock.calls.map(([config]) => ({
+            dateRange: config.dateRange,
+            limit: config.limit,
+          })),
+        ).toEqual(
+          Array.from({ length: fullPages + 1 }, (_, page) => ({
+            dateRange: config.dateRange,
+            limit: { limit: 2, offset: page * 2 },
+          })),
+        );
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(fullPages + 1);
+      },
+    );
 
     it.each([
       { orderBy: 'Timestamp DESC', remainingMessages: ['third row'] },

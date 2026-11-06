@@ -150,21 +150,21 @@ function getNextPageParam(
     : generateTimeWindowsDescending(startDate, endDate, windowDurationsSeconds);
   const currentWindow = lastPage.window;
 
-  // Calculate total results from all pages in current window
-  const currentWindowPages = allPages.filter(
-    p => p.window.windowIndex === currentWindow.windowIndex,
-  );
-  const currentWindowResults = currentWindowPages.reduce(
-    (sum, page) => sum + page.data.length,
-    0,
-  );
-
   const requestedLimit = config.limit?.limit;
   if (
     lastPage.data.length > 0 &&
     requestedLimit != null &&
     lastPage.data.length >= requestedLimit
   ) {
+    // Calculate total results from all pages in current window
+    const currentWindowPages = allPages.filter(
+      p => p.window.windowIndex === currentWindow.windowIndex,
+    );
+    const currentWindowResults = currentWindowPages.reduce(
+      (sum, page) => sum + page.data.length,
+      0,
+    );
+
     return {
       windowIndex: currentWindow.windowIndex,
       offset: currentWindowResults,
