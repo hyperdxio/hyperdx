@@ -111,8 +111,7 @@ const nextConfig = {
     '@opentelemetry/instrumentation',
     '@opentelemetry/sdk-node',
     '@opentelemetry/auto-instrumentations-node',
-    '@hyperdx/node-opentelemetry',
-    '@hyperdx/instrumentation-sentry-node',
+    '@clickhouse/clickstack-node',
     // Outside of Vercel preview deployments, the `/api/[...all]` catch-all
     // proxies to a separately-deployed API service and never imports the
     // `@hyperdx/api` package at runtime. Mark it (and its subpaths) as a

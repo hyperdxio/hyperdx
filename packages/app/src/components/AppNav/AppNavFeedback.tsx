@@ -1,6 +1,5 @@
 import React, { useCallback, useState } from 'react';
 import { useRouter } from 'next/router';
-import HyperDX from '@hyperdx/browser';
 import { ActionIcon, Box, Button, Group, Text, Textarea } from '@mantine/core';
 import { useLocalStorage } from '@mantine/hooks';
 import {
@@ -11,6 +10,7 @@ import {
 } from '@tabler/icons-react';
 
 import { IS_LOCAL_MODE } from '@/config';
+import { recordAction } from '@/utils/browserTelemetry';
 
 import { AppNavContext } from './AppNav.components';
 
@@ -82,7 +82,7 @@ const AppNavFeedbackInner = () => {
     (newVote: FeedbackVote) => {
       setVote(newVote);
       setState('voted');
-      HyperDX.addAction('user feedback vote', {
+      recordAction('user feedback vote', {
         vote: newVote ?? '',
         ...pageContext(),
       });
@@ -93,7 +93,7 @@ const AppNavFeedbackInner = () => {
   const [dismissed, setDismissed] = useState(false);
 
   const handleSubmit = useCallback(() => {
-    HyperDX.addAction('user feedback comment', {
+    recordAction('user feedback comment', {
       vote: vote ?? '',
       comment,
       ...pageContext(),

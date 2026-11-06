@@ -7,10 +7,9 @@ jest.mock('@/layout', () => ({
   withAppNav: (component: unknown) => component,
 }));
 
-const mockAddAction = jest.fn();
-jest.mock('@hyperdx/browser', () => ({
-  __esModule: true,
-  default: { addAction: (...args: unknown[]) => mockAddAction(...args) },
+const mockRecordAction = jest.fn();
+jest.mock('@/utils/browserTelemetry', () => ({
+  recordAction: (...args: unknown[]) => mockRecordAction(...args),
 }));
 
 let mockExplainData: unknown[] | undefined = undefined;
@@ -83,8 +82,8 @@ describe('useSearchTelemetry', () => {
     });
 
     expect(result.current.searchElapsedMs).toBeGreaterThanOrEqual(0);
-    expect(mockAddAction).toHaveBeenCalledTimes(1);
-    expect(mockAddAction).toHaveBeenCalledWith('search executed', {
+    expect(mockRecordAction).toHaveBeenCalledTimes(1);
+    expect(mockRecordAction).toHaveBeenCalledWith('search executed', {
       latency_ms: expect.any(Number),
       source_id: 'my-source',
     });
@@ -108,8 +107,8 @@ describe('useSearchTelemetry', () => {
       rerender({ isAnyQueryFetching: false, isLive: false, sourceId: 'src-a' });
     });
 
-    expect(mockAddAction).toHaveBeenCalledTimes(1);
-    expect(mockAddAction).toHaveBeenCalledWith('search executed', {
+    expect(mockRecordAction).toHaveBeenCalledTimes(1);
+    expect(mockRecordAction).toHaveBeenCalledWith('search executed', {
       latency_ms: expect.any(Number),
       source_id: 'src-a',
     });
@@ -119,7 +118,7 @@ describe('useSearchTelemetry', () => {
       rerender({ isAnyQueryFetching: false, isLive: false, sourceId: 'src-b' });
     });
 
-    expect(mockAddAction).toHaveBeenCalledTimes(1); // still just 1
+    expect(mockRecordAction).toHaveBeenCalledTimes(1); // still just 1
   });
 
   it('does NOT emit during live-tail ticks (P0 fix)', async () => {
@@ -140,7 +139,7 @@ describe('useSearchTelemetry', () => {
       rerender({ isAnyQueryFetching: false, isLive: true, sourceId: 'src' });
     });
 
-    expect(mockAddAction).not.toHaveBeenCalled();
+    expect(mockRecordAction).not.toHaveBeenCalled();
   });
 
   it('measures elapsed time during live tail for display but does NOT emit', async () => {
@@ -163,7 +162,7 @@ describe('useSearchTelemetry', () => {
     // Latency is surfaced for display ...
     expect(result.current.searchElapsedMs).toBeGreaterThanOrEqual(0);
     // ... but live-tail cycles are never reported to telemetry.
-    expect(mockAddAction).not.toHaveBeenCalled();
+    expect(mockRecordAction).not.toHaveBeenCalled();
   });
 
   it('keeps the previous elapsed value when a live-tail poll starts (no blink)', async () => {
@@ -224,7 +223,7 @@ describe('useSearchTelemetry', () => {
 
     // Two emits (one per false transition) — the clock was re-anchored
     // only on the first genuine false→true, so elapsed on both are valid numbers
-    expect(mockAddAction).toHaveBeenCalledTimes(2);
+    expect(mockRecordAction).toHaveBeenCalledTimes(2);
     expect(firstElapsed).toBeGreaterThanOrEqual(0);
     expect(result.current.searchElapsedMs).toBeGreaterThanOrEqual(0);
   });
@@ -247,7 +246,7 @@ describe('useSearchTelemetry', () => {
     });
 
     expect(result.current.searchElapsedMs).toBeNull();
-    expect(mockAddAction).not.toHaveBeenCalled();
+    expect(mockRecordAction).not.toHaveBeenCalled();
   });
 
   it('falls back to empty string source_id when sourceId is null', async () => {
@@ -267,7 +266,7 @@ describe('useSearchTelemetry', () => {
       rerender({ isAnyQueryFetching: false, isLive: false, sourceId: null });
     });
 
-    expect(mockAddAction).toHaveBeenCalledWith('search executed', {
+    expect(mockRecordAction).toHaveBeenCalledWith('search executed', {
       latency_ms: expect.any(Number),
       source_id: '',
     });
@@ -290,7 +289,7 @@ describe('useSearchTelemetry', () => {
       rerender({ isAnyQueryFetching: false, isLive: false, sourceId: 'src' });
     });
 
-    expect(mockAddAction).not.toHaveBeenCalled();
+    expect(mockRecordAction).not.toHaveBeenCalled();
   });
 });
 
