@@ -4,7 +4,7 @@ import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
-import { trimToolResponse } from '@/utils/trimToolResponse';
+import { SIZE_NOTE_PREFIX, trimToolResponse } from '@/utils/trimToolResponse';
 
 import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import { denoiseSearchResults } from './denoise';
@@ -125,8 +125,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
       }
 
       const resultData = parsed.result;
-      // runConfigTile may already have trimmed the rows; keep its notes.
-      const firstPassNotes = parsed.trimNotes ?? [];
+      // runConfigTile may already have trimmed the rows; keep its notes, except
+      // the size line, which denoise makes stale.
+      const firstPassNotes = (parsed.trimNotes ?? []).filter(
+        n => !n.startsWith(SIZE_NOTE_PREFIX),
+      );
       const rows = (resultData as Record<string, unknown> | undefined)?.data as
         | Record<string, unknown>[]
         | undefined;

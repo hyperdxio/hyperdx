@@ -1,3 +1,5 @@
+import { EMERGING_SIGNALS_REDUCTIONS } from '@/mcp/tools/query/emergingSignals';
+import { EVENT_PATTERNS_REDUCTIONS } from '@/mcp/tools/query/runEventPatterns';
 import { shortenString, trimToolResponse } from '@/utils/trimToolResponse';
 
 describe('trimToolResponse', () => {
@@ -175,6 +177,9 @@ describe('trimToolResponse', () => {
       // Cutting 5 chars would add a 13-char suffix.
       const s = 'x'.repeat(105);
       expect(shortenString(s, 100)).toBe(s);
+      // Saving 14 chars isn't worth losing a 24-char value.
+      const ts = '2026-01-01T00:00:00.000Z';
+      expect(shortenString(ts, 0)).toBe(ts);
       const emoji = `${'a'.repeat(9)}😀${'b'.repeat(100)}`;
       expect(shortenString(emoji, 10)).toBe(`${'a'.repeat(9)}…(+102 chars)`);
     });
@@ -260,20 +265,54 @@ describe('trimToolResponse', () => {
       );
     });
 
-    it('notes values replaced by a size marker', () => {
-      // A number can't be shortened: over its budget it becomes a marker.
-      const { data, notes } = trimToolResponse(
-        { n: 1e300, s: 'p'.repeat(500) },
-        8,
+    it('keeps numbers whole and never makes the output larger than main did', () => {
+      const one = trimToolResponse(
+        { ts: '2026-01-01T00:00:00.000Z', count: 1 },
+        20,
+      ).data;
+      expect(one).toEqual({ ts: '2026-01-01T00:00:00.000Z', count: 1 });
+      const rows = Array.from({ length: 12 }, () => ({
+        a: 1,
+        b: 2,
+        c: 3,
+        d: 4,
+        e: 5,
+        f: 6,
+      }));
+      const { data } = trimToolResponse(rows, 100);
+      expect(JSON.stringify(data)).not.toContain('__hdx_trimmed');
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(381); // main
+    });
+
+    it('fits a string that is just over its budget', () => {
+      const { data } = trimToolResponse(
+        ['s'.repeat(100), ...Array(9).fill(1)],
+        120,
       );
-      expect(data.n).toEqual({ __hdx_trimmed: true, originalSize: 6 });
-      expect(notes).toEqual(
-        expect.arrayContaining([
-          expect.stringMatching(
-            /^1 value\(s\) too large to shorten replaced by/,
-          ),
-        ]),
-      );
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(120);
+      expect(data[0]).toMatch(/^s+…\(\+\d+ chars\)$/);
+    });
+
+    it('keeps most of an escape-heavy string that partly fits', () => {
+      const { data } = trimToolResponse({ a: '"'.repeat(4000) }, 1000);
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(1000);
+      expect(data.a).toMatch(/^"{400,}…\(\+/);
+    });
+
+    it('gives a large value the room that small values leave', () => {
+      const data = {
+        summary: { totalCount: 5 },
+        usage: 'u'.repeat(1000),
+        rows: Array.from({ length: 100 }, (_, i) => ({
+          i,
+          text: 't'.repeat(900),
+        })),
+      };
+      const { data: out } = trimToolResponse(data, 50000);
+      const size = JSON.stringify(out).length;
+      expect(size).toBeLessThanOrEqual(50000);
+      expect(size).toBeGreaterThan(40000);
+      expect(out.usage).toBe(data.usage);
     });
 
     it('returns no notes when nothing is trimmed', () => {
@@ -395,13 +434,7 @@ describe('trimToolResponse', () => {
         ],
       };
       const { data } = trimToolResponse(output, 50000, {
-        reductions: [
-          { path: 'patterns[].samples', keep: 3 },
-          { path: 'patterns[].samples', keep: 1 },
-          { path: 'patterns[].samples[]', maxChars: 2000 },
-          { path: 'patterns[].pattern', maxChars: 2000 },
-          { path: 'patterns[].trend', drop: true },
-        ],
+        reductions: EVENT_PATTERNS_REDUCTIONS,
       });
       expect(data.patterns).toHaveLength(30);
       expect(data.patterns.every(p => p.samples.length >= 1)).toBe(true);
@@ -410,6 +443,61 @@ describe('trimToolResponse', () => {
       );
       expect(JSON.stringify(data)).not.toContain('__hdx_trimmed');
       expect(JSON.stringify(data).length).toBeLessThanOrEqual(50000);
+    });
+
+    it('uses most of the budget when the reductions are not enough', () => {
+      // 30 patterns of ~10 KB stack traces with 5 samples: ~2 MB.
+      const stack = (n: number) =>
+        `java.lang.IllegalStateException: case ${n}\n` +
+        Array.from(
+          { length: 200 },
+          (_, i) => `\tat com.example.svc.L${n}x${i}.call(L${i}.java:${i})`,
+        ).join('\n');
+      const output = {
+        summary: { totalCount: 1_000_000, patternsReturned: 30 },
+        patterns: Array.from({ length: 30 }, (_, i) => ({
+          rank: i + 1,
+          pattern: stack(i),
+          whereSnippet: '',
+          drilldownUnavailable: 'Template is longer than 4000 characters.',
+          trend: Array.from({ length: 24 }, (_, t) => ({ ts: t, count: 1 })),
+          samples: Array.from({ length: 5 }, () => stack(i)),
+        })),
+        usage: 'u'.repeat(1500),
+      };
+      const { data } = trimToolResponse(output, 50000, {
+        reductions: EVENT_PATTERNS_REDUCTIONS,
+      });
+      const size = JSON.stringify(data).length;
+      expect(size).toBeLessThanOrEqual(50000);
+      expect(size).toBeGreaterThan(40000);
+      expect(data.patterns.length).toBeGreaterThanOrEqual(10);
+      expect(data.patterns[0].pattern).toMatch(/^java\.lang\./);
+    });
+
+    it('shortens long emerging and disappeared patterns and keeps every entry', () => {
+      const entry = (i: number) => ({
+        pattern: `Exception ${i} ` + 'e'.repeat(5000),
+        currentCount: i,
+      });
+      const output = {
+        emerging: Array.from({ length: 12 }, (_, i) => entry(i)),
+        disappeared: Array.from({ length: 8 }, (_, i) => entry(i)),
+      };
+      const { data, notes } = trimToolResponse(output, 50000, {
+        reductions: EMERGING_SIGNALS_REDUCTIONS,
+      });
+      expect(data.emerging).toHaveLength(12);
+      expect(data.disappeared).toHaveLength(8);
+      for (const e of [...data.emerging, ...data.disappeared]) {
+        expect(e.pattern).toMatch(/^Exception \d+ e+…\(\+[\d,]+ chars\)$/);
+      }
+      expect(notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^emerging\[\]\.pattern: 12 value\(s\) cut/),
+          expect.stringMatching(/^disappeared\[\]\.pattern: 8 value\(s\) cut/),
+        ]),
+      );
     });
   });
 });

@@ -34,8 +34,6 @@ const batchQueryCounter = getCounter('hyperdx.mcp.sql.batch.queries', {
   description: 'Queries run by clickstack_sql in batch mode, by outcome.',
 });
 
-const BATCH_CUT_PREFIX = 'Rows cut to ';
-
 const BATCH_TRIM_NOTE =
   'Rows were dropped to fit the batch response size budget. Narrow the time ' +
   'range, add filters, or run fewer queries per call.';
@@ -126,12 +124,10 @@ function setRows(entry: SqlBatchEntry, rows: unknown[]) {
       ? { ...result, data: rows }
       : rows;
   entry.note = BATCH_TRIM_NOTE;
-  // Appended to the per-query notes, which are still true; a later halving
-  // replaces this line rather than adding another.
-  const earlier = Array.isArray(entry.trimNotes) ? entry.trimNotes : [];
+  // Replaces the per-query notes: their sizes and counts no longer match the
+  // rows left. Shortened values still carry their own "…(+N chars)".
   entry.trimNotes = [
-    ...earlier.filter(n => !String(n).startsWith(BATCH_CUT_PREFIX)),
-    `${BATCH_CUT_PREFIX}${rows.length} to fit the batch response size budget.`,
+    `Rows cut to ${rows.length} to fit the batch response size budget.`,
   ];
 }
 

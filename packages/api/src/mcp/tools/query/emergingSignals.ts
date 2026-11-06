@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
-import { trimToolResponse } from '@/utils/trimToolResponse';
+import { type Reduction, trimToolResponse } from '@/utils/trimToolResponse';
 
 import { parseTimeRange } from './helpers';
 import { mineWindowPatterns, normalizeTemplate } from './runEventPatterns';
@@ -129,6 +129,11 @@ const emergingSignalsSchema = z.object({
 });
 
 // ─── Tool registration ───────────────────────────────────────────────────────
+
+export const EMERGING_SIGNALS_REDUCTIONS: Reduction[] = [
+  { path: 'emerging[].pattern', maxChars: 2000 },
+  { path: 'disappeared[].pattern', maxChars: 2000 },
+];
 
 export function registerEmergingSignals({
   context,
@@ -347,10 +352,7 @@ export function registerEmergingSignals({
         isTrimmed,
         notes: trimNotes,
       } = trimToolResponse(output, undefined, {
-        reductions: [
-          { path: 'emerging[].pattern', maxChars: 2000 },
-          { path: 'disappeared[].pattern', maxChars: 2000 },
-        ],
+        reductions: EMERGING_SIGNALS_REDUCTIONS,
       });
       return {
         content: [

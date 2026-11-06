@@ -640,6 +640,49 @@ describe('MCP Query Tools', () => {
         expect(output).not.toHaveProperty('denoised');
       });
     });
+
+    describe('denoise on a trimmed result', () => {
+      const now = new Date();
+
+      beforeEach(async () => {
+        const pad = ' payload'.repeat(150);
+        await bulkInsertLogs(
+          Array.from({ length: 120 }, (_, i) => ({
+            Body:
+              i < 110
+                ? `Health check OK from 10.0.0.${i}${pad}`
+                : `Rare event ${i} in subsystem${pad}`,
+            ServiceName: 'loadbalancer',
+            SeverityText: 'INFO',
+            Timestamp: new Date(now.getTime() - (i + 1) * 1000),
+          })),
+        );
+      });
+
+      it("keeps the first trim's row cut but not its stale size line", async () => {
+        const result = await callTool(client, 'clickstack_search', {
+          sourceId: logSource._id.toString(),
+          denoise: true,
+          maxResults: 200,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output).toHaveProperty('denoised');
+        expect(output.note).toContain('trimmed');
+        const sizeLines = output.trimNotes.filter((n: string) =>
+          n.startsWith('Response trimmed from '),
+        );
+        expect(sizeLines).toHaveLength(0); // denoise didn't need a second trim
+        expect(output.trimNotes).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(/^result\.data: cut from 120 to \d+ items$/),
+          ]),
+        );
+      });
+    });
   });
 
   // ─── clickstack_event_patterns ─────────────────────────────────────────────────

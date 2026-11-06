@@ -25,7 +25,7 @@ import {
 import { MCP_QUERY_MAX_EXECUTION_SEC } from '@/mcp/utils/timeout';
 import { getCounter } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
-import { trimToolResponse } from '@/utils/trimToolResponse';
+import { type Reduction, trimToolResponse } from '@/utils/trimToolResponse';
 
 import {
   clickHouseErrorResult,
@@ -362,6 +362,19 @@ export function normalizeTemplate(pattern: string): string {
 
 // ─── Event pattern mining ────────────────────────────────────────────────────
 
+// Shrink samples, then long text, before the generic trim cuts whole patterns,
+// so topN patterns survive when they can. whereSnippet is dropped, never
+// shortened: a cut snippet is invalid SQL. Dropping it is the last step, so
+// the generic fallback (which shortens strings) never sees one.
+export const EVENT_PATTERNS_REDUCTIONS: Reduction[] = [
+  { path: 'patterns[].samples', keep: 3 },
+  { path: 'patterns[].samples', keep: 1 },
+  { path: 'patterns[].samples[]', maxChars: 2000 },
+  { path: 'patterns[].pattern', maxChars: 2000 },
+  { path: 'patterns[].trend', drop: true },
+  { path: 'patterns[].whereSnippet', drop: true },
+];
+
 export async function runEventPatterns(
   teamId: string,
   sourceId: string,
@@ -554,23 +567,12 @@ export async function runEventPatterns(
       'add them again. Skip patterns that have drilldownUnavailable.',
   };
 
-  // Shrink samples, then long text, before the generic trim cuts whole patterns,
-  // so topN patterns survive when they can. whereSnippet is dropped, never
-  // shortened: a cut snippet is invalid SQL. Dropping it is the last step, so
-  // the generic fallback (which shortens strings) never sees one.
   const {
     data: trimmedOutput,
     isTrimmed,
     notes: trimNotes,
   } = trimToolResponse(output, undefined, {
-    reductions: [
-      { path: 'patterns[].samples', keep: 3 },
-      { path: 'patterns[].samples', keep: 1 },
-      { path: 'patterns[].samples[]', maxChars: 2000 },
-      { path: 'patterns[].pattern', maxChars: 2000 },
-      { path: 'patterns[].trend', drop: true },
-      { path: 'patterns[].whereSnippet', drop: true },
-    ],
+    reductions: EVENT_PATTERNS_REDUCTIONS,
   });
 
   const snippetsDropped = trimmedOutput.patterns.some(

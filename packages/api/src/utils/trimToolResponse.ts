@@ -70,12 +70,7 @@ export function trimToolResponse<T = any>(
   }
 
   // Fallback: per-key budget split and array cuts.
-  const stats: FallbackStats = {
-    arrays: [],
-    strings: 0,
-    charsRemoved: 0,
-    markers: 0,
-  };
+  const stats: FallbackStats = { arrays: [], strings: 0, charsRemoved: 0 };
   let trimmed: unknown = current;
   if (Array.isArray(current)) {
     trimmed = trimArray(current, maxSize, '', stats);
@@ -109,11 +104,6 @@ export function trimToolResponse<T = any>(
       `${fmt(stats.strings)} long value(s) shortened (${fmt(stats.charsRemoved)} chars removed)`,
     );
   }
-  if (stats.markers > 0) {
-    notes.push(
-      `${fmt(stats.markers)} value(s) too large to shorten replaced by {"__hdx_trimmed":true,"originalSize":N}`,
-    );
-  }
   const finalSize = JSON.stringify(trimmed).length;
   return {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion
@@ -127,39 +117,43 @@ interface FallbackStats {
   arrays: { path: string; from: number; to: number }[];
   strings: number;
   charsRemoved: number;
-  markers: number;
 }
 
 const fmt = (n: number) => n.toLocaleString('en-US');
 
+export const SIZE_NOTE_PREFIX = 'Response trimmed from ';
+
 const sizeNote = (from: number, to: number, max: number) =>
-  `Response trimmed from ${fmt(from)} to ${fmt(to)} chars (limit ${fmt(max)}).`;
+  `${SIZE_NOTE_PREFIX}${fmt(from)} to ${fmt(to)} chars (limit ${fmt(max)}).`;
 
 /**
  * `s` cut to `maxChars`, followed by "…(+N chars)". Returned unchanged when the
- * suffix would make it no shorter. Unlike `truncateString` (utils/common), the
- * suffix says how much was cut, which the agent needs to judge the value.
+ * cut would save less than twice the suffix: a few chars of room aren't worth
+ * the value. Unlike `truncateString` (utils/common), the suffix says how much
+ * was cut, which the agent needs to judge the value.
  */
 export function shortenString(s: string, maxChars: number): string {
   if (s.length <= maxChars) return s;
   let keep = Math.max(0, maxChars);
   // Don't split a surrogate pair (JSON would carry a lone \udXXX escape).
   if (/[\uD800-\uDBFF]/.test(s.charAt(keep - 1))) keep--;
-  const out = `${s.slice(0, keep)}…(+${fmt(s.length - keep)} chars)`;
-  return out.length < s.length ? out : s;
+  const suffix = `…(+${fmt(s.length - keep)} chars)`;
+  const saved = s.length - keep - suffix.length;
+  return saved >= 2 * suffix.length ? s.slice(0, keep) + suffix : s;
 }
 
-// Shorten so that the JSON-encoded string fits `budget` (escaping can make it
-// longer than the raw string, so a couple of passes may be needed).
+// Shorten to the longest cut whose JSON fits `budget` (escapes can make it
+// longer than the raw string). Only called when `s` is over budget, so a cut
+// that shortenString refuses doesn't fit either, and the search stays valid.
 function shortenToFit(s: string, budget: number, stats: FallbackStats): string {
-  let keep = Math.min(s.length, budget);
-  let out = shortenString(s, keep);
-  for (let i = 0; i < 4 && keep > 0; i++) {
-    const excess = JSON.stringify(out).length - budget;
-    if (excess <= 0) break;
-    keep = Math.max(0, keep - excess);
-    out = shortenString(s, keep);
+  let lo = 0;
+  let hi = Math.min(s.length, budget);
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (JSON.stringify(shortenString(s, mid)).length <= budget) lo = mid;
+    else hi = mid - 1;
   }
+  const out = shortenString(s, lo);
   if (out !== s) {
     stats.strings++;
     stats.charsRemoved += s.length - out.length;
@@ -281,9 +275,7 @@ function trimArray(
           ? trimArray(item, itemBudget, `${path}[]`, stats)
           : trimObject(item, itemBudget, `${path}[]`, stats);
       }
-      // Non-string scalar that is itself too large — return a truncation marker
-      stats.markers++;
-      return { __hdx_trimmed: true, originalSize: sizes[i] }; // eslint-disable-line security/detect-object-injection
+      return item; // a number, boolean or null is shorter than any marker
     });
   }
 
@@ -306,44 +298,44 @@ function trimObject(
 
   const result: any = {};
 
-  // Give each key an equal share of the budget so that no single large value
-  // crowds out the rest (e.g. a large array at key[0] eating all the budget
-  // before key[1] gets a chance to appear). The shares exclude what the
-  // values don't control: braces, quoted keys, colons, commas and the
-  // `"__hdx_trimmed":true` flag added below.
+  // Values within an equal share stay whole; the large ones split what is left,
+  // so one large value (e.g. `patterns`) gets the room the small ones don't
+  // use. The budget excludes what the values don't control: braces, quoted
+  // keys, colons, commas and the `"__hdx_trimmed":true` flag added below.
   const overhead = entries.reduce(
     (sum, [key]) => sum + JSON.stringify(key).length + 2,
     2 + TRIMMED_FLAG_LENGTH,
   );
+  const available = maxSize - overhead;
+  const sizes = entries.map(([, value]) => JSON.stringify(value).length);
+  const share = Math.floor(available / entries.length);
+  const smallTotal = sizes.reduce((sum, n) => (n <= share ? sum + n : sum), 0);
+  const largeCount = sizes.filter(n => n > share).length;
   const perKeyBudget = Math.max(
     0,
-    Math.floor((maxSize - overhead) / entries.length),
+    Math.floor((available - smallTotal) / Math.max(1, largeCount)),
   );
   let trimmed = false;
 
-  for (const [key, value] of entries) {
-    const valueStr = JSON.stringify(value);
+  entries.forEach(([key, value], i) => {
+    const size = sizes[i]; // eslint-disable-line security/detect-object-injection
     const keyPath = path ? `${path}.${key}` : key;
-
-    if (valueStr.length <= perKeyBudget) {
-      result[key] = value; // eslint-disable-line security/detect-object-injection
-    } else {
+    let out = value;
+    if (size > perKeyBudget) {
       logger.info(
-        `Trimming oversized object value at key "${key}" (${valueStr.length} bytes > ${perKeyBudget} per-key budget)`,
+        `Trimming oversized object value at key "${key}" (${size} bytes > ${perKeyBudget} per-key budget)`,
       );
       if (Array.isArray(value)) {
-        result[key] = trimArray(value, perKeyBudget, keyPath, stats); // eslint-disable-line security/detect-object-injection
+        out = trimArray(value, perKeyBudget, keyPath, stats);
       } else if (typeof value === 'object' && value !== null) {
-        result[key] = trimObject(value, perKeyBudget, keyPath, stats); // eslint-disable-line security/detect-object-injection
+        out = trimObject(value, perKeyBudget, keyPath, stats);
       } else if (typeof value === 'string') {
-        result[key] = shortenToFit(value, perKeyBudget, stats); // eslint-disable-line security/detect-object-injection
-      } else {
-        stats.markers++;
-        result[key] = { __hdx_trimmed: true, originalSize: valueStr.length }; // eslint-disable-line security/detect-object-injection
-      }
-      trimmed = true;
+        out = shortenToFit(value, perKeyBudget, stats);
+      } // a number, boolean or null is shorter than any marker: kept whole
     }
-  }
+    result[key] = out; // eslint-disable-line security/detect-object-injection
+    if (out !== value) trimmed = true;
+  });
 
   if (trimmed) {
     result.__hdx_trimmed = true;
