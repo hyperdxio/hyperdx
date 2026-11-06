@@ -123,7 +123,21 @@ export function ClausePopover({
             data-testid={`${testId}-mode`}
           />
           {mode === 'pick' ? renderPick(apply) : renderSql(apply)}
-          <Group justify="space-between" gap="xs" wrap="nowrap">
+          <Group
+            justify="space-between"
+            gap="xs"
+            wrap="nowrap"
+            // The SQL completion list overflows the editor onto these buttons.
+            // Fields mode uses an in-popover Autocomplete, which must stay above them.
+            style={
+              mode === 'sql'
+                ? {
+                    position: 'relative',
+                    zIndex: 'var(--mantine-z-index-max)',
+                  }
+                : undefined
+            }
+          >
             <Button
               variant="link"
               size="xs"

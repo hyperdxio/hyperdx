@@ -41,12 +41,14 @@ test.describe('Query input focus states', { tag: '@search' }, () => {
     const searchPage = new SearchPage(page);
     await searchPage.goto();
 
+    await searchPage.openSelectEditor();
     const selectBlurred = await searchPage.getSelectBorderColor();
     await searchPage.getSELECTEditor().focus();
     await expect
       .poll(() => searchPage.getSelectBorderColor())
       .not.toBe(selectBlurred);
 
+    await searchPage.openOrderByEditor();
     const orderByBlurred = await searchPage.getOrderByBorderColor();
     await searchPage.getOrderByEditor().focus();
     await expect

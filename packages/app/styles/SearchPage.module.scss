@@ -171,4 +171,46 @@
   z-index: 4;
   padding-bottom: var(--mantine-spacing-xs);
   border-bottom: 1px solid var(--color-border);
+
+  // The where row uses this width. 900px is the compact search cutoff.
+  container-type: inline-size;
+}
+
+.whereRow {
+  flex-wrap: wrap;
+}
+
+.whereField {
+  flex: 1 1 0%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.timeControls {
+  flex: 0 0 auto;
+  max-width: 100%;
+}
+
+.timePicker {
+  width: 350px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+// Stack the where clause once the form itself is under 900px. Wider than
+// that, it stays beside the time controls. Matches the compact layout cutoff.
+@container (min-width: 900px) {
+  .whereRow {
+    flex-wrap: nowrap;
+  }
+}
+
+@container (max-width: 899px) {
+  .whereField {
+    flex-basis: 100%;
+  }
+
+  .timeControls {
+    flex-basis: 100%;
+  }
 }
