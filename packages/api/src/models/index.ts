@@ -83,7 +83,7 @@ export type ConnectRetryOptions = {
  * first `mongoose.connect()` is terminal. Long-lived servers must keep
  * retrying, otherwise a Mongo that comes up moments after the API leaves the
  * process permanently unable to serve while still listening (see
- * https://github.com/hyperdxio/hyperdx/issues/2966).
+ * https://github.com/ClickHouse/ClickStack/issues/2966).
  *
  * Configuration errors (missing or malformed MONGO_URI) are not retryable
  * and are rethrown immediately so startup fails fast.

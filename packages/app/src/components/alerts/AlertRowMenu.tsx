@@ -14,12 +14,12 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/brand';
 import { EditAlertModal } from '@/components/alerts/EditAlertModal';
 import { EditInlineAlertModal } from '@/components/alerts/EditInlineAlertModal';
 import { TerraformHelperPanel } from '@/components/Iac/TerraformHelperPanel';
 import { useTerraformSnippets } from '@/components/Iac/useTerraformSnippets';
 import { IS_IAC_EXPORT_ENABLED } from '@/config';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { AlertsPageItem } from '@/types';
 import { useConfirm } from '@/useConfirm';
 import { intervalToDateRange } from '@/utils/alerts';

@@ -41,9 +41,9 @@ jest.mock('@/source', () => ({
   useSource: () => ({ data: undefined }),
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
+jest.mock('@/brand', () => ({
   __esModule: true,
-  useBrandDisplayName: () => 'HyperDX',
+  useBrandDisplayName: () => 'ClickStack',
 }));
 
 // Heavy / visual child components are stubbed so the form still renders and

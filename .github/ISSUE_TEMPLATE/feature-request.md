@@ -26,4 +26,4 @@ labels: enhancement, Needs Feedback
 New issues start as `Needs Feedback` so we can discuss scope before anyone
 writes code. Once a maintainer swaps that for `Accepting PR`, the issue is ready
 to be picked up — see
-[CONTRIBUTING.md](https://github.com/hyperdxio/hyperdx/blob/main/CONTRIBUTING.md#from-issue-to-pull-request).
+[CONTRIBUTING.md](https://github.com/ClickHouse/ClickStack/blob/main/CONTRIBUTING.md#from-issue-to-pull-request).

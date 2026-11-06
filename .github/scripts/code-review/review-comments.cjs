@@ -25,7 +25,7 @@ const MAX_BODY = 65536;
  * FOOTER repeats the rule and this anchor; the anchor test pins both to the AGENTS.md heading.
  */
 const GUIDE_URL =
-  'https://github.com/hyperdxio/hyperdx/blob/main/AGENTS.md#responding-to-review-feedback';
+  'https://github.com/ClickHouse/ClickStack/blob/main/AGENTS.md#responding-to-review-feedback';
 const GUIDE_LINK = `[How to respond](${GUIDE_URL})`;
 
 /**

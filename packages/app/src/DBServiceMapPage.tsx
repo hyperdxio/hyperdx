@@ -49,7 +49,7 @@ import SourceSchemaPreview, {
 } from './components/SourceSchemaPreview';
 import { SourceSelectControlled } from './components/SourceSelect';
 import { TimePicker } from './components/TimePicker';
-import { usePageTitle } from './theme/ThemeProvider';
+import { usePageTitle } from './brand';
 import { useSources } from './source';
 import { useDefaultTimeRange, useNewTimeQuery } from './timeQuery';
 

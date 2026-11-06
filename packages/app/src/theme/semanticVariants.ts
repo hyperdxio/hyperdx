@@ -1,10 +1,8 @@
 /**
  * Shared semantic component variants (danger / warning / success / info).
  *
- * These map the custom `variant` strings we intercept in each brand theme's
- * component overrides onto the semantic design tokens defined in
- * `_tokens.scss`. Keeping them here means HyperDX and ClickStack stay in sync
- * and there is a single source of truth for what each semantic variant means.
+ * These map the custom `variant` strings we intercept in the Mantine theme
+ * onto the semantic design tokens defined in `_tokens.scss`.
  */
 
 /** `<Text variant="...">` → text color token. */

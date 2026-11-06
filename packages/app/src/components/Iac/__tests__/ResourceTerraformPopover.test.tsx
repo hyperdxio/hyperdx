@@ -159,7 +159,7 @@ describe('ResourceTerraformPopover', () => {
     openPopover();
 
     expect(
-      await screen.findByText(/survives a rename in HyperDX/),
+      await screen.findByText(/survives a rename in ClickStack/),
     ).toBeInTheDocument();
   });
 

@@ -4,7 +4,7 @@ import { IS_OSS } from '@/config';
 
 import styles from './ContactSupportText.module.scss';
 
-const GH_LINK = 'https://github.com/hyperdxio/hyperdx/issues';
+const GH_LINK = 'https://github.com/ClickHouse/ClickStack/issues';
 
 export const ContactSupportText = () => {
   if (IS_OSS) {

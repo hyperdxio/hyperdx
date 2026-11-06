@@ -2,13 +2,16 @@ import {
   ActionIcon,
   Alert,
   Button,
+  Checkbox,
   Code,
   MantineTheme,
   MantineThemeOverride,
+  Radio,
   rem,
   SegmentedControl,
   Select,
   Slider,
+  Switch,
   Tabs,
   Text,
   Tooltip,
@@ -18,23 +21,25 @@ import {
   SEMANTIC_ALERT_VARS,
   SEMANTIC_CONTROL_COLORS,
   SEMANTIC_TEXT_COLORS,
-} from '@/theme/themes/semanticVariants';
+} from '@/theme/semanticVariants';
 
-import componentClasses from '@/theme/themes/components.module.scss';
-import focusClasses from '@styles/focus.module.scss';
+import componentClasses from '@/theme/components.module.scss';
 import variantClasses from '@styles/variants.module.scss';
 
+/**
+ * App Mantine theme.
+ * Primary color: yellow/gold accent.
+ */
 const makeTheme = ({
-  fontFamily = '"IBM Plex Sans", monospace',
+  fontFamily = '"Inter", sans-serif',
 }: {
   fontFamily?: string;
 }): MantineThemeOverride => ({
   cursorType: 'pointer',
   defaultRadius: 'sm',
   fontFamily,
-  focusClassName: focusClasses.focusRing,
-  primaryColor: 'green',
-  primaryShade: 8,
+  primaryColor: 'yellow',
+  primaryShade: 6,
   autoContrast: true,
   white: '#fff',
   fontSizes: {
@@ -55,41 +60,20 @@ const makeTheme = ({
     xl: 'calc(2rem * var(--mantine-scale))',
   },
   colors: {
-    green: [
-      '#eafff6',
-      '#cdfee7',
-      '#a0fad5',
-      '#63f2bf',
-      '#25e2a5',
-      '#00c28a',
-      '#00a475',
-      '#008362',
-      '#00674e',
-      '#005542',
-    ],
-    gray: [
-      '#FAFAFA',
-      '#e6e6ee',
-      '#D7D8DB',
-      '#aeaeb7',
-      '#A1A1AA',
-      '#868691',
-      '#7e7e8b',
-      '#6c6c79',
-      '#5f5f6e',
-      '#515264',
-    ],
-    dark: [
-      '#C1C2C5',
-      '#A6A7AB',
-      '#909296',
-      '#5C5F66',
-      '#373A40',
-      '#2C2E33',
-      '#25262B',
-      '#1A1B1E',
-      '#141517',
-      '#101113',
+    // Note: Actual color values are overridden via CSS variables in _tokens.scss
+    // These arrays are required for Mantine to recognize the colors
+    // The CSS variables allow different palettes for light/dark modes
+    yellow: [
+      '#ffffe8', // Overridden by --mantine-color-yellow-0
+      '#feffc2', // Overridden by --mantine-color-yellow-1
+      '#fdffa3', // Overridden by --mantine-color-yellow-2
+      '#faff69', // Overridden by --mantine-color-yellow-3
+      '#eef400', // Overridden by --mantine-color-yellow-4
+      '#c7cc00', // Overridden by --mantine-color-yellow-5
+      '#959900', // Overridden by --mantine-color-yellow-6
+      '#686b00', // Overridden by --mantine-color-yellow-7
+      '#3c4601', // Overridden by --mantine-color-yellow-8
+      '#333300', // Overridden by --mantine-color-yellow-9
     ],
   },
   headings: {
@@ -291,7 +275,7 @@ const makeTheme = ({
           baseVars['--button-fz'] = rem(12);
         }
 
-        // Use semantic CSS vars for primary button styling
+        // Use Mantine's built-in CSS vars for hover support
         if (props.variant === 'primary') {
           baseVars['--button-bg'] = 'var(--color-primary-button-bg)';
           baseVars['--button-hover'] = 'var(--color-primary-button-bg-hover)';
@@ -301,7 +285,7 @@ const makeTheme = ({
 
         if (props.variant === 'secondary') {
           baseVars['--button-bg'] = 'var(--color-bg-body)';
-          baseVars['--button-hover'] = 'var(--color-bg-muted)';
+          baseVars['--button-hover'] = 'var(--color-bg-hover)';
           baseVars['--button-color'] = 'var(--color-text)';
           baseVars['--button-bd'] = '1px solid var(--color-border)';
         }
@@ -358,6 +342,35 @@ const makeTheme = ({
       styles: {
         tabLabel: { textAlign: 'left' },
       },
+    }),
+    Checkbox: Checkbox.extend({
+      vars: () => ({
+        root: {
+          '--checkbox-color': 'var(--click-global-color-accent-default)',
+          '--checkbox-icon-color':
+            'var(--click-global-color-background-default)',
+        },
+      }),
+    }),
+    Radio: Radio.extend({
+      vars: () => ({
+        root: {
+          '--radio-color': 'var(--click-global-color-accent-default)',
+          '--radio-icon-color': 'var(--click-global-color-background-default)',
+        },
+      }),
+    }),
+    Switch: Switch.extend({
+      vars: () => ({
+        root: {
+          '--switch-color': 'var(--click-global-color-accent-default)',
+        },
+      }),
+      // Note: checked-state track-label color and thumb background are
+      // overridden globally in `theme/_tokens.scss` via an
+      // attribute selector on the checkbox input, because Mantine
+      // forces those values via a `:checked +` sibling selector that
+      // can't be reached from this Mantine vars/styles API.
     }),
     ActionIcon: ActionIcon.extend({
       defaultProps: {

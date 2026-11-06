@@ -2,10 +2,10 @@ import { Controller, useWatch } from 'react-hook-form';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Box, Divider, Slider, Stack } from '@mantine/core';
 
+import { useBrandDisplayName } from '@/brand';
 import { SourceSelectControlled } from '@/components/SourceSelect';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 import { useColumns } from '@/hooks/useMetadata';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import {
   DEFAULT_DATABASE,

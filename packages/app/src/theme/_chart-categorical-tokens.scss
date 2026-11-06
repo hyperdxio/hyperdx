@@ -1,15 +1,10 @@
-/* Shared Chart Tokens - used by both theme files */
+/* Shared chart tokens */
 
 /*
- * Categorical hues and semantic chart colors are unified across HyperDX and
- * ClickStack. This file is the SCSS source of truth for both layers; each
- * brand theme `@use`s it and `@include`s the mixins inside its per-theme
- * `chart-tokens` mixin (categorical first, then semantic — semantics reference
- * `var(--color-chart-green)` / `var(--color-chart-blue)`).
- *
- * Per-brand overrides: if a future brand needs a different semantic hex,
- * declare it in that theme's `chart-tokens` mixin *after* the shared
- * `@include chart-semantic-tokens` call.
+ * Categorical hues and semantic chart colors. This file is the SCSS source
+ * of truth; `_tokens.scss` `@use`s it and `@include`s the mixins
+ * inside its `chart-tokens` mixin (categorical first, then semantic —
+ * semantics reference `var(--color-chart-green)` / `var(--color-chart-blue)`).
  *
  * Categorical hues — React reads these from `CATEGORICAL_HEX_BY_TOKEN` in
  * `packages/app/src/utils.ts` directly (`getColorFromCSSVariable` /
@@ -41,7 +36,7 @@
 }
 
 /*
- * Semantic chart colors — unified on both brands. All four semantic vars
+ * Semantic chart colors. All four semantic vars
  * alias their matching categorical hue var so a future tweak to e.g.
  * `--color-chart-orange` propagates to `--color-chart-warning` without
  * a second edit. Must be `@include`d after `chart-categorical-tokens`.

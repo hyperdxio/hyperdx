@@ -394,6 +394,23 @@ export class SearchPage {
   }
 
   /**
+   * Mark the live document so a later `hasSurvivedReload` can tell a
+   * client-side route change from a full page load, which replaces the
+   * document and with it the marker.
+   */
+  async markDocument() {
+    await this.page.evaluate(() => {
+      document.documentElement.dataset.e2eDocumentMarker = 'true';
+    });
+  }
+
+  async hasSurvivedReload() {
+    return this.page.evaluate(
+      () => document.documentElement.dataset.e2eDocumentMarker === 'true',
+    );
+  }
+
+  /**
    * Open save search modal
    */
   async openSaveSearchModal(options: SaveSearchModalProps = { update: false }) {

@@ -2,8 +2,8 @@ import Link from 'next/link';
 import { Anchor, Burger, Button, Container, Group } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 
-import { useBrandDisplayName, useWordmark } from './theme/ThemeProvider';
 import api from './api';
+import { useBrandDisplayName, useWordmark } from './brand';
 
 export default function LandingHeader({
   activeKey,

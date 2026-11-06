@@ -1,6 +1,6 @@
 # Data Visualization Colors
 
-> Single source of truth for chart and visualization colors in HyperDX. Read
+> Single source of truth for chart and visualization colors in ClickStack. Read
 > this before adding, changing, or hard-coding a color in any chart, sparkline,
 > heatmap, legend, status pill, or other data display.
 
@@ -51,13 +51,12 @@ and ClickStack:
 | `chart-gray`       | `#9498a0` |
 
 **Source of truth for categorical hues lives in JS.** The matching
-`--color-chart-{hue}` CSS vars in both
-`packages/app/src/theme/themes/hyperdx/_tokens.scss` and
-`packages/app/src/theme/themes/clickstack/_tokens.scss` are a stylesheet-author
+`--color-chart-{hue}` CSS vars, included from
+`packages/app/src/theme/_tokens.scss`, are a stylesheet-author
 affordance only — `getColorFromCSSVariable` and `getColorFromCSSToken` skip
 `getComputedStyle` for categorical tokens and return values straight from
-`CATEGORICAL_HEX_BY_TOKEN` in `utils.ts`. The palette is the same on every theme
-today, so a DOM round-trip per series buys nothing.
+`CATEGORICAL_HEX_BY_TOKEN` in `utils.ts`. A DOM round-trip per series buys
+nothing.
 
 The CSS vars exist for:
 
@@ -69,21 +68,20 @@ The CSS vars exist for:
   add per-brand entries to `CATEGORICAL_HEX_BY_TOKEN`.
 
 The categorical hues and semantic chart colors live in a single shared partial,
-`packages/app/src/theme/themes/_chart-categorical-tokens.scss` (`chart-categorical-tokens`
-and `chart-semantic-tokens` mixins). Both brand themes `@use` it and `@include`
-both mixins inside their per-theme `chart-tokens` mixin. Each theme's
-`chart-tokens` mixin is then `@include`'d inside both `[data-mantine-color-scheme]`
-selectors. Sass inlines the bodies at each call site, so the emitted CSS has the
-same per-scheme specificity as a hand-duplicated block would — but the source
-lives in **one place** for both layers. **If you change a categorical hex in the
-shared partial, change it in `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts` too. If
-you change a semantic hex, update `SEMANTIC_CHART_PALETTE` in `utils.ts` too —
-the SCSS and JS sources are intentionally mirrored.**
+`packages/app/src/theme/_chart-categorical-tokens.scss` (`chart-categorical-tokens`
+and `chart-semantic-tokens` mixins). `theme/_tokens.scss` `@use`s it and
+`@include`s both mixins inside its `chart-tokens` mixin, which is then
+`@include`'d inside both `[data-mantine-color-scheme]` selectors. Sass inlines
+the bodies at each call site, so the emitted CSS has the same per-scheme
+specificity as a hand-duplicated block would — but the source lives in **one
+place**. **If you change a categorical hex in the shared partial, change it in
+`CATEGORICAL_HEX_BY_TOKEN` in `utils.ts` too. If you change a semantic hex,
+update `SEMANTIC_CHART_PALETTE` in `utils.ts` too — the SCSS and JS sources are
+intentionally mirrored.**
 
-Brand identity for charts is carried by non-chart UI chrome (Mantine accent,
-sidebar gradient, Click UI globals), not by per-brand chart semantic colors —
-`success` and `info` reuse categorical `chart-green` and `chart-blue` on both
-brands.
+Chart series colors are not the brand accent. `success` and `info` reuse
+categorical `chart-green` and `chart-blue`. The yellow ClickStack accent stays
+in non-chart chrome (Mantine accent, sidebar, Click UI globals).
 
 ### Semantic chart colors (`--color-chart-{success|warning|error|info}`)
 
@@ -97,23 +95,22 @@ brands.
 --color-chart-error-highlight
 ```
 
-Defined in both `_tokens.scss` files. **Unified on both brands**: `success`
-reuses categorical `chart-green` (`#3ca951`); `info` reuses categorical
-`chart-blue` (`#437eef`). Warning and error use the same Observable hexes across
-themes.
+Defined in the shared `chart-semantic-tokens` mixin. `success` reuses
+categorical `chart-green` (`#3ca951`); `info` reuses categorical `chart-blue`
+(`#437eef`). Warning and error use the same Observable hexes.
 
 Unlike the categorical hues, **the semantic CSS vars are read at runtime** via
 `getComputedStyle` (see `getSemanticChartColor` in `utils.ts`). That keeps
-inline `var(--color-chart-warning)` consumers like `LogLevel.tsx` reacting to
-theme switches without a React re-render, and it lets JS callers like
-`getChartColorSuccess()` return the correct hex for the active theme.
+inline `var(--color-chart-warning)` consumers like `LogLevel.tsx` in sync with
+the stylesheet, and it lets JS callers like `getChartColorSuccess()` return the
+same hex.
 
 ### Single source of truth in TS (`packages/app/src/utils.ts`)
 
 ```text
 CATEGORICAL_HEX_BY_TOKEN  # { 'chart-blue': '#437eef', ... } — file-private,
                           # authoritative for categorical hues
-SEMANTIC_CHART_PALETTE    # { hyperdx: {...}, clickstack: {...} } — file-private,
+SEMANTIC_CHART_PALETTE    # { success, warning, error, info, …highlight } — file-private,
                           # SSR/fallback for the semantic CSS vars
 COLORS                    # ordered hex array, derived from CATEGORICAL_PALETTE_TOKENS
 ```
@@ -153,14 +150,12 @@ Internals worth knowing:
     `CATEGORICAL_HEX_BY_TOKEN` — same shortcut, no `getComputedStyle`.
   - Semantic tokens (`chart-success`, `-warning`, `-error`) read
     `--color-{token}` from `documentElement` via `getComputedStyle` and fall
-    back to the active theme's `SEMANTIC_CHART_PALETTE` entry when running
-    server-side or when the DOM read fails.
+    back to `SEMANTIC_CHART_PALETTE` when running server-side or when the DOM
+    read fails.
 - `getSemanticChartColor(varName, key)` is the shared helper that backs the
-  `getChartColor{Success,Warning,Error,Info}()` readers. It uses
-  `detectActiveTheme()` (checks for the `theme-clickstack` class on `<html>`) to
-  pick the correct per-brand fallback.
-- During SSR, semantic readers return the **HyperDX** default — the hydration
-  mismatch window is tiny because charts render after data fetch on the client.
+  `getChartColor{Success,Warning,Error,Info}()` readers. SSR and DOM-read
+  failures use `SEMANTIC_CHART_PALETTE`. Charts usually render after data
+  fetch on the client, so that fallback rarely reaches the DOM.
 
 ### Legacy `chart-1` … `chart-10` tokens
 
@@ -361,38 +356,21 @@ const slices = sorted.map((d, i) => ({
 
 `ChartUtils.tsx → buildPieChartData` already does this.
 
-## Per-theme considerations
-
-The categorical palette is identical on both themes — Observable 10. Semantic
-`success` and `info` also reuse categorical hues on both brands.
-
-### HyperDX
+## Color mode
 
 - `--color-chart-success` uses categorical `chart-green` (`#3ca951`).
-- `--color-chart-info` uses categorical `chart-blue` (`#437eef`), so info-level
-  logs and `getChartColorInfo()` render the same blue as multi-series slot 0.
-- Multi-series charts start at brand blue (slot 0, `#437eef`) and proceed
-  through the canonical palette — brand identity is preserved via the Mantine
-  green accent and sidebar gradient, not via chart semantic colors.
-
-### ClickStack
-
+- `--color-chart-info` uses categorical `chart-blue` (`#437eef`, same as
+  `--click-global-color-text-link-default`), so info-level logs and
+  `getChartColorInfo()` render that blue.
 - The brand accent is **yellow** (`--palette-brand-300: #faff69`). It is **not**
   in the chart palette and should not be added — yellow on a light background
   fails contrast, and yellow as a series color reads as "warning" in most
   contexts.
-- `--color-chart-success` uses categorical `chart-green` (`#3ca951`).
-- `--color-chart-info` uses categorical `chart-blue` (`#437eef`, same as
-  `--click-global-color-text-link-default`), so info-level logs and
-  `getChartColorInfo()` render the brand blue.
-
-### Both themes
-
 - The dark/light scheme split is handled by CSS (the same vars get redefined
   inside each scheme selector). React code does not need to branch on scheme
   except for the heatmap palette.
-- The chart vars in `_tokens.scss` are intentionally duplicated across the dark
-  and light blocks. If you change one, change the other.
+- The chart vars are intentionally included in both the dark and light blocks.
+  Change the shared mixin, not one selector.
 
 ## Adding new entries
 
@@ -406,8 +384,8 @@ preference:
 1. **Group small categories** into "Other" before charting.
 2. **Reuse slots** with patterns/strokes/labels for disambiguation.
 3. If you really must extend: add `--color-chart-{newhue}` to the shared
-   `_chart-categorical-tokens.scss` partial — one edit covers both brands and
-   both schemes via the existing `@include` chain. Then append
+   `_chart-categorical-tokens.scss` partial — one edit covers both schemes via
+   the existing `@include` chain. Then append
    `'chart-{newhue}'` to `CHART_PALETTE_TOKENS` in `common-utils/src/types.ts`,
    add the hex to `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts`, and add a label
    entry in `ColorSwatchInput.tsx` → `TOKEN_LABELS` and
@@ -415,15 +393,14 @@ preference:
 
 ### A new semantic color (e.g. `--color-chart-pending`)
 
-1. Pick the hex (unified across brands unless you have a deliberate per-brand split).
+1. Pick the hex.
 2. Add `--color-chart-pending` and (if needed) `--color-chart-pending-highlight`
    to the `@mixin chart-semantic-tokens` block in
-   `_chart-categorical-tokens.scss`. The mixin is `@include`'d in each theme's
-   `chart-tokens` mixin, which is `@include`'d in each scheme selector — one edit
-   covers dark and light for both brands. For a per-brand override only, declare
-   the var in that brand's `chart-tokens` mixin after the shared `@include`.
-3. Add `pending` (and optionally `pendingHighlight`) to
-   `SEMANTIC_CHART_PALETTE.hyperdx` and `.clickstack` in `utils.ts`.
+   `_chart-categorical-tokens.scss`. The mixin is `@include`'d from
+   `theme/_tokens.scss` inside each scheme selector — one edit covers dark
+   and light.
+3. Add `pending` (and optionally `pendingHighlight`) to `SEMANTIC_CHART_PALETTE`
+   in `utils.ts`.
 4. Append `'chart-pending'` to `CHART_PALETTE_TOKENS` (and
    `SEMANTIC_PALETTE_TOKENS` slice will pick it up automatically) in
    `common-utils/src/types.ts`.
@@ -470,8 +447,6 @@ Why each is wrong:
 
 ## Pre-merge checklist for chart-touching PRs
 
-- [ ] Toggled HyperDX ↔ ClickStack theme — semantic success and info stay
-      unified (chart-green / chart-blue); categorical palette stays identical.
 - [ ] Toggled dark ↔ light — categorical and semantic colors stay legible on
       both backgrounds; heatmap gradient flips palettes.
 - [ ] Status indicators use `getChartColor*()` / `var(--color-chart-*)`, not raw
@@ -483,15 +458,15 @@ Why each is wrong:
       `CATEGORICAL_HEX_BY_TOKEN` in `utils.ts`).
 - [ ] If you added or changed a semantic hex, changed it in **both** places
       (`chart-semantic-tokens` mixin in `_chart-categorical-tokens.scss`,
-      `SEMANTIC_CHART_PALETTE.{theme}` in `utils.ts`).
+      `SEMANTIC_CHART_PALETTE` in `utils.ts`).
 - [ ] Storybook `Design tokens / Chart colors` still renders correctly.
 
 ## File reference summary
 
 | What                                                | Where                                                                            |
 | --------------------------------------------------- | -------------------------------------------------------------------------------- |
-| Shared chart vars (10 categorical hues + semantics) | `packages/app/src/theme/themes/_chart-categorical-tokens.scss`                   |
-| Per-theme `chart-tokens` mixin (`@include` chain)   | `packages/app/src/theme/themes/hyperdx/_tokens.scss`, `clickstack/_tokens.scss` |
+| Shared chart vars (10 categorical hues + semantics) | `packages/app/src/theme/_chart-categorical-tokens.scss`                          |
+| `chart-tokens` mixin (`@include` chain)             | `packages/app/src/theme/_tokens.scss`                                            |
 | JS palette objects + reader functions               | `packages/app/src/utils.ts`                                                      |
 | Palette token enum + legacy migration               | `packages/common-utils/src/types.ts`                                             |
 | Multi-series wiring (`setLineColors` etc.)          | `packages/app/src/ChartUtils.tsx`                                                |

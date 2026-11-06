@@ -177,14 +177,14 @@ This pattern cannot be enforced by ESLint and requires manual code review.
 
 ### Semantic component variants (Alert / Text / danger controls)
 
-We ship **themed semantic variants** for `Alert`, `Text`, `Button`, and `ActionIcon` so callouts and status text are token-driven and consistent across the HyperDX and ClickStack brands (and light/dark). **Prefer these over raw Mantine palette colors** (`color="yellow"`, `color="red"`, `c="green"`, etc.).
+We ship **semantic variants** for `Alert`, `Text`, `Button`, and `ActionIcon` so callouts and status text are token-driven in both light and dark. **Prefer these over raw Mantine palette colors** (`color="yellow"`, `color="red"`, `c="green"`, etc.).
 
-The variant → token mapping is centralized in `packages/app/src/theme/themes/semanticVariants.ts` (the single source of truth, consumed by both brand themes' `mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design tokens/Semantic variants` for the full visual matrix.
+The variant → token mapping is centralized in `packages/app/src/theme/semanticVariants.ts` (the single source of truth, consumed by `theme/mantineTheme.ts`). See the Storybook stories `Components/Alert` (interactive `Playground`) and `Design tokens/Semantic variants` for the full visual matrix.
 
 **`Alert`** — `info` | `success` | `warning` | `danger`. Renders a tinted `-subtle` background with the title, icon, **and body text** in the semantic color token:
 
 ```tsx
-// ✅ token-driven, works in both brands + light/dark, meets WCAG AA
+// ✅ token-driven, works in light and dark, meets WCAG AA
 <Alert variant="warning" title="Heads up">This may take a while.</Alert>
 <Alert variant="danger" title="Failed">Could not save the alert.</Alert>
 
@@ -398,11 +398,11 @@ render those verbatim.
 
 ## Semantic design tokens (prefer over raw Mantine colors)
 
-The UI is built with **Mantine components**, but **colors and surfaces** should follow the **semantic CSS custom properties** in our themes (`--color-*`, etc.), not ad-hoc Mantine palette values. Those tokens are defined in `packages/app/src/theme/themes/**/_tokens.scss`, align with a **Click UI**–style system, and keep HyperDX and ClickStack visually consistent. They are the path toward a shared design system even while Mantine remains the component layer.
+The UI is built with **Mantine components**, but **colors and surfaces** should follow the **semantic CSS custom properties** in our themes (`--color-*`, etc.), not ad-hoc Mantine palette values. Those tokens are defined in `packages/app/src/theme/_tokens.scss`, align with a **Click UI**–style system, and are shared by every deployment. They are the path toward a shared design system even while Mantine remains the component layer.
 
 - **Do**: Use Mantine for layout, components, and spacing; use **semantic tokens** for themed backgrounds, text colors, borders, and states (e.g. `style={{ color: 'var(--color-text-muted)' }}` or `style={{ border: '1px solid var(--color-border)' }}`).
 - **Do not**: Rely on raw Mantine color props for app chrome and content when a semantic token exists — e.g. `c="gray.5"`, `bg="dark.7"`, or arbitrary `color="blue.4"` for surfaces that should match the rest of the product.
-- **Reference**: `packages/app/src/theme/semanticColorsGrouped.ts` (token names), theme SCSS under `packages/app/src/theme/themes/`, and Storybook (`SemanticColors` and related theme stories) for a visual map.
+- **Reference**: `packages/app/src/theme/semanticColorsGrouped.ts` (token names), `packages/app/src/theme/_tokens.scss`, and Storybook (`SemanticColors` and related theme stories) for a visual map.
 
 Mantine theme overrides in `packages/app/src/theme/**` may map Mantine’s scale to our palette; that does not replace using **`var(--color-...)`** in new styling where you need explicit color control.
 
@@ -410,7 +410,7 @@ Mantine theme overrides in `packages/app/src/theme/**` may map Mantine’s scale
 
 `@clickhouse/click-ui` is a dependency of `packages/app`. `ThemeWrapper` mounts
 `ClickUIProvider` inside `MantineProvider` with `persistTheme={false}`, so it
-follows the HyperDX color mode and never writes its own theme to localStorage.
+follows the app color mode and never writes its own theme to localStorage.
 Storybook and `renderWithMantine` in tests get the provider for free.
 
 - **Do**: Prefer a click-ui component over a new Mantine one when click-ui has

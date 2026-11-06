@@ -1,6 +1,6 @@
 # Page layout and headers
 
-HyperDX app pages share a sticky top header bar and a scrollable content region below it. Use the shared layout primitives so titles, controls, and spacing stay consistent across Search, list pages, and tool pages (Service Map, Kubernetes, Chart Explorer).
+ClickStack app pages share a sticky top header bar and a scrollable content region below it. Use the shared layout primitives so titles, controls, and spacing stay consistent across Search, list pages, and tool pages (Service Map, Kubernetes, Chart Explorer).
 
 ## Components
 
