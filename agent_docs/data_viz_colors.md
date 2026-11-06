@@ -1,6 +1,6 @@
 # Data Visualization Colors
 
-> Single source of truth for chart and visualization colors in HyperDX. Read
+> Single source of truth for chart and visualization colors in ClickStack. Read
 > this before adding, changing, or hard-coding a color in any chart, sparkline,
 > heatmap, legend, status pill, or other data display.
 

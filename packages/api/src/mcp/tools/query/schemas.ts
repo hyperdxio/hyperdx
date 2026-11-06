@@ -110,7 +110,7 @@ const mcpMetricTypeSchema = z
  * Clients that forward MCP tool schemas straight to the provider therefore
  * get the ENTIRE tool list rejected because of this one field, and the user
  * sees a generic connectivity error that names neither the tool nor the
- * property. See https://github.com/hyperdxio/hyperdx/issues/2967.
+ * property. See https://github.com/ClickHouse/ClickStack/issues/2967.
  *
  * The wire type is the only thing that changes. Numeric input is still
  * accepted for callers working from a cached schema, the value is coerced

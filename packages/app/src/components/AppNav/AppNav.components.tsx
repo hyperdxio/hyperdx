@@ -3,6 +3,11 @@ import Link from 'next/link';
 import cx from 'classnames';
 import { Badge } from '@clickhouse/click-ui';
 import {
+  setAttributes,
+  setUser,
+  startNewSession,
+} from '@clickhouse/clickstack-browser';
+import {
   Avatar,
   Button,
   Group,
@@ -174,6 +179,12 @@ export const AppNavUserMenu = ({
               leftSection={<IconLogout size={16} />}
               component={Link}
               href={logoutUrl}
+              onClick={() => {
+                // The next user on this device gets a RUM session of their own
+                setUser(null);
+                setAttributes(null);
+                startNewSession();
+              }}
             >
               Logout
             </Menu.Item>

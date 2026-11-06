@@ -7,7 +7,7 @@ contact_links:
     about:
       For usage questions, setup help, and general discussion, ask on Discord.
   - name: First-time contributor?
-    url: https://github.com/hyperdxio/hyperdx/blob/main/CONTRIBUTING.md#getting-vouched
+    url: https://github.com/ClickHouse/ClickStack/blob/main/CONTRIBUTING.md#getting-vouched
     about:
       No need to open an issue to get vouched. Open your pull request and a
       maintainer vouches from there.

@@ -1,4 +1,4 @@
-# HyperDX Technology Stack
+# ClickStack Technology Stack
 
 ## Frontend (`packages/app`)
 
@@ -19,7 +19,7 @@
 - **Database**: ClickHouse (telemetry data), MongoDB via Mongoose (metadata)
 - **Authentication**: Passport.js with local strategy
 - **Validation**: Zod schemas
-- **Telemetry**: Self-instrumented with `@hyperdx/node-opentelemetry`
+- **Telemetry**: Self-instrumented with `@clickhouse/clickstack-node` (API and Next.js server) and `@clickhouse/clickstack-browser` (frontend)
 
 ## Common Utilities (`packages/common-utils`)
 

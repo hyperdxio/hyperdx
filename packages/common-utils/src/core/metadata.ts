@@ -134,7 +134,7 @@ export const DEFAULT_METRIC_NAMES_LIMIT = 500;
 const escapeLikePattern = (value: string): string =>
   value.replace(/[\\%_]/g, char => `\\${char}`);
 
-// See https://github.com/hyperdxio/hyperdx/issues/2163. Inlining a validated
+// See https://github.com/ClickHouse/ClickStack/issues/2163. Inlining a validated
 // integer literal avoids the `_CAST` wrapper entirely.
 const inlineNonNegativeInt = (value: number, label: string): string => {
   if (!Number.isInteger(value) || value < 0) {

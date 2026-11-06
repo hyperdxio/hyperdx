@@ -12,7 +12,7 @@ import { mongooseConnection } from '@/models';
  *   - `/ready`: readiness — 503 unless MongoDB is connected, since almost
  *     every request (including OpAMP config handling) is Mongo-backed.
  *     Kubernetes readiness failures take the pod out of Service endpoints
- *     without restarting it (https://github.com/hyperdxio/hyperdx/issues/2966).
+ *     without restarting it (https://github.com/ClickHouse/ClickStack/issues/2966).
  */
 export const isMongoConnected = () =>
   mongooseConnection.readyState === mongoose.ConnectionStates.connected;

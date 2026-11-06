@@ -1,7 +1,3 @@
-import {
-  getPinoMixinFunction,
-  getPinoTransport,
-} from '@hyperdx/node-opentelemetry';
 import type { Request, Response } from 'express';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
@@ -10,54 +6,29 @@ import * as config from '@/config';
 
 const MAX_LEVEL = config.HYPERDX_LOG_LEVEL || 'info';
 
-const hyperdxTransport = config.HYPERDX_API_KEY
-  ? getPinoTransport(MAX_LEVEL, {
-      detectResources: true,
-    })
-  : null;
-
-// Configure transport based on environment and whether HyperDX is enabled
-const getTransport = () => {
-  const targets: any[] = [];
-
-  // Add HyperDX transport if API key is configured
-  if (hyperdxTransport) {
-    targets.push(hyperdxTransport);
-  }
-
-  if (config.IS_DEV || config.IS_CI) {
-    // In development, use pino-pretty for nice console output
-    targets.push({
-      target: 'pino-pretty',
-      level: MAX_LEVEL,
-      options: {
-        colorize: true,
-        translateTime: 'SYS:standard',
-        ignore: 'pid,hostname,trace_id,span_id,trace_flags',
-      },
-    });
-  } else {
-    targets.push({
-      target: 'pino/file',
-      level: MAX_LEVEL,
-      options: { destination: 1 }, // this writes to STDOUT
-    });
-  }
-
-  // If only one target, return it directly; otherwise return multi-transport
-  if (targets.length === 0) {
-    return undefined;
-  } else if (targets.length === 1) {
-    return targets[0];
-  } else {
-    return { targets };
-  }
-};
+// Only the local output. When the SDK is running, its pino instrumentation
+// exports every record and adds trace_id, span_id and trace_flags to it.
+const transport: pino.TransportSingleOptions =
+  config.IS_DEV || config.IS_CI
+    ? {
+        // In development, use pino-pretty for nice console output
+        target: 'pino-pretty',
+        options: {
+          colorize: true,
+          translateTime: 'SYS:standard',
+          ignore: 'pid,hostname,trace_id,span_id,trace_flags',
+        },
+      }
+    : {
+        target: 'pino/file',
+        options: { destination: 1 }, // this writes to STDOUT
+      };
 
 // pino-http's default request serializer copies `req.headers` verbatim, and
 // in production the serializers below are left enabled, so without this the
 // Authorization bearer and session cookie are written to stdout and shipped
-// off-box via the HyperDX transport.
+// off-box by the SDK's pino instrumentation, which exports the redacted
+// record.
 export const REDACTED_PATHS = [
   'req.headers.authorization',
   'req.headers.cookie',
@@ -114,8 +85,7 @@ export function selectRequestSerializers(isDevOrCi: boolean): {
 
 const logger = pino({
   level: MAX_LEVEL,
-  transport: getTransport(),
-  mixin: getPinoMixinFunction,
+  transport,
   redact: { paths: REDACTED_PATHS, censor: '[REDACTED]' },
 });
 

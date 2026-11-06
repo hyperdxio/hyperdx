@@ -148,7 +148,7 @@ Here's an example of how to set these variables in a Docker Compose file:
 version: '3'
 services:
   hyperdx-api:
-    image: docker.hyperdx.io/hyperdx/api:latest
+    image: docker.clickhouse.com/clickhouse/clickstack:2
     environment:
       - DEFAULT_CONNECTIONS=[{"name":"Local
         ClickHouse","host":"clickhouse:8123","username":"default","password":""}]

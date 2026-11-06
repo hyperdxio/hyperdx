@@ -58,9 +58,10 @@ jest.mock('@opentelemetry/api', () => ({
   },
 }));
 
-jest.mock('@hyperdx/node-opentelemetry', () => ({
-  __esModule: true,
-  setTraceAttributes: jest.fn(),
+// The real package would read helpers off the mocked @opentelemetry/api at
+// load time. Only setBusinessContext uses it, and these tests never call it.
+jest.mock('@opentelemetry/core', () => ({
+  getRPCMetadata: jest.fn(),
 }));
 
 jest.mock('@/config', () => ({

@@ -46,7 +46,7 @@ interface GitHubCommit {
 }
 
 const GITHUB_COMMITS_URL =
-  'https://api.github.com/repos/hyperdxio/hyperdx/commits?sha=main&per_page=50';
+  'https://api.github.com/repos/ClickHouse/ClickStack/commits?sha=main&per_page=50';
 
 const GREENHOUSE_API_URL =
   'https://boards-api.greenhouse.io/v1/boards/clickhouse/jobs';

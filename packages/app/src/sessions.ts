@@ -501,7 +501,7 @@ function isAbortError(e: unknown): boolean {
  * counter stamped on every record, and `rr-web.chunk` is the 1-based chunk
  * index within an event — ordering by both (numerically — the attributes are
  * stored as strings) makes the stream order deterministic.
- * https://github.com/hyperdxio/hyperdx/issues/2569
+ * https://github.com/ClickHouse/ClickStack/issues/2569
  */
 export function buildRRWebStreamChartConfig({
   source,
