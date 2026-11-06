@@ -448,8 +448,12 @@ export const getScheduledWindowStart = (
  * than the wall clock: previous-state lookups bound history by the wall clock,
  * which only covers every window when the evaluation clock is not ahead of it.
  */
-const getAlertEvaluationNow = (alert: IAlert, now: Date): Date => {
-  const shifted = findAlertEvaluator(alert)?.evaluationNow?.(alert, now);
+const getAlertEvaluationNow = (
+  alert: IAlert,
+  now: Date,
+  evaluator = findAlertEvaluator(alert),
+): Date => {
+  const shifted = evaluator?.evaluationNow?.(alert, now);
   return shifted != null && shifted < now ? shifted : now;
 };
 
@@ -1066,7 +1070,7 @@ export const processAlert = async (
   };
   try {
     evaluator = findAlertEvaluator(alert);
-    const now = getAlertEvaluationNow(alert, wallClockNow);
+    const now = getAlertEvaluationNow(alert, wallClockNow, evaluator);
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
       alertId: alert.id,
@@ -1604,17 +1608,7 @@ export const processAlert = async (
 
       // Single-value evaluations always cover exactly the current window.
       evaluationAnalytics.backfilledBuckets = 0;
-      flushNotificationTimings();
-      const historyRecords = Array.from(histories.values());
-      for (const record of historyRecords) {
-        record.analytics = evaluationAnalytics;
-      }
-      await alertProvider.updateAlertState(
-        alert.id,
-        historyRecords,
-        executionErrors,
-        dateRange,
-      );
+      await persistHistories(Array.from(histories.values()));
       return;
     }
 
@@ -1838,17 +1832,7 @@ export const processAlert = async (
     }
 
     // Save all history records and update alert state
-    flushNotificationTimings();
-    const historyRecords = Array.from(histories.values());
-    for (const record of historyRecords) {
-      record.analytics = evaluationAnalytics;
-    }
-    await alertProvider.updateAlertState(
-      alert.id,
-      historyRecords,
-      executionErrors,
-      dateRange,
-    );
+    await persistHistories(Array.from(histories.values()));
   } catch (e) {
     // Uncomment this for better error messages locally
     // console.error(e);
