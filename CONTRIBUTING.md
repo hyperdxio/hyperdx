@@ -96,7 +96,7 @@ problem (or the fix) for themselves. If a maintainer can't reproduce it, they
 can't triage the issue or review the PR.
 
 **Try the demo environment first.** [play.hyperdx.io](https://play.hyperdx.io)
-is a hosted HyperDX connected to a public demo dataset (logs, traces, metrics
+is a hosted ClickStack instance connected to a public demo dataset (logs, traces, metrics
 and session replays from the OpenTelemetry demo app). If your bug shows up
 there, link the exact URL — search and chart explorer keep their query, filters
 and time range in the URL — and that's most of the repro.
@@ -176,13 +176,13 @@ Service Descriptions:
 
 - OpenTelemetry Collector (otel-collector): Receives OpenTelemetry data from
   instrumented applications and forwards it to ClickHouse for storage. Includes
-  OpAMP supervisor that dynamically pulls configuration from HyperDX API.
+  OpAMP supervisor that dynamically pulls configuration from ClickStack API.
 - ClickHouse (ch-server): ClickHouse database, stores all telemetry.
 - MongoDB (db): Stores user/saved search/alert/dashboard data.
-- HyperDX API (api): Node.js API, executes ClickHouse queries on behalf of the
+- ClickStack API (api): Node.js API, executes ClickHouse queries on behalf of the
   frontend and serves the frontend. serves the frontend. Can also run alert
   checker.
-- HyperDX UI (app): Next.js frontend, serves the UI.
+- ClickStack UI (app): Next.js frontend, serves the UI.
 
 ## Development
 
@@ -335,7 +335,7 @@ pin. Drop it if that blanket resolution is ever narrowed.
 
 ## AI-Assisted Development
 
-HyperDX includes an [MCP server](https://modelcontextprotocol.io/) that lets AI assistants query observability data, manage dashboards, and
+ClickStack includes an [MCP server](https://modelcontextprotocol.io/) that lets AI assistants query observability data, manage dashboards, and
 explore data sources. See [MCP.md](/MCP.md) for setup instructions.
 
 The repo also ships with configuration for AI coding assistants that enables interactive browser-based E2E test generation and debugging via

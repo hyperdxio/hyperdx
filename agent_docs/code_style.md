@@ -410,7 +410,7 @@ Mantine theme overrides in `packages/app/src/theme/**` may map Mantine’s scale
 
 `@clickhouse/click-ui` is a dependency of `packages/app`. `ThemeWrapper` mounts
 `ClickUIProvider` inside `MantineProvider` with `persistTheme={false}`, so it
-follows the HyperDX color mode and never writes its own theme to localStorage.
+follows the app color mode and never writes its own theme to localStorage.
 Storybook and `renderWithMantine` in tests get the provider for free.
 
 - **Do**: Prefer a click-ui component over a new Mantine one when click-ui has
