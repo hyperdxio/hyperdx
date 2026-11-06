@@ -4,10 +4,12 @@ import type { NextFunction, Request, Response } from 'express';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
-import { findUserByAccessKey } from '@/controllers/user';
+import { touchOrgApiKeyLastUsed } from '@/controllers/orgApiKey';
+import { findUserByAccessKey, ORG_API_KEY_PREFIX } from '@/controllers/user';
 import type { UserDocument } from '@/models/user';
 import {
   getActiveTraceId,
+  getCounter,
   getStaticFeatureFlags,
   setBusinessContext,
 } from '@/utils/instrumentation';
@@ -95,24 +97,42 @@ export async function validateUserAccessKey(
     return res.sendStatus(401);
   }
 
-  const user = await findUserByAccessKey(key);
-  if (!user) {
-    return res.sendStatus(401);
+  // Express 4 drops rejected promises from middleware, which would leave the
+  // request hanging on a database error.
+  try {
+    const user = await findUserByAccessKey(key);
+    if (!user) {
+      if (key.startsWith(ORG_API_KEY_PREFIX)) {
+        orgApiKeyAuthFailures.add(1);
+      }
+      return res.sendStatus(401);
+    }
+
+    req.user = user;
+    if (user.isVirtual) {
+      touchOrgApiKeyLastUsed(user);
+    }
+
+    // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
+    // with team/user context so their traces are searchable during incidents.
+    setBusinessContext({
+      teamId: user.team?.toString(),
+      userId: user._id?.toString(),
+      email: user.email,
+      'hyperdx.user.is_virtual': user.isVirtual || undefined,
+      ...getStaticFeatureFlags(),
+    });
+  } catch (err) {
+    return next(err);
   }
-
-  req.user = user;
-
-  // Attribute access-key authenticated requests (external API v2 + MCP HTTP)
-  // with team/user context so their traces are searchable during incidents.
-  setBusinessContext({
-    teamId: user.team?.toString(),
-    userId: user._id?.toString(),
-    email: user.email,
-    ...getStaticFeatureFlags(),
-  });
 
   nextWithQueryAttribution(req, next);
 }
+
+const orgApiKeyAuthFailures = getCounter('hyperdx.org_api_key.auth_failures', {
+  description:
+    'Bearer requests with an org API key that is unknown, revoked, or expired.',
+});
 
 /**
  * Continue the request with its route recorded on any ClickHouse queries it
