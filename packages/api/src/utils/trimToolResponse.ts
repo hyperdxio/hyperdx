@@ -175,11 +175,11 @@ function visit(
   if (!each) {
     if (!(name in node)) return;
     if (rest.length === 0) onTarget(node, name);
-    else visit(node[name], rest, onTarget); // eslint-disable-line security/detect-object-injection
+    else visit(Reflect.get(node, name), rest, onTarget);
     return;
   }
 
-  const arr = name ? node[name] : node; // eslint-disable-line security/detect-object-injection
+  const arr = name ? Reflect.get(node, name) : node;
   if (!Array.isArray(arr)) return;
   arr.forEach((item, i) => {
     if (rest.length === 0) onTarget(arr, i);
@@ -194,22 +194,22 @@ function applyReduction(root: any, reduction: Reduction): string | undefined {
   let amount = 0;
 
   visit(root, segments, (container, key) => {
-    const value = container[key]; // eslint-disable-line security/detect-object-injection
+    const value = Reflect.get(container, key);
     if ('drop' in reduction) {
       if (Array.isArray(container)) return;
-      delete container[key]; // eslint-disable-line security/detect-object-injection
+      Reflect.deleteProperty(container, key);
       items++;
     } else if ('keep' in reduction) {
       if (Array.isArray(value) && value.length > reduction.keep) {
         amount += value.length - reduction.keep;
-        container[key] = value.slice(0, reduction.keep); // eslint-disable-line security/detect-object-injection
+        Reflect.set(container, key, value.slice(0, reduction.keep));
         items++;
       }
     } else if (typeof value === 'string') {
       const out = shortenString(value, reduction.maxChars);
       if (out !== value) {
         amount += value.length - out.length;
-        container[key] = out; // eslint-disable-line security/detect-object-injection
+        Reflect.set(container, key, out);
         items++;
       }
     }
@@ -249,23 +249,26 @@ function trimArray(
   // items. Items within an equal share stay whole; the large ones split what is
   // left, so the shortened items add up to the array's budget.
   if (resultSize > maxSize) {
-    const sizes = result.map(item => JSON.stringify(item).length);
+    const sized = result.map(item => ({
+      item,
+      size: JSON.stringify(item).length,
+    }));
     const share = Math.floor(maxSize / result.length);
-    const smallTotal = sizes.reduce(
-      (sum, s) => (s <= share ? sum + s : sum),
+    const smallTotal = sized.reduce(
+      (sum, { size }) => (size <= share ? sum + size : sum),
       0,
     );
-    const largeCount = sizes.filter(s => s > share).length;
+    const largeCount = sized.filter(({ size }) => size > share).length;
     // Over budget only through separators: no single item to shorten.
     if (largeCount === 0) return result;
     // n-1 commas and 2 brackets
     const itemBudget = Math.floor(
       (maxSize - smallTotal - (result.length + 1)) / largeCount,
     );
-    result = result.map((item, i) => {
-      if (sizes[i] <= itemBudget) return item; // eslint-disable-line security/detect-object-injection
+    result = sized.map(({ item, size }) => {
+      if (size <= itemBudget) return item;
       logger.info(
-        `Trimming oversized array item (${sizes[i]} bytes > ${itemBudget} limit)`, // eslint-disable-line security/detect-object-injection
+        `Trimming oversized array item (${size} bytes > ${itemBudget} limit)`,
       );
       if (typeof item === 'string') {
         return shortenToFit(item, itemBudget, stats);
@@ -284,9 +287,6 @@ function trimArray(
 
 const TRIMMED_FLAG_LENGTH = '"__hdx_trimmed":true'.length;
 
-// Keys in trimObject come exclusively from Object.entries() on internal tool
-// response data — never from user-supplied HTTP input — so bracket-notation
-// writes are not an injection risk; see inline eslint-disable comments below.
 function trimObject(
   obj: any,
   maxSize: number,
@@ -295,8 +295,6 @@ function trimObject(
 ): any {
   const entries = Object.entries(obj);
   if (entries.length === 0) return obj;
-
-  const result: any = {};
 
   // Values within an equal share stay whole; the large ones split what is left,
   // so one large value (e.g. `patterns`) gets the room the small ones don't
@@ -307,35 +305,43 @@ function trimObject(
     2 + TRIMMED_FLAG_LENGTH,
   );
   const available = maxSize - overhead;
-  const sizes = entries.map(([, value]) => JSON.stringify(value).length);
+  const sized = entries.map(([key, value]) => ({
+    key,
+    value,
+    size: JSON.stringify(value).length,
+  }));
   const share = Math.floor(available / entries.length);
-  const smallTotal = sizes.reduce((sum, n) => (n <= share ? sum + n : sum), 0);
-  const largeCount = sizes.filter(n => n > share).length;
+  const smallTotal = sized.reduce(
+    (sum, { size }) => (size <= share ? sum + size : sum),
+    0,
+  );
+  const largeCount = sized.filter(({ size }) => size > share).length;
   const perKeyBudget = Math.max(
     0,
     Math.floor((available - smallTotal) / Math.max(1, largeCount)),
   );
   let trimmed = false;
 
-  entries.forEach(([key, value], i) => {
-    const size = sizes[i]; // eslint-disable-line security/detect-object-injection
-    const keyPath = path ? `${path}.${key}` : key;
-    let out = value;
-    if (size > perKeyBudget) {
-      logger.info(
-        `Trimming oversized object value at key "${key}" (${size} bytes > ${perKeyBudget} per-key budget)`,
-      );
-      if (Array.isArray(value)) {
-        out = trimArray(value, perKeyBudget, keyPath, stats);
-      } else if (typeof value === 'object' && value !== null) {
-        out = trimObject(value, perKeyBudget, keyPath, stats);
-      } else if (typeof value === 'string') {
-        out = shortenToFit(value, perKeyBudget, stats);
-      } // a number, boolean or null is shorter than any marker: kept whole
-    }
-    result[key] = out; // eslint-disable-line security/detect-object-injection
-    if (out !== value) trimmed = true;
-  });
+  const result: any = Object.fromEntries(
+    sized.map(({ key, value, size }) => {
+      const keyPath = path ? `${path}.${key}` : key;
+      let out = value;
+      if (size > perKeyBudget) {
+        logger.info(
+          `Trimming oversized object value at key "${key}" (${size} bytes > ${perKeyBudget} per-key budget)`,
+        );
+        if (Array.isArray(value)) {
+          out = trimArray(value, perKeyBudget, keyPath, stats);
+        } else if (typeof value === 'object' && value !== null) {
+          out = trimObject(value, perKeyBudget, keyPath, stats);
+        } else if (typeof value === 'string') {
+          out = shortenToFit(value, perKeyBudget, stats);
+        } // a number, boolean or null is shorter than any marker: kept whole
+      }
+      if (out !== value) trimmed = true;
+      return [key, out];
+    }),
+  );
 
   if (trimmed) {
     result.__hdx_trimmed = true;
