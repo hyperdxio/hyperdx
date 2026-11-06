@@ -2,6 +2,7 @@ import {
   DEFAULT_INCIDENT_IO_WEBHOOK_BODY,
   WebhookService,
 } from '@hyperdx/common-utils/dist/types';
+import dns from 'dns';
 import { ObjectId } from 'mongodb';
 
 import { AlertState } from '@/models/alert';
@@ -12,6 +13,7 @@ import {
   handleSendGenericWebhook,
 } from '@/tasks/checkAlerts/transports/generic';
 import type { Message } from '@/tasks/checkAlerts/transports/types';
+import { WebhookUrlValidationError } from '@/utils/validators';
 
 const message: Message = {
   hdxLink: 'https://example.test/alert',
@@ -89,6 +91,48 @@ describe('handleSendGenericWebhook — per-attempt timeout', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
   }, 2000); // short test-level timeout: a regression here should fail fast, not stall on Jest's default 30s
+});
+
+describe('handleSendGenericWebhook — DNS resolution', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('blocks a public hostname that resolves to loopback, without retrying', async () => {
+    // The real undici fetch + Agent pair that production uses.
+    jest
+      .mocked(global.fetch)
+      .mockImplementationOnce(jest.requireActual('undici').fetch);
+    const lookupSpy = jest
+      .spyOn(dns, 'lookup')
+      .mockImplementation((...args: any[]) =>
+        args[2](null, [{ address: '127.0.0.1', family: 4 }]),
+      );
+    const loopbackChannel: any = {
+      type: 'webhook',
+      channel: { ...webhook, url: 'http://127-0-0-1.nip.io/' },
+    };
+
+    await expect(
+      handleSendGenericWebhook(loopbackChannel, message),
+    ).rejects.toThrow(WebhookUrlValidationError);
+    expect(lookupSpy).toHaveBeenCalledTimes(1);
+  }, 2000);
+
+  it('unwraps a block nested deeper in the cause chain, without retrying', async () => {
+    const blocked = new WebhookUrlValidationError('blocked');
+    jest
+      .mocked(global.fetch)
+      .mockClear()
+      .mockRejectedValueOnce(
+        new TypeError('fetch failed', {
+          cause: new Error('connect failed', { cause: blocked }),
+        }),
+      );
+
+    await expect(handleSendGenericWebhook(channel, message)).rejects.toBe(
+      blocked,
+    );
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  }, 2000);
 });
 
 describe('buildWebhookTemplateVariables', () => {

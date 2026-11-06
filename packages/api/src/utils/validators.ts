@@ -6,7 +6,9 @@ import {
   PASSWORD_SPECIAL_CHARS,
   passwordValidators,
 } from '@hyperdx/common-utils/dist/validation';
+import dns from 'dns';
 import { Address4, Address6 } from 'ip-address';
+import type { LookupFunction } from 'net';
 import { z } from 'zod';
 
 import * as config from '@/config';
@@ -32,6 +34,8 @@ const IPV4_COMPATIBLE_SUBNET = new Address6('::/96');
 const IPV4_MAPPED_SUBNET = new Address6('::ffff:0:0/96');
 const IPV6_LINK_LOCAL_SUBNET = new Address6('fe80::/10');
 const IPV6_DISCARD_ONLY_SUBNET = new Address6('100::/64');
+const NAT64_WELL_KNOWN_SUBNET = new Address6('64:ff9b::/96'); // RFC 6052
+const NAT64_LOCAL_USE_SUBNET = new Address6('64:ff9b:1::/48'); // RFC 8215
 
 // Returns true for private/reserved IPv4 and IPv6 addresses that must not be
 // reachable from outbound requests (SSRF protection).
@@ -50,10 +54,12 @@ export function isPrivateIp(ip: string): boolean {
   }
   if (Address6.isValid(ip)) {
     const addr = new Address6(ip);
-    // Check the embedded address in mapped and deprecated compatible forms.
+    // Check the embedded address in mapped, deprecated compatible, and NAT64
+    // forms; a NAT64 gateway forwards 64:ff9b::7f00:1 to 127.0.0.1.
     if (
       addr.isInSubnet(IPV4_MAPPED_SUBNET) ||
-      addr.isInSubnet(IPV4_COMPATIBLE_SUBNET)
+      addr.isInSubnet(IPV4_COMPATIBLE_SUBNET) ||
+      addr.isInSubnet(NAT64_WELL_KNOWN_SUBNET)
     ) {
       const v4 = addr.to4();
       if (v4 && Address4.isValid(v4.address)) {
@@ -68,7 +74,9 @@ export function isPrivateIp(ip: string): boolean {
       addr.isMulticast() ||
       addr.isUnspecified() ||
       addr.isDocumentation() ||
-      addr.isInSubnet(IPV6_DISCARD_ONLY_SUBNET)
+      addr.isInSubnet(IPV6_DISCARD_ONLY_SUBNET) ||
+      // Operator-defined prefixes embed the IPv4 at varying offsets; block all.
+      addr.isInSubnet(NAT64_LOCAL_USE_SUBNET)
     );
   }
   return false;
@@ -114,6 +122,9 @@ const BLOCKED_WEBHOOK_HOSTS = (() => {
 })();
 
 export class WebhookUrlValidationError extends Error {
+  // A 4xx status makes withRetry give up instead of retrying a blocked URL.
+  readonly status = 400;
+
   constructor(message: string) {
     super(message);
     this.name = 'WebhookUrlValidationError';
@@ -163,11 +174,36 @@ export function validateWebhookUrl(
     hostname === 'localhost' || hostname.endsWith('.localhost');
   const isAllowlistedHostname = isAllowlistedWebhookHostname(hostname);
   if (!isAllowlistedHostname && (isLocalhost || isPrivateIp(hostname))) {
-    throw new WebhookUrlValidationError(
-      `Webhook URL resolves to a private or reserved address.`,
-    );
+    throw new WebhookUrlValidationError(PRIVATE_ADDRESS_MESSAGE);
   }
 }
+
+const PRIVATE_ADDRESS_MESSAGE =
+  'Webhook URL resolves to a private or reserved address.';
+
+// validateWebhookUrl only sees the hostname, so a public name pointing at a
+// private IP (e.g. 127-0-0-1.nip.io) gets through it. Checking at connect time
+// also covers DNS rebinding, since the checked address is the one dialed.
+// Node skips lookup for IP literals; validateWebhookUrl covers those.
+export const webhookLookup: LookupFunction = (hostname, options, callback) => {
+  dns.lookup(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err, []);
+    const blocked =
+      !isAllowlistedWebhookHostname(normalizeWebhookHostname(hostname)) &&
+      addresses.some(
+        ({ address }) =>
+          isPrivateIp(address) && !isAllowlistedWebhookHostname(address),
+      );
+    if (blocked) {
+      return callback(
+        new WebhookUrlValidationError(PRIVATE_ADDRESS_MESSAGE),
+        [],
+      );
+    }
+    if (options.all) return callback(null, addresses);
+    callback(null, addresses[0].address, addresses[0].family);
+  });
+};
 
 /** A 400-worthy webhook config error whose message is safe to return. */
 export const isWebhookValidationError = (
