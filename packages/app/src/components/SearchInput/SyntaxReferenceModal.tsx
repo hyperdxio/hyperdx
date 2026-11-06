@@ -16,6 +16,8 @@ import {
 } from '@mantine/core';
 import { IconExternalLink, IconSearch } from '@tabler/icons-react';
 
+import { useBrandDisplayName } from '@/brand';
+
 type Language = 'sql' | 'lucene';
 
 type Row = { expr: string; desc: string };
@@ -292,6 +294,7 @@ export default function SyntaxReferenceModal({
   onClose: () => void;
   language: Language;
 }) {
+  const brandName = useBrandDisplayName();
   const [language, setLanguage] = useState<Language>(initialLanguage);
   const [query, setQuery] = useState('');
 
@@ -336,7 +339,7 @@ export default function SyntaxReferenceModal({
             size="xs"
             style={{ flex: 1 }}
           />
-          <Tooltip label="ClickStack search documentation" withArrow>
+          <Tooltip label={`${brandName} search documentation`} withArrow>
             <Text
               size="xs"
               c="dimmed"
