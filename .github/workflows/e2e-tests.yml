@@ -10,10 +10,14 @@ jobs:
     # over-subscribed the 4-vCPU ubuntu-24.04 runner and caused timeouts.
     # RUNNER_E2E is a label or a JSON array of labels. On a smaller
     # runner, set the E2E_WORKERS variable to 2 as well.
+    # Fork PRs can't use the custom runner group and would queue forever, so
+    # they fall back to the 4-vCPU ubuntu-24.04 runner with 2 workers and a
+    # longer timeout.
     runs-on:
-      ${{ startsWith(vars.RUNNER_E2E, '[') && fromJSON(vars.RUNNER_E2E) ||
+      ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' ||
+      startsWith(vars.RUNNER_E2E, '[') && fromJSON(vars.RUNNER_E2E) ||
       vars.RUNNER_E2E || '8-core-playwright' }}
-    timeout-minutes: 15
+    timeout-minutes: ${{ github.event.pull_request.head.repo.fork && 25 || 15 }}
     permissions:
       contents: read
     strategy:
@@ -31,7 +35,9 @@ jobs:
       - name: Run Playwright tests (full-stack mode)
         env:
           # Unset falls back to the default in playwright.config.ts.
-          E2E_WORKERS: ${{ vars.E2E_WORKERS }}
+          E2E_WORKERS:
+            ${{ github.event.pull_request.head.repo.fork && '2' ||
+            vars.E2E_WORKERS }}
         run: |
           cd packages/app
           yarn test:e2e --shard=${{ matrix.shard }}/4
