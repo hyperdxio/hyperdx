@@ -1008,6 +1008,21 @@ describe('renderChartConfig', () => {
       expect(sql).not.toContain(NO_RECORDED_VALUE_FILTER);
     });
 
+    it.each(['UInt8', 'Int64', 'LowCardinality(UInt32)'])(
+      'leaves flagged points out when Flags is %s',
+      async flagsType => {
+        mockMetadata.getColumn = jest
+          .fn()
+          .mockImplementation(async ({ column }) =>
+            column === 'Flags' ? { name: 'Flags', type: flagsType } : undefined,
+          );
+        const sql = await renderMetricSql(MetricsDataType.Gauge, {
+          aggFn: 'avg',
+        });
+        expect(sql).toContain(NO_RECORDED_VALUE_FILTER);
+      },
+    );
+
     it.each(['String', 'Nullable(UInt32)', 'LowCardinality(Nullable(UInt32))'])(
       'reads the table as before when Flags is %s',
       async flagsType => {

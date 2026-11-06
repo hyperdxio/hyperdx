@@ -2021,11 +2021,14 @@ async function getComputedMetricColumns(
  * WHERE for a metric source CTE. OTLP sets bit 0 of Flags
  * (FLAG_NO_RECORDED_VALUE) on a point that has no value, such as a Prometheus
  * staleness marker. The ClickHouse exporter stores that point as zeros, so it
- * is left out before any aggregation or delta reads it. The gauge and sum
- * CTEs already read Flags, but HyperDX does not require it on histogram
- * tables, and none of them need it to be an integer. So a table without an
- * integer Flags column (or a failed column lookup) is read as before. Nullable
- * is excluded too: `bitAnd(NULL, 1) = 0` is NULL and would drop the row.
+ * is left out before any aggregation or delta reads it. A series that comes
+ * back after a marker is then compared with its last real point, so a counter
+ * that restarted behind the marker is clamped like any other counter reset
+ * (see the Sum Source CTE). The gauge and sum CTEs already read Flags, but
+ * HyperDX does not require it on histogram tables, and none of them need it
+ * to be an integer. So a table without an integer Flags column (or a failed
+ * column lookup) is read as before. Nullable is excluded too:
+ * `bitAnd(NULL, 1) = 0` is NULL and would drop the row.
  */
 async function renderMetricWhere(
   chartConfig: BuilderChartConfigWithOptDateRangeEx,

@@ -191,22 +191,36 @@ describe('metric points with no recorded value (integration)', () => {
       format: 'JSONEachRow',
     });
 
+    const sumRow =
+      (metricName: string) =>
+      (minute: number, value: number, flags = 0) => ({
+        ...commonFields(metricName, minute, 'svc-a', flags),
+        Value: value,
+        AggregationTemporality: 2,
+        IsMonotonic: true,
+      });
     // A cumulative counter that goes up by 10 a minute. One scrape fails at
     // minute 3, then the same series comes back.
-    const sumRow = (minute: number, value: number, flags = 0) => ({
-      ...commonFields('sum.requests', minute, 'svc-a', flags),
-      Value: value,
-      AggregationTemporality: 2,
-      IsMonotonic: true,
-    });
+    const requests = sumRow('sum.requests');
+    // A counter that restarts behind a marker, and the same restart without
+    // one.
+    const restart = sumRow('sum.restart');
+    const restartControl = sumRow('sum.restart.control');
     await client.insert({
       table: `${DATABASE}.${SUM_TABLE}`,
       values: [
-        sumRow(0, 100),
-        sumRow(1, 110),
-        sumRow(2, 120),
-        sumRow(3, 0, NO_RECORDED_VALUE),
-        sumRow(4, 130),
+        requests(0, 100),
+        requests(1, 110),
+        requests(2, 120),
+        requests(3, 0, NO_RECORDED_VALUE),
+        requests(4, 130),
+        restart(0, 100),
+        restart(1, 120),
+        restart(2, 0, NO_RECORDED_VALUE),
+        restart(3, 5),
+        restartControl(0, 100),
+        restartControl(1, 120),
+        restartControl(3, 5),
       ],
       format: 'JSONEachRow',
     });
@@ -304,10 +318,20 @@ describe('metric points with no recorded value (integration)', () => {
     expect([...values.values()].reduce((a, b) => a + b, 0)).toBe(30);
   });
 
+  // The Sum query clamps a counter decrease to 0, so the restart minute reads
+  // 0 with and without the marker.
+  it('treats a counter restart behind a marker like any other counter reset', async () => {
+    const select = { aggFn: 'increase' };
+    expect(await runConfig(MetricsDataType.Sum, 'sum.restart', select)).toEqual(
+      await runConfig(MetricsDataType.Sum, 'sum.restart.control', select),
+    );
+  });
+
   it('does not count a histogram from zero after a marker', async () => {
     const counts = await runConfig(MetricsDataType.Histogram, 'hist.latency', {
       aggFn: 'count',
     });
+    expect(counts.get(bucket(1))).toBe(10);
     expect(counts.get(bucket(3))).toBe(5);
   });
 
@@ -326,6 +350,7 @@ describe('metric points with no recorded value (integration)', () => {
       'exphist.latency',
       { aggFn: 'count' },
     );
+    expect(counts.get(bucket(1))).toBe(10);
     expect(counts.get(bucket(3))).toBe(5);
   });
 
