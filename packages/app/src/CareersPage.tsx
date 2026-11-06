@@ -13,7 +13,8 @@ import {
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 
-import { INSTANCE_TITLE_SUFFIX } from '@/config';
+import { useBrandDisplayName, usePageTitle } from '@/brand';
+
 interface GreenhouseJob {
   id: number;
   title: string;
@@ -81,6 +82,8 @@ function useGreenhouseJobs() {
 }
 
 export default function CareersPage() {
+  const brandName = useBrandDisplayName();
+  const title = usePageTitle('Careers');
   const { data: commitsData, isLoading: commitsLoading } = useRecentCommits();
   const { data, isLoading, isError } = useGreenhouseJobs();
 
@@ -92,14 +95,14 @@ export default function CareersPage() {
   return (
     <Container size="md" py="xl">
       <Head>
-        <title>{`Careers | HyperDX${INSTANCE_TITLE_SUFFIX}`}</title>
+        <title>{title}</title>
       </Head>
       <Stack gap="lg">
         <Title order={1}>
           ClickHouse Careers: Help Build the Future of Observability
         </Title>
         <Text c="dimmed">
-          Join us to build ClickStack at ClickHouse, scaling a high performance
+          Join us to build {brandName} at ClickHouse, scaling a high performance
           observability platform that ingests and queries petabytes of telemetry
           across metrics, logs, and traces.
           <br />

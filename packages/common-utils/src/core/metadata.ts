@@ -2242,28 +2242,44 @@ export class Metadata {
   }
 
   /**
-   * Reads and caches system.merge_tree_settings per connection. Returns
-   * undefined on failure so the next call retries.
+   * Reads and caches MergeTree settings per connection; on Cloud,
+   * system.shared_merge_tree_settings overrides system.merge_tree_settings per
+   * key. Returns undefined on failure so the next call retries.
    */
   async getMergeTreeSettings({
     connectionId,
   }: {
     connectionId: string;
   }): Promise<Map<string, string> | undefined> {
+    const readSettings = (query: string) =>
+      this.clickhouseClient
+        .query<'JSON'>({
+          connectionId,
+          query,
+          query_params: undefined,
+          clickhouse_settings: this.getClickHouseSettings(),
+        })
+        .then(res => res.json<{ name: string; value: string }>())
+        .then(json => json.data);
+
     return this.cache.getOrFetch(
       `${connectionId}.mergeTreeSettings`,
       async () => {
         try {
-          const json = await this.clickhouseClient
-            .query<'JSON'>({
-              connectionId,
-              query: 'SELECT name, value FROM system.merge_tree_settings',
-              query_params: undefined,
-              clickhouse_settings: this.getClickHouseSettings(),
-            })
-            .then(res => res.json<{ name: string; value: string }>());
+          // OSS has no shared_merge_tree_settings; querying it fails.
+          const isCloud = await this.isClickHouseCloud({ connectionId });
+          const [mergeTreeRows, sharedMergeTreeRows] = await Promise.all([
+            readSettings('SELECT name, value FROM system.merge_tree_settings'),
+            isCloud
+              ? readSettings(
+                  'SELECT name, value FROM system.shared_merge_tree_settings',
+                )
+              : [],
+          ]);
 
-          return new Map(json.data.map(row => [row.name, row.value]));
+          // Later rows win.
+          const rows = [...mergeTreeRows, ...sharedMergeTreeRows];
+          return new Map(rows.map(row => [row.name, row.value]));
         } catch (e) {
           console.warn('Error fetching MergeTree settings:', e);
           return undefined;
