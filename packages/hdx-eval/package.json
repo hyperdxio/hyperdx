@@ -15,7 +15,7 @@
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.65",
     "@ai-sdk/openai": "^4.0.78",
-    "@clickhouse/client": "1.23.0-head.fae5998.1",
+    "@clickhouse/client": "head",
     "ai": "^7.0.116",
     "commander": "^12.1.0",
     "ms": "^2.1.3",
