@@ -38,9 +38,11 @@ jest.mock('@/source', () => ({
 const mockConnectionsResult = {
   data: [{ id: 'conn-1', name: 'Default', host: 'http://localhost:8123' }],
 };
+const mockUpdateConnectionMutation = { mutateAsync: jest.fn() };
 jest.mock('@/connection', () => ({
   useConnections: () => mockConnectionsResult,
   useCreateConnection: () => ({ mutate: jest.fn() }),
+  useUpdateConnection: () => mockUpdateConnectionMutation,
 }));
 
 const mockMetadata = {
@@ -51,8 +53,8 @@ jest.mock('@/hooks/useMetadata', () => ({
   useMetadataWithSettings: () => mockMetadata,
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
-  useBrandDisplayName: () => 'HyperDX',
+jest.mock('@/brand', () => ({
+  useBrandDisplayName: () => 'ClickStack',
 }));
 jest.mock('@/components/ConnectionForm', () => ({
   ConnectionForm: () => null,

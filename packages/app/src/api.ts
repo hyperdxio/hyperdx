@@ -628,6 +628,7 @@ const api = {
         url: string;
         name: string;
         description: string;
+        titleEmoji?: boolean;
         queryParams?: Record<string, string>;
         headers?: Record<string, string>;
         body?: string;
@@ -638,6 +639,7 @@ const api = {
         url,
         name,
         description,
+        titleEmoji,
         queryParams,
         headers,
         body,
@@ -649,6 +651,7 @@ const api = {
             service,
             url,
             description,
+            titleEmoji,
             queryParams: queryParams || {},
             headers: headers || {},
             body,
@@ -670,6 +673,7 @@ const api = {
         url: string;
         name: string;
         description: string;
+        titleEmoji?: boolean;
         queryParams?: Record<string, string>;
         headers?: Record<string, string>;
         body?: string;
@@ -681,6 +685,7 @@ const api = {
         url,
         name,
         description,
+        titleEmoji,
         queryParams,
         headers,
         body,
@@ -692,6 +697,7 @@ const api = {
             service,
             url,
             description,
+            titleEmoji,
             queryParams: queryParams || {},
             headers: headers || {},
             body,
@@ -896,9 +902,7 @@ export const prometheusApi = {
     start: number;
     end: number;
     step: string;
-    connectionId: string;
-    database?: string;
-    table?: string;
+    sourceId: string;
     signal?: AbortSignal;
     attribution?: QueryAttribution;
   }): Promise<PrometheusQueryRangeResponse> =>
@@ -909,9 +913,7 @@ export const prometheusApi = {
         start: String(params.start),
         end: String(params.end),
         step: params.step,
-        connectionId: params.connectionId,
-        ...(params.database ? { database: params.database } : {}),
-        ...(params.table ? { table: params.table } : {}),
+        sourceId: params.sourceId,
       },
       params.signal,
       params.attribution,
@@ -920,9 +922,7 @@ export const prometheusApi = {
   query: (params: {
     query: string;
     time: number;
-    connectionId: string;
-    database?: string;
-    table?: string;
+    sourceId: string;
     /** Maximum number of series to return. */
     limit?: number;
     signal?: AbortSignal;
@@ -933,19 +933,15 @@ export const prometheusApi = {
       {
         query: params.query,
         time: String(params.time),
-        connectionId: params.connectionId,
+        sourceId: params.sourceId,
         ...(params.limit ? { limit: String(params.limit) } : {}),
-        ...(params.database ? { database: params.database } : {}),
-        ...(params.table ? { table: params.table } : {}),
       },
       params.signal,
       params.attribution,
     ),
 
   labels: (params: {
-    connectionId: string;
-    database?: string;
-    table?: string;
+    sourceId: string;
     start?: number;
     end?: number;
     attribution?: QueryAttribution;
@@ -960,9 +956,7 @@ export const prometheusApi = {
 
   labelValues: (params: {
     label: string;
-    connectionId: string;
-    database?: string;
-    table?: string;
+    sourceId: string;
     start?: number;
     end?: number;
     match?: string;
@@ -980,17 +974,13 @@ export const prometheusApi = {
 };
 
 function labelLookupSearchParams(params: {
-  connectionId: string;
-  database?: string;
-  table?: string;
+  sourceId: string;
   start?: number;
   end?: number;
   match?: string;
 }): Record<string, string> {
   return {
-    connectionId: params.connectionId,
-    ...(params.database ? { database: params.database } : {}),
-    ...(params.table ? { table: params.table } : {}),
+    sourceId: params.sourceId,
     ...(params.start != null ? { start: String(params.start) } : {}),
     ...(params.end != null ? { end: String(params.end) } : {}),
     ...(params.match ? { 'match[]': params.match } : {}),

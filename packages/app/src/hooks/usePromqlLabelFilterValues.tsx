@@ -14,16 +14,17 @@ import {
   UseQueryResult,
 } from '@tanstack/react-query';
 
-import { prometheusApi } from '@/api';
+import {
+  fetchPromqlLabelValues,
+  toPromqlSeconds,
+} from '@/hooks/usePromqlMetadata';
 import { useMetadataQueryAttribution } from '@/queryAttribution';
 import { useSources } from '@/source';
 import { mapKeyBy } from '@/utils';
 
 type LabelValuesCall = {
   filterId: string;
-  connectionId: string;
-  database?: string;
-  table?: string;
+  sourceId: string;
   label: string;
   match?: string;
 };
@@ -44,9 +45,7 @@ export function usePromqlLabelFilterValues({
   const { data: sources, isLoading: isLoadingSources } = useSources();
   const sourcesById = useMemo(() => mapKeyBy(sources ?? [], 'id'), [sources]);
 
-  // Round the date range, since the API accepts whole seconds
-  const startSec = Math.floor(dateRange[0].getTime() / 1000);
-  const endSec = Math.ceil(dateRange[1].getTime() / 1000);
+  const { start: startSec, end: endSec } = toPromqlSeconds(dateRange);
 
   // A filter's selector may reference the dashboard's variables. Expand them
   // here so react-query keys on the resolved selector rather than the template.
@@ -76,9 +75,7 @@ export function usePromqlLabelFilterValues({
       if (resolvedMatch?.error) continue;
       resolved.push({
         filterId: filter.id,
-        connectionId: source.connection,
-        database: source.from.databaseName,
-        table: source.from.tableName,
+        sourceId: source.id,
         label: filter.label,
         match: resolvedMatch?.match,
       });
@@ -96,9 +93,7 @@ export function usePromqlLabelFilterValues({
       // values as placeholders instead of blanking the dropdown.
       const queryKeyPrefix = [
         'dashboard-filter-promql-label-values',
-        call.connectionId,
-        call.database,
-        call.table,
+        call.sourceId,
         call.label,
         call.match,
       ];
@@ -119,22 +114,15 @@ export function usePromqlLabelFilterValues({
           return cached[0]?.data;
         },
         staleTime: 1000 * 60 * 5,
-        queryFn: async (): Promise<string[]> => {
-          const resp = await prometheusApi.labelValues({
+        queryFn: () =>
+          fetchPromqlLabelValues({
             label: call.label,
-            connectionId: call.connectionId,
-            database: call.database,
-            table: call.table,
+            sourceId: call.sourceId,
             start: startSec,
             end: endSec,
             match: call.match,
             attribution,
-          });
-          if (resp.status === 'error') {
-            throw new Error(resp.error ?? 'Label values query failed');
-          }
-          return resp.data ?? [];
-        },
+          }),
       };
     }),
   });

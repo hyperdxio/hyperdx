@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { flatten } from 'flat';
 import type { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
+import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import {
   isLogSource,
   isTraceSource,
@@ -8,6 +9,7 @@ import {
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import { Box } from '@mantine/core';
+import type { Query } from '@tanstack/react-query';
 
 import { useQueriedChartConfig } from '@/hooks/useChartConfig';
 import {
@@ -15,12 +17,14 @@ import {
   getSelectAllColumnsQuerySettings,
   useSelectAllColumnsQuerySettings,
 } from '@/hooks/useMaterializedAliasColumnsOption';
+import { useColumns } from '@/hooks/useMetadata';
 import { WithClause } from '@/hooks/useRowWhere';
 import {
   getDisplayedTimestampValueExpression,
   getDurationMsExpression,
   getEventBody,
 } from '@/source';
+import type { ChartQueryResult } from '@/types';
 import { getSelectExpressionsForHighlightedAttributes } from '@/utils/highlightedAttributes';
 import { getTimestampValueSelects } from '@/utils/rowTimestamps';
 
@@ -43,6 +47,15 @@ export enum ROW_DATA_ALIASES {
   DURATION_MS = '__hdx_duration_ms',
   SPAN_KIND = '__hdx_span_kind',
   SPAN_LINKS = '__hdx_span_links',
+  EVENT_NAME = '__hdx_event_name',
+}
+
+// The side panel mounts its tabs once its own lookup settles, and each tab
+// looks the same row up again. Those lookups reuse a found row instead of
+// running `SELECT *` again. A miss stays stale so the next lookup retries it:
+// the row may not have been ingested yet.
+function rowLookupStaleTime(query: Query<ChartQueryResult>) {
+  return query.state.data?.data.length ? Infinity : 0;
 }
 
 export function useRowData({
@@ -96,6 +109,46 @@ export function useRowData({
   // "known columns" list (columns known to exist across all target tables) we
   // select that instead of `*` when fetching full row data.
   const knownColumns = getKnownColumnsList(source);
+
+  // A bare column comes back from `*` or the Known Columns List whenever the
+  // table has it, so it is read from the row instead of selected: older OTel
+  // log tables have no EventName column, and selecting it would fail the whole
+  // lookup.
+  const eventNameExpr = isLogSource(source)
+    ? source.eventNameExpression?.trim()
+    : undefined;
+  const eventNameColumn =
+    eventNameExpr && /^[A-Za-z_][A-Za-z0-9_]*$/.test(eventNameExpr)
+      ? eventNameExpr
+      : undefined;
+
+  // `*` leaves out ALIAS and MATERIALIZED columns, so the table's columns
+  // decide whether a bare column is selected after all. renderChartConfig
+  // already reads these cached columns before the lookup runs, so waiting on
+  // them adds no query. A Known Columns List names its columns, so it returns
+  // such a column whenever it lists it.
+  const checksEventNameColumn =
+    rowId != null && eventNameColumn != null && knownColumns == null;
+  const { data: columns, isLoading: isColumnsLoading } = useColumns(
+    tcFromSource(source),
+    {
+      enabled: checksEventNameColumn,
+      // A failed DESCRIBE only costs the event name, so the lookup does not
+      // wait out retries.
+      retry: false,
+    },
+  );
+  const isEventNameColumnPending = checksEventNameColumn && isColumnsLoading;
+  // A disabled query still returns columns another page has cached.
+  const eventNameColumnKind = checksEventNameColumn
+    ? columns?.find(column => column.name === eventNameColumn)?.default_type
+    : undefined;
+  const selectsEventNameColumn =
+    eventNameColumnKind === 'ALIAS' || eventNameColumnKind === 'MATERIALIZED';
+  const selectedEventNameExpr =
+    eventNameColumn == null || selectsEventNameColumn
+      ? eventNameExpr
+      : undefined;
 
   const baseConfig = {
     source: source.id,
@@ -168,6 +221,14 @@ export function useRowData({
             },
           ]
         : []),
+      ...(selectedEventNameExpr
+        ? [
+            {
+              valueExpression: selectedEventNameExpr,
+              alias: ROW_DATA_ALIASES.EVENT_NAME,
+            },
+          ]
+        : []),
       ...(source.kind === SourceKind.Trace && source.spanEventsValueExpression
         ? [
             {
@@ -214,7 +275,15 @@ export function useRowData({
 
   const additionalQuerySettings = useSelectAllColumnsQuerySettings(source);
 
-  const baseQueryKey = ['row_side_panel', rowId, aliasWith, source];
+  // This key replaces the config-derived one, so it has to carry the column
+  // check's effect on the select.
+  const baseQueryKey = [
+    'row_side_panel',
+    rowId,
+    aliasWith,
+    source,
+    selectsEventNameColumn,
+  ];
   // Both halves of the filter are needed for `renderChartConfig` to emit one, so
   // a source with no usable timestamp expression can't be bounded at all.
   const hasWindow = dateRange != null && timestampValueExpr != null;
@@ -228,8 +297,9 @@ export function useRowData({
     },
     {
       queryKey: [...baseQueryKey, dateRange],
-      enabled: rowId != null && hasWindow,
+      enabled: rowId != null && hasWindow && !isEventNameColumnPending,
       additionalQuerySettings,
+      staleTime: rowLookupStaleTime,
     },
   );
 
@@ -249,8 +319,9 @@ export function useRowData({
   // often resolve from cache instead of scanning.
   const fallbackResult = useQueriedChartConfig(baseConfig, {
     queryKey: [...baseQueryKey, undefined],
-    enabled: rowId != null && isFallbackActive,
+    enabled: rowId != null && isFallbackActive && !isEventNameColumnPending,
     additionalQuerySettings,
+    staleTime: rowLookupStaleTime,
   });
 
   const queryResult = isFallbackActive ? fallbackResult : boundedResult;
@@ -259,9 +330,11 @@ export function useRowData({
   // report loading until it settles rather than briefly claiming the row is
   // absent.
   const isLoading =
-    queryResult.isLoading || (isBoundedEmpty && queryResult.isPending);
+    isEventNameColumnPending ||
+    queryResult.isLoading ||
+    (isBoundedEmpty && queryResult.isPending);
 
-  // Normalize resource and event attributes to always use flat keys for both JSON and Map columns
+  // Normalize resource, event and span-event exception attributes to always use flat keys for both JSON and Map columns
   const normalizedData = useMemo(() => {
     if (!queryResult.data?.data?.[0]) {
       return queryResult.data;
@@ -282,11 +355,21 @@ export function useRowData({
       );
     }
 
+    if (row[ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES]) {
+      normalizedRow[ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES] = flatten(
+        row[ROW_DATA_ALIASES.EVENTS_EXCEPTION_ATTRIBUTES],
+      );
+    }
+
+    if (eventNameColumn != null && !selectsEventNameColumn) {
+      normalizedRow[ROW_DATA_ALIASES.EVENT_NAME] = row[eventNameColumn];
+    }
+
     return {
       ...queryResult.data,
       data: [normalizedRow],
     };
-  }, [queryResult.data]);
+  }, [queryResult.data, eventNameColumn, selectsEventNameColumn]);
 
   return {
     ...queryResult,

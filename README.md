@@ -49,7 +49,7 @@ HyperDX can be deployed as part of ClickStack, which includes ClickHouse,
 HyperDX, OpenTelemetry Collector and MongoDB.
 
 ```bash
-docker run -p 8080:8080 -p 4317:4317 -p 4318:4318 docker.hyperdx.io/hyperdx/hyperdx-all-in-one
+docker run -p 8080:8080 -p 4317:4317 -p 4318:4318 docker.clickhouse.com/clickhouse/clickstack-all-in-one
 ```
 
 Afterwards, you can visit http://localhost:8080 to access the HyperDX UI.

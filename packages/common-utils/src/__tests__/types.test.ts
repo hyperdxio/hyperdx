@@ -1003,6 +1003,7 @@ describe('PromQL legend templates on saved chart configs', () => {
     configType: 'promql' as const,
     promqlExpression: 'up',
     connection: 'conn-1',
+    source: 'source-1',
     legendTemplate,
   });
 
@@ -1019,5 +1020,35 @@ describe('PromQL legend templates on saved chart configs', () => {
         promqlConfig('a'.repeat(MAX_LEGEND_TEMPLATE_LENGTH + 1)),
       ).success,
     ).toBe(false);
+  });
+});
+
+describe('PromQL saved chart config source', () => {
+  const base = {
+    configType: 'promql' as const,
+    promqlExpression: 'up',
+  };
+
+  // The PromQL API resolves the table from the source, so a tile without one
+  // could never be queried.
+  it('requires a source', () => {
+    expect(SavedChartConfigSchema.safeParse(base).success).toBe(false);
+    expect(
+      SavedChartConfigSchema.safeParse({ ...base, source: '' }).success,
+    ).toBe(false);
+    expect(
+      SavedChartConfigSchema.safeParse({ ...base, source: 'source-1' }).success,
+    ).toBe(true);
+  });
+
+  // The connection comes from the source at query time, so a stored copy is
+  // dropped rather than kept around to go stale.
+  it('drops a persisted connection', () => {
+    const parsed = SavedChartConfigSchema.parse({
+      ...base,
+      source: 'source-1',
+      connection: 'conn-1',
+    });
+    expect(parsed).not.toHaveProperty('connection');
   });
 });

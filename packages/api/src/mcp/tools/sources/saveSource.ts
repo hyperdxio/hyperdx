@@ -4,15 +4,17 @@ import mongoose from 'mongoose';
 import * as config from '@/config';
 import { validateConnectionId } from '@/controllers/connection';
 import { createSource, getSource, updateSource } from '@/controllers/sources';
+import { UPSERT_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import {
   mcpServerError,
   mcpUserError,
   validateObjectId,
 } from '@/mcp/utils/errors';
+import { isPromqlEnabled } from '@/mcp/utils/promql';
 import { isDuplicateKeyError } from '@/utils/errors';
 
-import { buildSourceInput, mcpSaveSourceSchema } from './schemas';
+import { buildMcpSaveSourceSchema, buildSourceInput } from './schemas';
 
 export function registerSaveSource({
   context,
@@ -25,11 +27,13 @@ export function registerSaveSource({
     'clickstack_save_source',
     {
       title: 'Create or Update Source',
-      annotations: { destructiveHint: true },
+      annotations: UPSERT_TOOL,
       description:
         'Create a new data source (omit id) or update an existing one ' +
         '(provide id) so shipped telemetry becomes queryable. Update is a ' +
-        'full replace of the source definition. Required for all kinds: kind, ' +
+        'full replace of the source definition: start from the `config` ' +
+        'returned by clickstack_describe_source and change only what you need. ' +
+        'Required for all kinds: kind, ' +
         'name, connection, databaseName, tableName, timestampValueExpression. ' +
         'Kind-specific requirements: log & trace need ' +
         'defaultTableSelectExpression; trace also needs durationExpression, ' +
@@ -40,7 +44,7 @@ export function registerSaveSource({
         'packetsExpression, srcAddrExpression, dstAddrExpression, ' +
         'srcPortExpression, dstPortExpression, protocolExpression. Get ' +
         'connection and source IDs from clickstack_list_sources.',
-      inputSchema: mcpSaveSourceSchema,
+      inputSchema: buildMcpSaveSourceSchema(isPromqlEnabled(context)),
     },
     async input => {
       const sourceId = input.id;

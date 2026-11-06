@@ -3,14 +3,16 @@ processors:
   transform:
     log_statements:
       - context: log
-        error_mode: ignore
+        # OTTL has no JSON validity check, so ParseJSON failures on non-JSON
+        # brace-delimited bodies are expected and would otherwise be logged.
+        error_mode: silent
         statements:
           # JSON parsing: Extends log attributes with the fields from structured log body content, either as an OTEL map or
           # as a string containing JSON content.
-          - set(log.cache, ExtractPatterns(log.body, "(?P<0>(\\{.*\\}))")) where
-            IsString(log.body)
+          - set(log.cache, ExtractPatterns(log.body, "(?P<0>(\\{\\s*\".*\\}))"))
+            where IsString(log.body)
           - merge_maps(log.attributes, ParseJSON(log.cache["0"]), "upsert")
-            where IsMap(log.cache)
+            where IsMap(log.cache) and IsString(log.cache["0"])
           - flatten(log.attributes) where IsMap(log.cache)
           - merge_maps(log.attributes, log.body, "upsert") where IsMap(log.body)
       - context: log
@@ -117,9 +119,48 @@ processors:
             log.severity_number == 0
       - context: log
         error_mode: ignore
+        conditions:
+          - severity_text == "" and severity_number > 0
+        statements:
+          - set(log.severity_text, "trace") where log.severity_number < 5
+          - set(log.severity_text, "debug") where log.severity_number >= 5 and
+            log.severity_number < 9
+          - set(log.severity_text, "info") where log.severity_number >= 9 and
+            log.severity_number < 13
+          - set(log.severity_text, "warn") where log.severity_number >= 13 and
+            log.severity_number < 17
+          - set(log.severity_text, "error") where log.severity_number >= 17 and
+            log.severity_number < 21
+          - set(log.severity_text, "fatal") where log.severity_number >= 21
+      - context: log
+        error_mode: ignore
         statements:
           # Normalize the severity_text case
           - set(log.severity_text, ConvertCase(log.severity_text, "lower"))
+  # Older @hyperdx/browser SDKs put the session id only in the
+  # `rum.sessionId` resource attribute. Copy it to the OTel `session.id`
+  # attribute so newer and older SDK data can be queried by one key. An
+  # existing `session.id` (e.g. from a JSON body merged by `transform`) is
+  # never overwritten, and `rum.sessionId` is kept.
+  transform/session_id:
+    trace_statements:
+      - context: span
+        error_mode: ignore
+        statements:
+          - set(span.attributes["session.id"],
+            resource.attributes["rum.sessionId"]) where
+            span.attributes["session.id"] == nil and
+            IsString(resource.attributes["rum.sessionId"]) and
+            Len(resource.attributes["rum.sessionId"]) > 0
+    log_statements:
+      - context: log
+        error_mode: ignore
+        statements:
+          - set(log.attributes["session.id"],
+            resource.attributes["rum.sessionId"]) where
+            log.attributes["session.id"] == nil and
+            IsString(resource.attributes["rum.sessionId"]) and
+            Len(resource.attributes["rum.sessionId"]) > 0
   resourcedetection:
     detectors:
       - env
@@ -181,10 +222,12 @@ service:
   # merge wins. See https://github.com/hyperdxio/hyperdx/pull/2351.
   pipelines:
     traces:
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/session_id, batch]
     metrics:
       processors: [memory_limiter, batch]
+    # transform/session_id runs after transform so a `session.id` parsed from
+    # a JSON body wins. Replay rows skip transform but still need the copy.
     logs/out-default:
-      processors: [memory_limiter, transform, batch]
+      processors: [memory_limiter, transform, transform/session_id, batch]
     logs/out-rrweb:
-      processors: [memory_limiter, batch]
+      processors: [memory_limiter, transform/session_id, batch]

@@ -14,7 +14,7 @@ import {
   IconSettings,
 } from '@tabler/icons-react';
 
-import { useBrandDisplayName, useLogomark } from './theme/ThemeProvider';
+import { useBrandDisplayName, useLogomark } from './brand';
 import { IS_K8S_DASHBOARD_ENABLED } from './config';
 import { useDashboards } from './dashboard';
 import { useSavedSearches } from './savedSearch';

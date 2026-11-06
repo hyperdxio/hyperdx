@@ -7,7 +7,7 @@ const mockQuery = jest.fn();
 let mockTimeFormat: '12h' | '24h' = '24h';
 jest.mock('@/useUserPreferences', () => ({
   useUserPreferences: () => ({
-    userPreferences: { isUTC: true, timeFormat: mockTimeFormat },
+    userPreferences: { timeZone: 'UTC', timeFormat: mockTimeFormat },
   }),
 }));
 jest.mock('@/hooks/useChartConfig', () => ({

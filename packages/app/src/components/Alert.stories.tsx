@@ -11,9 +11,8 @@ import {
 /**
  * Themed Mantine `Alert` with our semantic variants (`info` / `success` /
  * `warning` / `danger`). Each variant is wired to the `--color-text-*` and
- * `--alert-*` design tokens in both brand themes, so use the Brand
- * (HyperDX / ClickStack) and Theme (Light / Dark) toolbar toggles to review
- * every combination. The alert body keeps a high-contrast text color while the
+ * `--alert-*` design tokens. Use the Theme (Light / Dark) toolbar toggle to
+ * review both color modes. The alert body keeps a high-contrast text color while the
  * title/icon take the semantic accent.
  */
 const meta = {

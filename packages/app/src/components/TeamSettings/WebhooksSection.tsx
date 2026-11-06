@@ -10,7 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { IconPencil, IconX } from '@tabler/icons-react';
 
 import api from '@/api';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { useBrandDisplayName } from '@/brand';
 import { useConfirm } from '@/useConfirm';
 import {
   getWebhookServiceConfig,

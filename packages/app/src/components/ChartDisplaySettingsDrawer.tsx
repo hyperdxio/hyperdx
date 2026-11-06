@@ -8,9 +8,12 @@ import { isTimeSeriesDisplayType } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartConfigWithDateRange,
   DisplayType,
-  HeatmapMode,
+  getDefaultLineInterpolation,
+  LineInterpolation,
+  LineInterpolationSchema,
   MAX_LEGEND_TEMPLATE_LENGTH,
   NumberFormat,
+  PromqlHeatmapMode,
 } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -20,10 +23,14 @@ import {
   Divider,
   Drawer,
   Group,
+  Input,
   NumberInput,
+  SegmentedControl,
   Stack,
   Text,
+  Tooltip,
 } from '@mantine/core';
+import { IconHelpCircle } from '@tabler/icons-react';
 
 import { shouldFillNullsWithZero } from '@/ChartUtils';
 import { MAX_RENDERED_TIME_CHART_SERIES } from '@/defaults';
@@ -49,6 +56,7 @@ export type ChartConfigDisplaySettings = Pick<
   | 'fillNulls'
   | 'compareToPreviousPeriod'
   | 'fitYAxisToData'
+  | 'lineInterpolation'
   | 'color'
   | 'colorRules'
   | 'backgroundChart'
@@ -65,7 +73,8 @@ export type ChartConfigDisplaySettings = Pick<
   // PromQL-only: Handlebars template over each series' Prometheus label set
   // that renders the legend/tooltip name.
   legendTemplate?: string;
-  // Distribution heatmaps only; stored on the heatmap's select[0].
+  // Distribution heatmaps only; stored on a builder heatmap's select[0] and
+  // on a PromQL heatmap's `heatmap.scaleType`.
   heatmapScaleType?: HeatmapScaleType;
 };
 
@@ -88,17 +97,29 @@ interface ChartDisplaySettingsDrawerProps {
   configType?: 'sql' | 'builder' | 'promql';
   /** Whether a PromQL tile's queried expression runs over a range. */
   promqlUsesRange?: boolean;
-  /** A builder heatmap's mode; only distribution heatmaps have a numeric y axis to scale. */
-  heatmapMode?: HeatmapMode;
+  /** A heatmap's mode; only distribution heatmaps have a numeric y axis to scale. */
+  heatmapMode?: PromqlHeatmapMode;
+  /** The heatmap scale used when the tile has none set. */
+  defaultHeatmapScaleType?: HeatmapScaleType;
   previousDateRange?: [Date, Date];
   onChange: (settings: ChartConfigDisplaySettings, isDirty: boolean) => void;
   onClose: () => void;
   isPerSeriesNumberFormatAllowed?: boolean;
 }
 
+const LINE_INTERPOLATION_OPTIONS: {
+  label: string;
+  value: LineInterpolation;
+}[] = [
+  { label: 'Smooth', value: 'smooth' },
+  { label: 'Linear', value: 'linear' },
+  { label: 'Step', value: 'step' },
+];
+
 function applyDefaultSettings(
   settings: ChartConfigDisplaySettings,
-  fallbackNumberFormat?: NumberFormat,
+  fallbackNumberFormat: NumberFormat | undefined,
+  defaultHeatmapScaleType: HeatmapScaleType,
 ): DrawerFormValues {
   return {
     numberFormat:
@@ -110,6 +131,9 @@ function applyDefaultSettings(
     fillNulls: settings.fillNulls ?? 0,
     compareToPreviousPeriod: settings.compareToPreviousPeriod ?? false,
     fitYAxisToData: settings.fitYAxisToData ?? false,
+    // No default: an unset value keeps following the display type's default
+    // if the tile later switches between line and stacked line.
+    lineInterpolation: settings.lineInterpolation,
     groupByColumnsOnLeft: settings.groupByColumnsOnLeft ?? false,
     alternateRowBackground: settings.alternateRowBackground ?? false,
     // Coerce to null so `reset` clears the input; undefined leaves the
@@ -121,7 +145,7 @@ function applyDefaultSettings(
       ? attachLocalIds(settings.colorRules)
       : undefined,
     backgroundChart: settings.backgroundChart,
-    heatmapScaleType: settings.heatmapScaleType ?? 'log',
+    heatmapScaleType: settings.heatmapScaleType ?? defaultHeatmapScaleType,
   };
 }
 
@@ -132,6 +156,7 @@ export default function ChartDisplaySettingsDrawer({
   configType,
   promqlUsesRange = false,
   heatmapMode,
+  defaultHeatmapScaleType = 'log',
   defaultNumberFormat,
   onChange,
   onClose,
@@ -139,8 +164,13 @@ export default function ChartDisplaySettingsDrawer({
   isPerSeriesNumberFormatAllowed = false,
 }: ChartDisplaySettingsDrawerProps) {
   const appliedDefaults = useMemo(
-    () => applyDefaultSettings(settings, defaultNumberFormat),
-    [settings, defaultNumberFormat],
+    () =>
+      applyDefaultSettings(
+        settings,
+        defaultNumberFormat,
+        defaultHeatmapScaleType,
+      ),
+    [settings, defaultNumberFormat, defaultHeatmapScaleType],
   );
 
   const {
@@ -197,11 +227,16 @@ export default function ChartDisplaySettingsDrawer({
       applyDefaultSettings(
         {} as ChartConfigDisplaySettings,
         defaultNumberFormat,
+        defaultHeatmapScaleType,
       ),
     );
-  }, [reset, defaultNumberFormat]);
+  }, [reset, defaultNumberFormat, defaultHeatmapScaleType]);
 
   const isTimeChart = isTimeSeriesDisplayType(displayType);
+
+  const showLineInterpolation =
+    displayType === DisplayType.Line || displayType === DisplayType.StackedLine;
+  const defaultLineInterpolation = getDefaultLineInterpolation(displayType);
 
   // Series Limit applies to every time chart. On builder group-by charts a
   // positive value drives the __hdx_series_limit SQL CTE (trimming what's
@@ -212,12 +247,18 @@ export default function ChartDisplaySettingsDrawer({
   const isClientSideSeriesLimit =
     showSeriesLimit && (configType === 'sql' || configType === 'promql');
 
+  const isDistributionHeatmap =
+    displayType === DisplayType.Heatmap && heatmapMode === 'distribution';
+
   // Every PromQL display that surfaces a series name. A number tile shows one
-  // value and a table gives each label its own column, so neither has a legend.
+  // value, a table gives each label its own column, a distribution heatmap
+  // merges every series into one, and a histogram heatmap labels rows by
+  // bucket, so none has a legend.
   const showLegendTemplate =
     configType === 'promql' &&
     displayType !== DisplayType.Number &&
-    displayType !== DisplayType.Table;
+    displayType !== DisplayType.Table &&
+    !(displayType === DisplayType.Heatmap && heatmapMode !== 'series');
 
   // On pie/bar builder charts, seriesLimit becomes a plain SQL LIMIT on the
   // number of slices/bars; on PromQL it trims the reduced series client-side
@@ -254,8 +295,7 @@ export default function ChartDisplaySettingsDrawer({
       : 'Available on query-builder number tiles.';
 
   // Log scale only means something on a numeric (distribution mode) y axis
-  const showHeatmapScale =
-    displayType === DisplayType.Heatmap && heatmapMode === 'distribution';
+  const showHeatmapScale = isDistributionHeatmap;
 
   return (
     <Drawer
@@ -306,6 +346,37 @@ export default function ChartDisplaySettingsDrawer({
               label="Fit Y-Axis to Data"
               description="Start the y-axis at the minimum of the displayed data instead of zero. Only applicable to line charts."
             />
+            {showLineInterpolation && (
+              <Input.Wrapper
+                size="xs"
+                label={
+                  <Group gap={4} align="center">
+                    Line interpolation
+                    <Tooltip label="Determines the shape of the line between data points in the same series">
+                      <IconHelpCircle size={14} className="cursor-pointer" />
+                    </Tooltip>
+                  </Group>
+                }
+              >
+                <Controller
+                  control={control}
+                  name="lineInterpolation"
+                  render={({ field: { onChange, value } }) => (
+                    <SegmentedControl
+                      size="xs"
+                      fullWidth
+                      value={value ?? defaultLineInterpolation}
+                      onChange={v => {
+                        const parsed = LineInterpolationSchema.safeParse(v);
+                        if (parsed.success) onChange(parsed.data);
+                      }}
+                      data={LINE_INTERPOLATION_OPTIONS}
+                      data-testid="line-interpolation-control"
+                    />
+                  )}
+                />
+              </Input.Wrapper>
+            )}
             {showSeriesLimit && (
               <Box>
                 <Controller
@@ -343,7 +414,7 @@ export default function ChartDisplaySettingsDrawer({
               name="heatmapScaleType"
               render={({ field: { onChange, value } }) => (
                 <HeatmapScaleControl
-                  value={value ?? 'log'}
+                  value={value ?? defaultHeatmapScaleType}
                   onChange={onChange}
                 />
               )}

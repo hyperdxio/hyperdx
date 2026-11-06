@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
-import { deleteSource } from '@/controllers/sources';
+import { deleteSource, getSource } from '@/controllers/sources';
+import { IDEMPOTENT_DESTRUCTIVE_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
+import { isHiddenSource } from '@/mcp/utils/promql';
 import { objectIdSchema } from '@/utils/zod';
 
 export function registerDeleteSource({
@@ -15,17 +17,24 @@ export function registerDeleteSource({
     'clickstack_delete_source',
     {
       title: 'Delete Source',
-      annotations: { destructiveHint: true },
+      annotations: IDEMPOTENT_DESTRUCTIVE_TOOL,
       description:
         'Permanently delete a data source by ID. Other sources may reference ' +
         'it (e.g. a trace source linked to a log source) — those links are ' +
         'left dangling, so check dependencies first. Use clickstack_list_sources ' +
         'to find available source IDs.',
       inputSchema: z.object({
-        id: objectIdSchema.describe('Source ID to delete.'),
+        id: objectIdSchema.describe(
+          'ID of the source to delete. Get it from clickstack_list_sources.',
+        ),
       }),
     },
     async ({ id: sourceId }) => {
+      const source = await getSource(teamId, sourceId);
+      if (source && isHiddenSource(context, source)) {
+        return mcpUserError('Source not found');
+      }
+
       // Team-scoped; returns null when no such source exists for this team, so
       // its return value (not a separate pre-check) is the success signal.
       const deleted = await deleteSource(teamId, sourceId);

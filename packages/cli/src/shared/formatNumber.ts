@@ -165,6 +165,32 @@ const formatAutoScaleData = (
   return `${scaledValue.toFixed(mantissa)} ${units[i]}${rateSuffix}`;
 };
 
+const AVERAGE_UNITS = [
+  [1e3, 'thousand'],
+  [1e6, 'million'],
+  [1e9, 'billion'],
+  [1e12, 'trillion'],
+] as const;
+
+// numbro's default lowPrecision abbreviates anything that rounds to the next
+// unit (750 -> "0.8k"), while turning it off picks the unit before rounding
+// (999,700 -> "1000k"). Pick the unit from the rounded value instead.
+function averageUnitOptions(
+  displayed: number,
+  mantissa: number,
+): Pick<numbro.Format, 'forceAverage' | 'lowPrecision'> {
+  const abs = Math.abs(displayed);
+  const round = (v: number) => Math.round(v * 10 ** mantissa) / 10 ** mantissa;
+  let scaled = abs;
+  let unit: numbro.Format['forceAverage'];
+  for (const [power, name] of AVERAGE_UNITS) {
+    if (round(scaled) < 1000) break;
+    unit = name;
+    scaled = abs / power;
+  }
+  return unit ? { forceAverage: unit } : { lowPrecision: false };
+}
+
 export const formatNumber = (
   value?: string | number,
   options?: NumberFormat,
@@ -221,11 +247,20 @@ export const formatNumber = (
     return formatDurationMs(ms);
   }
 
+  // Factor is only currently available for the time output
+  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
+
   const numbroFormat: numbro.Format = {
     output: options.output || 'number',
     mantissa: mantissa,
     thousandSeparated: options.thousandSeparated || false,
     average: options.average || false,
+    ...(options.average &&
+      options.output !== 'byte' &&
+      averageUnitOptions(
+        value * factor * (options.output === 'percent' ? 100 : 1),
+        mantissa,
+      )),
     ...(options.output === 'byte' && {
       base: options.decimalBytes ? 'decimal' : 'general',
       spaceSeparated: true,
@@ -235,9 +270,6 @@ export const formatNumber = (
       currencySymbol: options.currencySymbol || '$',
     }),
   };
-
-  // Factor is only currently available for the time output
-  const factor = options.output === 'time' ? (options.factor ?? 1) : 1;
 
   return (
     numbro(value * factor).format(numbroFormat) +

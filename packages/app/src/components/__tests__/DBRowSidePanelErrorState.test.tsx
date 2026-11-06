@@ -80,7 +80,7 @@ describe('DBRowSidePanelErrorState', () => {
     ).toBeTruthy();
     // Explains WHY HyperDX issues SELECT * in the first place.
     expect(
-      screen.getByText(/To show every field for this row, HyperDX loads/i),
+      screen.getByText(/To show every field for this row, ClickStack loads/i),
     ).toBeTruthy();
     expect(screen.getByText('Edit source settings')).toBeTruthy();
   });

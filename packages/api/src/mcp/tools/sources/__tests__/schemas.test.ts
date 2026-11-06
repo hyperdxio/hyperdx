@@ -1,10 +1,12 @@
 import { SourceKind, SourceSchemaNoId } from '@hyperdx/common-utils/dist/types';
 
 import {
+  buildMcpSaveSourceSchema,
   buildSourceInput,
   extractSourceConfig,
-  mcpSaveSourceSchema,
 } from '@/mcp/tools/sources/schemas';
+
+const mcpSaveSourceSchema = buildMcpSaveSourceSchema(true);
 
 const mappings = {
   implicitColumnExpression: 'SearchText',
@@ -35,6 +37,12 @@ describe('MCP source schema', () => {
   it('exposes every canonical source kind to the MCP SDK', () => {
     expect(new Set(mcpSaveSourceSchema.shape.kind.options)).toEqual(
       new Set(Object.values(SourceKind)),
+    );
+  });
+
+  it('keeps netflow when PromQL is disabled', () => {
+    expect(buildMcpSaveSourceSchema(false).shape.kind.options).toContain(
+      'netflow',
     );
   });
 

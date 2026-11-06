@@ -32,6 +32,25 @@ export interface IAlertHistoryAnalytics {
   notificationTargets?: AlertNotificationTargetTiming[];
 }
 
+/** One group-by column and its value, stored as a pair. */
+export type GroupValue = { key: string; value: string };
+
+export const attributesToGroupValues = (
+  attributes: Record<string, string>,
+): GroupValue[] | undefined => {
+  const entries = Object.entries(attributes);
+  return entries.length > 0
+    ? entries.map(([key, value]) => ({ key, value }))
+    : undefined;
+};
+
+export const groupValuesToAttributes = (
+  groupValues: GroupValue[] | null | undefined,
+): Record<string, string> | undefined =>
+  groupValues?.length
+    ? Object.fromEntries(groupValues.map(v => [v.key, v.value]))
+    : undefined;
+
 export interface IAlertHistory {
   alert: ObjectId;
   counts: number;
@@ -40,6 +59,13 @@ export interface IAlertHistory {
   lastValues: { startTime: Date; count: number }[];
   group?: string; // For group-by alerts, stores the group identifier
   fired?: boolean;
+  /**
+   * Group-by values of a group-by alert's group. Kept so a group that later
+   * vanishes from the data still resolves with its values, which the joined
+   * `group` string cannot be parsed back into. Stored as pairs because column
+   * names may contain dots, which Mongo would read as nested paths in a key.
+   */
+  groupValues?: GroupValue[];
   /**
    * Errors recorded for this evaluation window. Present on ERROR-state rows
    * (query/processing failures where no normal history is written) and on
@@ -84,6 +110,17 @@ const AlertHistorySchema = new Schema<IAlertHistory>({
   fired: {
     type: Boolean,
     required: false,
+  },
+  groupValues: {
+    type: [
+      {
+        _id: false,
+        key: { type: String, required: true },
+        value: { type: String },
+      },
+    ],
+    required: false,
+    default: undefined,
   },
   errors: {
     type: [

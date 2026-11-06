@@ -117,6 +117,23 @@ describe('getFilterEffect', () => {
       }).tooltip,
     ).toEqual('Available as variable ($svc)');
   });
+
+  it('counts the sources an ad hoc filter broadcasts to', () => {
+    expect(
+      getFilterEffect({
+        id: 'adhoc1',
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources: ['logs', 'traces'],
+        isVariableEnabled: true,
+        variableName: 'conds',
+      }),
+    ).toEqual({
+      hasEffect: true,
+      tooltip: 'Filters 2 sources, available as variable ($conds)',
+    });
+  });
 });
 
 describe('getPendingVariablesTooltip', () => {

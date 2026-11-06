@@ -129,11 +129,48 @@ describe('buildWebhookTemplateVariables', () => {
     expect(vars.sourceQuery).toBe('Body: \\"error\\"');
   });
 
+  it('exposes group-by values as JSON-escaped var.<column> entries', () => {
+    const vars = buildWebhookTemplateVariables({
+      ...message,
+      groupValues: { customer_id: 'acme "eu"' },
+    });
+    const rendered = createHandlebarsWithHelpers().compile(
+      '{"summary": "{{var.customer_id}} has an elevated error rate"}',
+      { noEscape: true },
+    )(vars);
+    expect(JSON.parse(rendered).summary).toBe(
+      'acme "eu" has an elevated error rate',
+    );
+    expect(buildWebhookTemplateVariables(message).var).toEqual({});
+  });
+
+  it('exposes tags as a comma-joined string and as a JSON-escaped list', () => {
+    const vars = buildWebhookTemplateVariables({
+      ...message,
+      tags: ['team-payments', 'say "hi"'],
+    });
+    const render = (template: string) =>
+      JSON.parse(
+        createHandlebarsWithHelpers().compile(template, { noEscape: true })(
+          vars,
+        ),
+      );
+
+    expect(render('{"tags": "{{tags}}"}').tags).toBe('team-payments,say "hi"');
+    // The array form published in docs/alert-webhook-template-variables.md.
+    expect(
+      render(
+        '{"tags": [{{#each tags}}"{{this}}"{{#unless @last}}, {{/unless}}{{/each}}]}',
+      ).tags,
+    ).toEqual(['team-payments', 'say "hi"']);
+  });
+
   it('renders enriched fields as empty strings (never "undefined") when absent', () => {
     const vars = buildWebhookTemplateVariables(message);
     expect(vars.alertId).toBe('');
     expect(vars.status).toBe('');
     expect(vars.note).toBe('');
+    expect(vars.tags).toEqual([]);
     expect(vars.startTimeISO).toBe(new Date(0).toISOString());
     // A raw number renders as an empty slot when absent, not "undefined".
     expect(vars.thresholdMax).toBeUndefined();
@@ -205,6 +242,9 @@ describe('the default incident.io body', () => {
       value: '42',
       group_key: 'checkout',
     });
+    expect(render({ tags: ['team-payments', 'prod'] }).metadata.tags).toBe(
+      'team-payments,prod',
+    );
   });
 
   it('stays valid JSON when the alert carries no optional values', () => {
@@ -222,6 +262,7 @@ describe('the default incident.io body', () => {
       hyperdx_status: 'no_data',
       threshold_max: '',
       value: '',
+      tags: '',
     });
   });
 });

@@ -15,6 +15,7 @@ export type HighlightedAttribute = {
   lucene?: string;
 };
 
+// Renders without an outer margin; callers set the spacing around the list.
 export function DBHighlightedAttributesList({
   attributes,
 }: {
@@ -41,7 +42,7 @@ export function DBHighlightedAttributesList({
   const hiddenAttributesCount = attributes.length - sortedAttributes.length;
 
   return (
-    <Flex wrap="wrap" gap="2px" mb="md" align="baseline">
+    <Flex wrap="wrap" gap="2px" align="baseline">
       {sortedAttributes.map(({ displayedKey, value, sql, lucene, source }) => (
         <EventTag
           displayedKey={displayedKey}

@@ -2,6 +2,7 @@ import SqlString from 'sqlstring';
 import { chSql } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
+import { errorStatusPredicateSql } from '@hyperdx/common-utils/dist/core/spanPredicates';
 import { TTraceSource } from '@hyperdx/common-utils/dist/types';
 import { useQuery } from '@tanstack/react-query';
 
@@ -24,6 +25,10 @@ export type SpanAggregationRow = {
   p95?: number;
   p99?: number;
 };
+
+export function serviceMapErrorCountSql(): string {
+  return `countIf(${errorStatusPredicateSql('ServerSpans.statusCode')})`;
+}
 
 async function getServiceMapQuery({
   source,
@@ -175,7 +180,7 @@ async function getServiceMapQuery({
       ClientSpans.serviceName AS clientServiceName,
       GROUPING(ClientSpans.serviceName) AS isNodeLevel,
       count(*) * ${{ Int64: effectiveSamplingLevel }} as requestCount,
-      countIf(ServerSpans.statusCode = 'Error') * ${{ Int64: effectiveSamplingLevel }} as errorCount${latencySelect}
+      ${serviceMapErrorCountSql()} * ${{ Int64: effectiveSamplingLevel }} as errorCount${latencySelect}
     FROM ServerSpans
       LEFT JOIN ClientSpans
         ON ServerSpans.traceId = ClientSpans.traceId

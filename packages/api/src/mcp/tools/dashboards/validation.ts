@@ -1,3 +1,4 @@
+import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { TIME_SERIES_DISPLAY_TYPE_BY_NAME } from '@hyperdx/common-utils/dist/core/utils';
 import type { FilterForVariableDeclaration } from '@hyperdx/common-utils/dist/filters';
 import {
@@ -7,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/filters';
 import {
   isBuilderSavedChartConfig,
+  isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
 } from '@hyperdx/common-utils/dist/guards';
 import {
@@ -33,6 +35,8 @@ import {
   isRawSqlExternalTileConfig,
 } from '@/routers/external-api/v2/utils/dashboards';
 import type { ExternalDashboardTileWithId } from '@/utils/zod';
+
+import type { McpSavedFilterValues } from './schemas';
 
 /**
  * Returns one entry per raw SQL tile that uses a source-dependent macro but
@@ -242,6 +246,37 @@ export function getFilterVariableWarnings(
   return warnings;
 }
 
+/**
+ * Non-blocking check: a saved filter value of type 'variable' whose `name`
+ * matches no variable-enabled filter is silently ignored when the dashboard
+ * loads, so a typo'd variable name looks like a saved default but never
+ * applies. Warn so the agent can fix the name or add the filter.
+ */
+export function getSavedFilterValueWarnings(
+  savedFilterValues: McpSavedFilterValues | undefined,
+  filters: FilterForVariableDeclaration[] | undefined,
+): string[] {
+  if (!savedFilterValues?.length) return [];
+  const declaredNames = new Set(
+    getDashboardVariableDeclarations(filters).map(
+      declaration => declaration.name,
+    ),
+  );
+  const warnings: string[] = [];
+  for (const value of savedFilterValues) {
+    if (value.type !== 'variable') continue;
+    const name = value.name.trim();
+    if (!name || declaredNames.has(name)) continue;
+    warnings.push(
+      `savedFilterValues references variable $${name}, which no variable-enabled ` +
+        'filter declares. This default is ignored when the dashboard loads: add a ' +
+        `filter with isVariableEnabled: true and variableName: "${name}", or remove ` +
+        'the entry.',
+    );
+  }
+  return warnings;
+}
+
 function variableIssueSubject(language: TemplateLanguage): string {
   switch (language) {
     case 'sql':
@@ -294,6 +329,10 @@ export function getTileVariableWarnings(
 
     if (isRawSqlSavedChartConfig(config)) {
       validate(config.sqlTemplate, 'sql');
+    } else if (isPromqlSavedChartConfig(config)) {
+      for (const { expression } of getPromqlSeries(config)) {
+        validate(expression, 'promql');
+      }
     } else if (
       isBuilderSavedChartConfig(config) &&
       config.displayType === DisplayType.Markdown

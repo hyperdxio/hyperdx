@@ -1,10 +1,12 @@
 import PQueue from '@esm2cjs/p-queue';
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import { parseTimeRange, runConfigTile } from '@/mcp/tools/query/helpers';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
-import { runWithTimeout } from '@/mcp/utils/timeout';
+import { isPromqlEnabled } from '@/mcp/utils/promql';
+import { withDeadline } from '@/mcp/utils/timeout';
 import Dashboard from '@/models/dashboard';
 import {
   convertToExternalDashboard,
@@ -62,49 +64,6 @@ const BATCH_DEADLINE_MS = 60_000;
 function isMarkdownTile(tile: ExternalDashboardTileWithId): boolean {
   if (!isConfigTile(tile)) return true;
   return tile.config.displayType === 'markdown';
-}
-
-/**
- * Marker error so the per-tile catch can render a clear timeout message.
- * Raised both when a started query overruns the deadline and when a queued
- * tile's deadline has already passed before it could start.
- *
- * @internal Exported for testing only.
- */
-export class TileDeadlineError extends Error {
-  constructor() {
-    super('Tile query exceeded the batch wall-clock deadline');
-    this.name = 'TileDeadlineError';
-  }
-}
-
-/**
- * Run `startWork` under a SHARED absolute deadline (epoch millis) — every tile
- * in a batch passes the same `deadlineAt`, making the budget whole-call.
- *
- * `startWork` is a thunk, not an already-started promise, so the deadline is
- * checked BEFORE the query is issued: once the budget is spent, tiles PQueue
- * schedules during the drain fail fast without touching ClickHouse.
- *
- * A tile that did start runs under `runWithTimeout`: at the deadline its
- * query is cancelled and the tile rejects with `TileDeadlineError`.
- *
- * @internal Exported for testing only.
- */
-export async function withDeadline<T>(
-  startWork: (signal: AbortSignal) => Promise<T>,
-  deadlineAt: number,
-): Promise<T> {
-  const remaining = deadlineAt - Date.now();
-  // Budget already spent — fail fast without starting the work at all.
-  if (remaining <= 0) {
-    throw new TileDeadlineError();
-  }
-  const outcome = await runWithTimeout(startWork, { timeoutMs: remaining });
-  if (outcome.timedOut) {
-    throw new TileDeadlineError();
-  }
-  return outcome.value;
 }
 
 /**
@@ -166,7 +125,7 @@ export function registerQueryTiles({
     'clickstack_query_tiles',
     {
       title: 'Query Multiple Dashboard Tiles',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Run the queries for many tiles of a dashboard in ONE call and return a ' +
         'compact per-tile success/failure summary. This is the efficient way to ' +
@@ -182,15 +141,17 @@ export function registerQueryTiles({
         'unrunTileIds — call again with those as tileIds to run the remainder. ' +
         'Drill into a specific failing tile with clickstack_query_tile.',
       inputSchema: z.object({
-        dashboardId: objectIdSchema.describe('Dashboard ID.'),
+        dashboardId: objectIdSchema.describe(
+          'Dashboard ID, from clickstack_get_dashboard (no id lists dashboards) ' +
+            'or clickstack_search_dashboards.',
+        ),
         tileIds: z
           .array(z.string())
           .max(MAX_TILE_IDS_INPUT)
           .optional()
           .describe(
-            'Tile IDs to run. Default: every non-markdown tile on the ' +
-              'dashboard. Obtain IDs from clickstack_get_dashboard. ' +
-              `At most ${MAX_TILE_IDS_INPUT} IDs per call.`,
+            'Tile IDs to run, from clickstack_get_dashboard. When omitted, every ' +
+              'non-markdown tile on the dashboard runs; an empty array runs none.',
           ),
         startTime: z
           .string()
@@ -221,7 +182,9 @@ export function registerQueryTiles({
         return mcpUserError('Dashboard not found');
       }
 
-      const externalDashboard = convertToExternalDashboard(dashboard);
+      const externalDashboard = convertToExternalDashboard(dashboard, {
+        hidePromql: !isPromqlEnabled(context),
+      });
       const allTiles = externalDashboard.tiles;
 
       const resolved = resolveDashboardVariables(

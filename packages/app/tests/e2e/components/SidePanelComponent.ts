@@ -121,6 +121,17 @@ export class SidePanelComponent {
       .click({ timeout: 10_000 });
   }
 
+  /** Click the "Add to Filters" line action on a top-level field of the parsed row. */
+  async addParsedFieldToFilter(field: string) {
+    await this.clickTab('parsed');
+    const line = this.panelContainer
+      .getByTestId('json-viewer-line')
+      .filter({ has: this.page.getByText(field, { exact: true }) })
+      .first();
+    await line.hover();
+    await line.getByTitle(/add to filters/i).click();
+  }
+
   /**
    * The cross-source "View Trace" action rendered in a log panel's metadata row
    * when the log has trace context (TraceId + a configured trace source).
@@ -219,6 +230,35 @@ export class SidePanelComponent {
   }
 
   /**
+   * The waterfall label currently marked selected. The highlighted class sits
+   * on the span's own `role="button"` row.
+   */
+  getHighlightedWaterfallSpan(name: string) {
+    return this.panelContainer
+      .locator('[role="button"][class*="traceTimelineLabelHighlighted"]')
+      .filter({ hasText: name });
+  }
+
+  /**
+   * The span detail drawer beside the waterfall. Trace sources don't render an
+   * Overview tab of their own, so `tab-overview` plus the close control only
+   * exist together on this drawer. The tab bar's spacer is also `flex-grow-1`,
+   * so that class alone matches the tab chrome and misses the overview body.
+   * The overview root is `flex-grow-1 overflow-auto`.
+   */
+  get spanDetailsPanel() {
+    const closeSpanDetails = this.page.getByRole('button', {
+      name: 'Close span details',
+    });
+    return this.panelContainer
+      .locator('div')
+      .filter({ has: closeSpanDetails })
+      .filter({ has: this.page.getByTestId('tab-overview') })
+      .filter({ has: this.page.locator('.flex-grow-1.overflow-auto') })
+      .last();
+  }
+
+  /**
    * Rows in the span detail's "Span Links" section. Each row's open action
    * (`span-link-open-trace`) shows the linked span's name once the target
    * span is resolved, or "Open trace" as the unresolved fallback.
@@ -287,6 +327,27 @@ export class SidePanelComponent {
     await this.panelContainer
       .getByTestId(`json-viewer-key-order-${order}`)
       .click({ timeout: this.defaultTimeout });
+  }
+
+  /**
+   * The "Column Values" (parsed) tab's content panel, which renders the full
+   * fetched row via the JSON viewer.
+   */
+  get columnValuesContent() {
+    return this.panelContainer.getByTestId('side-panel-tab-parsed');
+  }
+
+  /** Open the "Column Values" (parsed) tab. */
+  async openColumnValues() {
+    await this.clickTab('parsed');
+  }
+
+  /**
+   * A line in the "Column Values" tab matching `text` (substring). Used to
+   * assert a fetched row's value is shown.
+   */
+  columnValue(text: string) {
+    return this.columnValuesContent.getByText(text, { exact: false });
   }
 
   /**

@@ -129,10 +129,10 @@ jest.mock('@/hooks/useExplainQuery', () => ({
   useExplainQuery: () => ({}),
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
-  useAppTheme: () => ({ themeName: 'hyperdx' }),
-  useBrandDisplayName: () => 'HyperDX',
-  usePageTitle: (page?: string) => (page ? `${page} - HyperDX` : 'HyperDX'),
+jest.mock('@/brand', () => ({
+  useBrandDisplayName: () => 'ClickStack',
+  usePageTitle: (page?: string) =>
+    page ? `${page} - ClickStack` : 'ClickStack',
 }));
 
 jest.mock('../hooks/useMetadata', () => ({
@@ -191,6 +191,9 @@ jest.mock('@/components/SearchInput/SearchWhereInput', () => ({
   __esModule: true,
   default: () => <div />,
   getStoredLanguage: () => 'lucene',
+}));
+jest.mock('@/components/SearchGroupBy/SearchGroupBySelect', () => ({
+  SearchGroupBySelect: () => <div />,
 }));
 jest.mock('@/components/SearchPageActionBar', () => () => <div />);
 jest.mock('@/components/SearchTotalCountChart', () => () => <div />);
@@ -255,6 +258,7 @@ jest.mock('@/utils', () => ({
     jest.fn(),
   ],
   usePrevious: (value: unknown) => value,
+  useWindowSize: () => ({ width: 1200, height: 800 }),
 }));
 
 jest.mock('@tanstack/react-query', () => ({

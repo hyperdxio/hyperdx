@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Badge } from '@mantine/core';
+import { Badge } from '@clickhouse/click-ui';
 
 import { INSTANCE_LABEL } from '@/config';
 
@@ -12,11 +12,9 @@ export function InstanceLabel({ fallback = null }: { fallback?: ReactNode }) {
   }
   return (
     <Badge
-      size="xs"
-      color="gray"
-      variant="light"
-      fw="normal"
-      tt="none"
+      size="sm"
+      text={INSTANCE_LABEL}
+      state="neutral"
       title={INSTANCE_LABEL}
       // Capped well under the sidebar's available width (wordmark + gap +
       // collapse button) so a long label can't push the header's content past
@@ -25,8 +23,6 @@ export function InstanceLabel({ fallback = null }: { fallback?: ReactNode }) {
       // min-width:0 alone doesn't prevent a maxed-out badge from wrapping the
       // collapse button onto a second, clipped line.
       style={{ minWidth: 0, maxWidth: 80 }}
-    >
-      {INSTANCE_LABEL}
-    </Badge>
+    />
   );
 }

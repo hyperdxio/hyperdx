@@ -4,8 +4,10 @@ import objectHash from 'object-hash';
 import {
   ColumnMeta,
   ColumnMetaType,
+  convertCHDataTypeToJSType,
   extractColumnReferencesFromKey,
   filterColumnMetaByType,
+  isCHIntegerType,
   JSDataType,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { inferGranularityFromMVSelect } from '@hyperdx/common-utils/dist/core/materializedViews';
@@ -207,6 +209,14 @@ export function useSource({
   });
 }
 
+// PromQL lookups are cached by source ID alone, so a source pointed at another
+// table would keep serving the old table's values until they go stale.
+const PROMQL_SOURCE_QUERY_KEYS = [
+  'promql-metric-names',
+  'promql-label-names',
+  'dashboard-filter-promql-label-values',
+];
+
 export function useUpdateSource() {
   const queryClient = useQueryClient();
 
@@ -221,8 +231,11 @@ export function useUpdateSource() {
         json: source,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, { source }) => {
       queryClient.invalidateQueries({ queryKey: ['sources'] });
+      for (const key of PROMQL_SOURCE_QUERY_KEYS) {
+        queryClient.invalidateQueries({ queryKey: [key, source.id] });
+      }
     },
   });
 }
@@ -431,6 +444,18 @@ export async function inferTableSourceConfig({
   // Check if span Links column is available
   const hasSpanLinks = columns.some(col => col.name === 'Links.TraceId');
 
+  // Old exporter tables store SeverityNumber as Int32, current ones as UInt8.
+  // A String column of that name is not the OTel number.
+  const hasSeverityNumber = columns.some(
+    col => col.name === 'SeverityNumber' && isCHIntegerType(col.type),
+  );
+
+  const hasEventName = columns.some(
+    col =>
+      col.name === 'EventName' &&
+      convertCHDataTypeToJSType(col.type) === JSDataType.String,
+  );
+
   // Check if metadata rollup tables exist and, if so, infer the bucketing
   // granularity from the key-rollup view's `as_select`
   const rollupMeta =
@@ -482,6 +507,10 @@ export async function inferTableSourceConfig({
           traceIdExpression: 'TraceId',
 
           severityTextExpression: 'SeverityText',
+          ...(hasSeverityNumber
+            ? { severityNumberExpression: 'SeverityNumber' }
+            : {}),
+          ...(hasEventName ? { eventNameExpression: 'EventName' } : {}),
           ...metadataMVsConfig,
         }
       : {}),

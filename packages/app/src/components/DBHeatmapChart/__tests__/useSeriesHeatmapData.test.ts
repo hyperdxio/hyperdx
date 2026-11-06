@@ -218,6 +218,7 @@ describe('useSeriesHeatmapData', () => {
       displayType: DisplayType.Heatmap,
       promqlExpression: [{ expression: 'up' }],
       connection: 'test-connection',
+      source: 'source-promql',
       dateRange,
       granularity: 'auto',
     };

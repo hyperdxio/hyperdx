@@ -10,7 +10,7 @@ const naturalCompare = new Intl.Collator(undefined, { numeric: true }).compare;
  * normally match `times` exactly; the arithmetic fallback covers timestamps
  * that land inside a column instead of on its start.
  */
-function makeTimeIndexer(times: number[], stepMs: number) {
+export function makeTimeIndexer(times: number[], stepMs: number) {
   const indexByTime = new Map(times.map((t, i) => [t, i]));
   return (t: number) => {
     const exact = indexByTime.get(t);

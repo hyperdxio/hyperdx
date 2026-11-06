@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { useBrandDisplayName } from './theme/ThemeProvider';
 import api from './api';
+import { useBrandDisplayName } from './brand';
 
 export default function AuthLoadingBlocker() {
   const brandName = useBrandDisplayName();

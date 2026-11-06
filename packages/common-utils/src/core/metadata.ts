@@ -92,6 +92,34 @@ export type KeyValues = {
   value: string[] | number[];
 };
 
+type AllKeyValuesQuery = {
+  databaseName: string;
+  tableName: string;
+  keyExpressions: string[];
+  maxValuesPerKey?: number;
+  connectionId: string;
+  metadataMVs?: MetadataMaterializedViews;
+  dateRange: [Date, Date];
+  timestampValueExpression: string;
+  signal?: AbortSignal;
+};
+
+/** Yields each promise's value as it resolves, fastest first. */
+async function* inCompletionOrder<T>(
+  promises: Promise<T>[],
+): AsyncGenerator<T, void, undefined> {
+  const pending = new Map(
+    promises.map(
+      (promise, i) => [i, promise.then(value => ({ i, value }))] as const,
+    ),
+  );
+  while (pending.size > 0) {
+    const { i, value } = await Promise.race(pending.values());
+    pending.delete(i);
+    yield value;
+  }
+}
+
 export type MetricNames = {
   names: string[];
   /** True when more names matched than `limit`, so the page is incomplete. */
@@ -162,19 +190,56 @@ export const quoteIdentifierIfNeeded = (identifier: string): string => {
     : quoteJsonPathSegment(unquoted);
 };
 
+// A single column or JSON path segment. No quoting/grouping characters, no `.` separator.
+const PLAIN_PATH_SEGMENT = /^[^`'"()[\],.]+/;
+
+// A JSON sub-object accessor or type cast. ClickHouse reports the operand
+// backticked (j.^`a`, j.a.:`Int64`).
+const OPERATOR_PATH_SEGMENT = /^[\^:]`(?:[^`]|``)*`/;
+
+// Split a name into `.`-separated path segments, or undefined when it isn't a
+// plain JSON path (function calls, literals, empty segments).
+const splitResultColumnPath = (name: string): string[] | undefined => {
+  const segments: string[] = [];
+  let rest = name;
+  while (true) {
+    const segment =
+      rest.match(OPERATOR_PATH_SEGMENT)?.[0] ??
+      rest.match(PLAIN_PATH_SEGMENT)?.[0];
+    if (segment == null) return undefined;
+    segments.push(segment);
+    rest = rest.slice(segment.length);
+    if (rest === '') return segments;
+    if (!rest.startsWith('.')) return undefined;
+    rest = rest.slice(1);
+  }
+};
+
+const quotePathSegment = (segment: string): string =>
+  OPERATOR_PATH_SEGMENT.test(segment)
+    ? segment
+    : quoteIdentifierIfNeeded(segment);
+
 /**
  * Quote a query result column name so it can be referenced in raw SQL.
  *
  * Most result column names do not need quoting:
  * - Bare identifiers (alphanumeric and underscore, starting with a letter or underscore)
  * - Numeric literals (e.g., `1`, `0x10`)
- * - Dotted column names (e.g., `my.col`)
  * - Function calls (e.g., `plus(a, b)`, `arrayElement(m, 'key')`)
+ *
+ * Dotted names are JSON/nested subcolumn paths (e.g. `event.@request_id`,
+ * which ClickHouse reports for the select `` event.`@request_id` ``). Each
+ * segment is quoted on its own. JSON type casts (eg. `` .:`String` ``) and
+ * `` ^`sub` `` sub-object accessors are preserved.
  */
-export const quoteResultColumnNameIfNeeded = (name: string): string =>
-  /^[^`'"()[\],.]+$/.test(name) && !Number.isFinite(Number(name))
-    ? quoteIdentifierIfNeeded(name)
-    : name;
+export const quoteResultColumnNameIfNeeded = (name: string): string => {
+  if (Number.isFinite(Number(name))) {
+    return name;
+  }
+  const segments = splitResultColumnPath(name);
+  return segments ? segments.map(quotePathSegment).join('.') : name;
+};
 
 const columnAppearsInMvSelect = (sql: string, columnName: string): boolean => {
   const escaped = columnName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -223,17 +288,27 @@ const renderJsonStringSubcolumn = (
 };
 
 export class MetadataCache {
-  private cache = new Map<string, any>();
+  private cache = new Map<string, { value: any; expiresAt?: number }>();
   private pendingQueries = new Map<string, Promise<any>>();
 
   // this should be getOrUpdate... or just query to follow react query
   get<T>(key: string): T | undefined {
-    return this.cache.get(key);
+    const entry = this.cache.get(key);
+    if (entry?.expiresAt != null && Date.now() >= entry.expiresAt) {
+      this.cache.delete(key);
+      return undefined;
+    }
+    return entry?.value;
   }
 
-  async getOrFetch<T>(key: string, query: () => Promise<T>): Promise<T> {
+  /** Entries stored without `ttlMs` are kept for the life of the cache. */
+  async getOrFetch<T>(
+    key: string,
+    query: () => Promise<T>,
+    { ttlMs }: { ttlMs?: number } = {},
+  ): Promise<T> {
     // Check if value exists in cache
-    const cachedValue: T | undefined = this.cache.get(key);
+    const cachedValue: T | undefined = this.get(key);
     if (cachedValue != null) {
       return cachedValue;
     }
@@ -251,7 +326,7 @@ export class MetadataCache {
 
     try {
       const result = await queryPromise;
-      this.cache.set(key, result);
+      this.set(key, result, ttlMs);
       return result;
     } finally {
       // Clean up the pending query map
@@ -259,8 +334,11 @@ export class MetadataCache {
     }
   }
 
-  set<T>(key: string, value: T) {
-    return this.cache.set(key, value);
+  set<T>(key: string, value: T, ttlMs?: number) {
+    this.cache.set(key, {
+      value,
+      expiresAt: ttlMs == null ? undefined : Date.now() + ttlMs,
+    });
   }
 
   // TODO: This needs to be async, and use tanstack query on frontend for cache
@@ -324,6 +402,11 @@ export type SkipIndexMetadata = {
 };
 
 const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
+
+// The API keeps one cache for the life of the process, so without a TTL a
+// column added by ALTER TABLE (such as a MATERIALIZED one) is only seen after a
+// restart. #3475
+export const COLUMNS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // Hour-aligned so a range-keyed cache rotates hourly instead of every call.
 export function defaultFieldMetadataDateRange(): [Date, Date] {
@@ -591,6 +674,7 @@ export class Metadata {
           .then(d => d.data);
         return columns;
       },
+      { ttlMs: COLUMNS_CACHE_TTL_MS },
     );
   }
 
@@ -2158,6 +2242,37 @@ export class Metadata {
   }
 
   /**
+   * Reads and caches system.merge_tree_settings per connection. Returns
+   * undefined on failure so the next call retries.
+   */
+  async getMergeTreeSettings({
+    connectionId,
+  }: {
+    connectionId: string;
+  }): Promise<Map<string, string> | undefined> {
+    return this.cache.getOrFetch(
+      `${connectionId}.mergeTreeSettings`,
+      async () => {
+        try {
+          const json = await this.clickhouseClient
+            .query<'JSON'>({
+              connectionId,
+              query: 'SELECT name, value FROM system.merge_tree_settings',
+              query_params: undefined,
+              clickhouse_settings: this.getClickHouseSettings(),
+            })
+            .then(res => res.json<{ name: string; value: string }>());
+
+          return new Map(json.data.map(row => [row.name, row.value]));
+        } catch (e) {
+          console.warn('Error fetching MergeTree settings:', e);
+          return undefined;
+        }
+      },
+    );
+  }
+
+  /**
    * Queries system.data_skipping_indices to retrieve skip index metadata for a table.
    * Results are cached using MetadataCache.
    *
@@ -2603,50 +2718,74 @@ export class Metadata {
    * Fetches top values for one or more keys from the text index, metadataMV, or the raw table in a
    * single batched query. Falls back to getMapValues when no rollup is available.
    */
-  async getAllKeyValues({
+  async getAllKeyValues(query: AllKeyValuesQuery): Promise<KeyValues[]> {
+    const results = await Promise.all(
+      await this.dispatchAllKeyValueQueries(query),
+    );
+    return results.filter(v => v !== undefined).flat();
+  }
+
+  /**
+   * `getAllKeyValues`, yielding each query's values as soon as it finishes
+   * instead of waiting for the slowest. Every key is served by exactly one
+   * query, so its values arrive in a single yield.
+   */
+  async *streamAllKeyValues(
+    query: AllKeyValuesQuery,
+  ): AsyncGenerator<KeyValues[], void, undefined> {
+    const queries = await this.dispatchAllKeyValueQueries(query);
+    for await (const keyValues of inCompletionOrder(queries)) {
+      if (keyValues?.length) yield keyValues;
+    }
+  }
+
+  /** Starts every query the keys need, without waiting for any to finish. */
+  private async dispatchAllKeyValueQueries({
+    keyExpressions,
+    maxValuesPerKey = 20,
+    ...query
+  }: AllKeyValuesQuery): Promise<Array<Promise<KeyValues[] | undefined>>> {
+    if (keyExpressions.length === 0) return [];
+
+    if (keyExpressions.length <= GET_ALL_KEY_VALUES_CHUNK_SIZE) {
+      return this.dispatchKeyValueQueries({
+        ...query,
+        keyExpressions,
+        maxValuesPerKey,
+      });
+    }
+
+    // A batch that fails to plan is dropped; the others still answer.
+    const batches = await Promise.allSettled(
+      chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
+        this.dispatchKeyValueQueries({
+          ...query,
+          keyExpressions: batch,
+          maxValuesPerKey,
+        }),
+      ),
+    );
+    return batches.filter(v => v.status === 'fulfilled').flatMap(v => v.value);
+  }
+
+  /**
+   * Routes up to `GET_ALL_KEY_VALUES_CHUNK_SIZE` keys to their cheapest
+   * strategy and starts one query per strategy in use.
+   */
+  private async dispatchKeyValueQueries({
     databaseName,
     tableName,
     keyExpressions,
-    maxValuesPerKey = 20,
+    maxValuesPerKey,
     connectionId,
     metadataMVs,
     dateRange,
     timestampValueExpression,
     signal,
-  }: {
-    databaseName: string;
-    tableName: string;
-    keyExpressions: string[];
-    maxValuesPerKey?: number;
-    connectionId: string;
-    metadataMVs?: MetadataMaterializedViews;
-    dateRange: [Date, Date];
-    timestampValueExpression: string;
-    signal?: AbortSignal;
-  }): Promise<KeyValues[]> {
-    if (keyExpressions.length === 0) return [];
-
-    if (keyExpressions.length > GET_ALL_KEY_VALUES_CHUNK_SIZE) {
-      const batched = await Promise.allSettled(
-        chunk(keyExpressions, GET_ALL_KEY_VALUES_CHUNK_SIZE).map(batch =>
-          this.getAllKeyValues({
-            databaseName,
-            tableName,
-            keyExpressions: batch,
-            maxValuesPerKey,
-            connectionId,
-            metadataMVs,
-            dateRange,
-            timestampValueExpression,
-            signal,
-          }),
-        ),
-      );
-      return batched
-        .filter(v => v.status === 'fulfilled')
-        .flatMap(v => v.value);
-    }
-
+  }: AllKeyValuesQuery &
+    Required<Pick<AllKeyValuesQuery, 'maxValuesPerKey'>>): Promise<
+    Array<Promise<KeyValues[] | undefined>>
+  > {
     // Parse all keys into (rollupColumn, rollupKey) pairs
     const parsed = keyExpressions.map(keyExpr => {
       const path = parseKeyPath(keyExpr);
@@ -2795,9 +2934,8 @@ export class Metadata {
     if (rawQueryOptions.length > 0) {
       promises.push(
         // Isolate raw-table failures (timeout, abort, network) the same way
-        // the three sibling strategies do internally, so a single rejection
-        // here doesn't discard already-successful text-index / MV results
-        // when they're aggregated through `Promise.all` below.
+        // the three sibling strategies do internally, so the failure is
+        // logged rather than silently dropped below.
         this.getKeyValues({
           chartConfig: {
             from: {
@@ -2823,11 +2961,10 @@ export class Metadata {
         }),
       );
     }
-    return (await Promise.allSettled(promises))
-      .filter(res => res.status === 'fulfilled')
-      .map(v => v.value)
-      .filter(v => v !== undefined)
-      .flat();
+    // The strategies isolate their own failures; this catches anything that
+    // slips past them, so one rejection can neither discard the others'
+    // results nor go unhandled while sibling batches are still being planned.
+    return promises.map(promise => promise.catch(() => undefined));
   }
 
   async getKeyValues({

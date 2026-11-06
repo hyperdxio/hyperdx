@@ -1,24 +1,13 @@
 import * as React from 'react';
-import {
-  Autocomplete,
-  Badge,
-  Divider,
-  Group,
-  Modal,
-  Select,
-  Stack,
-  Switch,
-  Text,
-  Tooltip,
-} from '@mantine/core';
-import { IconFlask } from '@tabler/icons-react';
+import { Badge } from '@clickhouse/click-ui';
+import { Divider, Group, Modal, Select, Stack, Text } from '@mantine/core';
 
-import { OPTIONS_FONTS } from './config/fonts';
-import { useAppTheme } from './theme/ThemeProvider';
-import { isValidThemeName, themes } from './theme';
+import { TimeZoneSelect, TimeZoneShortcuts } from './components/TimeZoneSelect';
+import { isContentFontSize, OPTIONS_CONTENT_FONT_SIZE } from './config/fonts';
 import {
   DEFAULT_ROW_CLICK_ACTION,
   RowClickAction,
+  useContentFontSize,
   UserPreferences,
   useUserPreferences,
 } from './useUserPreferences';
@@ -34,12 +23,6 @@ const OPTIONS_ROW_CLICK_ACTION: { label: string; value: RowClickAction }[] = [
   { label: 'Expand inline', value: 'expand' },
 ];
 
-// Brand theme options (generated from theme registry)
-const OPTIONS_BRAND_THEMES = Object.values(themes).map(t => ({
-  label: t.displayName,
-  value: t.name,
-}));
-
 const SettingContainer = ({
   label,
   description,
@@ -54,7 +37,7 @@ const SettingContainer = ({
       <div style={{ flex: 1 }}>
         {label}
         {!!description && (
-          <Text size="xs" mt={2}>
+          <Text size="xs" mt={2} c="var(--color-text-muted)">
             {description}
           </Text>
         )}
@@ -72,7 +55,7 @@ export const UserPreferencesModal = ({
   onClose: () => void;
 }) => {
   const { userPreferences, setUserPreference } = useUserPreferences();
-  const { themeName, setTheme, isDev } = useAppTheme();
+  const { contentFontSize } = useContentFontSize();
 
   return (
     <Modal
@@ -105,17 +88,21 @@ export const UserPreferencesModal = ({
             allowDeselect={false}
           />
         </SettingContainer>
-        <SettingContainer label="Use UTC time">
-          <Switch
-            size="md"
-            onLabel="UTC"
-            checked={userPreferences.isUTC}
-            onChange={e =>
-              setUserPreference({
-                isUTC: e.currentTarget.checked,
-              })
-            }
-          />
+        <SettingContainer
+          label="Time zone"
+          description="Times are displayed and input in this zone."
+        >
+          <Stack gap={4}>
+            <TimeZoneSelect
+              data-testid="time-zone-select"
+              value={userPreferences.timeZone}
+              onChange={timeZone => timeZone && setUserPreference({ timeZone })}
+            />
+            <TimeZoneShortcuts
+              testIdPrefix="time-zone"
+              onSelect={timeZone => setUserPreference({ timeZone })}
+            />
+          </Stack>
         </SettingContainer>
 
         <Divider label="Search results" labelPosition="left" mt="sm" />
@@ -143,9 +130,7 @@ export const UserPreferencesModal = ({
           label={
             <Group align="center" gap="xs">
               Appearance
-              <Badge variant="light" fw="normal" size="xs">
-                Experimental
-              </Badge>
+              <Badge size="sm" text="Experimental" state="info" />
             </Group>
           }
           labelPosition="left"
@@ -168,71 +153,22 @@ export const UserPreferencesModal = ({
           />
         </SettingContainer>
 
-        {/*
-          Brand Theme Selector - DEV MODE ONLY
-          
-          This is intentionally NOT available in production. Brand theme (HyperDX vs ClickStack)
-          is deployment-configured via NEXT_PUBLIC_THEME environment variable.
-          Each deployment is branded for a specific product; users don't choose this.
-          
-          This dev-only UI exists for testing theme implementations during development.
-        */}
-        {isDev && (
-          <SettingContainer
-            label={
-              <Group gap="xs">
-                Brand Theme
-                <Tooltip
-                  label="Only available in local/dev mode. Changes logo, colors, and branding."
-                  multiline
-                  w={220}
-                >
-                  <Badge
-                    variant="light"
-                    color="violet"
-                    fw="normal"
-                    size="xs"
-                    leftSection={<IconFlask size={10} />}
-                  >
-                    Dev Only
-                  </Badge>
-                </Tooltip>
-              </Group>
+        <SettingContainer
+          label="Content font size"
+          description="Text size for log tables, data tables, and charts"
+        >
+          <Select
+            data-testid="content-font-size-select"
+            value={contentFontSize}
+            onChange={value =>
+              value &&
+              isContentFontSize(value) &&
+              setUserPreference({ contentFontSize: value })
             }
-            description="Switch between HyperDX and ClickStack branding"
-          >
-            <Select
-              value={themeName}
-              onChange={value => {
-                if (value && isValidThemeName(value)) {
-                  setTheme(value);
-                }
-              }}
-              data={OPTIONS_BRAND_THEMES}
-              allowDeselect={false}
-            />
-          </SettingContainer>
-        )}
-
-        {/* Font selection is only available for HyperDX theme */}
-        {/* ClickStack theme always uses Inter font and doesn't show this setting */}
-        {themeName !== 'clickstack' && (
-          <SettingContainer
-            label="Font"
-            description="If using custom font, make sure it's installed on your system"
-          >
-            <Autocomplete
-              value={userPreferences.font}
-              filter={({ options }) => options}
-              onChange={value =>
-                setUserPreference({
-                  font: value as UserPreferences['font'],
-                })
-              }
-              data={OPTIONS_FONTS}
-            />
-          </SettingContainer>
-        )}
+            data={OPTIONS_CONTENT_FONT_SIZE}
+            allowDeselect={false}
+          />
+        </SettingContainer>
       </Stack>
     </Modal>
   );

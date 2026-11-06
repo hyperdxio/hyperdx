@@ -76,6 +76,30 @@ describe('ChartDisplaySettingsDrawer', () => {
         heatmapScaleType: 'linear',
       });
     });
+
+    it.each(['linear', 'log'] as const)(
+      'selects the %s default scale when the tile has none',
+      async scale => {
+        const onChange = jest.fn();
+        const user = userEvent.setup();
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            configType="promql"
+            displayType={DisplayType.Heatmap}
+            heatmapMode="distribution"
+            defaultHeatmapScaleType={scale}
+            onChange={onChange}
+          />,
+        );
+
+        await user.click(screen.getByRole('button', { name: /apply/i }));
+
+        expect(onChange.mock.calls[0][0]).toMatchObject({
+          heatmapScaleType: scale,
+        });
+      },
+    );
   });
 
   describe('color picker section', () => {
@@ -224,6 +248,76 @@ describe('ChartDisplaySettingsDrawer', () => {
       expect(onChange).toHaveBeenCalledTimes(1);
       expect(onChange.mock.calls[0][0]).toMatchObject({
         fitYAxisToData: true,
+      });
+    });
+  });
+
+  describe('line interpolation setting', () => {
+    it.each([
+      [DisplayType.Line, 'Smooth'],
+      [DisplayType.StackedLine, 'Linear'],
+    ])(
+      'selects the %s default when the tile has none',
+      (displayType, label) => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(screen.getByRole('radio', { name: label })).toBeChecked();
+      },
+    );
+
+    it.each([DisplayType.StackedBar, DisplayType.Table])(
+      'does not show the control for %s charts',
+      displayType => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...baseProps}
+            displayType={displayType}
+          />,
+        );
+
+        expect(
+          screen.queryByTestId('line-interpolation-control'),
+        ).not.toBeInTheDocument();
+      },
+    );
+
+    it('leaves lineInterpolation unset when untouched', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.Line}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0].lineInterpolation).toBeUndefined();
+    });
+
+    it('applies the chosen interpolation', async () => {
+      const onChange = jest.fn();
+      const user = userEvent.setup();
+      renderWithMantine(
+        <ChartDisplaySettingsDrawer
+          {...baseProps}
+          displayType={DisplayType.StackedLine}
+          onChange={onChange}
+        />,
+      );
+
+      await user.click(screen.getByRole('radio', { name: 'Step' }));
+      await user.click(screen.getByRole('button', { name: /apply/i }));
+
+      expect(onChange.mock.calls[0][0]).toMatchObject({
+        lineInterpolation: 'step',
       });
     });
   });
@@ -753,6 +847,27 @@ describe('ChartDisplaySettingsDrawer', () => {
         screen.queryByTestId('legend-template-input'),
       ).not.toBeInTheDocument();
     });
+
+    it.each([
+      ['hidden', 'distribution', false],
+      ['hidden', 'histogram', false],
+      ['offered', 'series', true],
+    ] as const)(
+      'is %s on a PromQL %s heatmap',
+      (_label, heatmapMode, isShown) => {
+        renderWithMantine(
+          <ChartDisplaySettingsDrawer
+            {...promqlProps}
+            displayType={DisplayType.Heatmap}
+            heatmapMode={heatmapMode}
+          />,
+        );
+
+        expect(screen.queryByTestId('legend-template-input') != null).toBe(
+          isShown,
+        );
+      },
+    );
 
     it('blocks Apply when the template exceeds the persisted length cap', async () => {
       const onChange = jest.fn();

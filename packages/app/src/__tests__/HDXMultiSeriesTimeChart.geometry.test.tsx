@@ -49,6 +49,7 @@ const props = {
       displayName: 'Traffic',
       valueColumnName: 'value',
       color: 'var(--color-chart-blue)',
+      groupValues: [],
     },
   ],
   dateRange: [new Date(0), new Date(200000)],

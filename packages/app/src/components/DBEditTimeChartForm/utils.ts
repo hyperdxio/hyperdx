@@ -13,6 +13,10 @@ import {
   getBlockingRequiredFilterNames,
 } from '@hyperdx/common-utils/dist/dashboardFilterValues';
 import {
+  getPromqlFilters,
+  getSqlFilters,
+} from '@hyperdx/common-utils/dist/filters';
+import {
   isBuilderChartConfig,
   isPromqlChartConfig,
   isRawSqlChartConfig,
@@ -20,6 +24,7 @@ import {
 } from '@hyperdx/common-utils/dist/guards';
 import { substitutePromqlChartConfigTemplates } from '@hyperdx/common-utils/dist/macros';
 import {
+  BroadcastFilter,
   BuilderChartConfigWithDateRange,
   ChartAlertBaseSchema,
   ChartConfigWithDateRange,
@@ -201,8 +206,8 @@ export function resolvePreviewVariables({
 
 /** What the dashboard's filter state contributes to a tile preview. */
 export type TilePreviewFilters = {
-  /** Broadcast filter conditions to query the preview with. */
-  filters: Filter[] | undefined;
+  /** Broadcast filter conditions to query the preview with, in its query language. */
+  filters: BroadcastFilter[] | undefined;
   /** The referenced variables, with or without their selections. */
   variables: ChartVariable[] | undefined;
   /** Names of the required filters that have nothing selected. */
@@ -225,7 +230,7 @@ export function resolveTilePreviewFilters({
 }: {
   config: ChartConfigWithDateRange;
   sourceId: string | undefined;
-  filters: Filter[] | undefined;
+  filters: BroadcastFilter[] | undefined;
   variables: ChartVariable[] | undefined;
   unsatisfiedRequiredFilters: DashboardFilter[] | undefined;
   applySelections: boolean;
@@ -244,13 +249,16 @@ export function resolveTilePreviewFilters({
     };
   }
 
-  const consumesBroadcastFilters = configConsumesBroadcastFilters(
-    config,
-    sourceId,
-  );
+  // PromQL tiles take only PromQL conditions; `configConsumesBroadcastFilters`
+  // stays false for them so that required SQL filters don't block them.
+  const previewFilters = isPromqlChartConfig(config)
+    ? filters && getPromqlFilters(filters)
+    : configConsumesBroadcastFilters(config, sourceId) && filters
+      ? getSqlFilters(filters)
+      : undefined;
 
   return {
-    filters: consumesBroadcastFilters ? filters : undefined,
+    filters: previewFilters,
     variables: previewVariables,
     missingRequiredFilterNames: getBlockingRequiredFilterNames({
       config,
@@ -259,6 +267,17 @@ export function resolveTilePreviewFilters({
       referencedVariables: previewVariables,
     }),
   };
+}
+
+/** The config with the broadcast filters in its own query language attached. */
+export function withBroadcastFilters(
+  config: ChartConfigWithDateRange,
+  filters: BroadcastFilter[] | undefined,
+): ChartConfigWithDateRange {
+  if (isPromqlChartConfig(config)) {
+    return { ...config, filters: filters && getPromqlFilters(filters) };
+  }
+  return { ...config, filters: filters && getSqlFilters(filters) };
 }
 
 /** One expression as a PromQL tile queries it. */

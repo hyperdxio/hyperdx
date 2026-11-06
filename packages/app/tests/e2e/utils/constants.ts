@@ -60,8 +60,10 @@ export const E2E_METRICS_SUM_TABLE = 'e2e_otel_metrics_sum';
 // tables above are not usable for PromQL. The seeder writes through the
 // timeSeries* table functions, which take this same table name.
 export const E2E_PROMQL_TABLE = 'e2e_promql';
-/** The one metric name seeded into the PromQL table, one series per service. */
+/** A gauge seeded into the PromQL table, one series per service. */
 export const E2E_PROMQL_METRIC_NAME = 'e2e_service_up';
+/** A classic histogram seeded into the PromQL table as `<name>_bucket` series. */
+export const E2E_PROMQL_HISTOGRAM_METRIC_NAME = 'e2e_request_duration_seconds';
 // A second database holding OTEL-shaped metric tables, so the metric table
 // autofill tests can switch the source form's database and see tables detected
 // from the new one. The table names differ from the `default` database's so an

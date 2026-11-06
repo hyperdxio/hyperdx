@@ -18,13 +18,13 @@ import { notifications } from '@mantine/notifications';
 import { IconHelpCircle, IconPencil } from '@tabler/icons-react';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/brand';
 import SelectControlled from '@/components/SelectControlled';
 import {
   DEFAULT_FILTER_KEYS_FETCH_LIMIT,
   DEFAULT_QUERY_TIMEOUT,
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 type ClickhouseSettingType = 'number' | 'boolean';
 
@@ -319,7 +319,7 @@ export default function TeamQueryConfigSection() {
           <ClickhouseSettingForm
             settingKey="filterKeysFetchLimit"
             label="Filter Keys Fetch Limit"
-            tooltip="The number of filter keys to fetch when clicking 'More filters' on the search page"
+            tooltip="The number of filter keys to fetch per map column (e.g. LogAttributes, ResourceAttributes) on the search page"
             type="number"
             defaultValue={DEFAULT_FILTER_KEYS_FETCH_LIMIT}
             placeholder={`default = ${DEFAULT_FILTER_KEYS_FETCH_LIMIT}`}

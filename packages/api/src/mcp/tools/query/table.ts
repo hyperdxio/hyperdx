@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 
@@ -44,9 +45,8 @@ const tableSchema = z.object({
     .optional()
     .default('table')
     .describe(
-      'Output shape: "table" (grouped rows, default), "number" (single scalar), ' +
-        '"pie" (pie chart), or "bar" (categorical bar chart). ' +
-        'If "number", "pie", or "bar" is set with select.length > 1, it is auto-upgraded to "table". ' +
+      'Output shape: "table" is grouped rows, "number" a single scalar, "pie" a pie chart, "bar" a categorical bar chart. ' +
+        '"number", "pie", and "bar" are auto-upgraded to "table" when select has more than one item. ' +
         'groupBy is ignored when shape is "number".',
     ),
   where: whereSchema.describe(
@@ -59,7 +59,32 @@ const tableSchema = z.object({
   ),
   whereLanguage: whereLanguageSchema,
   groupBy: groupBySchema,
-  orderBy: orderBySchema,
+  having: z
+    .string()
+    .trim()
+    .max(10000)
+    .optional()
+    .describe(
+      'Post-aggregation SQL HAVING condition, applied after grouping. ' +
+        'Give the select item an alias and reference it, e.g. alias "Errors" and having "Errors > 10". ' +
+        'A bare aggregate such as count() ignores the top-level where.',
+    ),
+  orderBy: orderBySchema.describe(
+    'Sort results by this column. For shape "table" on a non-metric source with groupBy set, ' +
+      'defaults to the first select item descending, then the groupBy columns. ' +
+      'When ordering by an alias that contains spaces or special characters, ' +
+      `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
+  ),
+  limit: z
+    .number()
+    .int()
+    .positive()
+    .max(10000)
+    .optional()
+    .describe(
+      'Maximum number of rows (SQL LIMIT), applied after ordering. Omit to return every group. ' +
+        'Metric sources get no default order, so set orderBy as well, or the kept groups are arbitrary.',
+    ),
   startTime: startTimeSchema,
   endTime: endTimeSchema,
 });
@@ -196,6 +221,38 @@ export function resolveOrderBy(
   return orderBy;
 }
 
+/**
+ * Default ORDER BY for grouped tables when the caller sets none: the first
+ * select item, descending, so trimmed or limited results keep the largest
+ * groups. MCP only; dashboard tiles and the app are unchanged.
+ *
+ * Unaliased select items have no name to refer to, so the first one is
+ * referenced by position (`1`): the rendered SELECT lists the select items
+ * first, then the groupBy columns. Metric sources are skipped: their SQL is
+ * built from CTEs, and `increase` already orders its top-N groups.
+ *
+ * The groupBy columns follow as a tiebreak, so a `limit` keeps the same groups
+ * on every call, as convertToCategoricalChartConfig does for pie/bar.
+ *
+ * @internal Exported for testing only.
+ */
+export function defaultOrderBy(
+  selectItems: { alias?: string; metricType?: string }[],
+  groupBy: string | undefined,
+  displayType: 'table' | 'number' | 'pie' | 'bar',
+): string | undefined {
+  if (displayType !== 'table' || !groupBy?.trim()) return undefined;
+  if (selectItems.length === 0 || selectItems.some(s => s.metricType)) {
+    return undefined;
+  }
+  // Quote the alias exactly as SELECT renders it; trim only to test emptiness.
+  const alias = selectItems[0].alias;
+  const first = alias?.trim()
+    ? `${quoteAliasForOrderBy(alias)} DESC`
+    : '1 DESC';
+  return `${first}, ${groupBy.trim()} ASC`;
+}
+
 // ─── Tool registration ───────────────────────────────────────────────────────
 
 export function registerTable({ context, registerTool }: ToolRegistrar) {
@@ -205,35 +262,26 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
     'clickstack_table',
     {
       title: 'Aggregation Table',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'Compute aggregated metrics as a table, single number, pie chart, or bar chart. ' +
         'Use this for grouped aggregations, top-N queries, single-value KPIs, ' +
-        'or proportional breakdowns.\n\n' +
+        'or proportional breakdowns. For trends over time use clickstack_timeseries.\n\n' +
         PREFER_BUILDER_OVER_SQL_NUDGE +
         '\n\n' +
         'Requires sourceId — call clickstack_list_sources then clickstack_describe_source first.\n\n' +
-        'Use the top-level "where" to scope the entire query (e.g. filter by service). ' +
-        'Each select item can also have its own "where" for per-metric cohort ' +
-        'comparisons (compiles to <aggFn>If(...)). Both can be used together.\n\n' +
-        'Column naming: top-level columns are PascalCase (Duration, StatusCode). ' +
-        "Map attributes use bracket syntax: SpanAttributes['http.method']. " +
-        'Map attributes work in groupBy and valueExpression, including ' +
-        "toFloat64OrZero(SpanAttributes['key']).\n\n" +
-        'Shape auto-upgrade: if shape is "number", "pie", or "bar" but select has >1 item, ' +
-        'it is transparently upgraded to "table".\n\n' +
-        '── METRIC SOURCES ──\n' +
-        'When sourceId is a metric source, each select item MUST set ' +
-        'metricType ("gauge"|"sum"|"histogram"|"exponential histogram") and metricName (the OTel metric name). ' +
-        'valueExpression defaults to "Value" — set it explicitly only to transform the value.\n' +
-        'Discovery: clickstack_describe_source returns a per-kind metric-name sample; ' +
-        'clickstack_list_metrics paginates the full catalog; clickstack_describe_metric ' +
-        'returns attribute keys + sampled values for a single metric.\n' +
-        'Per kind: gauge uses last_value/avg/min/max; sum uses aggFn:"increase" for counter increase ' +
-        '(top-N capped at 20 groups when combined with groupBy), or sum/avg on the rate; ' +
-        'histogram and exponential histogram use aggFn:"quantile" + level for percentiles, or aggFn:"count" for total bucket count.\n' +
-        'summary metrics are not supported by the query renderer — query them with ' +
-        "clickstack_sql against the table in the source's metricTables.summary.",
+        'The top-level "where" scopes the whole query. Each select item can add its own ' +
+        '"where" (compiles to <aggFn>If(...)) for per-metric cohort comparisons; both are ANDed.\n\n' +
+        'Columns: top-level columns are PascalCase (Duration, StatusCode). ' +
+        "Map attributes use brackets, SpanAttributes['http.method'], and work in groupBy " +
+        "and valueExpression, e.g. toFloat64OrZero(SpanAttributes['key']).\n\n" +
+        'METRIC SOURCES: every select item MUST set metricType and metricName; ' +
+        'valueExpression defaults to "Value". Discover metrics with clickstack_describe_source ' +
+        '(sample), clickstack_list_metrics (full catalog), and clickstack_describe_metric ' +
+        '(attributes of one metric). Per kind: gauge uses last_value/avg/min/max; sum uses ' +
+        'aggFn:"increase" (capped at the top 20 groups with groupBy) or sum/avg on the rate; ' +
+        'histogram and exponential histogram use aggFn:"quantile" + level, or aggFn:"count". ' +
+        "summary metrics are unsupported — use clickstack_sql on the source's metricTables.summary table.",
       inputSchema: tableSchema,
     },
     async input => {
@@ -279,12 +327,15 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
       const { items: selectItems, warnings: mergeWarnings } =
         mergeWhereIntoSelectItems(select, input.where, input.whereLanguage);
 
+      const groupBy = displayType === 'number' ? undefined : input.groupBy;
       const tile = buildTile('MCP Table', 12, 4, {
         displayType,
         sourceId: input.sourceId,
         select: selectItems,
-        groupBy: displayType === 'number' ? undefined : input.groupBy,
-        orderBy: resolveOrderBy(input.orderBy, selectItems),
+        groupBy,
+        orderBy:
+          resolveOrderBy(input.orderBy, selectItems) ??
+          defaultOrderBy(selectItems, groupBy, displayType),
       });
 
       const result = await runConfigTile(
@@ -292,6 +343,7 @@ export function registerTable({ context, registerTool }: ToolRegistrar) {
         tile,
         startDate,
         endDate,
+        { having: input.having, limit: input.limit },
       );
 
       // Surface language-mismatch warnings so the agent knows the top-level

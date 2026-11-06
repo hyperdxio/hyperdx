@@ -1,14 +1,26 @@
 import { use, useCallback, useMemo } from 'react';
 import isString from 'lodash/isString';
 import pickBy from 'lodash/pickBy';
-import { SourceKind, TSource } from '@hyperdx/common-utils/dist/types';
+import {
+  isLogSource,
+  SourceKind,
+  TSource,
+} from '@hyperdx/common-utils/dist/types';
 import { Accordion, Box, Flex, Text } from '@mantine/core';
 
 import { WithClause } from '@/hooks/useRowWhere';
 import { getEventBody } from '@/source';
+import { getBrowserEventKind, isBrowserEventRow } from '@/utils/browserEvents';
 import { getHighlightedAttributesFromData } from '@/utils/highlightedAttributes';
+import {
+  isJavaScriptRuntime,
+  parseJavaScriptException,
+} from '@/utils/javascriptStack';
 import { resolveRowTimestampAnchor } from '@/utils/rowTimestamps';
+import { getRequestPanelTitle } from '@/utils/rpcSpanAttributes';
+import { isSet } from '@/utils/spanAttributeReaders';
 
+import { BrowserEventSubpanel } from './BrowserEventSubpanel';
 import {
   getJSONColumnNames,
   getMapColumnNames,
@@ -26,6 +38,12 @@ import { SpanLinkedFromSubpanel } from './SpanLinkedFromSubpanel';
 import { getValidSpanLinks, SpanLinksSubpanel } from './SpanLinksSubpanel';
 
 const EMPTY_OBJ = {};
+const EXCEPTION_ATTRIBUTE_KEYS = [
+  'exception.type',
+  'exception.message',
+  'exception.stacktrace',
+];
+
 export function RowOverviewPanel({
   source,
   rowId,
@@ -86,6 +104,7 @@ export function RowOverviewPanel({
   // assume OTel column names for now
   const topLevelAttributeKeys = [
     'ServiceName',
+    'EventName',
     'SpanName',
     'Duration',
     'SeverityText',
@@ -98,7 +117,16 @@ export function RowOverviewPanel({
     'ScopeName',
     'ScopeVersion',
   ];
-  const topLevelAttributes = pickBy(firstRow, (value, key) => {
+  // `*` leaves out an ALIAS or MATERIALIZED EventName, so `useRowData` only
+  // returns it under its alias.
+  const rowWithEventName =
+    isLogSource(source) &&
+    source.eventNameExpression?.trim() === 'EventName' &&
+    firstRow?.EventName == null &&
+    firstRow?.__hdx_event_name != null
+      ? { ...firstRow, EventName: firstRow.__hdx_event_name }
+      : firstRow;
+  const topLevelAttributes = pickBy(rowWithEventName, (value, key) => {
     if (value === '') {
       return false;
     }
@@ -134,58 +162,89 @@ export function RowOverviewPanel({
     [generateSearchUrl],
   );
 
-  const isHttpRequest = useMemo(() => {
-    const attributes =
-      eventAttributesExpr && dataAttributes?.[eventAttributesExpr];
-    return attributes?.['http.url'] != null;
-  }, [dataAttributes, eventAttributesExpr]);
+  const requestPanelTitle = useMemo(
+    () => getRequestPanelTitle(flattenedEventAttributes),
+    [flattenedEventAttributes],
+  );
 
-  const filteredEventAttributes = useMemo(() => {
-    if (!eventAttributesExpr) return dataAttributes;
+  // Only log sources select the event name, and gating here keeps every trace
+  // row out whatever attributes it carries.
+  const { browserEventKind, isBrowserRow } = useMemo(() => {
+    if (!isLogSource(source)) {
+      return { browserEventKind: undefined, isBrowserRow: false };
+    }
 
-    const attributes = dataAttributes?.[eventAttributesExpr];
-    return isHttpRequest && attributes
-      ? {
-          [eventAttributesExpr]: pickBy(
-            attributes,
-            (_, key) => !key.startsWith('http.'),
-          ),
-        }
-      : dataAttributes;
-  }, [dataAttributes, isHttpRequest, eventAttributesExpr]);
+    const row = {
+      eventName: firstRow?.__hdx_event_name,
+      attributes: flattenedEventAttributes,
+    };
+
+    return {
+      browserEventKind: getBrowserEventKind(row),
+      isBrowserRow: isBrowserEventRow(row),
+    };
+  }, [source, firstRow?.__hdx_event_name, flattenedEventAttributes]);
+
+  const exceptionAttributes = useMemo(() => {
+    const spanEventAttributes = firstRow?.__hdx_events_exception_attributes;
+    if (
+      spanEventAttributes != null &&
+      Object.keys(spanEventAttributes).length > 0
+    ) {
+      return spanEventAttributes;
+    }
+    return EXCEPTION_ATTRIBUTE_KEYS.some(key =>
+      isSet(flattenedEventAttributes[key]),
+    )
+      ? flattenedEventAttributes
+      : undefined;
+  }, [firstRow?.__hdx_events_exception_attributes, flattenedEventAttributes]);
 
   const exceptionValues = useMemo(() => {
-    const parsedEvents =
-      firstRow?.__hdx_events_exception_attributes ?? EMPTY_OBJ;
+    const parsedEvents = exceptionAttributes ?? EMPTY_OBJ;
     const stacktrace =
       parsedEvents?.['exception.stacktrace'] ||
       parsedEvents?.['exception.parsed_stacktrace'];
 
     let parsedStacktrace = stacktrace ?? '[]';
     try {
-      parsedStacktrace = JSON.parse(stacktrace);
+      parsedStacktrace = JSON.parse(parsedStacktrace);
     } catch {
       // do nothing
     }
 
+    const exception = {
+      stacktrace: parsedStacktrace,
+      type: parsedEvents?.['exception.type'],
+      value:
+        typeof parsedEvents?.['exception.message'] !== 'string'
+          ? JSON.stringify(parsedEvents?.['exception.message'])
+          : parsedEvents?.['exception.message'],
+      mechanism: parsedEvents?.['exception.mechanism'],
+    };
+
+    const parsed =
+      typeof parsedStacktrace === 'string' &&
+      isJavaScriptRuntime(resourceAttributes)
+        ? parseJavaScriptException(parsedStacktrace)
+        : undefined;
+    if (parsed == null) {
+      return [exception];
+    }
     return [
       {
-        stacktrace: parsedStacktrace,
-        type: parsedEvents?.['exception.type'],
-        value:
-          typeof parsedEvents?.['exception.message'] !== 'string'
-            ? JSON.stringify(parsedEvents?.['exception.message'])
-            : parsedEvents?.['exception.message'],
-        mechanism: parsedEvents?.['exception.mechanism'],
+        ...exception,
+        stacktrace: { frames: parsed.frames },
+        rawStacktrace: parsedStacktrace,
       },
+      ...parsed.causes.map(({ frames, ...cause }) => ({
+        ...cause,
+        stacktrace: { frames },
+      })),
     ];
-  }, [firstRow]);
+  }, [exceptionAttributes, resourceAttributes]);
 
-  const hasException = useMemo(() => {
-    return (
-      Object.keys(firstRow?.__hdx_events_exception_attributes ?? {}).length > 0
-    );
-  }, [firstRow?.__hdx_events_exception_attributes]);
+  const hasException = exceptionAttributes != null;
 
   const hasSpanEvents = useMemo(() => {
     return (
@@ -246,6 +305,7 @@ export function RowOverviewPanel({
             // In that case suppress the body paper entirely instead of
             // rendering an "[Empty]" placeholder.
             bodyConfigured={mainContentColumn !== undefined}
+            hideEmptyBody={isBrowserRow}
             severityText={firstRow?.__hdx_severity_text}
             rowData={firstRow}
           />
@@ -255,6 +315,7 @@ export function RowOverviewPanel({
         mt="sm"
         defaultValue={[
           'exception',
+          'browserEvent',
           'spanEvents',
           'spanLinks',
           'linkedFrom',
@@ -266,23 +327,6 @@ export function RowOverviewPanel({
         multiple
         variant="noPadding"
       >
-        {isHttpRequest && (
-          <Accordion.Item value="network">
-            <Accordion.Control>
-              <Text size="sm" ps={contentPx}>
-                HTTP Request
-              </Text>
-            </Accordion.Control>
-            <Accordion.Panel>
-              <Box px={contentPx}>
-                <NetworkPropertySubpanel
-                  eventAttributes={flattenedEventAttributes}
-                />
-              </Box>
-            </Accordion.Panel>
-          </Accordion.Item>
-        )}
-
         {hasException && (
           <Accordion.Item value="exception">
             <Accordion.Control>
@@ -294,10 +338,49 @@ export function RowOverviewPanel({
               <Box px={contentPx}>
                 <ExceptionSubpanel
                   exceptionValues={exceptionValues}
-                  breadcrumbs={[]}
                   logData={{
                     timestamp: firstRow?.__hdx_timestamp,
                   }}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {browserEventKind != null && (
+          <Accordion.Item
+            value="browserEvent"
+            data-testid="browser-event-section"
+          >
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                Browser event
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <BrowserEventSubpanel
+                  kind={browserEventKind}
+                  attributes={flattenedEventAttributes}
+                  body={mainContent}
+                />
+              </Box>
+            </Accordion.Panel>
+          </Accordion.Item>
+        )}
+
+        {requestPanelTitle != null && browserEventKind == null && (
+          <Accordion.Item value="network">
+            <Accordion.Control>
+              <Text size="sm" ps={contentPx}>
+                {requestPanelTitle}
+              </Text>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Box px={contentPx}>
+                <NetworkPropertySubpanel
+                  eventAttributes={flattenedEventAttributes}
+                  spanKind={firstRow?.__hdx_span_kind}
                 />
               </Box>
             </Accordion.Panel>
@@ -323,7 +406,7 @@ export function RowOverviewPanel({
           </Accordion.Item>
         )}
 
-        {Object.keys(filteredEventAttributes).length > 0 && (
+        {Object.keys(dataAttributes).length > 0 && (
           <Accordion.Item value="eventAttributes">
             <Accordion.Control>
               <Text size="sm" ps={contentPx}>
@@ -333,7 +416,7 @@ export function RowOverviewPanel({
             <Accordion.Panel>
               <Box px={contentPx}>
                 <DBRowJsonViewer
-                  data={filteredEventAttributes}
+                  data={dataAttributes}
                   jsonColumns={jsonColumns}
                   mapColumns={mapColumns}
                 />

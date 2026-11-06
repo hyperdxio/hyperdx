@@ -1,5 +1,6 @@
 import { buildLogComment } from '@hyperdx/common-utils/dist/clickhouse';
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
 import * as config from '@/config';
 import {
@@ -11,6 +12,7 @@ import {
   seedTimeSeriesTagsTable,
 } from '@/fixtures';
 import Connection from '@/models/connection';
+import { Source } from '@/models/source';
 
 declare global {
   // Set by jest.setup.ts before it stubs `fetch`.
@@ -118,14 +120,18 @@ describe('request query attribution', () => {
       username: config.CLICKHOUSE_USER,
       password: config.CLICKHOUSE_PASSWORD,
     });
+    const source = await Source.create({
+      kind: SourceKind.Promql,
+      team: team._id,
+      connection: conn._id,
+      name: 'PromQL',
+      from: { databaseName: DEFAULT_DATABASE, tableName: TABLE },
+      timestampValueExpression: 'timestamp',
+    });
 
     await agent
       .get('/v1/prometheus/labels')
-      .query({
-        connectionId: conn._id.toString(),
-        database: DEFAULT_DATABASE,
-        table: TABLE,
-      })
+      .query({ sourceId: source._id.toString() })
       .expect(200);
 
     const logged = await findRouteQueries();
@@ -153,6 +159,14 @@ describe('request query attribution', () => {
       username: config.CLICKHOUSE_USER,
       password: config.CLICKHOUSE_PASSWORD,
     });
+    const source = await Source.create({
+      kind: SourceKind.Promql,
+      team: team._id,
+      connection: conn._id,
+      name: 'PromQL',
+      from: { databaseName: DEFAULT_DATABASE, tableName: TABLE },
+      timestampValueExpression: 'timestamp',
+    });
     const tile = `tile-${Date.now()}`;
 
     await agent
@@ -170,9 +184,7 @@ describe('request query attribution', () => {
       .query({
         query: 'attribution_metric',
         time: '1700003600',
-        connectionId: conn._id.toString(),
-        database: DEFAULT_DATABASE,
-        table: TABLE,
+        sourceId: source._id.toString(),
       })
       .expect(200);
 
@@ -202,6 +214,14 @@ describe('request query attribution', () => {
       username: config.CLICKHOUSE_USER,
       password: config.CLICKHOUSE_PASSWORD,
     });
+    const source = await Source.create({
+      kind: SourceKind.Promql,
+      team: team._id,
+      connection: conn._id,
+      name: 'PromQL',
+      from: { databaseName: DEFAULT_DATABASE, tableName: TABLE },
+      timestampValueExpression: 'timestamp',
+    });
     const tile = `tile-${Date.now()}`;
 
     await agent
@@ -213,9 +233,7 @@ describe('request query attribution', () => {
       .query({
         query: 'attribution_metric',
         time: '1700003600',
-        connectionId: conn._id.toString(),
-        database: DEFAULT_DATABASE,
-        table: TABLE,
+        sourceId: source._id.toString(),
       })
       .expect(200);
 

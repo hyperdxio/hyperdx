@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { parseAsJson, parseAsString, useQueryState } from 'nuqs';
 import { useForm } from 'react-hook-form';
 import { useHotkeys } from 'react-hotkeys-hook';
+import { Badge } from '@clickhouse/click-ui';
 import { SavedChartConfig, SourceKind } from '@hyperdx/common-utils/dist/types';
 import {
   Alert,
@@ -15,7 +16,6 @@ import {
   Divider,
   Group,
   Loader,
-  Pill,
   Skeleton,
   Stack,
   Text,
@@ -29,6 +29,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
+import { useBrandDisplayName, usePageTitle } from '@/brand';
 import { DEFAULT_CHART_CONFIG } from '@/ChartUtils';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import { InputControlled } from '@/components/InputControlled';
@@ -39,7 +40,6 @@ import { useAlertSeededChartConfig } from '@/hooks/useAlertSeededChartConfig';
 import { useResolvedSourceParam } from '@/hooks/useResolvedSourceParam';
 import { withAppNavForSurface } from '@/layout';
 import { useSources } from '@/source';
-import { useBrandDisplayName, usePageTitle } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { useLocalStorage } from '@/utils';
 import { buildInlineAlertPayload } from '@/utils/alerts';
@@ -166,7 +166,7 @@ function AIAssistant({
             <Text size="xxs">AI Assistant [A]</Text>
           </Group>
         </Button>
-        <Pill size="xs">Experimental</Pill>
+        <Badge size="sm" text="Experimental" state="info" />
       </Group>
       <Collapse expanded={opened}>
         {opened && (

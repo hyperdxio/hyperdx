@@ -20,6 +20,7 @@ import {
 } from '@mantine/core';
 import { IconPlayerPlay, IconRefresh } from '@tabler/icons-react';
 
+import { usePageTitle } from '@/brand';
 import EmptyState from '@/components/EmptyState';
 import { TextInputControlled } from '@/components/InputControlled';
 import NetflowCharts from '@/components/NetflowCharts';
@@ -37,7 +38,6 @@ import { useDashboardRefresh } from '@/hooks/useDashboardRefresh';
 import { withAppNavForSurface } from '@/layout';
 import { buildNetflowQueryConfigs } from '@/netflow';
 import { useSources } from '@/source';
-import { usePageTitle } from '@/theme/ThemeProvider';
 import { useDefaultTimeRange, useNewTimeQuery } from '@/timeQuery';
 import { parseAsJsonEncoded } from '@/utils/queryParsers';
 

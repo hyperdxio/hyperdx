@@ -9,6 +9,10 @@ import { DBTimeChart } from '@/components/DBTimeChart';
 import SearchTotalCountChart from '@/components/SearchTotalCountChart';
 
 // Mock the API and hooks
+jest.mock('@/hooks/useResultColumnFilterKeys', () => ({
+  useResultColumnFilterKeys: jest.fn(() => new Map()),
+}));
+
 jest.mock('@/api', () => ({
   __esModule: true,
   default: {

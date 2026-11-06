@@ -14,6 +14,10 @@ import { DBSearchPageAlertModal } from '@/DBSearchPageAlertModal';
 const createAlertMutateAsync = jest.fn().mockResolvedValue({ data: {} });
 const updateAlertMutateAsync = jest.fn().mockResolvedValue({ data: {} });
 const deleteAlertMutateAsync = jest.fn().mockResolvedValue(undefined);
+const createSavedSearchMutateAsync = jest
+  .fn()
+  .mockResolvedValue({ id: 'new-saved-search-id' });
+const routerPush = jest.fn();
 
 // Two alerts so the test can edit the second tab and confirm the PUT targets
 // the right id.
@@ -43,8 +47,8 @@ const savedSearch = {
   select: '',
   source: 'source-id',
   orderBy: '',
-  // One tag over the alert cap (32): the prefill must clamp it or the form
-  // rejects on mount and Create Alert silently does nothing.
+  // One tag over the alert cap (32). The form must not copy a saved search's
+  // tags into the alert, which its own schema would then reject on submit.
   tags: ['prod', 'checkout-service-payment-failures'],
   alerts: [firstAlert, secondAlert],
 };
@@ -78,10 +82,19 @@ jest.mock('@/api', () => ({
   },
 }));
 
+jest.mock('next/router', () => ({
+  __esModule: true,
+  default: { push: (...args: unknown[]) => routerPush(...args) },
+}));
+
 jest.mock('@/savedSearch', () => ({
   __esModule: true,
-  useSavedSearch: () => ({ data: savedSearch, isLoading: false }),
-  useCreateSavedSearch: () => ({ mutateAsync: jest.fn() }),
+  // Mirrors the hook's `enabled` option: no id, no saved search.
+  useSavedSearch: ({ id }: { id: string }) => ({
+    data: id ? savedSearch : undefined,
+    isLoading: false,
+  }),
+  useCreateSavedSearch: () => ({ mutateAsync: createSavedSearchMutateAsync }),
 }));
 
 jest.mock('@/source', () => ({
@@ -89,9 +102,9 @@ jest.mock('@/source', () => ({
   useSource: () => ({ data: undefined }),
 }));
 
-jest.mock('@/theme/ThemeProvider', () => ({
+jest.mock('@/brand', () => ({
   __esModule: true,
-  useBrandDisplayName: () => 'HyperDX',
+  useBrandDisplayName: () => 'ClickStack',
 }));
 
 // Heavy / visual child components are stubbed so the form still renders and
@@ -138,15 +151,31 @@ jest.mock('@/components/SQLEditor/SQLInlineEditor', () => ({
   SQLInlineEditorControlled: () => <div data-testid="sql-inline-editor" />,
 }));
 
-const renderModal = () => {
+const renderModal = (
+  props: Partial<React.ComponentProps<typeof DBSearchPageAlertModal>> = {},
+) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return renderWithMantine(
     <QueryClientProvider client={queryClient}>
-      <DBSearchPageAlertModal id="saved-search-id" open onClose={jest.fn()} />
+      <DBSearchPageAlertModal
+        id="saved-search-id"
+        open
+        onClose={jest.fn()}
+        {...props}
+      />
     </QueryClientProvider>,
   );
+};
+
+const searchedConfig = {
+  source: 'source-id',
+  select: '',
+  where: 'level:error',
+  whereLanguage: 'lucene' as const,
+  orderBy: '',
+  filters: [],
 };
 
 describe('DBSearchPageAlertModal', () => {
@@ -154,19 +183,21 @@ describe('DBSearchPageAlertModal', () => {
     createAlertMutateAsync.mockClear();
     updateAlertMutateAsync.mockClear();
     deleteAlertMutateAsync.mockClear();
+    createSavedSearchMutateAsync.mockClear();
+    routerPush.mockClear();
   });
 
   it('dispatches an update (PUT) with the id resolved from the selected alert tab', async () => {
     renderModal();
 
-    // Modal opens on the "New Alert" tab; select the second existing alert so
+    // Modal opens on the "New alert" tab; select the second existing alert so
     // it renders in edit mode. Using the second (not first) tab confirms the
     // update id is resolved by tab index.
     const alertTab = await screen.findByRole('tab', { name: /Alert 2/ });
     fireEvent.click(alertTab);
 
     const saveButton = await screen.findByRole('button', {
-      name: 'Save Alert',
+      name: 'Save alert',
     });
     fireEvent.click(saveButton);
 
@@ -195,7 +226,7 @@ describe('DBSearchPageAlertModal', () => {
     fireEvent.click(alertTab);
 
     const saveButton = await screen.findByRole('button', {
-      name: 'Save Alert',
+      name: 'Save alert',
     });
     fireEvent.click(saveButton);
 
@@ -210,31 +241,83 @@ describe('DBSearchPageAlertModal', () => {
     ]);
   });
 
-  // A new alert opens prefilled from the saved search it will watch, so the
-  // create payload carries those values rather than relying on the server's
-  // derivation.
-  it('prefills the display name and tags from the saved search, clamped to the alert caps', async () => {
+  // The saved search is already named in the modal's header, so the alert's
+  // own name field stays empty and shows what it inherits. Submitting without
+  // touching it leaves the name and tags for the server to derive.
+  it('leaves a new alert to inherit the name and tags of its saved search', async () => {
     renderModal();
 
-    expect(await screen.findByTestId('alert-display-name-input')).toHaveValue(
-      'My Search',
-    );
+    const nameInput = await screen.findByTestId('alert-display-name-input');
+    expect(nameInput).toHaveValue('');
+    expect(nameInput).toHaveAttribute('placeholder', 'My Search');
 
     fireEvent.change(screen.getByTestId('webhook-id-input'), {
       target: { value: 'webhook-id' },
     });
     fireEvent.click(
-      await screen.findByRole('button', { name: 'Create Alert' }),
+      await screen.findByRole('button', { name: 'Create alert' }),
     );
 
     await waitFor(() => {
       expect(createAlertMutateAsync).toHaveBeenCalledTimes(1);
     });
-    expect(createAlertMutateAsync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        displayName: 'My Search',
-        tags: ['prod', 'checkout-service-payment-failure'],
-      }),
+    const payload = createAlertMutateAsync.mock.calls[0][0];
+    expect(payload.displayName).toBeUndefined();
+    expect(payload.tags).toBeUndefined();
+  });
+
+  // An unsaved search is named once, in the header, and the alert inherits it:
+  // there is no second name field to disambiguate.
+  it('asks for one name when the search has not been saved yet', async () => {
+    renderModal({ id: undefined, searchedConfig });
+
+    expect(await screen.findByTestId('saved-search-name-input')).toHaveValue(
+      '',
     );
+    expect(
+      screen.queryByTestId('alert-display-name-input'),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByTestId('saved-search-name-input'), {
+      target: { value: '  Checkout errors  ' },
+    });
+    fireEvent.change(screen.getByTestId('webhook-id-input'), {
+      target: { value: 'webhook-id' },
+    });
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Save search and alert' }),
+    );
+
+    await waitFor(() => {
+      expect(createSavedSearchMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    expect(createSavedSearchMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Checkout errors', tags: [] }),
+    );
+
+    await waitFor(() => {
+      expect(createAlertMutateAsync).toHaveBeenCalledTimes(1);
+    });
+    const payload = createAlertMutateAsync.mock.calls[0][0];
+    expect(payload.savedSearchId).toBe('new-saved-search-id');
+    expect(payload.displayName).toBeUndefined();
+    expect(payload.tags).toBeUndefined();
+  });
+
+  // The name is validated on the same submit as the alert fields, so an
+  // unnamed search is reported the first time rather than after the rest of
+  // the form is fixed.
+  it('flags an unnamed search on the first submit and saves nothing', async () => {
+    renderModal({ id: undefined, searchedConfig });
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Save search and alert' }),
+    );
+
+    expect(
+      await screen.findByTestId('saved-search-name-error'),
+    ).toBeInTheDocument();
+    expect(createSavedSearchMutateAsync).not.toHaveBeenCalled();
+    expect(createAlertMutateAsync).not.toHaveBeenCalled();
   });
 });

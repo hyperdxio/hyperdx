@@ -8,6 +8,8 @@ import {
 import { MantineProvider } from '@mantine/core';
 import { act, render } from '@testing-library/react';
 
+import type { SessionEventNavigate } from '@/utils/sessionLogEvents';
+
 // In-memory nuqs so the active tab can be seeded and the stack setters
 // inspected. Prefixed with `mock` so jest.mock factories may reference them.
 const mockQueryStore: Record<string, unknown> = {};
@@ -132,10 +134,20 @@ jest.mock('../TraceLogsPanel', () => ({
   },
 }));
 
+const mockSessionPanel: {
+  sessionId?: string;
+  onEventNavigate?: SessionEventNavigate;
+} = {};
 jest.mock('../DBSessionPanel', () => ({
   __esModule: true,
-  useSessionId: () => ({ rumSessionId: undefined, rumServiceName: undefined }),
-  DBSessionPanel: () => null,
+  useSessionId: () => ({
+    rumSessionId: mockSessionPanel.sessionId,
+    rumServiceName: undefined,
+  }),
+  DBSessionPanel: (props: { onEventNavigate?: SessionEventNavigate }) => {
+    mockSessionPanel.onEventNavigate = props.onEventNavigate;
+    return null;
+  },
 }));
 jest.mock('@/utils/highlightedAttributes', () => ({
   __esModule: true,
@@ -324,5 +336,49 @@ describe('DBRowSidePanelInner — trace logs tab', () => {
     clickLogRow('row-2');
 
     expect(setterFor('sidePanelTab')).toHaveBeenCalledWith(Tab.Overview);
+  });
+});
+
+describe('DBRowSidePanelInner — log events from the session replay tab', () => {
+  const LOG_ROW_ID = "Timestamp=parseDateTime64BestEffort('x', 9)";
+  const target = { sourceId: 'log-src', focusTimestamp: TIMESTAMP_VALUE };
+
+  beforeEach(() => {
+    resetQueryState();
+    localStorage.clear();
+    mockUseRowData.mockReset();
+    mockUseRowData.mockReturnValue(rowResult(ROW_WITH_TRACE));
+    mockSessionPanel.sessionId = 'session-1';
+    mockQueryStore.sidePanelTab = Tab.Replay;
+  });
+
+  afterEach(() => {
+    mockSessionPanel.sessionId = undefined;
+  });
+
+  it('pushes a frame on the log source from a span', () => {
+    renderPanel(TRACE_SOURCE_WITH_LOGS);
+
+    act(() => mockSessionPanel.onEventNavigate?.(LOG_ROW_ID, [], target));
+
+    expect(setterFor('sidePanelSourceStack').mock.calls[0][0][0]).toMatchObject(
+      {
+        ...target,
+        rowId: LOG_ROW_ID,
+        aliasWith: [],
+        sourceKind: 'log',
+      },
+    );
+  });
+
+  it('stays in the same source from a log on that source', () => {
+    renderPanel(LOG_SOURCE);
+
+    act(() => mockSessionPanel.onEventNavigate?.(LOG_ROW_ID, [], target));
+
+    expect(setterFor('sidePanelNavStack').mock.calls[0][0][0]).toMatchObject({
+      rowId: LOG_ROW_ID,
+      sourceKind: 'log',
+    });
   });
 });

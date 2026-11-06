@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
 import { ColumnMeta } from '@hyperdx/common-utils/dist/clickhouse';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
+import {
+  errorStatusPredicateSql,
+  serverSpanKindPredicateSql,
+} from '@hyperdx/common-utils/dist/core/spanPredicates';
 import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind, TTraceSource } from '@hyperdx/common-utils/dist/types';
 
@@ -225,8 +229,8 @@ export function getExpressions(
 
   const filterExpressions = {
     isEndpointNonEmpty: `NOT empty(${auxExpressions.endpoint})`,
-    isError: `lower(${fieldExpressions.severityText}) = 'error'`,
-    isSpanKindServer: `${fieldExpressions.spanKind} IN ('Server', 'SPAN_KIND_SERVER')`,
+    isError: errorStatusPredicateSql(fieldExpressions.severityText),
+    isSpanKindServer: serverSpanKindPredicateSql(fieldExpressions.spanKind),
     isDbSpan: `${fieldExpressions.dbStatement} <> ''`,
   };
 

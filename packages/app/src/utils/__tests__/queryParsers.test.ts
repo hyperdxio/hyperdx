@@ -1,6 +1,7 @@
 import {
   dashboardFilterValuesParser,
   parseAsJsonEncoded,
+  parseAsSortingStateString,
   parseAsStringEncoded,
 } from '@/utils/queryParsers';
 
@@ -154,6 +155,131 @@ describe('parseAsJsonEncoded', () => {
       expect(parser.parse('not-json')).toBeNull();
       expect(validate).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('parseAsSortingStateString', () => {
+  describe('parse', () => {
+    it('parses a single column with DESC', () => {
+      expect(parseAsSortingStateString.parse('Timestamp DESC')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('parses a single column with ASC', () => {
+      expect(parseAsSortingStateString.parse('Timestamp ASC')).toEqual({
+        id: 'Timestamp',
+        desc: false,
+      });
+    });
+
+    it('is case-insensitive on the direction', () => {
+      expect(parseAsSortingStateString.parse('Timestamp desc')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('returns null for an empty string', () => {
+      expect(parseAsSortingStateString.parse('')).toBeNull();
+    });
+
+    it('returns null when no explicit direction is present', () => {
+      expect(parseAsSortingStateString.parse('Timestamp')).toBeNull();
+    });
+
+    it('returns null for a multi-column tuple with no direction', () => {
+      expect(
+        parseAsSortingStateString.parse('(TimestampTime, Timestamp)'),
+      ).toBeNull();
+    });
+
+    it('keeps a multi-column tuple with a direction as the id', () => {
+      expect(
+        parseAsSortingStateString.parse('(TimestampTime, Timestamp) DESC'),
+      ).toEqual({ id: '(TimestampTime, Timestamp)', desc: true });
+    });
+
+    it('parses an id that contains spaces', () => {
+      expect(
+        parseAsSortingStateString.parse('round(Duration / 1e6, 2) DESC'),
+      ).toEqual({ id: 'round(Duration / 1e6, 2)', desc: true });
+    });
+
+    it('parses a quoted alias that contains spaces', () => {
+      expect(parseAsSortingStateString.parse('"my alias" ASC')).toEqual({
+        id: '"my alias"',
+        desc: false,
+      });
+    });
+
+    it('tolerates repeated and surrounding whitespace', () => {
+      expect(parseAsSortingStateString.parse('  Timestamp   DESC  ')).toEqual({
+        id: 'Timestamp',
+        desc: true,
+      });
+    });
+
+    it('returns null for whitespace only', () => {
+      expect(parseAsSortingStateString.parse('   ')).toBeNull();
+    });
+
+    it('returns null for a decorated expression like NULLS LAST', () => {
+      expect(parseAsSortingStateString.parse('x DESC NULLS LAST')).toBeNull();
+    });
+  });
+
+  describe('serialize', () => {
+    it('serializes DESC', () => {
+      expect(
+        parseAsSortingStateString.serialize({ id: 'Timestamp', desc: true }),
+      ).toBe('Timestamp DESC');
+    });
+
+    it('serializes ASC', () => {
+      expect(
+        parseAsSortingStateString.serialize({ id: 'Timestamp', desc: false }),
+      ).toBe('Timestamp ASC');
+    });
+
+    it('round-trips a single-column ORDER BY string', () => {
+      const parsed = parseAsSortingStateString.parse('ServiceName ASC');
+      expect(parsed).not.toBeNull();
+      expect(parseAsSortingStateString.serialize(parsed!)).toBe(
+        'ServiceName ASC',
+      );
+    });
+  });
+
+  // Reproduces the ORDER BY data flow on the search page (DBSearchPage.tsx):
+  // the config's raw orderBy string is run through parse to build the table's
+  // sort state (initialSortBy), and a header click is serialized back with the
+  // same "<id> <ASC|DESC>" shape. A null parse means no sort state, which is
+  // the signal for DBSqlRowTable to leave the raw ORDER BY string alone.
+  describe('search page ORDER BY round-trip', () => {
+    // Mirrors DBSearchPage's onSortingChange serialization of a header click.
+    const serializeHeaderSort = (sort: { id: string; desc: boolean }) =>
+      `${sort.id} ${sort.desc ? 'DESC' : 'ASC'}`;
+
+    it.each(['Timestamp', 'round(Duration / 1e6, 2)', '"my alias"'])(
+      'round-trips a header sort on %s through the config string',
+      id => {
+        const orderBy = serializeHeaderSort({ id, desc: true });
+        const sortState = parseAsSortingStateString.parse(orderBy);
+        expect(sortState).toEqual({ id, desc: true });
+        expect(serializeHeaderSort(sortState!)).toBe(orderBy);
+      },
+    );
+
+    it.each(['(TimestampTime, Timestamp)', 'x DESC NULLS LAST'])(
+      'leaves an ORDER BY without a trailing direction (%s) untouched by parsing to null',
+      orderBy => {
+        // null → initialSortBy is empty → DBSqlRowTable keeps the raw string
+        // instead of rebuilding a broken one like "(TimestampTime, ASC".
+        expect(parseAsSortingStateString.parse(orderBy)).toBeNull();
+      },
+    );
   });
 });
 

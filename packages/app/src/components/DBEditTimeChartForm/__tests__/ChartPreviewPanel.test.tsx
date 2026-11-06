@@ -114,6 +114,7 @@ const renderPanel = (
       showSampleEvents={false}
       showGeneratedPromql={false}
       setValue={jest.fn()}
+      setDisplayType={jest.fn()}
       onSubmit={jest.fn()}
       {...overrides}
     />,
@@ -309,6 +310,7 @@ describe('ChartPreviewPanel', () => {
       displayType: DisplayType.Line,
       promqlExpression: EXPRESSION,
       connection: 'default',
+      source: 'source-promql',
       from: { databaseName: 'default', tableName: 'metrics' },
       dateRange,
       ...overrides,

@@ -80,6 +80,33 @@ describe('toFormValues', () => {
       isVariableEnabled: true,
     });
   });
+
+  it('seeds the ad hoc fields from a stored ad hoc filter', () => {
+    const values = toFormValues({
+      id: 'a',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'promql',
+      sources: ['prom'],
+      appliesToSourceIds: ['prom-2'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'conds',
+    });
+
+    expect(values).toMatchObject({
+      type: 'ADHOC',
+      sourceType: 'promql',
+      sources: ['prom'],
+      appliesToSourceIds: ['prom-2'],
+      variableName: 'conds',
+      isBroadcastEnabled: false,
+    });
+  });
+
+  it('defaults a new filter to SQL ad hoc sources', () => {
+    expect(toFormValues()).toMatchObject({ sourceType: 'sql', sources: [] });
+  });
 });
 
 describe('toSavedFilter', () => {
@@ -183,6 +210,59 @@ describe('toSavedFilter', () => {
           label: 'job',
         }),
       ),
+    ).toThrow();
+  });
+
+  it('keeps only the ad hoc fields on an ad hoc filter', () => {
+    const saved = toSavedFilter(
+      formValues({
+        type: 'ADHOC',
+        name: 'Conditions',
+        sourceType: 'sql',
+        sources: ['logs', 'traces'],
+        appliesToSourceIds: ['logs'],
+        // Left behind by the other editors before the type was switched.
+        expression: 'Env',
+        source: 'logs',
+        options: ['prod'],
+        isRequired: true,
+        isSingleSelect: true,
+      }),
+    );
+
+    expect(saved).toEqual({
+      id: 'a',
+      type: 'ADHOC',
+      name: 'Conditions',
+      sourceType: 'sql',
+      sources: ['logs', 'traces'],
+      appliesToSourceIds: ['logs'],
+      isBroadcastEnabled: true,
+      isVariableEnabled: true,
+      variableName: 'Conditions',
+    });
+  });
+
+  it('drops the ad hoc broadcast scope when broadcast is off', () => {
+    const saved = toSavedFilter(
+      formValues({
+        type: 'ADHOC',
+        name: 'Conditions',
+        sources: ['logs'],
+        appliesToSourceIds: ['logs'],
+        isBroadcastEnabled: false,
+      }),
+    );
+
+    expect(saved).toMatchObject({
+      isBroadcastEnabled: false,
+      appliesToSourceIds: undefined,
+    });
+  });
+
+  it('rejects an ad hoc filter without sources', () => {
+    expect(() =>
+      toSavedFilter(formValues({ type: 'ADHOC', name: 'Conditions' })),
     ).toThrow();
   });
 

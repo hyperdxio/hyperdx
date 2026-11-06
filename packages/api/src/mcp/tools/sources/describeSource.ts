@@ -12,8 +12,10 @@ import { z } from 'zod';
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
 import { getSource } from '@/controllers/sources';
-import type { ToolRegistrar, ToolResult } from '@/mcp/tools/types';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
+import type { McpContext, ToolRegistrar, ToolResult } from '@/mcp/tools/types';
 import { mcpServerError, mcpUserError } from '@/mcp/utils/errors';
+import { isHiddenSource } from '@/mcp/utils/promql';
 import {
   MCP_QUERY_MAX_EXECUTION_SEC,
   MCP_TIMEOUT_GRACE_MS,
@@ -24,6 +26,7 @@ import {
 import logger from '@/utils/logger';
 import { trimToolResponse } from '@/utils/trimToolResponse';
 
+import { describePromqlSource } from './describePromqlSource';
 import {
   DISCOVERABLE_METRIC_KINDS,
   QUERYABLE_METRIC_KINDS,
@@ -86,13 +89,14 @@ type DescribeProgress = {
  * `signal` aborts, and the result is flagged partial.
  */
 async function describeSourceSchema(
-  teamId: string,
+  context: McpContext,
   sourceId: string,
   signal: AbortSignal,
   progress: DescribeProgress,
 ): Promise<ToolResult> {
+  const { teamId } = context;
   const source = await getSource(teamId, sourceId);
-  if (!source) {
+  if (!source || isHiddenSource(context, source)) {
     return mcpUserError(
       `Source "${sourceId}" not found. Call clickstack_list_sources to see available source IDs.`,
     );
@@ -111,6 +115,10 @@ async function describeSourceSchema(
 
   if (source.section) {
     meta.section = source.section;
+  }
+
+  if (source.kind === SourceKind.Promql) {
+    return describePromqlSource({ teamId, source, meta, signal, progress });
   }
 
   if (
@@ -145,6 +153,8 @@ async function describeSourceSchema(
       body: source.bodyExpression,
       serviceName: source.serviceNameExpression,
       severityText: source.severityTextExpression,
+      severityNumber: source.severityNumberExpression,
+      eventName: source.eventNameExpression,
       traceId: source.traceIdExpression,
     };
   } else if (source.kind === SourceKind.Netflow) {
@@ -569,7 +579,7 @@ export function registerDescribeSource({
     'clickstack_describe_source',
     {
       title: 'Describe Source Schema',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'CALL THIS BEFORE WRITING QUERIES — prevents unknown-column errors.\n\n' +
         'Returns the full column schema, map-attribute keys, and sampled low-cardinality ' +
@@ -628,8 +638,7 @@ export function registerDescribeSource({
       let outcome: TimeoutOutcome<ToolResult>;
       try {
         outcome = await runWithTimeout(
-          signal =>
-            describeSourceSchema(teamId.toString(), sourceId, signal, progress),
+          signal => describeSourceSchema(context, sourceId, signal, progress),
           { timeoutMs: DESCRIBE_TIMEOUT_MS, graceMs: DESCRIBE_BACKSTOP_MS },
         );
       } catch (e) {

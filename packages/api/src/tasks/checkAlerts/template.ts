@@ -3,7 +3,11 @@ import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getPromqlSeries } from '@hyperdx/common-utils/dist/core/promql';
 import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { buildSearchChartConfig } from '@hyperdx/common-utils/dist/core/searchChartConfig';
-import { formatDate, objectHash } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  formatDate,
+  objectHash,
+  UTC_TIME_ZONE,
+} from '@hyperdx/common-utils/dist/core/utils';
 import {
   isPromqlSavedChartConfig,
   isRawSqlSavedChartConfig,
@@ -261,6 +265,9 @@ export const isAlertResolved = (state?: AlertState): boolean => {
   return state === AlertState.OK;
 };
 
+const stateTitleEmoji = (state?: AlertState): string =>
+  isAlertResolved(state) ? '✅ ' : '🚨 ';
+
 /**
  * Formats the value to match the decimal precision of the threshold.
  * This ensures consistent display of numbers in alert messages.
@@ -338,10 +345,8 @@ export const buildAlertMessageTemplateHdxLink = (
 
 export const buildAlertMessageTemplateTitle = ({
   view,
-  state,
 }: {
   view: AlertMessageTemplateDefaultView;
-  state?: AlertState;
 }) => {
   const { alert, dashboard, savedSearch, value } = view;
   const handlebars = createHandlebarsWithHelpers();
@@ -363,17 +368,14 @@ export const buildAlertMessageTemplateTitle = ({
     dashboard,
   });
 
-  // Add emoji prefix based on alert state
-  const emoji = isAlertResolved(state) ? '✅ ' : '🚨 ';
-
   if (alert.source === AlertSource.SAVED_SEARCH) {
     if (savedSearch == null) {
       throw new Error(`Source is ${alert.source}  but savedSearch is null`);
     }
     // TODO: using template engine to render the title
-    const baseTitle =
-      renderedTemplate ?? `Alert for "${displayName}" - ${value} lines found`;
-    return `${emoji}${baseTitle}`;
+    return (
+      renderedTemplate ?? `Alert for "${displayName}" - ${value} lines found`
+    );
   } else if (alert.source === AlertSource.TILE) {
     if (dashboard == null) {
       throw new Error(`Source is ${alert.source} but dashboard is null`);
@@ -385,27 +387,27 @@ export const buildAlertMessageTemplateTitle = ({
       );
     }
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
-    const baseTitle =
+    return (
       renderedTemplate ??
       `Alert for "${displayName}" - ${formattedValue} ${
         doesExceedThreshold(alert, value)
           ? describeThresholdViolation(alert.thresholdType)
           : describeThresholdResolution(alert.thresholdType)
-      } ${describeThreshold(alert)}`;
-    return `${emoji}${baseTitle}`;
+      } ${describeThreshold(alert)}`
+    );
   } else if (alert.source === AlertSource.INLINE) {
     const formattedValue = formatValueToMatchThreshold(value, alert.threshold);
     // Inline alerts have no saved search/tile to name them; the alert's `name`
     // doubles as the title template, so the default falls back to the resolved
     // display name (itself derived from the chart config's name).
-    const baseTitle =
+    return (
       renderedTemplate ??
       `Alert for "${displayName}" - ${formattedValue} ${
         doesExceedThreshold(alert, value)
           ? describeThresholdViolation(alert.thresholdType)
           : describeThresholdResolution(alert.thresholdType)
-      } ${describeThreshold(alert)}`;
-    return `${emoji}${baseTitle}`;
+      } ${describeThreshold(alert)}`
+    );
   }
 
   throw new Error(`Unsupported alert source: ${alert.source}`);
@@ -617,6 +619,7 @@ export const renderAlertTemplate = async ({
   teamWebhooksById,
   dispatcher = inlineNotificationDispatcher,
   sampleLines,
+  groupValues,
 }: {
   alertProvider: AlertProvider;
   clickhouseClient: ClickhouseClient;
@@ -634,6 +637,8 @@ export const renderAlertTemplate = async ({
    * per group; without one they are fetched here.
    */
   sampleLines?: () => Promise<string>;
+  // Flat, unlike view.attributes, so a dotted column name stays one key.
+  groupValues?: Record<string, string>;
 }): Promise<RenderedAlert> => {
   // Internal mutable view with __hdx_query_results__ populated on the
   // saved-search path. Untrusted values must flow through the view so
@@ -732,7 +737,11 @@ export const renderAlertTemplate = async ({
       populatedChannel: channel,
       message: {
         hdxLink: buildAlertMessageTemplateHdxLink(alertProvider, view),
-        title,
+        // The state emoji is added per channel; a webhook can opt out.
+        title:
+          channel.channel.titleEmoji === false
+            ? title
+            : `${stateTitleEmoji(state)}${title}`,
         body: renderedBody,
         state,
         startTime: view.startTime.getTime(),
@@ -752,12 +761,14 @@ export const renderAlertTemplate = async ({
           : undefined,
         value,
         groupKey: group ?? '',
+        groupValues: groupValues ?? {},
         sourceQuery: truncateString(
           describeSourceQuery(alert, savedSearch, dashboard),
           MAX_SOURCE_QUERY_LENGTH,
         ),
         teamId,
         note: alert.note ?? '',
+        tags: alert.tags ?? [],
       },
     });
     return true;
@@ -877,9 +888,9 @@ export const renderAlertTemplate = async ({
   };
 
   const timeRangeMessage = `Time Range (UTC): [${formatDate(view.startTime, {
-    isUTC: true,
+    timeZone: UTC_TIME_ZONE,
   })} - ${formatDate(view.endTime, {
-    isUTC: true,
+    timeZone: UTC_TIME_ZONE,
   })})`;
   let rawTemplateBody;
 

@@ -54,6 +54,20 @@ describe('FilterConditionEditor', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows an error on the key input when keys fail to load', () => {
+    renderEditor({ isKeysError: true });
+    expect(screen.getByText("Couldn't load suggestions")).toBeInTheDocument();
+  });
+
+  it('shows a value error only once the key settles', async () => {
+    renderEditor({ isValuesError: true });
+    expect(screen.queryByText("Couldn't load suggestions")).toBeNull();
+    await userEvent.type(keyInput(), 'ServiceName');
+    expect(
+      await screen.findByText("Couldn't load suggestions"),
+    ).toBeInTheDocument();
+  });
+
   it('submits free-form text on Enter in the value input', async () => {
     const onSubmit = renderEditor({ isLoadingValues: true });
     // `[[` types a literal `[`.

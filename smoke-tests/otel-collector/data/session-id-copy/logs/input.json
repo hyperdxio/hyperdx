@@ -1,0 +1,118 @@
+{
+  "resourceLogs": [
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "session-id-copy"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "logs"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "old-browser-sdk"
+            }
+          },
+          {
+            "key": "rum.sessionId",
+            "value": {
+              "stringValue": "abc"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999590000000000",
+              "body": {
+                "stringValue": "copied from rum.sessionId"
+              }
+            },
+            {
+              "timeUnixNano": "1901999590000000001",
+              "body": {
+                "stringValue": "own session.id wins"
+              },
+              "attributes": [
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "app1"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1901999590000000002",
+              "body": {
+                "stringValue": "{\"session.id\":\"body1\",\"message\":\"json body session.id wins\"}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "resource": {
+        "attributes": [
+          {
+            "key": "suite-id",
+            "value": {
+              "stringValue": "session-id-copy"
+            }
+          },
+          {
+            "key": "test-id",
+            "value": {
+              "stringValue": "logs"
+            }
+          },
+          {
+            "key": "service.name",
+            "value": {
+              "stringValue": "new-browser-sdk"
+            }
+          }
+        ]
+      },
+      "scopeLogs": [
+        {
+          "scope": {},
+          "logRecords": [
+            {
+              "timeUnixNano": "1901999590000000003",
+              "body": {
+                "stringValue": "new sdk session.id unchanged"
+              },
+              "attributes": [
+                {
+                  "key": "session.id",
+                  "value": {
+                    "stringValue": "xyz"
+                  }
+                }
+              ]
+            },
+            {
+              "timeUnixNano": "1901999590000000004",
+              "body": {
+                "stringValue": "no session"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

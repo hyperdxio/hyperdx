@@ -13,13 +13,13 @@ import { Alert, Anchor, Button, Code, Modal, Stack, Text } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconAlertTriangle } from '@tabler/icons-react';
 
+import { useBrandDisplayName } from '@/brand';
 import { IS_LOCAL_MODE } from '@/config';
 import {
   useMaterializedAliasColumnsOption,
   useSelectAllColumnsQuerySettings,
 } from '@/hooks/useMaterializedAliasColumnsOption';
 import { useTableMetadata } from '@/hooks/useMetadata';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 
 import { TableSourceForm } from './Sources/SourceForm';
 import { SQLPreview } from './ChartSQLPreview';

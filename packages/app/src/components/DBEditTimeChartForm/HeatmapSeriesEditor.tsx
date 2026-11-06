@@ -8,15 +8,7 @@ import {
 } from 'react-hook-form';
 import { tcFromSource } from '@hyperdx/common-utils/dist/core/metadata';
 import { HeatmapMode, TSource } from '@hyperdx/common-utils/dist/types';
-import {
-  Button,
-  Divider,
-  Flex,
-  SegmentedControl,
-  Stack,
-  Text,
-  Tooltip,
-} from '@mantine/core';
+import { Button, Divider, Flex, Stack, Text, Tooltip } from '@mantine/core';
 import { IconHelpCircle } from '@tabler/icons-react';
 
 import { ChartEditorFormState } from '@/components/ChartEditor/types';
@@ -25,6 +17,7 @@ import SearchWhereInput from '@/components/SearchInput/SearchWhereInput';
 import { SQLInlineEditorControlled } from '@/components/SQLEditor/SQLInlineEditor';
 
 import { ChartSeriesEditor } from './ChartSeriesEditor';
+import { HeatmapModeControl } from './HeatmapModeControl';
 
 type HeatmapSeriesEditorProps = {
   control: Control<ChartEditorFormState>;
@@ -70,21 +63,7 @@ export function HeatmapSeriesEditor({
 
   return (
     <Flex direction="column">
-      <SegmentedControl
-        size="xs"
-        w="fit-content"
-        value={mode}
-        onChange={value => {
-          if (value === 'distribution' || value === 'series') {
-            onModeChange(value);
-          }
-        }}
-        data={[
-          { label: 'Distribution', value: 'distribution' },
-          { label: 'Series', value: 'series' },
-        ]}
-        data-testid="heatmap-mode-control"
-      />
+      <HeatmapModeControl mode={mode} onModeChange={onModeChange} />
       {mode === 'series' ? (
         <ChartSeriesEditor
           control={control}

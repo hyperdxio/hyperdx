@@ -8,7 +8,9 @@ import {
   getCurrentQueryAttribution,
   withQueryAttribution,
 } from '@hyperdx/common-utils/dist/clickhouse/node';
+import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import express from 'express';
+import { omit } from 'lodash';
 import { performance } from 'perf_hooks';
 import { Readable } from 'stream';
 import { pipeline } from 'stream/promises';
@@ -16,6 +18,11 @@ import z from 'zod';
 
 import { ClickhouseClient } from '@/clickhouse';
 import { getConnectionById } from '@/controllers/connection';
+import {
+  joinPrometheusUpstreamUrl,
+  takeBasicAuthHeader,
+} from '@/controllers/promql';
+import { getSource } from '@/controllers/sources';
 import {
   connectionSupportsPrometheusHttpApi,
   PROMETHEUS_MAX_EXECUTION_SEC,
@@ -127,6 +134,63 @@ function getParams(req: express.Request): Record<string, string> {
   };
 }
 
+type PromqlTarget = {
+  connection: NonNullable<Awaited<ReturnType<typeof getConnectionById>>>;
+  databaseName: string;
+  tableName: string;
+};
+
+/**
+ * Resolve the PromQL source a request names into the connection and table to
+ * query. The table always comes from the source, never from the request, so a
+ * caller can only reach data through a source.
+ */
+async function resolvePromqlTarget(
+  req: express.Request,
+  sourceId: string | undefined,
+  { selectPassword }: { selectPassword: boolean },
+): Promise<PromqlTarget | { status: 400 | 404; error: string }> {
+  if (!sourceId) {
+    return { status: 400, error: 'missing required parameter: sourceId' };
+  }
+
+  const { teamId } = getNonNullUserWithTeam(req);
+
+  const source = await getSource(teamId.toString(), sourceId);
+
+  if (!source || source.kind !== SourceKind.Promql) {
+    return { status: 404, error: 'Source not found' };
+  }
+
+  const connection = await getConnectionById(
+    teamId.toString(),
+    source.connection.toString(),
+    selectPassword,
+  );
+
+  if (!connection) {
+    return { status: 404, error: 'Connection not found' };
+  }
+
+  return {
+    connection,
+    databaseName: source.from.databaseName,
+    tableName: source.from.tableName,
+  };
+}
+
+/**
+ * Params for an external Prometheus endpoint. `database` and `table` select a
+ * ClickHouse TimeSeries table and mean nothing to a real Prometheus, so they
+ * are dropped rather than forwarded: a host that pins them (a ClickHouse
+ * prometheus_api_v1 endpoint) keeps its own values.
+ */
+function prometheusEndpointParams<T extends Record<string, unknown>>(
+  params: T,
+): Omit<T, 'database' | 'table'> {
+  return omit(params, ['database', 'table']);
+}
+
 // --------------------------
 // Prometheus proxy (for real Prometheus backends)
 // --------------------------
@@ -155,41 +219,6 @@ export function isClientDisconnect(err: unknown): boolean {
     err instanceof Error &&
     (err as NodeJS.ErrnoException).code === 'ERR_STREAM_PREMATURE_CLOSE'
   );
-}
-
-/**
- * Join a Connection host with an absolute Prometheus API path.
- *
- * `new URL('/api/v1/query_range', 'http://host:8481/select/0/prometheus')`
- * discards `/select/0/prometheus` because an absolute path replaces the base
- * pathname. VictoriaMetrics cluster (and any Prometheus-compatible server
- * mounted under a prefix) needs that prefix kept. Host userinfo, query, and
- * hash are left untouched.
- *
- * `path` must be an absolute path (every call site passes a literal starting
- * with `/`) -- this is not a general-purpose URL joiner.
- *
- * @see https://github.com/hyperdxio/hyperdx/issues/3046
- */
-export function joinPrometheusUpstreamUrl(
-  upstreamHost: string,
-  path: string,
-): URL {
-  const url = new URL(upstreamHost);
-  // `new URL('prometheus:9090')` succeeds with an opaque path (`prometheus:`
-  // scheme). The pathname setter is a no-op there, so without this guard the
-  // helper would return the host unchanged, `fetch` would fail, and the proxy
-  // would 502 / increment query_errors for a user misconfiguration. Same check
-  // as clickhouseProxy.ts.
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new TypeError('Connection host must be http(s)');
-  }
-  // Strip ALL trailing slashes, not just one -- a host saved with a doubled
-  // trailing slash (e.g. `http://prom:9090//`) would otherwise leave a `//`
-  // in the joined path, which most servers treat as a distinct (404) path.
-  const basePath = url.pathname.replace(/\/+$/, '');
-  url.pathname = `${basePath}${path}`;
-  return url;
 }
 
 // Only real Prometheus API params are ever caller-settable in
@@ -320,7 +349,10 @@ async function clickhouseServesPrometheusHttpApi(
     );
     url.searchParams.set('query', 'up');
     const resp = await fetch(url, {
-      headers: clickhouseAuthHeaders(connection),
+      headers: {
+        ...takeBasicAuthHeader(url),
+        ...clickhouseAuthHeaders(connection),
+      },
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     return typeof JSON.parse(await resp.text())?.status === 'string';
@@ -398,6 +430,9 @@ async function proxyToPrometheus(
       url.searchParams.set(k, v);
     }
   }
+  // fetch rejects a URL that carries credentials, so `user:pw@` in the host
+  // becomes a Basic auth header instead.
+  const authHeader = takeBasicAuthHeader(url);
   const target = url.toString();
 
   // A connection host may carry basic-auth credentials (`http://user:pw@host`)
@@ -407,14 +442,13 @@ async function proxyToPrometheus(
   // the browser. `url.origin` never includes userinfo (WHATWG URL spec), and
   // dropping the query/hash entirely -- rather than trying to redact only the
   // secret-shaped parts of it -- means there's no query key to ever miss.
-  // `target` itself is unaffected and still carries everything needed to
-  // authenticate.
+  // `target` still carries the query string, and `authHeader` the userinfo.
   const redactedTarget = `${url.origin}${url.pathname}`;
 
   let upstreamResp: Response;
   try {
     upstreamResp = await fetch(target, {
-      headers,
+      headers: { ...authHeader, ...headers },
       signal: AbortSignal.timeout(PROMETHEUS_PROXY_TIMEOUT_MS),
     });
   } catch (err) {
@@ -517,7 +551,6 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
   try {
-    const { teamId } = getNonNullUserWithTeam(req);
     const params = getParams(req);
 
     const query = params.query;
@@ -529,28 +562,19 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const connectionId = params.connectionId;
-    if (!connectionId) {
-      return res.status(400).json({
+    const target = await resolvePromqlTarget(req, params.sourceId, {
+      selectPassword: true,
+    });
+
+    if ('error' in target) {
+      return res.status(target.status).json({
         status: 'error',
         errorType: 'bad_data',
-        error: 'missing required parameter: connectionId',
+        error: target.error,
       });
     }
 
-    // Resolve connection to determine backend (Prometheus or ClickHouse)
-    const connection = await getConnectionById(
-      teamId.toString(),
-      connectionId,
-      true,
-    );
-    if (!connection) {
-      return res.status(404).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: 'Connection not found',
-      });
-    }
+    const { connection, databaseName, tableName } = target;
 
     // If the connection points at a Prometheus-compatible endpoint, proxy
     // directly to connection.host instead of running a ClickHouse query.
@@ -559,7 +583,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       const status = await proxyToPrometheus(
         connection.host,
         '/api/v1/query_range',
-        params,
+        prometheusEndpointParams(params),
         res,
       );
       recordProxyOutcome(status, 'query_range', backend);
@@ -567,14 +591,6 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     }
 
     backend = 'clickhouse';
-    const table = params.table;
-    if (!table) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: `table parameter required for querying clickhouse via promql`,
-      });
-    }
     const start = parseTimestamp(params.start);
     const end = parseTimestamp(params.end);
     const step = parseDuration(params.step ?? '60s');
@@ -596,7 +612,7 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
       const status = await proxyToPrometheus(
         upstream,
         `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query_range`,
-        params,
+        { ...params, database: databaseName, table: tableName },
         res,
         headers,
       );
@@ -607,9 +623,9 @@ const queryRangeHandler: express.RequestHandler = async (req, res) => {
     // fallback for clickhouse version < 26.6
     const result = await queryRangeViaTableFunction({
       client,
-      connectionId,
-      databaseName: params.database ?? 'default',
-      tableName: table,
+      connectionId: connection.id,
+      databaseName,
+      tableName,
       expr: query,
       startMs: Math.floor(start * 1000),
       endMs: Math.floor(end * 1000),
@@ -645,7 +661,6 @@ const queryHandler: express.RequestHandler = async (req, res) => {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
   try {
-    const { teamId } = getNonNullUserWithTeam(req);
     const params = getParams(req);
 
     const query = params.query;
@@ -657,34 +672,24 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const connectionId = params.connectionId;
-    if (!connectionId) {
-      return res.status(400).json({
+    const target = await resolvePromqlTarget(req, params.sourceId, {
+      selectPassword: true,
+    });
+    if ('error' in target) {
+      return res.status(target.status).json({
         status: 'error',
         errorType: 'bad_data',
-        error: 'missing required parameter: connectionId',
+        error: target.error,
       });
     }
-
-    const connection = await getConnectionById(
-      teamId.toString(),
-      connectionId,
-      true,
-    );
-    if (!connection) {
-      return res.status(404).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: 'Connection not found',
-      });
-    }
+    const { connection, databaseName, tableName } = target;
 
     if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
       const status = await proxyToPrometheus(
         connection.host,
         '/api/v1/query',
-        params,
+        prometheusEndpointParams(params),
         res,
       );
       recordProxyOutcome(status, 'query', backend);
@@ -692,15 +697,6 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     }
 
     backend = 'clickhouse';
-    const table = params.table;
-    if (!table) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: `table parameter required for querying clickhouse via promql`,
-      });
-    }
-
     const client = newClickhouseClient(connection);
 
     if (await clickhouseServesPrometheusHttpApi(client, connection)) {
@@ -708,7 +704,7 @@ const queryHandler: express.RequestHandler = async (req, res) => {
       const status = await proxyToPrometheus(
         upstream,
         `${CLICKHOUSE_PROMETHEUS_API_PREFIX}/query`,
-        params,
+        { ...params, database: databaseName, table: tableName },
         res,
         headers,
       );
@@ -719,8 +715,8 @@ const queryHandler: express.RequestHandler = async (req, res) => {
     // fallback for clickhouse version < 26.6
     const result = await queryInstantViaTableFunction({
       client,
-      databaseName: params.database ?? 'default',
-      tableName: table,
+      databaseName,
+      tableName,
       expr: query,
       evalMs: params.time
         ? Math.floor(parseTimestamp(params.time) * 1000)
@@ -791,7 +787,6 @@ const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
   try {
-    const { teamId } = getNonNullUserWithTeam(req);
     const params = getParams(req);
 
     const query = params.query;
@@ -803,25 +798,19 @@ const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
       });
     }
 
-    const connectionId = params.connectionId;
-    if (!connectionId) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: 'missing required parameter: connectionId',
-      });
-    }
-
     // No `selectPassword` — neither branch builds a ClickhouseClient, so there
     // is no reason to pull the connection secret into request scope.
-    const connection = await getConnectionById(teamId.toString(), connectionId);
-    if (!connection) {
-      return res.status(404).json({
+    const target = await resolvePromqlTarget(req, params.sourceId, {
+      selectPassword: false,
+    });
+    if ('error' in target) {
+      return res.status(target.status).json({
         status: 'error',
         errorType: 'bad_data',
-        error: 'Connection not found',
+        error: target.error,
       });
     }
+    const { connection } = target;
 
     if (connection.isPrometheusEndpoint) {
       backend = 'prometheus';
@@ -856,7 +845,7 @@ const queryExemplarsHandler: express.RequestHandler = async (req, res) => {
         connection.host,
         '/api/v1/query_exemplars',
         {
-          ...params,
+          ...prometheusEndpointParams(params),
           start: String(window.start),
           end: String(window.end),
         },
@@ -923,7 +912,7 @@ const prometheusTimestampSchema = z
 
 const labelLookupRequestQuerySchema = z
   .object({
-    connectionId: objectIdSchema,
+    sourceId: objectIdSchema,
     start: prometheusTimestampSchema.optional(),
     end: prometheusTimestampSchema.optional(),
     /**
@@ -933,8 +922,6 @@ const labelLookupRequestQuerySchema = z
      * than forwarded for upstream to reject.
      */
     match: stringListQueryParam.optional(),
-    database: z.string().optional(),
-    table: z.string().optional(),
     limit: z.preprocess(
       v => (v === '' ? undefined : v),
       z.coerce.number().int().nonnegative().optional(),
@@ -992,8 +979,6 @@ async function handleLabelLookup(
   const startedAt = performance.now();
   let backend: PrometheusBackend = 'unknown';
   try {
-    const { teamId } = getNonNullUserWithTeam(req);
-
     const parseResult = labelLookupRequestQuerySchema.safeParse(req.query);
     if (!parseResult.success) {
       return res.status(400).json({
@@ -1003,20 +988,18 @@ async function handleLabelLookup(
       });
     }
 
-    const params = parseResult.data;
-    const { connectionId, start, end, limit, match } = params;
-    const connection = await getConnectionById(
-      teamId.toString(),
-      connectionId,
-      true,
-    );
-    if (!connection) {
-      return res.status(404).json({
+    const { sourceId, start, end, limit, match } = parseResult.data;
+    const target = await resolvePromqlTarget(req, sourceId, {
+      selectPassword: true,
+    });
+    if ('error' in target) {
+      return res.status(target.status).json({
         status: 'error',
         errorType: 'bad_data',
-        error: 'Connection not found',
+        error: target.error,
       });
     }
+    const { connection, databaseName, tableName } = target;
 
     // Proxy to Prometheus if endpoint is set
     if (connection.isPrometheusEndpoint) {
@@ -1043,17 +1026,6 @@ async function handleLabelLookup(
     }
 
     backend = 'clickhouse';
-
-    const database = params.database ?? 'default';
-    const table = params.table;
-    if (!table) {
-      return res.status(400).json({
-        status: 'error',
-        errorType: 'bad_data',
-        error: `table parameter required for querying clickhouse via promql`,
-      });
-    }
-
     const client = newClickhouseClient(connection);
 
     const startMs = start != null ? Math.floor(start * 1000) : undefined;
@@ -1061,8 +1033,8 @@ async function handleLabelLookup(
     const values = await queryClickHouse({
       client,
       connectionId: connection.id,
-      databaseName: database,
-      tableName: table,
+      databaseName,
+      tableName,
       startMs,
       endMs,
       limit,

@@ -75,8 +75,8 @@ jest.mock('@/source', () => ({
 jest.mock('@/layout', () => ({
   withAppNavForSurface: () => (page: unknown) => page,
 }));
-jest.mock('@/theme/ThemeProvider', () => ({
-  ...jest.requireActual('@/theme/ThemeProvider'),
+jest.mock('@/brand', () => ({
+  ...jest.requireActual('@/brand'),
   usePageTitle: () => 'NetFlow',
 }));
 jest.mock('@/netflow', () => ({

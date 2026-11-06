@@ -15,7 +15,11 @@ import { TableComponent } from '../components/TableComponent';
 import { TimePickerComponent } from '../components/TimePickerComponent';
 import { WhereInputComponent } from '../components/WhereInputComponent';
 import { DEFAULT_TRACES_SOURCE_NAME } from '../utils/constants';
-import { borderedBox, dismissSqlAutocomplete } from '../utils/locators';
+import {
+  borderedBox,
+  dismissSqlAutocomplete,
+  replaceEditorText,
+} from '../utils/locators';
 import type { MultilineField } from '../utils/multiline-input';
 
 type SaveSearchModalProps = {
@@ -104,6 +108,11 @@ export class SearchPage {
   }
 
   async selectSource(sourceName: string) {
+    // Clicking the option that is already selected deselects it. Leave an
+    // existing match alone.
+    if ((await this.sourceSelector.inputValue()) === sourceName) {
+      return;
+    }
     await this.sourceSelector.click();
     await this.page
       .getByRole('option', { name: sourceName, exact: true })
@@ -385,6 +394,23 @@ export class SearchPage {
   }
 
   /**
+   * Mark the live document so a later `hasSurvivedReload` can tell a
+   * client-side route change from a full page load, which replaces the
+   * document and with it the marker.
+   */
+  async markDocument() {
+    await this.page.evaluate(() => {
+      document.documentElement.dataset.e2eDocumentMarker = 'true';
+    });
+  }
+
+  async hasSurvivedReload() {
+    return this.page.evaluate(
+      () => document.documentElement.dataset.e2eDocumentMarker === 'true',
+    );
+  }
+
+  /**
    * Open save search modal
    */
   async openSaveSearchModal(options: SaveSearchModalProps = { update: false }) {
@@ -523,6 +549,81 @@ export class SearchPage {
     await this.page.keyboard.type(orderByStatement);
     // CLoses Autocomplete Modal if open
     await this.page.keyboard.press('Escape');
+  }
+
+  get groupByButton() {
+    return this.page.getByTestId('search-group-by-button');
+  }
+
+  get groupByDropdown() {
+    return this.page.getByTestId('search-group-by-dropdown');
+  }
+
+  async openGroupBy() {
+    await this.groupByButton.click();
+    await expect(this.groupByDropdown).toBeVisible();
+  }
+
+  /** Replace the histogram group by with `fields`, picked from the key list. */
+  async setGroupByFields(fields: string[]) {
+    await this.openGroupBy();
+    await this.groupByDropdown.getByRole('button', { name: 'Clear' }).click();
+    for (const field of fields) {
+      await this.groupByDropdown
+        .getByTestId('search-group-by-search')
+        .fill(field);
+      await this.groupByDropdown
+        .getByRole('checkbox', { name: field, exact: true })
+        .check();
+    }
+    await this.applyGroupBy();
+  }
+
+  async openGroupBySqlTab() {
+    await this.groupByDropdown.getByText('SQL', { exact: true }).click();
+  }
+
+  /** Replace the histogram group by with a SQL expression list. */
+  async setGroupBySql(sql: string) {
+    await this.openGroupBy();
+    await this.openGroupBySqlTab();
+    await replaceEditorText(
+      this.page,
+      this.groupByDropdown.locator('.cm-content'),
+      sql,
+    );
+    await dismissSqlAutocomplete(this.page);
+    await this.applyGroupBy();
+  }
+
+  private async applyGroupBy() {
+    await this.groupByDropdown.getByRole('button', { name: 'Apply' }).click();
+    await expect(this.groupByDropdown).toBeHidden();
+  }
+
+  getDroppedGroupByToast(fields: string) {
+    return this.page.getByText(
+      `Group by ${fields} didn't apply to this source`,
+      { exact: false },
+    );
+  }
+
+  getHistogramLegend() {
+    return this.getHistogram().locator('.recharts-legend-wrapper');
+  }
+
+  /** Pin the histogram tooltip and focus its first series. */
+  async focusFirstHistogramSeries() {
+    const focusButton = this.page
+      .locator('[data-testid^="chart-focus-series-"]')
+      .first();
+    // Recharts only pins on a click that lands on a bucket, so the click
+    // itself is part of what gets retried.
+    await expect(async () => {
+      await this.getHistogram().click();
+      await expect(focusButton).toBeVisible({ timeout: 2000 });
+    }).toPass({ timeout: 30000 });
+    await focusButton.click();
   }
 
   /**

@@ -67,6 +67,44 @@ export class TableComponent {
     await this.firstRow.click();
   }
 
+  async clickRowContaining(text: string) {
+    const row = this.getRows().filter({ hasText: text }).first();
+    // The leading cell is the selection checkbox. Its click toggles selection
+    // and does not open the row. The content button does. An open side panel
+    // covers the right side of the table, so aim at the button's left edge.
+    // On a short viewport with the nav expanded that edge is covered too; the
+    // click still has to reach this button, since it is what switches the row.
+    const button = row.getByRole('button', {
+      name: /^(View details for log entry|Expand log row|Collapse log row)$/,
+    });
+    if (await this.isCoveredBySidePanel(button)) {
+      // A pointer click at these coordinates lands on the drawer, which
+      // covers the row. The button is what switches the open row.
+      await button.evaluate(el => {
+        if (el instanceof HTMLElement) {
+          el.click();
+        }
+      });
+      return;
+    }
+    await button.click({ position: { x: 4, y: 8 } });
+  }
+
+  private async isCoveredBySidePanel(target: Locator): Promise<boolean> {
+    const panel = this.page.getByTestId('row-side-panel');
+    if ((await panel.count()) === 0 || !(await panel.isVisible())) {
+      return false;
+    }
+    const [targetBox, panelBox] = await Promise.all([
+      target.boundingBox(),
+      panel.boundingBox(),
+    ]);
+    if (targetBox == null || panelBox == null) {
+      return false;
+    }
+    return panelBox.x <= targetBox.x + 8;
+  }
+
   /**
    * Open a row in the side panel via its hover button. The button only exists
    * once the `expand` row-click preference is set — without it a plain
@@ -259,5 +297,23 @@ export class TableComponent {
    */
   async sortByColumn(columnName: string) {
     await this.getHeader(columnName).click();
+  }
+
+  /**
+   * Get the sortable header button for a column in the row table
+   */
+  getSortButton(columnName: string) {
+    return this.page
+      .getByTestId('raw-log-table-sort-button')
+      .filter({ hasText: new RegExp(`^${columnName}$`) });
+  }
+
+  /**
+   * Get the asc/desc arrow shown on a sorted column's header
+   */
+  getSortIndicator(columnName: string) {
+    return this.getSortButton(columnName).getByTestId(
+      'raw-log-table-sort-indicator',
+    );
   }
 }

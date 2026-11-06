@@ -134,6 +134,17 @@ export const promqlStep = (
   `${promqlStepSeconds(granularity, dateRange, minGranularitySeconds)}s`;
 
 /**
+ * A histogram bucket's `le` label as its upper bound. Prometheus writes the
+ * open-ended bucket as `+Inf`, which `Number` and `parseFloat` don't accept.
+ * NaN for a missing or non-numeric label.
+ */
+export function parsePromqlLe(le: string | undefined): number {
+  if (le === '+Inf') return Infinity;
+  if (le == null || le.trim() === '') return NaN;
+  return Number(le);
+}
+
+/**
  * Prometheus' default scrape interval, which `$__rate_interval` assumes when
  * the PromQL source has no minimum auto granularity set.
  */

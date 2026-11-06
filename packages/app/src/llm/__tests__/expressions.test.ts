@@ -32,7 +32,9 @@ describe('getLLMExpressions', () => {
     expect(expressions.isLLMSpan).toContain(
       "mapContains(SpanAttributes, 'gen_ai.operation.name')",
     );
-    expect(expressions.isError).toBe("lower(StatusCode) = 'error'");
+    expect(expressions.isError).toBe(
+      "lower(StatusCode) IN ('error', 'status_code_error')",
+    );
     expect(expressions.durationInMillis).toBe('Duration/1e6');
     // Provided cost takes precedence in the cost expression.
     expect(expressions.costUsd.startsWith('if((greatest(')).toBe(true);
@@ -274,7 +276,9 @@ describe('getLLMExpressions', () => {
       [],
     );
     expect(expressions.model).toContain("Attrs['gen_ai.response.model']");
-    expect(expressions.isError).toBe("lower(Status) = 'error'");
+    expect(expressions.isError).toBe(
+      "lower(Status) IN ('error', 'status_code_error')",
+    );
     expect(expressions.durationInMillis).toBe('DurationNs/1e6');
   });
 });

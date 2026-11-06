@@ -3,6 +3,8 @@ import {
   ChartVariable,
   DashboardFilter,
   DisplayType,
+  Filter,
+  PromqlConditionFilter,
   PromqlExpressionList,
   SavedChartConfig,
   SourceKind,
@@ -23,6 +25,7 @@ import {
   seriesToFilters,
   tabQueriesData,
   TABS_WITH_GENERATED_SQL,
+  withBroadcastFilters,
 } from '@/components/DBEditTimeChartForm/utils';
 
 // ---------------------------------------------------------------------------
@@ -167,6 +170,7 @@ describe('isQueryReady', () => {
         configType: 'promql',
         promqlExpression: [{ expression: 'up' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeTruthy();
@@ -176,6 +180,7 @@ describe('isQueryReady', () => {
         configType: 'promql',
         promqlExpression: 'up',
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeTruthy();
@@ -187,6 +192,7 @@ describe('isQueryReady', () => {
         configType: 'promql',
         promqlExpression: [{ expression: '' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeFalsy();
@@ -201,6 +207,7 @@ describe('isQueryReady', () => {
         displayType: DisplayType.Number,
         promqlExpression: [{ expression: '' }, { expression: 'up' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeFalsy();
@@ -210,6 +217,7 @@ describe('isQueryReady', () => {
         displayType: DisplayType.Line,
         promqlExpression: [{ expression: '' }, { expression: 'up' }],
         connection: 'local',
+        source: 'source-promql',
         dateRange,
       }),
     ).toBeTruthy();
@@ -227,6 +235,7 @@ describe('buildRenderedPromqlExpression', () => {
   ): ChartConfigWithDateRange => ({
     configType: 'promql',
     connection: 'local',
+    source: 'source-promql',
     displayType: DisplayType.Line,
     promqlExpression: [{ expression: 'up' }],
     dateRange,
@@ -596,6 +605,7 @@ describe('resolvePreviewVariables', () => {
     configType: 'promql',
     promqlExpression: 'up{service=~"$service"}',
     connection: 'local',
+    source: 'source-promql',
     dateRange,
   };
 
@@ -639,11 +649,16 @@ describe('resolveTilePreviewFilters', () => {
     { type: 'sql' as const, condition: "ServiceName IN ('api')" },
   ];
   const variables = [{ name: 'service', values: ['api'] }];
+  const promqlFilter: PromqlConditionFilter = {
+    type: 'promql',
+    condition: 'job="api"',
+  };
 
   const promqlConfig: ChartConfigWithDateRange = {
     configType: 'promql',
     promqlExpression: 'up{service=~"$service"}',
     connection: 'local',
+    source: 'source-promql',
     dateRange,
   };
 
@@ -696,8 +711,30 @@ describe('resolveTilePreviewFilters', () => {
     });
   });
 
-  it('never hands filters to a PromQL tile', () => {
-    expect(resolve({ config: promqlConfig }).filters).toBeUndefined();
+  it('never hands SQL filters to a PromQL tile', () => {
+    expect(resolve({ config: promqlConfig }).filters).toEqual([]);
+  });
+
+  it('hands each tile the filters in its own query language', () => {
+    const filters = [...dashboardFilters, promqlFilter];
+
+    expect(resolve({ config: promqlConfig, filters }).filters).toEqual([
+      promqlFilter,
+    ]);
+    expect(resolve({ filters }).filters).toEqual(dashboardFilters);
+    expect(
+      resolve({ config: rawSqlWithFiltersMacro, filters }).filters,
+    ).toEqual(dashboardFilters);
+  });
+
+  it('drops PromQL filters when turned off', () => {
+    expect(
+      resolve({
+        config: promqlConfig,
+        filters: [promqlFilter],
+        applySelections: false,
+      }).filters,
+    ).toBeUndefined();
   });
 
   it('drops the filters a raw-SQL template would not apply', () => {
@@ -758,6 +795,33 @@ describe('resolveTilePreviewFilters', () => {
         applySelections: false,
       }).missingRequiredFilterNames,
     ).toEqual([]);
+  });
+});
+
+describe('withBroadcastFilters', () => {
+  const sqlFilter: Filter = { type: 'sql', condition: "ServiceName = 'api'" };
+  const promqlFilter: PromqlConditionFilter = {
+    type: 'promql',
+    condition: 'job="api"',
+  };
+  const promqlConfig: ChartConfigWithDateRange = {
+    configType: 'promql',
+    promqlExpression: 'up',
+    connection: 'local',
+    source: 'source-promql',
+    dateRange,
+  };
+
+  it('attaches only PromQL filters to a PromQL config', () => {
+    expect(
+      withBroadcastFilters(promqlConfig, [sqlFilter, promqlFilter]),
+    ).toMatchObject({ filters: [promqlFilter] });
+  });
+
+  it('attaches only SQL and Lucene filters to other configs', () => {
+    expect(
+      withBroadcastFilters(builderConfig, [sqlFilter, promqlFilter]),
+    ).toMatchObject({ filters: [sqlFilter] });
   });
 });
 

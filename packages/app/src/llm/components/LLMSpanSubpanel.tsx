@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { Badge, Group, Stack, Table, Text } from '@mantine/core';
+import { Badge } from '@clickhouse/click-ui';
+import { Group, Stack, Table, Text } from '@mantine/core';
 
 import { IS_LLM_COST_ENABLED } from '@/config';
 import { resolveSpanCostUsd } from '@/llm/lib/cost';
@@ -26,30 +27,16 @@ export function LLMSpanSubpanel({ info }: { info: LLMSpanInfo }) {
   return (
     <Stack gap="sm" data-testid="llm-span-subpanel">
       <Group gap="xs" wrap="wrap">
-        {info.model != null && (
-          <Badge size="sm" variant="light" color="violet" tt="none">
-            {info.model}
-          </Badge>
-        )}
+        {info.model != null && <Badge text={info.model} state="info" />}
         {info.provider != null && (
-          <Badge size="sm" variant="light" color="gray" tt="none">
-            {info.provider}
-          </Badge>
+          <Badge text={info.provider} state="neutral" />
         )}
-        {info.operation != null && (
-          <Badge size="sm" variant="light" color="blue" tt="none">
-            {info.operation}
-          </Badge>
-        )}
+        {info.operation != null && <Badge text={info.operation} />}
         {info.toolName != null && (
-          <Badge size="sm" variant="light" color="orange" tt="none">
-            {info.toolName}
-          </Badge>
+          <Badge text={info.toolName} state="warning" />
         )}
         {info.agentName != null && (
-          <Badge size="sm" variant="light" color="teal" tt="none">
-            {info.agentName}
-          </Badge>
+          <Badge text={info.agentName} state="success" />
         )}
       </Group>
 

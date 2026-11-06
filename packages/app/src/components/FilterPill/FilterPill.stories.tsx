@@ -15,6 +15,7 @@ import {
 import {
   FilterLanguage,
   FilterOperator,
+  getFilterOperatorDisplay,
   getFilterOperators,
 } from './filterOperators';
 import { FilterPill } from './FilterPill';
@@ -149,7 +150,7 @@ function ConditionEditorDemo() {
     language === 'promql' ? MOCK_PROMQL_VALUES : MOCK_SQL_VALUES;
   const values = useMockValues(mockValues, key);
   const operators = getFilterOperators(language);
-  const operator = operators.find(op => op.value === condition.operator);
+  const operator = getFilterOperatorDisplay(language, condition.operator);
 
   return (
     <Stack align="flex-start">
@@ -171,9 +172,9 @@ function ConditionEditorDemo() {
       />
       <FilterPill
         field={condition.key}
-        operator={operator?.label ?? condition.operator}
+        operator={operator.label}
         value={condition.value}
-        isExcluded={operator?.negated}
+        isExcluded={operator.isExcluded}
         onRemove={() => {}}
         renderPopover={close => (
           <FilterConditionEditor

@@ -1,9 +1,10 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { HTTPError } from 'ky';
 import { Controller, SubmitHandler, useForm, useWatch } from 'react-hook-form';
 import { ZodIssue } from 'zod';
 import { json, jsonParseLinter } from '@codemirror/lang-json';
 import { linter } from '@codemirror/lint';
+import { getWebhookTemplateError } from '@hyperdx/common-utils/dist/core/handlebarsEnv';
 import {
   getDefaultWebhookBody,
   WEBHOOK_TEMPLATE_VARIABLES,
@@ -15,6 +16,7 @@ import { isValidSlackUrl } from '@hyperdx/common-utils/dist/validation';
 import {
   Alert,
   Button,
+  Checkbox,
   Code,
   Group,
   Radio,
@@ -23,6 +25,7 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconInfoCircleFilled } from '@tabler/icons-react';
 import ReactCodeMirror, {
@@ -31,7 +34,8 @@ import ReactCodeMirror, {
 } from '@uiw/react-codemirror';
 
 import api from '@/api';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
+import { useBrandDisplayName } from '@/brand';
+import { WebhookBodyValidationAlert } from '@/components/TeamSettings/WebhookBodyValidation';
 import { isValidUrl } from '@/utils';
 
 // The default body and the variable list both come from common-utils, so this
@@ -55,6 +59,7 @@ const describeTemplateVariable = (
   thresholdMax: 'Upper bound of a between/outside range (number)',
   value: 'Value that triggered or resolved the alert (number)',
   groupKey: 'The breaching group, if grouped',
+  var: 'Group-by values by column, e.g. {{var.customer_id}}',
   sourceQuery: 'Search expression or SQL behind the alert',
   startTime: 'Window start, Unix ms (number)',
   endTime: 'Window end, Unix ms (number)',
@@ -62,6 +67,7 @@ const describeTemplateVariable = (
   endTimeISO: 'Window end, ISO-8601',
   teamId: 'Team the alert belongs to',
   note: "Alert's note, commonly a runbook link",
+  tags: "Alert's tags, comma-separated; iterate with {{#each tags}}",
 });
 
 export const getWebhookTemplateVariables = (
@@ -85,6 +91,7 @@ type WebhookForm = {
   url: string;
   service: WebhookService;
   description?: string;
+  titleEmoji: boolean;
   body?: string;
   headers?: string;
 };
@@ -110,6 +117,7 @@ export function WebhookForm({
       name: webhook?.name || '',
       url: webhook?.url || '',
       description: webhook?.description || '',
+      titleEmoji: webhook?.titleEmoji !== false,
       body: webhook?.body || '',
       headers: webhook?.headers ? JSON.stringify(webhook.headers, null, 2) : '',
     },
@@ -123,6 +131,7 @@ export function WebhookForm({
           name: webhook.name,
           url: webhook.url,
           description: webhook.description,
+          titleEmoji: webhook.titleEmoji !== false,
           body: webhook.body,
           headers: webhook.headers
             ? JSON.stringify(webhook.headers, null, 2)
@@ -132,6 +141,19 @@ export function WebhookForm({
       );
     }
   }, [webhook, form]);
+
+  const service = useWatch({ control: form.control, name: 'service' });
+  const bodyText = useWatch({ control: form.control, name: 'body' });
+  // Debounced so the error doesn't flash while a {{ … }} is half-typed.
+  const [debouncedBody] = useDebouncedValue(bodyText, 300);
+  const bodyError = useMemo(
+    // Slack sends a fixed payload and never renders the body.
+    () =>
+      service === WebhookService.Slack
+        ? null
+        : getWebhookTemplateError(debouncedBody),
+    [service, debouncedBody],
+  );
 
   const handleTestWebhook = async (values: WebhookForm) => {
     const { service, url, body, headers } = values;
@@ -197,7 +219,8 @@ export function WebhookForm({
   };
 
   const onSubmit: SubmitHandler<WebhookForm> = async values => {
-    const { service, name, url, description, body, headers } = values;
+    const { service, name, url, description, titleEmoji, body, headers } =
+      values;
 
     try {
       // Parse headers JSON if provided (API will validate the content)
@@ -229,6 +252,7 @@ export function WebhookForm({
         name,
         url,
         description: description || '',
+        titleEmoji,
         body: defaultBody,
         headers: parsedHeaders,
       };
@@ -288,7 +312,6 @@ export function WebhookForm({
     }
   };
 
-  const service = useWatch({ control: form.control, name: 'service' });
   // A body left at the old service's default would still be sent verbatim, and
   // each service's default is invalid to the others' receivers. A hand-edited
   // body is the user's, so it survives the switch.
@@ -363,6 +386,11 @@ export function WebhookForm({
           error={form.formState.errors.description?.message}
           {...form.register('description')}
         />
+        <Checkbox
+          label="Show state emoji in notification titles"
+          data-testid="webhook-title-emoji-checkbox"
+          {...form.register('titleEmoji')}
+        />
         {service === WebhookService.Generic && [
           <label className=".mantine-TextInput-label" key="1">
             Webhook Headers (optional)
@@ -418,6 +446,9 @@ export function WebhookForm({
               )}
             />
           </div>,
+          bodyError && (
+            <WebhookBodyValidationAlert key="4a" error={bodyError} />
+          ),
           <Alert
             icon={<IconInfoCircleFilled size={16} />}
             key="5"

@@ -32,6 +32,13 @@ export class SessionsPage {
     await dataSourceOption.click();
   }
 
+  /** Run a search over the sessions' spans. */
+  async search(query: string) {
+    await this.whereInput.fill(query);
+    await this.whereInput.blur();
+    await this.searchForm.getByRole('button', { name: 'Run' }).click();
+  }
+
   /**
    * Get all session cards
    */

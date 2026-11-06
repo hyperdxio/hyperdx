@@ -2,10 +2,6 @@ assert_test_data() {
     _assert_test_data_on_port "9000" "$@"
 }
 
-assert_test_data_compat() {
-    _assert_test_data_on_port "29000" "$@"
-}
-
 _assert_test_data_on_port() {
     local port=$1
     local testdir=$2

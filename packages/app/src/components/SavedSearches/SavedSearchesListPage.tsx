@@ -24,6 +24,7 @@ import {
   IconTable,
 } from '@tabler/icons-react';
 
+import { usePageTitle } from '@/brand';
 import { AlertStatusIcon } from '@/components/AlertStatusIcon';
 import EmptyState from '@/components/EmptyState';
 import { FavoriteButton } from '@/components/FavoriteButton';
@@ -33,7 +34,6 @@ import { PageHeader } from '@/components/PageHeader';
 import { useFavorites } from '@/favorites';
 import { withAppNav } from '@/layout';
 import { useDeleteSavedSearch, useSavedSearches } from '@/savedSearch';
-import { usePageTitle } from '@/theme/ThemeProvider';
 import { useConfirm } from '@/useConfirm';
 import { groupByTags } from '@/utils/groupByTags';
 

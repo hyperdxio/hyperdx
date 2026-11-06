@@ -8,9 +8,9 @@ import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
 import api from '@/api';
+import { useBrandDisplayName } from '@/brand';
 import EditTimeChartForm from '@/components/DBEditTimeChartForm';
 import EmptyState from '@/components/EmptyState';
-import { useBrandDisplayName } from '@/theme/ThemeProvider';
 import type { AlertsPageItem } from '@/types';
 import { useConfirm } from '@/useConfirm';
 import {

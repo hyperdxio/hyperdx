@@ -65,6 +65,11 @@ export class Drain {
     return total;
   }
 
+  /** Look up a cluster by ID without touching LRU order. */
+  getCluster(id: number): LogCluster | undefined {
+    return this.clusterPeek(id);
+  }
+
   private clusterPeek(id: number): LogCluster | undefined {
     if (this.unlimitedStore) return this.unlimitedStore.get(id);
     return this.limitedStore!.peek(id);

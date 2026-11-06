@@ -17,7 +17,9 @@ import {
   getConnectionsByTeam,
 } from '@/controllers/connection';
 import { getSources } from '@/controllers/sources';
+import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
+import { isHiddenSource, PROMQL_SOURCE_USAGE } from '@/mcp/utils/promql';
 import { runWithTimeout } from '@/mcp/utils/timeout';
 import logger from '@/utils/logger';
 
@@ -206,7 +208,7 @@ export function registerListSources({
     'clickstack_list_sources',
     {
       title: 'List Sources & Connections',
-      annotations: { readOnlyHint: true },
+      annotations: READ_ONLY_TOOL,
       description:
         'List all data sources (logs, metrics, traces) and database connections available to this team. ' +
         'Returns source IDs, names, kinds, and connection IDs as a lightweight catalog. ' +
@@ -236,7 +238,14 @@ export function registerListSources({
         metricTables: Record<string, string>;
       }> = [];
 
-      const sourceSummaries = sources.map(s => {
+      const prometheusEndpointIds = new Set(
+        connections
+          .filter(c => c.isPrometheusEndpoint)
+          .map(c => c._id.toString()),
+      );
+
+      const visibleSources = sources.filter(s => !isHiddenSource(context, s));
+      const sourceSummaries = visibleSources.map(s => {
         const meta: Record<string, unknown> = {
           id: s._id.toString(),
           name: s.name,
@@ -249,10 +258,20 @@ export function registerListSources({
         // be. An unqualified name only resolves in the connection's default
         // database. Metric sources query the tables in metricTables, even
         // when from.tableName is set, so they get the database instead.
-        if (s.kind !== SourceKind.Metric && s.from.tableName) {
-          meta.table = `${quoteIdentifierIfNeeded(s.from.databaseName)}.${quoteIdentifierIfNeeded(s.from.tableName)}`;
-        } else {
-          meta.database = quoteIdentifierIfNeeded(s.from.databaseName);
+        // A PromQL source on a Prometheus endpoint has no ClickHouse table:
+        // its database and table are placeholders, so it gets neither.
+        const onPrometheusEndpoint =
+          s.kind === SourceKind.Promql &&
+          prometheusEndpointIds.has(s.connection.toString());
+        if (s.kind === SourceKind.Promql) {
+          meta.backend = onPrometheusEndpoint ? 'prometheus' : 'clickhouse';
+        }
+        if (!onPrometheusEndpoint) {
+          if (s.kind !== SourceKind.Metric && s.from.tableName) {
+            meta.table = `${quoteIdentifierIfNeeded(s.from.databaseName)}.${quoteIdentifierIfNeeded(s.from.tableName)}`;
+          } else {
+            meta.database = quoteIdentifierIfNeeded(s.from.databaseName);
+          }
         }
 
         if (s.section) {
@@ -284,6 +303,8 @@ export function registerListSources({
             body: s.bodyExpression,
             serviceName: s.serviceNameExpression,
             severityText: s.severityTextExpression,
+            severityNumber: s.severityNumberExpression,
+            eventName: s.eventNameExpression,
             traceId: s.traceIdExpression,
           };
         } else if (s.kind === SourceKind.Metric) {
@@ -338,6 +359,9 @@ export function registerListSources({
                 'quantify impact (request/error counters), and rule resource saturation in or out ' +
                 '(cpu/memory gauges).',
             }
+          : {}),
+        ...(visibleSources.some(s => s.kind === SourceKind.Promql)
+          ? { promqlUsage: PROMQL_SOURCE_USAGE }
           : {}),
         nextStep:
           'Call clickstack_describe_source with a sourceId above to get the full column schema, ' +

@@ -1,6 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { Implementation } from '@modelcontextprotocol/sdk/types.js';
 
-import { CODE_VERSION } from '@/config';
+import { CODE_VERSION, FRONTEND_URL } from '@/config';
 
 import dashboardPrompts from './prompts/dashboards/index';
 import alertsTools from './tools/alerts/index';
@@ -35,16 +36,33 @@ const SERVER_INSTRUCTIONS = [
   'dashboard authoring.',
 ].join('\n');
 
+// Served by the app; omitted when FRONTEND_URL is unset because MCP icon
+// sources must be absolute URLs. String concatenation (not `new URL`) keeps
+// any sub-path the app is mounted under. The HyperDX logo is intentional.
+const SERVER_ICON_URL = FRONTEND_URL
+  ? `${FRONTEND_URL.replace(/\/+$/, '')}/favicons/hyperdx/favicon.svg`
+  : undefined;
+
+const SERVER_INFO: Implementation = {
+  name: 'clickstack',
+  title: 'ClickStack',
+  version: `${CODE_VERSION}-beta`,
+  description:
+    'Query and investigate logs, metrics, traces, and sessions stored in ' +
+    'ClickHouse, and manage ClickStack dashboards, alerts, data sources, ' +
+    'and saved searches.',
+  websiteUrl: 'https://clickhouse.com/docs/use-cases/observability/clickstack',
+  ...(SERVER_ICON_URL && {
+    icons: [
+      { src: SERVER_ICON_URL, mimeType: 'image/svg+xml', sizes: ['any'] },
+    ],
+  }),
+};
+
 export function createServer(context: McpContext) {
-  const server = new McpServer(
-    {
-      name: 'clickstack',
-      version: `${CODE_VERSION}-beta`,
-    },
-    {
-      instructions: SERVER_INSTRUCTIONS,
-    },
-  );
+  const server = new McpServer(SERVER_INFO, {
+    instructions: SERVER_INSTRUCTIONS,
+  });
 
   const registerTool = createRegisterTool(server, context);
   const registrar = { server, context, registerTool };

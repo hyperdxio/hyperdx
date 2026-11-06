@@ -87,6 +87,9 @@ Key, rate-limited to 600 req/min.
   tracing)
 - **Dev/debug**: `yarn dev:mcp` launches the MCP Inspector for interactive
   testing
+- **Response size**: each tool call records the UTF-8 bytes it returns
+  (`mcp.tool.response.size_bytes` span attribute,
+  `hyperdx.mcp.tool.response.size_bytes` histogram)
 
 See `MCP.md` in the repo root for user-facing setup instructions.
 
