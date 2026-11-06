@@ -11,6 +11,7 @@ import { connectDBWithRetry, mongooseConnection } from '@/models';
 import opampApp from '@/opamp/app';
 import { setupTeamDefaults } from '@/setupDefaults';
 import logger from '@/utils/logger';
+import { runOnceAfterAll } from '@/utils/runOnceAfterAll';
 import { verifySessionSecret } from '@/utils/sessionSecret';
 import { verifyTokenEncryption } from '@/utils/tokenEncryption';
 
@@ -72,7 +73,14 @@ export default class Server {
     });
 
     if (this.shouldHandleGracefulShutdown) {
-      [this.appServer, this.opampServer].forEach(server => {
+      const servers = [this.appServer, this.opampServer];
+      // Each server's forceExit calls process.exit() once its own onShutdown
+      // settles, so both wait here: telemetry stops once, after the slower
+      // server has drained, and neither exits before then.
+      const shutdownTelemetryOnce = runOnceAfterAll(servers.length, () =>
+        shutdownTelemetry(),
+      );
+      servers.forEach(server => {
         gracefulShutdown(server, {
           signals: 'SIGINT SIGTERM',
           timeout: 10000, // 10 secs
@@ -91,7 +99,7 @@ export default class Server {
               // forceExit calls process.exit(), which skips the SDK's own
               // exit-time flush. Before init (no key set) this resolves at
               // once.
-              await shutdownTelemetry();
+              await shutdownTelemetryOnce();
             }
           },
         });

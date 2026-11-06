@@ -4778,7 +4778,7 @@ __metadata:
     "@opentelemetry/api": "npm:~1.9.1"
     "@opentelemetry/api-logs": "npm:^0.223.0"
     "@opentelemetry/core": "npm:^2.12.0"
-    "@opentelemetry/exporter-logs-otlp-http": "npm:^0.223.0"
+    "@opentelemetry/otlp-transformer": "npm:^0.223.0"
     "@opentelemetry/resources": "npm:^2.12.0"
     "@opentelemetry/sdk-logs": "npm:^0.223.0"
     "@opentelemetry/sdk-trace-base": "npm:^1.30.1"

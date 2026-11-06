@@ -26,9 +26,12 @@ const STATIC_PATH_SUFFIXES = ['.whl'];
 const MAX_RESOURCE_ATTRIBUTE_LENGTH = 255;
 
 /**
- * Follows the SDK's OTEL_RESOURCE_ATTRIBUTES rules, which drop the whole
- * variable when any entry is malformed, so this server never takes a name
- * from it that the API would not report.
+ * A stricter twin of `parseResourceAttributes` in src/config.ts, which splits
+ * each entry at its first `=` and skips entries without a key. This one
+ * follows the EnvDetector in `@opentelemetry/resources`, which drops the whole
+ * variable when any entry is malformed or longer than 255 characters, so the
+ * Next server picks the same service.name as the SDK and never one the API
+ * would not report.
  */
 function serviceNameFromResourceAttributes(raw: string | undefined) {
   let serviceName: string | undefined;

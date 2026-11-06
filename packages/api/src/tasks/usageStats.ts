@@ -1,8 +1,13 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
-import { ROOT_CONTEXT } from '@opentelemetry/api';
+import { context, ROOT_CONTEXT } from '@opentelemetry/api';
 import { type AnyValueMap, SeverityNumber } from '@opentelemetry/api-logs';
-import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
+import {
+  type ExportResult,
+  ExportResultCode,
+  suppressTracing,
+} from '@opentelemetry/core';
+import { JsonLogsSerializer } from '@opentelemetry/otlp-transformer';
 import {
   defaultResource,
   resourceFromAttributes,
@@ -10,6 +15,8 @@ import {
 import {
   BatchLogRecordProcessor,
   LoggerProvider,
+  type LogRecordExporter,
+  type ReadableLogRecord,
 } from '@opentelemetry/sdk-logs';
 import ms from 'ms';
 import os from 'os';
@@ -22,6 +29,62 @@ import Team from '@/models/team';
 import User from '@/models/user';
 
 const USAGE_STATS_SERVICE_NAME = 'hyperdx-oss-usage-stats';
+const USAGE_STATS_URL = 'https://in-otel.hyperdx.io/v1/logs';
+const USAGE_STATS_API_KEY = '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0'; // hyperdx usage stats service api key
+const USAGE_STATS_TIMEOUT_MS = ms('10s');
+
+async function postUsageStats(
+  logs: ReadableLogRecord[],
+): Promise<ExportResult> {
+  try {
+    const payload = JsonLogsSerializer.serializeRequest(logs);
+    const response = await fetch(USAGE_STATS_URL, {
+      method: 'POST',
+      headers: {
+        authorization: USAGE_STATS_API_KEY,
+        'content-type': 'application/json',
+      },
+      // Copied because fetch's types accept only ArrayBuffer-backed views.
+      body: payload && new Uint8Array(payload),
+      signal: AbortSignal.timeout(USAGE_STATS_TIMEOUT_MS),
+    });
+    // An unread body holds the connection until garbage collection.
+    await response.body?.cancel();
+    if (!response.ok) {
+      return {
+        code: ExportResultCode.FAILED,
+        error: new Error(`Usage stats export failed: HTTP ${response.status}`),
+      };
+    }
+    return { code: ExportResultCode.SUCCESS };
+  } catch (e) {
+    return {
+      code: ExportResultCode.FAILED,
+      error: e instanceof Error ? e : new Error(String(e)),
+    };
+  }
+}
+
+// Not OTLPLogExporter: it merges the OTEL_EXPORTER_OTLP_*HEADERS variables
+// into every request, which would send headers meant for the operator's
+// collector, such as its API keys, to HyperDX.
+class UsageStatsExporter implements LogRecordExporter {
+  export(
+    logs: ReadableLogRecord[],
+    resultCallback: (result: ExportResult) => void,
+  ): void {
+    // The batch processor already suppresses tracing around export(). Doing it
+    // here as well keeps that true if the processor changes, and ROOT_CONTEXT
+    // keeps the caller's span and baggage out of the request.
+    void context
+      .with(suppressTracing(ROOT_CONTEXT), () => postUsageStats(logs))
+      .then(resultCallback);
+  }
+
+  async forceFlush(): Promise<void> {}
+
+  async shutdown(): Promise<void> {}
+}
 
 // A provider of its own, not the global one: usage stats go to HyperDX with
 // their own key and never to the operator's collector. Created on the first
@@ -35,24 +98,7 @@ function getUsageStatsProvider(): LoggerProvider {
         resourceFromAttributes({ 'service.name': USAGE_STATS_SERVICE_NAME }),
       ),
       processors: [
-        new BatchLogRecordProcessor({
-          exporter: new OTLPLogExporter({
-            // An explicit url wins over the OTEL_EXPORTER_OTLP_*ENDPOINT
-            // variables.
-            url: 'https://in-otel.hyperdx.io/v1/logs',
-            // The exporter merges the OTEL_EXPORTER_OTLP_*HEADERS variables
-            // into these, as the old SDK did. Explicit headers are applied
-            // last, so this replaces one authorization entry from them, such
-            // as the self-telemetry key, whatever its case.
-            headers: {
-              authorization: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
-            },
-            // Without agent options the exporter builds its agent from the
-            // OTEL_EXPORTER_OTLP_* certificate variables, which are meant for
-            // the operator's collector.
-            httpAgentOptions: { keepAlive: true },
-          }),
-        }),
+        new BatchLogRecordProcessor({ exporter: new UsageStatsExporter() }),
       ],
     });
   }
