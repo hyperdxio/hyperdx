@@ -3,6 +3,7 @@ import { ClickHouseQueryError } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   ChartConfigWithDateRange,
   PromqlConfigWithDateRange,
+  QuerySettings,
 } from '@hyperdx/common-utils/dist/types';
 import {
   QueryClient,
@@ -75,6 +76,7 @@ import {
   MVOptimizationExplanationResult,
   useMVOptimizationExplanation,
 } from '@/hooks/useMVOptimizationExplanation';
+import { useSource } from '@/source';
 import { queryPromqlChartConfig } from '@/utils/promqlChartQuery';
 
 // Create a mock ChartConfig based on the Zod schema
@@ -109,7 +111,7 @@ describe('useOffsetPaginatedQuery', () => {
   let mockClickhouseClient: any;
   let mockStream: any;
   let mockReader: any;
-  let mockMetadata: { getSetting: jest.Mock };
+  let mockMetadata: { getSetting: jest.Mock; getSettings: jest.Mock };
 
   beforeEach(() => {
     // Reset mocks
@@ -161,8 +163,19 @@ describe('useOffsetPaginatedQuery', () => {
     // Mock metadata with getSetting returning null by default
     mockMetadata = {
       getSetting: jest.fn().mockResolvedValue(null),
+      getSettings: jest.fn().mockResolvedValue(
+        new Map([
+          ['result_overflow_mode', 'throw'],
+          ['max_result_rows', '0'],
+          ['max_result_bytes', '0'],
+        ]),
+      ),
     };
     jest.mocked(useMetadataWithSettings).mockReturnValue(mockMetadata as any);
+    jest.mocked(useSource).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+    } as ReturnType<typeof useSource>);
   });
 
   describe('Time Window Generation', () => {
@@ -394,6 +407,292 @@ describe('useOffsetPaginatedQuery', () => {
   });
 
   describe('Pagination Within Time Windows', () => {
+    it.each(
+      [
+        {
+          name: 'source row cap',
+          server: {
+            max_result_rows: '0',
+            max_result_bytes: '0',
+            result_overflow_mode: 'throw',
+          },
+          source: { max_result_rows: '1', result_overflow_mode: 'break' },
+        },
+        {
+          name: 'source byte cap',
+          server: {
+            max_result_rows: '0',
+            max_result_bytes: '0',
+            result_overflow_mode: 'throw',
+          },
+          source: { max_result_bytes: '1', result_overflow_mode: 'break' },
+        },
+        {
+          name: 'inherited row cap',
+          server: { max_result_rows: '1', result_overflow_mode: 'break' },
+          source: {},
+        },
+        {
+          name: 'inherited byte cap',
+          server: { max_result_bytes: '1', result_overflow_mode: 'break' },
+          source: {},
+        },
+        { name: 'unknown settings', server: {}, source: {} },
+        {
+          name: 'unknown byte cap',
+          server: { max_result_rows: '0', result_overflow_mode: 'break' },
+          source: {},
+        },
+        {
+          name: 'inherited byte cap with source row cap disabled',
+          server: {
+            max_result_rows: '1',
+            max_result_bytes: '1',
+            result_overflow_mode: 'break',
+          },
+          source: { max_result_rows: '0' },
+        },
+      ].flatMap(testCase =>
+        ['Timestamp DESC', 'Timestamp ASC'].map(orderBy => ({
+          ...testCase,
+          orderBy,
+        })),
+      ),
+    )(
+      'keeps offset paging after a short page with $name ($orderBy)',
+      async ({ orderBy, server, source }) => {
+        const config = createMockChartConfig({ orderBy });
+        mockMetadata.getSettings.mockResolvedValue(
+          new Map(Object.entries(server)),
+        );
+        const querySettings: QuerySettings = Object.entries(source).map(
+          ([setting, value]) => ({ setting, value }),
+        );
+        jest.mocked(useSource).mockReturnValue({
+          data: { querySettings },
+          isLoading: false,
+        } as ReturnType<typeof useSource>);
+        for (const messages of [
+          ['first row'],
+          ['second row'],
+          [],
+          ['next window'],
+        ]) {
+          mockReader.read
+            .mockResolvedValueOnce({
+              done: false,
+              value: [
+                { json: () => ['message'] },
+                { json: () => ['String'] },
+                ...messages.map(message => ({ json: () => [message] })),
+              ],
+            })
+            .mockResolvedValueOnce({ done: true });
+        }
+
+        const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+          wrapper,
+        });
+        await waitFor(() => expect(result.current.isLoading).toBe(false));
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+        await waitFor(() => {
+          expect(result.current.data?.data).toEqual([
+            { message: 'first row' },
+            { message: 'second row' },
+          ]);
+        });
+        expect(result.current.data?.window.windowIndex).toBe(0);
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+        await waitFor(() =>
+          expect(mockClickhouseClient.query).toHaveBeenCalledTimes(3),
+        );
+        expect(result.current.hasNextPage).toBe(true);
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+        await waitFor(() =>
+          expect(result.current.data?.window.windowIndex).toBe(1),
+        );
+        expect(result.current.data?.data).toEqual([
+          { message: 'first row' },
+          { message: 'second row' },
+          { message: 'next window' },
+        ]);
+        expect(
+          jest
+            .mocked(renderChartConfig)
+            .mock.calls.map(([config]) =>
+              isBuilderChartConfig(config) ? config.limit : undefined,
+            ),
+        ).toEqual([
+          { limit: 100, offset: 0 },
+          { limit: 100, offset: 1 },
+          { limit: 100, offset: 2 },
+          { limit: 100, offset: 0 },
+        ]);
+        expect(mockMetadata.getSettings).toHaveBeenCalledWith({
+          connectionId: 'foo',
+        });
+        expect(jest.mocked(renderChartConfig).mock.calls[0][2]).toEqual(
+          querySettings,
+        );
+        expect(
+          mockClickhouseClient.query.mock.calls.every(
+            ([query]: [{ clickhouse_settings: object }]) =>
+              Object.keys(query.clickhouse_settings).length === 0,
+          ),
+        ).toBe(true);
+      },
+    );
+
+    it.each([
+      {
+        name: 'uncapped break mode',
+        server: {
+          max_result_rows: '0',
+          max_result_bytes: '0',
+          result_overflow_mode: 'break',
+        },
+        source: {},
+      },
+      {
+        name: 'source caps disabled',
+        server: {
+          max_result_rows: '1',
+          max_result_bytes: '1',
+          result_overflow_mode: 'break',
+        },
+        source: { max_result_rows: '0', max_result_bytes: '0' },
+      },
+      {
+        name: 'source throw mode',
+        server: {
+          max_result_rows: '1',
+          max_result_bytes: '1',
+          result_overflow_mode: 'break',
+        },
+        source: { result_overflow_mode: 'throw' },
+      },
+      {
+        name: 'throw mode with unknown caps',
+        server: { result_overflow_mode: 'throw' },
+        source: {},
+      },
+    ])('finishes a short page with $name', async ({ server, source }) => {
+      const config = createMockChartConfig({ orderBy: 'message DESC' });
+      mockMetadata.getSettings.mockResolvedValue(
+        new Map(Object.entries(server)),
+      );
+      jest.mocked(useSource).mockReturnValue({
+        data: {
+          querySettings: Object.entries(source).map(([setting, value]) => ({
+            setting,
+            value,
+          })),
+        },
+        isLoading: false,
+      } as ReturnType<typeof useSource>);
+      mockReader.read
+        .mockResolvedValueOnce({
+          done: false,
+          value: [
+            { json: () => ['message'] },
+            { json: () => ['String'] },
+            { json: () => ['only row'] },
+          ],
+        })
+        .mockResolvedValueOnce({ done: true });
+      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+        wrapper,
+      });
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.data?.data).toEqual([{ message: 'only row' }]);
+      expect(result.current.hasNextPage).toBe(false);
+      expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['message DESC', 'Timestamp DESC', 'Timestamp ASC'])(
+      'finishes after an empty page when settings are unknown (%s)',
+      async orderBy => {
+        const config = createMockChartConfig({
+          orderBy,
+          dateRange: [
+            new Date('2024-01-01T00:00:00Z'),
+            new Date('2024-01-01T00:05:00Z'),
+          ],
+        });
+        mockMetadata.getSettings.mockResolvedValue(new Map());
+        for (const messages of [['only row'], []]) {
+          mockReader.read
+            .mockResolvedValueOnce({
+              done: false,
+              value: [
+                { json: () => ['message'] },
+                { json: () => ['String'] },
+                ...messages.map(message => ({ json: () => [message] })),
+              ],
+            })
+            .mockResolvedValueOnce({ done: true });
+        }
+        const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+          wrapper,
+        });
+        await waitFor(() => expect(result.current.isLoading).toBe(false));
+        expect(result.current.hasNextPage).toBe(true);
+        await act(async () => {
+          await result.current.fetchNextPage();
+        });
+        await waitFor(() => expect(result.current.hasNextPage).toBe(false));
+        expect(result.current.data?.data).toEqual([{ message: 'only row' }]);
+        expect(
+          jest
+            .mocked(renderChartConfig)
+            .mock.calls.map(([config]) =>
+              isBuilderChartConfig(config) ? config.limit : undefined,
+            ),
+        ).toEqual([
+          { limit: 100, offset: 0 },
+          { limit: 100, offset: 1 },
+        ]);
+      },
+    );
+
+    it.each([
+      { limit: undefined, orderBy: 'message DESC' },
+      { limit: 0, orderBy: 'Timestamp DESC' },
+      { limit: 0, orderBy: 'Timestamp ASC' },
+    ])(
+      'does not offset page with limit $limit when settings are unknown ($orderBy)',
+      async ({ limit, orderBy }) => {
+        const config = createMockChartConfig({
+          orderBy,
+          limit: { limit, offset: 0 },
+        });
+        mockMetadata.getSettings.mockResolvedValue(new Map());
+        mockReader.read
+          .mockResolvedValueOnce({
+            done: false,
+            value: [
+              { json: () => ['message'] },
+              { json: () => ['String'] },
+              ...(limit === 0 ? [] : [{ json: () => ['only row'] }]),
+            ],
+          })
+          .mockResolvedValueOnce({ done: true });
+        const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+          wrapper,
+        });
+        await waitFor(() => expect(result.current.isLoading).toBe(false));
+        expect(result.current.hasNextPage).toBe(false);
+        expect(mockClickhouseClient.query).toHaveBeenCalledTimes(1);
+        expect(mockMetadata.getSettings).not.toHaveBeenCalled();
+      },
+    );
+
     it.each([
       { orderBy: 'Timestamp DESC', limit: 100 },
       { orderBy: 'Timestamp ASC', limit: 100 },

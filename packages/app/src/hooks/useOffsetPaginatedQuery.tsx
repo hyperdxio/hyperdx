@@ -17,6 +17,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
+  parseToNumber,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
@@ -84,6 +85,7 @@ type TQueryFnData = {
   meta: ColumnMetaType[];
   chSql: ChSql;
   window: TimeWindow;
+  canSkipShortPage?: boolean;
 };
 
 type TData = {
@@ -151,10 +153,15 @@ function getNextPageParam(
   const currentWindow = lastPage.window;
 
   const requestedLimit = config.limit?.limit;
+  if (requestedLimit === 0) {
+    return undefined;
+  }
+
   if (
     lastPage.data.length > 0 &&
     requestedLimit != null &&
-    lastPage.data.length >= requestedLimit
+    requestedLimit > 0 &&
+    (lastPage.data.length >= requestedLimit || !lastPage.canSkipShortPage)
   ) {
     // Calculate total results from all pages in current window
     const currentWindowPages = allPages.filter(
@@ -171,7 +178,8 @@ function getNextPageParam(
     };
   }
 
-  // A short page, or a query without LIMIT, has exhausted this window.
+  // Short pages prove exhaustion only when result caps cannot truncate them.
+  // Without LIMIT, the rendered query has no OFFSET, so it cannot page.
   const shouldUseWindowing =
     isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
@@ -263,6 +271,26 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     metadata,
     source?.querySettings,
   );
+
+  let canSkipShortPage = false;
+  if (isBuilderChartConfig(config) && (config.limit?.limit ?? 0) > 0) {
+    const serverSettings = await metadata.getSettings({
+      connectionId: config.connection,
+    });
+    const sourceSettings = new Map(
+      source?.querySettings
+        ?.filter(({ setting, value }) => setting.length && value.length)
+        .map(({ setting, value }) => [setting, value]),
+    );
+    const getSetting = (name: string) =>
+      sourceSettings.get(name) ?? serverSettings.get(name);
+    canSkipShortPage =
+      getSetting('result_overflow_mode') === 'throw' ||
+      ['max_result_rows', 'max_result_bytes'].every(name => {
+        const value = getSetting(name);
+        return value != null && parseToNumber(value) === 0;
+      });
+  }
 
   // Create abort signal from timeout if provided
   const abortController = queryTimeout ? new AbortController() : undefined;
@@ -448,6 +476,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       meta: queryResultMeta,
       chSql: query,
       window: timeWindow,
+      canSkipShortPage,
     };
   }
 
@@ -461,7 +490,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
 
   deleteProgressCache();
 
-  return lastPage;
+  return { ...lastPage, canSkipShortPage };
 };
 
 function flattenPages(pages: TQueryFnData[]) {
