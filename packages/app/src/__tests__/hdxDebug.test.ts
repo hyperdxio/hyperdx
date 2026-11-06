@@ -17,9 +17,8 @@ const baseConfig = {
 function loadHdxDebug(configOverrides: Partial<typeof baseConfig> = {}) {
   jest.resetModules();
   jest.doMock('@/config', () => ({ ...baseConfig, ...configOverrides }));
-  jest.doMock('@hyperdx/browser', () => ({
-    __esModule: true,
-    default: { getSessionId: () => undefined },
+  jest.doMock('@clickhouse/clickstack-browser', () => ({
+    getSessionId: () => null,
   }));
   jest.doMock('@/utils/clipboard', () => ({
     copyTextToClipboard: jest.fn().mockResolvedValue(true),

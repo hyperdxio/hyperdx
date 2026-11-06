@@ -1,4 +1,3 @@
-import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import opentelemetry, {
   Attributes,
   AttributeValue,
@@ -9,6 +8,7 @@ import opentelemetry, {
   SpanKind,
   SpanStatusCode,
 } from '@opentelemetry/api';
+import { getRPCMetadata } from '@opentelemetry/core';
 import { performance } from 'perf_hooks';
 
 import {
@@ -103,16 +103,31 @@ export type BusinessContext = {
 };
 
 /**
- * Attaches incident-remediation context to the whole trace (via the HyperDX
- * SDK) and to the active span. Standardizes the attribute keys so team/user
+ * Sets attributes on the active span and on the request's HTTP server span.
+ * Framework instrumentations make each middleware span the active one, so
+ * setting only the active span would leave the request span without them.
+ * Spans and logs started afterwards (mongo, clickhouse, pino) do not inherit
+ * them: clickstack-node has no trace-wide attribute API, unlike the old SDK's
+ * `setTraceAttributes`.
+ */
+export function setRequestAttributes(attributes: Attributes): void {
+  const activeSpan = opentelemetry.trace.getActiveSpan();
+  activeSpan?.setAttributes(attributes);
+  const requestSpan = getRPCMetadata(opentelemetry.context.active())?.span;
+  if (requestSpan != null && requestSpan !== activeSpan) {
+    requestSpan.setAttributes(attributes);
+  }
+}
+
+/**
+ * Attaches incident-remediation context to the request (see
+ * `setRequestAttributes`). Standardizes the attribute keys so team/user
  * context is consistent across every code path.
  *
  * User attributes follow the OTel `user.*` semantic conventions (currently
  * experimental). Team has no OTel equivalent, so it stays under the `hyperdx.*`
  * namespace. Note these are the server-side API trace attributes and are
- * distinct from the browser-RUM session attributes (`userEmail`, `userName`).
- *
- * NOTE: trace-wide attributes require `HDX_NODE_BETA_MODE=1`.
+ * distinct from the browser-RUM session attributes (`user.email`, `user.name`).
  */
 export function setBusinessContext(context: BusinessContext): void {
   const { teamId, userId, email, ...extra } = context;
@@ -137,8 +152,7 @@ export function setBusinessContext(context: BusinessContext): void {
     return;
   }
 
-  setTraceAttributes(attributes);
-  opentelemetry.trace.getActiveSpan()?.setAttributes(attributes);
+  setRequestAttributes(attributes);
 }
 
 /**

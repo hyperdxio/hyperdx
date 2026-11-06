@@ -25,6 +25,8 @@ module.exports = {
     '^ky$': '<rootDir>/src/__mocks__/ky-universal.ts',
     '^react-markdown$': '<rootDir>/src/__mocks__/react-markdown.tsx',
     '^remark-gfm$': '<rootDir>/src/__mocks__/remark-gfm.ts',
+    '^@clickhouse/clickstack-browser$':
+      '<rootDir>/src/__mocks__/clickstack-browser.ts',
     '^react-syntax-highlighter$':
       '<rootDir>/src/__mocks__/react-syntax-highlighter.tsx',
     // @clickhouse/click-ui depends on ESM-only lodash-es; lodash has the same API.

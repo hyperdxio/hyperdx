@@ -4,18 +4,33 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 API_BUILD_DIR="${SCRIPT_DIR}/../build"
 
-# shellcheck disable=SC2086
-# NODE_REQUIRE_FLAGS is intentionally unquoted for word-splitting into -r <module>
-NODE_REQUIRE_FLAGS="-r @hyperdx/node-opentelemetry/build/src/tracing"
+# Self-instrumentation. Once preloaded, the SDK always starts and defaults to
+# http://localhost:4318, which in the all-in-one image is the user's own
+# collector, so preload it only when an ingestion key or OTLP headers are set.
+# The SDK reads only OTEL_* variables, so HYPERDX_API_KEY becomes the header,
+# appended to other headers as the old SDK did.
+NODE_REQUIRE_FLAGS=""
+if [ -n "$HYPERDX_API_KEY" ] || [ -n "$OTEL_EXPORTER_OTLP_HEADERS" ]; then
+  NODE_REQUIRE_FLAGS="-r @clickhouse/clickstack-node/register"
+  if [ -n "$HYPERDX_API_KEY" ]; then
+    case "$OTEL_EXPORTER_OTLP_HEADERS" in
+      "") export OTEL_EXPORTER_OTLP_HEADERS="authorization=$HYPERDX_API_KEY" ;;
+      *[Aa]uthorization=*) ;;
+      *) export OTEL_EXPORTER_OTLP_HEADERS="$OTEL_EXPORTER_OTLP_HEADERS,authorization=$HYPERDX_API_KEY" ;;
+    esac
+  fi
+fi
 
 command="$1"
 shift 2>/dev/null || true
 
 case "$command" in
   api)
+    # shellcheck disable=SC2086 # unquoted so an empty value adds no argument
     exec node $NODE_REQUIRE_FLAGS "$API_BUILD_DIR/index.js" "$@"
     ;;
   task)
+    # shellcheck disable=SC2086
     exec node $NODE_REQUIRE_FLAGS "$API_BUILD_DIR/tasks/index.js" "$@"
     ;;
   *)

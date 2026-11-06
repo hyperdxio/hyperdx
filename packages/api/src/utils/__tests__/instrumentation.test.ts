@@ -1,4 +1,4 @@
-// Mock OpenTelemetry + the HyperDX SDK before importing the module under test.
+// Mock OpenTelemetry before importing the module under test.
 
 const mockSpan = {
   setAttribute: jest.fn(),
@@ -23,7 +23,8 @@ const mockMeter = {
   createHistogram: jest.fn(() => mockHistogram),
 };
 
-const mockSetTraceAttributes = jest.fn();
+const mockRequestSpan = { setAttributes: jest.fn() };
+let mockRpcMetadata: { span?: typeof mockRequestSpan } | undefined;
 
 jest.mock('@opentelemetry/api', () => ({
   __esModule: true,
@@ -35,14 +36,16 @@ jest.mock('@opentelemetry/api', () => ({
     metrics: {
       getMeter: () => mockMeter,
     },
+    context: {
+      active: () => ({}),
+    },
   },
   SpanStatusCode: { OK: 1, ERROR: 2 },
   SpanKind: { INTERNAL: 0, SERVER: 1, CLIENT: 2, PRODUCER: 3, CONSUMER: 4 },
 }));
 
-jest.mock('@hyperdx/node-opentelemetry', () => ({
-  __esModule: true,
-  setTraceAttributes: (...args: unknown[]) => mockSetTraceAttributes(...args),
+jest.mock('@opentelemetry/core', () => ({
+  getRPCMetadata: () => mockRpcMetadata,
 }));
 
 jest.mock('@/config', () => ({
@@ -70,6 +73,7 @@ import {
 describe('instrumentation', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRpcMetadata = undefined;
   });
 
   describe('withSpan', () => {
@@ -109,7 +113,8 @@ describe('instrumentation', () => {
   });
 
   describe('setBusinessContext', () => {
-    it('maps team/user/email to standardized keys on trace and span', () => {
+    it('maps team/user/email to standardized keys on the active and request spans', () => {
+      mockRpcMetadata = { span: mockRequestSpan };
       setBusinessContext({
         teamId: 'team-1',
         userId: 'user-1',
@@ -121,8 +126,15 @@ describe('instrumentation', () => {
         'user.id': 'user-1',
         'user.email': 'a@b.com',
       };
-      expect(mockSetTraceAttributes).toHaveBeenCalledWith(expected);
       expect(mockSpan.setAttributes).toHaveBeenCalledWith(expected);
+      expect(mockRequestSpan.setAttributes).toHaveBeenCalledWith(expected);
+    });
+
+    it('sets the attributes once when the active span is the request span', () => {
+      mockRpcMetadata = { span: mockSpan as unknown as typeof mockRequestSpan };
+      setBusinessContext({ teamId: 'team-1' });
+
+      expect(mockSpan.setAttributes).toHaveBeenCalledTimes(1);
     });
 
     it('passes through extra attributes and skips nullish values', () => {
@@ -132,7 +144,7 @@ describe('instrumentation', () => {
         'feature_flag.local_app_mode': true,
       });
 
-      expect(mockSetTraceAttributes).toHaveBeenCalledWith({
+      expect(mockSpan.setAttributes).toHaveBeenCalledWith({
         'hyperdx.team.id': 'team-1',
         'feature_flag.local_app_mode': true,
       });
@@ -141,8 +153,8 @@ describe('instrumentation', () => {
     it('is a no-op when there is nothing to set', () => {
       setBusinessContext({});
 
-      expect(mockSetTraceAttributes).not.toHaveBeenCalled();
       expect(mockSpan.setAttributes).not.toHaveBeenCalled();
+      expect(mockRequestSpan.setAttributes).not.toHaveBeenCalled();
     });
   });
 

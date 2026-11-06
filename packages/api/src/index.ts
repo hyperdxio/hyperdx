@@ -1,6 +1,5 @@
-import { getHyperDXMetricReader } from '@hyperdx/node-opentelemetry/build/src/metrics';
+import { flush } from '@clickhouse/clickstack-node';
 import { HostMetrics } from '@opentelemetry/host-metrics';
-import { MeterProvider, MetricReader } from '@opentelemetry/sdk-metrics';
 import { serializeError } from 'serialize-error';
 
 import * as config from '@/config';
@@ -9,13 +8,9 @@ import { isOperationalError } from '@/utils/errors';
 import logger from '@/utils/logger';
 
 if (config.IS_DEV) {
-  // Start collecting host metrics
-  const meterProvider = new MeterProvider({
-    // FIXME: missing selectCardinalityLimit property
-    readers: [getHyperDXMetricReader() as unknown as MetricReader],
-  });
-  const hostMetrics = new HostMetrics({ meterProvider });
-  hostMetrics.start();
+  // No meterProvider: use the global one the SDK preload registered, so host
+  // metrics carry the API's resource (service.name) and exporter settings.
+  new HostMetrics({ name: 'hyperdx-api-host-metrics' }).start();
 }
 
 const server = new Server();
@@ -26,7 +21,9 @@ process.on('uncaughtException', (err: Error) => {
   // FIXME: disable server restart until
   // we make sure all expected exceptions are handled properly
   if (config.IS_DEV && !isOperationalError(err)) {
-    process.exit(1);
+    // This listener takes over the SDK's crash exit, so export the crash
+    // record before exiting. flush() is bounded and never rejects.
+    void flush().finally(() => process.exit(1));
   }
 });
 

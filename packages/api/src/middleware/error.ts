@@ -1,4 +1,3 @@
-import { recordException } from '@hyperdx/node-opentelemetry';
 import { trace } from '@opentelemetry/api';
 import type { NextFunction, Request, Response } from 'express';
 
@@ -94,17 +93,9 @@ export const appErrorHandler = (
       ? 'Invalid JSON payload'
       : 'Something went wrong :(';
 
-  // A client disconnect is expected background noise, not an exception worth
-  // surfacing in error tracking (the auto-instrumented parser span already
-  // recorded it), so we skip recordException for it.
-  if (!clientDisconnect) {
-    void recordException(err, {
-      mechanism: {
-        type: 'generic',
-        handled: userFacingErrorMessage ? true : false,
-      },
-    });
-  }
+  // No recordException here: the Express instrumentation already records an
+  // `exception` event on the span of the handler that threw or called
+  // next(err), so recording it again would count every error twice.
 
   if (!res.headersSent) {
     res.status(statusCode).json({

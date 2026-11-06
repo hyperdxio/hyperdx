@@ -1,9 +1,9 @@
-import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import express from 'express';
 
 import { validateUserAccessKey } from '@/middleware/auth';
+import { setRequestAttributes } from '@/utils/instrumentation';
 import logger from '@/utils/logger';
 import rateLimiter, { rateLimiterKeyGenerator } from '@/utils/rateLimiter';
 
@@ -63,7 +63,7 @@ app.post('/', mcpRateLimiter, validateUserAccessKey, async (req, res) => {
     mcpClient: userAgentClientInfo(req.get('User-Agent')),
   };
 
-  setTraceAttributes({
+  setRequestAttributes({
     'mcp.team.id': context.teamId,
     'mcp.user.id': userId,
   });

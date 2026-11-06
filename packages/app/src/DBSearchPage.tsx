@@ -26,7 +26,6 @@ import {
 import { useForm, useWatch } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import HyperDX from '@hyperdx/browser';
 import {
   ClickHouseQueryError,
   ColumnMeta,
@@ -149,6 +148,7 @@ import {
   usePrevious,
   withMapKeyAlias,
 } from '@/utils';
+import { addAction } from '@/utils/rumActions';
 
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
@@ -1012,7 +1012,7 @@ export function useSearchTelemetry({
   // telemetry.
   useEffect(() => {
     if (completedSearch == null || !completedSearch.emit) return;
-    HyperDX.addAction('search executed', {
+    addAction('search executed', {
       latency_ms: completedSearch.latency_ms,
       source_id: completedSearch.source_id,
     });

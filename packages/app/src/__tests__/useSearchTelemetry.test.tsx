@@ -8,9 +8,8 @@ jest.mock('@/layout', () => ({
 }));
 
 const mockAddAction = jest.fn();
-jest.mock('@hyperdx/browser', () => ({
-  __esModule: true,
-  default: { addAction: (...args: unknown[]) => mockAddAction(...args) },
+jest.mock('@/utils/rumActions', () => ({
+  addAction: (...args: unknown[]) => mockAddAction(...args),
 }));
 
 let mockExplainData: unknown[] | undefined = undefined;

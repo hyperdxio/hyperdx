@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import HyperDX from '@hyperdx/browser';
+import { getSessionId } from '@clickhouse/clickstack-browser';
 
 import {
   APP_VERSION,
@@ -138,7 +138,7 @@ export function setHdxIdentity(next: {
 // so this accessor must tolerate it being absent.
 function safeSessionId(): string | undefined {
   try {
-    return HyperDX.getSessionId();
+    return getSessionId() ?? undefined;
   } catch {
     return undefined;
   }

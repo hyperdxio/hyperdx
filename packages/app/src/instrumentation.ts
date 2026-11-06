@@ -1,9 +1,8 @@
 export async function register() {
-  if (process.env.NEXT_RUNTIME === 'nodejs') {
-    const { init } = await import('@hyperdx/node-opentelemetry');
-    init({
-      apiKey: process.env.HYPERDX_API_KEY,
-      additionalInstrumentations: [], // optional, default: []
-    });
+  // The SDK starts even without a key and defaults to localhost:4318, so gate
+  // it on the key as @hyperdx/node-opentelemetry did.
+  if (process.env.NEXT_RUNTIME === 'nodejs' && process.env.HYPERDX_API_KEY) {
+    const { init } = await import('@clickhouse/clickstack-node');
+    init({ apiKey: process.env.HYPERDX_API_KEY });
   }
 }

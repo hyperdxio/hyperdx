@@ -5,7 +5,7 @@ import Head from 'next/head';
 import { env } from 'next-runtime-env';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
-import HyperDX from '@hyperdx/browser';
+import { init as initRum } from '@clickhouse/clickstack-browser';
 import {
   MutationCache,
   QueryCache,
@@ -136,23 +136,19 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
           const frontendAttrs = parseResourceAttributes(
             env('NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES') ?? '',
           );
-          HyperDX.init({
+          initRum({
             apiKey: _jsonData.apiKey,
-            consoleCapture: true,
+            console: 'debug',
             maskAllInputs: true,
             maskAllText: true,
-            // service.version is applied last so it always reflects the
-            // NEXT_PUBLIC_APP_VERSION and cannot be overridden by
-            // NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES.
-            otelResourceAttributes: {
-              ...frontendAttrs,
-              'service.version': process.env.NEXT_PUBLIC_APP_VERSION,
-            },
-            service: _jsonData.serviceName,
-            // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
-            url: _jsonData.collectorUrl,
-            tracesUrl: _jsonData.collectorTracesUrl,
-            logsUrl: _jsonData.collectorLogsUrl,
+            // serviceVersion wins over the same key in resourceAttributes, so
+            // it always reflects NEXT_PUBLIC_APP_VERSION.
+            resourceAttributes: frontendAttrs,
+            serviceVersion: process.env.NEXT_PUBLIC_APP_VERSION,
+            serviceName: _jsonData.serviceName,
+            endpoint: _jsonData.collectorUrl,
+            tracesEndpoint: _jsonData.collectorTracesUrl,
+            logsEndpoint: _jsonData.collectorLogsUrl,
           });
         } else {
           console.warn('No API key found to enable OTEL exporter');

@@ -58,9 +58,8 @@ jest.mock('@opentelemetry/api', () => ({
   },
 }));
 
-jest.mock('@hyperdx/node-opentelemetry', () => ({
-  __esModule: true,
-  setTraceAttributes: jest.fn(),
+jest.mock('@opentelemetry/core', () => ({
+  getRPCMetadata: () => undefined,
 }));
 
 jest.mock('@/config', () => ({

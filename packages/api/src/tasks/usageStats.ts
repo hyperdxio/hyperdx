@@ -1,9 +1,14 @@
 import { ResponseJSON } from '@hyperdx/common-utils/dist/clickhouse';
 import { MetricsDataType, SourceKind } from '@hyperdx/common-utils/dist/types';
-import * as HyperDX from '@hyperdx/node-opentelemetry';
+import { Logger, SeverityNumber } from '@opentelemetry/api-logs';
+import { OTLPLogExporter } from '@opentelemetry/exporter-logs-otlp-http';
+import { resourceFromAttributes } from '@opentelemetry/resources';
+import {
+  BatchLogRecordProcessor,
+  LoggerProvider,
+} from '@opentelemetry/sdk-logs';
 import ms from 'ms';
 import os from 'os';
-import pino from 'pino';
 
 import { ClickhouseClient } from '@/clickhouse';
 import * as config from '@/config';
@@ -12,28 +17,26 @@ import { Source, SourceDocument } from '@/models/source';
 import Team from '@/models/team';
 import User from '@/models/user';
 
-// Lazily construct the pino logger so the thread-stream worker isn't spawned
-// at module-load time. Importing this file (e.g. via api-app.ts during tests)
-// would otherwise create a worker thread that keeps Jest from exiting cleanly.
-// The logger is only instantiated when usage stats are actually reported,
-// which is gated by USAGE_STATS_ENABLED && !IS_CI in api-app.ts.
-let usageStatsLogger: pino.Logger | null = null;
-function getUsageStatsLogger(): pino.Logger {
+// Usage stats go to HyperDX's own endpoint with its own key, so they get a
+// logger provider of their own instead of the app's pipeline. Built lazily so
+// importing this file (e.g. via api-app.ts in tests) starts no export timer.
+let usageStatsLogger: Logger | null = null;
+function getUsageStatsLogger(): Logger {
   if (!usageStatsLogger) {
-    usageStatsLogger = pino({
-      level: 'info',
-      transport: {
-        targets: [
-          HyperDX.getPinoTransport('info', {
-            headers: {
-              Authorization: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
-            },
-            baseUrl: 'https://in-otel.hyperdx.io/v1/logs',
-            service: 'hyperdx-oss-usage-stats',
-          }),
-        ],
+    const exporter = new OTLPLogExporter({
+      url: 'https://in-otel.hyperdx.io/v1/logs',
+      // Lower-case so it replaces an `authorization` entry the exporter would
+      // otherwise copy from OTEL_EXPORTER_OTLP_HEADERS (the main ingestion key).
+      headers: {
+        authorization: '3f26ffad-14cf-4fb7-9dc9-e64fa0b84ee0', // hyperdx usage stats service api key
       },
     });
+    usageStatsLogger = new LoggerProvider({
+      resource: resourceFromAttributes({
+        'service.name': 'hyperdx-oss-usage-stats',
+      }),
+      processors: [new BatchLogRecordProcessor({ exporter })],
+    }).getLogger('hyperdx-oss-usage-stats');
   }
   return usageStatsLogger;
 }
@@ -143,8 +146,11 @@ async function getUsageStats() {
       getClickhouseTableSize(),
     ]);
     const clusterId = team[0]?._id.toString();
-    getUsageStatsLogger().info(
-      {
+    getUsageStatsLogger().emit({
+      severityNumber: SeverityNumber.INFO,
+      severityText: 'info',
+      body: 'track-hyperdx-oss-usage-stats',
+      attributes: {
         clusterId,
         version: config.CODE_VERSION,
         userCounts,
@@ -174,8 +180,7 @@ async function getUsageStats() {
         },
         timestamp: nowInMs,
       },
-      'track-hyperdx-oss-usage-stats',
-    );
+    });
   } catch {
     // ignore
   }
