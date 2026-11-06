@@ -1,9 +1,17 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import cx from 'classnames';
 import Fuse from 'fuse.js';
 import { Loader, Popover, Textarea, UnstyledButton } from '@mantine/core';
 
 import { EDITOR_INPUT_HEIGHTS } from '@/components/editorInputHeights';
+import EditorMultilineToggle from '@/components/EditorMultilineToggle';
 import type { VariableValidationState } from '@/components/SQLEditor/variableValidation';
 import type { TokenInfo } from '@/hooks/useAutoCompleteOptions';
 import { useQueryHistory } from '@/utils';
@@ -30,6 +38,7 @@ export default function AutocompleteInput({
   onSubmit,
   queryHistoryType,
   allowMultiline = true,
+  floatOnOpen = true,
   'data-testid': dataTestId,
 }: {
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -52,6 +61,12 @@ export default function AutocompleteInput({
   zIndex?: number;
   queryHistoryType?: string;
   allowMultiline?: boolean;
+  /**
+   * Whether an open field floats over the content below. Set false when an
+   * ancestor floats the whole field instead, so its own chrome (the
+   * SearchWhereInput language picker) grows with the field.
+   */
+  floatOnOpen?: boolean;
   'data-testid'?: string;
 }) {
   const suggestionsLimit = 10;
@@ -60,13 +75,17 @@ export default function AutocompleteInput({
 
   const [isSearchInputFocused, _setIsSearchInputFocused] = useState(false);
   const [isInputDropdownOpen, setIsInputDropdownOpen] = useState(false);
-  const setIsSearchInputFocused = useCallback(
-    (state: boolean) => {
-      _setIsSearchInputFocused(state);
-      setIsInputDropdownOpen(state);
-    },
-    [_setIsSearchInputFocused],
-  );
+  const [isExpanded, setIsExpanded] = useState(false);
+  // Focus peeks at the query: the field spills over the content below so the
+  // layout still holds one row. Expanding is deliberate, so it reflows instead,
+  // growing the row and pushing the content down.
+  const isOpen = allowMultiline && (isSearchInputFocused || isExpanded);
+  const isFloating = isOpen && floatOnOpen && !isExpanded;
+
+  const setIsSearchInputFocused = useCallback((state: boolean) => {
+    _setIsSearchInputFocused(state);
+    setIsInputDropdownOpen(state);
+  }, []);
   const [rightSectionWidth, setRightSectionWidth] = useState<number | 'auto'>(
     'auto',
   );
@@ -195,6 +214,11 @@ export default function AutocompleteInput({
     }
   }, [rightAdornment, inputRef]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    if (inputRef.current) inputRef.current.scrollTop = 0;
+  }, [isOpen, inputRef]);
+
   const baseHeight = EDITOR_INPUT_HEIGHTS[size];
 
   return (
@@ -203,6 +227,11 @@ export default function AutocompleteInput({
       style={{ ['--editor-base-height' as string]: `${baseHeight}px` }}
       data-empty={value ? undefined : 'true'}
       data-single-line={allowMultiline ? undefined : 'true'}
+      data-multiline-expanded={allowMultiline ? isOpen : undefined}
+      data-multiline-pinned={allowMultiline ? isExpanded : undefined}
+      data-collapsed={allowMultiline && !isOpen ? 'true' : undefined}
+      data-floating={isFloating ? 'true' : undefined}
+      data-focused={isSearchInputFocused ? 'true' : undefined}
       data-validation-state={validationState}
     >
       <Popover
@@ -230,11 +259,12 @@ export default function AutocompleteInput({
               styles.textarea,
               isSearchInputFocused && styles.focused,
             )}
+            classNames={{ section: styles.section }}
             value={value}
             size={size}
             autosize
             minRows={1}
-            maxRows={allowMultiline ? maxVisibleRows : 1}
+            maxRows={isOpen ? maxVisibleRows : 1}
             data-testid={dataTestId}
             onChange={e => onChange(e.target.value)}
             onFocus={() => {
@@ -320,9 +350,15 @@ export default function AutocompleteInput({
             }}
             rightSectionWidth={rightSectionWidth}
             rightSection={
-              rightAdornment != null ? (
+              allowMultiline || rightAdornment != null ? (
                 <div ref={ref} className={styles.rightSection}>
                   {rightAdornment}
+                  {allowMultiline && (
+                    <EditorMultilineToggle
+                      expanded={isExpanded}
+                      onToggle={() => setIsExpanded(expanded => !expanded)}
+                    />
+                  )}
                 </div>
               ) : undefined
             }

@@ -3,9 +3,41 @@
 
   flex: 1 1 0%;
   min-width: 0;
+  min-height: var(--editor-base-height);
+}
+
+.bar {
   display: flex;
   flex-direction: row;
   align-items: stretch;
+}
+
+/* Focus peeks at the query: the root holds one row and the taller bar spills
+   over the content below, so nothing reflows while you dip into a long query.
+   Expanding is deliberate and reflows instead, growing this box and pushing the
+   content down, so the matched state here excludes it. The bar stays in flow
+   either way — floating it collapses its width in shrink-to-fit ancestors. The
+   whole bar grows, not just the editor, so the language picker grows with the
+   query the way the SQL label does. */
+.root:has(
+    .inputWrapper
+      [data-multiline-expanded='true'][data-multiline-pinned='false']
+  ) {
+  /* `max-height` is what pins it: as a flex item `flex-basis: 0%` replaces
+     `height`, which then resolves to the content size. */
+  height: var(--editor-base-height);
+  max-height: var(--editor-base-height);
+
+  .bar {
+    position: relative;
+    z-index: var(--mantine-z-index-popover);
+  }
+
+  /* Raised only while it spills over something. */
+  &:has(.inputWrapper :focus) .bar {
+    box-shadow: 0 4px 16px rgb(0 0 0 / 15%);
+    border-radius: var(--mantine-radius-default);
+  }
 }
 
 .inputWrapper {
@@ -45,6 +77,7 @@
   border-right: none;
   border-radius: var(--mantine-radius-default) 0 0 var(--mantine-radius-default);
   background-color: var(--color-bg-field-addon);
+  color: var(--color-text-secondary);
   min-height: var(--editor-base-height);
 }
 
