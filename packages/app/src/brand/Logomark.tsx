@@ -1,18 +1,30 @@
-// The hexagon is taller than it is wide. `size` is the height, and the
-// width follows the viewBox so the box hugs the symbol.
-const MARK_WIDTH_RATIO = 38.7979 / 44.7998;
+const VIEWBOX_WIDTH = 38.7979;
+const VIEWBOX_HEIGHT = 44.7998;
 
 /**
  * ClickStack mark from the hexagon-and-bolt symbol.
  * The bolt uses the page background so it stays two-tone: white on the dark
  * surface, dark on the light one.
+ *
+ * `size` is the box height. The default box is square, which is what the
+ * collapsed rail and the other callers size against. `fit="symbol"` hugs the
+ * hexagon, which is taller than it is wide, and is what the wordmark uses.
  */
-export default function Logomark({ size = 16 }: { size?: number }) {
+export default function Logomark({
+  size = 16,
+  fit = 'square',
+}: {
+  size?: number;
+  fit?: 'square' | 'symbol';
+}) {
+  const width =
+    fit === 'symbol' ? size * (VIEWBOX_WIDTH / VIEWBOX_HEIGHT) : size;
+
   return (
     <svg
-      width={size * MARK_WIDTH_RATIO}
+      width={width}
       height={size}
-      viewBox="0 0 38.7979 44.7998"
+      viewBox={`0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}`}
       fill="none"
       aria-hidden
     >
