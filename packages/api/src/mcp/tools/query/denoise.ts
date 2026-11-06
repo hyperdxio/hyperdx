@@ -1,6 +1,7 @@
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { getFirstTimestampValueExpression } from '@hyperdx/common-utils/dist/core/utils';
 import {
+  createPatternMasker,
   DENOISE_NOISE_THRESHOLD,
   DENOISE_SAMPLE_SIZE,
   flattenBody,
@@ -270,8 +271,10 @@ export function buildNoisyBodyMatcher(
       noisy: noisyTemplates.has(template),
     };
   });
+  // Templates hold masks (<DATE>, <*>); mask the body the same way to compare.
+  const masker = createPatternMasker();
   return body => {
-    const tokens = tokenize(flattenBody(body));
+    const tokens = tokenize(masker.mask(flattenBody(body)));
     let best: (typeof candidates)[number] | undefined;
     for (const c of candidates) {
       const fits =

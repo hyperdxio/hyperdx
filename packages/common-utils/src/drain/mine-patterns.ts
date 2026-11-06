@@ -6,6 +6,7 @@ import {
 } from '@/core/utils';
 
 import { TemplateMinerConfig } from './config';
+import { LogMasker } from './masking';
 import { TemplateMiner } from './template-miner';
 
 // ─── Denoise constants ───────────────────────────────────────────────────────
@@ -16,6 +17,14 @@ export const DENOISE_SAMPLE_SIZE = 10_000;
 
 /** Patterns matching more than this fraction of sampled events are "noisy". */
 export const DENOISE_NOISE_THRESHOLD = 0.1;
+
+/**
+ * Masks text the way minePatterns does before Drain, so raw text can be
+ * compared token by token with a mined template.
+ */
+export function createPatternMasker(): LogMasker {
+  return LogMasker.fromConfig(new TemplateMinerConfig());
+}
 
 // ─── Body normalization ──────────────────────────────────────────────────────
 

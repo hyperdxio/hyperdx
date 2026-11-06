@@ -1,5 +1,5 @@
 export type { MaskingInstructionConfig } from './config';
-export { TemplateMinerConfig } from './config';
+export { DATE_MASK, TemplateMinerConfig } from './config';
 export { Drain } from './drain';
 export { LogCluster } from './log-cluster';
 export { LruCache } from './lru-cache';
@@ -11,6 +11,7 @@ export type {
   TrendBucket,
 } from './mine-patterns';
 export {
+  createPatternMasker,
   DENOISE_NOISE_THRESHOLD,
   DENOISE_SAMPLE_SIZE,
   flattenBody,

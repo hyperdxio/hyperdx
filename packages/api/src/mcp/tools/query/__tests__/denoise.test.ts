@@ -98,6 +98,35 @@ describe('buildNoisyBodyMatcher', () => {
     expect(isNoisy('something unseen')).toBe(false);
   });
 
+  it('removes dated and id-bearing members of noisy clusters mined with the default masks', () => {
+    const noisy = Array.from(
+      { length: 40 },
+      (_, i) =>
+        `2026-11-0${3 + (i % 2)} 06:12:${String(i % 60).padStart(2, '0')},345 INFO heartbeat trace_id=4bf92f3577b34da6a3ce929d0e0e47${String(i).padStart(2, '0')} ok`,
+    );
+    const rare = '2026-11-04 06:13:00,001 ERROR payment failed for order 42';
+    const { patterns } = minePatterns(
+      [...noisy, rare].map(body => ({ body })),
+      {
+        totalCount: noisy.length + 1,
+        startDate: new Date(0),
+        endDate: new Date(1000),
+        trendBuckets: 0,
+        maxSamples: noisy.length + 1,
+        getBody: r => r.body,
+        getTimestamp: () => 0,
+      },
+    );
+    const heartbeat = patterns.find(p => p.pattern.includes('heartbeat'));
+    expect(heartbeat?.pattern).toContain('<DATE>');
+    const isNoisy = buildNoisyBodyMatcher(
+      patterns.map(p => p.pattern),
+      new Set([heartbeat!.pattern]),
+    );
+    for (const body of noisy) expect(isNoisy(body)).toBe(true);
+    expect(isNoisy(rare)).toBe(false);
+  });
+
   it('prefers the noisy template on a tie', () => {
     const isNoisy = buildNoisyBodyMatcher(
       ['a <*> c', 'a b <*>'],

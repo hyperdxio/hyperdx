@@ -1,6 +1,7 @@
 import type { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { renderWhereExpressionStr } from '@hyperdx/common-utils/dist/core/renderChartConfig';
 import { escapeSqlString } from '@hyperdx/common-utils/dist/core/utils';
+import { DATE_MASK } from '@hyperdx/common-utils/dist/drain';
 import type {
   ChartVariable,
   UseTextIndex,
@@ -8,6 +9,9 @@ import type {
 import { substituteVariables } from '@hyperdx/common-utils/dist/variables';
 
 const PATTERN_WILDCARD = '<*>';
+// The date mask applied before mining (common-utils drain/config.ts). Unlike
+// <*>, it can also be part of a token.
+const DATE_TOKEN = `<${DATE_MASK}>`;
 
 /**
  * Templates longer than this get no predicate: the regex (and the SQL that
@@ -19,7 +23,9 @@ export const MAX_PREDICATE_TEMPLATE_LENGTH = 4000;
 export const PATTERN_MATCH_SEMANTICS =
   'whereSnippet matches values with the same whitespace-separated token count as the ' +
   'template, the same literal tokens (case-sensitive) in the same positions, and exactly ' +
-  'one non-whitespace token at each <*>. Every sampled member of the cluster matches. ' +
+  `one non-whitespace token at each <*>, and one or more non-whitespace characters at each ${DATE_TOKEN} ` +
+  `(also inside a token, e.g. backup_${DATE_TOKEN}.tar). ` +
+  'Every sampled member of the cluster matches. ' +
   'It can also match unsampled events whose shape fits, including ones Drain would have ' +
   'put in a more specific cluster, so the drill-down is a superset of cluster membership.';
 
@@ -39,7 +45,13 @@ function escapeRe2Literal(token: string): string {
 export function templateToRegex(template: string): string {
   const tokens = template.split(/\s+/).filter(t => t.length > 0);
   const body = tokens
-    .map(t => (t === PATTERN_WILDCARD ? `${NON_WS}+` : escapeRe2Literal(t)))
+    // <DATE> is one or more non-whitespace characters, as a whole token or
+    // inside one (`backup_<DATE>.tar`).
+    .map(t =>
+      t === PATTERN_WILDCARD
+        ? `${NON_WS}+`
+        : t.split(DATE_TOKEN).map(escapeRe2Literal).join(`${NON_WS}+`),
+    )
     .join(`${WS}+`);
   return `^${WS}*${body}${WS}*$`;
 }

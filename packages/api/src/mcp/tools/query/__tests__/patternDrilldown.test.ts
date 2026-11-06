@@ -97,6 +97,23 @@ describe('templateToRegex', () => {
     expect(matches('id <*> ok', 'id 日本 語 ok')).toBe(false);
   });
 
+  it('a masked date is one word, also inside a token', () => {
+    expect(
+      matches('wrote backup_<DATE>.tar', 'wrote backup_2026-11-04.tar'),
+    ).toBe(true);
+    expect(matches('wrote backup_<DATE>.tar', 'wrote backup_.tar')).toBe(false);
+    expect(
+      matches('wrote backup_<DATE>.tar', 'wrote backup_2026-11-04.tar.gz'),
+    ).toBe(false);
+    expect(
+      matches('I<DATE> <*> sync done', 'I1104 06:12:12.345678 sync done'),
+    ).toBe(true);
+    expect(
+      matches('<DATE> <*> INFO x', '2026-11-04\n06:12:12,345 INFO x'),
+    ).toBe(true);
+    expect(matches('<DATE> <*> INFO x', '2026-11-04 INFO x')).toBe(false);
+  });
+
   it('turns an empty template into a whitespace-only match', () => {
     expect(matches('', '')).toBe(true);
     expect(matches('', '  \n')).toBe(true);
@@ -143,6 +160,73 @@ describe('templateToRegex', () => {
           throw new Error(`"${p.pattern}" unexpectedly matched "${o}"`);
         }
       }
+    }
+  });
+  it('matches the samples of patterns mined from dated lines with the default masks', () => {
+    const messages = [
+      ...[1, 2, 3].map(
+        n =>
+          `2026-11-0${n} 06:12:1${n},345 INFO [main] c.e.Job - Sync ok for 10${n}`,
+      ),
+      ...[4, 5].map(n => `[0${n}/Nov/2026:06:12:12 +0000] "GET /health" 200`),
+      ...[
+        '4bf92f3577b34da6a3ce929d0e0e4736',
+        '00f067aa0ba902b7a3ce929d0e0e4736',
+      ].map(id => `exported span trace_id=${id} status=ok`),
+      ...[3, 4].map(n => `Nov  ${n} 06:12:12 host sshd[42]: session opened`),
+    ];
+    const { patterns } = minePatterns(
+      messages.map(body => ({ body })),
+      {
+        totalCount: messages.length,
+        startDate: new Date(0),
+        endDate: new Date(1000),
+        trendBuckets: 0,
+        maxSamples: messages.length,
+        getBody: r => r.body,
+        getTimestamp: () => 0,
+      },
+    );
+    expect(patterns).toHaveLength(4);
+    for (const p of patterns) {
+      const re = toJsRegex(templateToRegex(p.pattern));
+      for (const s of p.samples) expect(re.test(s.body)).toBe(true);
+      for (const o of patterns.filter(o => o !== p).flatMap(o => o.samples)) {
+        expect(re.test(o.body)).toBe(false);
+      }
+    }
+  });
+});
+
+describe('templateToRegex with mined templates', () => {
+  it('matches every sample when a masked timestamp and a word share a position', () => {
+    const messages = [
+      'Started job at 2026-11-04 06:12:12',
+      'Started job at boot',
+      'Started job at shutdown',
+      'Started job at 2026-11-04T06:12:13Z',
+    ];
+    const { patterns } = minePatterns(
+      messages.map(body => ({ body })),
+      {
+        totalCount: messages.length,
+        startDate: new Date(0),
+        endDate: new Date(1000),
+        trendBuckets: 0,
+        maxSamples: messages.length,
+        getBody: r => r.body,
+        getTimestamp: () => 0,
+      },
+    );
+    // The space-separated timestamp is two words, so it can't share a cluster
+    // with the one-word lines; the one-word timestamp can, as <*>.
+    expect(patterns.map(p => p.pattern).sort()).toEqual([
+      'Started job at <*>',
+      'Started job at <DATE> 06:12:12',
+    ]);
+    for (const p of patterns) {
+      const re = toJsRegex(templateToRegex(p.pattern));
+      for (const sample of p.samples) expect(re.test(sample.body)).toBe(true);
     }
   });
 });
