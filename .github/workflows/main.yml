@@ -65,6 +65,8 @@ jobs:
         run:
           node --test
           .github/scripts/code-review/__tests__/review-comments.test.mjs
+      - name: Kodiak run approval tests
+        run: node --test .github/scripts/__tests__/kodiak-run-approval.test.js
       - name: Escape-hatch ratchet
         run: node scripts/ci/ratchet.mjs
       # Also unconditional: the api's own `ci:lint` regenerates the spec but

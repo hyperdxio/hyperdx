@@ -1,0 +1,47 @@
+name: Approve Kodiak update runs
+
+# When Kodiak merges `main` into an approved fork PR from a first-time
+# contributor, GitHub holds the new `pull_request` runs for approval even
+# though the contributor's code was already reviewed and approved to run. This
+# approves those held runs so `automerge` PRs merge without a second click.
+#
+# It approves only when the new head is Kodiak's merge of the base branch onto
+# the previous head, every run on that previous head was started by someone
+# with write access (or by this workflow on an earlier update), and the PR
+# carries `automerge` plus an approving review from someone with write
+# access. Any commit the contributor pushes still waits for a maintainer.
+#
+# pull_request_target so the token can approve runs for fork PRs. It checks
+# out the base branch only to load the script and never runs PR code.
+
+on:
+  pull_request_target:
+    types: [synchronize]
+
+permissions: {}
+
+concurrency:
+  group: approve-kodiak-update-runs-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  approve:
+    if: github.event.sender.login == 'kodiakhq[bot]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Approve held runs
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const path = require('path');
+            const run = require(path.join(process.env.GITHUB_WORKSPACE, '.github/scripts/approve-kodiak-update-runs.js'));
+            await run({ github, context, core });
