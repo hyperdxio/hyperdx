@@ -8,8 +8,9 @@ name: Deep Review Resolver
 # Limitations:
 #   - Same-repo PRs only. Fork PRs cannot be pushed to from CI with the
 #     default GITHUB_TOKEN; the workflow exits early on forks.
-#   - Collaborator-gated. The job `if` requires OWNER/MEMBER/COLLABORATOR
-#     association on the triggering comment to prevent random drive-by use.
+#   - Write-gated. The job `if` requires OWNER/MEMBER/COLLABORATOR association
+#     on the triggering comment, and the first step checks the commenter has
+#     write access, since MEMBER covers every org member.
 #   - Single-shot. Re-trigger by commenting `/just-fix-it` again after the
 #     follow-up deep-review run posts an updated finding list.
 
@@ -38,6 +39,28 @@ jobs:
       actions: read
 
     steps:
+      # author_association MEMBER covers every org member, not just people with
+      # write access to this repo. Check the real permission before touching the PR.
+      - name: Require write access
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const username = context.payload.comment.user.login;
+            let p = {};
+            try {
+              const { data } = await github.rest.repos.getCollaboratorPermissionLevel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                username,
+              });
+              p = data.user?.permissions ?? {};
+            } catch (e) {
+              if (e.status !== 404) throw e;
+            }
+            if (!(p.admin || p.maintain || p.push)) {
+              core.setFailed(`${username} has no write access to this repo; ignoring /just-fix-it.`);
+            }
+
       - name: Acknowledge trigger
         uses: actions/github-script@v9
         with:

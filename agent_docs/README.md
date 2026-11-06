@@ -1,6 +1,6 @@
 # Agent Documentation Directory
 
-This directory contains detailed documentation for AI coding agents working on the HyperDX codebase. These files use **progressive disclosure** - they're referenced from `AGENTS.md` but only read when needed.
+This directory contains detailed documentation for AI coding agents working on the ClickStack codebase. These files use **progressive disclosure** - they're referenced from `AGENTS.md` but only read when needed.
 
 ## Purpose
 

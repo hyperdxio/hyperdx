@@ -1270,11 +1270,11 @@ jobs:
           ```bash
           # macOS Apple Silicon
           INSTALL
-            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-darwin-arm64 -o hdx"
+            echo "curl -L ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/cli-v${VERSION}/hdx-darwin-arm64 -o hdx"
             echo "# macOS Intel"
-            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-darwin-x64 -o hdx"
+            echo "curl -L ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/cli-v${VERSION}/hdx-darwin-x64 -o hdx"
             echo "# Linux x64"
-            echo "curl -L https://github.com/hyperdxio/hyperdx/releases/download/cli-v${VERSION}/hdx-linux-x64 -o hdx"
+            echo "curl -L ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/download/cli-v${VERSION}/hdx-linux-x64 -o hdx"
             cat <<'USAGE'
 
           chmod +x hdx && sudo mv hdx /usr/local/bin/

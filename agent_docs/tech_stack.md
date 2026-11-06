@@ -1,4 +1,4 @@
-# HyperDX Technology Stack
+# ClickStack Technology Stack
 
 ## Frontend (`packages/app`)
 

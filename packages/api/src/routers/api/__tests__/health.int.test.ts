@@ -4,7 +4,7 @@ import request from 'supertest';
 import { connectDB, getAgent, getServer } from '@/fixtures';
 import opampApp from '@/opamp/app';
 
-// Covers https://github.com/hyperdxio/hyperdx/issues/2966: `/health` is pure
+// Covers https://github.com/ClickHouse/ClickStack/issues/2966: `/health` is pure
 // liveness and must stay 200 while the process serves HTTP, whereas `/ready`
 // must reflect MongoDB connectivity so Kubernetes readiness probes can pull a
 // pod that cannot serve Mongo-backed requests out of rotation.

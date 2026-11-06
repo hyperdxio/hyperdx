@@ -17,7 +17,7 @@ paste the URL if it does. If you're working from the repo, `yarn app:dev:local`
 plus onboarding → "Connect to Demo Server" gives you the same data locally. If
 it only happens with your own data, include the table schema
 (`SHOW CREATE TABLE ...`) and source settings.
-See https://github.com/hyperdxio/hyperdx/blob/main/CONTRIBUTING.md#reproducing-issues-and-prs
+See https://github.com/ClickHouse/ClickStack/blob/main/CONTRIBUTING.md#reproducing-issues-and-prs
 -->
 
 **Reproduces on play.hyperdx.io?** <!-- yes (link) / no / didn't try -->

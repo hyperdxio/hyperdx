@@ -7,8 +7,8 @@ import { allowChangelogUrl } from '@/components/AppNav/WhatsNewDrawer';
 describe('allowChangelogUrl', () => {
   it('passes through the hosts release notes are allowed to link', () => {
     expect(
-      allowChangelogUrl('https://github.com/hyperdxio/hyperdx/pull/1'),
-    ).toBe('https://github.com/hyperdxio/hyperdx/pull/1');
+      allowChangelogUrl('https://github.com/ClickHouse/ClickStack/pull/1'),
+    ).toBe('https://github.com/ClickHouse/ClickStack/pull/1');
     expect(allowChangelogUrl('https://docs.hyperdx.io/formulas')).toBe(
       'https://docs.hyperdx.io/formulas',
     );

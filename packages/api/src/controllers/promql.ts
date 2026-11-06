@@ -23,7 +23,7 @@ const PROMETHEUS_FETCH_TIMEOUT_MS = 30_000;
  * `path` must be an absolute path (every call site passes a literal starting
  * with `/`) -- this is not a general-purpose URL joiner.
  *
- * @see https://github.com/hyperdxio/hyperdx/issues/3046
+ * @see https://github.com/ClickHouse/ClickStack/issues/3046
  */
 export function joinPrometheusUpstreamUrl(
   upstreamHost: string,
