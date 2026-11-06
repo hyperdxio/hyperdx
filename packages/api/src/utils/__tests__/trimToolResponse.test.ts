@@ -149,6 +149,19 @@ describe('trimToolResponse', () => {
       expect(shortenString('short', 10)).toBe('short');
     });
 
+    it('shortens a top-level string', () => {
+      const { data, isTrimmed, notes } = trimToolResponse('a'.repeat(60000));
+      expect(isTrimmed).toBe(true);
+      expect(data).toMatch(/^a+…\(\+[\d,]+ chars\)$/);
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(50000);
+      expect(JSON.stringify(data).length).toBeGreaterThan(49000);
+      expect(notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^1 long value\(s\) shortened/),
+        ]),
+      );
+    });
+
     it('shortens long string values in the fallback and says so in notes', () => {
       const data = { big: 'x'.repeat(5000), small: 'ok' };
       const { data: result, isTrimmed, notes } = trimToolResponse(data, 2000);
@@ -438,6 +451,7 @@ describe('trimToolResponse', () => {
       });
       expect(data.patterns).toHaveLength(30);
       expect(data.patterns.every(p => p.samples.length >= 1)).toBe(true);
+      expect(data.patterns.every(p => 'whereSnippet' in p)).toBe(true);
       expect(data.patterns[0].pattern).toMatch(
         /^java\.lang\.NullPointerException/,
       );
