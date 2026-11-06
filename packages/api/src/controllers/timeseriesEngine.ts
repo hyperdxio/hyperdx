@@ -32,6 +32,15 @@ export type TimeSeriesTagsQueryArgs = {
   signal?: AbortSignal;
 };
 
+// What a table without a time ranges table answers (version 7 or earlier, or
+// store_time_ranges off): servers before 26.10 have no timeSeriesTimeRanges(),
+// newer ones reject the table. Any other error is unexpected.
+const isNoTimeRangesTableError = (e: unknown): boolean =>
+  e instanceof Error &&
+  /Unknown table function timeSeriesTimeRanges|has no TimeRanges target table/.test(
+    e.message,
+  );
+
 /**
  * Where the given TimeSeries table keeps each series' time range, if anywhere:
  * - `tags`: the `min_time`/`max_time` columns of the tags inner table (schema
@@ -65,13 +74,12 @@ async function timeSeriesTimeBounds({
       if (columnNames.has('min_time') && columnNames.has('max_time'))
         return bounds;
     } catch (e) {
-      // A table without a time ranges target (version 7 or earlier, or
-      // store_time_ranges off) rejects timeSeriesTimeRanges(): expected.
-      if (innerTableType === 'Tags')
-        logger.warn(
-          { err: e, database, table },
-          'Failed to check if TimeSeries tags table has time bounds columns',
-        );
+      if (innerTableType === 'TimeRanges' && isNoTimeRangesTableError(e))
+        continue;
+      logger.warn(
+        { err: e, database, table, innerTableType },
+        'Failed to check if TimeSeries table has time bounds',
+      );
     }
   }
   return undefined;

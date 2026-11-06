@@ -12,6 +12,7 @@ import {
   seedTimeSeriesTagsTable,
   TimeSeriesFixtureSeries,
 } from '@/fixtures';
+import logger from '@/utils/logger';
 
 const CONNECTION_ID = 'timeseries-engine-int-test';
 const BOUNDED_TABLE = 'test_ts_label_values';
@@ -319,17 +320,24 @@ describe('timeseriesEngine controller', () => {
     // Time bounds are best-effort narrowing, so the request widens instead.
     describe('table without min_time/max_time', () => {
       it('ignores the bounds instead of failing', async () => {
-        expect(
-          await queryLabelValues({
-            client,
-            connectionId: CONNECTION_ID,
-            databaseName: DEFAULT_DATABASE,
-            tableName: UNBOUNDED_TABLE,
-            labelName: '__name__',
-            startMs: sec(RECENT_START_SEC),
-            endMs: sec(RECENT_START_SEC + HOUR_SEC),
-          }),
-        ).toEqual(['old_metric', 'recent_metric']);
+        const warn = jest.spyOn(logger, 'warn');
+        try {
+          expect(
+            await queryLabelValues({
+              client,
+              connectionId: CONNECTION_ID,
+              databaseName: DEFAULT_DATABASE,
+              tableName: UNBOUNDED_TABLE,
+              labelName: '__name__',
+              startMs: sec(RECENT_START_SEC),
+              endMs: sec(RECENT_START_SEC + HOUR_SEC),
+            }),
+          ).toEqual(['old_metric', 'recent_metric']);
+          // No time ranges table either: expected, so not logged.
+          expect(warn).not.toHaveBeenCalled();
+        } finally {
+          warn.mockRestore();
+        }
       });
 
       // A selector needs those columns to evaluate at all. Unlike the bounds it
