@@ -1,4 +1,3 @@
-import { setTraceAttributes } from '@hyperdx/node-opentelemetry';
 import opentelemetry, {
   Attributes,
   AttributeValue,
@@ -9,6 +8,7 @@ import opentelemetry, {
   SpanKind,
   SpanStatusCode,
 } from '@opentelemetry/api';
+import { getRPCMetadata } from '@opentelemetry/core';
 import { performance } from 'perf_hooks';
 
 import {
@@ -103,16 +103,19 @@ export type BusinessContext = {
 };
 
 /**
- * Attaches incident-remediation context to the whole trace (via the HyperDX
- * SDK) and to the active span. Standardizes the attribute keys so team/user
+ * Attaches incident-remediation context to the active span and to the
+ * request's HTTP server span. Standardizes the attribute keys so team/user
  * context is consistent across every code path.
+ *
+ * The server span covers the whole request. The Express instrumentation makes
+ * each middleware and route span active while it runs, so in middleware the
+ * active span alone is a short-lived child. Other spans of the trace do not
+ * get these attributes.
  *
  * User attributes follow the OTel `user.*` semantic conventions (currently
  * experimental). Team has no OTel equivalent, so it stays under the `hyperdx.*`
- * namespace. Note these are the server-side API trace attributes and are
- * distinct from the browser-RUM session attributes (`userEmail`, `userName`).
- *
- * NOTE: trace-wide attributes require `HDX_NODE_BETA_MODE=1`.
+ * namespace. The browser SDK's setUser (AppNav.tsx) records the same `user.*`
+ * keys on RUM telemetry.
  */
 export function setBusinessContext(context: BusinessContext): void {
   const { teamId, userId, email, ...extra } = context;
@@ -137,8 +140,15 @@ export function setBusinessContext(context: BusinessContext): void {
     return;
   }
 
-  setTraceAttributes(attributes);
-  opentelemetry.trace.getActiveSpan()?.setAttributes(attributes);
+  const activeSpan = opentelemetry.trace.getActiveSpan();
+  activeSpan?.setAttributes(attributes);
+
+  // The HTTP instrumentation keeps the server span in the request context's
+  // RPC metadata. There is none outside a request, as in scheduled tasks.
+  const serverSpan = getRPCMetadata(opentelemetry.context.active())?.span;
+  if (serverSpan && serverSpan !== activeSpan && serverSpan.isRecording()) {
+    serverSpan.setAttributes(attributes);
+  }
 }
 
 /**

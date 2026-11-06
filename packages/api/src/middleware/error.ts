@@ -1,4 +1,3 @@
-import { recordException } from '@hyperdx/node-opentelemetry';
 import { trace } from '@opentelemetry/api';
 import type { NextFunction, Request, Response } from 'express';
 
@@ -61,7 +60,13 @@ export const appErrorHandler = (
   });
 
   // Attach connection-level context to the active span so a single trace shows
-  // why the request failed and, for aborts, how far the upload got.
+  // why the request failed and, for aborts, how far the upload got. Error
+  // handlers run outside the Express layer spans, so this is the HTTP server
+  // span. The exception itself is not recorded here, because the Express
+  // instrumentation already records an error thrown in a middleware or route,
+  // or passed to next(), on that layer's span (except the non-last handlers of
+  // a multi-handler router.use(), which it does not wrap), and the HTTP
+  // instrumentation marks a 5xx server span as an error.
   const activeSpan = trace.getActiveSpan();
   if (activeSpan) {
     if (parserErrorType) {
@@ -93,18 +98,6 @@ export const appErrorHandler = (
     : err instanceof SyntaxError && err.message.includes('JSON')
       ? 'Invalid JSON payload'
       : 'Something went wrong :(';
-
-  // A client disconnect is expected background noise, not an exception worth
-  // surfacing in error tracking (the auto-instrumented parser span already
-  // recorded it), so we skip recordException for it.
-  if (!clientDisconnect) {
-    void recordException(err, {
-      mechanism: {
-        type: 'generic',
-        handled: userFacingErrorMessage ? true : false,
-      },
-    });
-  }
 
   if (!res.headersSent) {
     res.status(statusCode).json({

@@ -4,7 +4,7 @@ import Router, { useRouter } from 'next/router';
 import Script from 'next/script';
 import cx from 'classnames';
 import { Badge } from '@clickhouse/click-ui';
-import HyperDX from '@hyperdx/browser';
+import { setAttributes, setUser } from '@clickhouse/clickstack-browser';
 import { SavedSearchListApiResponse } from '@hyperdx/common-utils/dist/types';
 import { Anchor, Collapse, Flex, Group, ScrollArea, Text } from '@mantine/core';
 import { useDisclosure, useFocusTrap, useLocalStorage } from '@mantine/hooks';
@@ -219,20 +219,10 @@ export default function AppNav({ fixed = false }: { fixed?: boolean }) {
     isMobileNavOpen && !fixed ? reservedWidth : reservedWidth + 1;
 
   useEffect(() => {
-    HyperDX.addAction('user navigated', {
-      route: pathname,
-      query: JSON.stringify(query),
-    });
-  }, [pathname, query]);
-
-  useEffect(() => {
     if (meData != null) {
-      HyperDX.enableAdvancedNetworkCapture();
-      HyperDX.setGlobalAttributes({
-        userEmail: meData.email,
-        userName: meData.name,
-        teamName: meData.team.name,
-      });
+      setUser({ id: meData.id, email: meData.email, name: meData.name });
+      // Un-namespaced because the Sessions page reads teamName (sessions.ts)
+      setAttributes({ teamName: meData.team.name });
       // Fold user/team ids + per-user toggles into window.hdx for debug reports.
       setHdxIdentity({
         userId: meData.id,

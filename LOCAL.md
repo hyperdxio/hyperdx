@@ -38,7 +38,7 @@ Configuring instrumentation for ClickStack Local is similar to configuring it fo
 
 Most instrumentations can be configured using the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable. Ex: `OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318`.
 
-If you're using a ClickStack maintained SDK, you may need to give a non-empty `HYPERDX_API_KEY` as well, API keys are not validated in ClickStack Local and therefore can be any non-empty value.
+If you're using a ClickStack SDK, pass the key as the `apiKey` init option. `@clickhouse/clickstack-node` also accepts `OTEL_EXPORTER_OTLP_HEADERS=authorization=<key>`, and `@clickhouse/clickstack-browser` only takes `apiKey`. Older HyperDX SDKs (`@hyperdx/*`) may need a non-empty `HYPERDX_API_KEY` instead. API keys are not validated in ClickStack Local and therefore can be any non-empty value.
 
 ## Customizing Ports
 

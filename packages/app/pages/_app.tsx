@@ -2,10 +2,8 @@ import React, { useEffect } from 'react';
 import type { NextPage } from 'next';
 import type { AppProps } from 'next/app';
 import Head from 'next/head';
-import { env } from 'next-runtime-env';
 import randomUUID from 'crypto-randomuuid';
 import { enableMapSet } from 'immer';
-import HyperDX from '@hyperdx/browser';
 import {
   MutationCache,
   QueryCache,
@@ -15,12 +13,10 @@ import {
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 
 import { usePageTitle } from '@/brand';
-import { IS_LOCAL_MODE, parseResourceAttributes } from '@/config';
 import { MANTINE_FONT_MAP } from '@/config/fonts';
 import { ibmPlexMono, inter, roboto, robotoMono } from '@/fonts';
 import { fetchServerVersion, installHdxDebug } from '@/hdxDebug';
 import { ThemeWrapper } from '@/ThemeWrapper';
-import { NextApiConfigResponseData } from '@/types';
 import { ConfirmProvider } from '@/useConfirm';
 import {
   SystemColorSchemeScript,
@@ -122,45 +118,6 @@ export default function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   useEffect(() => {
     installHdxDebug();
     fetchServerVersion();
-  }, []);
-
-  // port to react query ? (needs to wrap with QueryClientProvider)
-  useEffect(() => {
-    if (IS_LOCAL_MODE) {
-      return;
-    }
-    fetch('/api/config')
-      .then(res => res.json())
-      .then((_jsonData?: NextApiConfigResponseData) => {
-        if (_jsonData?.apiKey) {
-          const frontendAttrs = parseResourceAttributes(
-            env('NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES') ?? '',
-          );
-          HyperDX.init({
-            apiKey: _jsonData.apiKey,
-            consoleCapture: true,
-            maskAllInputs: true,
-            maskAllText: true,
-            // service.version is applied last so it always reflects the
-            // NEXT_PUBLIC_APP_VERSION and cannot be overridden by
-            // NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES.
-            otelResourceAttributes: {
-              ...frontendAttrs,
-              'service.version': process.env.NEXT_PUBLIC_APP_VERSION,
-            },
-            service: _jsonData.serviceName,
-            // tracePropagationTargets: [new RegExp(hostname ?? 'localhost', 'i')],
-            url: _jsonData.collectorUrl,
-            tracesUrl: _jsonData.collectorTracesUrl,
-            logsUrl: _jsonData.collectorLogsUrl,
-          });
-        } else {
-          console.warn('No API key found to enable OTEL exporter');
-        }
-      })
-      .catch(() => {
-        // ignore
-      });
   }, []);
 
   useEffect(() => {
