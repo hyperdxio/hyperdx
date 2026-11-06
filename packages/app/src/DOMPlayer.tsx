@@ -157,7 +157,7 @@ export default function DOMPlayer({
   handleDroppedEventRef.current = (error, context) => {
     // Surfaced unconditionally: dropped events (e.g. a dropped full snapshot)
     // can render the replay empty/unstyled with no other signal.
-    // https://github.com/hyperdxio/hyperdx/issues/2569
+    // https://github.com/ClickHouse/ClickStack/issues/2569
     console.error('Failed to load session replay event', context, error);
     setDroppedEventCount(count => count + 1);
   };

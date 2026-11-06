@@ -38,7 +38,7 @@ separate MongoDB instance to persist your users, dashboards, searches and more.
 To get started, you can run the following image:
 
 ```bash
-docker run -e MONGO_URI=mongodb://YOUR_MONGODB_URI -p 8080:8080 docker.hyperdx.io/hyperdx/hyperdx:2-beta
+docker run -e MONGO_URI=mongodb://YOUR_MONGODB_URI -p 8080:8080 docker.clickhouse.com/clickhouse/clickstack:2
 ```
 
 You'll need to set the `MONGO_URI` environment variable to the URI of your

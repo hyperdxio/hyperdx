@@ -30,7 +30,7 @@ steps](#reproducing-issues-and-prs), and has [before/after
 screenshots](#ui-changes-need-beforeafter-screenshots) if it touches the UI.
 
 Good places to start: the [good first
-issue](https://github.com/hyperdxio/hyperdx/labels/good%20first%20issue) label,
+issue](https://github.com/ClickHouse/ClickStack/labels/good%20first%20issue) label,
 and [Discord](https://discord.gg/FErRRKU78j) if the dev setup gives you trouble.
 
 Why we do this: AI tools make it cheap to open a plausible-looking PR with no

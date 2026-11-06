@@ -1,4 +1,4 @@
-REPO: hyperdxio/hyperdx
+REPO: ClickHouse/ClickStack
 PR: #{{PR_NUMBER}}
 
 Review this pull request.

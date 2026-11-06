@@ -1,6 +1,6 @@
 {
   "@context": "https://openvex.dev/ns/v0.2.0",
-  "@id": "https://github.com/hyperdxio/hyperdx/blob/main/.vex/openssl-mongodb.vex.json",
+  "@id": "https://github.com/ClickHouse/ClickStack/blob/main/.vex/openssl-mongodb.vex.json",
   "author": "HyperDX Team",
   "role": "Supplier",
   "timestamp": "2026-02-17T00:00:00Z",

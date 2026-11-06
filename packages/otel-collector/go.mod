@@ -1,4 +1,4 @@
-module github.com/hyperdxio/hyperdx/packages/otel-collector
+module github.com/ClickHouse/ClickStack/packages/otel-collector
 
 go 1.25
 
