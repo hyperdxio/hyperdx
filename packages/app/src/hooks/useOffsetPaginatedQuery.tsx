@@ -17,6 +17,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
+  parseToNumber,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
@@ -84,6 +85,7 @@ type TQueryFnData = {
   meta: ColumnMetaType[];
   chSql: ChSql;
   window: TimeWindow;
+  canSkipShortPage?: boolean;
 };
 
 type TData = {
@@ -150,24 +152,34 @@ function getNextPageParam(
     : generateTimeWindowsDescending(startDate, endDate, windowDurationsSeconds);
   const currentWindow = lastPage.window;
 
-  // Calculate total results from all pages in current window
-  const currentWindowPages = allPages.filter(
-    p => p.window.windowIndex === currentWindow.windowIndex,
-  );
-  const currentWindowResults = currentWindowPages.reduce(
-    (sum, page) => sum + page.data.length,
-    0,
-  );
+  const requestedLimit = config.limit?.limit;
+  if (requestedLimit === 0) {
+    return undefined;
+  }
 
-  // If we have results in the current window, continue paginating within it
-  if (lastPage.data.length > 0) {
+  if (
+    lastPage.data.length > 0 &&
+    requestedLimit != null &&
+    requestedLimit > 0 &&
+    (lastPage.data.length >= requestedLimit || !lastPage.canSkipShortPage)
+  ) {
+    // Calculate total results from all pages in current window
+    const currentWindowPages = allPages.filter(
+      p => p.window.windowIndex === currentWindow.windowIndex,
+    );
+    const currentWindowResults = currentWindowPages.reduce(
+      (sum, page) => sum + page.data.length,
+      0,
+    );
+
     return {
       windowIndex: currentWindow.windowIndex,
       offset: currentWindowResults,
     };
   }
 
-  // If no more results in current window, move to next window (if windowing is being used)
+  // Short pages prove exhaustion only when query limits cannot truncate them.
+  // Without LIMIT, the rendered query has no OFFSET, so it cannot page.
   const shouldUseWindowing =
     isBuilderChartConfig(config) && isTimestampExpressionInFirstOrderBy(config);
   const nextWindowIndex = currentWindow.windowIndex + 1;
@@ -259,6 +271,69 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     metadata,
     source?.querySettings,
   );
+
+  let canSkipShortPage = false;
+  if (isBuilderChartConfig(config) && (config.limit?.limit ?? 0) > 0) {
+    const serverSettings = await metadata
+      .getSettings({ connectionId: config.connection })
+      .catch(() => undefined);
+    const sourceSettings = new Map(
+      source?.querySettings
+        ?.filter(({ setting, value }) => setting.length && value.length)
+        .map(({ setting, value }) => [setting, value]),
+    );
+    // SQL SETTINGS override the timeout injected by the client, then server defaults.
+    const getSetting = (name: string) =>
+      sourceSettings.get(name) ??
+      (name === 'max_execution_time' && (queryTimeout ?? 0) > 0
+        ? String(queryTimeout)
+        : serverSettings?.get(name));
+    const cannotTruncate = (mode: string, limits: string[]) =>
+      getSetting(mode) === 'throw' ||
+      limits.every(name => {
+        const value = getSetting(name);
+        return value != null && parseToNumber(value) === 0;
+      });
+    const limitsByMode: [string, string[]][] = [
+      ['result_overflow_mode', ['max_result_rows', 'max_result_bytes']],
+      ['read_overflow_mode', ['max_rows_to_read', 'max_bytes_to_read']],
+      ['timeout_overflow_mode', ['max_execution_time']],
+      ['sort_overflow_mode', ['max_rows_to_sort', 'max_bytes_to_sort']],
+      ['group_by_overflow_mode', ['max_rows_to_group_by']],
+      [
+        'distinct_overflow_mode',
+        ['max_rows_in_distinct', 'max_bytes_in_distinct'],
+      ],
+      ['set_overflow_mode', ['max_rows_in_set', 'max_bytes_in_set']],
+      ['join_overflow_mode', ['max_rows_in_join', 'max_bytes_in_join']],
+      [
+        'transfer_overflow_mode',
+        ['max_rows_to_transfer', 'max_bytes_to_transfer'],
+      ],
+    ];
+    const limit = parseToNumber(getSetting('limit') ?? '0');
+    canSkipShortPage =
+      serverSettings != null &&
+      limit != null &&
+      (limit === 0 || limit >= (config.limit?.limit ?? 0)) &&
+      limitsByMode.every(([mode, limits]) => cannotTruncate(mode, limits));
+
+    // Older servers do not expose all of the leaf settings.
+    const leafLimitsByMode: [string, string[]][] = [
+      [
+        'read_overflow_mode_leaf',
+        ['max_rows_to_read_leaf', 'max_bytes_to_read_leaf'],
+      ],
+      ['timeout_overflow_mode_leaf', ['max_execution_time_leaf']],
+    ];
+    canSkipShortPage &&= leafLimitsByMode.every(([mode, limits]) => {
+      const names = [mode, ...limits];
+      return (
+        names.every(name => getSetting(name) == null) ||
+        cannotTruncate(mode, limits)
+      );
+    });
+  }
 
   // Create abort signal from timeout if provided
   const abortController = queryTimeout ? new AbortController() : undefined;
@@ -444,6 +519,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       meta: queryResultMeta,
       chSql: query,
       window: timeWindow,
+      canSkipShortPage,
     };
   }
 
@@ -457,7 +533,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
 
   deleteProgressCache();
 
-  return lastPage;
+  return { ...lastPage, canSkipShortPage };
 };
 
 function flattenPages(pages: TQueryFnData[]) {
