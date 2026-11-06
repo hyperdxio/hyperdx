@@ -339,6 +339,11 @@ describe('validators', () => {
         ),
       );
 
+    const mockLookup = (err: Error | null, addresses: dns.LookupAddress[]) =>
+      jest
+        .spyOn(dns, 'lookup')
+        .mockImplementation((...args: any[]) => args[2](err, addresses));
+
     afterEach(() => jest.restoreAllMocks());
 
     it('blocks a hostname that resolves to a private address', async () => {
@@ -348,10 +353,7 @@ describe('validators', () => {
     });
 
     it('returns public addresses in the shape the caller asked for', async () => {
-      jest
-        .spyOn(dns, 'lookup')
-        .mockImplementation(((_h: string, _o: unknown, cb: any) =>
-          cb(null, [{ address: '93.184.216.34', family: 4 }])) as any);
+      mockLookup(null, [{ address: '93.184.216.34', family: 4 }]);
 
       await expect(lookup(validators, 'example.com')).resolves.toBe(
         '93.184.216.34',
@@ -360,12 +362,6 @@ describe('validators', () => {
         { address: '93.184.216.34', family: 4 },
       ]);
     });
-
-    const mockLookup = (err: Error | null, addresses: dns.LookupAddress[]) =>
-      jest
-        .spyOn(dns, 'lookup')
-        .mockImplementation(((_h: string, _o: unknown, cb: any) =>
-          cb(err, addresses)) as any);
 
     it.each([
       [

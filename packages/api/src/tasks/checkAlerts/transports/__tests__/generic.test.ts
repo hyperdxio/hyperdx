@@ -103,17 +103,16 @@ describe('handleSendGenericWebhook — DNS resolution', () => {
       .mockImplementationOnce(jest.requireActual('undici').fetch);
     const lookupSpy = jest
       .spyOn(dns, 'lookup')
-      .mockImplementation(((_h: string, _o: unknown, cb: any) =>
-        cb(null, [{ address: '127.0.0.1', family: 4 }])) as any);
+      .mockImplementation((...args: any[]) =>
+        args[2](null, [{ address: '127.0.0.1', family: 4 }]),
+      );
+    const loopbackChannel: any = {
+      type: 'webhook',
+      channel: { ...webhook, url: 'http://127-0-0-1.nip.io/' },
+    };
 
     await expect(
-      handleSendGenericWebhook(
-        {
-          type: 'webhook',
-          channel: { ...webhook, url: 'http://127-0-0-1.nip.io/' },
-        } as any,
-        message,
-      ),
+      handleSendGenericWebhook(loopbackChannel, message),
     ).rejects.toThrow(WebhookUrlValidationError);
     expect(lookupSpy).toHaveBeenCalledTimes(1);
   }, 2000);
