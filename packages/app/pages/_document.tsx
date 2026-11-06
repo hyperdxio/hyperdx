@@ -20,6 +20,11 @@ export default function Document() {
         <link rel="icon" href="/favicons/clickstack/favicon.ico" sizes="any" />
         <link
           rel="icon"
+          type="image/svg+xml"
+          href="/favicons/clickstack/favicon.svg"
+        />
+        <link
+          rel="icon"
           type="image/png"
           sizes="32x32"
           href="/favicons/clickstack/favicon-32x32.png"
