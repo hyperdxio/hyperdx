@@ -8,6 +8,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import {
   Field,
+  FieldsCondition,
   MetricNames,
   parseKeyPath,
   TableConnection,
@@ -248,6 +249,7 @@ type MultipleAllFieldsOptions = {
   // would offer fields that exist in one table but not another.
   intersect?: boolean;
   enabled?: boolean;
+  conditions?: (FieldsCondition | undefined)[];
 };
 
 /**
@@ -270,6 +272,7 @@ export function useMultipleAllFields(
     timestampValueExpression,
     intersect,
     enabled = true,
+    conditions,
   }: MultipleAllFieldsOptions = {},
 ) {
   const metadata = useMetadataWithSettings();
@@ -286,10 +289,11 @@ export function useMultipleAllFields(
       dateRange ? [dateRange[0].getTime(), dateRange[1].getTime()] : undefined,
       timestampValueExpression,
       isFieldMetadataDisabled,
+      conditions,
     ],
     queryFn: () =>
       Promise.all(
-        tableConnections.map(async (tc): Promise<TableConnectionFields> => {
+        tableConnections.map(async (tc, i): Promise<TableConnectionFields> => {
           let columns: ColumnMeta[] = [];
           try {
             columns = await metadata.getColumns({
@@ -304,6 +308,7 @@ export function useMultipleAllFields(
                   dateRange,
                   timestampValueExpression:
                     timestampValueExpression ?? tc.timestampValueExpression,
+                  condition: conditions?.[i],
                 });
             return { fields, columns };
           } catch (error) {

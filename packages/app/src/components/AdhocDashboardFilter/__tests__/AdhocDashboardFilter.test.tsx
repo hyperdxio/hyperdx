@@ -1,7 +1,9 @@
+import { ComponentProps } from 'react';
 import {
   ADHOC_FILTER_MAX_CONDITIONS,
   AdhocDashboardFilter as AdhocDashboardFilterType,
   AdhocFilterCondition,
+  DashboardFilter,
 } from '@hyperdx/common-utils/dist/types';
 import { notifications } from '@mantine/notifications';
 import { screen } from '@testing-library/react';
@@ -43,6 +45,7 @@ const addButton = () => screen.getByTestId('adhoc-filter-add-Conditions');
 const renderFilter = (
   conditions: AdhocFilterCondition[],
   definition: AdhocDashboardFilterType = filter,
+  props: Partial<ComponentProps<typeof AdhocDashboardFilter>> = {},
 ) => {
   const onChange = jest.fn();
   renderWithMantine(
@@ -52,6 +55,7 @@ const renderFilter = (
       onChange={onChange}
       dateRange={dateRange}
       effect={{ hasEffect: true, tooltip: '' }}
+      {...props}
     />,
   );
   return onChange;
@@ -164,5 +168,133 @@ describe('AdhocDashboardFilter', () => {
     await userEvent.click(screen.getByTestId('adhoc-filter-clear-Conditions'));
 
     expect(onChange).toHaveBeenCalledWith([]);
+  });
+
+  describe('narrowed by a condition', () => {
+    const narrowed: AdhocDashboardFilterType = {
+      ...filter,
+      where: 'Namespace IN ($namespace)',
+      whereLanguage: 'sql',
+    };
+    const namespaceFilter: DashboardFilter = {
+      id: 'ns',
+      type: 'STATIC_LIST',
+      name: 'Namespace',
+      options: ['ns-a'],
+      isBroadcastEnabled: false,
+      isVariableEnabled: true,
+      variableName: 'namespace',
+      minSelections: 1,
+    };
+    const namespace = (values: string[]) => [{ name: 'namespace', values }];
+
+    it('waits for a required filter the condition references', async () => {
+      const onChange = renderFilter([existing], narrowed, {
+        variables: namespace([]),
+        unsatisfiedRequiredFilters: [namespaceFilter],
+      });
+
+      expect(addButton()).toHaveAttribute('aria-disabled', 'true');
+      await userEvent.hover(addButton());
+      expect(
+        await screen.findByText('This filter depends on: Namespace'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId('dashboard-filter-blocked-Conditions'),
+      ).toBeInTheDocument();
+
+      await userEvent.click(addButton());
+      await userEvent.click(screen.getByTestId('adhoc-condition-pill'));
+      expect(screen.queryByTestId(`${editorId}-key`)).not.toBeInTheDocument();
+
+      // Removing looks nothing up, so it still works.
+      await userEvent.click(
+        screen.getByRole('button', { name: 'Remove filter' }),
+      );
+      expect(onChange).toHaveBeenCalledWith([]);
+    });
+
+    it('suggests from the rows the condition matches once it resolves', async () => {
+      renderFilter([], narrowed, { variables: namespace(['ns-a']) });
+
+      await userEvent.click(addButton());
+
+      expect(await screen.findByTestId(`${editorId}-key`)).toBeInTheDocument();
+      expect(jest.mocked(useAdhocFilterOptions)).toHaveBeenLastCalledWith(
+        narrowed,
+        expect.any(String),
+        dateRange,
+        { where: "Namespace IN ('ns-a')", whereLanguage: 'sql' },
+      );
+    });
+
+    it('flags an optional variable the condition needs a value for', () => {
+      renderFilter([], narrowed, { variables: namespace([]) });
+
+      expect(
+        screen.getByTestId('dashboard-filter-pending-variable-Conditions'),
+      ).toBeInTheDocument();
+      expect(addButton()).not.toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it("stops suggesting when the condition's variables can't be expanded", async () => {
+      renderFilter(
+        [],
+        { ...narrowed, where: '$__filter(Namespace, $nope)' },
+        { variables: namespace(['ns-a']) },
+      );
+
+      expect(
+        screen.getByTestId('dashboard-filter-error-Conditions'),
+      ).toBeInTheDocument();
+      expect(addButton()).toHaveAttribute('aria-disabled', 'true');
+      await userEvent.click(addButton());
+      expect(screen.queryByTestId(`${editorId}-key`)).not.toBeInTheDocument();
+    });
+
+    it.each([
+      ['no condition', filter],
+      ['a condition that does not reference it', narrowed],
+      ['a PromQL source', { ...narrowed, sourceType: 'promql' as const }],
+    ])(
+      'is not blocked by an unreferenced global required filter with %s',
+      async (_label, definition) => {
+        renderFilter([], definition, {
+          variables: namespace(['ns-a']),
+          unsatisfiedRequiredFilters: [
+            {
+              ...namespaceFilter,
+              id: 'env',
+              name: 'Env',
+              variableName: 'env',
+              isGlobalRequirement: true,
+            },
+          ],
+        });
+
+        expect(
+          screen.queryByTestId('dashboard-filter-blocked-Conditions'),
+        ).not.toBeInTheDocument();
+        await userEvent.click(addButton());
+        expect(
+          await screen.findByTestId(`${editorId}-key`),
+        ).toBeInTheDocument();
+      },
+    );
+
+    it('ignores a condition on a PromQL filter', async () => {
+      renderFilter(
+        [],
+        { ...narrowed, sourceType: 'promql' },
+        {
+          variables: namespace([]),
+          unsatisfiedRequiredFilters: [namespaceFilter],
+        },
+      );
+
+      await userEvent.click(addButton());
+
+      expect(await screen.findByTestId(`${editorId}-key`)).toBeInTheDocument();
+    });
   });
 });

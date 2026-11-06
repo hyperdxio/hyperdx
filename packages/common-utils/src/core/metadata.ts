@@ -17,7 +17,11 @@ import {
   streamToAsyncIterator,
   tableExpr,
 } from '@/clickhouse';
-import { renderChartConfig, timeFilterExpr } from '@/core/renderChartConfig';
+import {
+  renderChartConfig,
+  renderWhereExpressionStr,
+  timeFilterExpr,
+} from '@/core/renderChartConfig';
 import {
   FilterState,
   filterStateToPredicate,
@@ -407,6 +411,8 @@ const FIELD_METADATA_LOOKBACK_MS = 24 * 60 * 60 * 1000;
 // column added by ALTER TABLE (such as a MATERIALIZED one) is only seen after a
 // restart. #3475
 export const COLUMNS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+const CONDITION_KEYS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 // Hour-aligned so a range-keyed cache rotates hourly instead of every call.
 export function defaultFieldMetadataDateRange(): [Date, Date] {
@@ -1068,6 +1074,7 @@ export class Metadata {
     metadataMVs,
     dateRange: callerDateRange,
     timestampValueExpression,
+    conditionSql,
     signal,
   }: {
     databaseName: string;
@@ -1079,6 +1086,7 @@ export class Metadata {
     metadataMVs?: MetadataMaterializedViews;
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    conditionSql?: string;
     signal?: AbortSignal;
   }) {
     inlineNonNegativeInt(maxKeys, 'maxKeys');
@@ -1101,11 +1109,14 @@ export class Metadata {
       alignedDateRange && timestampValueExpression
         ? `${alignedDateRange[0].getTime()}.${alignedDateRange[1].getTime()}.${timestampValueExpression}`
         : '';
-    const cacheKey = metricName
+    const unscopedCacheKey = metricName
       ? `${connectionId}.${databaseName}.${tableName}.${column}.${metricName}.${dateRangeCacheSuffix}.${maxKeys}.keys`
       : alignedDateRange
         ? `${connectionId}.${databaseName}.${tableName}.${column}.${alignedCacheSuffix}.${maxKeys}.keys`
         : `${connectionId}.${databaseName}.${tableName}.${column}.${dateRangeCacheSuffix}.${maxKeys}.keys`;
+    const cacheKey = conditionSql
+      ? `${unscopedCacheKey}.${objectHash(conditionSql)}.condition`
+      : unscopedCacheKey;
     const cachedKeys = this.cache.get<string[]>(cacheKey);
 
     if (cachedKeys != null) {
@@ -1134,6 +1145,7 @@ export class Metadata {
     let rowPolicyDenied = false;
     // Without timestampValueExpression, partsFilter can't bound this either. #3037
     if (
+      !conditionSql &&
       textIndexInfo?.key?.indexName &&
       canQueryMergeTreeTextIndex &&
       timestampValueExpression
@@ -1181,6 +1193,7 @@ export class Metadata {
         );
       }
     } else if (
+      !conditionSql &&
       textIndexInfo?.kv?.indexName &&
       canQueryMergeTreeTextIndex &&
       timestampValueExpression
@@ -1230,7 +1243,7 @@ export class Metadata {
     // Rollup path: query the key rollup table filtered by ColumnIdentifier and date range.
     // Rollups are separate tables the source's row policy doesn't cover, so
     // after a policy denial only the source-table scan below is safe.
-    if (metadataMVs && alignedDateRange && !rowPolicyDenied) {
+    if (!conditionSql && metadataMVs && alignedDateRange && !rowPolicyDenied) {
       // Own cache key: the shipped OTel rollups only index NativeColumn, so
       // Map columns come back empty here and must fall through to the bounded
       // scan below. Caching [] under cacheKey would block that fallback.
@@ -1340,6 +1353,7 @@ export class Metadata {
             }),
           ]
         : []),
+      ...(conditionSql ? [chSql`(${{ UNSAFE_RAW_SQL: conditionSql }})`] : []),
     ];
     const where =
       whereConditions.length > 0
@@ -1389,7 +1403,7 @@ export class Metadata {
       `;
     }
 
-    return this.cache.getOrFetch<string[]>(cacheKey, async () => {
+    const fetchKeys = async () => {
       const keys = await this.clickhouseClient
         .query<'JSON'>({
           query: sql.sql,
@@ -1419,6 +1433,11 @@ export class Metadata {
           return output.filter(r => r);
         });
       return keys;
+    };
+    // A condition changes with variable selections; expire its entries so
+    // they don't pile up.
+    return this.cache.getOrFetch<string[]>(cacheKey, fetchKeys, {
+      ttlMs: conditionSql ? CONDITION_KEYS_CACHE_TTL_MS : undefined,
     });
   }
 
@@ -1912,9 +1931,11 @@ export class Metadata {
     metadataMVs,
     dateRange,
     timestampValueExpression,
+    condition,
   }: TableConnection & {
     dateRange?: [Date, Date];
     timestampValueExpression?: string;
+    condition?: FieldsCondition;
   }) {
     const fields: Field[] = [];
     const columns = await this.getColumns({
@@ -1935,6 +1956,21 @@ export class Metadata {
 
     const mapColumns =
       filterColumnMetaByType(columns, [JSDataType.Map, JSDataType.JSON]) ?? [];
+
+    const conditionSql =
+      condition?.where.trim() && mapColumns.length > 0
+        ? await renderWhereExpressionStr({
+            condition: condition.where,
+            language: condition.whereLanguage ?? 'sql',
+            metadata: this,
+            from: { databaseName, tableName },
+            implicitColumnExpression: condition.implicitColumnExpression,
+            bodyExpression: condition.bodyExpression,
+            useTextIndexForImplicitColumn:
+              condition.useTextIndexForImplicitColumn,
+            connectionId,
+          })
+        : undefined;
 
     await Promise.all(
       mapColumns.map(async column => {
@@ -1968,6 +2004,7 @@ export class Metadata {
           metadataMVs,
           dateRange,
           timestampValueExpression,
+          conditionSql,
         });
 
         const match = column.type.match(/Map\(.+,\s*(.+)\)/);
@@ -3398,6 +3435,16 @@ export type TableConnection = {
   // Bounds Map key discovery; without it Map keys are skipped. #3037
   timestampValueExpression?: string;
 };
+
+/** A SQL or Lucene condition on the rows a table's Map keys are read from. */
+export type FieldsCondition = Pick<
+  BuilderChartConfig,
+  | 'where'
+  | 'whereLanguage'
+  | 'implicitColumnExpression'
+  | 'bodyExpression'
+  | 'useTextIndexForImplicitColumn'
+>;
 
 export type TableConnectionChoice =
   | {

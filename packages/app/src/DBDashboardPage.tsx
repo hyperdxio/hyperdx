@@ -3331,6 +3331,7 @@ function DBDashboardPage({
           onSetAdhocConditions={setAdhocConditions}
           dateRange={searchedTimeRange}
           variables={variables}
+          unsatisfiedRequiredFilters={unsatisfiedRequiredFilters}
         />
       )}
       {/* Selection indicator */}

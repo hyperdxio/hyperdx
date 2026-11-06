@@ -1,10 +1,7 @@
 import { DashboardFilter } from '@hyperdx/common-utils/dist/types';
 
-import {
-  getFilterEffect,
-  getPendingVariablesTooltip,
-  getRequiredFilterTooltip,
-} from '@/DashboardFilters';
+import { getPendingVariablesTooltip } from '@/components/DashboardFilterLabel';
+import { getFilterEffect, getRequiredFilterTooltip } from '@/DashboardFilters';
 
 const baseFilter: DashboardFilter = {
   id: 'filter1',

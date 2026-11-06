@@ -778,7 +778,8 @@ export type DashboardFilterQueryIssue = {
 
 /**
  * Validate the `where` clause of each dashboard filter *definition* (the query
- * that scopes which values populate the filter's dropdown).
+ * that scopes which values populate the filter's dropdown, or which keys and
+ * values an ad hoc filter suggests).
  *
  * Useful at import time, where no values query is actually run: a filter whose
  * `where` clause is malformed would otherwise only surface as a failed query
@@ -803,7 +804,9 @@ export function validateDashboardFilterQueries(
 
   for (const filter of filters) {
     // Only ClickHouse-queried filters carry a values query to validate.
-    if (!isQueryExpressionFilter(filter)) continue;
+    // A PromQL ad hoc filter may store a `where`, but nothing reads it.
+    const isSqlAdhoc = isAdhocFilter(filter) && filter.sourceType === 'sql';
+    if (!isQueryExpressionFilter(filter) && !isSqlAdhoc) continue;
     const where = filter.where ?? '';
     if (!where.trim()) continue;
     const language = filter.whereLanguage ?? 'sql';

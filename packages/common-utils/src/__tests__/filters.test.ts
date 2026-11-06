@@ -796,6 +796,47 @@ describe('filters', () => {
       ]);
     });
 
+    it("flags a malformed where clause on an ad hoc filter's suggestions", () => {
+      expect(
+        validateDashboardFilterQueries([
+          {
+            id: 'conds',
+            type: 'ADHOC',
+            name: 'Conditions',
+            sourceType: 'sql',
+            sources: ['logs'],
+            isVariableEnabled: true,
+            where: 'ServiceName = =',
+            whereLanguage: 'sql',
+          },
+        ]),
+      ).toEqual([
+        {
+          filterId: 'conds',
+          filterName: 'Conditions',
+          language: 'sql',
+          where: 'ServiceName = =',
+        },
+      ]);
+    });
+
+    it('skips the unused where clause of a PromQL ad hoc filter', () => {
+      expect(
+        validateDashboardFilterQueries([
+          {
+            id: 'conds',
+            type: 'ADHOC',
+            name: 'Conditions',
+            sourceType: 'promql',
+            sources: ['metrics'],
+            isVariableEnabled: true,
+            where: 'ServiceName = =',
+            whereLanguage: 'sql',
+          },
+        ]),
+      ).toEqual([]);
+    });
+
     it('only reports the invalid filters in a mixed list', () => {
       const issues = validateDashboardFilterQueries([
         filter({ id: 'a', where: 'ServiceName:*', whereLanguage: 'lucene' }),

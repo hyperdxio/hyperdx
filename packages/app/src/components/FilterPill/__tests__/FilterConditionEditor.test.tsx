@@ -1,4 +1,4 @@
-import { act, screen } from '@testing-library/react';
+import { act, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import {
@@ -43,14 +43,14 @@ describe('FilterConditionEditor', () => {
     ).toBeInTheDocument();
   });
 
-  it('shows a loading indicator on the value input once a key is entered', async () => {
-    renderEditor({ isLoadingValues: true });
+  it("shows a loading indicator on the value input while a key's values load", async () => {
+    renderEditor({ isLoadingValues: true, keyOptions: ['ServiceName'] });
     expect(
       screen.queryByTestId('filter-condition-editor-value-loading'),
     ).toBeNull();
     await userEvent.type(keyInput(), 'ServiceName');
     expect(
-      screen.getByTestId('filter-condition-editor-value-loading'),
+      await screen.findByTestId('filter-condition-editor-value-loading'),
     ).toBeInTheDocument();
   });
 
@@ -59,8 +59,21 @@ describe('FilterConditionEditor', () => {
     expect(screen.getByText("Couldn't load suggestions")).toBeInTheDocument();
   });
 
+  it('says why keys failed to load, using the first line of the error', () => {
+    renderEditor({
+      isKeysError: true,
+      keysErrorMessage:
+        "Primary key (Namespace) is not used and setting 'force_primary_key' is set\nStack trace: ...",
+    });
+    expect(
+      screen.getByText(
+        "Couldn't load suggestions: Primary key (Namespace) is not used and setting 'force_primary_key' is set",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('shows a value error only once the key settles', async () => {
-    renderEditor({ isValuesError: true });
+    renderEditor({ isValuesError: true, keyOptions: ['ServiceName'] });
     expect(screen.queryByText("Couldn't load suggestions")).toBeNull();
     await userEvent.type(keyInput(), 'ServiceName');
     expect(
@@ -77,6 +90,52 @@ describe('FilterConditionEditor', () => {
       key: "LogAttributes['custom']",
       operator: '=',
       value: 'anything',
+    });
+  });
+
+  describe('ranking key suggestions', () => {
+    /** The key input's suggestions, in order, once `typed` is entered. */
+    const typedOptions = async (typed: string) => {
+      await userEvent.type(keyInput(), typed);
+      const listbox = document.getElementById(
+        keyInput().getAttribute('aria-controls') ?? '',
+      );
+      const options = await within(listbox!).findAllByRole('option', {
+        hidden: true,
+      });
+      return options.map(option => option.textContent);
+    };
+
+    it('lists keys starting with the text first, then keys with a part starting with it', async () => {
+      renderEditor({
+        keyOptions: [
+          "LogAttributes['agentToServer.status']",
+          "ResourceAttributes['service.name']",
+          'ServiceName',
+        ],
+      });
+
+      expect(await typedOptions('Serv')).toEqual([
+        'ServiceName',
+        "ResourceAttributes['service.name']",
+        "LogAttributes['agentToServer.status']",
+      ]);
+    });
+
+    it('ranks every match before cutting the list down', async () => {
+      renderEditor({
+        keyOptions: [
+          ...Array.from(
+            { length: 250 },
+            (_, i) => `LogAttributes['agentToServer.${i}']`,
+          ),
+          'ServiceName',
+        ],
+      });
+
+      const options = await typedOptions('Serv');
+      expect(options[0]).toBe('ServiceName');
+      expect(options).toHaveLength(200);
     });
   });
 
@@ -147,20 +206,61 @@ describe('FilterConditionEditor', () => {
     expect(applyButton()).toBeDisabled();
   });
 
-  it('reports the key only once it stops changing', async () => {
-    jest.useFakeTimers();
-    try {
+  describe('reporting the key to look up values for', () => {
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    const setup = (
+      props: Partial<FilterConditionEditorProps<FilterOperator>> = {},
+    ) => {
       const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
       const onKeyChange = jest.fn();
-      renderEditor({ onKeyChange });
-      await user.type(keyInput(), 'Svc');
-      expect(onKeyChange).not.toHaveBeenCalledWith('Sv');
-      act(() => {
-        jest.advanceTimersByTime(300);
+      renderEditor({ keyOptions: ['ServiceName'], onKeyChange, ...props });
+      const pause = () =>
+        act(() => {
+          jest.advanceTimersByTime(300);
+        });
+      return { user, onKeyChange, pause };
+    };
+
+    it('reports a suggested key once typing pauses, never a partial one', async () => {
+      const { user, onKeyChange, pause } = setup();
+
+      await user.type(keyInput(), 'Service');
+      pause();
+      expect(onKeyChange).not.toHaveBeenCalledWith('Service');
+
+      await user.type(keyInput(), 'Name');
+      pause();
+      expect(onKeyChange).toHaveBeenLastCalledWith('ServiceName');
+    });
+
+    it('reports a key typed by hand once Enter commits it', async () => {
+      const { user, onKeyChange, pause } = setup();
+
+      await user.type(keyInput(), 'Custom');
+      pause();
+      expect(onKeyChange).not.toHaveBeenCalledWith('Custom');
+
+      await user.keyboard('{Enter}');
+      expect(onKeyChange).toHaveBeenLastCalledWith('Custom');
+    });
+
+    it('reports a key typed by hand once focus leaves the key input', async () => {
+      const { user, onKeyChange } = setup();
+
+      await user.type(keyInput(), 'Custom');
+      await user.click(valueInput());
+
+      expect(onKeyChange).toHaveBeenLastCalledWith('Custom');
+    });
+
+    it('reports the key being edited right away', () => {
+      const { onKeyChange } = setup({
+        initial: { key: 'Custom', operator: '=', value: '' },
       });
-      expect(onKeyChange).toHaveBeenLastCalledWith('Svc');
-    } finally {
-      jest.useRealTimers();
-    }
+
+      expect(onKeyChange).toHaveBeenLastCalledWith('Custom');
+    });
   });
 });

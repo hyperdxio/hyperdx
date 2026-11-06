@@ -1058,8 +1058,9 @@ export class DashboardPage {
   }
 
   /**
-   * Fill the "Dropdown values filter" (the filter's `where`) in the open filter
-   * edit form, replacing whatever is there.
+   * Fill the "Dropdown values filter" (the filter's `where`, an ad hoc filter's
+   * "Keys and values filter") in the open filter edit form, replacing whatever
+   * is there.
    *
    * The language is always set explicitly: the form seeds it from the
    * `hdx-search-where-language` localStorage key, which other specs write, so
@@ -1599,6 +1600,7 @@ export class DashboardPage {
     options?: {
       variableName?: string;
       sourceType?: 'ClickHouse' | 'Prometheus';
+      where?: FilterWhereOptions;
     },
   ) {
     await this.addFiltersButton.click();
@@ -1612,6 +1614,9 @@ export class DashboardPage {
       this.getAdhocFilterSourcesInput(),
       sourceNames,
     );
+    if (options?.where) {
+      await this.fillFilterDropdownValuesWhere(options.where);
+    }
     if (options?.variableName !== undefined) {
       await this.variableNameInput.fill(options.variableName);
     }

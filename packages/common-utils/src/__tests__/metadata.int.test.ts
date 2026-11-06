@@ -3,7 +3,7 @@ import { ClickHouseClient } from '@clickhouse/client';
 
 import { ClickhouseClient as HdxClickhouseClient } from '@/clickhouse/node';
 import { supportsMergeTreeTextIndex } from '@/core/clickhouseVersion';
-import { Metadata, MetadataCache } from '@/core/metadata';
+import { Field, Metadata, MetadataCache } from '@/core/metadata';
 import {
   parseKvItemsCastExpression,
   parseKvItemsExpression,
@@ -1450,6 +1450,124 @@ describe('Metadata Integration Tests', () => {
       });
 
       expect(keys).toEqual(['legacy.key']);
+    });
+  });
+
+  // Shaped like LogHouse: a two-column timestamp, a date partition, a sort key
+  // led by the namespace, and settings that reject scans which skip either.
+  describe('getAllFields with a condition', () => {
+    const tableName = 'test_all_fields_condition';
+    const tableConnection = {
+      databaseName: 'default',
+      tableName,
+      connectionId: 'test_connection',
+      timestampValueExpression: 'EventTime, EventDate',
+    };
+    const nsACondition = {
+      where: "Namespace = 'ns-a'",
+      whereLanguage: 'sql' as const,
+    };
+    const lastTwoHours = (): [Date, Date] => [
+      new Date(Date.now() - 2 * 60 * 60 * 1000),
+      new Date(),
+    ];
+    const mapKeys = (fields: Field[]) =>
+      fields
+        .filter(({ path }) => path.length === 2 && path[0] === 'LogAttributes')
+        .map(({ path }) => path[1]);
+
+    beforeAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+      await client.command({
+        query: `CREATE TABLE default.${tableName} (
+            EventDate Date,
+            EventTime DateTime,
+            Namespace LowCardinality(String),
+            ServiceName LowCardinality(String),
+            LogAttributes Map(String, String)
+          )
+          ENGINE = MergeTree()
+          PARTITION BY EventDate
+          ORDER BY (Namespace, ServiceName)
+        `,
+      });
+
+      const eventTime = new Date(Date.now() - 60 * 60 * 1000)
+        .toISOString()
+        .slice(0, 19)
+        .replace('T', ' ');
+      const row = { EventDate: eventTime.slice(0, 10), EventTime: eventTime };
+      await client.insert({
+        table: `default.${tableName}`,
+        values: [
+          {
+            ...row,
+            Namespace: 'ns-a',
+            ServiceName: 'api',
+            LogAttributes: { 'a.key': '1' },
+          },
+          {
+            ...row,
+            Namespace: 'ns-b',
+            ServiceName: 'api',
+            LogAttributes: { 'b.key': '2' },
+          },
+        ],
+        format: 'JSONEachRow',
+      });
+    });
+
+    afterAll(async () => {
+      await client.command({
+        query: `DROP TABLE IF EXISTS default.${tableName}`,
+      });
+    });
+
+    it('reads Map keys only from rows matching a SQL condition', async () => {
+      const metadata = new Metadata(hdxClient, new MetadataCache());
+
+      const fields = await metadata.getAllFields({
+        ...tableConnection,
+        dateRange: lastTwoHours(),
+        condition: nsACondition,
+      });
+
+      expect(mapKeys(fields)).toEqual(['a.key']);
+    });
+
+    it('reads Map keys only from rows matching a Lucene condition', async () => {
+      const metadata = new Metadata(hdxClient, new MetadataCache());
+
+      const fields = await metadata.getAllFields({
+        ...tableConnection,
+        dateRange: lastTwoHours(),
+        condition: { where: 'Namespace:"ns-b"', whereLanguage: 'lucene' },
+      });
+
+      expect(mapKeys(fields)).toEqual(['b.key']);
+    });
+
+    it('lets a condition on the sort key pass force_primary_key, which rejects the unscoped scan', async () => {
+      const metadata = new Metadata(hdxClient, new MetadataCache(), {
+        force_primary_key: 1,
+        force_index_by_date: 1,
+      });
+
+      await expect(
+        metadata.getAllFields({
+          ...tableConnection,
+          dateRange: lastTwoHours(),
+        }),
+      ).rejects.toThrow(/INDEX_NOT_USED|force_primary_key/);
+
+      const fields = await metadata.getAllFields({
+        ...tableConnection,
+        dateRange: lastTwoHours(),
+        condition: nsACondition,
+      });
+      expect(mapKeys(fields)).toEqual(['a.key']);
     });
   });
 
