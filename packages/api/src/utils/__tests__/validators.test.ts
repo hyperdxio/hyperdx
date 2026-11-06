@@ -357,6 +357,40 @@ describe('validators', () => {
       ]);
     });
 
+    const mockLookup = (err: Error | null, addresses: dns.LookupAddress[]) =>
+      jest
+        .spyOn(dns, 'lookup')
+        .mockImplementation(((_h: string, _o: unknown, cb: any) =>
+          cb(err, addresses)) as any);
+
+    it.each([
+      [
+        'one private record among public ones',
+        [
+          { address: '93.184.216.34', family: 4 },
+          { address: '10.0.0.1', family: 4 },
+        ],
+      ],
+      ['an IPv6 loopback record', [{ address: '::1', family: 6 }]],
+      [
+        'an IPv4-mapped private record',
+        [{ address: '::ffff:192.168.1.1', family: 6 }],
+      ],
+    ])('blocks %s', async (_name, addresses) => {
+      mockLookup(null, addresses);
+      await expect(lookup(validators, 'example.com', true)).rejects.toThrow(
+        validators.WebhookUrlValidationError,
+      );
+    });
+
+    it('passes through a DNS error unchanged', async () => {
+      const dnsError = Object.assign(new Error('getaddrinfo ENOTFOUND'), {
+        code: 'ENOTFOUND',
+      });
+      mockLookup(dnsError, []);
+      await expect(lookup(validators, 'nope.example')).rejects.toBe(dnsError);
+    });
+
     it('allows an allowlisted hostname that resolves privately', async () => {
       const isolatedValidators = loadValidatorsWithConfig({
         hostnameAllowlist: 'localhost',

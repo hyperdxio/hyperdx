@@ -269,7 +269,9 @@ const sendGenericWebhook = async (
         dispatcher: webhookDispatcher,
       } as RequestInit).catch(e => {
         // Surface a connect-time block as the validation error (a 400), not "fetch failed".
-        if (e?.cause instanceof WebhookUrlValidationError) throw e.cause;
+        for (let c = e; c; c = c.cause) {
+          if (c instanceof WebhookUrlValidationError) throw c;
+        }
         throw e;
       });
 

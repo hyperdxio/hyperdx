@@ -117,6 +117,23 @@ describe('handleSendGenericWebhook — DNS resolution', () => {
     ).rejects.toThrow(WebhookUrlValidationError);
     expect(lookupSpy).toHaveBeenCalledTimes(1);
   }, 2000);
+
+  it('unwraps a block nested deeper in the cause chain, without retrying', async () => {
+    const blocked = new WebhookUrlValidationError('blocked');
+    jest
+      .mocked(global.fetch)
+      .mockClear()
+      .mockRejectedValueOnce(
+        new TypeError('fetch failed', {
+          cause: new Error('connect failed', { cause: blocked }),
+        }),
+      );
+
+    await expect(handleSendGenericWebhook(channel, message)).rejects.toBe(
+      blocked,
+    );
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  }, 2000);
 });
 
 describe('buildWebhookTemplateVariables', () => {
