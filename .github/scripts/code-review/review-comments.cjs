@@ -13,9 +13,29 @@
  * `.cjs` rather than `.js`: this is CommonJS loaded by `require` from github-script, and
  * the extension says so without depending on the absence of `"type": "module"`.
  */
-const crypto = require('crypto');
-
-const ICON = { critical: '🔴', major: '🟠', minor: '🔵' };
+const {
+  PRIORITY_ICON,
+  PRIORITIES,
+  SEVERITIES,
+  severityOf,
+  isSecurityShaped,
+  effectivePriority,
+  applyGrades,
+  regradeInput,
+} = require('./priority.cjs');
+const {
+  fingerprint,
+  seenFingerprints,
+  titleTokens,
+  titleSimilarity,
+  SIMILAR_TITLE,
+  titleFromBody,
+  seenFindings,
+  matchPosted,
+  similarTitles,
+  distinctFindings,
+  MIN_SHARED_TOKENS,
+} = require('./dedup.cjs');
 
 /** GitHub rejects a comment body over this with a 422 on the whole post. */
 const MAX_BODY = 65536;
@@ -35,44 +55,43 @@ const GUIDE_LINK = `[How to respond](${GUIDE_URL})`;
  * into the PR (#3091: 3 files became 14, then the PR was closed as superseded).
  *
  * Nothing here blocks merge mechanically (only an unhealthy review fails the check), so
- * the footer says what a maintainer will expect instead, and that depends on severity:
- * a critical or major defect in the PR's own code gets fixed; a minor one is the author's
- * call; nothing about surrounding code gets fixed in this PR at any severity.
+ * the footer says what a maintainer will expect instead, and that depends on priority:
+ * a P0/P1 defect in the PR's own code gets fixed; a P2 is the author's call; nothing
+ * about surrounding code gets fixed in this PR at any priority. This is the same rule
+ * AGENTS.md already states in P0-P3 terms.
  */
-const INLINE_FOOTER_BY_SEVERITY = {
-  critical:
+const INLINE_FOOTER_BY_PRIORITY = {
+  P0:
     '<sub>Nothing blocks merge automatically, but a maintainer will expect this fixed if ' +
     'it is a real defect in code this PR changes. If it is about surrounding code, reply ' +
     `and say so instead of patching. Do not widen the PR. ${GUIDE_LINK}</sub>`,
-  minor:
+  P2:
     '<sub>Advisory. Fix if it is a small defect in code this PR changes; otherwise reply ' +
     'in the thread. Do not widen the PR or touch files it did not already change. ' +
     `${GUIDE_LINK}</sub>`,
 };
-INLINE_FOOTER_BY_SEVERITY.major = INLINE_FOOTER_BY_SEVERITY.critical;
+INLINE_FOOTER_BY_PRIORITY.P1 = INLINE_FOOTER_BY_PRIORITY.P0;
+// P3 is never posted inline; the entry exists so a caller can never get `undefined`.
+INLINE_FOOTER_BY_PRIORITY.P3 = INLINE_FOOTER_BY_PRIORITY.P2;
 
 function inlineFooter(finding) {
-  return INLINE_FOOTER_BY_SEVERITY[severityOf(finding)];
+  return INLINE_FOOTER_BY_PRIORITY[effectivePriority(finding)];
 }
 
 /** Leads the summary: the footers' rule as a blockquoted list, plus what one comment cannot say. */
 const AGENT_NOTICE = [
   '> **If you are a coding agent acting for the author, read this first.**',
   '> Nothing below blocks merge automatically; a maintainer decides. What they will expect:',
-  '> - 🔴 critical or 🟠 major in code this PR adds or changes: fix before asking for review.',
-  '> - 🔵 minor in code this PR changes: your call. Fix if small, otherwise reply.',
+  '> - 🔴 P0/P1 in code this PR adds or changes: fix before asking for review.',
+  '> - 🟡 P2 in code this PR changes: your call. Fix if small, otherwise reply.',
+  '> - 🔵 P3 is collapsed at the bottom: nobody needs to act on it before merge.',
   '> - Anything about surrounding code, or asking you to widen the change (hoist a helper,',
   '>   dedupe with another file, fix other call sites): never fix here, whatever the',
-  '>   severity. Reply with one sentence; if it is critical, say so plainly so a human sees it.',
+  '>   priority. Reply with one sentence; if it is P0, say so plainly so a human sees it.',
   '>',
   '> One commit per review round. After two rounds, stop and ask a maintainer to review',
   `> scope rather than addressing more automated findings. Full rule: [AGENTS.md](${GUIDE_URL}).`,
 ].join('\n');
-
-/** Normalize a severity we may have received from a model to one of the three we render. */
-function severityOf(finding) {
-  return ICON[finding.severity] ? finding.severity : 'minor';
-}
 
 /**
  * Map of file -> Set of post-image line numbers that can carry an inline comment.
@@ -123,51 +142,29 @@ function parseCommentableLines(diffText) {
   return byFile;
 }
 
-/**
- * Stable per-finding id used to avoid reposting across pushes.
- *
- * Keyed on path + normalized title only: bodies get reworded between runs, and keying on
- * them would repost the same finding every push. Titles are stable enough in practice and
- * a false dedup is much cheaper than a duplicate comment.
- */
-function fingerprint(finding) {
-  const title = String(finding.title || '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-  return crypto
-    .createHash('sha256')
-    .update(`${finding.file}|${title}`)
-    .digest('hex')
-    .slice(0, 16);
-}
-
-const FINGERPRINT_RE = /<!-- hdxr:([0-9a-f]{16}) -->/;
-
-/** Recover fingerprints we have already posted, from existing bot review comments. */
-function seenFingerprints(existingComments) {
-  const seen = new Set();
-  for (const c of existingComments || []) {
-    const m = FINGERPRINT_RE.exec(c.body || '');
-    if (m) seen.add(m[1]);
-  }
-  return seen;
+/** Hidden per-comment marker: the dedup key, plus the inputs that decided the priority. */
+function marker(finding) {
+  const attrs = [];
+  if (PRIORITIES.includes(finding.priority)) attrs.push(`p=${finding.priority}`);
+  attrs.push(`sev=${severityOf(finding)}`);
+  if (typeof finding.reachableToday === 'boolean') attrs.push(`reach=${finding.reachableToday}`);
+  return `<!-- hdxr:${fingerprint(finding)} ${attrs.join(' ')} -->`;
 }
 
 function commentBody(finding) {
-  const sev = severityOf(finding);
-  const marker = `<!-- hdxr:${fingerprint(finding)} -->`;
-  const head = `${ICON[sev]} **${sev}** — ${finding.title}\n\n`;
+  const p = effectivePriority(finding);
+  const mark = marker(finding);
+  const head = `${PRIORITY_ICON[p]} **${p}** — ${finding.title}\n\n`;
   // Cap like the summary. GitHub rejects an over-long comment with a 422 on the whole
   // batch, and the individual retry then fails the same way, so one oversized finding
   // would take out every other inline comment in the run.
   const footer = inlineFooter(finding);
-  const room = MAX_BODY - head.length - footer.length - marker.length - 32;
+  const room = MAX_BODY - head.length - footer.length - mark.length - 32;
   const body =
     finding.body.length > room
       ? `${finding.body.slice(0, room)}\n\n_(truncated)_`
       : finding.body;
-  return `${head}${body}\n\n${footer}\n\n${marker}`;
+  return `${head}${body}\n\n${footer}\n\n${mark}`;
 }
 
 /**
@@ -180,29 +177,52 @@ function commentBody(finding) {
  * Each `inline` entry is `{ comment, finding }`: the caller posts `comment`, and if the
  * API rejects the anchor it can move the original `finding` into the summary rather than
  * losing its title, body and severity.
+ *
+ * `collapsed` is every new P3, anchored or not. They are folded into the summary instead
+ * of opening a thread: P3 means nobody needs to act on it before merge, and an inline
+ * thread is an action item in the author's queue. Folded, never dropped.
  */
 function buildInlineComments({ findings, diffText, existingComments }) {
   const commentable = parseCommentableLines(diffText);
-  const seen = seenFingerprints(existingComments);
+  // Only entries recovered from existing comments mean "already posted" (fromPush). A
+  // repeat within this run is a same-run duplicate and must not be reported as unchanged,
+  // so each posted entry counts as "unchanged" at most once, or that tally inflates.
+  const posted = seenFindings(existingComments);
   const inline = [];
   const unanchored = [];
+  const collapsed = [];
   const skipped = [];
   const duplicates = [];
-  // Only fingerprints recovered from existing comments mean "already posted". A repeat
-  // within this run is a same-run duplicate and must not be reported as unchanged.
-  const previouslyPosted = new Set(seen);
 
   for (const finding of findings || []) {
-    const fp = fingerprint(finding);
-    if (seen.has(fp)) {
-      // Count each fingerprint at most once as "already posted"; a repeat within this run
-      // is a same-run duplicate even when an earlier push also carried it, or the
-      // "N unchanged from an earlier push" tally inflates.
-      const bucket = previouslyPosted.delete(fp) ? skipped : duplicates;
+    const match = matchPosted(posted, finding);
+    if (match) {
+      const bucket = match.fromPush && !match.counted ? skipped : duplicates;
+      match.counted = true;
       bucket.push({ ...finding, severity: severityOf(finding) });
+      // Remember this wording too, so a later restatement of IT is also a duplicate. Without
+      // this, F1 restating an old comment is skipped but F2 restating F1 is posted, while
+      // the summary (distinctFindings) drops F2 -- delivery and headline disagree.
+      posted.push({
+        fp: fingerprint(finding),
+        file: finding.file,
+        tokens: titleTokens(finding.title),
+        fromPush: false,
+        counted: true,
+      });
       continue;
     }
-    seen.add(fp);
+    posted.push({
+      fp: fingerprint(finding),
+      file: finding.file,
+      tokens: titleTokens(finding.title),
+      fromPush: false,
+      counted: true,
+    });
+    if (effectivePriority(finding) === 'P3') {
+      collapsed.push({ ...finding, severity: severityOf(finding) });
+      continue;
+    }
     const lines = commentable.get(finding.file);
     const line = Number(finding.line);
     if (line && lines && lines.has(line)) {
@@ -219,13 +239,13 @@ function buildInlineComments({ findings, diffText, existingComments }) {
       unanchored.push({ ...finding, severity: severityOf(finding) });
     }
   }
-  return { inline, unanchored, skipped, duplicates };
+  return { inline, unanchored, collapsed, skipped, duplicates };
 }
 
 function renderFinding(f) {
-  const sev = severityOf(f);
+  const p = effectivePriority(f);
   const loc = `${f.file}${f.line ? `:${f.line}` : ''}`;
-  return `- ${ICON[sev]} \`${loc}\` — **${f.title}**${f.body ? ` → ${f.body}` : ''}`;
+  return `- ${PRIORITY_ICON[p]} **${p}** \`${loc}\` — **${f.title}**${f.body ? ` → ${f.body}` : ''}`;
 }
 
 /**
@@ -237,6 +257,8 @@ function renderFinding(f) {
 function renderSummary({
   findings,
   unanchored,
+  collapsed,
+  graded = true,
   skipped,
   duplicates,
   posted,
@@ -265,18 +287,14 @@ function renderSummary({
 
   lines.push(AGENT_NOTICE, '');
 
-  // The set actually represented in this comment: first occurrence of each fingerprint.
-  // Both the headline total and the per-severity tally run over it, so they agree -- a
-  // tally over every finding would not sum to the distinct total once duplicates collapse.
-  const seenKeys = new Set();
-  const shown = findings.filter(f => {
-    const key = fingerprint(f);
-    if (seenKeys.has(key)) return false;
-    seenKeys.add(key);
-    return true;
-  });
-  const by = s => shown.filter(f => severityOf(f) === s).length;
+  // The set actually represented in this comment: first occurrence of each finding,
+  // matched the same way delivery matches (fingerprint OR reworded title). Both the
+  // headline total and the per-priority tally run over it, so they agree -- and a pair of
+  // restatements that delivery collapsed into one comment is counted once here too.
+  const shown = distinctFindings(findings);
+  const by = (...ps) => shown.filter(f => ps.includes(effectivePriority(f))).length;
   const nUnanchored = unanchored ? unanchored.length : 0;
+  const nCollapsed = collapsed ? collapsed.length : 0;
   const nSkipped = skipped ? skipped.length : 0;
   // Duplicates were collapsed into a single comment, so counting them in the headline
   // would advertise findings that appear nowhere. Report distinct findings.
@@ -285,14 +303,17 @@ function renderSummary({
   // Be accurate about where the findings went. "none could be anchored" is wrong when the
   // real reason is that every finding was already posted on an earlier push.
   const delivery =
-    posted > 0
+    (posted > 0
       ? `${posted} posted as inline comment(s) on the changed lines.` +
         (nUnanchored ? ` ${nUnanchored} listed below.` : '')
       : nUnanchored
         ? 'None could be anchored to changed lines; they are listed below.'
-        : 'Already reported on an earlier push — no new comments.';
+        : nCollapsed
+          ? 'No inline comments.'
+          : 'Already reported on an earlier push — no new comments.') +
+    (nCollapsed ? ` ${nCollapsed} P3 folded at the bottom.` : '');
   lines.push(
-    `**${distinct}** finding(s): 🔴 ${by('critical')} critical · 🟠 ${by('major')} major · 🔵 ${by('minor')} minor` +
+    `**${distinct}** finding(s): 🔴 ${by('P0', 'P1')} P0/P1 · 🟡 ${by('P2')} P2 · 🔵 ${by('P3')} P3` +
       (nDuplicates ? ` · ${nDuplicates} duplicate(s) collapsed` : ''),
     '',
     // Skipped findings are counted above but appear nowhere in this comment -- they are
@@ -304,29 +325,37 @@ function renderSummary({
     '',
   );
 
+  if (!graded) {
+    lines.push(
+      '⚠️ Priority grading did not run this time, so nothing was folded: every finding is ' +
+        "posted, ranked by the reviewer's own estimate.",
+      '',
+    );
+  }
+
   if (unanchored && unanchored.length) {
-    const major = unanchored.filter(f => severityOf(f) !== 'minor');
-    const minor = unanchored.filter(f => severityOf(f) === 'minor');
     lines.push('### Findings outside the changed lines', '');
-    if (major.length) lines.push(...major.map(renderFinding), '');
-    // Folded, not dropped: on the eval set minor findings carry 29-57% of everything a
-    // human independently flagged, so filtering them would cost about half the recall.
-    if (minor.length) {
-      lines.push(
-        `<details><summary>${minor.length} minor</summary>`,
-        '',
-        ...minor.map(renderFinding),
-        '',
-        '</details>',
-        '',
-      );
-    }
+    lines.push(...unanchored.map(renderFinding), '');
+  }
+
+  // Folded, never dropped: hiding a finding entirely would cost recall the eval measured,
+  // and a P3 is still true -- it just does not need anyone before merge.
+  if (nCollapsed) {
+    lines.push(
+      `<details><summary>🔵 ${nCollapsed} P3 — no action needed before merge</summary>`,
+      '',
+      ...collapsed.map(renderFinding),
+      '',
+      '</details>',
+      '',
+    );
   }
 
   lines.push(
     '---',
-    "<sub>Severity is the reviewer's own estimate and is used for ordering, not filtering. " +
-      'No finding blocks merge automatically; a maintainer decides.</sub>',
+    '<sub>Priority comes from a separate grading pass over the finished review. P3 is folded ' +
+      'here instead of posted inline. No finding blocks merge automatically; a maintainer ' +
+      'decides.</sub>',
   );
   return capBody(lines.join('\n'), marker);
 }
@@ -346,7 +375,7 @@ function capBody(body, marker) {
 }
 
 module.exports = {
-  ICON,
+  SEVERITIES,
   GUIDE_URL,
   inlineFooter,
   AGENT_NOTICE,
@@ -354,6 +383,19 @@ module.exports = {
   parseCommentableLines,
   fingerprint,
   seenFingerprints,
+  seenFindings,
+  titleTokens,
+  titleSimilarity,
+  titleFromBody,
+  SIMILAR_TITLE,
+  MIN_SHARED_TOKENS,
+  similarTitles,
+  distinctFindings,
+  PRIORITY_ICON,
+  effectivePriority,
+  applyGrades,
+  regradeInput,
+  isSecurityShaped,
   commentBody,
   buildInlineComments,
   renderSummary,
