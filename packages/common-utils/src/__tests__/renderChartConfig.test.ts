@@ -979,7 +979,15 @@ describe('renderChartConfig', () => {
       },
     );
 
-    it.each(cases)(
+    // Gauge and sum queries already read Flags, so only histogram tables can
+    // lack it.
+    it.each(
+      cases.filter(
+        ([metricType]) =>
+          metricType === MetricsDataType.Histogram ||
+          metricType === MetricsDataType.ExponentialHistogram,
+      ),
+    )(
       'reads a table without a Flags column as before (%s, %o)',
       async (metricType, select) => {
         const sql = await renderMetricSql(metricType, select);
