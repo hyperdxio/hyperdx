@@ -16,6 +16,9 @@ import type {
 } from '@/tasks/checkAlerts/providers';
 
 /**
+ * Internal extension point, not a stable API: members follow processAlert and
+ * can change in any release.
+ *
  * What processAlert has resolved by the time it evaluates an alert: the
  * scheduled window, the chart config to query, and the helpers that record
  * state and send notifications. The threshold path in processAlert uses the
@@ -75,9 +78,10 @@ export interface AlertEvaluator {
   name: string;
   appliesTo: (alert: IAlert) => boolean;
   /**
-   * The clock to evaluate against. Defaults to the wall clock. Applied both
-   * in processAlert and when fetching history up front, so the scheduled
-   * window and the history it is compared to stay aligned.
+   * The clock to evaluate against, e.g. shifted back to wait for late data.
+   * Defaults to the wall clock, and a result later than the wall clock is
+   * ignored. Applied both in processAlert and when fetching history up front,
+   * so the scheduled window and the history it is compared to stay aligned.
    */
   evaluationNow?: (alert: IAlert, wallClockNow: Date) => Date;
   /** Evaluates the window and persists state through `ctx`. Throwing records
@@ -101,13 +105,30 @@ export const registerAlertEvaluator = (evaluator: AlertEvaluator) => {
 
 /** The registered evaluator for this alert, or undefined for the threshold
  * path. */
+/**
+ * Runs registerExtensions once. A failed registration is rolled back and
+ * rethrown, and retried on the next lookup: routing alerts to the threshold
+ * path because their evaluator failed to register would evaluate them wrongly
+ * without any error.
+ */
+const ensureExtensionsRegistered = () => {
+  if (extensionsRegistered) {
+    return;
+  }
+  const registeredBefore = evaluators.length;
+  try {
+    registerExtensions();
+  } catch (e) {
+    evaluators.length = registeredBefore;
+    throw e;
+  }
+  extensionsRegistered = true;
+};
+
 export const findAlertEvaluator = (
   alert: IAlert,
 ): AlertEvaluator | undefined => {
-  if (!extensionsRegistered) {
-    extensionsRegistered = true;
-    registerExtensions();
-  }
+  ensureExtensionsRegistered();
   return evaluators.find(e => e.appliesTo(alert));
 };
 

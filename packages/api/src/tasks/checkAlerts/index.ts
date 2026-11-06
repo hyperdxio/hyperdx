@@ -81,6 +81,7 @@ import {
 } from '@/tasks/checkAlerts/errors';
 import {
   AlertEvaluationContext,
+  AlertEvaluator,
   findAlertEvaluator,
   THRESHOLD_EVALUATOR_NAME,
 } from '@/tasks/checkAlerts/evaluators';
@@ -443,10 +444,14 @@ export const getScheduledWindowStart = (
 
 /**
  * The clock an alert is evaluated against: the wall clock, unless the alert's
- * evaluator shifts it (see AlertEvaluator.evaluationNow).
+ * evaluator shifts it back (see AlertEvaluator.evaluationNow). Never later
+ * than the wall clock: previous-state lookups bound history by the wall clock,
+ * which only covers every window when the evaluation clock is not ahead of it.
  */
-const getAlertEvaluationNow = (alert: IAlert, now: Date): Date =>
-  findAlertEvaluator(alert)?.evaluationNow?.(alert, now) ?? now;
+const getAlertEvaluationNow = (alert: IAlert, now: Date): Date => {
+  const shifted = findAlertEvaluator(alert)?.evaluationNow?.(alert, now);
+  return shifted != null && shifted < now ? shifted : now;
+};
 
 /**
  * Compute the scheduled window start ("now rounded down to the window") for an
@@ -454,7 +459,10 @@ const getAlertEvaluationNow = (alert: IAlert, now: Date): Date =>
  * that history fetched up-front (see getConsecutiveWindowHistories) lines up
  * exactly with the window processAlert evaluates.
  */
-const getAlertWindowStart = (alert: IAlert, wallClockNow: Date): Date => {
+export const getAlertWindowStart = (
+  alert: IAlert,
+  wallClockNow: Date,
+): Date => {
   const now = getAlertEvaluationNow(alert, wallClockNow);
   const windowSizeInMins = ms(alert.interval) / 60000;
   const scheduleStartAt = normalizeScheduleStartAt({
@@ -997,8 +1005,9 @@ export const processAlert = async (
   teamWebhooksById: Map<string, IWebhook>,
 ) => {
   const { alert, previousMap, recentHistoryMap } = details;
-  const now = getAlertEvaluationNow(alert, wallClockNow);
-  const evaluator = findAlertEvaluator(alert);
+  // Resolved inside the try so a failing evaluator lookup is recorded on the
+  // alert; hoisted so the finally can label the evaluation.
+  let evaluator: AlertEvaluator | undefined;
   const source = 'source' in details ? details.source : undefined;
   // Errors collected during this execution. Webhook errors accumulate here; query
   // and validation errors are recorded via recordAlertErrors before returning.
@@ -1056,6 +1065,8 @@ export const processAlert = async (
       .slice(0, ALERT_NOTIFICATION_TARGETS_LIMIT);
   };
   try {
+    evaluator = findAlertEvaluator(alert);
+    const now = getAlertEvaluationNow(alert, wallClockNow);
     const windowSizeInMins = ms(alert.interval) / 60000;
     const scheduleStartAt = normalizeScheduleStartAt({
       alertId: alert.id,

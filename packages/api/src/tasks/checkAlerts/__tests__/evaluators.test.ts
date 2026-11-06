@@ -2,7 +2,7 @@ import { DisplayType } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import { AlertState } from '@/models/alert';
-import { processAlert } from '@/tasks/checkAlerts';
+import { getAlertWindowStart, processAlert } from '@/tasks/checkAlerts';
 import {
   AlertEvaluationContext,
   AlertEvaluator,
@@ -55,6 +55,24 @@ const run = (alert: any, now: Date, provider = makeProvider()) => {
     provider,
     new Map(),
   ).then(() => ({ client, provider }));
+};
+
+/** Registers an evaluator that runs `body` and returns its context. */
+const evaluateWith = async (
+  body: (ctx: AlertEvaluationContext) => Promise<void>,
+  alert = makeAlert(),
+) => {
+  let ctx: AlertEvaluationContext | undefined;
+  registerAlertEvaluator({
+    name: 'custom',
+    appliesTo: () => true,
+    evaluate: async c => {
+      ctx = c;
+      await body(c);
+    },
+  });
+  const result = await run(alert, new Date('2025-01-01T00:07:00Z'));
+  return { ...result, ctx: ctx! };
 };
 
 describe('alert evaluators', () => {
@@ -165,5 +183,163 @@ describe('alert evaluators', () => {
     const { client } = await run(makeAlert(), new Date('2025-01-01T00:07:00Z'));
 
     expect(client.queryChartConfig).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a silenced send as suppressed', async () => {
+    let sent: boolean | undefined;
+    const { ctx } = await evaluateWith(
+      async c => {
+        sent = await c.trySendNotification({
+          state: AlertState.ALERT,
+          group: '',
+          totalCount: 5,
+        });
+      },
+      makeAlert({ silenced: { until: new Date(Date.now() + 60_000) } }),
+    );
+
+    expect(sent).toBe(false);
+    expect(ctx.executionErrors).toEqual([]);
+  });
+
+  it('reports an attempted send even when delivery fails', async () => {
+    let sent: boolean | undefined;
+    // The test alert has no team, so the attempt records a webhook error.
+    const { ctx } = await evaluateWith(async c => {
+      sent = await c.trySendNotification({
+        state: AlertState.ALERT,
+        group: '',
+        totalCount: 5,
+      });
+    });
+
+    expect(sent).toBe(true);
+    expect(ctx.executionErrors).toHaveLength(1);
+  });
+
+  it('sends a resolve notification through the context', async () => {
+    const { ctx } = await evaluateWith(async c => {
+      const history = c.getOrCreateHistory('');
+      history.state = AlertState.OK;
+      await c.sendNotificationIfResolved(
+        { state: AlertState.ALERT, fired: true } as any,
+        history,
+        '',
+      );
+    });
+
+    // One dispatch attempt, failing on the missing team.
+    expect(ctx.executionErrors).toHaveLength(1);
+  });
+
+  it('persists extra errors with the collected ones', async () => {
+    const extra = { type: 'INVALID_ALERT', message: 'extra' } as any;
+    const { provider } = await evaluateWith(async c => {
+      c.executionErrors.push({ type: 'WEBHOOK_ERROR', message: 'a' } as any);
+      await c.persistHistories([c.getOrCreateHistory('')], [extra]);
+    });
+
+    const [, , errors] = provider.updateAlertState.mock.calls[0];
+    expect(errors).toEqual([expect.objectContaining({ message: 'a' }), extra]);
+  });
+
+  it('attaches analytics only when something was measured', async () => {
+    const measured = await evaluateWith(async c => {
+      c.evaluationAnalytics.queryDurationMs = 12;
+      await c.persistHistories([c.getOrCreateHistory('')]);
+    });
+    clearAlertEvaluators();
+    const unmeasured = await evaluateWith(async c => {
+      await c.persistHistories([c.getOrCreateHistory('')]);
+    });
+
+    const [[, [measuredRecord]]] =
+      measured.provider.updateAlertState.mock.calls;
+    const [[, [unmeasuredRecord]]] =
+      unmeasured.provider.updateAlertState.mock.calls;
+    expect(measuredRecord.analytics).toEqual({ queryDurationMs: 12 });
+    expect(unmeasuredRecord.analytics).toBeUndefined();
+  });
+
+  it('aligns the up-front history window with the evaluator clock', () => {
+    registerAlertEvaluator({
+      name: 'delayed',
+      appliesTo: () => true,
+      evaluationNow: (_alert, now) => new Date(now.getTime() - 2 * 60_000),
+      evaluate: jest.fn(),
+    });
+
+    expect(
+      getAlertWindowStart(makeAlert(), new Date('2025-01-01T00:06:00Z')),
+    ).toEqual(new Date('2025-01-01T00:00:00Z'));
+  });
+
+  it('ignores an evaluator clock that is ahead of the wall clock', () => {
+    registerAlertEvaluator({
+      name: 'ahead',
+      appliesTo: () => true,
+      evaluationNow: (_alert, now) => new Date(now.getTime() + 10 * 60_000),
+      evaluate: jest.fn(),
+    });
+
+    expect(
+      getAlertWindowStart(makeAlert(), new Date('2025-01-01T00:06:00Z')),
+    ).toEqual(new Date('2025-01-01T00:05:00Z'));
+  });
+
+  it('records a failing evaluator lookup on the alert', async () => {
+    registerAlertEvaluator({
+      name: 'broken',
+      appliesTo: () => {
+        throw new Error('lookup failed');
+      },
+      evaluate: jest.fn(),
+    });
+
+    const { provider } = await run(
+      makeAlert(),
+      new Date('2025-01-01T00:07:00Z'),
+    );
+
+    expect(provider.recordAlertErrors).toHaveBeenCalledTimes(1);
+    const [, errors] = provider.recordAlertErrors.mock.calls[0];
+    expect(errors).toEqual([expect.objectContaining({ type: 'UNKNOWN' })]);
+  });
+});
+
+describe('extension registration', () => {
+  it('rolls back and retries a failed registration', () => {
+    jest.isolateModules(() => {
+      const registerExtensions = jest
+        .fn()
+        .mockImplementationOnce(() => {
+          evaluatorsModule.registerAlertEvaluator({
+            name: 'partial',
+            appliesTo: () => true,
+            evaluate: jest.fn(),
+          });
+          throw new Error('registration failed');
+        })
+        .mockImplementationOnce(() => {
+          evaluatorsModule.registerAlertEvaluator({
+            name: 'partial',
+            appliesTo: () => true,
+            evaluate: jest.fn(),
+          });
+        });
+      jest.doMock('@/extensions', () => ({ registerExtensions }));
+      // eslint-disable-next-line @typescript-eslint/no-require-imports, n/no-missing-require
+      const evaluatorsModule = require('@/tasks/checkAlerts/evaluators');
+
+      expect(() => evaluatorsModule.findAlertEvaluator(makeAlert())).toThrow(
+        'registration failed',
+      );
+      // The partial registration was rolled back, so the retry can register
+      // the same name again.
+      expect(evaluatorsModule.findAlertEvaluator(makeAlert())?.name).toBe(
+        'partial',
+      );
+      expect(registerExtensions).toHaveBeenCalledTimes(2);
+    });
   });
 });
