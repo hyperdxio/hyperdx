@@ -454,6 +454,16 @@ describe('useOffsetPaginatedQuery', () => {
           server: { max_result_bytes: '1', result_overflow_mode: 'break' },
           source: {},
         },
+        {
+          name: 'inherited ClickHouse limit',
+          server: { ...nonTruncatingSettings, limit: '1' },
+          source: {},
+        },
+        {
+          name: 'source ClickHouse limit',
+          server: { ...nonTruncatingSettings, limit: '100' },
+          source: { limit: '1' },
+        },
         ...[
           ['read_overflow_mode', 'max_rows_to_read'],
           ['read_overflow_mode', 'max_bytes_to_read'],
@@ -516,6 +526,18 @@ describe('useOffsetPaginatedQuery', () => {
         },
         { name: 'unknown settings', server: {}, source: {} },
         {
+          name: 'failed settings lookup',
+          server: {},
+          source: {},
+          settingsLookupFails: true,
+        },
+        {
+          name: 'failed settings lookup with source overrides',
+          server: {},
+          source: nonTruncatingSettings,
+          settingsLookupFails: true,
+        },
+        {
           name: 'unknown byte cap',
           server: { max_result_rows: '0', result_overflow_mode: 'break' },
           source: {},
@@ -532,13 +554,20 @@ describe('useOffsetPaginatedQuery', () => {
       ].flatMap(testCase =>
         ['Timestamp DESC', 'Timestamp ASC'].map(orderBy => ({
           queryTimeout: 30,
+          settingsLookupFails: false,
           ...testCase,
           orderBy,
         })),
       ),
     )(
       'keeps offset paging after a short page with $name ($orderBy)',
-      async ({ orderBy, server, source, queryTimeout }) => {
+      async ({
+        orderBy,
+        server,
+        source,
+        queryTimeout,
+        settingsLookupFails,
+      }) => {
         mockQueryTimeout = queryTimeout;
         const config = createMockChartConfig({ orderBy });
         mockMetadata.getSettings.mockResolvedValue(
@@ -550,6 +579,11 @@ describe('useOffsetPaginatedQuery', () => {
             ),
           ),
         );
+        if (settingsLookupFails) {
+          mockMetadata.getSettings.mockRejectedValue(
+            new Error('Settings lookup failed'),
+          );
+        }
         const querySettings: QuerySettings = Object.entries(source).map(
           ([setting, value]) => ({ setting, value }),
         );
@@ -635,6 +669,18 @@ describe('useOffsetPaginatedQuery', () => {
     );
 
     it.each([
+      ...['0', '100', '200'].flatMap(limit => [
+        {
+          name: `inherited ClickHouse limit=${limit}`,
+          server: { limit },
+          source: {},
+        },
+        {
+          name: `source ClickHouse limit=${limit} overriding inherited cap`,
+          server: { limit: '1' },
+          source: { limit },
+        },
+      ]),
       {
         name: 'uncapped reads and sort with leaf limits unavailable',
         server: {
@@ -1291,25 +1337,33 @@ describe('useOffsetPaginatedQuery', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle ClickHouse query errors gracefully', async () => {
-      const config = createMockChartConfig();
+    it.each([false, true])(
+      'should surface ClickHouse query errors when settings lookup fails: %s',
+      async settingsLookupFails => {
+        const config = createMockChartConfig();
+        if (settingsLookupFails) {
+          mockMetadata.getSettings.mockRejectedValue(
+            new Error('Settings lookup failed'),
+          );
+        }
 
-      // Mock the clickhouse client to throw an error during query execution
-      mockClickhouseClient.query.mockRejectedValue(
-        new ClickHouseQueryError('Query failed', 'SELECT * FROM traces'),
-      );
+        // Mock the clickhouse client to throw an error during query execution
+        mockClickhouseClient.query.mockRejectedValue(
+          new ClickHouseQueryError('Query failed', 'SELECT * FROM traces'),
+        );
 
-      const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
-        wrapper,
-      });
+        const { result } = renderHook(() => useOffsetPaginatedQuery(config), {
+          wrapper,
+        });
 
-      await waitFor(() => expect(result.current.isError).toBe(true), {
-        timeout: 5000,
-      });
+        await waitFor(() => expect(result.current.isError).toBe(true), {
+          timeout: 5000,
+        });
 
-      expect(result.current.error).toBeInstanceOf(ClickHouseQueryError);
-      expect(result.current.error?.message).toBe('Query failed');
-    });
+        expect(result.current.error).toBeInstanceOf(ClickHouseQueryError);
+        expect(result.current.error?.message).toBe('Query failed');
+      },
+    );
 
     it('should handle invalid time window errors', async () => {
       const config = createMockChartConfig({

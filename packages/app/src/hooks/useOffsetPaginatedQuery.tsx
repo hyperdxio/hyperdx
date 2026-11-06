@@ -274,9 +274,9 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
 
   let canSkipShortPage = false;
   if (isBuilderChartConfig(config) && (config.limit?.limit ?? 0) > 0) {
-    const serverSettings = await metadata.getSettings({
-      connectionId: config.connection,
-    });
+    const serverSettings = await metadata
+      .getSettings({ connectionId: config.connection })
+      .catch(() => undefined);
     const sourceSettings = new Map(
       source?.querySettings
         ?.filter(({ setting, value }) => setting.length && value.length)
@@ -287,7 +287,7 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
       sourceSettings.get(name) ??
       (name === 'max_execution_time' && (queryTimeout ?? 0) > 0
         ? String(queryTimeout)
-        : serverSettings.get(name));
+        : serverSettings?.get(name));
     const cannotTruncate = (mode: string, limits: string[]) =>
       getSetting(mode) === 'throw' ||
       limits.every(name => {
@@ -311,9 +311,12 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
         ['max_rows_to_transfer', 'max_bytes_to_transfer'],
       ],
     ];
-    canSkipShortPage = limitsByMode.every(([mode, limits]) =>
-      cannotTruncate(mode, limits),
-    );
+    const limit = parseToNumber(getSetting('limit') ?? '0');
+    canSkipShortPage =
+      serverSettings != null &&
+      limit != null &&
+      (limit === 0 || limit >= (config.limit?.limit ?? 0)) &&
+      limitsByMode.every(([mode, limits]) => cannotTruncate(mode, limits));
 
     // Older servers do not expose all of the leaf settings.
     const leafLimitsByMode: [string, string[]][] = [
