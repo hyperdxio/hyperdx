@@ -101,6 +101,75 @@ describe('savedSearch router', () => {
     expect(updatedSavedSearch.body.select).toBe('SELECT 1');
   });
 
+  describe('defaultTimeRange', () => {
+    const ONE_DAY = { type: 'relative', value: 86400 };
+
+    it('persists a default time range on create and returns it from GET', async () => {
+      await agent
+        .post('/saved-search')
+        .send({ ...MOCK_SAVED_SEARCH, defaultTimeRange: ONE_DAY })
+        .expect(200);
+      const savedSearches = await agent.get('/saved-search').expect(200);
+      expect(savedSearches.body[0].defaultTimeRange).toEqual(ONE_DAY);
+    });
+
+    it('keeps the stored range when an update omits it', async () => {
+      const created = await agent
+        .post('/saved-search')
+        .send({ ...MOCK_SAVED_SEARCH, defaultTimeRange: ONE_DAY })
+        .expect(200);
+      const updated = await agent
+        .patch(`/saved-search/${created.body._id}`)
+        .send({ name: 'renamed' })
+        .expect(200);
+      expect(updated.body.defaultTimeRange).toEqual(ONE_DAY);
+    });
+
+    it('clears the stored range when an update sends null', async () => {
+      const created = await agent
+        .post('/saved-search')
+        .send({ ...MOCK_SAVED_SEARCH, defaultTimeRange: ONE_DAY })
+        .expect(200);
+      await agent
+        .patch(`/saved-search/${created.body._id}`)
+        .send({ defaultTimeRange: null })
+        .expect(200);
+      const dbRecord = await SavedSearch.findById(created.body._id);
+      expect(dbRecord?.defaultTimeRange ?? null).toBeNull();
+    });
+
+    it('rejects a malformed range', async () => {
+      await agent
+        .post('/saved-search')
+        .send({ ...MOCK_SAVED_SEARCH, defaultTimeRange: '1d' })
+        .expect(400);
+    });
+
+    it('rejects a fixed window', async () => {
+      await agent
+        .post('/saved-search')
+        .send({
+          ...MOCK_SAVED_SEARCH,
+          defaultTimeRange: {
+            type: 'historical',
+            value: [1700000000000, 1700003600000],
+          },
+        })
+        .expect(400);
+    });
+
+    it('still rejects null for fields that are not nullable', async () => {
+      const created = await agent
+        .post('/saved-search')
+        .send(MOCK_SAVED_SEARCH)
+        .expect(200);
+      await agent
+        .patch(`/saved-search/${created.body._id}`)
+        .send({ orderBy: null })
+        .expect(400);
+    });
+  });
+
   it('can get saved searches', async () => {
     await agent.post('/saved-search').send(MOCK_SAVED_SEARCH).expect(200);
     const savedSearches = await agent.get('/saved-search').expect(200);

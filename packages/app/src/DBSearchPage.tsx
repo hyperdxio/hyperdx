@@ -153,6 +153,11 @@ import {
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import { getSavedSearchLandingRange } from './components/SavedSearches/savedSearchTimeRange';
+import {
+  SaveTimeRangeField,
+  useSaveTimeRangeField,
+} from './components/SavedSearches/SaveTimeRangeField';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import SourceSchemaPreview, {
@@ -465,6 +470,9 @@ function SaveSearchModalComponent({
   onCreate,
   isUpdate,
   savedSearchId,
+  isLive,
+  searchedTimeRange,
+  openedAtMs,
 }: {
   searchedConfig: SearchConfig;
   opened: boolean;
@@ -472,6 +480,9 @@ function SaveSearchModalComponent({
   onCreate: (savedSearchId: string) => Promise<void>;
   isUpdate: boolean;
   savedSearchId: string | undefined | null;
+  isLive: boolean;
+  searchedTimeRange: [Date, Date];
+  openedAtMs: number | null;
 }) {
   const { data: savedSearch } = useSavedSearch(
     { id: savedSearchId ?? '' },
@@ -479,6 +490,13 @@ function SaveSearchModalComponent({
       enabled: savedSearchId != null,
     },
   );
+
+  const timeRangeField = useSaveTimeRangeField({
+    openedAtMs,
+    isLive,
+    searchedTimeRange,
+    stored: savedSearch?.defaultTimeRange,
+  });
 
   const {
     control,
@@ -528,6 +546,9 @@ function SaveSearchModalComponent({
     e.preventDefault();
 
     handleSubmit(async ({ name }) => {
+      const timeRange = timeRangeField.resolve(isUpdate);
+      const defaultTimeRangeUpdate =
+        timeRange === undefined ? {} : { defaultTimeRange: timeRange };
       if (isUpdate) {
         if (savedSearchId == null) {
           throw new Error('savedSearchId is required for update');
@@ -545,6 +566,7 @@ function SaveSearchModalComponent({
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
+            ...defaultTimeRangeUpdate,
           },
           {
             onSuccess: () => {
@@ -573,6 +595,7 @@ function SaveSearchModalComponent({
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
+            ...defaultTimeRangeUpdate,
           });
 
           await onCreate(savedSearch.id);
@@ -701,6 +724,7 @@ function SaveSearchModalComponent({
               </Tags>
             </Group>
           </Box>
+          <SaveTimeRangeField field={timeRangeField} />
           <Button
             data-testid="save-search-submit-button"
             variant="primary"
@@ -1291,6 +1315,19 @@ function DBSearchPageContent() {
       savedSearch.id === savedSearchId && // Make sure we've loaded the correct saved search
       isSearchConfigEmpty // Only populate if URL doesn't have explicit config
     ) {
+      const landingRange = getSavedSearchLandingRange(
+        savedSearch.defaultTimeRange,
+        window.location.search,
+        performance.timeOrigin + performance.now(),
+      );
+      if (landingRange != null) {
+        // Replace, not push: a pushed entry would leave the bare URL behind,
+        // and Back would land on it and re-apply the range forever.
+        setIsLive(false, { history: 'replace' });
+        onTimeRangeSelect(landingRange[0], landingRange[1], undefined, {
+          history: 'replace',
+        });
+      }
       setSearchedConfig({
         source: savedSearch.source,
         where: savedSearch.where,
@@ -1327,6 +1364,8 @@ function DBSearchPageContent() {
     defaultSourceId,
     directTraceId,
     sources,
+    setIsLive,
+    onTimeRangeSelect,
   ]);
 
   const [_queryErrors, setQueryErrors] = useState<{
@@ -1593,9 +1632,19 @@ function DBSearchPageContent() {
   }, [setIsLive]);
 
   const [modelFormExpanded, setModelFormExpanded] = useState(false); // Used in local mode
+  // openedAtMs is read in the click handler: the modal compares it with the
+  // searched window to decide whether that window reads as "the past N".
   const [saveSearchModalState, setSaveSearchModalState] = useState<
-    'create' | 'update' | undefined
+    { mode: 'create' | 'update'; openedAtMs: number } | undefined
   >(undefined);
+  const openSaveSearchModal = useCallback(
+    (mode: 'create' | 'update') =>
+      setSaveSearchModalState({
+        mode,
+        openedAtMs: performance.timeOrigin + performance.now(),
+      }),
+    [],
+  );
   const chartSearchConfig = useMemo(
     () => ({
       select: searchedConfig.select ?? '',
@@ -1644,7 +1693,7 @@ function DBSearchPageContent() {
   const deleteSavedSearch = useDeleteSavedSearch();
   const onSaveSearch = useCallback(() => {
     if (savedSearch == null) {
-      setSaveSearchModalState('create');
+      openSaveSearchModal('create');
     } else {
       handleSubmit(s => {
         updateSavedSearch.mutate(
@@ -1661,7 +1710,13 @@ function DBSearchPageContent() {
         );
       })();
     }
-  }, [savedSearch, updateSavedSearch, onSubmit, handleSubmit]);
+  }, [
+    savedSearch,
+    updateSavedSearch,
+    onSubmit,
+    handleSubmit,
+    openSaveSearchModal,
+  ]);
 
   const handleUpdateTags = useCallback(
     (newTags: string[]) => {
@@ -2482,7 +2537,7 @@ function DBSearchPageContent() {
                   });
                 }}
                 onClickSaveAsNew={() => {
-                  setSaveSearchModalState('create');
+                  openSaveSearchModal('create');
                 }}
               />
             </Group>
@@ -2543,7 +2598,7 @@ function DBSearchPageContent() {
                 variant="secondary"
                 size="xs"
                 onClick={() => {
-                  setSaveSearchModalState('update');
+                  openSaveSearchModal('update');
                 }}
                 style={{ flexShrink: 0 }}
               >
@@ -2668,8 +2723,11 @@ function DBSearchPageContent() {
           onClose={clearSaveSearchModalState}
           onCreate={onSavedSearchCreated}
           searchedConfig={searchedConfig}
-          isUpdate={saveSearchModalState === 'update'}
+          isUpdate={saveSearchModalState?.mode === 'update'}
           savedSearchId={savedSearchId}
+          isLive={isLive}
+          searchedTimeRange={searchedTimeRange}
+          openedAtMs={saveSearchModalState?.openedAtMs ?? null}
         />
       )}
       <DirectTraceSidePanel

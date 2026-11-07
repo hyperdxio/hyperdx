@@ -390,6 +390,14 @@ export type UseTimeQueryInputType = {
   updateInput?: boolean;
 };
 
+type TimeRangeSelectOptions = {
+  /**
+   * Defaults to 'push'. Use 'replace' for programmatic writes that should not
+   * add a Back entry, such as applying a saved search's stored range on load.
+   */
+  history?: 'push' | 'replace';
+};
+
 export type UseTimeQueryReturnType = {
   isReady: boolean;
   displayedTimeInputValue: string;
@@ -400,6 +408,7 @@ export type UseTimeQueryReturnType = {
     start: Date,
     end: Date,
     displayedTimeInputValue?: string | null,
+    options?: TimeRangeSelectOptions,
   ) => void;
   from: number | null;
   to: number | null;
@@ -510,8 +519,16 @@ export function useNewTimeQuery({
     searchedTimeRange,
     onSearch,
     onTimeRangeSelect: useCallback(
-      (start: Date, end: Date, displayedTimeInputValue?: string | null) => {
-        setTimeRangeQuery({ from: start.getTime(), to: end.getTime() });
+      (
+        start: Date,
+        end: Date,
+        displayedTimeInputValue?: string | null,
+        options?: TimeRangeSelectOptions,
+      ) => {
+        setTimeRangeQuery(
+          { from: start.getTime(), to: end.getTime() },
+          options?.history ? { history: options.history } : undefined,
+        );
         setSearchedTimeRange([start, end]);
         const dateRangeStr = dateRangeToString([start, end], timeZone);
         if (displayedTimeInputValue !== null) {
