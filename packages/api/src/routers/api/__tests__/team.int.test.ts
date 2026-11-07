@@ -2,6 +2,11 @@ import _ from 'lodash';
 import { ObjectId } from 'mongodb';
 import mongoose from 'mongoose';
 
+import * as config from '@/config';
+import {
+  LOCAL_APP_TEAM,
+  updateTeamQueryLanguageSettings,
+} from '@/controllers/team';
 import { getLoggedInAgent, getServer } from '@/fixtures';
 import Alert, { AlertSource, AlertThresholdType } from '@/models/alert';
 import Team from '@/models/team';
@@ -34,10 +39,73 @@ describe('team router', () => {
       .toMatchInlineSnapshot(`
       {
         "allowedAuthMethods": [],
+        "allowedQueryLanguages": [
+          "lucene",
+          "sql",
+        ],
+        "defaultQueryLanguage": "lucene",
         "isMetricsSeriesTableEnabled": false,
         "name": "fake@deploysentinel.com's Team",
       }
     `);
+  });
+
+  it('PATCH /team/query-language-settings - update query language settings', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    const patchResp = await agent
+      .patch('/team/query-language-settings')
+      .send({
+        allowedQueryLanguages: ['sql'],
+        defaultQueryLanguage: 'sql',
+      })
+      .expect(200);
+
+    expect(patchResp.body).toEqual({
+      allowedQueryLanguages: ['sql'],
+      defaultQueryLanguage: 'sql',
+    });
+
+    const getResp = await agent.get('/team').expect(200);
+    expect(getResp.body.allowedQueryLanguages).toEqual(['sql']);
+    expect(getResp.body.defaultQueryLanguage).toEqual('sql');
+  });
+
+  it('PATCH /team/query-language-settings - rejects invalid configuration', async () => {
+    const { agent } = await getLoggedInAgent(server);
+
+    // Rejects empty allowed languages
+    await agent
+      .patch('/team/query-language-settings')
+      .send({
+        allowedQueryLanguages: [],
+      })
+      .expect(400);
+
+    // Rejects default language not in allowed languages
+    await agent
+      .patch('/team/query-language-settings')
+      .send({
+        allowedQueryLanguages: ['sql'],
+        defaultQueryLanguage: 'lucene',
+      })
+      .expect(400);
+  });
+
+  it('updateTeamQueryLanguageSettings works in local app mode', async () => {
+    const origLocalMode = config.IS_LOCAL_APP_MODE;
+    try {
+      (config as { IS_LOCAL_APP_MODE: boolean }).IS_LOCAL_APP_MODE = true;
+      const res = await updateTeamQueryLanguageSettings(LOCAL_APP_TEAM._id, {
+        allowedQueryLanguages: ['sql'],
+        defaultQueryLanguage: 'sql',
+      });
+      expect(res.allowedQueryLanguages).toEqual(['sql']);
+      expect(res.defaultQueryLanguage).toEqual('sql');
+    } finally {
+      (config as { IS_LOCAL_APP_MODE: boolean }).IS_LOCAL_APP_MODE =
+        origLocalMode;
+    }
   });
 
   it('GET /team reflects isMetricsSeriesTableEnabled when set', async () => {

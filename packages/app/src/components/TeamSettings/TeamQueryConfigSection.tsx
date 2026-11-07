@@ -26,6 +26,8 @@ import {
   DEFAULT_SEARCH_ROW_LIMIT,
 } from '@/defaults';
 
+import QueryLanguageSettingsForm from './QueryLanguageSettingsForm';
+
 type ClickhouseSettingType = 'number' | 'boolean';
 
 interface ClickhouseSettingFormProps {
@@ -281,7 +283,13 @@ export default function TeamQueryConfigSection() {
 
   return (
     <Box id="team_query_config">
-      <Text size="md">ClickHouse Client Settings</Text>
+      <Text size="md">Query language settings</Text>
+      <Divider my="md" />
+      <Card mb="lg">
+        <QueryLanguageSettingsForm />
+      </Card>
+
+      <Text size="md">ClickHouse client settings</Text>
       <Divider my="md" />
       <Card>
         <Stack>
