@@ -135,6 +135,7 @@ with:
 | `clickstack_event_deltas`        | Compare two row groups and rank properties by how their value distributions differ            |
 | `clickstack_emerging_signals`    | Detect NEW or GONE log/event patterns between a baseline and a current window (two-window Drain novelty diff) |
 | `clickstack_sql`                 | Execute raw ClickHouse SQL for advanced queries (JOINs, CTEs, sub-queries); pass `queries` to run up to 10 in parallel |
+| `clickstack_promql`              | Run a PromQL expression (range or instant) against a PromQL source. Only registered when PromQL is enabled |
 | `clickstack_get_dashboard`       | List all dashboards or get full detail for a specific dashboard                              |
 | `clickstack_save_dashboard`      | Create or update a dashboard with tiles (charts, tables, numbers, search, markdown)          |
 | `clickstack_delete_dashboard`    | Permanently delete a dashboard and its attached alerts                                       |
@@ -197,3 +198,40 @@ Discovery workflow for metrics:
 4. `clickstack_describe_metric` to drill into a specific metric and
    discover its attribute keys + sampled values before authoring queries.
 5. `clickstack_timeseries` / `clickstack_table` to chart the metric.
+
+### PromQL Sources
+
+Available when PromQL is enabled for the deployment (self-hosted: the API's
+`ENABLE_PROMQL` setting). With it off, PromQL sources, tiles, label filters,
+the `clickstack_promql` tool and the PromQL prompt sections are all hidden
+from MCP.
+
+A source with `kind: "promql"` holds Prometheus metrics, either on a
+Prometheus-compatible endpoint or in a ClickHouse `TimeSeries` table. The
+builder tools do not read it; use PromQL:
+
+1. `clickstack_list_sources` shows each PromQL source with its `backend`
+   (`prometheus` or `clickhouse`).
+2. `clickstack_describe_source` lists its metric names and label names.
+3. `clickstack_promql` runs an expression. A `range` query (default) returns
+   `{ __hdx_time_bucket, series_name, value }` rows plus `seriesLabels`; an
+   `instant` query evaluates at `endTime` and returns one row per series with
+   a column per label. `granularity` sets the step and `$__interval` in the
+   same `"<number> <unit>"` format PromQL tiles use.
+4. `clickstack_save_dashboard` with a `configType: "promql"` tile keeps the
+   chart; `clickstack_query_tile` returns the same rows for the same
+   expression and granularity. `PROMETHEUS_LABEL` filters give the dashboard
+   a label dropdown that tiles reference as `{job=~"$job"}`.
+
+```jsonc
+{
+  "sourceId": "<promql source id>",
+  "expression": "sum by (job) (rate(http_requests_total[$__rate_interval]))",
+  "startTime": "2026-01-01T00:00:00Z",
+  "endTime": "2026-01-01T01:00:00Z"
+}
+```
+
+The `$__interval`, `$__rate_interval` and `$__range` macros expand as they do
+in a PromQL tile. Dashboard variables do not resolve in `clickstack_promql`;
+write the value inline.

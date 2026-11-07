@@ -278,9 +278,26 @@ describe('MCP Dashboard Prompts', () => {
     });
 
     it('contains no em-dashes or en-dashes used as em-dashes', () => {
-      const prompt = buildQueryGuidePrompt();
+      const prompt = buildQueryGuidePrompt({ promql: true });
       expect(prompt).not.toMatch(/\u2014/); // [prose-lint: allow]
       expect(prompt).not.toMatch(/ \u2013 /); // [prose-lint: allow]
+    });
+
+    it('documents PromQL sources only while PromQL is enabled', () => {
+      const withPromql = buildQueryGuidePrompt({ promql: true });
+      expect(withPromql).toContain('== PROMQL SOURCES ==');
+      expect(withPromql).toMatch(/^Reference guide.*clickstack_promql/);
+      const idx = withPromql.indexOf('== PROMQL SOURCES ==');
+      const body = withPromql.slice(idx, withPromql.indexOf('\n== ', idx + 1));
+      expect(body).toContain('clickstack_promql(sourceId, expression');
+      expect(body).toContain('rate(http_requests_total[$__rate_interval])');
+      expect(body).toContain('histogram_quantile(0.95, sum by (le)');
+      expect(body).toContain('$__range');
+      expect(body).toContain('queryType "instant"');
+
+      const withoutPromql = buildQueryGuidePrompt();
+      expect(withoutPromql).not.toContain('PROMQL');
+      expect(withoutPromql).not.toContain('clickstack_promql');
     });
   });
 
@@ -317,6 +334,26 @@ describe('MCP Dashboard Prompts', () => {
   });
 
   describe('buildCreateDashboardPrompt', () => {
+    it('documents PromQL tiles only while PromQL is enabled', () => {
+      const args = [
+        'sources summary',
+        '000000000000000000000001',
+        '000000000000000000000002',
+        undefined,
+      ] as const;
+      const withPromql = buildCreateDashboardPrompt(...args, { promql: true });
+      const idx = withPromql.indexOf('== PROMQL TILES ==');
+      expect(idx).toBeGreaterThan(withPromql.indexOf('== TILE TYPE GUIDE =='));
+      expect(idx).toBeLessThan(withPromql.indexOf('== COLUMN NAMING =='));
+      const body = withPromql.slice(idx, withPromql.indexOf('\n== ', idx + 1));
+      expect(body).toContain('"configType": "promql"');
+      expect(body).toContain('"type": "PROMETHEUS_LABEL"');
+      expect(body).toContain('clickstack_promql');
+      expect(body).toContain('clickstack_query_tile');
+
+      expect(buildCreateDashboardPrompt(...args)).not.toContain('PROMQL');
+    });
+
     it('includes the design checklist and adapt-do-not-copy note', () => {
       const prompt = buildCreateDashboardPrompt(
         'sources summary',
@@ -452,7 +489,13 @@ describe('MCP Dashboard Prompts', () => {
     });
 
     it('contains no em-dashes or en-dashes used as em-dashes', () => {
-      const prompt = buildCreateDashboardPrompt('sources summary', '', '');
+      const prompt = buildCreateDashboardPrompt(
+        'sources summary',
+        '',
+        '',
+        undefined,
+        { promql: true },
+      );
       expect(prompt).not.toMatch(/\u2014/); // [prose-lint: allow]
       // En-dash flanked by spaces reads as an em-dash substitute and is
       // disallowed by the voice rules. Numeric ranges (e.g. "1-20") are

@@ -15,6 +15,7 @@ import savedSearchesTools from './tools/savedSearches/index';
 import sourcesTools from './tools/sources/index';
 import traceTools from './tools/trace/index';
 import { McpContext } from './tools/types';
+import { isPromqlEnabled } from './utils/promql';
 import { createRegisterTool } from './utils/registerTool';
 
 const SERVER_INSTRUCTIONS = [
@@ -35,6 +36,18 @@ const SERVER_INSTRUCTIONS = [
   'Fetch the query_guide prompt for detailed syntax, and create_dashboard for',
   'dashboard authoring.',
 ].join('\n');
+
+const PROMQL_INSTRUCTIONS =
+  'PromQL sources (kind "promql") hold Prometheus metrics: query them with\n' +
+  'clickstack_promql. The builder tools do not read them; clickstack_sql only\n' +
+  'inspects the raw tags and samples of a ClickHouse TimeSeries table.';
+
+/** The instructions a client sees. PromQL is mentioned only while it is enabled. */
+function serverInstructions(context: McpContext): string {
+  return isPromqlEnabled(context)
+    ? `${SERVER_INSTRUCTIONS}\n\n${PROMQL_INSTRUCTIONS}`
+    : SERVER_INSTRUCTIONS;
+}
 
 // Served by the app; omitted when FRONTEND_URL is unset because MCP icon
 // sources must be absolute URLs. String concatenation (not `new URL`) keeps
@@ -61,7 +74,7 @@ const SERVER_INFO: Implementation = {
 
 export function createServer(context: McpContext) {
   const server = new McpServer(SERVER_INFO, {
-    instructions: SERVER_INSTRUCTIONS,
+    instructions: serverInstructions(context),
   });
 
   const registerTool = createRegisterTool(server, context);
