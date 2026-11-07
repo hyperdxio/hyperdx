@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 import Alert, { IAlert } from '@/models/alert';
+import AlertHistory from '@/models/alertHistory';
 import Dashboard from '@/models/dashboard';
 import { SavedSearch } from '@/models/savedSearch';
 import { deriveAlertDisplayFields } from '@/utils/alerts';
@@ -129,10 +130,47 @@ export async function backfillAlertDisplayFields() {
   );
 }
 
+// {alert, group, createdAt, state} replaced this index. Mongoose creates
+// indexes but never drops them, so drop it once the new one is built.
+const REPLACED_ALERT_HISTORY_INDEX = 'alert_1_group_1_createdAt_-1';
+const ALERT_HISTORY_GROUP_INDEX = 'alert_1_group_1_createdAt_-1_state_1';
+
+export async function dropReplacedAlertHistoryIndex() {
+  // Resolves when Mongoose's index builds finish (autoIndex).
+  await AlertHistory.init();
+  const names = (await AlertHistory.collection.indexes()).map(i => i.name);
+  if (
+    !names.includes(ALERT_HISTORY_GROUP_INDEX) ||
+    !names.includes(REPLACED_ALERT_HISTORY_INDEX)
+  ) {
+    return;
+  }
+  try {
+    await AlertHistory.collection.dropIndex(REPLACED_ALERT_HISTORY_INDEX);
+    logger.info(
+      { index: REPLACED_ALERT_HISTORY_INDEX },
+      'Dropped replaced AlertHistory index',
+    );
+  } catch (e) {
+    // Another API replica dropped it first.
+    if (
+      !(e instanceof mongoose.mongo.MongoServerError) ||
+      e.codeName !== 'IndexNotFound'
+    ) {
+      throw e;
+    }
+  }
+}
+
 export async function runStartupMigrations() {
   try {
     await backfillAlertDisplayFields();
   } catch (e) {
     logger.error({ err: e }, 'Error backfilling alert display names and tags');
+  }
+  try {
+    await dropReplacedAlertHistoryIndex();
+  } catch (e) {
+    logger.error({ err: e }, 'Error dropping replaced AlertHistory index');
   }
 }

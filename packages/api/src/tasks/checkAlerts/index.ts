@@ -1844,10 +1844,12 @@ export interface AggregatedAlertHistory {
  * Fetch the most recent AlertHistory value for each of the given alert IDs.
  * For group-by alerts, returns the latest history for each group within each alert.
  *
- * Uses per-alert queries instead of batched $in to leverage the compound index
- * {alert: 1, group: 1, createdAt: -1} for index-backed sorting. With a single
- * alert value, the index delivers results already sorted by {group, createdAt desc},
- * so the $sort is a no-op and $group + $first can short-circuit per group.
+ * Uses per-alert queries so each one can use the compound index
+ * {alert: 1, group: 1, createdAt: -1, state: 1} as a DISTINCT_SCAN: one index
+ * seek per group instead of reading every row in the lookback window, which
+ * for a high-cardinality group-by alert is millions of rows (#3508). That plan
+ * needs a single-field $group key and only index fields in $match; ERROR rows
+ * are skipped inside the index (keys examined, documents not fetched).
  *
  * @param alertIds The list of alert IDs to query the latest history for.
  * @param now The current date and time. AlertHistory documents that have a createdAt > now are ignored.
@@ -1878,24 +1880,23 @@ export const getPreviousAlertHistories = async (
               createdAt: { $lte: now, $gte: lookbackDate },
               // ERROR rows record failed evaluations; they must not count as
               // "window evaluated" or the failed window would never be
-              // retried/backfilled.
+              // retried/backfilled. `state` is the last index field, so this
+              // is an index bound, not a filter on fetched documents.
               state: { $ne: AlertState.ERROR },
             },
           },
-          // With a single alert value, the compound index {alert: 1, group: 1, createdAt: -1}
-          // delivers results already in this sort order — this is an index-backed no-op sort.
+          // With a single alert value, the index delivers results already in
+          // this sort order — this is an index-backed no-op sort.
           {
             $sort: { alert: 1, group: 1, createdAt: -1 },
           },
-          // Group by {alert, group}, taking the first (latest) document's fields.
-          // Using $first on individual fields instead of $first: '$$ROOT' allows
-          // DocumentDB to avoid fetching full documents when not needed.
+          // One group key (not {alert, group}) so the planner can use a
+          // DISTINCT_SCAN. $first on individual fields instead of
+          // $first: '$$ROOT' lets DocumentDB avoid fetching full documents.
           {
             $group: {
-              _id: {
-                alert: '$alert',
-                group: '$group',
-              },
+              _id: '$group',
+              alert: { $first: '$alert' },
               createdAt: { $first: '$createdAt' },
               state: { $first: '$state' },
               fired: { $first: '$fired' },
@@ -1904,10 +1905,10 @@ export const getPreviousAlertHistories = async (
           },
           {
             $project: {
-              _id: '$_id.alert',
+              _id: '$alert',
               createdAt: 1,
               state: 1,
-              group: '$_id.group',
+              group: '$_id',
               fired: 1,
               groupValues: 1,
             },

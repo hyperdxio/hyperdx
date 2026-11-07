@@ -172,8 +172,11 @@ AlertHistorySchema.index(
 // Used by getRecentAlertHistories (matches on alert, sorts by createdAt)
 AlertHistorySchema.index({ alert: 1, createdAt: -1 });
 
-// Used by getPreviousAlertHistories (groups by {alert, group}, sorts by createdAt)
-AlertHistorySchema.index({ alert: 1, group: 1, createdAt: -1 });
+// Used by getPreviousAlertHistories (newest non-ERROR row per {alert, group}).
+// `state` comes last so the ERROR exclusion is an index bound and the query
+// keeps a DISTINCT_SCAN. Replaces {alert: 1, group: 1, createdAt: -1}, which
+// dropReplacedAlertHistoryIndex (src/migrations.ts) drops at API startup.
+AlertHistorySchema.index({ alert: 1, group: 1, createdAt: -1, state: 1 });
 
 export default mongoose.model<IAlertHistory>(
   'AlertHistory',
