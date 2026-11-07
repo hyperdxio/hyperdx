@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/app",
-  "version": "2.43.1",
+  "version": "2.44.0",
   "private": true,
   "license": "MIT",
   "engines": {
@@ -40,7 +40,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@hookform/resolvers": "^3.9.0",
     "@hyperdx/api": "workspace:*",
-    "@hyperdx/common-utils": "^0.33.0",
+    "@hyperdx/common-utils": "^0.34.0",
     "@mantine/core": "^9.0.0",
     "@mantine/dates": "^9.0.0",
     "@mantine/dropzone": "^9.0.0",

@@ -1,6 +1,6 @@
 {
   "name": "@hyperdx/api",
-  "version": "2.43.1",
+  "version": "2.44.0",
   "license": "MIT",
   "private": true,
   "engines": {
@@ -23,7 +23,7 @@
     "@clickhouse/clickstack-node": "^1.0.2",
     "@clickhouse/client-common": "1.23.0-head.fae5998.1",
     "@esm2cjs/p-queue": "^7.3.0",
-    "@hyperdx/common-utils": "^0.33.0",
+    "@hyperdx/common-utils": "^0.34.0",
     "@hyperdx/passport-local-mongoose": "^9.0.1",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@opentelemetry/api": "~1.9.1",
