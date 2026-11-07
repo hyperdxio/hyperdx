@@ -61,6 +61,7 @@ const savedSearchSchema = new Schema<
     },
     tags: [String],
     filters: [{ type: mongoose.Schema.Types.Mixed }],
+    defaultTimeRange: { type: mongoose.Schema.Types.Mixed, required: false },
     // Immutable: ownership attribution is set once at creation.
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,

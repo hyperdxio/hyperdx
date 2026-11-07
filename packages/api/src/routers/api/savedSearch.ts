@@ -86,9 +86,11 @@ router.patch(
       // Re-parse: validateRequest validates without replacing req.body, so
       // server-owned keys like `team`/`createdBy` would otherwise reach the
       // update. Parsing drops every key the schema doesn't declare.
+      // Only undefined is dropped: an explicit null clears a nullable field
+      // (defaultTimeRange), and the schema rejects null for every other field.
       const updates = _.omitBy(
         updateSavedSearchBodySchema.parse(req.body),
-        _.isNil,
+        _.isUndefined,
       );
 
       const updatedSavedSearch = await updateSavedSearch(

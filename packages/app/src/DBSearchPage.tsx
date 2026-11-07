@@ -153,6 +153,11 @@ import { recordAction } from '@/utils/browserTelemetry';
 import ChartSQLPreview, { SQLPreview } from './components/ChartSQLPreview';
 import DBSqlRowTableWithSideBar from './components/DBSqlRowTableWithSidebar';
 import PatternTable from './components/PatternTable';
+import { getSavedSearchLanding } from './components/SavedSearches/savedSearchTimeRange';
+import {
+  SaveTimeRangeField,
+  useSaveTimeRangeField,
+} from './components/SavedSearches/SaveTimeRangeField';
 import { DBSearchHeatmapChart } from './components/Search/DBSearchHeatmapChart';
 import DirectTraceSidePanel from './components/Search/DirectTraceSidePanel';
 import SourceSchemaPreview, {
@@ -465,6 +470,10 @@ function SaveSearchModalComponent({
   onCreate,
   isUpdate,
   savedSearchId,
+  isLive,
+  liveIntervalMs,
+  searchedTimeRange,
+  openedAtMs,
 }: {
   searchedConfig: SearchConfig;
   opened: boolean;
@@ -472,6 +481,10 @@ function SaveSearchModalComponent({
   onCreate: (savedSearchId: string) => Promise<void>;
   isUpdate: boolean;
   savedSearchId: string | undefined | null;
+  isLive: boolean;
+  liveIntervalMs: number;
+  searchedTimeRange: [Date, Date];
+  openedAtMs: number | null;
 }) {
   const { data: savedSearch } = useSavedSearch(
     { id: savedSearchId ?? '' },
@@ -479,6 +492,14 @@ function SaveSearchModalComponent({
       enabled: savedSearchId != null,
     },
   );
+
+  const timeRangeField = useSaveTimeRangeField({
+    openedAtMs,
+    isLive,
+    liveIntervalMs,
+    searchedTimeRange,
+    stored: savedSearch?.defaultTimeRange,
+  });
 
   const {
     control,
@@ -528,6 +549,9 @@ function SaveSearchModalComponent({
     e.preventDefault();
 
     handleSubmit(async ({ name }) => {
+      const timeRange = timeRangeField.resolve(isUpdate);
+      const defaultTimeRangeUpdate =
+        timeRange === undefined ? {} : { defaultTimeRange: timeRange };
       if (isUpdate) {
         if (savedSearchId == null) {
           throw new Error('savedSearchId is required for update');
@@ -545,6 +569,7 @@ function SaveSearchModalComponent({
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
+            ...defaultTimeRangeUpdate,
           },
           {
             onSuccess: () => {
@@ -573,6 +598,7 @@ function SaveSearchModalComponent({
             orderBy: searchedConfig.orderBy ?? '',
             filters: searchedConfig.filters ?? [],
             tags: tags,
+            ...defaultTimeRangeUpdate,
           });
 
           await onCreate(savedSearch.id);
@@ -701,6 +727,7 @@ function SaveSearchModalComponent({
               </Tags>
             </Group>
           </Box>
+          <SaveTimeRangeField field={timeRangeField} />
           <Button
             data-testid="save-search-submit-button"
             variant="primary"
@@ -1131,6 +1158,10 @@ function DBSearchPageContent() {
     'isLive',
     parseAsBoolean.withDefault(true),
   );
+  const [interval, setInterval] = useQueryState(
+    'liveInterval',
+    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
+  );
 
   useEffect(() => {
     if (analysisMode === 'delta' || analysisMode === 'pattern') {
@@ -1291,6 +1322,28 @@ function DBSearchPageContent() {
       savedSearch.id === savedSearchId && // Make sure we've loaded the correct saved search
       isSearchConfigEmpty // Only populate if URL doesn't have explicit config
     ) {
+      const nowMs = performance.timeOrigin + performance.now();
+      const landing = getSavedSearchLanding(
+        savedSearch.defaultTimeRange,
+        window.location.search,
+        nowMs,
+      );
+      // Replace, not push: a pushed entry would leave the bare URL behind,
+      // and Back would land on it and re-apply the range forever.
+      if (landing?.kind === 'live') {
+        // Same writes as picking a live tail range in the time picker.
+        const [start, end] = parseRelativeTimeQuery(landing.intervalMs, nowMs);
+        setIsLive(true, { history: 'replace' });
+        setInterval(landing.intervalMs, { history: 'replace' });
+        onTimeRangeSelect(start, end, null, { history: 'replace' });
+        const label = getRelativeTimeOptionLabel(landing.intervalMs);
+        if (label) setDisplayedTimeInputValue(label);
+      } else if (landing?.kind === 'window') {
+        setIsLive(false, { history: 'replace' });
+        onTimeRangeSelect(landing.range[0], landing.range[1], undefined, {
+          history: 'replace',
+        });
+      }
       setSearchedConfig({
         source: savedSearch.source,
         where: savedSearch.where,
@@ -1327,6 +1380,9 @@ function DBSearchPageContent() {
     defaultSourceId,
     directTraceId,
     sources,
+    setIsLive,
+    setInterval,
+    onTimeRangeSelect,
   ]);
 
   const [_queryErrors, setQueryErrors] = useState<{
@@ -1593,9 +1649,19 @@ function DBSearchPageContent() {
   }, [setIsLive]);
 
   const [modelFormExpanded, setModelFormExpanded] = useState(false); // Used in local mode
+  // openedAtMs is read in the click handler: the modal compares it with the
+  // searched window to decide whether that window reads as "the past N".
   const [saveSearchModalState, setSaveSearchModalState] = useState<
-    'create' | 'update' | undefined
+    { mode: 'create' | 'update'; openedAtMs: number } | undefined
   >(undefined);
+  const openSaveSearchModal = useCallback(
+    (mode: 'create' | 'update') =>
+      setSaveSearchModalState({
+        mode,
+        openedAtMs: performance.timeOrigin + performance.now(),
+      }),
+    [],
+  );
   const chartSearchConfig = useMemo(
     () => ({
       select: searchedConfig.select ?? '',
@@ -1644,7 +1710,7 @@ function DBSearchPageContent() {
   const deleteSavedSearch = useDeleteSavedSearch();
   const onSaveSearch = useCallback(() => {
     if (savedSearch == null) {
-      setSaveSearchModalState('create');
+      openSaveSearchModal('create');
     } else {
       handleSubmit(s => {
         updateSavedSearch.mutate(
@@ -1661,7 +1727,13 @@ function DBSearchPageContent() {
         );
       })();
     }
-  }, [savedSearch, updateSavedSearch, onSubmit, handleSubmit]);
+  }, [
+    savedSearch,
+    updateSavedSearch,
+    onSubmit,
+    handleSubmit,
+    openSaveSearchModal,
+  ]);
 
   const handleUpdateTags = useCallback(
     (newTags: string[]) => {
@@ -1720,11 +1792,6 @@ function DBSearchPageContent() {
 
   // State for collapsing all expanded rows when resuming live tail
   const [collapseAllRows, setCollapseAllRows] = useState(false);
-
-  const [interval, setInterval] = useQueryState(
-    'liveInterval',
-    parseAsInteger.withDefault(LIVE_TAIL_DURATION_MS),
-  );
 
   const [refreshFrequency, setRefreshFrequency] = useQueryState(
     'refreshFrequency',
@@ -2482,7 +2549,7 @@ function DBSearchPageContent() {
                   });
                 }}
                 onClickSaveAsNew={() => {
-                  setSaveSearchModalState('create');
+                  openSaveSearchModal('create');
                 }}
               />
             </Group>
@@ -2543,7 +2610,7 @@ function DBSearchPageContent() {
                 variant="secondary"
                 size="xs"
                 onClick={() => {
-                  setSaveSearchModalState('update');
+                  openSaveSearchModal('update');
                 }}
                 style={{ flexShrink: 0 }}
               >
@@ -2668,8 +2735,12 @@ function DBSearchPageContent() {
           onClose={clearSaveSearchModalState}
           onCreate={onSavedSearchCreated}
           searchedConfig={searchedConfig}
-          isUpdate={saveSearchModalState === 'update'}
+          isUpdate={saveSearchModalState?.mode === 'update'}
           savedSearchId={savedSearchId}
+          isLive={isLive}
+          liveIntervalMs={interval}
+          searchedTimeRange={searchedTimeRange}
+          openedAtMs={saveSearchModalState?.openedAtMs ?? null}
         />
       )}
       <DirectTraceSidePanel

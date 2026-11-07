@@ -832,6 +832,84 @@ test.describe('Saved Search Functionality', () => {
       });
     },
   );
+
+  test(
+    'should open a saved search with its saved time range',
+    { tag: ['@search'] },
+    async ({ page }) => {
+      const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+      let savedSearchUrl = '';
+
+      await test.step('Save a search that opens on the past 1 day', async () => {
+        await searchPage.timePicker.selectRelativeTime('Last 1 days');
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.chooseTimeRange(
+          'Show the past 1 day',
+        );
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          `Saved Time Range ${Date.now()}`,
+        );
+        const id = page.url().match(/\/search\/([a-f0-9]+)/)?.[1];
+        expect(id).toBeDefined();
+        savedSearchUrl = `/search/${id}`;
+      });
+
+      await test.step('Open the saved search with no time in the URL', async () => {
+        await page.goto('/search/list');
+        await page.goto(savedSearchUrl);
+        await page.waitForURL(
+          url => url.searchParams.get('isLive') === 'false',
+        );
+        const url = new URL(page.url());
+        const span =
+          Number(url.searchParams.get('to')) -
+          Number(url.searchParams.get('from'));
+        expect(Math.abs(span - ONE_DAY_MS)).toBeLessThanOrEqual(2000);
+      });
+
+      await test.step('Back returns to the previous page', async () => {
+        await page.goBack();
+        await expect(page).toHaveURL(/\/search\/list/);
+      });
+    },
+  );
+
+  test(
+    'should open a saved search in live tail with its saved interval',
+    { tag: ['@search'] },
+    async ({ page }) => {
+      const ONE_HOUR_MS = 60 * 60 * 1000;
+      let savedSearchUrl = '';
+
+      await test.step('Save a search that opens in a 1 hour live tail', async () => {
+        await searchPage.timePicker.open();
+        await searchPage.timePicker.enableRelativeTime();
+        await searchPage.timePicker.selectTimeInterval('Last 1 hour');
+        await searchPage.openSaveSearchModal();
+        await searchPage.savedSearchModal.chooseTimeRange(
+          'Show live tail for the past 1 hour',
+        );
+        await searchPage.savedSearchModal.saveSearchAndWaitForNavigation(
+          `Saved Live Interval ${Date.now()}`,
+        );
+        const id = page.url().match(/\/search\/([a-f0-9]+)/)?.[1];
+        expect(id).toBeDefined();
+        savedSearchUrl = `/search/${id}`;
+      });
+
+      await test.step('Open the saved search with no time in the URL', async () => {
+        await page.goto('/search/list');
+        await page.goto(savedSearchUrl);
+        await page.waitForURL(
+          url => url.searchParams.get('liveInterval') === String(ONE_HOUR_MS),
+        );
+        expect(new URL(page.url()).searchParams.get('isLive')).not.toBe(
+          'false',
+        );
+        await expect(searchPage.timePicker.input).toHaveValue('Last 1 hour');
+      });
+    },
+  );
 });
 
 test.describe('Saved Searches Listing Page', { tag: ['@search'] }, () => {

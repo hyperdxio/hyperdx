@@ -1381,6 +1381,30 @@ export const DashboardFilterValueSchema = z.union([
 
 export type DashboardFilterValue = z.infer<typeof DashboardFilterValueSchema>;
 
+/**
+ * A time range a view opens with when the URL carries none, as a duration in
+ * seconds ending at the moment the view opens. A view default only; alerts
+ * never read it.
+ */
+export const RelativeDateRangeSchema = z.object({
+  type: z.literal('relative'),
+  value: z.number(),
+});
+
+export type RelativeDateRange = z.infer<typeof RelativeDateRangeSchema>;
+
+/**
+ * A dashboard's saved time range: relative, or `historical` as `[start, end]`
+ * in epoch milliseconds.
+ */
+const SavedDateRangeSchema = z.discriminatedUnion('type', [
+  RelativeDateRangeSchema,
+  z.object({
+    type: z.literal('historical'),
+    value: z.array(z.number()).length(2),
+  }),
+]);
+
 // --------------------------
 // SAVED SEARCH
 // --------------------------
@@ -1395,6 +1419,9 @@ export const SavedSearchSchema = z.object({
   orderBy: z.string().optional(),
   filters: z.array(FilterSchema).optional(),
   alerts: z.array(AlertSchema).optional(),
+  defaultTimeRange: RelativeDateRangeSchema.extend({
+    value: z.number().positive(),
+  }).nullish(),
 });
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;
@@ -2504,18 +2531,7 @@ export const DashboardSchema = z.object({
   savedQuery: z.string().nullable().optional(),
   savedQueryLanguage: SearchConditionLanguageSchema.nullable().optional(),
   savedFilterValues: z.array(DashboardFilterValueSchema).optional(),
-  savedDateRange: z
-    .discriminatedUnion('type', [
-      z.object({
-        type: z.literal('relative'),
-        value: z.number(),
-      }),
-      z.object({
-        type: z.literal('historical'),
-        value: z.array(z.number()).length(2),
-      }),
-    ])
-    .nullish(),
+  savedDateRange: SavedDateRangeSchema.nullish(),
   containers: z
     .array(DashboardContainerSchema)
     .max(DASHBOARD_MAX_CONTAINERS)

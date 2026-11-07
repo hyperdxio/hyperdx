@@ -16,6 +16,7 @@ import {
   PresetDashboardFilterSchema,
   PromqlSourceSchema,
   SavedChartConfigSchema,
+  SavedSearchSchema,
 } from '@/types';
 
 describe('ColorConditionSchema', () => {
@@ -850,6 +851,35 @@ describe('DashboardSchema.savedDateRange', () => {
     expect(parse({ type: 'historical', value: [1700000000] })).toBe(false);
     expect(parse({ type: 'other', value: 1 })).toBe(false);
     expect(parse(3600)).toBe(false);
+  });
+});
+
+describe('SavedSearchSchema.defaultTimeRange', () => {
+  const base = {
+    id: 's1',
+    name: 'Errors',
+    select: '',
+    where: '',
+    source: 'source-1',
+    tags: [],
+  };
+  const parse = (defaultTimeRange: unknown) =>
+    SavedSearchSchema.safeParse({ ...base, defaultTimeRange }).success;
+
+  it('accepts relative, null, or absent', () => {
+    expect(parse({ type: 'relative', value: 86400 })).toBe(true);
+    expect(parse(null)).toBe(true);
+    expect(parse(undefined)).toBe(true);
+  });
+
+  it('rejects fixed windows and malformed values', () => {
+    expect(
+      parse({ type: 'historical', value: [1700000000000, 1700003600000] }),
+    ).toBe(false);
+    expect(parse({ type: 'relative', value: '1d' })).toBe(false);
+    expect(parse({ type: 'relative', value: 0 })).toBe(false);
+    expect(parse({ type: 'relative', value: -60 })).toBe(false);
+    expect(parse('1d')).toBe(false);
   });
 });
 

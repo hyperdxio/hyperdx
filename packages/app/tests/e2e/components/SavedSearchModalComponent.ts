@@ -39,6 +39,17 @@ export class SavedSearchModalComponent {
   }
 
   /**
+   * Pick what the saved search shows when opened, by option label
+   * (e.g. "Show live tail", "Show the past 1 day")
+   */
+  async chooseTimeRange(label: string) {
+    await this.modal
+      .getByTestId('save-search-time-range')
+      .getByRole('radio', { name: label })
+      .check();
+  }
+
+  /**
    * Submit the save search form
    */
   async submit() {
