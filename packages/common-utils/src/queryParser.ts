@@ -798,8 +798,14 @@ export abstract class SQLSerializer implements Serializer {
     context: SerializerContext,
     inclusive: lucene.NodeRangedTerm['inclusive'] = 'both',
   ) {
-    const { column, found, mapKeyIndexExpression, isArray } =
-      await this.getColumnForField(field, context);
+    const {
+      column: rawColumn,
+      columnJSON,
+      found,
+      propertyType,
+      mapKeyIndexExpression,
+      isArray,
+    } = await this.getColumnForField(field, context);
     if (!found) {
       return this.NOT_FOUND_QUERY;
     }
@@ -808,6 +814,10 @@ export abstract class SQLSerializer implements Serializer {
         'range comparison is not supported for Array-type fields',
       );
     }
+    // A JSON path has no plain column expression; compare its numeric form,
+    // as gt/gte/lt/lte do.
+    const column =
+      propertyType === JSDataType.JSON ? columnJSON?.number : rawColumn;
     const expressionPostfix =
       mapKeyIndexExpression && !isNegatedField
         ? ` AND ${mapKeyIndexExpression}`
@@ -819,9 +829,22 @@ export abstract class SQLSerializer implements Serializer {
       return this.isNotNull(field, isNegatedField, context);
     }
     if (!isStartUnbounded && !isEndUnbounded && inclusive === 'both') {
+      const bounds = [
+        this.attemptToParseNumber(start),
+        this.attemptToParseNumber(end),
+      ];
+      // The JSON numeric form is `dynamicType(..) in (..) and path`, so a bare
+      // NOT BETWEEN would bind to the path only and drop non-numeric values.
+      // Negate the whole expression, as the half-open branch below does.
+      if (isNegatedField && propertyType === JSDataType.JSON) {
+        return SqlString.format(
+          `(NOT (${column} BETWEEN ? AND ?)${expressionPostfix})`,
+          bounds,
+        );
+      }
       return SqlString.format(
         `(${column} ${isNegatedField ? 'NOT ' : ''}BETWEEN ? AND ?${expressionPostfix})`,
-        [this.attemptToParseNumber(start), this.attemptToParseNumber(end)],
+        bounds,
       );
     }
 
@@ -1214,12 +1237,7 @@ const KV_ITEMS_STRATEGIES = [
 export function skipIndexMatches(
   idx: SkipIndexMetadata,
   expectedType:
-    | 'text'
-    | 'bloom_filter'
-    | 'minmax'
-    | 'tokenbf_v1'
-    | 'set'
-    | 'ngrambf_v1',
+    'text' | 'bloom_filter' | 'minmax' | 'tokenbf_v1' | 'set' | 'ngrambf_v1',
   options?: {
     tokenizer?: string;
   },
