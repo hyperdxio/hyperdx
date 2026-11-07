@@ -13,6 +13,17 @@ import { ExpressionValidationStatus } from './ExpressionValidationStatus';
 import { FormRow } from './FormRow';
 import { SourceFieldCandidateHint } from './SourceFieldCandidateHint';
 
+/**
+ * Fields where a hard-coded value is never right: it would make every row
+ * claim the same trace or span, silently breaking correlation. The other
+ * fields can legitimately be pinned to a constant — a single-service table
+ * with no ServiceName column, for instance.
+ */
+const LITERAL_UNSAFE_FIELDS: SourceFieldKind[] = [
+  'traceIdExpression',
+  'spanIdExpression',
+];
+
 export function ExpressionFormRow({
   control,
   setValue,
@@ -61,6 +72,7 @@ export function ExpressionFormRow({
         <ExpressionValidationStatus
           expression={value}
           tableConnection={tableConnection}
+          warnOnLiteral={LITERAL_UNSAFE_FIELDS.includes(name)}
         />
       ) : (
         <SourceFieldCandidateHint
