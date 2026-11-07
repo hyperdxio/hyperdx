@@ -1,5 +1,119 @@
 # @hyperdx/api
 
+## 2.44.0
+
+### Minor Changes
+
+- cd0e9edfa: feat: add optional `titleEmoji` webhook option; `false` removes the emoji prefix from notification titles sent through that webhook
+- 5b0d07441: feat: self-instrument with `@clickhouse/clickstack-node` and
+  `@clickhouse/clickstack-browser` instead of `@hyperdx/node-opentelemetry` and
+  `@hyperdx/browser`
+
+  HyperDX's own telemetry changes shape. HTTP spans use the stable semantic
+  convention keys (`http.request.method`, `http.response.status_code`,
+  `url.full`). pino records come from the `@opentelemetry/instrumentation-pino`
+  scope with real severity numbers instead of the `node-logger` scope with
+  severity number 0. Console capture covers every `console` call in the API, and
+  browser console output is recorded as log records instead of spans. Uncaught
+  exceptions are recorded as FATAL log records, and API errors as an exception
+  event on the Express span instead of a separate error span.
+
+  Browser telemetry records the user as `user.id`, `user.email` and `user.name`
+  instead of `userEmail` and `userName`, keeps the team name as `teamName`, and no
+  longer records a `user navigated` action. Browser fetch and XHR spans no longer
+  record request and response headers or bodies. Browser sessions restart once
+  after the upgrade. The per-signal browser endpoints and
+  `NEXT_PUBLIC_OTEL_RESOURCE_ATTRIBUTES` work as before. Browser traces and logs
+  are now sent gzip-compressed every 5 seconds. If the browser sends to a
+  collector other than ClickStack's, its CORS `allowed_headers` must be `"*"` or
+  include `content-type` and `content-encoding` (and `authorization`), and a proxy
+  in front of it must forward `Content-Encoding` unchanged.
+
+  The Next.js server now sends its own telemetry in production builds too, not
+  only under `next dev`, when `HYPERDX_API_KEY` or `OTEL_EXPORTER_OTLP_HEADERS` is
+  set. `HDX_EXPORTER_ENABLED=false` turns it off along with browser telemetry. It
+  reports under its own service name, the configured one plus `-next`
+  (`hdx-oss-app-next` in the docker-compose `app` service and when no name is
+  set), so its spans stay apart from the API's and the browser's. The HyperDX
+  images now default `OTEL_SERVICE_NAME` to `hdx-oss-app`. Each `/api` request
+  adds Next.js server spans for the proxy hop. Requests for build and `public/`
+  assets, such as `/_next/static/*`, `/__ENV.js` and `/pyodide/*`, are not traced.
+
+  `HYPERDX_API_KEY` still enables self-instrumentation. Without
+  `OTEL_EXPORTER_OTLP_ENDPOINT`, server-side self-telemetry now goes to
+  `http://localhost:4318` instead of `https://in-otel.hyperdx.io`, so set the
+  endpoint explicitly. `HDX_NODE_*` variables are no longer read. For request
+  headers and bodies set `OTEL_INSTRUMENTATION_HTTP_CAPTURE_HEADERS_*` and
+  `CLICKSTACK_CAPTURE_HTTP_BODY`.
+
+- 349fc2141: feat(mcp): add `clickstack_describe_table` to list the tables in a database and describe a table that is not a registered source (columns, keys, engine, skipping indices, approximate size, optional row sample)
+- 0eec5e140: feat: Describe PromQL sources in MCP and hide them when PromQL is disabled
+
+  `clickstack_describe_source` now returns the label names and metric names of a PromQL source, from either a ClickHouse TimeSeries table or a Prometheus-compatible endpoint, instead of a column schema. `clickstack_list_sources` and `clickstack_describe_source` show which backend a PromQL source uses, and for TimeSeries tables explain how to read them with `clickstack_sql`. Prometheus endpoint sources no longer show their placeholder table. When `ENABLE_PROMQL` is off, MCP hides PromQL sources from listing, describing and deleting, and `clickstack_save_source` no longer accepts `kind: "promql"`.
+
+- 95fa36412: feat(mcp): support setting a dashboard's `savedFilterValues` via the MCP dashboard tools
+- c792850fd: feat: filter the v2 list alerts endpoint by tag, search, source and state
+
+### Patch Changes
+
+- 0453aa134: fix: A grouped alert whose group vanishes from the data now resolves with the group's values in `{{attributes.*}}` (alert title and message) and `{{var.*}}` (webhook body)
+- 5b0d07441: fix: let browsers cache the collector's CORS preflights for 10 minutes
+
+  The OTLP receiver now answers preflights with `Access-Control-Max-Age: 600`.
+  Without it, browsers cached a preflight for only 5 seconds, which is how often
+  the browser SDK exports, so about half of its requests were preflights.
+
+- 769c0def3: fix: ignore `team` and `createdBy` in dashboard and saved search PATCH bodies so they can't be moved to another team or have their owner rewritten
+- 5584f84bb: fix: make clickstack_event_patterns drill-down snippets executable
+
+  Each pattern's `whereSnippet` is now a SQL predicate (`whereLanguage: "sql"`) that keeps the template's token order and variable positions and includes the caller's filter and the source table filter, so passing it to `clickstack_search` returns the pattern's events. Before, a template like `Sending <*> rows` produced `Body:"Sending rows"`, which matched nothing, and map fields produced Lucene that failed to parse. `bodyExpression` now also accepts `JSONExtractString(<column>, '<key>', ...)` to mine a field inside JSON bodies, and the tool reports sample coverage and the actual trend bucket interval and boundaries.
+
+  `clickstack_event_patterns`, `clickstack_emerging_signals` and dashboard event-pattern tiles now apply the log source's `tableFilterExpression`, so their counts can drop for sources that set one. `minePatterns` now reports each cluster's own template; before, it could report the template of a different same-length cluster that some members did not fit.
+
+- 253a690d4: docs: MCP tool descriptions and the query guide now recommend the quoted Lucene
+  form `field:"value"` for exact matches, and bare terms or phrases for log body
+  text, so agents keep the primary key and the text index
+- 917c9ca49: feat: MCP dashboard tools read and write PromQL tiles and PROMETHEUS_LABEL filters when PromQL is enabled, and hide but keep them when it is disabled
+- d08b2fa73: feat(mcp): `clickstack_sql` accepts a `queries` array to run up to 10
+  independent queries in parallel under a shared 60s deadline. Each query reports
+  its own `ok`/`error`/`timeout` status, so one failing query does not fail the
+  others. Single-query calls with `sql` behave as before.
+- a13c80efe: feat(mcp): `clickstack_table` takes optional `limit` and `having`, and orders grouped results by the first select item, descending, when no `orderBy` is given
+- 0262822da: fix: MCP tool responses that are over the size budget now shorten long strings with a `…(+N chars)` suffix instead of replacing them, say what was trimmed in `trimNotes`, and `clickstack_event_patterns` / `clickstack_emerging_signals` drop samples and shorten long patterns before cutting whole patterns, so the requested `topN` survives when it can
+- 442d6dfd9: fix: refresh cached table columns after 5 minutes
+
+  The shared metadata cache kept each table's `DESCRIBE` result for the life of
+  the process, so the API did not see columns added with `ALTER TABLE`, such as
+  new MATERIALIZED columns, until it restarted. Cached columns now expire after 5
+  minutes. Other cached metadata is unchanged.
+
+- 0eec5e140: fix: Authenticate to Prometheus connections whose host includes credentials
+
+  A Prometheus connection host such as `http://user:pass@prometheus:9090` made every PromQL query fail with "Failed to reach Prometheus", because `fetch` rejects URLs that carry credentials. The credentials are now sent as a Basic auth header.
+
+- 0a5237e6c: fix: reject alerts on dashboard tiles the alert checker never evaluates (PromQL
+  tiles, and builder tiles with unsupported display types), and drop them when a
+  dashboard is saved
+- b7b4d9579: fix: update systeminformation to 5.33.19
+
+  The root `resolutions` pin let the lockfile keep systeminformation 5.30.7, which
+  has known command injection advisories, including two high-severity ones in
+  `networkInterfaces()` on Linux (GHSA-5xpp-75jx-m839, GHSA-hvx9-hwr7-wjj9). The
+  API installs it through `@opentelemetry/instrumentation-host-metrics`, which
+  asks for `^5.31.6`, but the old pin held it at 5.30.7. The pin now starts at
+  5.33.19, the newest 5.x release, which fixes all of them.
+
+- Updated dependencies [cd0e9edfa]
+- Updated dependencies [e2754d203]
+- Updated dependencies [22f824c6e]
+- Updated dependencies [d0dd06fe8]
+- Updated dependencies [5584f84bb]
+- Updated dependencies [41b2b742a]
+- Updated dependencies [442d6dfd9]
+- Updated dependencies [0a5237e6c]
+- Updated dependencies [78143c81a]
+  - @hyperdx/common-utils@0.34.0
+
 ## 2.43.1
 
 ## 2.43.0
