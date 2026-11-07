@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_gauge
     INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_time_minmax TimeUnix TYPE minmax GRANULARITY 1
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
 TTL toDateTime(TimeUnix) + ${METRICS_TTL}
@@ -70,7 +70,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_sum
     INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_time_minmax TimeUnix TYPE minmax GRANULARITY 1
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
 TTL toDateTime(TimeUnix) + ${METRICS_TTL}
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_histogram
     INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_time_minmax TimeUnix TYPE minmax GRANULARITY 1
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
 TTL toDateTime(TimeUnix) + ${METRICS_TTL}
@@ -164,7 +164,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_exponential_histogram
     INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_time_minmax TimeUnix TYPE minmax GRANULARITY 1
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
 TTL toDateTime(TimeUnix) + ${METRICS_TTL}
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS ${DATABASE}.otel_metrics_summary
     INDEX idx_attr_value mapValues(Attributes) TYPE bloom_filter(0.01) GRANULARITY 1,
     INDEX idx_time_minmax TimeUnix TYPE minmax GRANULARITY 1
 )
-ENGINE = MergeTree
+ENGINE = ${ENGINE_PREFIX}MergeTree
 PARTITION BY toDate(TimeUnix)
 ORDER BY (ServiceName, MetricName, toStartOfHour(TimeUnix), cityHash64(Attributes), TimeUnix)
 TTL toDateTime(TimeUnix) + ${METRICS_TTL}
