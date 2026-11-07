@@ -5694,4 +5694,121 @@ describe('renderChartConfig', () => {
       );
     });
   });
+
+  describe('LIMIT AFTER / UNTIL', () => {
+    const tableConfig: ChartConfigWithOptDateRange = {
+      displayType: DisplayType.Table,
+      connection: 'test-connection',
+      from: {
+        databaseName: 'default',
+        tableName: 'http_request_logs',
+      },
+      select: 'timestamp, service_id',
+      where: '',
+      whereLanguage: 'sql',
+      timestampValueExpression: 'timestamp',
+      dateRange: [
+        new Date('2025-02-12 00:12:34Z'),
+        new Date('2025-02-14 00:12:34Z'),
+      ],
+      orderBy: 'service_id ASC',
+    };
+
+    it('renders LIMIT n AFTER start_expr', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...tableConfig,
+            limit: { limit: 10, after: 'service_id >= 3' },
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('LIMIT 10 AFTER service_id >= 3');
+      expect(sql).not.toContain('OFFSET');
+    });
+
+    it('renders LIMIT n AFTER start_expr UNTIL end_expr', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...tableConfig,
+            limit: {
+              limit: 10,
+              after: 'service_id >= 3',
+              until: 'service_id >= 8',
+            },
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        'LIMIT 10 AFTER service_id >= 3 UNTIL service_id >= 8',
+      );
+    });
+
+    it('renders LIMIT AFTER without n', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...tableConfig,
+            limit: { after: 'service_id >= 3' },
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toMatch(/LIMIT\s+AFTER service_id >= 3/);
+    });
+
+    it('renders LIMIT n AFTER start_expr ALL UNTIL end_expr', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...tableConfig,
+            limit: {
+              limit: 5,
+              after: 'service_id >= 3',
+              until: 'service_id >= 8',
+              all: true,
+            },
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain(
+        'LIMIT 5 AFTER service_id >= 3 ALL UNTIL service_id >= 8',
+      );
+    });
+
+    it('still renders LIMIT n OFFSET m when after/until are absent', async () => {
+      const sql = parameterizedQueryToSql(
+        await renderChartConfig(
+          {
+            ...tableConfig,
+            limit: { limit: 5, offset: 10 },
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      );
+      expect(sql).toContain('LIMIT 5 OFFSET 10');
+    });
+
+    it('throws when OFFSET is combined with AFTER', async () => {
+      await expect(
+        renderChartConfig(
+          {
+            ...tableConfig,
+            limit: { limit: 10, offset: 5, after: 'service_id >= 3' },
+          },
+          mockMetadata,
+          querySettings,
+        ),
+      ).rejects.toThrow('LIMIT OFFSET cannot be combined with LIMIT AFTER/UNTIL');
+    });
+  });
 });

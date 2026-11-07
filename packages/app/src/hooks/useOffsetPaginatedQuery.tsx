@@ -25,6 +25,7 @@ import {
 } from '@hyperdx/common-utils/dist/guards';
 import {
   ChartConfigWithOptTimestamp,
+  hasLimitAfterUntil,
   TSource,
 } from '@hyperdx/common-utils/dist/types';
 import {
@@ -139,7 +140,8 @@ function getNextPageParam(
   if (
     lastPage == null ||
     isRawSqlChartConfig(config) ||
-    isPromqlChartConfig(config)
+    isPromqlChartConfig(config) ||
+    (isBuilderChartConfig(config) && hasLimitAfterUntil(config.limit))
   ) {
     return undefined;
   }
@@ -247,10 +249,17 @@ const queryFn: QueryFunction<TQueryFnData, TQueryKey, TPageParam> = async ({
     ? {
         ...config,
         dateRange: [timeWindow.startTime, timeWindow.endTime] as [Date, Date],
-        limit: {
-          limit: config.limit?.limit,
-          offset: pageParam.offset,
-        },
+        limit: hasLimitAfterUntil(config.limit)
+          ? {
+              limit: config.limit?.limit,
+              after: config.limit?.after,
+              until: config.limit?.until,
+              all: config.limit?.all,
+            }
+          : {
+              limit: config.limit?.limit,
+              offset: pageParam.offset,
+            },
       }
     : config;
 

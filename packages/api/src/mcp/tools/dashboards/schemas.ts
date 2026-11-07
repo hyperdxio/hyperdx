@@ -854,6 +854,22 @@ const mcpTableTileSchema = mcpTileLayoutSchema.extend({
             'When ordering by an alias that contains spaces or special characters, ' +
             `wrap the alias in quotes: e.g. '"P95 Latency" DESC'.`,
         ),
+      limitAfter: z
+        .string()
+        .max(10000)
+        .optional()
+        .describe(
+          'ClickHouse LIMIT AFTER start expression. Mutually exclusive with OFFSET. ' +
+            'Example: "service_id >= 3". Requires ORDER BY.',
+        ),
+      limitUntil: z
+        .string()
+        .max(10000)
+        .optional()
+        .describe(
+          'ClickHouse LIMIT UNTIL end expression. Used with LIMIT AFTER. ' +
+            'Example: "service_id >= 8".',
+        ),
       asRatio: z.boolean().optional().describe(asRatioDescription),
       groupByColumnsOnLeft: z
         .boolean()

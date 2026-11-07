@@ -89,6 +89,7 @@ function normalizeChartConfig<
     | 'select'
     | 'having'
     | 'orderBy'
+    | 'limit'
     | 'displayType'
     | 'metricTables'
     | 'onClick'
@@ -133,6 +134,11 @@ function normalizeChartConfig<
     orderBy: isCustomOrderByDisplayType(config.displayType)
       ? config.orderBy
       : undefined,
+    // LIMIT AFTER / UNTIL are first-class ChartConfig clauses, but the
+    // editor only exposes them on Table and Search (row) charts.
+    limit: isLimitAfterUntilDisplayType(config.displayType)
+      ? config.limit
+      : stripLimitAfterUntil(config.limit),
     onClick:
       config.onClick && config.displayType === DisplayType.Table
         ? config.onClick
@@ -249,6 +255,21 @@ const isCustomOrderByDisplayType = (
   displayType === DisplayType.Table ||
   displayType === DisplayType.Bar ||
   displayType === DisplayType.Pie;
+
+const isLimitAfterUntilDisplayType = (
+  displayType: DisplayType | undefined,
+): displayType is DisplayType.Table | DisplayType.Search =>
+  displayType === DisplayType.Table || displayType === DisplayType.Search;
+
+function stripLimitAfterUntil<
+  T extends { after?: string; until?: string; all?: boolean } | undefined,
+>(limit: T): T {
+  if (limit == null) {
+    return limit;
+  }
+  const { after: _after, until: _until, all: _all, ...rest } = limit;
+  return rest as T;
+}
 
 // Re-exported from common-utils (single source of truth shared with the
 // external API / MCP tile validation) so the "Add Formula" gating in

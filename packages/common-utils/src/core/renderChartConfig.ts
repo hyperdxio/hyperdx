@@ -1723,16 +1723,45 @@ function renderOrderBy(
 function renderLimit(
   chartConfig: BuilderChartConfigWithOptDateRange,
 ): ChSql | undefined {
-  if (chartConfig.limit == null || chartConfig.limit.limit == null) {
+  const limitCfg = chartConfig.limit;
+  if (limitCfg == null) {
+    return undefined;
+  }
+
+  const after =
+    limitCfg.after != null && limitCfg.after.trim() !== ''
+      ? limitCfg.after.trim()
+      : undefined;
+  const until =
+    limitCfg.until != null && limitCfg.until.trim() !== ''
+      ? limitCfg.until.trim()
+      : undefined;
+
+  if (limitCfg.offset != null && (after != null || until != null)) {
+    throw new Error('LIMIT OFFSET cannot be combined with LIMIT AFTER/UNTIL');
+  }
+
+  if (after != null || until != null) {
+    const n =
+      limitCfg.limit != null ? chSql`${{ Int32: limitCfg.limit }}` : [];
+    const afterSql =
+      after != null ? chSql` AFTER ${{ UNSAFE_RAW_SQL: after }}` : [];
+    const allSql = limitCfg.all === true ? chSql` ALL` : [];
+    const untilSql =
+      until != null ? chSql` UNTIL ${{ UNSAFE_RAW_SQL: until }}` : [];
+    return chSql`${n}${afterSql}${allSql}${untilSql}`;
+  }
+
+  if (limitCfg.limit == null) {
     return undefined;
   }
 
   const offset =
-    chartConfig.limit.offset != null
-      ? chSql` OFFSET ${{ Int32: chartConfig.limit.offset }}`
+    limitCfg.offset != null
+      ? chSql` OFFSET ${{ Int32: limitCfg.offset }}`
       : [];
 
-  return chSql`${{ Int32: chartConfig.limit.limit }}${offset}`;
+  return chSql`${{ Int32: limitCfg.limit }}${offset}`;
 }
 
 function renderSettings(

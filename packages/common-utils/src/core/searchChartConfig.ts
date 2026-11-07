@@ -83,6 +83,10 @@ export type SearchChartConfigInput = {
   select?: SelectList | null;
   orderBy?: SortSpecificationList | null;
   groupBy?: SelectList | null;
+  /** ClickHouse `LIMIT AFTER` start expression. */
+  limitAfter?: string | null;
+  /** ClickHouse `LIMIT UNTIL` end expression. */
+  limitUntil?: string | null;
 
   // Display / time-range knobs
   displayType?: DisplayType;
@@ -182,6 +186,17 @@ export function buildSearchChartConfig(
     ...(mergedFilters.length > 0 ? { filters: mergedFilters } : {}),
     ...(input.groupBy != null ? { groupBy: input.groupBy } : {}),
     ...(input.orderBy != null ? { orderBy: input.orderBy } : {}),
+    ...(() => {
+      const after = input.limitAfter?.trim();
+      const until = input.limitUntil?.trim();
+      if (!after && !until) return {};
+      return {
+        limit: {
+          ...(after ? { after } : {}),
+          ...(until ? { until } : {}),
+        },
+      };
+    })(),
     ...(input.dateRange != null ? { dateRange: input.dateRange } : {}),
     ...(input.dateRangeStartInclusive != null
       ? { dateRangeStartInclusive: input.dateRangeStartInclusive }

@@ -1644,6 +1644,24 @@ describe('substituteChartConfigVariables', () => {
     });
   });
 
+  it('expands references in LIMIT AFTER / UNTIL expressions', () => {
+    expect(
+      substituteChartConfigVariables(
+        builderConfig({
+          where: '',
+          limit: { after: 'Env = $env', until: 'Env != $env' },
+          variables: [variable('env', ['prod'])],
+        }),
+      ),
+    ).toMatchObject({
+      limit: {
+        after: "Env = 'prod'",
+        until: "Env != 'prod'",
+      },
+      variables: undefined,
+    });
+  });
+
   it('expands a lucene where clause using the lucene format', () => {
     expect(
       substituteChartConfigVariables(
