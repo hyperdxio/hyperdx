@@ -124,6 +124,11 @@ function setRows(entry: SqlBatchEntry, rows: unknown[]) {
       ? { ...result, data: rows }
       : rows;
   entry.note = BATCH_TRIM_NOTE;
+  // Replaces the per-query notes: their sizes and counts no longer match the
+  // rows left. Shortened values still carry their own "…(+N chars)".
+  entry.trimNotes = [
+    `Rows cut to ${rows.length} to fit the batch response size budget.`,
+  ];
 }
 
 /**

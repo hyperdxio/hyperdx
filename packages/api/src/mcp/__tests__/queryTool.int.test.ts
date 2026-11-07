@@ -18,6 +18,7 @@ import {
   getServer,
   seedExponentialHistogramMetric,
 } from '@/fixtures';
+import * as denoise from '@/mcp/tools/query/denoise';
 import * as patternDrilldown from '@/mcp/tools/query/patternDrilldown';
 import { McpContext } from '@/mcp/tools/types';
 import Connection from '@/models/connection';
@@ -640,11 +641,123 @@ describe('MCP Query Tools', () => {
         expect(output).not.toHaveProperty('denoised');
       });
     });
+
+    describe('denoise on a trimmed result', () => {
+      const now = new Date();
+
+      beforeEach(async () => {
+        const pad = ' payload'.repeat(150);
+        await bulkInsertLogs(
+          Array.from({ length: 120 }, (_, i) => ({
+            Body:
+              i < 110
+                ? `Health check OK from 10.0.0.${i}${pad}`
+                : `Rare event ${i} in subsystem${pad}`,
+            ServiceName: 'loadbalancer',
+            SeverityText: 'INFO',
+            Timestamp: new Date(now.getTime() - (i + 1) * 1000),
+          })),
+        );
+      });
+
+      const search = () =>
+        callTool(client, 'clickstack_search', {
+          sourceId: logSource._id.toString(),
+          denoise: true,
+          maxResults: 200,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+      it("keeps the first trim's row cut but not its stale size line", async () => {
+        const result = await search();
+
+        expect(result.isError).toBeFalsy();
+        const output = JSON.parse(getFirstText(result));
+        expect(output).toHaveProperty('denoised');
+        expect(output.note).toContain('trimmed');
+        const sizeLines = output.trimNotes.filter((n: string) =>
+          n.startsWith('Response trimmed from '),
+        );
+        expect(sizeLines).toHaveLength(0); // denoise didn't need a second trim
+        expect(output.trimNotes).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(/^result\.data: cut from 120 to \d+ items$/),
+          ]),
+        );
+      });
+
+      it('keeps the same notes when denoise fails', async () => {
+        const spy = jest
+          .spyOn(denoise, 'denoiseSearchResults')
+          .mockRejectedValueOnce(new Error('denoise down'));
+        try {
+          const result = await search();
+          expect(result.isError).toBeFalsy();
+          const output = JSON.parse(getFirstText(result));
+          expect(output.denoised.skipped).toBe('denoise_failed');
+          expect(output.trimNotes).toEqual([
+            `result.data: cut from 120 to ${output.result.data.length} items`,
+          ]);
+        } finally {
+          spy.mockRestore();
+        }
+      });
+    });
   });
 
   // ─── clickstack_event_patterns ─────────────────────────────────────────────────
 
   describe('clickstack_event_patterns', () => {
+    describe('when the response is over the size limit', () => {
+      const now = new Date();
+
+      beforeEach(async () => {
+        // 30 unrelated patterns of ~60 tokens, 4 rows each: the samples and
+        // drill-down predicates push the response well past 50,000 chars.
+        const logs: Parameters<typeof bulkInsertLogs>[0] = [];
+        for (let p = 0; p < 30; p++) {
+          const words = Array.from({ length: 60 }, (_, k) => `f${p}x${k}`);
+          for (let r = 0; r < 4; r++) {
+            logs.push({
+              Body: `Failure${p} ${words.join(' ')} id${p}_${r}`,
+              ServiceName: 'big-service',
+              SeverityText: 'ERROR',
+              Timestamp: new Date(now.getTime() - (p * 4 + r + 1) * 1000),
+            });
+          }
+        }
+        await bulkInsertLogs(logs);
+      });
+
+      it('keeps all topN patterns and drops, never cuts, whereSnippet', async () => {
+        const result = await callTool(client, 'clickstack_event_patterns', {
+          sourceId: logSource._id.toString(),
+          topN: 30,
+          startTime: new Date(now.getTime() - 10 * 60 * 1000).toISOString(),
+          endTime: new Date(now.getTime() + 60 * 1000).toISOString(),
+        });
+
+        expect(result.isError).toBeFalsy();
+        const text = getFirstText(result);
+        const output = JSON.parse(text);
+        expect(output.patterns).toHaveLength(30);
+        expect(text).not.toContain('__hdx_trimmed');
+        expect(output.trimNotes).toEqual(
+          expect.arrayContaining([
+            expect.stringMatching(/^Response trimmed from /),
+            expect.stringMatching(/^patterns\[\]\.samples: kept the first/),
+            expect.stringMatching(/^patterns\[\]\.whereSnippet: removed/),
+          ]),
+        );
+        expect(output.note).toContain('whereSnippet was removed');
+        for (const p of output.patterns) {
+          expect(p).not.toHaveProperty('whereSnippet');
+          expect(p.pattern).toMatch(/^Failure\d+ /);
+        }
+      });
+    });
+
     it('should execute an event_patterns query on a log source', async () => {
       const result = await callTool(client, 'clickstack_event_patterns', {
         sourceId: logSource._id.toString(),

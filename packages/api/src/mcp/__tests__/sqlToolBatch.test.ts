@@ -320,7 +320,14 @@ describe('clickstack_sql batch mode', () => {
       content: [
         {
           type: 'text' as const,
-          text: JSON.stringify({ result: { data: Array(10).fill(bigRow) } }),
+          text: JSON.stringify({
+            result: { data: Array(10).fill(bigRow) },
+            trimNotes: [
+              'Response trimmed from 90,000 to 50,000 chars (limit 50,000).',
+              'result.data: cut from 500 to 10 items',
+              '10 long value(s) shortened (4,000 chars removed)',
+            ],
+          }),
         },
       ],
     });
@@ -338,6 +345,10 @@ describe('clickstack_sql batch mode', () => {
       expect(entry.result.data.length).toBeGreaterThan(0);
       expect(entry.result.data.length).toBeLessThan(10);
       expect(entry.note).toContain('batch response size budget');
+      // The batch cut replaces the per-query notes it made stale.
+      expect(entry.trimNotes).toEqual([
+        `Rows cut to ${entry.result.data.length} to fit the batch response size budget.`,
+      ]);
     }
   });
 

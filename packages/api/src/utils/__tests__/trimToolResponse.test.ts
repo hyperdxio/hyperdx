@@ -1,4 +1,6 @@
-import { trimToolResponse } from '@/utils/trimToolResponse';
+import { EMERGING_SIGNALS_REDUCTIONS } from '@/mcp/tools/query/emergingSignals';
+import { EVENT_PATTERNS_REDUCTIONS } from '@/mcp/tools/query/runEventPatterns';
+import { shortenString, trimToolResponse } from '@/utils/trimToolResponse';
 
 describe('trimToolResponse', () => {
   describe('return shape', () => {
@@ -135,6 +137,381 @@ describe('trimToolResponse', () => {
       const resultDefault = trimToolResponse(data);
       const resultExplicit = trimToolResponse(data, 50000);
       expect(resultDefault.data.length).toBe(resultExplicit.data.length);
+    });
+  });
+
+  describe('shortening instead of replacing', () => {
+    it('shortens an oversized string with a "…(+N chars)" suffix', () => {
+      expect(shortenString('a'.repeat(100), 4)).toBe('aaaa…(+96 chars)');
+      expect(shortenString('a'.repeat(8000), 1000)).toBe(
+        `${'a'.repeat(1000)}…(+7,000 chars)`,
+      );
+      expect(shortenString('short', 10)).toBe('short');
+    });
+
+    it('shortens a top-level string', () => {
+      const { data, isTrimmed, notes } = trimToolResponse('a'.repeat(60000));
+      expect(isTrimmed).toBe(true);
+      expect(data).toMatch(/^a+…\(\+[\d,]+ chars\)$/);
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(50000);
+      expect(JSON.stringify(data).length).toBeGreaterThan(49000);
+      expect(notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^1 long value\(s\) shortened/),
+        ]),
+      );
+    });
+
+    it('shortens long string values in the fallback and says so in notes', () => {
+      const data = { big: 'x'.repeat(5000), small: 'ok' };
+      const { data: result, isTrimmed, notes } = trimToolResponse(data, 2000);
+      expect(isTrimmed).toBe(true);
+      expect(typeof result.big).toBe('string');
+      expect(result.big).toMatch(/^x+…\(\+[\d,]+ chars\)$/);
+      expect(result.small).toBe('ok');
+      expect(JSON.stringify(result).length).toBeLessThanOrEqual(2000);
+      expect(notes[0]).toMatch(
+        /^Response trimmed from 5,0\d\d to [\d,]+ chars \(limit 2,000\)\.$/,
+      );
+      expect(notes.some(n => /long value\(s\) shortened/.test(n))).toBe(true);
+    });
+
+    it('notes array cuts with their path', () => {
+      const data = { rows: Array.from({ length: 100 }, () => 'y'.repeat(100)) };
+      const { notes } = trimToolResponse(data, 3000);
+      expect(notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^rows: cut from 100 to \d+ items$/),
+        ]),
+      );
+    });
+
+    it('never makes a value longer, and keeps surrogate pairs whole', () => {
+      // Cutting 5 chars would add a 13-char suffix.
+      const s = 'x'.repeat(105);
+      expect(shortenString(s, 100)).toBe(s);
+      // Saving 14 chars isn't worth losing a 24-char value.
+      const ts = '2026-01-01T00:00:00.000Z';
+      expect(shortenString(ts, 0)).toBe(ts);
+      const emoji = `${'a'.repeat(9)}😀${'b'.repeat(100)}`;
+      expect(shortenString(emoji, 10)).toBe(`${'a'.repeat(9)}…(+102 chars)`);
+    });
+
+    it('counts the suffix when reporting removed chars', () => {
+      const { notes } = trimToolResponse({ a: 'q'.repeat(3000) }, 50_000, {
+        reductions: [{ path: 'a', maxChars: 1000 }],
+      });
+      expect(notes).toHaveLength(0); // fits as-is, nothing applied
+      const r = trimToolResponse({ a: 'q'.repeat(3000) }, 2000, {
+        reductions: [{ path: 'a', maxChars: 1000 }],
+      });
+      const out = r.data.a as string;
+      expect(r.notes[1]).toBe(
+        `a: 1 value(s) cut to the first 1,000 chars (${(3000 - out.length).toLocaleString('en-US')} chars removed)`,
+      );
+    });
+
+    it.each([
+      ['quotes', '"'],
+      ['control chars', '\u0001'],
+      ['non-ASCII', 'ä😀'],
+      ['the … marker', '…'],
+    ])(
+      'stays within the budget with %s that expand in JSON',
+      (_label, unit) => {
+        const big = unit.repeat(4000);
+        for (const max of [500, 2000, 8000]) {
+          const asObject = trimToolResponse({ a: big, b: big, c: 'ok' }, max);
+          expect(JSON.stringify(asObject.data).length).toBeLessThanOrEqual(max);
+          const asArray = trimToolResponse(Array(12).fill(big), max);
+          expect(JSON.stringify(asArray.data).length).toBeLessThanOrEqual(max);
+        }
+      },
+    );
+
+    it('counts key names, separators and the trim flag in an object budget', () => {
+      const longKeys = {
+        first_long_column_name_aaaaaaaaaa: 'x'.repeat(5000),
+        second_long_column_name_bbbbbbbbb: 'y'.repeat(5000),
+      };
+      const wide = Object.fromEntries(
+        Array.from({ length: 40 }, (_, i) => [
+          `column_with_a_long_name_${i}`,
+          'v'.repeat(300),
+        ]),
+      );
+      // Narrow enough that the 10 rows trimArray always keeps can fit.
+      const rows = Array.from({ length: 30 }, () =>
+        Object.fromEntries(
+          Array.from({ length: 4 }, (_, i) => [
+            `column_with_a_long_name_${i}`,
+            'v'.repeat(300),
+          ]),
+        ),
+      );
+      for (const max of [2000, 3000, 5000, 8000]) {
+        for (const data of [longKeys, wide, rows]) {
+          const { data: out } = trimToolResponse(data, max);
+          expect(JSON.stringify(out).length).toBeLessThanOrEqual(max);
+        }
+      }
+    });
+
+    it('returns an array unchanged when only separators push it over', () => {
+      // 10 items of 10 JSON chars: share 11, so none is large; 111 > 110.
+      const arr = Array(10).fill('12345678');
+      const { data } = trimToolResponse(arr, 110);
+      expect(data).toEqual(arr);
+    });
+
+    it('notes a nested array cut once per path', () => {
+      const data = {
+        patterns: Array.from({ length: 10 }, () => ({
+          samples: Array.from({ length: 50 }, () => 's'.repeat(100)),
+        })),
+      };
+      const { notes } = trimToolResponse(data, 8000);
+      const sampleNotes = notes.filter(n => n.startsWith('patterns[].samples'));
+      expect(sampleNotes).toHaveLength(1);
+      expect(sampleNotes[0]).toMatch(
+        /^patterns\[\]\.samples: cut in 10 items, from 500 to \d+ elements in total$/,
+      );
+    });
+
+    it('keeps numbers whole and never makes the output larger than main did', () => {
+      const one = trimToolResponse(
+        { ts: '2026-01-01T00:00:00.000Z', count: 1 },
+        20,
+      ).data;
+      expect(one).toEqual({ ts: '2026-01-01T00:00:00.000Z', count: 1 });
+      const rows = Array.from({ length: 12 }, () => ({
+        a: 1,
+        b: 2,
+        c: 3,
+        d: 4,
+        e: 5,
+        f: 6,
+      }));
+      const { data } = trimToolResponse(rows, 100);
+      expect(JSON.stringify(data)).not.toContain('__hdx_trimmed');
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(381); // main
+    });
+
+    it('fits a string that is just over its budget', () => {
+      const { data } = trimToolResponse(
+        ['s'.repeat(100), ...Array(9).fill(1)],
+        120,
+      );
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(120);
+      expect(data[0]).toMatch(/^s+…\(\+\d+ chars\)$/);
+    });
+
+    it('keeps most of an escape-heavy string that partly fits', () => {
+      const { data } = trimToolResponse({ a: '"'.repeat(4000) }, 1000);
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(1000);
+      expect(data.a).toMatch(/^"{400,}…\(\+/);
+    });
+
+    it('gives a large value the room that small values leave', () => {
+      const data = {
+        summary: { totalCount: 5 },
+        usage: 'u'.repeat(1000),
+        rows: Array.from({ length: 100 }, (_, i) => ({
+          i,
+          text: 't'.repeat(900),
+        })),
+      };
+      const { data: out } = trimToolResponse(data, 50000);
+      const size = JSON.stringify(out).length;
+      expect(size).toBeLessThanOrEqual(50000);
+      expect(size).toBeGreaterThan(40000);
+      expect(out.usage).toBe(data.usage);
+    });
+
+    it('returns no notes when nothing is trimmed', () => {
+      expect(trimToolResponse({ a: 1 }).notes).toEqual([]);
+    });
+  });
+
+  describe('ordered reductions', () => {
+    const big = (n: number) => 'z'.repeat(n);
+    const shape = () => ({
+      patterns: Array.from({ length: 4 }, (_, i) => ({
+        rank: i + 1,
+        pattern: big(3000),
+        trend: Array.from({ length: 50 }, (_, t) => ({ ts: t, count: t })),
+        samples: Array.from({ length: 5 }, () => big(1000)),
+      })),
+    });
+
+    it('applies each kind to every match', () => {
+      const { data, notes } = trimToolResponse(shape(), 10, {
+        reductions: [
+          { path: 'patterns[].samples', keep: 2 },
+          { path: 'patterns[].samples[]', maxChars: 10 },
+          { path: 'patterns[].pattern', maxChars: 20 },
+          { path: 'patterns[].trend', drop: true },
+        ],
+      });
+      for (const p of data.patterns) {
+        expect(p).not.toHaveProperty('trend');
+        expect(p.samples.length).toBeLessThanOrEqual(2);
+      }
+      expect(notes).toEqual(
+        expect.arrayContaining([
+          'patterns[].samples: kept the first 2 (12 elements removed from 4 items)',
+          'patterns[].samples[]: 8 value(s) cut to the first 10 chars (7,816 chars removed)',
+          'patterns[].pattern: 4 value(s) cut to the first 20 chars (11,860 chars removed)',
+          'patterns[].trend: removed (4 items)',
+        ]),
+      );
+    });
+
+    it('stops as soon as the whole response fits', () => {
+      const input = shape();
+      const after1 = JSON.stringify({
+        patterns: input.patterns.map(p => ({
+          ...p,
+          samples: p.samples.slice(0, 1),
+        })),
+      }).length;
+      const { data, notes } = trimToolResponse(input, after1, {
+        reductions: [
+          { path: 'patterns[].samples', keep: 1 },
+          { path: 'patterns[].pattern', maxChars: 20 },
+        ],
+      });
+      expect(data.patterns[0].pattern).toHaveLength(3000); // second step not needed
+      expect(data.patterns[0].samples).toHaveLength(1);
+      expect(notes).toHaveLength(2); // size note + the one reduction
+    });
+
+    it('ignores drop on array elements (only object keys are removed)', () => {
+      const data = { a: Array(50).fill('w'.repeat(100)) };
+      const { data: out, notes } = trimToolResponse(data, 3000, {
+        reductions: [{ path: 'a[]', drop: true }],
+      });
+      expect(notes.some(n => n.startsWith('a[]'))).toBe(false);
+      expect(Array.isArray(out.a)).toBe(true);
+    });
+
+    it('returns the input unchanged when it fits', () => {
+      const input = shape();
+      const result = trimToolResponse(input, 1_000_000, {
+        reductions: [{ path: 'patterns[].trend', drop: true }],
+      });
+      expect(result.isTrimmed).toBe(false);
+      expect(result.data).toBe(input);
+    });
+
+    it('does not mutate the input', () => {
+      const input = shape();
+      const before = JSON.stringify(input);
+      trimToolResponse(input, 10, {
+        reductions: [{ path: 'patterns[].trend', drop: true }],
+      });
+      expect(JSON.stringify(input)).toBe(before);
+    });
+
+    it('falls back to the generic trim when reductions are not enough', () => {
+      const { data, notes } = trimToolResponse(shape(), 2000, {
+        reductions: [{ path: 'patterns[].trend', drop: true }],
+      });
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(2000);
+      expect(notes[1]).toBe('patterns[].trend: removed (4 items)');
+      expect(notes.length).toBeGreaterThan(2);
+    });
+
+    it('keeps all 30 event patterns instead of replacing the long ones (topN honoured)', () => {
+      const stack = (n: number) =>
+        `java.lang.NullPointerException: case ${n}\n` +
+        Array.from(
+          { length: 90 },
+          (_, i) =>
+            `\tat com.example.svc.Layer${i}.call(Layer${i}.java:${i + 10})`,
+        ).join('\n');
+      const pattern = (rank: number, text: string) => ({
+        rank,
+        pattern: text,
+        whereSnippet: `Body:"${text.slice(0, 200)}"`,
+        trend: Array.from({ length: 24 }, (_, t) => ({ ts: t, count: rank })),
+        samples: Array.from({ length: 5 }, () => text),
+      });
+      const output = {
+        summary: { patternsReturned: 30 },
+        patterns: [
+          ...[0, 1, 2].map(i => pattern(i + 1, stack(i))),
+          ...Array.from({ length: 27 }, (_, i) =>
+            pattern(i + 4, `Short INFO line ${i} took <*> ms`),
+          ),
+        ],
+      };
+      const { data } = trimToolResponse(output, 50000, {
+        reductions: EVENT_PATTERNS_REDUCTIONS,
+      });
+      expect(data.patterns).toHaveLength(30);
+      expect(data.patterns.every(p => p.samples.length >= 1)).toBe(true);
+      expect(data.patterns.every(p => 'whereSnippet' in p)).toBe(true);
+      expect(data.patterns[0].pattern).toMatch(
+        /^java\.lang\.NullPointerException/,
+      );
+      expect(JSON.stringify(data)).not.toContain('__hdx_trimmed');
+      expect(JSON.stringify(data).length).toBeLessThanOrEqual(50000);
+    });
+
+    it('uses most of the budget when the reductions are not enough', () => {
+      // 30 patterns of ~10 KB stack traces with 5 samples: ~2 MB.
+      const stack = (n: number) =>
+        `java.lang.IllegalStateException: case ${n}\n` +
+        Array.from(
+          { length: 200 },
+          (_, i) => `\tat com.example.svc.L${n}x${i}.call(L${i}.java:${i})`,
+        ).join('\n');
+      const output = {
+        summary: { totalCount: 1_000_000, patternsReturned: 30 },
+        patterns: Array.from({ length: 30 }, (_, i) => ({
+          rank: i + 1,
+          pattern: stack(i),
+          whereSnippet: '',
+          drilldownUnavailable: 'Template is longer than 4000 characters.',
+          trend: Array.from({ length: 24 }, (_, t) => ({ ts: t, count: 1 })),
+          samples: Array.from({ length: 5 }, () => stack(i)),
+        })),
+        usage: 'u'.repeat(1500),
+      };
+      const { data } = trimToolResponse(output, 50000, {
+        reductions: EVENT_PATTERNS_REDUCTIONS,
+      });
+      const size = JSON.stringify(data).length;
+      expect(size).toBeLessThanOrEqual(50000);
+      expect(size).toBeGreaterThan(40000);
+      expect(data.patterns.length).toBeGreaterThanOrEqual(10);
+      expect(data.patterns[0].pattern).toMatch(/^java\.lang\./);
+    });
+
+    it('shortens long emerging and disappeared patterns and keeps every entry', () => {
+      const entry = (i: number) => ({
+        pattern: `Exception ${i} ` + 'e'.repeat(5000),
+        currentCount: i,
+      });
+      const output = {
+        emerging: Array.from({ length: 12 }, (_, i) => entry(i)),
+        disappeared: Array.from({ length: 8 }, (_, i) => entry(i)),
+      };
+      const { data, notes } = trimToolResponse(output, 50000, {
+        reductions: EMERGING_SIGNALS_REDUCTIONS,
+      });
+      expect(data.emerging).toHaveLength(12);
+      expect(data.disappeared).toHaveLength(8);
+      for (const e of [...data.emerging, ...data.disappeared]) {
+        expect(e.pattern).toMatch(/^Exception \d+ e+…\(\+[\d,]+ chars\)$/);
+      }
+      expect(notes).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/^emerging\[\]\.pattern: 12 value\(s\) cut/),
+          expect.stringMatching(/^disappeared\[\]\.pattern: 8 value\(s\) cut/),
+        ]),
+      );
     });
   });
 });

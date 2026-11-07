@@ -4,7 +4,7 @@ import { READ_ONLY_TOOL } from '@/mcp/tools/annotations';
 import type { ToolRegistrar } from '@/mcp/tools/types';
 import { mcpUserError } from '@/mcp/utils/errors';
 import logger from '@/utils/logger';
-import { trimToolResponse } from '@/utils/trimToolResponse';
+import { SIZE_NOTE_PREFIX, trimToolResponse } from '@/utils/trimToolResponse';
 
 import { PREFER_BUILDER_OVER_SQL_NUDGE } from './builderCatalog';
 import { denoiseSearchResults } from './denoise';
@@ -114,7 +114,10 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
       const resultText = result.content?.[0]?.text;
       if (!resultText) return result;
 
-      let parsed: { result?: { data?: Record<string, unknown>[] } };
+      let parsed: {
+        result?: { data?: Record<string, unknown>[] };
+        trimNotes?: string[];
+      };
       try {
         parsed = JSON.parse(resultText);
       } catch {
@@ -122,6 +125,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
       }
 
       const resultData = parsed.result;
+      // runConfigTile may already have trimmed the rows; keep its notes, except
+      // the size line, which denoise makes stale.
+      const firstPassNotes = (parsed.trimNotes ?? []).filter(
+        n => !n.startsWith(SIZE_NOTE_PREFIX),
+      );
       const rows = (resultData as Record<string, unknown> | undefined)?.data as
         | Record<string, unknown>[]
         | undefined;
@@ -150,7 +158,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
           'denoiseSearchResults failed; returning raw results',
         );
 
-        const { data: trimmedResult, isTrimmed } = trimToolResponse(resultData);
+        const {
+          data: { result: trimmedResult },
+          notes,
+        } = trimToolResponse({ result: resultData });
+        const trimNotes = [...firstPassNotes, ...notes];
         return {
           content: [
             {
@@ -164,9 +176,10 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
                     filteredRowCount: rows.length,
                     skipped: 'denoise_failed',
                   },
-                  ...(isTrimmed
+                  ...(trimNotes.length > 0
                     ? {
                         note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+                        trimNotes,
                       }
                     : {}),
                 },
@@ -185,8 +198,11 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
         ...resultData,
         data: denoised.rows,
       };
-      const { data: trimmedResult, isTrimmed } =
-        trimToolResponse(denoisedResult);
+      const {
+        data: { result: trimmedResult },
+        notes,
+      } = trimToolResponse({ result: denoisedResult });
+      const trimNotes = [...firstPassNotes, ...notes];
 
       return {
         content: [
@@ -203,9 +219,10 @@ export function registerSearch({ context, registerTool }: ToolRegistrar) {
                   filteredRowCount: denoised.rows.length,
                   ...(denoised.skipped ? { skipped: denoised.skipped } : {}),
                 },
-                ...(isTrimmed
+                ...(trimNotes.length > 0
                   ? {
                       note: 'Result was trimmed for context size. Narrow the time range or add filters to reduce data.',
+                      trimNotes,
                     }
                   : {}),
                 ...(denoised.rows.length === 0 && !denoised.skipped
