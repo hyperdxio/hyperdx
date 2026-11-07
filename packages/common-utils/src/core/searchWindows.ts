@@ -37,7 +37,7 @@ export function generateTimeWindowsDescending(
 
   while (currentEnd > startDate) {
     const windowSizeSeconds =
-      windowDurationsSeconds[windowIndex] ||
+      windowDurationsSeconds.at(windowIndex) ??
       windowDurationsSeconds[windowDurationsSeconds.length - 1]; // use largest window size
     const windowSizeMs = windowSizeSeconds * 1000;
     const windowStart = new Date(
@@ -81,7 +81,7 @@ export function generateTimeWindowsAscending(
 
   while (currentStart < endDate) {
     const windowSizeSeconds =
-      windowDurationsSeconds[windowIndex] ||
+      windowDurationsSeconds.at(windowIndex) ??
       windowDurationsSeconds[windowDurationsSeconds.length - 1]; // use largest window size
     const windowSizeMs = windowSizeSeconds * 1000;
     const windowEnd = new Date(

@@ -103,7 +103,7 @@ export type SearchChartConfigInput = {
  * so a single non-empty check covers "skip empty `''` strings and skip empty
  * `[]` arrays" symmetrically — matching the app's historical behavior.
  */
-function resolveSelect(
+export function resolveSelect(
   source: TSource,
   select: SelectList | null | undefined,
 ): BuilderChartConfig['select'] {

@@ -19,6 +19,15 @@ import logger from '@/utils/logger';
 import { externalDashboardSearchRequestSchema } from '@/utils/zod';
 
 import { runSearchConfig, type SearchErrorCode } from './utils/search';
+import {
+  CURSOR_START,
+  CURSOR_TS_COLUMN,
+  decodeSearchCursor,
+  encodeSearchCursor,
+  fingerprintQuery,
+  MAX_SINGLE_WINDOW_OFFSET,
+  type SearchWalk,
+} from './utils/searchCursor';
 
 const searchQueryDuration = getHistogram('hyperdx.search.query.duration_ms', {
   description: 'Duration of external API v2 search queries against ClickHouse.',
@@ -132,9 +141,21 @@ const CH_USER_INPUT_ERRORS = new Set([
  *           description: |
  *             Number of rows to skip (best-effort offset pagination). Default is
  *             0, max is 10000. Offset pagination is non-deterministic when
- *             multiple rows share the same timestamp; for reliable deep paging
- *             filter by the last Timestamp value returned in the previous page
- *             instead of using a large offset.
+ *             multiple rows share the same timestamp. Prefer cursor for paging.
+ *         cursor:
+ *           type: string
+ *           maxLength: 1024
+ *           example: "start"
+ *           description: |
+ *             Send the literal string "start" to begin cursor paging, then pass
+ *             back the nextCursor from each response. When set, offset is
+ *             ignored; omit cursor entirely to use offset-based paging.
+ *             As with offset, rows that share a timestamp can be skipped or
+ *             repeated between pages unless orderBy breaks the tie.
+ *
+ *             Keep requesting pages until nextCursor is null. A page that is
+ *             empty or returns fewer rows than maxResults does NOT mean the
+ *             results are exhausted.
  *
  *     SearchRow:
  *       type: object
@@ -155,6 +176,15 @@ const CH_USER_INPUT_ERRORS = new Set([
  *         rows:
  *           type: integer
  *           description: Number of rows in this response (not total matching rows).
+ *         nextCursor:
+ *           type: string
+ *           nullable: true
+ *           example: "eyJ2IjoxLCJ3IjoyLCJvIjo1MDAsImYiOiJhMWIyYzNkNGU1ZjZhN2I4In0"
+ *           description: >
+ *             Cursor for the next page, or null when the walk is complete or
+ *             the request did not include a cursor. Pass it back as cursor in
+ *             the next request to fetch the next page. This is an opaque
+ *             value; no guarantees are made about its content.
  */
 
 // Rejects semicolons and SELECT subqueries in column expressions.
@@ -210,6 +240,9 @@ const searchRequestSchema = z.object({
         'select must not contain semicolons or SELECT subqueries; ' +
         'use column references, map lookups, or scalar functions only',
     })
+    .refine(value => !value.includes(CURSOR_TS_COLUMN), {
+      message: `select must not use the reserved name ${CURSOR_TS_COLUMN}`,
+    })
     .describe(
       'Comma-separated list of column expressions to return. ' +
         'When omitted the source default columns are used. ' +
@@ -237,12 +270,21 @@ const searchRequestSchema = z.object({
     .number()
     .int()
     .min(0)
-    .max(10_000)
+    .max(MAX_SINGLE_WINDOW_OFFSET)
     .optional()
     .default(0)
     .describe(
       'Number of rows to skip for pagination (0-10000). Default: 0. ' +
-        'Prefer timestamp-cursor pagination for large datasets.',
+        'Prefer cursor for paging large datasets.',
+    ),
+  cursor: z
+    .string()
+    .max(1024)
+    .optional()
+    .describe(
+      'Set to "start" to begin cursor paging, then pass back the nextCursor ' +
+        'from each response. When set, offset is ignored. Keep requesting ' +
+        'pages until nextCursor is null.',
     ),
 });
 
@@ -357,6 +399,8 @@ function codeToStatus(code: SearchErrorCode): number {
     case 'SOURCE_NOT_FOUND':
     case 'CONNECTION_NOT_FOUND':
       return 404;
+    case 'CURSOR_WINDOW_TOO_DENSE':
+      return 400;
     default: {
       const _exhaustive: never = code;
       void _exhaustive;
@@ -383,6 +427,7 @@ router.post(
         orderBy,
         maxResults,
         offset,
+        cursor,
       } = req.body;
 
       const timeRange = parseTimeRange(startTime, endTime);
@@ -390,6 +435,49 @@ router.post(
         return res.status(400).json({ message: timeRange.error });
       }
       const { startDate, endDate } = timeRange;
+
+      const fingerprint = fingerprintQuery({
+        sourceId,
+        where,
+        whereLanguage,
+        select,
+        orderBy: orderBy ?? '',
+      });
+
+      // The cursor pins this request's resolved range, so a defaulted endTime
+      // stays the same on later pages.
+      let cursorState: SearchWalk | undefined;
+      if (cursor === CURSOR_START) {
+        cursorState = {
+          window: null,
+          offset: 0,
+          startTime: startDate.toISOString(),
+          endTime: endDate.toISOString(),
+        };
+      } else if (cursor != null) {
+        const decoded = decodeSearchCursor(cursor, fingerprint);
+        if ('error' in decoded) {
+          searchQueryErrors.add(1, { error_type: decoded.error });
+          return res.status(400).json({
+            message:
+              decoded.error === 'CURSOR_QUERY_MISMATCH'
+                ? 'Cursor does not match this query. Start a new search.'
+                : 'Cursor is invalid or expired. Start a new search with cursor "start".',
+          });
+        }
+        // Reject an explicitly changed bound; omitted or empty bounds default
+        // to `now` and are not compared.
+        const rangeChanged =
+          (!!startTime && startDate.toISOString() !== decoded.startTime) ||
+          (!!endTime && endDate.toISOString() !== decoded.endTime);
+        if (rangeChanged) {
+          searchQueryErrors.add(1, { error_type: 'CURSOR_QUERY_MISMATCH' });
+          return res.status(400).json({
+            message: 'Cursor does not match this query. Start a new search.',
+          });
+        }
+        cursorState = decoded;
+      }
 
       const config = externalDashboardSearchRequestSchema.parse({
         displayType: 'search' as const,
@@ -408,6 +496,7 @@ router.post(
           endDate,
           maxResults,
           offset,
+          cursorState,
         }),
       );
 
@@ -418,7 +507,14 @@ router.post(
           .json({ message: result.message });
       }
 
-      return res.json({ data: result.data, rows: result.data.length });
+      return res.json({
+        data: result.data,
+        rows: result.data.length,
+        nextCursor:
+          result.nextCursorState == null
+            ? null
+            : encodeSearchCursor(result.nextCursorState, fingerprint),
+      });
     } catch (err) {
       if (err instanceof ClickHouseQueryError) {
         const chType = ((err.cause as Record<string, unknown> | undefined)
