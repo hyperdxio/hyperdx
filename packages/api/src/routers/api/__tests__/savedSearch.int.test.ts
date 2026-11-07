@@ -143,6 +143,13 @@ describe('savedSearch router', () => {
         .post('/saved-search')
         .send({ ...MOCK_SAVED_SEARCH, defaultTimeRange: '1d' })
         .expect(400);
+      await agent
+        .post('/saved-search')
+        .send({
+          ...MOCK_SAVED_SEARCH,
+          defaultTimeRange: { type: 'relative', value: 0 },
+        })
+        .expect(400);
     });
 
     it('rejects a fixed window', async () => {

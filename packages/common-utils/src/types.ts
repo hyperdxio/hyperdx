@@ -1419,7 +1419,9 @@ export const SavedSearchSchema = z.object({
   orderBy: z.string().optional(),
   filters: z.array(FilterSchema).optional(),
   alerts: z.array(AlertSchema).optional(),
-  defaultTimeRange: RelativeDateRangeSchema.nullish(),
+  defaultTimeRange: RelativeDateRangeSchema.extend({
+    value: z.number().positive(),
+  }).nullish(),
 });
 
 export type SavedSearch = z.infer<typeof SavedSearchSchema>;

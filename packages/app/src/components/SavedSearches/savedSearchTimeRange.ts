@@ -1,7 +1,11 @@
 import { formatDuration, intervalToDuration } from 'date-fns';
 import { RelativeDateRange } from '@hyperdx/common-utils/dist/types';
 
-import { RELATIVE_TIME_OPTIONS } from '@/components/TimePicker/utils';
+import {
+  LIVE_TAIL_DURATION_MS,
+  RELATIVE_TIME_OPTIONS,
+} from '@/components/TimePicker/utils';
+import { parseRelativeTimeQuery } from '@/timeQuery';
 
 /**
  * URL params that mean the link already chose a time, so a saved search's
@@ -19,26 +23,39 @@ export function hasExplicitTimeParams(search: string): boolean {
 const SNAP_TOLERANCE_MS = 1000;
 const ENDS_NOW_MIN_TOLERANCE_MS = 60 * 1000;
 
-/** The window to open a saved search with, or null to keep today's default. */
-export function getSavedSearchLandingRange(
+/** Durations live tail can stream (the presets with relative support). */
+export function isLiveTailDuration(durationMs: number): boolean {
+  return RELATIVE_TIME_OPTIONS.some(
+    option =>
+      option !== 'divider' && option[2] === true && option[1] === durationMs,
+  );
+}
+
+export type SavedSearchLanding =
+  | { kind: 'live'; intervalMs: number }
+  | { kind: 'window'; range: [Date, Date] };
+
+/**
+ * How to open a saved search, or null to keep today's default. Ranges live
+ * tail supports open as live tail; longer ones open as a window ending now.
+ */
+export function getSavedSearchLanding(
   stored: RelativeDateRange | null | undefined,
   search: string,
   nowMs: number,
-): [Date, Date] | null {
+): SavedSearchLanding | null {
   if (stored == null || hasExplicitTimeParams(search)) return null;
-  if (!Number.isFinite(stored.value) || stored.value <= 0) return null;
-  // Whole seconds, like parseRelativeTimeQuery, so re-parsing the displayed
-  // text on the first submit lands on the same from/to.
-  const end = Math.floor(nowMs / 1000) * 1000;
-  return [new Date(end - stored.value * 1000), new Date(end)];
+  const durationMs = stored.value * 1000;
+  if (isLiveTailDuration(durationMs)) {
+    return { kind: 'live', intervalMs: durationMs };
+  }
+  // Whole seconds, so re-parsing the displayed text on the first submit lands
+  // on the same from/to.
+  return { kind: 'window', range: parseRelativeTimeQuery(durationMs, nowMs) };
 }
 
 /** Duration of a window as a relative range, snapped to the nearest preset. */
-export function toDefaultTimeRange([start, end]: [
-  Date,
-  Date,
-]): RelativeDateRange {
-  const durationMs = end.getTime() - start.getTime();
+export function toDefaultTimeRange(durationMs: number): RelativeDateRange {
   for (const option of RELATIVE_TIME_OPTIONS) {
     if (option === 'divider') continue;
     if (Math.abs(option[1] - durationMs) <= SNAP_TOLERANCE_MS) {
@@ -69,10 +86,25 @@ export function formatRelativeDuration(seconds: number): string {
 }
 
 export type CurrentTimeRange =
-  | { kind: 'live' }
+  | { kind: 'live'; intervalMs: number }
   | { kind: 'window'; range: [Date, Date] };
 
 export type TimeRangeChoice = 'live' | 'keep' | 'current';
+
+function getCurrentCandidate(
+  current: CurrentTimeRange,
+  nowMs: number,
+): RelativeDateRange | null {
+  if (current.kind === 'live') {
+    // Plain live tail is already what a search opens with by default.
+    return current.intervalMs === LIVE_TAIL_DURATION_MS
+      ? null
+      : toDefaultTimeRange(current.intervalMs);
+  }
+  if (!isRangeEndingNow(current.range, nowMs)) return null;
+  const [start, end] = current.range;
+  return toDefaultTimeRange(end.getTime() - start.getTime());
+}
 
 export function getTimeRangeChoices({
   current,
@@ -90,14 +122,10 @@ export function getTimeRangeChoices({
   const choices: TimeRangeChoice[] = ['live'];
   if (stored != null) choices.push('keep');
 
-  let currentRange: RelativeDateRange | null = null;
-  if (current.kind === 'window' && isRangeEndingNow(current.range, nowMs)) {
-    const candidate = toDefaultTimeRange(current.range);
-    if (stored?.value !== candidate.value) {
-      currentRange = candidate;
-      choices.push('current');
-    }
-  }
+  const candidate = getCurrentCandidate(current, nowMs);
+  const currentRange =
+    candidate != null && stored?.value !== candidate.value ? candidate : null;
+  if (currentRange != null) choices.push('current');
 
   return {
     choices,

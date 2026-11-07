@@ -43,9 +43,12 @@ function isInputTimeQueryLive(inputTimeQuery: string) {
   return inputTimeQuery === '' || inputTimeQuery.includes(LIVE_TAIL_TIME_QUERY);
 }
 
-export function parseRelativeTimeQuery(interval: number): [Date, Date] {
+export function parseRelativeTimeQuery(
+  interval: number,
+  nowMs?: number,
+): [Date, Date] {
   // eslint-disable-next-line no-restricted-syntax
-  const end = startOfSecond(new Date());
+  const end = startOfSecond(nowMs != null ? new Date(nowMs) : new Date());
   return [subMilliseconds(end, interval), end];
 }
 

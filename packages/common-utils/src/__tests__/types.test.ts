@@ -877,6 +877,8 @@ describe('SavedSearchSchema.defaultTimeRange', () => {
       parse({ type: 'historical', value: [1700000000000, 1700003600000] }),
     ).toBe(false);
     expect(parse({ type: 'relative', value: '1d' })).toBe(false);
+    expect(parse({ type: 'relative', value: 0 })).toBe(false);
+    expect(parse({ type: 'relative', value: -60 })).toBe(false);
     expect(parse('1d')).toBe(false);
   });
 });

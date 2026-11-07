@@ -1,8 +1,9 @@
 import {
   formatRelativeDuration,
-  getSavedSearchLandingRange,
+  getSavedSearchLanding,
   getTimeRangeChoices,
   hasExplicitTimeParams,
+  isLiveTailDuration,
   isRangeEndingNow,
   resolveDefaultTimeRange,
   toDefaultTimeRange,
@@ -11,8 +12,10 @@ import {
 const NOW = Date.UTC(2026, 10, 6, 12, 0, 0, 500);
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
-const DAY = 24 * 60 * MINUTE;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
 const ONE_DAY = { type: 'relative' as const, value: 86400 };
+const ONE_HOUR = { type: 'relative' as const, value: 3600 };
 
 const windowEndingAt = (end: number, durationMs: number): [Date, Date] => [
   new Date(end - durationMs),
@@ -32,37 +35,56 @@ describe('hasExplicitTimeParams', () => {
   });
 });
 
-describe('getSavedSearchLandingRange', () => {
-  it('resolves a relative range to a window ending at the current second', () => {
-    const range = getSavedSearchLandingRange(ONE_DAY, '', NOW);
+describe('isLiveTailDuration', () => {
+  it.each([
+    [MINUTE, true],
+    [HOUR, true],
+    [6 * HOUR, true],
+    [12 * HOUR, false],
+    [DAY, false],
+    [90 * MINUTE, false],
+  ])('%i ms -> %s', (durationMs, expected) => {
+    expect(isLiveTailDuration(durationMs)).toBe(expected);
+  });
+});
+
+describe('getSavedSearchLanding', () => {
+  it('opens a range live tail supports as live tail with that interval', () => {
+    expect(getSavedSearchLanding(ONE_HOUR, '', NOW)).toEqual({
+      kind: 'live',
+      intervalMs: HOUR,
+    });
+  });
+
+  it('opens a longer range as a window ending at the current second', () => {
     const end = NOW - 500;
-    expect(range).toEqual([new Date(end - DAY), new Date(end)]);
+    expect(getSavedSearchLanding(ONE_DAY, '', NOW)).toEqual({
+      kind: 'window',
+      range: [new Date(end - DAY), new Date(end)],
+    });
   });
 
   it('yields to a time already in the URL', () => {
     expect(
-      getSavedSearchLandingRange(ONE_DAY, '?from=1&to=2&isLive=false', NOW),
+      getSavedSearchLanding(ONE_DAY, '?from=1&to=2&isLive=false', NOW),
     ).toBeNull();
   });
 
   it.each([
     ['missing', undefined],
     ['null', null],
-    ['zero duration', { type: 'relative' as const, value: 0 }],
-    ['negative duration', { type: 'relative' as const, value: -60 }],
-    ['infinite duration', { type: 'relative' as const, value: Infinity }],
   ])('ignores a %s range', (_name, stored) => {
-    expect(getSavedSearchLandingRange(stored, '', NOW)).toBeNull();
+    expect(getSavedSearchLanding(stored, '', NOW)).toBeNull();
   });
 });
 
 describe('toDefaultTimeRange', () => {
   it('snaps to a preset within one second', () => {
-    expect(toDefaultTimeRange(windowEndingAt(NOW, DAY + 800))).toEqual(ONE_DAY);
+    expect(toDefaultTimeRange(DAY + 800)).toEqual(ONE_DAY);
   });
 
   it('rounds other durations to whole seconds', () => {
-    expect(toDefaultTimeRange(windowEndingAt(NOW, 90 * MINUTE + 400))).toEqual({
+    expect(toDefaultTimeRange(90 * MINUTE + 400)).toEqual({
       type: 'relative',
       value: 5400,
     });
@@ -103,14 +125,28 @@ describe('formatRelativeDuration', () => {
 describe('getTimeRangeChoices', () => {
   const lastDay = { kind: 'window' as const, range: windowEndingAt(NOW, DAY) };
 
-  it('offers only live tail while live with nothing stored', () => {
+  it('offers only live tail during default live tail with nothing stored', () => {
     expect(
       getTimeRangeChoices({
-        current: { kind: 'live' },
+        current: { kind: 'live', intervalMs: 15 * MINUTE },
         stored: null,
         nowMs: NOW,
       }),
     ).toEqual({ choices: ['live'], defaultChoice: 'live', currentRange: null });
+  });
+
+  it('offers a live tail interval picked in the time picker', () => {
+    expect(
+      getTimeRangeChoices({
+        current: { kind: 'live', intervalMs: HOUR },
+        stored: null,
+        nowMs: NOW,
+      }),
+    ).toEqual({
+      choices: ['live', 'current'],
+      defaultChoice: 'live',
+      currentRange: ONE_HOUR,
+    });
   });
 
   it('offers the current window when it ends now, defaulting to live tail', () => {
