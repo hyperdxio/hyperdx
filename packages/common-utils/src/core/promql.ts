@@ -107,7 +107,7 @@ export function reducePromqlSamples(
  * A HyperDX granularity ("5 minute") as a Prometheus step, in seconds. A
  * `minGranularitySeconds` floor only applies when the granularity is `auto`.
  */
-const promqlStepSeconds = (
+export const promqlStepSeconds = (
   granularity: string | undefined,
   dateRange?: [Date, Date],
   minGranularitySeconds?: number,

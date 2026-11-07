@@ -101,6 +101,8 @@ function trimObject(obj: any, maxSize: number): any {
   for (const [key, value] of entries) {
     const valueStr = JSON.stringify(value);
 
+    if (valueStr === undefined) continue;
+
     if (valueStr.length <= perKeyBudget) {
       result[key] = value; // eslint-disable-line security/detect-object-injection
     } else {

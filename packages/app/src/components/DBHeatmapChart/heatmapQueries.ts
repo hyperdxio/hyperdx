@@ -1,5 +1,9 @@
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
-import { getAlignedDateRange } from '@hyperdx/common-utils/dist/core/utils';
+import {
+  getAlignedDateRange,
+  getTimeChartGranularity,
+  HEATMAP_AUTO_GRANULARITY_BUCKETS,
+} from '@hyperdx/common-utils/dist/core/utils';
 import { isPromqlChartConfig } from '@hyperdx/common-utils/dist/guards';
 import {
   BuilderChartConfigWithDateRange,
@@ -9,11 +13,7 @@ import {
   SQLInterval,
 } from '@hyperdx/common-utils/dist/types';
 
-import {
-  convertToTimeChartConfig,
-  getTimeChartGranularity,
-  isAggregateFunction,
-} from '@/ChartUtils';
+import { convertToTimeChartConfig, isAggregateFunction } from '@/ChartUtils';
 
 import { heatmapLowQuantile } from './heatmapBounds';
 import type { HeatmapScaleType } from './heatmapGrid';
@@ -72,8 +72,6 @@ export type HeatmapQuery =
       mode: 'series';
       config: HeatmapSeriesChartConfig;
     };
-
-const HEATMAP_AUTO_GRANULARITY_BUCKETS = 245;
 
 /**
  * `minGranularitySeconds` floors only auto granularity: an explicit

@@ -4,6 +4,7 @@ import {
 } from '@clickhouse/client-common';
 import { getHeatmapMode } from '@hyperdx/common-utils/dist/core/heatmap';
 import { getMetadata } from '@hyperdx/common-utils/dist/core/metadata';
+import { PromqlChartError } from '@hyperdx/common-utils/dist/core/promqlChart';
 import {
   convertToCategoricalChartConfig,
   getFirstTimestampValueExpression,
@@ -723,6 +724,9 @@ export async function runConfigTile(
         return e.category === 'user'
           ? mcpUserError(e.message)
           : mcpServerError(e.message);
+      }
+      if (e instanceof PromqlChartError) {
+        return mcpUserError(e.message);
       }
       // The table-function backend throws ClickHouse errors as they come.
       return clickHouseErrorResult(e);

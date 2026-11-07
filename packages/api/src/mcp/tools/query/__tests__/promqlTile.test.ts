@@ -57,6 +57,30 @@ describe('buildPromqlTileQueries', () => {
     ]);
   });
 
+  it("caps an instant table query's series at the table's row cap", () => {
+    const [{ query }] = buildPromqlTileQueries({
+      config: {
+        displayType: DisplayType.Table,
+        promqlExpression: [{ expression: 'up', queryType: 'instant' }],
+      },
+      dateRange,
+    });
+
+    expect(query).toMatchObject({ kind: 'instant', limit: 10_000 });
+  });
+
+  it("sizes a heatmap's auto step for the heatmap's finer buckets", () => {
+    const [{ query }] = buildPromqlTileQueries({
+      config: {
+        displayType: DisplayType.Heatmap,
+        promqlExpression: [{ expression: 'up' }],
+      },
+      dateRange,
+    });
+
+    expect(query).toMatchObject({ kind: 'range', stepSec: 15 });
+  });
+
   it('runs an instant expression on a time chart as a range query', () => {
     const [{ query }] = buildPromqlTileQueries({
       config: {
@@ -237,7 +261,7 @@ describe('toPromqlTileResult', () => {
     expect(result.data).toEqual([{ series_name: 'up', value: 3 }]);
   });
 
-  it('leaves out the time bucket for an instant table', () => {
+  it('gives an instant table a column per label and no time column', () => {
     const result = toPromqlTileResult(
       {
         displayType: DisplayType.Table,
@@ -256,9 +280,37 @@ describe('toPromqlTileResult', () => {
     );
 
     expect(result.data).toEqual([
-      { series_name: '{instance="checkout-0"}', value: 1 },
-      { series_name: '{instance="checkout-1"}', value: 0 },
+      { instance: 'checkout-0', job: 'checkout', Value: 1 },
+      { instance: 'checkout-1', job: 'checkout', Value: 0 },
     ]);
-    expect(result.meta.map(m => m.name)).toEqual(['series_name', 'value']);
+    expect(result.meta.map(m => m.name)).toEqual(['instance', 'job', 'Value']);
+    // An undefined key would break trimToolResponse on large results.
+    expect(result).not.toHaveProperty('seriesLabels');
+  });
+
+  it('keys a histogram heatmap by bucket', () => {
+    const result = toPromqlTileResult(
+      {
+        displayType: DisplayType.Heatmap,
+        promqlExpression: 'sum by (le) (rate(x_bucket[5m]))',
+        heatmap: { mode: 'histogram' },
+      },
+      [
+        {
+          expression: 'sum by (le) (rate(x_bucket[5m]))',
+          isBucketed: true,
+          result: [
+            { metric: { le: '0.5' }, values: [[t0, 2]] },
+            { metric: { le: '+Inf' }, values: [[t0, 3]] },
+          ],
+        },
+      ],
+    );
+
+    expect(result.data).toEqual([
+      { __hdx_time_bucket: '2026-11-02T10:00:00.000Z', le: '0.5', value: 2 },
+      { __hdx_time_bucket: '2026-11-02T10:00:00.000Z', le: '+Inf', value: 3 },
+    ]);
+    expect(result).not.toHaveProperty('seriesLabels');
   });
 });

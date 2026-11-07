@@ -17,6 +17,7 @@ import { renderChartConfig } from '@hyperdx/common-utils/dist/core/renderChartCo
 import {
   isFirstOrderByAscending,
   isTimestampExpressionInFirstOrderBy,
+  MAX_TABLE_ROWS,
 } from '@hyperdx/common-utils/dist/core/utils';
 import {
   isBuilderChartConfig,
@@ -36,7 +37,6 @@ import {
 
 import api from '@/api';
 import { getClickhouseClient } from '@/clickhouse';
-import { MAX_TABLE_ROWS } from '@/HDXMultiSeriesTableChart';
 import { useMetadataWithSettings } from '@/hooks/useMetadata';
 import { useMVOptimizationExplanation } from '@/hooks/useMVOptimizationExplanation';
 import { useQueryAttribution } from '@/queryAttribution';

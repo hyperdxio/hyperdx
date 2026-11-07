@@ -3,6 +3,7 @@ import {
   buildQueryId,
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { getCurrentQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
+import type { PromqlQuery } from '@hyperdx/common-utils/dist/core/promqlChart';
 import { SourceKind, type SQLInterval } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -520,16 +521,6 @@ export async function resolvePromqlQueryBackend(
   return resolveClickhouseQueryBackend(target);
 }
 
-export type PromqlQuery =
-  | {
-      kind: 'range';
-      expr: string;
-      startSec: number;
-      endSec: number;
-      stepSec: number;
-    }
-  | { kind: 'instant'; expr: string; timeSec: number };
-
 const sampleSchema = z.tuple([z.number(), z.string()]);
 const metricSchema = z.record(z.string());
 
@@ -559,7 +550,11 @@ function promqlQueryParams(query: PromqlQuery): Record<string, string> {
         end: String(query.endSec),
         step: String(query.stepSec),
       }
-    : { query: query.expr, time: String(query.timeSec) };
+    : {
+        query: query.expr,
+        time: String(query.timeSec),
+        ...(query.limit != null ? { limit: String(query.limit) } : {}),
+      };
 }
 
 async function evaluatePromqlQuery(

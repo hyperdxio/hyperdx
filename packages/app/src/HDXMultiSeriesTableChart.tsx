@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import cx from 'classnames';
+import { MAX_TABLE_ROWS } from '@hyperdx/common-utils/dist/core/utils';
 import {
   ChartPaletteToken,
   ColorCondition,
@@ -47,9 +48,6 @@ import styles from './HDXMultiSeriesTableChart.module.scss';
 import focusStyles from '@styles/focus.module.scss';
 
 export type TableVariant = 'default' | 'muted';
-
-// Arbitrary limit to prevent OOM crashes for very large result sets. Most result sets should be paginated anyway.
-export const MAX_TABLE_ROWS = 10_000;
 
 export const Table = ({
   data,
