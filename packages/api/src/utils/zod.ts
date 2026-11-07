@@ -50,6 +50,13 @@ export const objectIdSchema = z.string().refine(val => {
   return Types.ObjectId.isValid(val);
 }, 'Invalid ObjectId');
 
+export const mutedUntilSchema = z
+  .string()
+  .datetime({ offset: true })
+  .refine(val => new Date(val) > new Date(), {
+    message: 'mutedUntil must be in the future',
+  });
+
 /**
  * A repeatable query param. Express's parser yields a bare string for a single
  * occurrence and an array for several, and `?p[]=x` lands on the same key as
