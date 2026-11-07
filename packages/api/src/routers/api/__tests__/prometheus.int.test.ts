@@ -7,7 +7,11 @@ import { SourceKind } from '@hyperdx/common-utils/dist/types';
 import { Types } from 'mongoose';
 
 import * as config from '@/config';
-import { joinPrometheusUpstreamUrl } from '@/controllers/promql';
+import {
+  CLICKHOUSE_PROMETHEUS_API_PREFIX,
+  clickhousePrometheusUpstream,
+  joinPrometheusUpstreamUrl,
+} from '@/controllers/promql';
 import {
   DEFAULT_DATABASE,
   dropTimeSeriesTable,
@@ -18,11 +22,7 @@ import {
 } from '@/fixtures';
 import Connection from '@/models/connection';
 import { Source } from '@/models/source';
-import {
-  CLICKHOUSE_PROMETHEUS_API_PREFIX,
-  clickhousePrometheusUpstream,
-  PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC,
-} from '@/routers/api/prometheus';
+import { PROMETHEUS_MAX_EXEMPLAR_WINDOW_SEC } from '@/routers/api/prometheus';
 
 const mockFetch = jest.mocked(global.fetch);
 
