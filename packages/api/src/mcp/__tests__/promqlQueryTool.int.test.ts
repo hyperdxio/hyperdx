@@ -1,6 +1,7 @@
 import { Metadata } from '@hyperdx/common-utils/dist/core/metadata';
 import { SourceKind } from '@hyperdx/common-utils/dist/types';
 
+import { PROMETHEUS_MAX_RESPONSE_BYTES } from '@/controllers/promql';
 import {
   DEFAULT_DATABASE,
   dropTimeSeriesTable,
@@ -305,6 +306,27 @@ describe('MCP clickstack_promql', () => {
       'Failed to reach Prometheus at http://prom.example.com/api/v1/query_range',
     );
     expect(getFirstText(result)).not.toContain('secret');
+  });
+
+  it('reports a response too large to buffer as a server error', async () => {
+    mockFetch.mockResolvedValueOnce(
+      prometheusResponse(
+        { resultType: 'matrix', result: [] },
+        {
+          headers: {
+            'content-length': String(PROMETHEUS_MAX_RESPONSE_BYTES + 1),
+          },
+        },
+      ),
+    );
+    const source = await createPrometheusSource();
+
+    const result = await promql({ sourceId: source._id.toString() });
+
+    expect(result.isError).toBe(true);
+    expect(getFirstText(result)).toContain(
+      'returned more than 8 MB. Narrow the query or time range.',
+    );
   });
 
   it('rejects a result a chart cannot draw as a user error', async () => {

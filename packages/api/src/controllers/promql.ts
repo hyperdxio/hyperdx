@@ -4,6 +4,7 @@ import {
 } from '@hyperdx/common-utils/dist/clickhouse';
 import { getCurrentQueryAttribution } from '@hyperdx/common-utils/dist/clickhouse/node';
 import type { PromqlQuery } from '@hyperdx/common-utils/dist/core/promqlChart';
+import { parseJSON } from '@hyperdx/common-utils/dist/core/utils';
 import { SourceKind, type SQLInterval } from '@hyperdx/common-utils/dist/types';
 import { z } from 'zod';
 
@@ -20,12 +21,28 @@ import {
   queryRangeViaTableFunction,
 } from '@/controllers/timeseriesEngine';
 import { withSpan } from '@/utils/instrumentation';
+import {
+  readBoundedBody,
+  ResponseTooLargeError,
+} from '@/utils/readBoundedBody';
 
 type PromqlBackend = 'prometheus' | 'clickhouse';
 
 const PROMETHEUS_FETCH_TIMEOUT_MS = 30_000;
 const PROMETHEUS_CH_TIMEOUT_MS = 30_000;
 export const PROMETHEUS_MAX_RESOLUTION = 11_000;
+/**
+ * Largest Prometheus response body fetchPrometheusData will read into memory.
+ *
+ * Queries to ClickHouse are already capped by `max_result_rows`
+ * (PROMETHEUS_MAX_RESULT_ROWS). An external Prometheus has no equivalent:
+ * `/query` and `/query_range` take no row limit, and older servers ignore
+ * `limit` on the label APIs. So the only way to bound the memory a response
+ * can take is to stop reading at a byte limit. 8 MB fits roughly
+ * PROMETHEUS_MAX_RESULT_ROWS label values, so both backends allow about the
+ * same amount of data.
+ */
+export const PROMETHEUS_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 // ClickHouse serves the Prometheus HTTP API under this prefix on its main HTTP
 // port when the `prometheus_api_v1` handler is configured (26.6+).
@@ -176,9 +193,20 @@ async function fetchPrometheusData<T extends z.ZodTypeAny>(
     );
   }
 
-  const body = prometheusBodySchema.safeParse(
-    await resp.json().catch(() => undefined),
-  );
+  let text: string;
+  try {
+    text = await readBoundedBody(resp, PROMETHEUS_MAX_RESPONSE_BYTES);
+  } catch (err) {
+    const tooLargeMessage = `Prometheus at ${redactedTarget} returned more than ${PROMETHEUS_MAX_RESPONSE_BYTES / (1024 * 1024)} MB. Narrow the query or time range.`;
+    const genericMessage = `Failed to read the response from Prometheus at ${redactedTarget}`;
+    throw new PromQLQueryError(
+      err instanceof ResponseTooLargeError ? tooLargeMessage : genericMessage,
+      'server',
+    );
+  }
+  // A body that is not JSON (a proxy's HTML error page, say) is reported by
+  // its HTTP status below.
+  const body = prometheusBodySchema.safeParse(parseJSON(text));
   if (!resp.ok || !body.success || body.data.status !== 'success') {
     const isUserError =
       resp.status >= 400 &&
